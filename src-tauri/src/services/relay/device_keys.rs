@@ -50,6 +50,13 @@ impl DeviceKeyring {
         *cached = Some(keys.clone());
         Ok(keys)
     }
+
+    /// The secret keys, to seal and open with (made if there are none)
+    pub fn device_keys(&self) -> Result<DeviceKeys, String> {
+        let keys = load_or_create(&self.secrets)?;
+        *self.public.lock().unwrap_or_else(|e| e.into_inner()) = Some(keys.public_keys().clone());
+        Ok(keys)
+    }
 }
 
 /// This instance's keys: the stored pair, or a new one stored now

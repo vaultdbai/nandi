@@ -7,6 +7,8 @@ describe('CORE_EVENT_NAMES', () => {
       'relay://status',
       'relay://agent_online',
       'relay://agent_offline',
+      'relay://seal_refused',
+      'network://member_key_changed',
       'team://changed',
       'delegation://task_started',
       'delegation://task_completed',

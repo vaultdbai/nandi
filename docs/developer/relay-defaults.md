@@ -12,7 +12,7 @@ A fresh install connects nowhere and enrolls nowhere until the user joins a rela
 
 ## Protocol version
 
-`nandi_protocol::PROTOCOL_VERSION` (3 since per-device keys) goes out on
+`nandi_protocol::PROTOCOL_VERSION` (4 since every payload is sealed) goes out on
 every `RegisterInstance`; the relay's `/health`
 reports its own as `protocol_version`. A relay on another version refuses the
 registration with the code `version_mismatch`. The client then keeps its
@@ -34,10 +34,11 @@ X25519 sealing key, from the `nandi-seal` crate in nandi-spec.
 | Kept | OS keyring, entry `nandi.instance.keys` (86 characters: one entry, no chunking)                     |
 | Code | `services/relay/device_keys.rs` (`DeviceKeyring`, `load_or_create`)                                 |
 | Sent | `EnrollRequest.publicKeys` and `RegisterInstance.publicKeys` (`ClientOptions::device_keys`)         |
+| Used | Every person-to-person payload is sealed and opened with them (`services/relay/sealing.rs`)         |
 
 - A keyring entry that can't be read is an error. Nandi never makes new keys over it: the relay would refuse them.
 - The relay pins the keys for the instance ID. Other keys for the same ID are refused with `key_mismatch`. The client then counts as not connected (`RelayStatus.keyMismatch`, state Error), and Connection says to ask the relay's operator to rekey the device (`POST /relay/rekey`). Same handling as `version_mismatch`.
-- Payloads aren't sealed yet (design step 8). The keys are only distributed and pinned.
+- Content never crosses the relay in the clear: see "Sealed content" in `a2a-delegation.md`.
 
 Other members' keys are pinned too: see "Their key changed" in
 `network-and-reassignment.md`.

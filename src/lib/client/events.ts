@@ -38,6 +38,8 @@ import type {
   RelayAgentOffline,
   RelayAgentOnline,
   RelayStatus,
+  RelaySealRefused,
+  MemberKeyChanged,
   RepoFileChanged,
   RepoValidationFailed,
   TeamChanged,
@@ -121,6 +123,10 @@ interface NandiEventMap {
   'relay://status': RelayStatus
   'relay://agent_online': RelayAgentOnline
   'relay://agent_offline': RelayAgentOffline
+  /** Something another person sent didn't open; nothing in it was used */
+  'relay://seal_refused': RelaySealRefused
+  /** The relay shows other keys for a member than the pinned ones */
+  'network://member_key_changed': MemberKeyChanged
   'team://changed': TeamChanged
   'delegation://task_started': DelegationTaskStarted
   'delegation://task_completed': DelegationTaskCompleted
@@ -269,6 +275,8 @@ export const CORE_EVENT_NAMES = [
   'relay://status',
   'relay://agent_online',
   'relay://agent_offline',
+  'relay://seal_refused',
+  'network://member_key_changed',
   'team://changed',
   'delegation://task_started',
   'delegation://task_completed',

@@ -26,6 +26,18 @@ describe('friendly errors', () => {
       "peer_key_changed: bob-1's key changed. Check the new key on their profile and accept it to send to them again",
       'peerKeyChanged',
     ],
+    [
+      "peer_key_missing: bob-1 hasn't published keys to the relay",
+      'peerKeyMissing',
+    ],
+    [
+      'seal_refused: a message from bob-1 about t1 was refused because it was sealed for someone else',
+      'sealRefused',
+    ],
+    [
+      'envelope_too_large: this is 2000000 bytes, over the 1048576-byte limit',
+      'envelopeTooLarge',
+    ],
   ])('%s → %s', (raw, kind) => {
     expect(errorKind(raw)).toBe(kind)
   })

@@ -51,8 +51,22 @@ pub trait RelayClient: Send + Sync {
         capability: &'a str,
     ) -> BoxFuture<'a, Result<Vec<AgentCard>, String>>;
 
-    /// Sends a signed `DelegateTask`; returns the task ID
+    /// Sends a signed `DelegateTask`, its input sealed for the provider;
+    /// returns the task ID
     fn delegate_task<'a>(&'a self, task: &'a Task) -> BoxFuture<'a, Result<String, String>>;
+
+    /// Sends `task` (a reassigned task's next attempt) with the request
+    /// its last provider resealed for the new one, the requester's
+    /// signature kept (`ReassignTask.request`). Clients that don't seal
+    /// send it as any task.
+    fn delegate_resealed<'a>(
+        &'a self,
+        task: &'a Task,
+        request: nandi_protocol::Envelope,
+    ) -> BoxFuture<'a, Result<String, String>> {
+        let _ = request;
+        self.delegate_task(task)
+    }
 
     /// Provider side: sends a finished task's result back
     fn send_result(&self, result: TaskResult) -> BoxFuture<'_, Result<(), String>>;

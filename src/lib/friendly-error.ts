@@ -2,11 +2,20 @@
  * Raw backend errors in plain words. The UI shows the sentence; the raw
  * text stays behind "Details" (`ErrorMessage`, `toastError`).
  */
-import { PEER_KEY_CHANGED, RELAY_UNAVAILABLE } from '@/lib/bindings'
+import {
+  ENVELOPE_TOO_LARGE,
+  PEER_KEY_CHANGED,
+  PEER_KEY_MISSING,
+  RELAY_UNAVAILABLE,
+  SEAL_REFUSED,
+} from '@/lib/bindings'
 
 export type ErrorKind =
   | 'relayUnavailable'
   | 'peerKeyChanged'
+  | 'peerKeyMissing'
+  | 'sealRefused'
+  | 'envelopeTooLarge'
   | 'offline'
   | 'timeout'
   | 'notFound'
@@ -69,10 +78,19 @@ export function isPeerKeyChanged(error: unknown): boolean {
   return rawError(error).startsWith(PEER_KEY_CHANGED)
 }
 
+/** The typed sealing refusals (`services::relay::sealing` in Rust) */
+const SEALING: [ErrorKind, string][] = [
+  ['peerKeyMissing', PEER_KEY_MISSING],
+  ['sealRefused', SEAL_REFUSED],
+  ['envelopeTooLarge', ENVELOPE_TOO_LARGE],
+]
+
 export function errorKind(error: unknown): ErrorKind {
   if (isRelayUnavailable(error)) return 'relayUnavailable'
   if (isPeerKeyChanged(error)) return 'peerKeyChanged'
   const raw = rawError(error)
+  const sealing = SEALING.find(([, code]) => raw.startsWith(code))
+  if (sealing) return sealing[0]
   return PATTERNS.find(([, pattern]) => pattern.test(raw))?.[0] ?? 'other'
 }
 

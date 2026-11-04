@@ -14,6 +14,7 @@ ignores:
   - 'src-tauri/src/services/relay/mod.rs'
   - 'src-tauri/src/services/relay/tests.rs'
   - 'src-tauri/src/services/relay/keys_tests.rs'
+  - 'src-tauri/src/services/relay/sealed_tests.rs'
 rule:
   all:
     - any:

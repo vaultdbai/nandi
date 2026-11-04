@@ -1,6 +1,11 @@
 //! Delegation end to end: local in-process, two instances over a mock
 //! relay, the tool's approval, timeouts, and rejections; and the task
 //! lifecycle over it (wave final, Track B).
+//!
+//! The mock relay seals and opens like the real client: every task,
+//! result and peer message between instances goes through each side's
+//! `Sealer` (`relay::sealing`), so these tests run with sealing on. The
+//! real relay's frames are checked in `relay/sealed_tests.rs`.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, Weak};
@@ -22,8 +27,10 @@ use crate::services::relay::client_api::Handler;
 use crate::services::relay::protocol::{
     PeerDelivery, PeerMessage, TaskAssigned, TaskCompleted, TaskFailed, ALL_CAPABILITIES,
 };
+use crate::services::relay::sealing::{Opening, Sealer};
 use crate::services::relay::{RelayClient, RelayStatus};
 use crate::services::trust;
+use nandi_protocol::{Envelope, PublicKeys, SealedTask};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -136,6 +143,17 @@ impl Hub {
             .and_then(Weak::upgrade)
     }
 
+    /// `instance`'s keys, online or not (a relay keeps them pinned)
+    fn keys(&self, instance: &str) -> Result<PublicKeys, String> {
+        self.relays
+            .lock()
+            .unwrap()
+            .get(instance)
+            .and_then(Weak::upgrade)
+            .map(|relay| relay.sealer.public_keys().clone())
+            .ok_or_else(|| crate::services::relay::sealing::missing(instance))
+    }
+
     fn set_online(&self, instance: &str, online: bool) {
         let mut offline = self.offline.lock().unwrap();
         if online {
@@ -158,6 +176,8 @@ pub(crate) struct MockRelay {
     sent_peer: Mutex<Vec<(String, PeerMessage)>>,
     /// Task IDs `delegate_task` delivered, in order
     delegated: Mutex<Vec<String>>,
+    /// This instance's keys, sealing and opening as the real client does
+    sealer: Sealer,
 }
 
 impl MockRelay {
@@ -172,6 +192,7 @@ impl MockRelay {
             peer: Mutex::default(),
             sent_peer: Mutex::default(),
             delegated: Mutex::default(),
+            sealer: Sealer::new(instance, nandi_seal::DeviceKeys::generate().unwrap()),
         });
         hub.relays
             .lock()
@@ -217,37 +238,44 @@ impl RelayClient for MockRelay {
     fn delegate_task<'a>(&'a self, task: &'a Task) -> BoxFuture<'a, Result<String, String>> {
         Box::pin(async move {
             let provider_instance = instance_of(&task.target).to_string();
-            let provider = self
-                .hub
-                .relay(&provider_instance)
-                .ok_or_else(|| format!("{provider_instance} is offline"))?;
-            self.hub
-                .routes
-                .lock()
-                .unwrap()
-                .insert(task.id.clone(), self.instance.clone());
-            self.delegated.lock().unwrap().push(task.id.clone());
-            for handler in provider.assigned.lock().unwrap().iter() {
-                handler(TaskAssigned {
-                    task_id: task.id.clone(),
-                    provider_instance: provider_instance.clone(),
-                    task: Some(task.clone()),
-                });
-            }
-            Ok(task.id.clone())
+            let keys = self.hub.keys(&provider_instance)?;
+            let envelope = self.sealer.seal_task(task, (&provider_instance, &keys))?;
+            self.deliver_task(task, envelope, None)
+        })
+    }
+
+    fn delegate_resealed<'a>(
+        &'a self,
+        task: &'a Task,
+        request: Envelope,
+    ) -> BoxFuture<'a, Result<String, String>> {
+        Box::pin(async move {
+            let continues = request.sealed_for.task_id.clone();
+            self.deliver_task(task, request, Some(continues))
         })
     }
 
     fn send_result(&self, result: TaskResult) -> BoxFuture<'_, Result<(), String>> {
         Box::pin(async move {
-            let requester = self
+            // The relay knows who asked
+            let requester_instance = self
                 .hub
                 .routes
                 .lock()
                 .unwrap()
                 .remove(&result.task_id)
-                .and_then(|instance| self.hub.relay(&instance))
                 .ok_or("No route back")?;
+            let report = self.sealer.seal_result(
+                &result,
+                (&requester_instance, &self.hub.keys(&requester_instance)?),
+            )?;
+            let requester = self.hub.relay(&requester_instance).ok_or("No route back")?;
+            let opened = requester
+                .sealer
+                .open_result(report, (&self.instance, self.sealer.public_keys()))?;
+            let Opening::Opened(result) = opened else {
+                return Ok(());
+            };
             for handler in requester.completed.lock().unwrap().iter() {
                 handler(TaskCompleted {
                     task_id: result.task_id.clone(),
@@ -292,32 +320,46 @@ impl RelayClient for MockRelay {
             .lock()
             .unwrap()
             .push((target_instance.clone(), body.clone()));
-        let (to, delivery) = match self.hub.relay(&target_instance) {
-            Some(target) => (
-                target,
-                PeerDelivery {
-                    from_instance: self.instance.clone(),
-                    target_instance,
-                    body,
-                    undeliverable: false,
-                },
-            ),
-            None => (
-                self.hub
-                    .relay(&self.instance)
-                    .expect("the sender is online"),
-                PeerDelivery {
-                    from_instance: self.instance.clone(),
-                    target_instance,
-                    body,
-                    undeliverable: true,
-                },
-            ),
-        };
-        for handler in to.peer.lock().unwrap().iter() {
-            handler(delivery.clone());
-        }
-        Box::pin(async { Ok(()) })
+        let sealed = self.seal_peer(&target_instance, body);
+        Box::pin(async move {
+            let wire = sealed?;
+            let (to, delivery) = match self.hub.relay(&target_instance) {
+                Some(target) => {
+                    let opened = target.sealer.open_peer(
+                        &self.instance,
+                        wire,
+                        Some(self.sealer.public_keys()),
+                    )?;
+                    let Opening::Opened(body) = opened else {
+                        return Ok(());
+                    };
+                    (
+                        target,
+                        PeerDelivery {
+                            from_instance: self.instance.clone(),
+                            target_instance,
+                            body,
+                            undeliverable: false,
+                        },
+                    )
+                }
+                None => (
+                    self.hub
+                        .relay(&self.instance)
+                        .expect("the sender is online"),
+                    PeerDelivery {
+                        from_instance: self.instance.clone(),
+                        target_instance,
+                        body: Sealer::bounced(wire),
+                        undeliverable: true,
+                    },
+                ),
+            };
+            for handler in to.peer.lock().unwrap().iter() {
+                handler(delivery.clone());
+            }
+            Ok(())
+        })
     }
 
     fn on_peer(&self, handler: Handler<PeerDelivery>) -> BoxFuture<'_, ()> {
@@ -327,6 +369,73 @@ impl RelayClient for MockRelay {
 }
 
 impl MockRelay {
+    /// Seals `task` for its provider, which opens it as the real client
+    /// does, and hands it over
+    fn deliver_task(
+        &self,
+        task: &Task,
+        envelope: Envelope,
+        continues: Option<String>,
+    ) -> Result<String, String> {
+        let provider_instance = instance_of(&task.target).to_string();
+        let provider = self
+            .hub
+            .relay(&provider_instance)
+            .ok_or_else(|| format!("{provider_instance} is offline"))?;
+        let sealed = SealedTask {
+            id: task.id.clone(),
+            requester: task.requester.clone(),
+            target: task.target.clone(),
+            capability: task.capability.clone(),
+            created_at: task.created_at,
+            deadline: task.deadline,
+            envelope,
+            continues,
+        };
+        let requester_keys = self.hub.keys(&task.requester.instance_id)?;
+        let Opening::Opened(opened) = provider.sealer.open_task(sealed, &requester_keys)? else {
+            return Err("delivered twice".into());
+        };
+        self.hub
+            .routes
+            .lock()
+            .unwrap()
+            .insert(task.id.clone(), self.instance.clone());
+        self.delegated.lock().unwrap().push(task.id.clone());
+        for handler in provider.assigned.lock().unwrap().iter() {
+            handler(TaskAssigned {
+                task_id: task.id.clone(),
+                provider_instance: provider_instance.clone(),
+                task: Some(opened.clone()),
+            });
+        }
+        Ok(task.id.clone())
+    }
+
+    /// `body` sealed for `target` (and a reassignment's request for its
+    /// new provider), as the real client seals it
+    fn seal_peer(
+        &self,
+        target: &str,
+        body: PeerMessage,
+    ) -> Result<nandi_protocol::PeerMessage, String> {
+        let keys = if Sealer::has_content(&body) {
+            Some(self.hub.keys(target)?)
+        } else {
+            None
+        };
+        let new_provider = match &body {
+            PeerMessage::ReassignTask {
+                task_id,
+                new_provider_instance,
+                ..
+            } if self.sealer.holds_request(task_id) => Some(self.hub.keys(new_provider_instance)?),
+            _ => None,
+        };
+        self.sealer
+            .seal_peer(target, body, keys.as_ref(), new_provider.as_ref())
+    }
+
     /// What `send_peer` sent, by message kind (`acknowledge_task`, …)
     fn sent_kinds(&self) -> Vec<String> {
         self.sent_peer
@@ -2977,6 +3086,7 @@ async fn a_reassignment_back_to_an_earlier_provider_fails_the_attempt() {
             new_provider_name: Some("Alice".into()),
             by: "Bob".into(),
             reason: None,
+            request: None,
         },
     )
     .await

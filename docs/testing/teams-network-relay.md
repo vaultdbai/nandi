@@ -1144,10 +1144,11 @@ Notes that apply to the whole section:
 
 ### RL-40 — "Their key changed" on a member's profile
 
-- **What:** Nandi pins each member's keys the first time the relay's directory shows them. If the directory later shows other keys for that member, sending to them stops (ask, assign, delegate, results, clarifications, reassignment, handover) until the user accepts the new key on their profile.
+- **What:** Nandi pins each member's keys the first time the relay's directory shows them, or the first time it seals for them or opens something from them (asked of the relay). If the relay later shows other keys for that member, sending to them stops (ask, assign, delegate, results, clarifications, reassignment, handover) until the user accepts the new key on their profile.
   - The profile shows the key's short fingerprint (`Key 3F2A 91C0 7B44 E1D9`), or a calm "Their key changed" notice with the old and new fingerprints and **Accept new key**.
   - A refused send reads "Their key changed. Open their profile…".
-- **Where:** `services/network/peer_keys.rs` (`observe`, `may_send_to`, `accept`), `network/mod.rs` (`refresh_with`), `relay/mod.rs` (the send guard), `team/roster.rs` (`MemberProfile.key`); command `accept_peer_key`, HTTP `POST /api/members/{id}/key/accept`; UI `MemberKeyNotice.tsx` on `MemberProfileView`.
+  - A result or message from their new device is refused too (it isn't signed by the pinned key, RL-42), and an open profile updates on its own (`network://member_key_changed`).
+- **Where:** `services/network/peer_keys.rs` (`observe`, `pinned`, `learn`, `PinnedKeys`, `accept`), `network/mod.rs` (`refresh_with`), `relay/client.rs` (the key book), `team/roster.rs` (`MemberProfile.key`); command `accept_peer_key`, HTTP `POST /api/members/{id}/key/accept`; UI `MemberKeyNotice.tsx` on `MemberProfileView`, `agent-sync.ts`.
 - **Preconditions:** Two Nandis on a relay with a secret, each seeing the other in People.
 - **Steps:**
   1. Open the other member's profile and note the key.
@@ -1160,7 +1161,7 @@ Notes that apply to the whole section:
   - Step 3: refused with "Their key changed…".
   - Step 4: the notice is gone and the request goes through.
 - **Edge / negative cases:** the old key shown again drops the change; nothing to accept when the key didn't change.
-- **Automation:** Covered by: `peer_keys.rs` tests, `relay/keys_tests.rs` (`a_member_whose_key_changed_is_blocked_until_accepted`), `MemberProfileView.test.tsx` (Key), `friendly-error.test.ts` | Layer: unit + api + ui | Gap: the two-Nandi run hasn't been done.
+- **Automation:** Covered by: `peer_keys.rs` tests, `relay/keys_tests.rs` (`a_member_whose_key_changed_is_blocked_until_accepted`), `relay/sealed_tests.rs` (`a_result_from_a_replaced_device_is_refused_and_its_key_flagged`), `MemberProfileView.test.tsx` (Key), `friendly-error.test.ts` | Layer: unit + api + ui | Gap: the two-Nandi run hasn't been done.
 - **Needs relay:** yes
 - **Status:** Shipped
 
@@ -1175,7 +1176,31 @@ Notes that apply to the whole section:
   3. Search `relay.db` (and its `-wal`) for a word from the request.
 - **Expected:** Step 2 shows the task `completed` with its events and duration. Step 3 finds nothing.
 - **Edge / negative cases:** without the secret the endpoints answer 401; an open relay has none (404).
-- **Automation:** Covered by: nandi-relay `tests/ledger.rs` (states and duration, no content columns, a plaintext marker never in the database, retention sweep, operator auth), `src/ledger.rs` | Layer: api | Gap: none.
+- **Automation:** Covered by: nandi-relay `tests/ledger.rs` (states and duration, no content columns, retention sweep, operator auth), `tests/sealed.rs` (a plaintext marker never in the database, WAL or backups), `src/ledger.rs` | Layer: api | Gap: none.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### RL-42 — Content sealed end to end
+
+- **What:** Everything one person's Nandi sends another is sealed for that person's device (`nandi-seal-v1`, relay protocol 4): a task's input (gateway requests too), its result and error, clarification questions and answers, notes, reasons, late results and a failed duty's error. The relay forwards the envelopes and sees only metadata; it can't open them.
+  - Something that doesn't open, isn't for this task or this person, or isn't signed by the sender's pinned key is refused: a toast says "Something they sent couldn't be verified…", nothing in it is used, and a request you sent with it fails with that reason.
+  - A member who has no keys at the relay can't be sent content: "They haven't set up their keys yet…". Content over 1 MiB isn't sent: "This is too big to send… Share files as links".
+  - Reassigning keeps the requester's signature: the provider reseals the request for the new provider, and the requester passes it on without opening it.
+  - Your own agents (local delegation) are unchanged and never sealed.
+- **Where:** app `services/relay/sealing.rs` (`Sealer`), `opened.rs`, `client.rs` (keys, the inbound queue, `delegate_resealed`), `a2a/reassign.rs`, `src/lib/friendly-error.ts`, `agent-sync.ts` (`relay://seal_refused`); nandi-spec `nandi-protocol` (`content`, `Envelope`, `SealedTask`, `ResultReport`) and `nandi-seal`; nandi-relay `src/server.rs` (the envelope cap, `PublicKeysQuery`).
+- **Preconditions:** Two (for reassignment, three) Nandis on a relay with a secret and a data directory.
+- **Steps:**
+  1. Ask the other person something with a word you'll search for, have them ask a clarifying question back and answer it, then let it finish.
+  2. Search the relay's `relay.db`, `relay.db-wal` and a backup (`POST /relay/backup`) for the word.
+  3. On the provider, reassign a task to the third Nandi and let it finish there.
+  4. Reset the provider's keys and rekey it at the relay (RL-39); have it send a result for an open task.
+- **Expected:**
+  - Step 1: the request, question, answer and result read normally on both sides.
+  - Step 2: the word isn't found; the task's metadata is (RL-41).
+  - Step 3: the third Nandi runs the original request; the result reaches the requester.
+  - Step 4: the requester refuses it with the "couldn't be verified" toast, and the provider's profile says "Their key changed" (RL-40).
+- **Edge / negative cases:** a duplicate delivery is dropped; an envelope moved to another task, capability or person is refused; a bounced message keeps only its kind and IDs; with the relay down nothing is sealed or sent (RL-36).
+- **Automation:** Covered by: app `relay/sealed_tests.rs` (every frame through a WebSocket tap in front of a real relay, its database and WAL: no content in the clear; reassignment with the requester's signature; missing keys; a replaced device), `relay/sealing_tests.rs`, `a2a/tests.rs` (the mock hub seals and opens every message), `friendly-error.test.ts`; nandi-relay `tests/sealed.rs`; nandi-spec `nandi-protocol` and `nandi-seal` tests | Layer: unit + api | Gap: the three-Nandi run by hand hasn't been done.
 - **Needs relay:** yes
 - **Status:** Shipped
 

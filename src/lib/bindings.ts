@@ -3131,10 +3131,12 @@ marketplaceProgress: MarketplaceProgress,
 marketplaceUninstalled: MarketplaceUninstalled,
 marketplaceUpdateApplied: MarketplaceUpdateApplied,
 marketplaceUpdateAvailable: MarketplaceUpdateAvailable,
+networkMemberKeyChanged: MemberKeyChanged,
 pilotChanged: PilotChanged,
 pilotConsentNeeded: PilotConsentNeeded,
 relayAgentOffline: RelayAgentOffline,
 relayAgentOnline: RelayAgentOnline,
+relaySealRefused: RelaySealRefused,
 relayStatus: RelayStatus,
 repoFileChanged: RepoFileChanged,
 repoRebuildCompleted: RepoRebuildCompleted,
@@ -3194,10 +3196,12 @@ marketplaceProgress: "marketplace://progress",
 marketplaceUninstalled: "marketplace://uninstalled",
 marketplaceUpdateApplied: "marketplace://update_applied",
 marketplaceUpdateAvailable: "marketplace://update_available",
+networkMemberKeyChanged: "network://member_key_changed",
 pilotChanged: "pilot://changed",
 pilotConsentNeeded: "pilot://consent_needed",
 relayAgentOffline: "relay://agent_offline",
 relayAgentOnline: "relay://agent_online",
+relaySealRefused: "relay://seal_refused",
 relayStatus: "relay://status",
 repoFileChanged: "repo://file_changed",
 repoRebuildCompleted: "repo://rebuild_completed",
@@ -3229,8 +3233,11 @@ workflowStepStarted: "workflow://step_started"
 
 /** user-defined constants **/
 
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 
 /** user-defined types **/
 
@@ -5257,6 +5264,11 @@ export type MemberAgentSource =
  */
 "direct"
 /**
+ * `network://member_key_changed`: the relay shows other keys for a member
+ * than the ones pinned; their profile asks the user to check them
+ */
+export type MemberKeyChanged = { instanceId: string }
+/**
  * Everything the member profile shows. `connected` false: they haven't
  * connected their Nandi yet (no gateway card).
  */
@@ -5807,6 +5819,16 @@ export type RelayPeer = { instanceId: string;
  * Cards it registered
  */
 agents: number; connectedAt: number; lastHeartbeat: number }
+/**
+ * `relay://seal_refused`: something another person sent didn't open, or
+ * wasn't theirs to send (`sealing::SEAL_REFUSED`), and nothing in it was
+ * used
+ */
+export type RelaySealRefused = { fromInstance: string; taskId: string; 
+/**
+ * Starts with `SEAL_REFUSED` (or `PEER_KEY_CHANGED`)
+ */
+error: string }
 /**
  * Connection state; also the `relay://status` payload.
  */
@@ -6475,7 +6497,8 @@ parentTaskId: string | null; sourceKind: TaskSourceKind;
  */
 attemptNumber: number; previousAttemptId: string | null }
 /**
- * A delegated task's outcome; also a `delegations` history row.
+ * A delegated task's outcome; also a `delegations` history row. Opened:
+ * the wire carries a [`ResultReport`].
  */
 export type TaskResult = { taskId: string; 
 /**

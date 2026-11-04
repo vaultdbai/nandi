@@ -12,9 +12,12 @@
 //! | Other keys | Kept as the change; sending to them is refused with [`PEER_KEY_CHANGED`] until the user accepts it on their profile |
 //! | The pinned keys again, after a change | The change is dropped |
 //!
-//! Every send to another instance asks [`may_send_to`] (the relay client's
-//! send guard). The table is `peer_keys`, a runtime table: nothing in the
-//! gold copy.
+//! Keys also come from the relay when this Nandi first seals for someone
+//! or opens something from them (`PublicKeysQuery`), pinned the same way.
+//! [`PinnedKeys`] is the relay client's key book: every send to another
+//! instance, and every envelope opened, asks it, so a changed key blocks
+//! both until the user accepts it. The table is `peer_keys`, a runtime
+//! table: nothing in the gold copy.
 
 use nandi_protocol::PublicKeys;
 use rusqlite::{params, OptionalExtension};
@@ -23,6 +26,7 @@ use specta::Type;
 
 use crate::db::Db;
 use crate::services::relay::protocol::MemberRecord;
+use crate::services::relay::sealing::PeerKeyBook;
 
 /// The stable code a "their key changed" refusal starts with
 pub const PEER_KEY_CHANGED: &str = "peer_key_changed";
@@ -198,15 +202,51 @@ pub fn accept(db: &Db, instance_id: &str) -> Result<PeerKeyStatus, String> {
     status(db, instance_id)?.ok_or_else(|| format!("No key for {instance_id}"))
 }
 
-/// Whether this Nandi may send to `instance_id`: not while their key
-/// changed and the user hasn't accepted it
-pub fn may_send_to(db: &Db, instance_id: &str) -> Result<(), String> {
+/// The refusal while `instance_id`'s key changed and the user hasn't
+/// accepted it
+pub fn changed(instance_id: &str) -> String {
+    format!(
+        "{PEER_KEY_CHANGED}: {instance_id}'s key changed. Check the new key on their profile and accept it to send to them again"
+    )
+}
+
+/// The keys pinned for `instance_id`; `Err` ([`PEER_KEY_CHANGED`]) while a
+/// change waits for the user
+pub fn pinned(db: &Db, instance_id: &str) -> Result<Option<PublicKeys>, String> {
     let conn = db.conn()?;
     match read(&conn, instance_id)? {
-        Some(row) if row.changed.is_some() => Err(format!(
-            "{PEER_KEY_CHANGED}: {instance_id}'s key changed. Check the new key on their profile and accept it to send to them again"
-        )),
-        _ => Ok(()),
+        Some(row) if row.changed.is_some() => Err(changed(instance_id)),
+        row => Ok(row.map(|row| row.pinned)),
+    }
+}
+
+/// The relay lists `keys` for `instance_id`: pinned on first sight; the
+/// pinned keys, or `Err` ([`PEER_KEY_CHANGED`]) when they aren't them
+pub fn learn(db: &Db, instance_id: &str, keys: &PublicKeys) -> Result<PublicKeys, String> {
+    match observe(db, instance_id, keys)? {
+        Sight::Changed => Err(changed(instance_id)),
+        Sight::Pinned | Sight::Same | Sight::Restored => Ok(keys.clone()),
+    }
+}
+
+/// The relay client's key book over `peer_keys`
+pub struct PinnedKeys {
+    db: Db,
+}
+
+impl PinnedKeys {
+    pub fn new(db: Db) -> Self {
+        Self { db }
+    }
+}
+
+impl PeerKeyBook for PinnedKeys {
+    fn pinned(&self, instance: &str) -> Result<Option<PublicKeys>, String> {
+        pinned(&self.db, instance)
+    }
+
+    fn learn(&self, instance: &str, keys: &PublicKeys) -> Result<PublicKeys, String> {
+        learn(&self.db, instance, keys)
     }
 }
 
@@ -236,13 +276,30 @@ pub(crate) mod tests {
     fn keys_pin_on_first_sight() {
         let db = Db::in_memory();
         assert_eq!(status(&db, "bob").unwrap(), None);
-        may_send_to(&db, "bob").unwrap();
+        assert_eq!(pinned(&db, "bob").unwrap(), None);
         assert_eq!(observe(&db, "bob", &keys('a')).unwrap(), Sight::Pinned);
         assert_eq!(observe(&db, "bob", &keys('a')).unwrap(), Sight::Same);
         let pinned = status(&db, "bob").unwrap().unwrap();
         assert_eq!(pinned.fingerprint.len(), 19);
         assert!(!pinned.changed());
-        may_send_to(&db, "bob").unwrap();
+        assert_eq!(super::pinned(&db, "bob").unwrap(), Some(keys('a')));
+    }
+
+    #[test]
+    fn keys_learned_from_the_relay_pin_like_the_directory_s() {
+        let db = Db::in_memory();
+        let book = PinnedKeys::new(db.clone());
+        assert_eq!(book.learn("bob", &keys('a')).unwrap(), keys('a'));
+        assert_eq!(book.pinned("bob").unwrap(), Some(keys('a')));
+        assert_eq!(book.learn("bob", &keys('a')).unwrap(), keys('a'));
+        let refused = book.learn("bob", &keys('b')).unwrap_err();
+        assert!(refused.starts_with(PEER_KEY_CHANGED), "{refused}");
+        // The change waits on the profile, and blocks sending
+        assert!(status(&db, "bob").unwrap().unwrap().changed());
+        assert!(book
+            .pinned("bob")
+            .unwrap_err()
+            .starts_with(PEER_KEY_CHANGED));
     }
 
     #[test]
@@ -259,7 +316,7 @@ pub(crate) mod tests {
             changed.changed_fingerprint.as_deref(),
             Some(before.as_str())
         );
-        let refused = may_send_to(&db, "bob").unwrap_err();
+        let refused = pinned(&db, "bob").unwrap_err();
         assert!(refused.starts_with(PEER_KEY_CHANGED), "{refused}");
 
         let accepted = accept(&db, "bob").unwrap();
@@ -268,7 +325,7 @@ pub(crate) mod tests {
             changed.changed_fingerprint
         );
         assert!(!accepted.changed());
-        may_send_to(&db, "bob").unwrap();
+        assert_eq!(pinned(&db, "bob").unwrap(), Some(keys('b')));
         assert_eq!(observe(&db, "bob", &keys('b')).unwrap(), Sight::Same);
         // Nothing to accept now
         assert!(accept(&db, "bob").is_err());
@@ -282,7 +339,7 @@ pub(crate) mod tests {
         observe(&db, "bob", &keys('b')).unwrap();
         assert_eq!(observe(&db, "bob", &keys('a')).unwrap(), Sight::Restored);
         assert!(!status(&db, "bob").unwrap().unwrap().changed());
-        may_send_to(&db, "bob").unwrap();
+        assert_eq!(pinned(&db, "bob").unwrap(), Some(keys('a')));
     }
 
     #[test]

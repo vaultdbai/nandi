@@ -29,10 +29,32 @@
 //! that has other keys pinned for this instance ID refuses it
 //! (`key_mismatch`): the status turns to `Error` with `key_mismatch` set.
 //!
-//! Every send to another instance (`delegate_task`, `send_result`,
-//! `send_peer`) first asks [`ClientOptions::send_guard`], which refuses a
-//! member whose key changed until the user accepts it
-//! (`network::peer_keys`).
+//! # Sealing
+//!
+//! Every person-to-person payload is sealed here, and only here
+//! (`sealing`): a task's input for its provider, a result for its
+//! requester, notes, reasons, questions, answers and status results for the
+//! other side. The rest of the app hands this client opened messages
+//! (`opened`) and gets opened ones back.
+//!
+//! - **Keys.** The recipient's keys come from the key book
+//!   ([`ClientOptions::peer_keys`], `network::peer_keys` in the app): the
+//!   pinned ones, else asked of the relay (`PublicKeysQuery`) and pinned on
+//!   first sight. A member whose key changed is refused
+//!   (`PEER_KEY_CHANGED`) for every send, content or not, until the user
+//!   accepts it; one with no keys anywhere can't get content
+//!   (`PEER_KEY_MISSING`).
+//! - **Opening.** Everything a task's other side sends goes through one
+//!   queue, opened in order on its own task (the author's keys may need a
+//!   relay query, which this reader answers). An envelope that doesn't
+//!   open, isn't for us or this task, or isn't signed by its author's
+//!   pinned key is refused with `SEAL_REFUSED`: logged, emitted as
+//!   `relay://seal_refused`, and, for a task we asked for, its failure
+//!   (`on_task_failed`). A duplicate `(task, from, seq)` is dropped.
+//! - **Reassignment.** Handing a task on, we reseal the request we opened
+//!   for the new provider ([`nandi_seal::reseal`], the requester's
+//!   signature kept); the requester sends it on (`delegate_resealed`).
+//! - Content over `MAX_ENVELOPE_BYTES` isn't sent (`ENVELOPE_TOO_LARGE`).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -48,14 +70,20 @@ use super::protocol::{
     CapabilityPresence, InstancePresence, MemberRecord, PeerDelivery, PeerMessage, RelayMessage,
     TaskAssigned, TaskCompleted, TaskFailed, ALL_CAPABILITIES, PROTOCOL_VERSION, VERSION_MISMATCH,
 };
-use super::{RelayAgentOffline, RelayAgentOnline, RelayConnectionState, RelayStatus};
+use super::sealing::{self, MemoryKeyBook, Opening, PeerKeyBook, Sealer};
+use super::{
+    MemberKeyChanged, RelayAgentOffline, RelayAgentOnline, RelayConnectionState, RelaySealRefused,
+    RelayStatus,
+};
 use crate::model::Timestamp;
 use crate::services::a2a::{Task, TaskResult};
 use crate::services::domain::AgentCard;
 use crate::services::events::{self, EventBus};
 use crate::services::gateway::{registration, GatewayCard};
-use nandi_protocol::PROBE_PAYLOAD;
+use crate::services::network::peer_keys::PEER_KEY_CHANGED;
+use nandi_protocol::{self as wire, Envelope, PROBE_PAYLOAD};
 use nandi_protocol::{PublicKeys, KEY_MISMATCH};
+use nandi_seal::DeviceKeys;
 
 /// How often the client heartbeats
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
@@ -78,12 +106,25 @@ pub use nandi_protocol::split_token;
 
 pub type PresenceStore = Box<dyn Fn(&[AgentCard]) + Send + Sync>;
 
-/// This device's public keys (made on first use)
-pub type DeviceKeysSource = Arc<dyn Fn() -> Result<PublicKeys, String> + Send + Sync>;
+/// This device's keys (made on first use)
+pub type DeviceKeysSource = Arc<dyn Fn() -> Result<DeviceKeys, String> + Send + Sync>;
 
-/// Whether this instance may send to the instance given; the error is the
-/// refusal the sender gets
-pub type SendGuard = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+/// A frame about a task, opened in order on the client's inbound queue
+enum Inbound {
+    Assigned(wire::TaskAssigned),
+    Completed(wire::TaskCompleted),
+    Failed(TaskFailed),
+    Peer {
+        from_instance: String,
+        target_instance: String,
+        body: wire::PeerMessage,
+    },
+    /// Ours, bounced: the target is offline
+    Bounced {
+        target_instance: String,
+        body: wire::PeerMessage,
+    },
+}
 
 #[derive(Default)]
 struct Handlers {
@@ -128,6 +169,8 @@ struct Shared {
     key_mismatch: bool,
     /// This device's public keys, read on the first `connect`
     public_keys: Option<PublicKeys>,
+    /// Key queries by instance ID
+    waiting_keys: HashMap<String, Vec<oneshot::Sender<Option<PublicKeys>>>>,
     waiting_queries: HashMap<String, Vec<oneshot::Sender<Vec<AgentCard>>>>,
     waiting_acks: HashMap<String, oneshot::Sender<Result<(), String>>>,
     /// Our gateway card (wave final); re-sent on reconnect
@@ -148,7 +191,11 @@ struct Inner {
     heartbeat_every: Duration,
     presence_store: Option<PresenceStore>,
     device_keys: Option<DeviceKeysSource>,
-    send_guard: Option<SendGuard>,
+    peer_keys: Arc<dyn PeerKeyBook>,
+    /// Seals and opens with this device's keys; made on the first connect
+    sealer: Mutex<Option<Arc<Sealer>>>,
+    /// Feeds the opener task (started on the first connect)
+    inbound: Mutex<Option<mpsc::UnboundedSender<Inbound>>>,
 }
 
 /// The tokio-tungstenite [`RelayClient`].
@@ -162,11 +209,12 @@ pub struct ClientOptions {
     pub heartbeat_every: Duration,
     /// Called with every card at the relay whenever presence changes
     pub presence_store: Option<PresenceStore>,
-    /// This device's public keys, sent with every registration; `None`:
-    /// none sent
+    /// This device's keys: what it seals and opens with, and the public
+    /// half every registration carries. `None`: a new pair for this
+    /// client's lifetime (tests)
     pub device_keys: Option<DeviceKeysSource>,
-    /// Checked before every send to another instance; `None`: no check
-    pub send_guard: Option<SendGuard>,
+    /// Other members' pinned keys; `None`: pinned in memory only (tests)
+    pub peer_keys: Option<Arc<dyn PeerKeyBook>>,
 }
 
 impl Default for ClientOptions {
@@ -175,7 +223,7 @@ impl Default for ClientOptions {
             heartbeat_every: HEARTBEAT_INTERVAL,
             presence_store: None,
             device_keys: None,
-            send_guard: None,
+            peer_keys: None,
         }
     }
 }
@@ -203,7 +251,11 @@ impl WsRelayClient {
                 heartbeat_every: options.heartbeat_every,
                 presence_store: options.presence_store,
                 device_keys: options.device_keys,
-                send_guard: options.send_guard,
+                peer_keys: options
+                    .peer_keys
+                    .unwrap_or_else(|| Arc::new(MemoryKeyBook::default())),
+                sealer: Mutex::default(),
+                inbound: Mutex::default(),
             }),
         }
     }
@@ -290,25 +342,315 @@ impl Inner {
         self.lock().token.clone().unwrap_or_default()
     }
 
-    /// Whether we may send to `instance`
-    fn may_send_to(&self, instance: &str) -> Result<(), String> {
-        match &self.send_guard {
-            Some(guard) => guard(instance),
-            None => Ok(()),
+    /// Reads this device's keys once (for `instance_id`), for sealing and
+    /// registrations
+    fn load_keys(&self, instance_id: &str) {
+        let mut sealer = self.sealer.lock().unwrap_or_else(|e| e.into_inner());
+        if sealer.as_ref().is_some_and(|s| s.me() == instance_id) {
+            return;
+        }
+        let keys = match &self.device_keys {
+            Some(source) => source(),
+            None => DeviceKeys::generate().map_err(|e| e.to_string()),
+        };
+        match keys {
+            Ok(keys) => {
+                let made = Arc::new(Sealer::new(instance_id, keys));
+                self.lock().public_keys = Some(made.public_keys().clone());
+                *sealer = Some(made);
+            }
+            Err(e) => log::warn!("Registering without this device's keys: {e}"),
         }
     }
 
-    /// Reads this device's public keys once, for registrations
-    fn load_public_keys(&self) {
-        let Some(source) = &self.device_keys else {
-            return;
-        };
-        if self.lock().public_keys.is_some() {
+    /// The sealer; none before the first connect (so: not connected)
+    fn sealer(&self) -> Result<Arc<Sealer>, String> {
+        self.sealer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or_else(|| String::from(super::RelayUnavailable))
+    }
+
+    /// Whether we may send to `instance` at all: not while their key
+    /// changed and the user hasn't accepted it
+    fn may_send_to(&self, instance: &str) -> Result<(), String> {
+        self.peer_keys.pinned(instance).map(|_| ())
+    }
+
+    /// `instance`'s keys to seal for or check: the pinned ones, else the
+    /// relay's, pinned now
+    async fn keys_for(&self, instance: &str) -> Result<PublicKeys, String> {
+        if let Some(keys) = self.peer_keys.pinned(instance)? {
+            return Ok(keys);
+        }
+        match self.query_keys(instance).await? {
+            Some(keys) => self.learn(instance, &keys),
+            None => Err(sealing::missing(instance)),
+        }
+    }
+
+    /// Pins (or checks) keys the relay lists for `instance`; a change is
+    /// told to the profile
+    fn learn(&self, instance: &str, keys: &PublicKeys) -> Result<PublicKeys, String> {
+        let learned = self.peer_keys.learn(instance, keys);
+        if learned
+            .as_ref()
+            .is_err_and(|e| e.starts_with(PEER_KEY_CHANGED))
+        {
+            log::warn!("{instance}'s key changed; sending to them waits until it's accepted");
+            if let Some(bus) = &self.bus {
+                events::emit(
+                    bus,
+                    &MemberKeyChanged {
+                        instance_id: instance.to_string(),
+                    },
+                );
+            }
+        }
+        learned
+    }
+
+    /// The keys the relay pinned for `instance`, or `None`
+    async fn query_keys(&self, instance: &str) -> Result<Option<PublicKeys>, String> {
+        self.until_registered().await?;
+        let (tx, rx) = oneshot::channel();
+        self.lock()
+            .waiting_keys
+            .entry(instance.to_string())
+            .or_default()
+            .push(tx);
+        self.send(RelayMessage::PublicKeysQuery {
+            instance_ids: vec![instance.to_string()],
+        })?;
+        match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
+            Ok(Ok(keys)) => Ok(keys),
+            Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+            Err(_) => Err(format!(
+                "The relay didn't answer for {instance}'s keys within {}s",
+                REQUEST_TIMEOUT.as_secs()
+            )),
+        }
+    }
+
+    /// Starts the opener task, once
+    fn start_inbound(self: &Arc<Self>) {
+        let mut inbound = self.inbound.lock().unwrap_or_else(|e| e.into_inner());
+        if inbound.is_some() {
             return;
         }
-        match source() {
-            Ok(keys) => self.lock().public_keys = Some(keys),
-            Err(e) => log::warn!("Registering without this device's keys: {e}"),
+        let (tx, mut rx) = mpsc::unbounded_channel::<Inbound>();
+        *inbound = Some(tx);
+        let weak = Arc::downgrade(self);
+        tokio::spawn(async move {
+            while let Some(item) = rx.recv().await {
+                let Some(inner) = weak.upgrade() else {
+                    break;
+                };
+                inner.open_inbound(item).await;
+            }
+        });
+    }
+
+    fn queue_inbound(&self, item: Inbound) {
+        let sent = self
+            .inbound
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .is_some_and(|tx| tx.send(item).is_ok());
+        if !sent {
+            log::warn!("Relay: dropping a frame that arrived before the client started");
+        }
+    }
+
+    /// Opens one frame and hands it to the handlers
+    async fn open_inbound(&self, item: Inbound) {
+        let sealer = match self.sealer() {
+            Ok(sealer) => sealer,
+            Err(e) => return log::warn!("Relay: can't open a frame: {e}"),
+        };
+        match item {
+            Inbound::Assigned(assigned) => {
+                let task = match assigned.task {
+                    None => None,
+                    Some(sealed) => {
+                        let (task_id, requester) =
+                            (sealed.id.clone(), sealed.requester.instance_id.clone());
+                        let opened = match self.author_keys(&requester, &task_id).await {
+                            Ok(keys) => sealer.open_task(sealed, &keys),
+                            Err(e) => Err(e),
+                        };
+                        match self.opened(opened, &requester, &task_id, false).await {
+                            Some(task) => Some(task),
+                            None => return,
+                        }
+                    }
+                };
+                let assigned = TaskAssigned {
+                    task_id: assigned.task_id,
+                    provider_instance: assigned.provider_instance,
+                    task,
+                };
+                for handler in self.handlers().assigned.clone() {
+                    handler(assigned.clone());
+                }
+            }
+            Inbound::Completed(completed) => {
+                let task_id = completed.task_id.clone();
+                let provider = completed
+                    .result
+                    .provider_agent
+                    .split('/')
+                    .next()
+                    .unwrap_or_default()
+                    .to_string();
+                let opened = match self.author_keys(&provider, &task_id).await {
+                    Ok(keys) => sealer.open_result(completed.result, (&provider, &keys)),
+                    Err(e) => Err(e),
+                };
+                let Some(result) = self.opened(opened, &provider, &task_id, true).await else {
+                    return;
+                };
+                let completed = TaskCompleted { task_id, result };
+                for handler in self.handlers().completed.clone() {
+                    handler(completed.clone());
+                }
+            }
+            Inbound::Failed(failed) => {
+                for handler in self.handlers().failed.clone() {
+                    handler(failed.clone());
+                }
+            }
+            Inbound::Peer {
+                from_instance,
+                target_instance,
+                body,
+            } => {
+                let task_id = body.task_id().to_string();
+                let opened = if body.envelopes().is_empty() {
+                    sealer.open_peer(&from_instance, body, None)
+                } else {
+                    match self.author_keys(&from_instance, &task_id).await {
+                        Ok(keys) => sealer.open_peer(&from_instance, body, Some(&keys)),
+                        Err(e) => Err(e),
+                    }
+                };
+                let Some(body) = self.opened(opened, &from_instance, &task_id, true).await else {
+                    return;
+                };
+                self.deliver_peer(PeerDelivery {
+                    from_instance,
+                    target_instance,
+                    body,
+                    undeliverable: false,
+                });
+            }
+            Inbound::Bounced {
+                target_instance,
+                body,
+            } => {
+                let from_instance = self.lock().instance_id.clone();
+                self.deliver_peer(PeerDelivery {
+                    from_instance,
+                    target_instance,
+                    body: Sealer::bounced(body),
+                    undeliverable: true,
+                });
+            }
+        }
+    }
+
+    /// The keys to check what `author` sent about `task_id` against
+    async fn author_keys(&self, author: &str, task_id: &str) -> Result<PublicKeys, String> {
+        self.keys_for(author)
+            .await
+            .map_err(|e| sealing::refused(author, task_id, &format!("of their keys: {e}")))
+    }
+
+    /// What opening came to: the value, or `None` after a duplicate was
+    /// dropped or a refusal was told (failing the task, when `fails_task`
+    /// and it's ours)
+    async fn opened<T>(
+        &self,
+        opening: Result<Opening<T>, String>,
+        from: &str,
+        task_id: &str,
+        fails_task: bool,
+    ) -> Option<T> {
+        match opening {
+            Ok(Opening::Opened(value)) => Some(value),
+            Ok(Opening::Duplicate) => {
+                log::debug!("Relay: dropped a duplicate from {from} about {task_id}");
+                None
+            }
+            Err(error) => {
+                log::warn!("Relay: {error}");
+                // Their key may have changed: noted for the profile
+                if !error.contains(PEER_KEY_CHANGED) {
+                    if let Ok(Some(keys)) = self.query_keys(from).await {
+                        let _ = self.learn(from, &keys);
+                    }
+                }
+                if let Some(bus) = &self.bus {
+                    events::emit(
+                        bus,
+                        &RelaySealRefused {
+                            from_instance: from.to_string(),
+                            task_id: task_id.to_string(),
+                            error: error.clone(),
+                        },
+                    );
+                }
+                if fails_task {
+                    let failed = TaskFailed {
+                        task_id: task_id.to_string(),
+                        error,
+                    };
+                    for handler in self.handlers().failed.clone() {
+                        handler(failed.clone());
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    /// Sends `DelegateTask` with `envelope` and waits for the relay to
+    /// route it
+    async fn delegate(
+        &self,
+        task: &Task,
+        envelope: Envelope,
+        continues: Option<String>,
+    ) -> Result<String, String> {
+        let (tx, rx) = oneshot::channel();
+        self.lock().waiting_acks.insert(task.id.clone(), tx);
+        let message = RelayMessage::DelegateTask {
+            task_id: task.id.clone(),
+            target_agent: task.target.clone(),
+            capability: task.capability.clone(),
+            requester_card: task.requester.clone(),
+            deadline: task.deadline,
+            signature: self.token(),
+            envelope,
+            continues,
+        };
+        if let Err(e) = self.send(message) {
+            self.lock().waiting_acks.remove(&task.id);
+            return Err(e);
+        }
+        match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
+            Ok(Ok(Ok(()))) => Ok(task.id.clone()),
+            Ok(Ok(Err(e))) => Err(e),
+            Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+            Err(_) => {
+                self.lock().waiting_acks.remove(&task.id);
+                Err(format!(
+                    "The relay didn't route the task within {}s",
+                    REQUEST_TIMEOUT.as_secs()
+                ))
+            }
         }
     }
 
@@ -383,6 +725,7 @@ impl Inner {
             shared.waiting_directory.clear();
             shared.waiting_people.clear();
             shared.waiting_presence.clear();
+            shared.waiting_keys.clear();
             for (_, waiter) in shared.waiting_acks.drain() {
                 let _ = waiter.send(Err("Disconnected from the relay".to_string()));
             }
@@ -433,19 +776,13 @@ impl Inner {
                         let _ = waiter.send(Ok(()));
                     }
                 }
-                let handlers = self.handlers().assigned.clone();
-                for handler in handlers {
-                    handler(assigned.clone());
-                }
+                self.queue_inbound(Inbound::Assigned(assigned));
             }
             RelayMessage::TaskCompleted(completed) => {
                 if let Some(waiter) = self.lock().waiting_acks.remove(&completed.task_id) {
                     let _ = waiter.send(Ok(()));
                 }
-                let handlers = self.handlers().completed.clone();
-                for handler in handlers {
-                    handler(completed.clone());
-                }
+                self.queue_inbound(Inbound::Completed(completed));
             }
             RelayMessage::TaskFailed(failed) => {
                 // The relay refusing to route our send (provider offline):
@@ -456,9 +793,18 @@ impl Inner {
                     let _ = waiter.send(Err(failed.error.clone()));
                     return;
                 }
-                let handlers = self.handlers().failed.clone();
-                for handler in handlers {
-                    handler(failed.clone());
+                self.queue_inbound(Inbound::Failed(failed));
+            }
+            RelayMessage::PublicKeysResult { keys } => {
+                let mut shared = self.lock();
+                for found in keys {
+                    for waiter in shared
+                        .waiting_keys
+                        .remove(&found.instance_id)
+                        .unwrap_or_default()
+                    {
+                        let _ = waiter.send(found.public_keys.clone());
+                    }
                 }
             }
             RelayMessage::Error { code, message } => {
@@ -483,6 +829,7 @@ impl Inner {
                     shared.waiting_presence.clear();
                     shared.waiting_directory.clear();
                     shared.waiting_people.clear();
+                    shared.waiting_keys.clear();
                     for (_, waiter) in shared.waiting_acks.drain() {
                         let _ = waiter.send(Err(message.clone()));
                     }
@@ -534,24 +881,18 @@ impl Inner {
                 from_instance,
                 target_instance,
                 body,
-            } => self.deliver_peer(PeerDelivery {
+            } => self.queue_inbound(Inbound::Peer {
                 from_instance,
                 target_instance,
                 body,
-                undeliverable: false,
             }),
             RelayMessage::Undeliverable {
                 target_instance,
                 body,
-            } => {
-                let from_instance = self.lock().instance_id.clone();
-                self.deliver_peer(PeerDelivery {
-                    from_instance,
-                    target_instance,
-                    body,
-                    undeliverable: true,
-                });
-            }
+            } => self.queue_inbound(Inbound::Bounced {
+                target_instance,
+                body,
+            }),
             other => log::debug!("Relay: ignoring {other:?}"),
         }
     }
@@ -869,7 +1210,8 @@ impl RelayClient for WsRelayClient {
             let url = url.trim();
             if !url.is_empty() {
                 // First relay use: make (or read) this device's keys
-                self.inner.load_public_keys();
+                self.inner.load_keys(instance_id);
+                self.inner.start_inbound();
             }
             let (dial, token) = split_token(url);
             let (cancel_tx, cancel_rx) = watch::channel(());
@@ -959,46 +1301,44 @@ impl RelayClient for WsRelayClient {
 
     fn delegate_task<'a>(&'a self, task: &'a Task) -> BoxFuture<'a, Result<String, String>> {
         async move {
+            let sealer = self.inner.sealer()?;
+            let provider = task.target.split('/').next().unwrap_or_default();
+            let keys = self.inner.keys_for(provider).await?;
+            let envelope = sealer.seal_task(task, (provider, &keys))?;
+            self.inner.delegate(task, envelope, None).await
+        }
+        .boxed()
+    }
+
+    fn delegate_resealed<'a>(
+        &'a self,
+        task: &'a Task,
+        request: Envelope,
+    ) -> BoxFuture<'a, Result<String, String>> {
+        async move {
             let provider = task.target.split('/').next().unwrap_or_default();
             self.inner.may_send_to(provider)?;
-            let (tx, rx) = oneshot::channel();
-            self.inner.lock().waiting_acks.insert(task.id.clone(), tx);
-            let message = RelayMessage::DelegateTask {
-                task_id: task.id.clone(),
-                target_agent: task.target.clone(),
-                capability: task.capability.clone(),
-                input: task.input.clone(),
-                requester_card: task.requester.clone(),
-                deadline: task.deadline,
-                signature: self.inner.token(),
-            };
-            if let Err(e) = self.inner.send(message) {
-                self.inner.lock().waiting_acks.remove(&task.id);
-                return Err(e);
+            if request.sealed_for.to != provider {
+                return Err(format!(
+                    "The handed-on request is sealed for {}, not {provider}",
+                    request.sealed_for.to
+                ));
             }
-            match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-                Ok(Ok(Ok(()))) => Ok(task.id.clone()),
-                Ok(Ok(Err(e))) => Err(e),
-                Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
-                Err(_) => {
-                    self.inner.lock().waiting_acks.remove(&task.id);
-                    Err(format!(
-                        "The relay didn't route the task within {}s",
-                        REQUEST_TIMEOUT.as_secs()
-                    ))
-                }
-            }
+            let continues = request.sealed_for.task_id.clone();
+            self.inner.delegate(task, request, Some(continues)).await
         }
         .boxed()
     }
 
     fn send_result(&self, result: TaskResult) -> BoxFuture<'_, Result<(), String>> {
         async move {
+            let sealer = self.inner.sealer()?;
             let requester = result.requester_agent.split('/').next().unwrap_or_default();
-            self.inner.may_send_to(requester)?;
+            let keys = self.inner.keys_for(requester).await?;
+            let report = sealer.seal_result(&result, (requester, &keys))?;
             self.inner.send(RelayMessage::TaskResult {
                 task_id: result.task_id.clone(),
-                result,
+                result: report,
                 signature: self.inner.token(),
             })
         }
@@ -1030,7 +1370,30 @@ impl RelayClient for WsRelayClient {
         body: PeerMessage,
     ) -> BoxFuture<'_, Result<(), String>> {
         async move {
-            self.inner.may_send_to(&target_instance)?;
+            let sealer = self.inner.sealer()?;
+            let target_keys = if Sealer::has_content(&body) {
+                Some(self.inner.keys_for(&target_instance).await?)
+            } else {
+                self.inner.may_send_to(&target_instance)?;
+                None
+            };
+            // Handing a task on: its request, resealed for the new provider
+            let new_provider = match &body {
+                PeerMessage::ReassignTask {
+                    task_id,
+                    new_provider_instance,
+                    ..
+                } if sealer.holds_request(task_id) => {
+                    Some(self.inner.keys_for(new_provider_instance).await?)
+                }
+                _ => None,
+            };
+            let body = sealer.seal_peer(
+                &target_instance,
+                body,
+                target_keys.as_ref(),
+                new_provider.as_ref(),
+            )?;
             self.inner.send(RelayMessage::Peer {
                 from_instance: String::new(),
                 target_instance,

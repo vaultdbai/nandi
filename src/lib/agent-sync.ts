@@ -11,6 +11,7 @@
 
 import { agentPoliciesQueryKeys } from '@/hooks/useAgentPolicies'
 import { auditQueryKeys } from '@/hooks/useAuditLog'
+import { memberQueryKeys } from '@/hooks/useNetwork'
 import { policiesQueryKeys } from '@/hooks/usePolicies'
 import { runsQueryKeys } from '@/hooks/useRuns'
 import { sharedQueryKeys } from '@/hooks/useSharedAgents'
@@ -18,6 +19,7 @@ import i18n from '@/i18n/config'
 import { logger } from '@/lib/logger'
 import { notify } from '@/lib/notifications'
 import { queryClient } from '@/lib/query-client'
+import { toastError } from '@/lib/toast-error'
 import { client, type NandiEvent } from '@/lib/client'
 import type { AgentQueueChanged } from '@/lib/tauri-bindings'
 import {
@@ -421,6 +423,19 @@ export function handleNandiEvent(event: NandiEvent) {
       void queryClient.invalidateQueries({
         queryKey: sharedQueryKeys.capabilitiesAll,
       })
+      return
+    case 'relay://seal_refused':
+      // Never dropped silently: the user hears that something was refused
+      logger.warn('Refused a sealed message', event.payload)
+      toastError(event.payload.error)
+      void queryClient.invalidateQueries({ queryKey: ['delegation'] })
+      return
+    case 'network://member_key_changed':
+      // Their profile shows the change to check and accept
+      void queryClient.invalidateQueries({
+        queryKey: memberQueryKeys.byInstance(event.payload.instanceId),
+      })
+      void queryClient.invalidateQueries({ queryKey: memberQueryKeys.all })
       return
     case 'team://changed':
       void queryClient.invalidateQueries({ queryKey: ['teams'] })

@@ -24,7 +24,9 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::services::orchestrator::middleware::AgentTurnAborted;
     use crate::services::orchestrator::tool_search::AgentToolsLoaded;
     use crate::services::pilots::{PilotChanged, PilotConsentNeeded};
-    use crate::services::relay::{RelayAgentOffline, RelayAgentOnline, RelayStatus};
+    use crate::services::relay::{
+        MemberKeyChanged, RelayAgentOffline, RelayAgentOnline, RelaySealRefused, RelayStatus,
+    };
     use crate::services::repo_service::{RepoRebuildCompleted, RepoRebuildStarted};
     use crate::services::requests::local::RequestUpdated;
     use crate::services::studio::{StudioArtifactLoaded, StudioArtifactSaved, StudioEditPreviewed};
@@ -416,6 +418,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             RelayStatus,
             RelayAgentOnline,
             RelayAgentOffline,
+            RelaySealRefused,
+            MemberKeyChanged,
             TeamChanged,
             DelegationTaskStarted,
             DelegationTaskCompleted,
@@ -453,6 +457,21 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         .constant(
             "PEER_KEY_CHANGED",
             crate::services::network::peer_keys::PEER_KEY_CHANGED,
+        )
+        // The codes of the sealing refusals (`services::relay::sealing`):
+        // a member with no keys, something that didn't open, content over
+        // the envelope cap
+        .constant(
+            "PEER_KEY_MISSING",
+            crate::services::relay::sealing::PEER_KEY_MISSING,
+        )
+        .constant(
+            "SEAL_REFUSED",
+            crate::services::relay::sealing::SEAL_REFUSED,
+        )
+        .constant(
+            "ENVELOPE_TOO_LARGE",
+            crate::services::relay::sealing::ENVELOPE_TOO_LARGE,
         )
 }
 

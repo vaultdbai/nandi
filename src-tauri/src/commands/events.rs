@@ -17,7 +17,9 @@ use crate::services::orchestrator::compaction::AgentRunCompacted;
 use crate::services::orchestrator::middleware::AgentTurnAborted;
 use crate::services::orchestrator::tool_search::AgentToolsLoaded;
 use crate::services::pilots::{PilotChanged, PilotConsentNeeded};
-use crate::services::relay::{RelayAgentOffline, RelayAgentOnline, RelayStatus};
+use crate::services::relay::{
+    MemberKeyChanged, RelayAgentOffline, RelayAgentOnline, RelaySealRefused, RelayStatus,
+};
 use crate::services::repo_service::{RepoRebuildCompleted, RepoRebuildStarted};
 use crate::services::requests::local::RequestUpdated;
 use crate::services::studio::{StudioArtifactLoaded, StudioArtifactSaved, StudioEditPreviewed};
@@ -90,6 +92,8 @@ tauri_events!(
     RelayStatus,
     RelayAgentOnline,
     RelayAgentOffline,
+    RelaySealRefused,
+    MemberKeyChanged,
     TeamChanged,
     DelegationTaskStarted,
     DelegationTaskCompleted,

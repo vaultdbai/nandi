@@ -66,7 +66,9 @@ keeps this Nandi's own pin in the `peer_keys` table:
 | Other keys            | Kept as the change (`changed_*` columns). Every send to them is refused |
 | The pinned keys again | The change is dropped                                                   |
 
-- **The block.** The relay client's send guard (`ClientOptions::send_guard`, set in `relay::init`) calls `peer_keys::may_send_to` before `delegate_task`, `send_result` and `send_peer`. So every path to that member is covered: ask, assign, delegate, results, clarifications, reassignment, handover. The refusal starts with `PEER_KEY_CHANGED` (exported to `bindings.ts`); `friendly-error.ts` maps it to `errors.peerKeyChanged`.
+- **Keys from the relay.** The first time this Nandi seals for someone, or opens something from them, without a pin, the client asks the relay (`PublicKeysQuery`) and pins the answer the same way (`peer_keys::learn`). The directory isn't needed: members with no gateway card are covered too.
+- **The block.** The relay client's key book (`ClientOptions::peer_keys` = `peer_keys::PinnedKeys`, set in `relay::init`) is asked before `delegate_task`, `delegate_resealed`, `send_result` and `send_peer`, and for every envelope opened. So every path to that member is covered: ask, assign, delegate, results, clarifications, reassignment, handover. The refusal starts with `PEER_KEY_CHANGED` (exported to `bindings.ts`); `friendly-error.ts` maps it to `errors.peerKeyChanged`.
+- **Seen live.** When the client learns of a change (a send, or something from them that didn't open with the pinned key), it emits `network://member_key_changed`, and the profile refetches (`agent-sync.ts`).
 - **The profile.** `MemberProfile.key` (`PeerKeyStatus`: `fingerprint`, `changedFingerprint`) feeds `MemberKeyNotice`: the fingerprint, or "Their key changed" with both fingerprints and **Accept new key** (`accept_peer_key`, `POST /api/members/{id}/key/accept`).
 - Fingerprints are `nandi_seal::fingerprint`: the key ID's first 16 hex characters in groups of four.
 

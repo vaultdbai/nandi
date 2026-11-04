@@ -5,10 +5,23 @@
 //! ```text
 //! Alice (provider)            requester                   Bob
 //!  reassign_task ──ReassignTask──▶ accept
+//!  (request resealed for Bob)
 //!  row → Reassigned                old attempt → Reassigned
 //!                                  new attempt (source_kind reassign)
-//!                                     ──────── delegate_task ────────▶ Delivered, acks
+//!                                     ──── delegate_resealed ────▶ Delivered, acks
 //! ```
+//!
+//! The request stays sealed end to end. Alice's relay client reseals the
+//! request it opened for Bob (`nandi_seal::reseal`: the requester's
+//! signature is kept), and it rides in `ReassignTask` to the requester,
+//! who sends it on unopened as the new attempt's envelope. Bob checks the
+//! requester signed it. When Alice no longer holds the opened request (her
+//! Nandi restarted since it came), none rides along and the requester,
+//! its author, seals the request for Bob again.
+//!
+//! A manager moving someone's task (step 13 of the relay design) will wait
+//! for the current provider's Nandi to do this reseal: there's no team
+//! key that could open it (decision 4, 2026-11-01).
 //!
 //! The requester's instance makes the new attempt, so results, trust,
 //! timeouts, and failover work as for any other attempt, and a delegation
@@ -91,6 +104,8 @@ pub(super) struct Handoff {
     pub to_name: Option<String>,
     pub by: String,
     pub reason: Option<String>,
+    /// The request, resealed by the provider for the new provider
+    pub request: Option<Box<nandi_protocol::Envelope>>,
 }
 
 /// States a task can be handed on from: it reached us and isn't over
@@ -287,6 +302,8 @@ pub async fn reassign(
                 new_provider_name: Some(candidate.display_name.clone()),
                 by: by.clone(),
                 reason: reason.clone(),
+                // The relay client reseals the request for the new provider
+                request: None,
             },
         )
         .await?;
@@ -403,7 +420,11 @@ pub(super) async fn accept(
     task::add_message(db, &task.id, REASSIGNED_KIND, payload).await?;
     events::emit(bus, &event);
 
-    match relay.delegate_task(&wire).await {
+    let sent = match handoff.request {
+        Some(request) => relay.delegate_resealed(&wire, *request).await,
+        None => relay.delegate_task(&wire).await,
+    };
+    match sent {
         Ok(_) => {
             task_state::advance(
                 db,

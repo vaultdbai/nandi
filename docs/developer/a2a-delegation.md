@@ -69,6 +69,28 @@ Most people don't publish individual agents; they publish a gateway (NANDI.md `r
 - **Hold and queue** (task 5): a capability marked "Needs my approval" opens a `gateway_holds` row and waits (`router::hold_for_approval`, `gateway::holds`, 1 h). A full gateway waits in `GatewayService::slots()` for up to 10 min. Both stay Delivered and tell the requester through a `ProgressUpdate` carrying `reason_kind` (and `queue_position`), which the requester records as a note event, not as `Working`.
 - **Agent changes** re-register the local cards at the relay (gathered over 500ms), so turning on `accepts_delegation` needs no restart.
 
+## Sealed Content
+
+Everything one person's Nandi sends another is sealed for the recipient (`nandi-seal-v1`, protocol 4): the relay forwards envelopes and reads only metadata. The crypto happens in one place, the relay client: `services/relay/sealing.rs` (`Sealer`), called by `client.rs`. The rest of the app sends and receives the opened forms in `services/relay/opened.rs` (`PeerMessage`, `DutyState`, `TaskAssigned`, `TaskCompleted`, re-exported by `relay::protocol`) and never sees an envelope.
+
+| Content                                                 | Sealed in                                                   | Purpose                    |
+| ------------------------------------------------------- | ----------------------------------------------------------- | -------------------------- |
+| A task's input (`DelegateTask`, also gateway requests)  | `SealedTask.envelope`                                       | `request`                  |
+| A result's output and error                             | `ResultReport.envelope`                                     | `result`                   |
+| A late result (`StatusResponse`)                        | `envelope`                                                  | `result`                   |
+| Questions / answers                                     | `ClarificationRequest` / `ClarificationResponse` `envelope` | `clarification` / `answer` |
+| Notes, reject and cancel reasons, a failed duty's error | `envelope`                                                  | `note`                     |
+| A reassigned task's request                             | `ReassignTask.request`                                      | `request` (resealed)       |
+
+- **Keys.** Sealed for the recipient's pinned keys (`network::peer_keys`); unknown ones are asked of the relay and pinned on first sight. A changed key refuses with `PEER_KEY_CHANGED`, a member with no keys with `PEER_KEY_MISSING`.
+- **Opening.** Inbound task frames go through one queue, opened in order. An envelope must be for us, for this task, purpose and (for a request or result) capability, from the sender, within `MAX_ENVELOPE_BYTES` (1 MiB), and signed by the author's pinned key. Anything else is refused with `SEAL_REFUSED`: logged, emitted as `relay://seal_refused` (a toast), and, for a task we asked for, its failure. A duplicate `(task, from, seq)` is dropped.
+- **Size.** Content over the cap isn't sent (`ENVELOPE_TOO_LARGE`): files go as links.
+- **Reassignment.** The provider's client reseals the request it opened for the new provider (`nandi_seal::reseal`, keeping the requester's signature); it rides in `ReassignTask.request`, and the requester sends it on unopened with `RelayClient::delegate_resealed` (`continues` names the task it's sealed under). The new provider checks the requester signed it. After a restart the provider no longer holds the opened request, so none rides along and the requester seals it again (it's the author). A manager's reassignment (relay design step 13) waits for the provider's Nandi to reseal: there's no team key.
+- **Bounced messages** (`Undeliverable`) come back with their kind and IDs only; their content was sealed for the target.
+- **Local delegation** (our own agents, in process) never seals.
+
+What the relay operator can and can't see is in the relay's README.
+
 ## Finding People and Tracking Requests
 
 Two read-only built-ins let an agent work for its owner on a team (`services/a2a/people.rs`). They are offered only to agents whose skill.md lists them in `allowed-tools`, so no agent gets the user's network by default. They run on the host and never need approval.
@@ -102,7 +124,7 @@ A person's Chief of Staff therefore answers questions for them, and work assigne
 - **Assigning yourself (local gateway):** `Delegator::assign_locally` runs the gateway task in the background and returns `Running` once a `gateway://hold_changed` (pending) or `gateway://assignment_changed` event names the task (`state` `delivered` / `acknowledged`), or after `ACCEPT_WINDOW`; a refusal that comes first is returned as usual. The background task ends the `delegations` row when the owner closes it. There's no `tasks` row on a local path, so `my_requests` lists it from the open `gateway_assignments` instead (`people::self_assigned`: "from you", "on your list"), and a restart loses the waiter (the Inbox card stays; closing it then doesn't end the history row).
 - **Links:** `input.links` (`[url | {url, name?}]`) become `AssignmentLink`s in `gateway_assignment_links` (`assignments::links_of`: http(s) only, deduped, at most 10), shown on the Inbox card. The relay carries no files, so a file is shared as a link to where it lives.
 - **Provider:** after the hold is approved, `router::assign` opens a `gateway_assignments` row instead of routing; the task waits (no slot) for `close_gateway_assignment` (Done → result `{status, by, note}`, Decline → `Declined` refusal) or the requester's cancel.
-- **Late results:** `StatusResponse` carries `result`/`error` once the provider's row ended, and the requester polls open assignments (`poll_assignments`, every `POLL_EVERY_MS` in the sweep and on `relay://agent_online`). The relay parses peer bodies, so it must run a build that knows these fields.
+- **Late results:** `StatusResponse` carries `result`/`error` (sealed) once the provider's row ended, and the requester polls open assignments (`poll_assignments`, every `POLL_EVERY_MS` in the sweep and on `relay://agent_online`). The relay parses peer bodies, so it must run the same protocol version.
 
 ```rust
 // ✅ GOOD: a capability that lasts gets its deadline and its wait from `assignment`
@@ -143,4 +165,4 @@ tasks.transition(&id, TaskState::Rejected, Some("gateway is busy".into())).await
 
 ## Testing
 
-`services/a2a/tests.rs` has a mock relay hub that links two in-process `AppState`s, plus tests for approval, timeouts, rejections, overrides, and fallback. Ranking and stats unit tests are in `ranking.rs`; the overview's in `shared.rs`.
+`services/a2a/tests.rs` has a mock relay hub that links two in-process `AppState`s, plus tests for approval, timeouts, rejections, overrides, and fallback. The hub seals and opens through each instance's `Sealer`, so every a2a test runs with sealing on. Against a real relay, `relay/sealed_tests.rs` records every frame through a WebSocket tap and checks no content crosses in the clear (nor lands in the relay's database), plus reassignment, missing keys and a replaced device; `relay/sealing_tests.rs` covers the `Sealer` itself. Ranking and stats unit tests are in `ranking.rs`; the overview's in `shared.rs`.

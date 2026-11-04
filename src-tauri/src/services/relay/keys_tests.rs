@@ -11,6 +11,7 @@ use nandi_relay::{issue_instance_token, serve_with, RelayServerConfig, Store};
 
 use super::client::{ClientOptions, WsRelayClient};
 use super::protocol::PeerMessage;
+use super::sealing::PeerKeyBook;
 use super::{RelayClient, RelayConnectionState};
 use crate::db::Db;
 use crate::services::network::directory_tests::gateway;
@@ -23,24 +24,33 @@ fn company(data: &Path) -> RelayServerConfig {
     RelayServerConfig::new(SECRET.to_vec()).with_data_dir(data)
 }
 
-fn new_keys() -> PublicKeys {
+/// A new device's secret keys, as the keyring keeps them
+fn new_keys() -> String {
     nandi_seal::DeviceKeys::generate()
+        .unwrap()
+        .export_secret()
+        .to_string()
+}
+
+fn public_of(secret: &str) -> PublicKeys {
+    nandi_seal::DeviceKeys::import_secret(secret)
         .unwrap()
         .public_keys()
         .clone()
 }
 
-/// A client for `instance_id` that registers with `keys`, and refuses to
-/// send where `db` says a key changed
-fn client(instance_id: &str, keys: PublicKeys, db: Option<Db>) -> WsRelayClient {
+/// A client for `instance_id` with the keys `secret`, pinning others' in
+/// `db` (refusing to send where a key changed)
+fn client(instance_id: &str, secret: String, db: Option<Db>) -> WsRelayClient {
     WsRelayClient::with_options(
         None,
         instance_id,
         ClientOptions {
-            device_keys: Some(Arc::new(move || Ok(keys.clone()))),
-            send_guard: db.map(|db| -> super::client::SendGuard {
-                Arc::new(move |instance: &str| peer_keys::may_send_to(&db, instance))
-            }),
+            device_keys: Some(Arc::new(move || {
+                nandi_seal::DeviceKeys::import_secret(&secret).map_err(|e| e.to_string())
+            })),
+            peer_keys: db
+                .map(|db| -> Arc<dyn PeerKeyBook> { Arc::new(peer_keys::PinnedKeys::new(db)) }),
             ..ClientOptions::default()
         },
     )
@@ -79,7 +89,7 @@ async fn registration_carries_the_keys_and_the_relay_pins_them() {
     assert!(ada.status().connected && !ada.status().key_mismatch);
     assert_eq!(
         Store::open(tmp.path()).unwrap().pinned_keys("ada").unwrap(),
-        Some(keys)
+        Some(public_of(&keys))
     );
 }
 

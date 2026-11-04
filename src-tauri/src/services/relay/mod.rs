@@ -10,6 +10,9 @@
 //!   of every person-to-person action
 //! - `device_keys`: this instance's own keys (made on first relay use, kept
 //!   in the OS keyring), sent at enrollment and registration
+//! - `opened`: person-to-person traffic as the app sees it, with content
+//! - `sealing`: sealing it for the recipient and opening it (the client's
+//!   only crypto; content never crosses the relay in the clear)
 //!
 //! The relay server is a separate product (`vaultdbai/nandi-relay`); the
 //! app never runs or links it; the app's relay tests embed it as a
@@ -39,7 +42,9 @@ pub mod client;
 pub mod client_api;
 pub mod device_keys;
 pub mod join;
+pub mod opened;
 pub mod protocol;
+pub mod sealing;
 // Wave A (Track D): capability and tool presence
 pub mod presence;
 pub mod tls;
@@ -47,6 +52,8 @@ pub mod unavailable;
 
 #[cfg(test)]
 mod keys_tests;
+#[cfg(test)]
+mod sealed_tests;
 #[cfg(test)]
 mod tests;
 
@@ -256,6 +263,34 @@ impl NandiEvent for RelayAgentOffline {
     const NAME: &'static str = "relay://agent_offline";
 }
 
+/// `relay://seal_refused`: something another person sent didn't open, or
+/// wasn't theirs to send (`sealing::SEAL_REFUSED`), and nothing in it was
+/// used
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RelaySealRefused {
+    pub from_instance: String,
+    pub task_id: String,
+    /// Starts with `SEAL_REFUSED` (or `PEER_KEY_CHANGED`)
+    pub error: String,
+}
+
+impl NandiEvent for RelaySealRefused {
+    const NAME: &'static str = "relay://seal_refused";
+}
+
+/// `network://member_key_changed`: the relay shows other keys for a member
+/// than the ones pinned; their profile asks the user to check them
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MemberKeyChanged {
+    pub instance_id: String,
+}
+
+impl NandiEvent for MemberKeyChanged {
+    const NAME: &'static str = "network://member_key_changed";
+}
+
 /// Builds the relay client and, if a relay URL is set, connects in the
 /// background. Never touches the network on the calling thread.
 pub fn init(state: &AppState) -> Option<Arc<dyn RelayClient>> {
@@ -267,8 +302,7 @@ pub fn init(state: &AppState) -> Option<Arc<dyn RelayClient>> {
         }
     };
     let db = state.db().clone();
-    let guard_db = state.db().clone();
-    let keyring = Arc::new(DeviceKeyring::new(state.secrets().clone()));
+    let keyring = DeviceKeyring::new(state.secrets().clone());
     let client: Arc<dyn RelayClient> = Arc::new(WsRelayClient::with_options(
         Some(state.bus().clone()),
         instance_id,
@@ -278,11 +312,11 @@ pub fn init(state: &AppState) -> Option<Arc<dyn RelayClient>> {
                     log::warn!("Failed to save the online agents: {e}");
                 }
             })),
-            // Made on the first connect, not here: no keyring at startup
-            device_keys: Some(Arc::new(move || keyring.public_keys())),
-            send_guard: Some(Arc::new(move |instance: &str| {
-                network::peer_keys::may_send_to(&guard_db, instance)
-            })),
+            // Read on the first connect, not here: no keyring at startup
+            device_keys: Some(Arc::new(move || keyring.device_keys())),
+            peer_keys: Some(Arc::new(network::peer_keys::PinnedKeys::new(
+                state.db().clone(),
+            ))),
             ..ClientOptions::default()
         },
     ));

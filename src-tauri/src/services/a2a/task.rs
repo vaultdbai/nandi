@@ -1719,6 +1719,7 @@ impl TaskService {
                 new_provider_name,
                 by,
                 reason,
+                request,
                 ..
             } if requester => {
                 super::reassign::accept(
@@ -1730,6 +1731,7 @@ impl TaskService {
                         to_name: new_provider_name,
                         by,
                         reason,
+                        request,
                     },
                 )
                 .await?;
