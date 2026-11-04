@@ -12,8 +12,8 @@ A fresh install connects nowhere and enrolls nowhere until the user joins a rela
 
 ## Protocol version
 
-`nandi_protocol::PROTOCOL_VERSION` (2 since the member directory and
-people search) goes out on every `RegisterInstance`; the relay's `/health`
+`nandi_protocol::PROTOCOL_VERSION` (3 since per-device keys) goes out on
+every `RegisterInstance`; the relay's `/health`
 reports its own as `protocol_version`. A relay on another version refuses the
 registration with the code `version_mismatch`. The client then keeps its
 socket but counts as not connected (`RelayStatus.connected` false,
@@ -22,6 +22,25 @@ actions answer `RelayUnavailable`. Connection shows "Update Nandi or the
 relay"; no other screen does. The next connection (the relay restarted
 after its update) registers again. App and relay land the same version
 together; nothing translates between versions.
+
+## Device keys
+
+Each Nandi (each device) has its own keys: an Ed25519 signing key and an
+X25519 sealing key, from the `nandi-seal` crate in nandi-spec.
+
+| What | Where                                                                                               |
+| ---- | --------------------------------------------------------------------------------------------------- |
+| Made | On first relay use: the first `connect` to a relay, or enrolling with a join code. Never at startup |
+| Kept | OS keyring, entry `nandi.instance.keys` (86 characters: one entry, no chunking)                     |
+| Code | `services/relay/device_keys.rs` (`DeviceKeyring`, `load_or_create`)                                 |
+| Sent | `EnrollRequest.publicKeys` and `RegisterInstance.publicKeys` (`ClientOptions::device_keys`)         |
+
+- A keyring entry that can't be read is an error. Nandi never makes new keys over it: the relay would refuse them.
+- The relay pins the keys for the instance ID. Other keys for the same ID are refused with `key_mismatch`. The client then counts as not connected (`RelayStatus.keyMismatch`, state Error), and Connection says to ask the relay's operator to rekey the device (`POST /relay/rekey`). Same handling as `version_mismatch`.
+- Payloads aren't sealed yet (design step 8). The keys are only distributed and pinned.
+
+Other members' keys are pinned too: see "Their key changed" in
+`network-and-reassignment.md`.
 
 ## Precedence
 

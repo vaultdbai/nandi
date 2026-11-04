@@ -27,11 +27,12 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use super::client::split_token;
+use super::device_keys::DeviceKeyring;
 use super::protocol::PROTOCOL_VERSION;
 use super::{instances_endpoint, saved_token_for, set_relay_url, validate_url, with_token};
 use crate::services::network;
 use crate::services::AppState;
-use nandi_protocol::{EnrollRequest, EnrollResponse, RelayHealth};
+use nandi_protocol::{EnrollRequest, EnrollResponse, PublicKeys, RelayHealth};
 
 /// Keychain entry holding the join code the user typed, with its relay
 /// (`{"relay", "code"}`)
@@ -128,7 +129,12 @@ pub async fn join_relay(
             return Ok(JoinOutcome::CodeNeeded);
         };
         let instance_id = network::local_instance_id(state.db())?;
-        match enroll(&base, &instance_id, code).await {
+        // First relay use: this device's keys, which the relay pins
+        let keys = DeviceKeyring::new(state.secrets().clone())
+            .public_keys()
+            .map_err(|e| log::warn!("Enrolling without this device's keys: {e}"))
+            .ok();
+        match enroll(&base, &instance_id, code, keys.as_ref()).await {
             Ok(token) => Some(token),
             Err(refused) => return Ok(refused.into()),
         }
@@ -225,11 +231,13 @@ impl From<EnrollError> for JoinOutcome {
     }
 }
 
-/// `POST <relay>/enroll {"instanceId", "joinCode"}` → the instance's token
+/// `POST <relay>/enroll {"instanceId", "joinCode", "publicKeys"}` → the
+/// instance's token
 pub(super) async fn enroll(
     relay_url: &str,
     instance_id: &str,
     code: &str,
+    public_keys: Option<&PublicKeys>,
 ) -> Result<String, EnrollError> {
     let endpoint = enroll_endpoint(relay_url).map_err(EnrollError::Unreachable)?;
     let response = reqwest::Client::new()
@@ -238,6 +246,7 @@ pub(super) async fn enroll(
         .json(&EnrollRequest {
             instance_id: instance_id.to_string(),
             join_code: code.to_string(),
+            public_keys: public_keys.cloned(),
         })
         .send()
         .await

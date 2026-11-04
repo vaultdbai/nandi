@@ -2278,6 +2278,18 @@ async getMemberByInstance(instanceId: string) : Promise<Result<MemberProfile, st
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Accepts a member's new key ("Their key changed"): sending to them works
+ * again
+ */
+async acceptPeerKey(instanceId: string) : Promise<Result<PeerKeyStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("accept_peer_key", { instanceId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async setTrustRelationship(instanceId: string, update: TrustUpdate) : Promise<Result<TrustRelationship, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_trust_relationship", { instanceId, update }) };
@@ -3218,6 +3230,7 @@ workflowStepStarted: "workflow://step_started"
 /** user-defined constants **/
 
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 
 /** user-defined types **/
 
@@ -5251,7 +5264,11 @@ export type MemberProfile = { instanceId: string | null; handle: string | null; 
 /**
  * Newest first, both directions
  */
-recentDelegations: TaskRecord[]; trust: TrustRelationship }
+recentDelegations: TaskRecord[]; trust: TrustRelationship; 
+/**
+ * The key we pinned for them; `None` before the directory showed one
+ */
+key: PeerKeyStatus | null }
 export type MemberRole = "owner" | "admin" | "member"
 export type MemoryEntry = { content: string; 
 /**
@@ -5401,6 +5418,19 @@ args?: JsonValue | null;
  * The navigation-store `View` (as JSON) that opens this result
  */
 navigate?: JsonValue | null }
+/**
+ * A member's key, as the profile shows it
+ */
+export type PeerKeyStatus = { 
+/**
+ * The pinned key's short fingerprint (`3F2A 91C0 7B44 E1D9`)
+ */
+fingerprint: string; 
+/**
+ * The fingerprint of other keys the relay now shows for them; sending
+ * waits until the user accepts it
+ */
+changedFingerprint: string | null }
 export type PendingApproval = { id: string; agentId: string; runId: string; conversationId: string; tool: string; args: JsonValue; createdAt: number; 
 /**
  * When it expires if nobody decides
@@ -5789,7 +5819,12 @@ connected: boolean;
  * The relay refused this Nandi for speaking another protocol version
  * ("Update Nandi or the relay")
  */
-versionMismatch?: boolean; state: RelayConnectionState; 
+versionMismatch?: boolean; 
+/**
+ * The relay has other keys pinned for this device (Nandi was
+ * reinstalled, or the keyring was reset): its operator must rekey it
+ */
+keyMismatch?: boolean; state: RelayConnectionState; 
 /**
  * Why `state` last changed (an error, or "…; retrying in 4s")
  */

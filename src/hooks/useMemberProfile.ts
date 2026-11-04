@@ -64,6 +64,22 @@ function useTrustCallbacks() {
   }
 }
 
+/**
+ * Accepts a member's new key ("Their key changed"): sending to them works
+ * again. Refetches the profile.
+ */
+export function useAcceptPeerKey() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (instanceId: string) =>
+      unwrapNandi(client.acceptPeerKey(instanceId)),
+    onSettled: (_key, _error, instanceId) =>
+      queryClient.invalidateQueries({
+        queryKey: memberQueryKeys.byInstance(instanceId),
+      }),
+  })
+}
+
 /** Trusted peer and paused delegations; `null` fields keep their value */
 export function useSetTrustRelationship() {
   return useMutation({

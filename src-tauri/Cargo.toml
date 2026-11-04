@@ -48,6 +48,9 @@ specta-typescript = "=0.0.9"
 # The relay wire protocol, shared with the relay (vaultdbai/nandi-spec, MIT);
 # see the `[patch]` below for development builds
 nandi-protocol = { git = "https://github.com/vaultdbai/nandi-spec", branch = "main", features = ["specta"] }
+# Per-device keys and the end-to-end seal (nandi-seal-v1, MIT); the relay
+# never links it
+nandi-seal = { git = "https://github.com/vaultdbai/nandi-spec", branch = "main" }
 bollard = "0.21.1"
 serde_yaml = "0.9"
 dirs = "6"
@@ -125,6 +128,7 @@ aws-runtime = { version = "1", default-features = false }
 # together. Without the patch, the git dependency above is used.
 [patch."https://github.com/vaultdbai/nandi-spec"]
 nandi-protocol = { path = "../../nandi-spec/crates/nandi-protocol" }
+nandi-seal = { path = "../../nandi-spec/crates/nandi-seal" }
 
 [dev-dependencies]
 tempfile = "3"

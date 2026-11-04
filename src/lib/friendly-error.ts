@@ -2,10 +2,11 @@
  * Raw backend errors in plain words. The UI shows the sentence; the raw
  * text stays behind "Details" (`ErrorMessage`, `toastError`).
  */
-import { RELAY_UNAVAILABLE } from '@/lib/bindings'
+import { PEER_KEY_CHANGED, RELAY_UNAVAILABLE } from '@/lib/bindings'
 
 export type ErrorKind =
   | 'relayUnavailable'
+  | 'peerKeyChanged'
   | 'offline'
   | 'timeout'
   | 'notFound'
@@ -60,8 +61,17 @@ export function isRelayUnavailable(error: unknown): boolean {
   return rawError(error).startsWith(RELAY_UNAVAILABLE)
 }
 
+/**
+ * Whether a send was refused because the member's key changed and the
+ * user hasn't accepted it (`network::peer_keys` in Rust)
+ */
+export function isPeerKeyChanged(error: unknown): boolean {
+  return rawError(error).startsWith(PEER_KEY_CHANGED)
+}
+
 export function errorKind(error: unknown): ErrorKind {
   if (isRelayUnavailable(error)) return 'relayUnavailable'
+  if (isPeerKeyChanged(error)) return 'peerKeyChanged'
   const raw = rawError(error)
   return PATTERNS.find(([, pattern]) => pattern.test(raw))?.[0] ?? 'other'
 }

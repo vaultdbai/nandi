@@ -184,7 +184,9 @@ function RelayCard({
         <p className="text-sm text-destructive" data-testid="relay-error">
           {status.versionMismatch
             ? t('network.connection.versionMismatch')
-            : t('network.connection.errorSummary')}
+            : status.keyMismatch
+              ? t('network.connection.keyMismatch')
+              : t('network.connection.errorSummary')}
         </p>
       )}
 

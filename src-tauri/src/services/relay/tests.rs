@@ -325,6 +325,7 @@ async fn silent_instances_are_evicted() {
         capabilities: vec![],
         tools: vec![],
         protocol_version: super::protocol::PROTOCOL_VERSION,
+        public_keys: None,
     };
     silent
         .send(Message::Text(register.to_json().unwrap().into()))
@@ -385,6 +386,7 @@ async fn a_dropped_client_reconnects_and_re_registers() {
         capabilities: vec![],
         tools: vec![],
         protocol_version: super::protocol::PROTOCOL_VERSION,
+        public_keys: None,
     };
     impostor
         .send(Message::Text(register.to_json().unwrap().into()))
@@ -628,22 +630,22 @@ async fn instances_enroll_once_with_the_join_code() {
         .unwrap();
     let relay = format!("ws://{addr}/relay");
 
-    let token = join::enroll(&relay, "desktop-dev-1a2b", "demo-2026")
+    let token = join::enroll(&relay, "desktop-dev-1a2b", "demo-2026", None)
         .await
         .unwrap();
     assert_eq!(token, issue_instance_token(b"s3cret", "desktop-dev-1a2b"));
     // Once per ID: nobody else can take it, even with the code
-    let again = join::enroll(&relay, "desktop-dev-1a2b", "demo-2026")
+    let again = join::enroll(&relay, "desktop-dev-1a2b", "demo-2026", None)
         .await
         .unwrap_err()
         .to_string();
     assert!(again.contains("409"), "{again}");
-    let wrong = join::enroll(&relay, "desktop-sam-9z", "guess")
+    let wrong = join::enroll(&relay, "desktop-sam-9z", "guess", None)
         .await
         .unwrap_err()
         .to_string();
     assert!(wrong.contains("401"), "{wrong}");
-    let bad = join::enroll(&relay, "../etc", "demo-2026")
+    let bad = join::enroll(&relay, "../etc", "demo-2026", None)
         .await
         .unwrap_err()
         .to_string();
@@ -667,6 +669,7 @@ async fn instances_enroll_once_with_the_join_code() {
         &format!("ws://{restarted}/relay"),
         "desktop-dev-1a2b",
         "demo-2026",
+        None,
     )
     .await
     .unwrap_err()
@@ -677,7 +680,7 @@ async fn instances_enroll_once_with_the_join_code() {
     let open = serve_with("127.0.0.1:0".parse().unwrap(), RelayServerConfig::open())
         .await
         .unwrap();
-    let closed = join::enroll(&format!("ws://{open}/relay"), "x", "demo-2026")
+    let closed = join::enroll(&format!("ws://{open}/relay"), "x", "demo-2026", None)
         .await
         .unwrap_err()
         .to_string();
@@ -732,6 +735,7 @@ async fn register_raw(addr: SocketAddr, instance_id: &str, cards: Vec<AgentCard>
             capabilities: vec![],
             tools: vec![],
             protocol_version: super::protocol::PROTOCOL_VERSION,
+            public_keys: None,
         },
     )
     .await;
@@ -908,6 +912,7 @@ async fn register_signed(socket: &mut Raw, instance_id: &str) {
             capabilities: vec![],
             tools: vec![],
             protocol_version: super::protocol::PROTOCOL_VERSION,
+            public_keys: None,
         },
     )
     .await;
@@ -967,7 +972,7 @@ async fn a_full_relay_s_reason_reaches_the_app() {
     let relay = format!("ws://{addr}/relay");
 
     // Enrolling says why, with the relay's own words
-    let refused = join::enroll(&relay, "newcomer", "code")
+    let refused = join::enroll(&relay, "newcomer", "code", None)
         .await
         .unwrap_err()
         .to_string();

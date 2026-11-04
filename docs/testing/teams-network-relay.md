@@ -1121,6 +1121,64 @@ Notes that apply to the whole section:
 - **Needs relay:** yes
 - **Status:** Shipped
 
+### RL-39 — Device keys, pinned by the relay
+
+- **What:** Each Nandi makes its own keys (Ed25519 signing, X25519 sealing) the first time it uses a relay and keeps them in the OS keyring (`nandi.instance.keys`). It sends the public keys when it enrolls and registers. The relay pins them for the instance ID; other keys for the same ID are refused (`key_mismatch`) until the operator rekeys it.
+  - The app shows "The relay has other keys for this device…" on Network › Connection and counts as not connected.
+  - `POST /relay/rekey {"instanceId"}` with the secret clears the pin and writes an `audit` row; the next keys are pinned.
+  - An open relay keeps the latest keys and refuses none.
+- **Where:** app `services/relay/device_keys.rs`, `client.rs` (`device_keys`, `key_mismatch`), `join.rs` (`enroll`), `ConnectionView.tsx`; nandi-relay `src/server.rs` (`pin_keys`, `rekey`), `src/store/keys.rs`; nandi-spec `crates/nandi-seal`.
+- **Preconditions:** A relay with a secret and a join code; one Nandi joined.
+- **Steps:**
+  1. Join the relay; check `relay.db` `members.signing_key` is set for this instance ID.
+  2. Delete the keyring entry `nandi.instance.keys` (as after a reinstall) and restart Nandi.
+  3. Run `POST /relay/rekey` for the instance ID, then reconnect.
+- **Expected:**
+  - Step 1: connected; the keys are pinned.
+  - Step 2: Connection shows the key message; person-to-person actions say "not connected"; everything local works.
+  - Step 3: connected again with the new keys pinned; the relay's `audit` table has a `rekey` row.
+- **Edge / negative cases:** an unreadable keyring never makes new keys; malformed keys are refused (400 at enrollment).
+- **Automation:** Covered by: app `relay/keys_tests.rs` (`registration_carries_the_keys_and_the_relay_pins_them`, `other_keys_read_as_key_mismatch_until_the_operator_rekeys`), `relay/device_keys.rs`; nandi-relay `tests/keys.rs`; nandi-spec `nandi-seal` tests | Layer: api | Gap: the reinstall run by hand hasn't been done.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### RL-40 — "Their key changed" on a member's profile
+
+- **What:** Nandi pins each member's keys the first time the relay's directory shows them. If the directory later shows other keys for that member, sending to them stops (ask, assign, delegate, results, clarifications, reassignment, handover) until the user accepts the new key on their profile.
+  - The profile shows the key's short fingerprint (`Key 3F2A 91C0 7B44 E1D9`), or a calm "Their key changed" notice with the old and new fingerprints and **Accept new key**.
+  - A refused send reads "Their key changed. Open their profile…".
+- **Where:** `services/network/peer_keys.rs` (`observe`, `may_send_to`, `accept`), `network/mod.rs` (`refresh_with`), `relay/mod.rs` (the send guard), `team/roster.rs` (`MemberProfile.key`); command `accept_peer_key`, HTTP `POST /api/members/{id}/key/accept`; UI `MemberKeyNotice.tsx` on `MemberProfileView`.
+- **Preconditions:** Two Nandis on a relay with a secret, each seeing the other in People.
+- **Steps:**
+  1. Open the other member's profile and note the key.
+  2. On the other Nandi, reset its keys and have the operator rekey it (RL-39); refresh People.
+  3. Ask that member something.
+  4. Accept the new key on their profile and ask again.
+- **Expected:**
+  - Step 1: the fingerprint shows.
+  - Step 2: the profile says "Their key changed" with both fingerprints.
+  - Step 3: refused with "Their key changed…".
+  - Step 4: the notice is gone and the request goes through.
+- **Edge / negative cases:** the old key shown again drops the change; nothing to accept when the key didn't change.
+- **Automation:** Covered by: `peer_keys.rs` tests, `relay/keys_tests.rs` (`a_member_whose_key_changed_is_blocked_until_accepted`), `MemberProfileView.test.tsx` (Key), `friendly-error.test.ts` | Layer: unit + api + ui | Gap: the two-Nandi run hasn't been done.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### RL-41 — The relay's task ledger (operator view)
+
+- **What:** The relay records the metadata of the tasks it routes (who asked whom, capability, state, typed reason, ETA, progress, place in line, deadline, times, duration), never their content, and keeps each task 30 days after it ended (`--task-retention-days`). The operator reads it with the secret: `GET /team/tasks?member=&state=&capability=` and `GET /team/tasks/{id}`. Nothing changes for the app.
+- **Where:** nandi-relay `src/ledger.rs`, `src/store/tasks.rs`, `src/server.rs` (`team_tasks`, `team_task`).
+- **Preconditions:** A relay with a secret; two Nandis on it.
+- **Steps:**
+  1. Delegate a task from one Nandi to the other and let it finish.
+  2. `curl -H "Authorization: Bearer $NANDI_RELAY_SECRET" http://<relay>/team/tasks/<task id>`.
+  3. Search `relay.db` (and its `-wal`) for a word from the request.
+- **Expected:** Step 2 shows the task `completed` with its events and duration. Step 3 finds nothing.
+- **Edge / negative cases:** without the secret the endpoints answer 401; an open relay has none (404).
+- **Automation:** Covered by: nandi-relay `tests/ledger.rs` (states and duration, no content columns, a plaintext marker never in the database, retention sweep, operator auth), `src/ledger.rs` | Layer: api | Gap: none.
+- **Needs relay:** yes
+- **Status:** Shipped
+
 ### RL-24 — WebSocket event stream (`/ws`)
 
 - **What:** Every bus event goes out as a text frame `{"event":"<name>","payload":{…}}`. Authentication is by cookie or `?token=`. A client that falls behind gets `{"event":"nandi://resync","payload":{"missed":N}}` and should reload its snapshots; the web client also emits resync after a reconnect.

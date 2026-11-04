@@ -3,9 +3,11 @@
 
 use tauri::State;
 
+pub use crate::services::network::peer_keys::PeerKeyStatus;
 pub use crate::services::team::roster::{MemberProfile, TeamRoster};
 pub use crate::services::team::trust::{TrustRelationship, TrustUpdate};
 
+use crate::services::network::peer_keys;
 use crate::services::team::{roster, trust, trust_requests};
 use crate::services::AppState;
 
@@ -35,6 +37,17 @@ pub async fn get_member_by_instance(
     instance_id: String,
 ) -> Result<MemberProfile, String> {
     roster::get_member_by_instance(&state, &instance_id).await
+}
+
+/// Accepts a member's new key ("Their key changed"): sending to them works
+/// again
+#[tauri::command]
+#[specta::specta]
+pub async fn accept_peer_key(
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<PeerKeyStatus, String> {
+    peer_keys::accept(state.db(), &instance_id)
 }
 
 /// "Trust everyone on my company's relay", and whether it applies

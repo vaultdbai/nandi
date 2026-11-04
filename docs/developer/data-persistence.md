@@ -276,5 +276,5 @@ export function useAddItem() {
 
 ### Schema Rules
 
-- Nandi's state database has one schema, `SCHEMA` in `src-tauri/src/db.rs`, at `SCHEMA_VERSION` 1. `init_db` runs it on every open (every statement is `CREATE … IF NOT EXISTS`) and stamps `user_version`
+- Nandi's state database has one schema, `SCHEMA` in `src-tauri/src/db.rs`, at `SCHEMA_VERSION` 3. `init_db` runs it on every open (every statement is `CREATE … IF NOT EXISTS`) and stamps `user_version`
 - There are no migrations: change `SCHEMA` itself. Definitions are files, so a state database that no longer fits can be deleted and rebuilt (`nandi rebuild`); only local run history is lost

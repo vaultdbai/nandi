@@ -16,6 +16,7 @@ import { AskMemberComposer } from '@/components/network/AskMemberComposer'
 import { MemberAvailability } from '@/components/network/MemberAvailability'
 import { MemberAvatar } from '@/components/network/MemberAvatar'
 import { MemberDiagnosis } from '@/components/network/MemberDiagnosis'
+import { MemberKeyNotice } from '@/components/network/MemberKeyNotice'
 import { TrustPopover } from '@/components/network/TrustControls'
 import { MemberAgentsPanel } from '@/components/team/MemberAgentsPanel'
 import { MemberCapabilitiesPanel } from '@/components/team/MemberCapabilitiesPanel'
@@ -150,6 +151,14 @@ function ProfileBody({ profile }: { profile: MemberProfile }) {
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
+      )}
+
+      {profile.instanceId && (
+        <MemberKeyNotice
+          instanceId={profile.instanceId}
+          name={profile.displayName}
+          peerKey={profile.key}
+        />
       )}
 
       {profile.connected && profile.instanceId && (

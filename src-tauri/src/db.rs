@@ -32,7 +32,7 @@ use crate::model::{
 
 /// Raised when a table changes. Nothing has been released, so there are no
 /// migrations: a database from another version is refused (`init_db`).
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS conversations (
@@ -502,6 +502,19 @@ CREATE TABLE IF NOT EXISTS trust_relationships (
     added_as_trusted_peer INTEGER NOT NULL DEFAULT 0,
     delegations_paused    INTEGER NOT NULL DEFAULT 0,
     last_updated          INTEGER NOT NULL
+);
+
+-- Other members' public keys, pinned on first sight
+-- (`services::network::peer_keys`). `changed_*`: other keys the relay's
+-- directory shows since; sending to them waits until the user accepts.
+CREATE TABLE IF NOT EXISTS peer_keys (
+    instance_id         TEXT PRIMARY KEY,
+    signing_key         TEXT NOT NULL,
+    sealing_key         TEXT NOT NULL,
+    pinned_at           INTEGER NOT NULL,
+    changed_signing_key TEXT,
+    changed_sealing_key TEXT,
+    changed_at          INTEGER
 );
 
 -- Another member's agents we blocked

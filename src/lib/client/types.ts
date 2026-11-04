@@ -119,6 +119,7 @@ import type {
   IdentityStatus,
   GithubSignIn,
   MemberProfile,
+  PeerKeyStatus,
   NetworkSnapshot,
   PendingClarification,
   PendingApproval,
@@ -858,6 +859,8 @@ export interface NandiClient {
   getMemberByInstance(
     instanceId: string
   ): Promise<Result<MemberProfile, string>>
+  /** Their key changed: pin the new one, so sending to them works again */
+  acceptPeerKey(instanceId: string): Promise<Result<PeerKeyStatus, string>>
   setTrustRelationship(
     instanceId: string,
     update: TrustUpdate

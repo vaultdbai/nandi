@@ -7,6 +7,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 use super::routes::ApiResult;
+use crate::services::network::peer_keys;
 use crate::services::team::roster;
 use crate::services::team::trust::{self, TrustUpdate};
 use crate::services::team::trust_requests::{self, TrustAnswer};
@@ -27,6 +28,8 @@ pub fn api() -> Router<AppState> {
         )
         // Body `{"paused": bool}` (default true)
         .route("/members/{instance_id}/delegations/pause", post(pause))
+        // Their key changed: accept the new one; returns `PeerKeyStatus`
+        .route("/members/{instance_id}/key/accept", post(accept_key))
         // Returns `TrustRequest[]`
         .route("/trust/requests", get(trust_requests_list))
         // GET returns `RelayTrust`; PUT body `{"enabled": bool}`
@@ -136,4 +139,11 @@ async fn pause(
 ) -> impl IntoResponse {
     let paused = body.is_none_or(|Json(body)| body.paused);
     ApiResult(trust::pause_delegations_from_member(&state, &instance_id, paused).await)
+}
+
+async fn accept_key(
+    State(state): State<AppState>,
+    Path(instance_id): Path<String>,
+) -> impl IntoResponse {
+    ApiResult(peer_keys::accept(state.db(), &instance_id))
 }

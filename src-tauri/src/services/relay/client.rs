@@ -23,6 +23,16 @@
 //! version refuses it (`version_mismatch`): the status turns to `Error`
 //! with `version_mismatch` set, and the client counts as not connected
 //! until a later connection registers.
+//!
+//! Registration also carries this device's public keys
+//! ([`ClientOptions::device_keys`], read on the first `connect`). A relay
+//! that has other keys pinned for this instance ID refuses it
+//! (`key_mismatch`): the status turns to `Error` with `key_mismatch` set.
+//!
+//! Every send to another instance (`delegate_task`, `send_result`,
+//! `send_peer`) first asks [`ClientOptions::send_guard`], which refuses a
+//! member whose key changed until the user accepts it
+//! (`network::peer_keys`).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -45,6 +55,7 @@ use crate::services::domain::AgentCard;
 use crate::services::events::{self, EventBus};
 use crate::services::gateway::{registration, GatewayCard};
 use nandi_protocol::PROBE_PAYLOAD;
+use nandi_protocol::{PublicKeys, KEY_MISMATCH};
 
 /// How often the client heartbeats
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
@@ -66,6 +77,13 @@ pub(crate) use nandi_protocol::now_ms;
 pub use nandi_protocol::split_token;
 
 pub type PresenceStore = Box<dyn Fn(&[AgentCard]) + Send + Sync>;
+
+/// This device's public keys (made on first use)
+pub type DeviceKeysSource = Arc<dyn Fn() -> Result<PublicKeys, String> + Send + Sync>;
+
+/// Whether this instance may send to the instance given; the error is the
+/// refusal the sender gets
+pub type SendGuard = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
 #[derive(Default)]
 struct Handlers {
@@ -106,6 +124,10 @@ struct Shared {
     refused: bool,
     /// The refusal was for the protocol version
     version_mismatch: bool,
+    /// The refusal was for our keys (the relay pinned others)
+    key_mismatch: bool,
+    /// This device's public keys, read on the first `connect`
+    public_keys: Option<PublicKeys>,
     waiting_queries: HashMap<String, Vec<oneshot::Sender<Vec<AgentCard>>>>,
     waiting_acks: HashMap<String, oneshot::Sender<Result<(), String>>>,
     /// Our gateway card (wave final); re-sent on reconnect
@@ -125,6 +147,8 @@ struct Inner {
     bus: Option<EventBus>,
     heartbeat_every: Duration,
     presence_store: Option<PresenceStore>,
+    device_keys: Option<DeviceKeysSource>,
+    send_guard: Option<SendGuard>,
 }
 
 /// The tokio-tungstenite [`RelayClient`].
@@ -138,6 +162,11 @@ pub struct ClientOptions {
     pub heartbeat_every: Duration,
     /// Called with every card at the relay whenever presence changes
     pub presence_store: Option<PresenceStore>,
+    /// This device's public keys, sent with every registration; `None`:
+    /// none sent
+    pub device_keys: Option<DeviceKeysSource>,
+    /// Checked before every send to another instance; `None`: no check
+    pub send_guard: Option<SendGuard>,
 }
 
 impl Default for ClientOptions {
@@ -145,6 +174,8 @@ impl Default for ClientOptions {
         Self {
             heartbeat_every: HEARTBEAT_INTERVAL,
             presence_store: None,
+            device_keys: None,
+            send_guard: None,
         }
     }
 }
@@ -171,6 +202,8 @@ impl WsRelayClient {
                 bus,
                 heartbeat_every: options.heartbeat_every,
                 presence_store: options.presence_store,
+                device_keys: options.device_keys,
+                send_guard: options.send_guard,
             }),
         }
     }
@@ -200,6 +233,7 @@ impl Inner {
         RelayStatus {
             connected: shared.outbound.is_some() && !shared.refused,
             version_mismatch: shared.version_mismatch,
+            key_mismatch: shared.key_mismatch,
             state: shared.state,
             reason: shared.reason.clone(),
             instance_id: shared.instance_id.clone(),
@@ -256,6 +290,28 @@ impl Inner {
         self.lock().token.clone().unwrap_or_default()
     }
 
+    /// Whether we may send to `instance`
+    fn may_send_to(&self, instance: &str) -> Result<(), String> {
+        match &self.send_guard {
+            Some(guard) => guard(instance),
+            None => Ok(()),
+        }
+    }
+
+    /// Reads this device's public keys once, for registrations
+    fn load_public_keys(&self) {
+        let Some(source) = &self.device_keys else {
+            return;
+        };
+        if self.lock().public_keys.is_some() {
+            return;
+        }
+        match source() {
+            Ok(keys) => self.lock().public_keys = Some(keys),
+            Err(e) => log::warn!("Registering without this device's keys: {e}"),
+        }
+    }
+
     /// `RegisterInstance` with `cards`, plus our gateway's route card while
     /// it accepts delegation (relays route tasks to agent cards only)
     fn register_message(shared: &Shared, mut cards: Vec<AgentCard>) -> RelayMessage {
@@ -272,6 +328,7 @@ impl Inner {
             capabilities: shared.capabilities.clone(),
             tools: shared.tools.clone(),
             protocol_version: PROTOCOL_VERSION,
+            public_keys: shared.public_keys.clone(),
         }
     }
 
@@ -299,6 +356,7 @@ impl Inner {
             shared.registered = false;
             shared.refused = false;
             shared.version_mismatch = false;
+            shared.key_mismatch = false;
             shared.state = RelayConnectionState::Connected;
             shared.reason = None;
             shared.last_connected_at = Some(now);
@@ -406,13 +464,14 @@ impl Inner {
             RelayMessage::Error { code, message } => {
                 log::warn!("Relay error ({code}): {message}");
                 let mut shared = self.lock();
-                if code == "unauthorized" || code == VERSION_MISMATCH {
+                if code == "unauthorized" || code == VERSION_MISMATCH || code == KEY_MISMATCH {
                     let refused = format!("The relay refused us: {message}");
                     for waiter in shared.waiting_registered.drain(..) {
                         let _ = waiter.send(Err(refused.clone()));
                     }
                     shared.refused = true;
                     shared.version_mismatch = code == VERSION_MISMATCH;
+                    shared.key_mismatch = code == KEY_MISMATCH;
                     shared.state = RelayConnectionState::Error;
                     shared.reason = Some(refused);
                     drop(shared);
@@ -808,6 +867,10 @@ impl RelayClient for WsRelayClient {
     ) -> BoxFuture<'a, Result<(), String>> {
         async move {
             let url = url.trim();
+            if !url.is_empty() {
+                // First relay use: make (or read) this device's keys
+                self.inner.load_public_keys();
+            }
             let (dial, token) = split_token(url);
             let (cancel_tx, cancel_rx) = watch::channel(());
             let generation = {
@@ -896,6 +959,8 @@ impl RelayClient for WsRelayClient {
 
     fn delegate_task<'a>(&'a self, task: &'a Task) -> BoxFuture<'a, Result<String, String>> {
         async move {
+            let provider = task.target.split('/').next().unwrap_or_default();
+            self.inner.may_send_to(provider)?;
             let (tx, rx) = oneshot::channel();
             self.inner.lock().waiting_acks.insert(task.id.clone(), tx);
             let message = RelayMessage::DelegateTask {
@@ -929,6 +994,8 @@ impl RelayClient for WsRelayClient {
 
     fn send_result(&self, result: TaskResult) -> BoxFuture<'_, Result<(), String>> {
         async move {
+            let requester = result.requester_agent.split('/').next().unwrap_or_default();
+            self.inner.may_send_to(requester)?;
             self.inner.send(RelayMessage::TaskResult {
                 task_id: result.task_id.clone(),
                 result,
@@ -963,6 +1030,7 @@ impl RelayClient for WsRelayClient {
         body: PeerMessage,
     ) -> BoxFuture<'_, Result<(), String>> {
         async move {
+            self.inner.may_send_to(&target_instance)?;
             self.inner.send(RelayMessage::Peer {
                 from_instance: String::new(),
                 target_instance,

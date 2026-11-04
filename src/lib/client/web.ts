@@ -524,6 +524,8 @@ export const webClient: NandiClient = {
     request('GET', `/teams/${id(teamId)}/members/${id(handle)}/profile`),
   getMemberByInstance: instanceId =>
     request('GET', `/members/by-instance/${id(instanceId)}`),
+  acceptPeerKey: instanceId =>
+    request('POST', `/members/${id(instanceId)}/key/accept`),
   setTrustRelationship: (instanceId, update) =>
     request('PUT', `/members/${id(instanceId)}/trust`, update),
   getRelayTrust: () => request('GET', '/trust/relay'),

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   errorKind,
   friendlyErrorKey,
+  isPeerKeyChanged,
   isRelayUnavailable,
   rawError,
 } from './friendly-error'
@@ -20,6 +21,10 @@ describe('friendly errors', () => {
     [
       "relay_unavailable: this needs your company's relay, and Nandi isn't connected to one",
       'relayUnavailable',
+    ],
+    [
+      "peer_key_changed: bob-1's key changed. Check the new key on their profile and accept it to send to them again",
+      'peerKeyChanged',
     ],
   ])('%s → %s', (raw, kind) => {
     expect(errorKind(raw)).toBe(kind)
@@ -41,5 +46,12 @@ describe('friendly errors', () => {
     expect(isRelayUnavailable({ status: 'error', error: text })).toBe(true)
     expect(isRelayUnavailable('Not connected to the network')).toBe(false)
     expect(friendlyErrorKey(text)).toBe('errors.relayUnavailable')
+  })
+
+  it('recognises a send refused because their key changed', () => {
+    const text = "peer_key_changed: bob-1's key changed"
+    expect(isPeerKeyChanged(new Error(text))).toBe(true)
+    expect(isPeerKeyChanged('relay_unavailable: no relay')).toBe(false)
+    expect(friendlyErrorKey(text)).toBe('errors.peerKeyChanged')
   })
 })

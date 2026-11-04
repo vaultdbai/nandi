@@ -337,6 +337,7 @@ export const tauriClient: NandiClient = {
   getMemberProfile: (teamId, handle) =>
     commands.getMemberProfile(teamId, handle),
   getMemberByInstance: instanceId => commands.getMemberByInstance(instanceId),
+  acceptPeerKey: instanceId => commands.acceptPeerKey(instanceId),
   setTrustRelationship: (instanceId, update) =>
     commands.setTrustRelationship(instanceId, update),
   getRelayTrust: () => commands.getRelayTrust(),

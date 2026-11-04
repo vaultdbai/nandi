@@ -92,6 +92,7 @@ const profile: MemberProfile = {
   },
   recentDelegations: [task],
   trust,
+  key: { fingerprint: '3F2A 91C0 7B44 E1D9', changedFingerprint: null },
 }
 
 const relay = (connected: boolean): RelayStatus => ({
@@ -346,6 +347,54 @@ describe('MemberProfileView', () => {
         delegationsPaused: null,
       })
     )
+  })
+
+  describe('Key', () => {
+    it('shows the pinned fingerprint', async () => {
+      render(<MemberProfileView instanceId="i-alice" />)
+      expect(await screen.findByTestId('member-key')).toHaveTextContent(
+        'Key 3F2A 91C0 7B44 E1D9'
+      )
+      expect(screen.queryByTestId('member-key-changed')).toBeNull()
+    })
+
+    it('says their key changed and accepts the new one', async () => {
+      const user = userEvent.setup()
+      const acceptPeerKey = ok({
+        fingerprint: 'AA11 BB22 CC33 DD44',
+        changedFingerprint: null,
+      })
+      Object.assign(commands, {
+        getMemberByInstance: ok({
+          ...profile,
+          key: {
+            fingerprint: '3F2A 91C0 7B44 E1D9',
+            changedFingerprint: 'AA11 BB22 CC33 DD44',
+          },
+        }),
+        acceptPeerKey,
+      })
+      render(<MemberProfileView instanceId="i-alice" />)
+      const notice = await screen.findByTestId('member-key-changed')
+      expect(within(notice).getByText('Their key changed')).toBeInTheDocument()
+      expect(notice).toHaveTextContent(
+        'Was 3F2A 91C0 7B44 E1D9, now AA11 BB22 CC33 DD44'
+      )
+      expect(notice).toHaveTextContent('new key for Alice')
+      await user.click(
+        within(notice).getByRole('button', { name: 'Accept new key' })
+      )
+      await waitFor(() => expect(acceptPeerKey).toHaveBeenCalledWith('i-alice'))
+    })
+
+    it('shows nothing before the directory showed a key', async () => {
+      Object.assign(commands, {
+        getMemberByInstance: ok({ ...profile, key: null }),
+      })
+      render(<MemberProfileView instanceId="i-alice" />)
+      expect(await screen.findByText('Research help')).toBeInTheDocument()
+      expect(screen.queryByTestId('member-key')).toBeNull()
+    })
   })
 
   it("says when a member hasn't connected their Nandi yet", async () => {

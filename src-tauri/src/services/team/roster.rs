@@ -19,6 +19,7 @@ use crate::services::a2a::task::{TaskRecord, TaskSourceKind, TaskState};
 use crate::services::domain::AgentCard;
 use crate::services::events::{emit, NandiEvent};
 use crate::services::gateway::{CatalogWorkflow, GatewayCard};
+use crate::services::network::peer_keys::{self, PeerKeyStatus};
 use crate::services::network::{self, NetworkMember, NetworkSnapshot};
 use crate::services::{relay, AppState};
 
@@ -105,6 +106,8 @@ pub struct MemberProfile {
     /// Newest first, both directions
     pub recent_delegations: Vec<TaskRecord>,
     pub trust: TrustRelationship,
+    /// The key we pinned for them; `None` before the directory showed one
+    pub key: Option<PeerKeyStatus>,
 }
 
 /// Rosters are served from `roster_cache` this long
@@ -565,6 +568,7 @@ pub fn build_profile(
         delegation_stats,
         recent_delegations,
         trust,
+        key: None,
     }
 }
 
@@ -725,7 +729,7 @@ async fn profile(
     let trust = trust::get_relationship(state.db(), instance_id)?;
     let stats = delegation_stats(state.db(), &local, instance_id)?;
     let recent = recent_delegations(state.db(), &local, instance_id, RECENT_DELEGATIONS)?;
-    Ok(build_profile(
+    let mut profile = build_profile(
         Some(instance_id),
         handle,
         display_hint,
@@ -735,7 +739,9 @@ async fn profile(
         trust,
         stats,
         recent,
-    ))
+    );
+    profile.key = peer_keys::status(state.db(), instance_id)?;
+    Ok(profile)
 }
 
 /// For tests elsewhere: a stored task row between two instances

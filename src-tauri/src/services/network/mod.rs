@@ -13,6 +13,7 @@
 //! spawns, and only when the user configured it.
 
 // Wave EF: member profiles by instance
+pub mod peer_keys;
 pub mod profiles;
 
 use std::sync::{Arc, RwLock};
@@ -490,6 +491,11 @@ impl NetworkService {
             }
             _ => None,
         };
+        if let Some(records) = &records {
+            for id in peer_keys::observe_directory(db, records, local_instance) {
+                log::warn!("{id}'s key changed; sending to them waits until it's accepted");
+            }
+        }
 
         let now = now_ms() as Timestamp;
         let (members, changes) = {
@@ -797,6 +803,7 @@ pub(crate) mod directory_tests {
             card,
             online: true,
             last_seen_ms: 1_000.0,
+            public_keys: None,
         }
     }
 
@@ -806,6 +813,7 @@ pub(crate) mod directory_tests {
             card,
             online: false,
             last_seen_ms: seen,
+            public_keys: None,
         }
     }
 

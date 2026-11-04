@@ -8,6 +8,8 @@
 //! - `tls`: what the client trusts for `wss://`
 //! - `unavailable`: [`RelayUnavailable`], the typed "not connected" answer
 //!   of every person-to-person action
+//! - `device_keys`: this instance's own keys (made on first relay use, kept
+//!   in the OS keyring), sent at enrollment and registration
 //!
 //! The relay server is a separate product (`vaultdbai/nandi-relay`); the
 //! app never runs or links it; the app's relay tests embed it as a
@@ -35,6 +37,7 @@
 
 pub mod client;
 pub mod client_api;
+pub mod device_keys;
 pub mod join;
 pub mod protocol;
 // Wave A (Track D): capability and tool presence
@@ -42,6 +45,8 @@ pub mod presence;
 pub mod tls;
 pub mod unavailable;
 
+#[cfg(test)]
+mod keys_tests;
 #[cfg(test)]
 mod tests;
 
@@ -71,6 +76,7 @@ use crate::db::Db;
 use crate::model::Timestamp;
 use crate::utils::nandi_config;
 use client::{split_token, ClientOptions, WsRelayClient};
+use device_keys::DeviceKeyring;
 use nandi_protocol::RelayInstanceInfo;
 use protocol::ALL_CAPABILITIES;
 
@@ -181,6 +187,10 @@ pub struct RelayStatus {
     /// ("Update Nandi or the relay")
     #[serde(default)]
     pub version_mismatch: bool,
+    /// The relay has other keys pinned for this device (Nandi was
+    /// reinstalled, or the keyring was reset): its operator must rekey it
+    #[serde(default)]
+    pub key_mismatch: bool,
     pub state: RelayConnectionState,
     /// Why `state` last changed (an error, or "…; retrying in 4s")
     pub reason: Option<String>,
@@ -257,6 +267,8 @@ pub fn init(state: &AppState) -> Option<Arc<dyn RelayClient>> {
         }
     };
     let db = state.db().clone();
+    let guard_db = state.db().clone();
+    let keyring = Arc::new(DeviceKeyring::new(state.secrets().clone()));
     let client: Arc<dyn RelayClient> = Arc::new(WsRelayClient::with_options(
         Some(state.bus().clone()),
         instance_id,
@@ -265,6 +277,11 @@ pub fn init(state: &AppState) -> Option<Arc<dyn RelayClient>> {
                 if let Err(e) = write_state(&db, ONLINE_AGENTS_KEY, cards) {
                     log::warn!("Failed to save the online agents: {e}");
                 }
+            })),
+            // Made on the first connect, not here: no keyring at startup
+            device_keys: Some(Arc::new(move || keyring.public_keys())),
+            send_guard: Some(Arc::new(move |instance: &str| {
+                network::peer_keys::may_send_to(&guard_db, instance)
             })),
             ..ClientOptions::default()
         },

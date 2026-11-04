@@ -53,6 +53,23 @@ them. The answer becomes the known members (`merge_directory`, persisted in
 Every card the relay holds is listed, discoverable or not: `relay.discoverable`
 only decides whether the card carries the NANDI.md `body`.
 
+### Their key changed
+
+Each `MemberRecord` carries the keys the relay pinned for that member
+(`publicKeys`). `refresh_with` passes them to `network::peer_keys`, which
+keeps this Nandi's own pin in the `peer_keys` table:
+
+| The directory shows   | What happens                                                            |
+| --------------------- | ----------------------------------------------------------------------- |
+| Keys for someone new  | Pinned                                                                  |
+| The pinned keys       | Nothing                                                                 |
+| Other keys            | Kept as the change (`changed_*` columns). Every send to them is refused |
+| The pinned keys again | The change is dropped                                                   |
+
+- **The block.** The relay client's send guard (`ClientOptions::send_guard`, set in `relay::init`) calls `peer_keys::may_send_to` before `delegate_task`, `send_result` and `send_peer`. So every path to that member is covered: ask, assign, delegate, results, clarifications, reassignment, handover. The refusal starts with `PEER_KEY_CHANGED` (exported to `bindings.ts`); `friendly-error.ts` maps it to `errors.peerKeyChanged`.
+- **The profile.** `MemberProfile.key` (`PeerKeyStatus`: `fingerprint`, `changedFingerprint`) feeds `MemberKeyNotice`: the fingerprint, or "Their key changed" with both fingerprints and **Accept new key** (`accept_peer_key`, `POST /api/members/{id}/key/accept`).
+- Fingerprints are `nandi_seal::fingerprint`: the key ID's first 16 hex characters in groups of four.
+
 **Relay down:** `get_network_snapshot` serves the last listing with every
 member offline (`mark_offline`), and People says "Showing everyone as last
 seen". `refresh_network` answers `RelayUnavailable`. Reading the cached

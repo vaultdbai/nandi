@@ -287,6 +287,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             teams_roster::get_team_roster,
             teams_roster::get_member_profile,
             teams_roster::get_member_by_instance,
+            teams_roster::accept_peer_key,
             teams_roster::set_trust_relationship,
             teams_roster::get_relay_trust,
             teams_roster::set_relay_trust,
@@ -446,6 +447,12 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         .constant(
             "RELAY_UNAVAILABLE",
             crate::services::relay::RELAY_UNAVAILABLE,
+        )
+        // The code a send's error starts with when the member's key changed
+        // and the user hasn't accepted it (`services::network::peer_keys`)
+        .constant(
+            "PEER_KEY_CHANGED",
+            crate::services::network::peer_keys::PEER_KEY_CHANGED,
         )
 }
 
