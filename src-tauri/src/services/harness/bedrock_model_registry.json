@@ -1,0 +1,135 @@
+{
+  "comment": "Nandi's notes on Bedrock models for harness agents. Rules match a substring of the model or inference profile ID; the first match wins. 'tested' means verified end to end with a harness; nothing is marked tested until it has been. 'known' is the offline catalog shown before the first refresh from Bedrock.",
+  "rules": [
+    {
+      "match": "embed",
+      "tested": "unsupported",
+      "toolUse": false,
+      "notes": "An embeddings model: it can't drive an agent"
+    },
+    {
+      "match": "titan-image",
+      "tested": "unsupported",
+      "toolUse": false,
+      "notes": "An image model"
+    },
+    {
+      "match": "nova-canvas",
+      "tested": "unsupported",
+      "toolUse": false,
+      "notes": "An image model"
+    },
+    {
+      "match": "nova-reel",
+      "tested": "unsupported",
+      "toolUse": false,
+      "notes": "A video model"
+    },
+    {
+      "match": "nova-sonic",
+      "tested": "unsupported",
+      "toolUse": false,
+      "notes": "A speech model"
+    },
+    {
+      "match": "stability.",
+      "tested": "unsupported",
+      "toolUse": false,
+      "notes": "An image model"
+    },
+    {
+      "match": "twelvelabs.",
+      "tested": "unsupported",
+      "toolUse": false,
+      "notes": "A video model"
+    },
+    {
+      "match": "rerank",
+      "tested": "unsupported",
+      "toolUse": false,
+      "notes": "A reranking model"
+    },
+    {
+      "match": "anthropic.claude",
+      "tested": "untested",
+      "toolUse": true,
+      "notes": "Native in Claude Code on Bedrock"
+    },
+    {
+      "match": "deepseek.r1",
+      "tested": "knownIssues",
+      "toolUse": false,
+      "notes": "No tool use on Bedrock: the harness can't run its tools"
+    },
+    {
+      "match": "titan-text",
+      "tested": "knownIssues",
+      "toolUse": false,
+      "notes": "No tool use: the harness can't run its tools"
+    },
+    {
+      "match": "meta.llama",
+      "tested": "untested",
+      "toolUse": true,
+      "notes": "Through the LiteLLM gateway"
+    },
+    {
+      "match": "mistral.",
+      "tested": "untested",
+      "toolUse": true,
+      "notes": "Through the LiteLLM gateway"
+    },
+    {
+      "match": "amazon.nova",
+      "tested": "untested",
+      "toolUse": true,
+      "notes": "Through the LiteLLM gateway"
+    },
+    {
+      "match": "cohere.command",
+      "tested": "untested",
+      "toolUse": true,
+      "notes": "Through the LiteLLM gateway"
+    },
+    {
+      "match": "openai.",
+      "tested": "untested",
+      "toolUse": true,
+      "notes": "Through the LiteLLM gateway"
+    },
+    {
+      "match": "qwen.",
+      "tested": "untested",
+      "toolUse": true,
+      "notes": "Through the LiteLLM gateway"
+    }
+  ],
+  "known": [
+    {
+      "id": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+      "name": "Claude Sonnet 4"
+    },
+    {
+      "id": "us.anthropic.claude-opus-4-1-20250805-v1:0",
+      "name": "Claude Opus 4.1"
+    },
+    {
+      "id": "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+      "name": "Claude 3.7 Sonnet"
+    },
+    {
+      "id": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+      "name": "Claude 3.5 Haiku"
+    },
+    {
+      "id": "us.meta.llama3-3-70b-instruct-v1:0",
+      "name": "Llama 3.3 70B Instruct"
+    },
+    {
+      "id": "mistral.mistral-large-2407-v1:0",
+      "name": "Mistral Large (24.07)"
+    },
+    { "id": "us.amazon.nova-pro-v1:0", "name": "Nova Pro" },
+    { "id": "us.deepseek.r1-v1:0", "name": "DeepSeek-R1" }
+  ]
+}

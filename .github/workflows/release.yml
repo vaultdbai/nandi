@@ -1,0 +1,175 @@
+name: 'Release Nandi'
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # `bundle`/`ext`: where the installer lands and its extension;
+          # `download`: its stable name on vaultdb.ai
+          - platform: 'macos-latest'
+            args: '--bundles app,dmg'
+            bundle: dmg
+            ext: dmg
+            download: VaultDB-Nandi-macos-arm64.dmg
+          - platform: 'windows-latest'
+            args: '--bundles msi'
+            bundle: msi
+            ext: msi
+            download: VaultDB-Nandi-windows-x64.msi
+          - platform: 'ubuntu-22.04'
+            args: '--bundles appimage'
+            bundle: appimage
+            ext: AppImage
+            download: VaultDB-Nandi-linux-x64.AppImage
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # src-tauri/Cargo.toml's [patch] paths expect the sibling repos next to
+      # this one: ../nandi-spec (public) and ../nandi-relay (private; the
+      # app's tests use it as a dev-dependency). Checkout only writes inside
+      # the workspace, so they're moved up one level.
+      - name: Check out nandi-spec
+        uses: actions/checkout@v4
+        with:
+          repository: vaultdbai/nandi-spec
+          path: .siblings/nandi-spec
+
+      - name: Check out nandi-relay
+        uses: actions/checkout@v4
+        with:
+          repository: vaultdbai/nandi-relay
+          ssh-key: ${{ secrets.NANDI_RELAY_DEPLOY_KEY }}
+          path: .siblings/nandi-relay
+
+      - name: Place the sibling repos
+        shell: bash
+        run: mv .siblings/nandi-spec .siblings/nandi-relay .. && rmdir .siblings
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@dev
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional override of the Nandi OAuth App client ID (connectors/oauth.rs).
+          # Leave the secret unset to ship the default Nandi OAuth App.
+          NANDI_GITHUB_CLIENT_ID: ${{ secrets.NANDI_GITHUB_CLIENT_ID }}
+          # The free trial's DeepSeek key (services/llm_trial.rs); unset = no trial
+          NANDI_TRIAL_DEEPSEEK_KEY: ${{ secrets.NANDI_TRIAL_DEEPSEEK_KEY }}
+          # The relay a fresh install joins (services/relay/mod.rs), e.g. the
+          # demo or community relay; unset = none until the user picks one
+          NANDI_DEFAULT_RELAY_URL: ${{ vars.NANDI_DEFAULT_RELAY_URL }}
+          # Lets installs enroll at that relay (POST /relay/enroll). A join
+          # code, never NANDI_RELAY_SECRET: the secret stays on the relay
+          NANDI_RELAY_JOIN_CODE: ${{ secrets.NANDI_RELAY_JOIN_CODE }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name || inputs.version }}
+          releaseName: 'Nandi ${{ github.ref_name || inputs.version }}'
+          releaseBody: |
+            ## Nandi ${{ github.ref_name || inputs.version }}
+
+            Download from https://vaultdb.ai (or below). Requires Docker.
+
+            ### Installation Instructions
+            - **macOS**: Download the `.dmg` file and drag to Applications folder
+            - **Windows**: Download the `.msi` file and run the installer
+            - **Linux**: Download the `.AppImage` file, make it executable (`chmod +x`), and run
+
+            ### Auto-Updates
+            Existing users will receive automatic update notifications.
+
+            **Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ github.ref_name || inputs.version }}
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}
+
+      # Downloads on vaultdb.ai: the same S3 bucket the vaultdb-web deploy
+      # syncs (it excludes `downloads/`). Repository secrets, as in
+      # vaultdb-web: S3_ID, S3_KEY, AWS_REGION, AWS_BUCKET. Skipped when they
+      # aren't set, so forks still release to GitHub.
+      - name: Check for S3 credentials
+        id: s3
+        shell: bash
+        env:
+          AWS_BUCKET: ${{ secrets.AWS_BUCKET }}
+        run: if [ -n "$AWS_BUCKET" ]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Configure AWS credentials
+        if: steps.s3.outputs.enabled == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.S3_ID }}
+          aws-secret-access-key: ${{ secrets.S3_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Upload the installer to vaultdb.ai
+        if: steps.s3.outputs.enabled == 'true'
+        shell: bash
+        env:
+          AWS_BUCKET: ${{ secrets.AWS_BUCKET }}
+          VERSION: ${{ github.ref_name || inputs.version }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(src-tauri/target/release/bundle/${{ matrix.bundle }}/*.${{ matrix.ext }})
+          if [ ${#files[@]} -ne 1 ]; then
+            echo "Expected one .${{ matrix.ext }} installer, found ${#files[@]}" >&2
+            exit 1
+          fi
+          installer="${files[0]}"
+          base="s3://$AWS_BUCKET/downloads/nandi"
+          # Versioned copy, kept
+          aws s3 cp "$installer" "$base/$VERSION/$(basename "$installer")"
+          # Stable name the website links to; cached briefly so new
+          # releases show up
+          aws s3 cp "$installer" "$base/latest/${{ matrix.download }}" \
+            --cache-control "public, max-age=300" \
+            --content-disposition "attachment; filename=${{ matrix.download }}"
+          echo "$VERSION" | aws s3 cp - "$base/latest/VERSION" --content-type text/plain --cache-control "public, max-age=300"

@@ -1,0 +1,4 @@
+# Private GitHub repos (vaultdbai/nandi-spec) fetch with the user's own git
+# credentials
+[net]
+git-fetch-with-cli = true

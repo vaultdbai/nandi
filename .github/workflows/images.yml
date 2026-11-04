@@ -1,0 +1,103 @@
+name: Sandbox images
+
+# Publishes Nandi's sandbox images to GitHub's container registry. The app
+# pulls the tag pinned to its sandbox version (`runtime::SANDBOX_VERSION`),
+# never `latest`:
+#
+#   ghcr.io/vaultdbai/nandi-runtime   ghcr.io/vaultdbai/nandi-harness
+#
+#   :sandbox-<N>   every publish; <N> is the Dockerfile's org.nandi.sandbox label
+#   :main          pushes to main that touch runtimes/
+#   :<X.Y.Z>       and :latest on a tag vX.Y.Z (the app version)
+#
+# The packages are public, so the app pulls them without logging in.
+# linux/amd64 only for now (arm64 under QEMU makes the harness build slow).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'runtimes/nandi-runtime/**'
+      - 'runtimes/nandi-harness/**'
+      - '.github/workflows/images.yml'
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: nandi-runtime
+            title: Nandi tool sandbox
+            description: Where Nandi's own agents run their tools (an MCP tool server), and the egress relay
+            licenses: Apache-2.0
+          # nandi-harness is not published yet: it bundles Claude Code, whose
+          # licence may not allow redistributing it in a public image. Until
+          # the owner decides, people build it locally (Settings › Models &
+          # runtimes › Build here). Re-add it here:
+          #   - name: nandi-harness
+          #     title: Nandi harness sandbox
+          #     description: Claude Code, Codex and Gemini CLI for Nandi agents. The bundled CLIs keep their own licences
+          #     licenses: Apache-2.0 AND LicenseRef-Bundled-CLIs
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tag the app pins: the label the app checks before it runs a
+      # container (`runtime::SANDBOX_LABEL`)
+      - name: Sandbox and app version
+        id: version
+        run: |
+          sandbox=$(sed -n 's/^LABEL org\.nandi\.sandbox="\([0-9]\+\)"$/\1/p' runtimes/${{ matrix.name }}/Dockerfile)
+          if [ -z "$sandbox" ]; then
+            echo "runtimes/${{ matrix.name }}/Dockerfile has no org.nandi.sandbox label" >&2
+            exit 1
+          fi
+          echo "sandbox=$sandbox" >> "$GITHUB_OUTPUT"
+          echo "app=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub's container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/vaultdbai/${{ matrix.name }}
+          tags: |
+            type=raw,value=sandbox-${{ steps.version.outputs.sandbox }}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.title }}
+            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.licenses=${{ matrix.licenses }}
+            org.opencontainers.image.vendor=VaultDB.ai
+            org.nandi.built-by=${{ steps.version.outputs.app }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: runtimes/${{ matrix.name }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

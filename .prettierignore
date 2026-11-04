@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
+
+# Config files that should keep their formatting
+*.config.js
+*.config.ts
+vite.config.ts
+
+# Generated files
+package-lock.json
+pnpm-lock.yaml
+.git/
+src/lib/bindings.ts
+
+# Logs
+*.log
+
+# Agent worktrees and local tooling
+.claude/
+
+

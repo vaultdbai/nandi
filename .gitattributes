@@ -1,0 +1,7 @@
+# Line endings: LF in the repo and in checkouts, so an editor on Windows
+# can't flip a whole file (and bury the real change in that diff).
+# Scripts that Windows runs keep CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

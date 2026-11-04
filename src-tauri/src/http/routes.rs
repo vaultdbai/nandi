@@ -1,0 +1,680 @@
+//! REST endpoints. Each handler maps 1:1 onto a service call; errors become
+//! `400 {"error": "..."}` (the same messages the Tauri commands return),
+//! or `503` for [`RelayUnavailable`].
+
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::routing::{delete, get, post, put};
+use axum::{Json, Router};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+use crate::model::ApprovalDecision;
+use crate::services::agents::{self, CreateAgentInput};
+use crate::services::llm_keys::{self, KeyedProvider};
+use crate::services::relay::RelayUnavailable;
+use crate::services::runs::{self, DateRange, RunFilters};
+use crate::services::workflows::{self, CreateWorkflowInput};
+use crate::services::{
+    attachments, chat, egress, preferences, queue, recovery, repo_service, snapshots, AppState,
+};
+use crate::types::AppPreferences;
+
+/// A service result as an HTTP response.
+pub(super) struct ApiResult<T>(pub(super) Result<T, String>);
+
+impl<T: Serialize> IntoResponse for ApiResult<T> {
+    fn into_response(self) -> Response {
+        match self.0 {
+            Ok(value) => Json(value).into_response(),
+            // A frozen service its track hasn't implemented yet
+            Err(error) if error == crate::services::redesign::NOT_IMPLEMENTED => {
+                (StatusCode::NOT_IMPLEMENTED, Json(json!({ "error": error }))).into_response()
+            }
+            // A person-to-person action with no relay connected: the same
+            // text as the Tauri command, which the UI recognises
+            Err(error) if RelayUnavailable::is(&error) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": error })),
+            )
+                .into_response(),
+            Err(error) => {
+                (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))).into_response()
+            }
+        }
+    }
+}
+
+/// Recovery errors are typed; send them as-is so the client can match.
+struct RecoveryResult<T>(Result<T, crate::types::RecoveryError>);
+
+impl<T: Serialize> IntoResponse for RecoveryResult<T> {
+    fn into_response(self) -> Response {
+        match self.0 {
+            Ok(value) => Json(value).into_response(),
+            Err(error) => {
+                (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))).into_response()
+            }
+        }
+    }
+}
+
+pub fn api() -> Router<AppState> {
+    Router::new()
+        .route("/agents", get(list_agents).post(create_agent))
+        // `?todayStart=<local midnight ms>`; returns `AgentOverview[]`
+        .route("/agents/overviews", get(agent_overviews))
+        .route("/agents/{id}", delete(delete_agent))
+        .route("/agents/{id}/start", post(start_agent))
+        .route("/agents/{id}/stop", post(stop_agent))
+        .route("/agents/{id}/restart", post(restart_agent))
+        .route("/agents/{id}/messages", post(send_message))
+        .route("/agents/{id}/approve", post(approve_action))
+        // Returns `PendingApproval[]` (every agent's, oldest first)
+        .route("/approvals/pending", get(pending_approvals))
+        .route("/agents/{id}/cancel", post(cancel_turn))
+        .route("/agents/{id}/queue", get(agent_queue))
+        .route("/agents/{id}/current", get(current_turn))
+        .route("/queue/{run_id}/cancel", post(cancel_queued_run))
+        .route("/queue/{run_id}/priority", post(reprioritize_queued_run))
+        .route("/snapshots/agent/{id}", get(agent_snapshot))
+        .route("/snapshots/dashboard", get(dashboard_snapshot))
+        .route("/runs/{id}", get(run_detail))
+        // Body `{ path }`; returns the host path or null
+        .route("/runs/{id}/file", post(run_file))
+        .route("/runs", get(list_all_runs))
+        .route("/runs/stats", get(run_stats))
+        .route("/audit/{kind}", get(list_audit_log))
+        .route("/workflows", get(list_workflows).post(create_workflow))
+        .route("/workflows/{id}", get(get_workflow))
+        .route("/workflows/{id}/run", post(run_workflow))
+        // GET: `WorkflowTemplate[]`; POST `TemplateWorkflowInput`: `Workflow`
+        .route(
+            "/workflow-templates",
+            get(workflow_templates).post(create_from_template),
+        )
+        .route("/workflow-runs/{id}/approve", post(approve_workflow_step))
+        .route(
+            "/studio/conversations",
+            get(studio_conversations).post(create_studio_conversation),
+        )
+        .route(
+            "/studio/conversations/{id}/messages",
+            post(send_studio_message),
+        )
+        .route("/conversations/{id}", get(conversation))
+        .route("/attachments/{id}", delete(discard_attachment))
+        .route("/preferences", get(load_preferences).put(save_preferences))
+        .route("/llm-keys", get(llm_key_status))
+        .route("/llm-keys/{provider}", put(set_llm_key))
+        // Body `{ apiKey? }` (none: the stored key); returns `LlmKeyTest`
+        .route("/llm-keys/{provider}/test", post(test_llm_key))
+        // Returns the provider's current model IDs, newest first
+        .route("/llm-keys/{provider}/models", get(list_provider_models))
+        // Returns `OllamaStatus`
+        .route("/ollama", get(detect_ollama))
+        // Returns `DefaultModelStatus`; body `{ model }` to set it
+        .route("/default-model", get(default_model).put(set_default_model))
+        .route("/free-trial", put(set_free_trial))
+        .route("/egress/status", get(egress_status))
+        .route("/egress/aws-credentials", put(set_aws_credentials))
+        .route("/egress/aws-region", put(set_aws_region))
+        .route("/repo/status", get(repo_status))
+        .route("/repo/rebuild", post(repo_rebuild))
+        .route("/emergency-data/cleanup", post(cleanup_emergency_data))
+        .route(
+            "/emergency-data/{filename}",
+            get(load_emergency_data).put(save_emergency_data),
+        )
+}
+
+// --- Repo ------------------------------------------------------------------
+
+#[derive(Deserialize, Default)]
+struct RebuildBody {
+    #[serde(default)]
+    force: bool,
+}
+
+async fn repo_status(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(repo_service::status(&state).await)
+}
+
+/// `POST /api/repo/rebuild` (body optional: `{"force": true}`)
+async fn repo_rebuild(
+    State(state): State<AppState>,
+    body: Option<Json<RebuildBody>>,
+) -> impl IntoResponse {
+    let force = body.map(|Json(body)| body.force).unwrap_or_default();
+    ApiResult(repo_service::rebuild(&state, force).await)
+}
+
+// --- Agents ----------------------------------------------------------------
+
+async fn list_agents(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(agents::list_agents(&state).await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OverviewQuery {
+    #[serde(default)]
+    today_start: f64,
+}
+
+async fn agent_overviews(
+    State(state): State<AppState>,
+    Query(query): Query<OverviewQuery>,
+) -> impl IntoResponse {
+    ApiResult(
+        crate::services::agent_overview::list_agent_overviews(&state, query.today_start).await,
+    )
+}
+
+async fn create_agent(
+    State(state): State<AppState>,
+    Json(input): Json<CreateAgentInput>,
+) -> impl IntoResponse {
+    ApiResult(agents::create_agent(&state, input).await)
+}
+
+async fn delete_agent(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(agents::delete_agent(&state, &id).await)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ContainerStarted {
+    container_id: String,
+}
+
+async fn start_agent(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(
+        agents::start_agent(&state, &id)
+            .await
+            .map(|container_id| ContainerStarted { container_id }),
+    )
+}
+
+async fn stop_agent(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(agents::stop_agent(&state, &id).await)
+}
+
+async fn restart_agent(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(
+        agents::restart_agent(&state, &id)
+            .await
+            .map(|container_id| ContainerStarted { container_id }),
+    )
+}
+
+// --- Chat ------------------------------------------------------------------
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendBody {
+    text: String,
+    #[serde(default)]
+    attachments: Vec<String>,
+    #[serde(default)]
+    client_message_id: Option<String>,
+}
+
+async fn send_message(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<SendBody>,
+) -> impl IntoResponse {
+    ApiResult(
+        chat::send_message(
+            &state,
+            id,
+            body.text,
+            body.attachments,
+            body.client_message_id,
+        )
+        .await,
+    )
+}
+
+async fn send_studio_message(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<SendBody>,
+) -> impl IntoResponse {
+    ApiResult(
+        chat::send_studio_message(
+            &state,
+            id,
+            body.text,
+            body.attachments,
+            body.client_message_id,
+        )
+        .await,
+    )
+}
+
+async fn create_studio_conversation(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(chat::create_studio_conversation(&state).await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApproveBody {
+    approval_id: String,
+    decision: ApprovalDecision,
+}
+
+async fn pending_approvals(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(chat::list_pending_approvals(&state).await)
+}
+
+async fn approve_action(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<ApproveBody>,
+) -> impl IntoResponse {
+    ApiResult(chat::approve_action(&state, Some(&id), body.approval_id, body.decision).await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CancelBody {
+    turn_id: String,
+}
+
+async fn cancel_turn(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<CancelBody>,
+) -> impl IntoResponse {
+    ApiResult(chat::cancel_turn(&state, id, body.turn_id).await)
+}
+
+// --- Queue -----------------------------------------------------------------
+
+async fn agent_queue(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(queue::get_agent_queue(&state, id).await)
+}
+
+async fn current_turn(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(queue::get_current_turn(&state, id).await)
+}
+
+async fn cancel_queued_run(
+    State(state): State<AppState>,
+    Path(run_id): Path<String>,
+) -> impl IntoResponse {
+    ApiResult(queue::cancel_queued_run(&state, run_id).await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PriorityBody {
+    priority: i32,
+}
+
+async fn reprioritize_queued_run(
+    State(state): State<AppState>,
+    Path(run_id): Path<String>,
+    Json(body): Json<PriorityBody>,
+) -> impl IntoResponse {
+    ApiResult(queue::reprioritize_queued_run(&state, run_id, body.priority).await)
+}
+
+async fn discard_attachment(Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(attachments::discard_attachment(id).await)
+}
+
+// --- Snapshots -------------------------------------------------------------
+
+async fn agent_snapshot(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    ApiResult(snapshots::get_agent_snapshot(&state, id).await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DashboardQuery {
+    day_start: f64,
+}
+
+async fn dashboard_snapshot(
+    State(state): State<AppState>,
+    Query(query): Query<DashboardQuery>,
+) -> impl IntoResponse {
+    ApiResult(snapshots::get_dashboard_snapshot(&state, query.day_start).await)
+}
+
+async fn run_detail(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(snapshots::get_run_detail(&state, id).await)
+}
+
+#[derive(Deserialize)]
+struct RunFileBody {
+    #[serde(default)]
+    path: String,
+}
+
+/// The host path of a file the run touched (opening it is desktop-only)
+async fn run_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<RunFileBody>,
+) -> impl IntoResponse {
+    ApiResult(snapshots::run_file_path(&state, id, body.path).await)
+}
+
+// --- Runs + audit ----------------------------------------------------------
+
+/// `RunFilters` plus paging. Spelled out rather than `#[serde(flatten)]`:
+/// flattened query strings can't parse numbers.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunsQuery {
+    date_from: Option<f64>,
+    date_to: Option<f64>,
+    status: Option<String>,
+    source_type: Option<String>,
+    agent_id: Option<String>,
+    search: Option<String>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+}
+
+/// `GET /api/runs?status=&sourceType=&agentId=&search=&dateFrom=&dateTo=
+/// &limit=&offset=` → `RunPage`
+async fn list_all_runs(
+    State(state): State<AppState>,
+    Query(query): Query<RunsQuery>,
+) -> impl IntoResponse {
+    let filters = RunFilters {
+        date_from: query.date_from,
+        date_to: query.date_to,
+        status: query.status,
+        source_type: query.source_type,
+        agent_id: query.agent_id,
+        search: query.search,
+    };
+    let limit = query.limit.unwrap_or(runs::DEFAULT_PAGE_SIZE);
+    let offset = query.offset.unwrap_or_default();
+    ApiResult(runs::list_all_runs(state.db(), filters, limit, offset).await)
+}
+
+/// `GET /api/runs/stats?from=&to=` → `RunStats`
+async fn run_stats(
+    State(state): State<AppState>,
+    Query(range): Query<DateRange>,
+) -> impl IntoResponse {
+    ApiResult(runs::get_run_stats(state.db(), range).await)
+}
+
+#[derive(Deserialize)]
+struct PageQuery {
+    limit: Option<u32>,
+    offset: Option<u32>,
+}
+
+/// `GET /api/audit/{kind}?limit=&offset=` → `AuditEntry[]`
+async fn list_audit_log(
+    State(state): State<AppState>,
+    Path(kind): Path<String>,
+    Query(page): Query<PageQuery>,
+) -> impl IntoResponse {
+    let limit = page.limit.unwrap_or(runs::DEFAULT_PAGE_SIZE);
+    let offset = page.offset.unwrap_or_default();
+    ApiResult(state.audit_store().list(&kind, limit, offset).await)
+}
+
+async fn list_workflows(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(snapshots::get_workflows(&state).await)
+}
+
+async fn get_workflow(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(workflows::get_workflow(&state, id).await)
+}
+
+async fn create_workflow(
+    State(state): State<AppState>,
+    Json(input): Json<CreateWorkflowInput>,
+) -> impl IntoResponse {
+    ApiResult(workflows::create_workflow(&state, input).await)
+}
+
+async fn run_workflow(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(workflows::run_workflow(&state, id).await)
+}
+
+async fn workflow_templates() -> impl IntoResponse {
+    ApiResult(Ok::<_, String>(workflows::list_workflow_templates()))
+}
+
+async fn create_from_template(
+    State(state): State<AppState>,
+    Json(input): Json<workflows::TemplateWorkflowInput>,
+) -> impl IntoResponse {
+    ApiResult(workflows::create_workflow_from_template(&state, input).await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApproveStepBody {
+    step_id: String,
+    decision: ApprovalDecision,
+}
+
+async fn approve_workflow_step(
+    State(state): State<AppState>,
+    Path(run_id): Path<String>,
+    Json(body): Json<ApproveStepBody>,
+) -> impl IntoResponse {
+    ApiResult(workflows::approve_workflow_step(&state, run_id, body.step_id, body.decision).await)
+}
+
+async fn studio_conversations(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(snapshots::get_studio_conversations(&state).await)
+}
+
+async fn conversation(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(snapshots::get_conversation(&state, id).await)
+}
+
+// --- Settings --------------------------------------------------------------
+
+async fn load_preferences(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(preferences::load_preferences(&state).await)
+}
+
+async fn save_preferences(
+    State(state): State<AppState>,
+    Json(prefs): Json<AppPreferences>,
+) -> impl IntoResponse {
+    ApiResult(preferences::save_preferences(&state, prefs).await)
+}
+
+async fn llm_key_status(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(llm_keys::get_llm_key_status(&state).await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiKeyBody {
+    api_key: String,
+}
+
+async fn set_llm_key(
+    State(state): State<AppState>,
+    Path(provider): Path<KeyedProvider>,
+    Json(body): Json<ApiKeyBody>,
+) -> impl IntoResponse {
+    ApiResult(llm_keys::set_llm_api_key(&state, provider, body.api_key).await)
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct TestKeyBody {
+    #[serde(default)]
+    api_key: Option<String>,
+}
+
+async fn test_llm_key(
+    State(state): State<AppState>,
+    Path(provider): Path<KeyedProvider>,
+    body: Option<Json<TestKeyBody>>,
+) -> impl IntoResponse {
+    let body = body.map(|Json(body)| body).unwrap_or_default();
+    ApiResult(llm_keys::test_llm_key(&state, provider, body.api_key).await)
+}
+
+async fn list_provider_models(
+    State(state): State<AppState>,
+    Path(provider): Path<KeyedProvider>,
+) -> impl IntoResponse {
+    ApiResult(llm_keys::list_provider_models(&state, provider).await)
+}
+
+async fn detect_ollama() -> impl IntoResponse {
+    ApiResult(Ok::<_, String>(llm_keys::detect_ollama().await))
+}
+
+async fn default_model(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(llm_keys::get_default_model(&state).await)
+}
+
+#[derive(Deserialize)]
+struct DefaultModelBody {
+    model: String,
+}
+
+async fn set_default_model(
+    State(state): State<AppState>,
+    Json(body): Json<DefaultModelBody>,
+) -> impl IntoResponse {
+    ApiResult(llm_keys::set_default_model(&state, body.model).await)
+}
+
+#[derive(Deserialize)]
+struct FreeTrialBody {
+    enabled: bool,
+}
+
+async fn set_free_trial(
+    State(state): State<AppState>,
+    Json(body): Json<FreeTrialBody>,
+) -> impl IntoResponse {
+    ApiResult(llm_keys::set_free_trial(&state, body.enabled).await)
+}
+
+// --- Egress ----------------------------------------------------------------
+
+async fn egress_status(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(egress::get_egress_status(&state).await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AwsCredentialsBody {
+    access_key: String,
+    secret: String,
+}
+
+async fn set_aws_credentials(
+    State(state): State<AppState>,
+    Json(body): Json<AwsCredentialsBody>,
+) -> impl IntoResponse {
+    ApiResult(egress::set_aws_credentials(&state, body.access_key, body.secret).await)
+}
+
+#[derive(Deserialize)]
+struct AwsRegionBody {
+    region: String,
+}
+
+async fn set_aws_region(
+    State(state): State<AppState>,
+    Json(body): Json<AwsRegionBody>,
+) -> impl IntoResponse {
+    ApiResult(egress::set_aws_region(&state, body.region).await)
+}
+
+async fn save_emergency_data(
+    State(state): State<AppState>,
+    Path(filename): Path<String>,
+    Json(data): Json<Value>,
+) -> impl IntoResponse {
+    RecoveryResult(recovery::save_emergency_data(&state, filename, data).await)
+}
+
+async fn load_emergency_data(
+    State(state): State<AppState>,
+    Path(filename): Path<String>,
+) -> impl IntoResponse {
+    RecoveryResult(recovery::load_emergency_data(&state, filename).await)
+}
+
+async fn cleanup_emergency_data(State(state): State<AppState>) -> impl IntoResponse {
+    RecoveryResult(recovery::cleanup_old_recovery_files(&state).await)
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    use super::*;
+
+    async fn get(uri: &str) -> (StatusCode, Value) {
+        let state = AppState::for_tests(vec![]);
+        let response = api()
+            .with_state(state.clone())
+            .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        state.shutdown();
+        (status, serde_json::from_slice(&body).unwrap())
+    }
+
+    #[tokio::test]
+    async fn runs_route_parses_filters_and_paging() {
+        let (status, body) = get(
+            "/runs?status=failed&sourceType=trigger&agentId=writer&search=x\
+             &dateFrom=0&dateTo=1700000000000&limit=5&offset=0",
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body, json!({ "rows": [], "total": 0 }));
+
+        let (status, body) = get("/runs").await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+
+        let (status, body) = get("/runs?status=bogus").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body["error"].as_str().unwrap().contains("bogus"));
+    }
+
+    #[tokio::test]
+    async fn run_stats_route_takes_a_range() {
+        let (status, body) = get("/runs/stats?from=0&to=1700000000000").await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["totalRuns"], 0);
+
+        let (status, _) = get("/runs/stats?from=2&to=1").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn audit_route_checks_the_kind() {
+        let (status, body) = get("/audit/bogus?limit=10&offset=0").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body["error"]
+            .as_str()
+            .unwrap()
+            .contains("Unknown audit log"));
+    }
+}

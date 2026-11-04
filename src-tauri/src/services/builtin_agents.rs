@@ -1,0 +1,125 @@
+//! Agents that ship with Nandi itself, not with a pack.
+//!
+//! Each is written into the repo as an ordinary local agent
+//! (`.nandi/agents/<id>/`) whenever its folder is missing, so the user owns
+//! and edits it like one they made; Backup commits its history. It can't
+//! be deleted: features such as My notes and `ask-me` rely on it.
+
+use std::path::{Path, PathBuf};
+
+use crate::services::repos::fs_atomic::write_if_changed;
+use crate::services::repos::layout::{INSTRUCTIONS_FILE, SKILL_FILE};
+use crate::services::repos::RepoLayout;
+
+/// The agent that keeps My notes and answers for the user
+pub const CHIEF_OF_STAFF: &str = "chief-of-staff";
+
+/// Every built-in agent's ID, in the order the sidebar lists them
+pub const BUILTIN_AGENTS: &[&str] = &[CHIEF_OF_STAFF];
+
+/// A built-in agent's files, as written into a new folder
+const CHIEF_OF_STAFF_FILES: &[(&str, &str)] = &[
+    (
+        SKILL_FILE,
+        include_str!("../../resources/builtin-agents/chief-of-staff/skill.md"),
+    ),
+    (
+        INSTRUCTIONS_FILE,
+        include_str!("../../resources/builtin-agents/chief-of-staff/instructions.md"),
+    ),
+];
+
+pub fn is_builtin(id: &str) -> bool {
+    BUILTIN_AGENTS.contains(&id)
+}
+
+fn files_of(id: &str) -> &'static [(&'static str, &'static str)] {
+    match id {
+        CHIEF_OF_STAFF => CHIEF_OF_STAFF_FILES,
+        _ => &[],
+    }
+}
+
+/// Writes each built-in agent whose `skill.md` the repo lacks, and returns
+/// the files written. An existing folder is the user's and stays as it is.
+pub fn seed(layout: &RepoLayout) -> Result<Vec<PathBuf>, String> {
+    let mut written = Vec::new();
+    for id in BUILTIN_AGENTS {
+        if layout.skill_path(id).is_file() {
+            continue;
+        }
+        let dir = layout.agent_dir(id);
+        for (name, content) in files_of(id) {
+            let path = dir.join(name);
+            if write_new(&path, content)? {
+                written.push(path);
+            }
+        }
+        log::info!("Added the built-in agent '{id}'");
+    }
+    Ok(written)
+}
+
+/// Writes `path` unless it exists (a kept `instructions.md` stays).
+fn write_new(path: &Path, content: &str) -> Result<bool, String> {
+    if path.exists() {
+        return Ok(false);
+    }
+    write_if_changed(path, content.as_bytes())
+        .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
+    Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::domain::agent::Agent;
+    use crate::services::domain::AgentId;
+
+    fn layout() -> (tempfile::TempDir, RepoLayout) {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = RepoLayout::new(tmp.path().join("repo"), tmp.path().join("trash"));
+        (tmp, layout)
+    }
+
+    #[test]
+    fn seeds_chief_of_staff_once() {
+        let (_tmp, layout) = layout();
+        let written = seed(&layout).unwrap();
+        assert_eq!(written.len(), 2);
+        assert!(layout.skill_path(CHIEF_OF_STAFF).is_file());
+        assert!(layout.instructions_path(CHIEF_OF_STAFF).is_file());
+        assert!(seed(&layout).unwrap().is_empty(), "nothing to add again");
+    }
+
+    #[test]
+    fn keeps_the_users_edits() {
+        let (_tmp, layout) = layout();
+        seed(&layout).unwrap();
+        let skill = layout.skill_path(CHIEF_OF_STAFF);
+        let edited = std::fs::read_to_string(&skill).unwrap() + "\nAlways answer in French.\n";
+        std::fs::write(&skill, &edited).unwrap();
+        seed(&layout).unwrap();
+        assert_eq!(std::fs::read_to_string(&skill).unwrap(), edited);
+    }
+
+    #[test]
+    fn restores_a_removed_skill_but_keeps_the_role() {
+        let (_tmp, layout) = layout();
+        seed(&layout).unwrap();
+        std::fs::write(layout.instructions_path(CHIEF_OF_STAFF), "# My role\nDev\n").unwrap();
+        std::fs::remove_file(layout.skill_path(CHIEF_OF_STAFF)).unwrap();
+        assert_eq!(seed(&layout).unwrap().len(), 1);
+        assert_eq!(
+            std::fs::read_to_string(layout.instructions_path(CHIEF_OF_STAFF)).unwrap(),
+            "# My role\nDev\n"
+        );
+    }
+
+    #[test]
+    fn the_shipped_skill_parses() {
+        let id = AgentId::parse(CHIEF_OF_STAFF).unwrap();
+        let agent = Agent::from_skill_md(id, CHIEF_OF_STAFF_FILES[0].1).unwrap();
+        assert_eq!(agent.name(), "Chief of Staff");
+    }
+}

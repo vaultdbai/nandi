@@ -1,0 +1,29 @@
+Nandi
+Copyright 2026 VaultDB.ai
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE),
+except for the brand assets listed below.
+
+Brand assets (not licensed under the Apache License)
+The Nandi name, the bull mascot and the Nandi logos are trademarks of
+VaultDB.ai. The image files in these paths are Copyright 2026 VaultDB.ai,
+All Rights Reserved, and are included only so the official build can show
+them:
+
+  src/assets/brand/icons/
+  src/assets/brand/mascot/
+  src-tauri/icons/
+  public/Icon512.png
+  public/nandi-mark-*.png
+
+Forks and redistributions must replace them and must not use the Nandi
+name or logos except as TRADEMARKS.md allows.
+
+The Nandi relay server (vaultdbai/nandi-relay) is a separate product
+licensed under the Business Source License 1.1. This repository works
+fully without it.
+
+Third-party notices
+This project started from dannysmith/tauri-template, Copyright (c) 2025
+Tauri Template Contributors, used under the MIT License. See
+licenses/tauri-template-MIT.md.

@@ -1,0 +1,31 @@
+id: relay-client-built-only-in-relay
+message: |
+  The relay client is built once, by `services::relay::init` (relay/mod.rs).
+  Everything else uses `state.relay_client()`.
+
+  BAD: WsRelayClient::new(...) in a service
+  GOOD: let relay = relay::unavailable::connected(state.relay_client())?;
+severity: error
+language: Rust
+files:
+  - 'src-tauri/src/**/*.rs'
+ignores:
+  - 'src-tauri/src/services/relay/client.rs'
+  - 'src-tauri/src/services/relay/mod.rs'
+  - 'src-tauri/src/services/relay/tests.rs'
+rule:
+  all:
+    - any:
+        - pattern: WsRelayClient::new($$$ARGS)
+        - pattern: WsRelayClient::with_options($$$ARGS)
+        - pattern: $PATH::WsRelayClient::new($$$ARGS)
+        - pattern: $PATH::WsRelayClient::with_options($$$ARGS)
+    - not:
+        inside:
+          stopBy: end
+          kind: mod_item
+          has:
+            field: name
+            regex: '^tests$'
+note: |
+  See AGENTS.md "Works Without the Relay" and docs/developer/static-analysis.md.

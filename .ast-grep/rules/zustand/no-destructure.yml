@@ -1,0 +1,23 @@
+id: no-destructure-zustand
+message: |
+  Never destructure from Zustand stores. Use selector syntax instead.
+
+  BAD: const { leftSidebarVisible } = useUIStore()
+  GOOD: const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
+
+  For multiple values, use multiple selectors or useShallow.
+severity: error
+language: Tsx
+rule:
+  pattern: const { $$$PROPS } = $STORE($$$ARGS)
+constraints:
+  STORE:
+    regex: '^use\w*Store$'
+note: |
+  Applies to every store hook named use*Store (e.g. useUIStore,
+  useAgentConsoleStore). getState() calls are not affected.
+
+  Destructuring causes render cascades - every store update triggers re-renders
+  even if destructured values haven't changed.
+
+  See: docs/developer/architecture-guide.md (Performance Patterns)

@@ -1,0 +1,108 @@
+.nandi-bull {
+  --nb-alert: #ef9f27;
+  --nb-check: #2f9e5b;
+  position: relative;
+  display: inline-block;
+  flex: none;
+}
+/* Kit fallbacks; the app sets --nandi-alert from its theme */
+.dark .nandi-bull {
+  --nb-alert: #fac775;
+  --nb-check: #4cc27c;
+}
+.nandi-bull .nb-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+.nandi-bull .nb-alert,
+.nandi-bull .nb-check {
+  position: absolute;
+  top: -8%;
+  right: -8%;
+  width: 36%;
+  height: 36%;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s ease;
+}
+.nandi-bull .nb-alert {
+  border-radius: 50%;
+  background: var(--nandi-alert, var(--nb-alert));
+  box-shadow: 0 0 0 1.5px var(--background, #fff);
+}
+.nandi-bull .nb-check circle {
+  fill: var(--nb-check);
+}
+.nandi-bull .nb-check path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 12;
+  stroke-dashoffset: 12;
+}
+.nandi-bull[data-state='rest'] .nb-icon {
+  animation: nb-breathe 4.5s ease-in-out infinite;
+}
+.nandi-bull[data-state='wait'] .nb-alert {
+  opacity: 1;
+  transform: scale(1);
+  animation: nb-pulse 2.4s ease-in-out infinite;
+}
+.nandi-bull[data-state='carry'] .nb-icon {
+  animation: nb-bob 1.8s ease-in-out infinite;
+}
+.nandi-bull[data-state='done'] .nb-check {
+  opacity: 1;
+  transform: scale(1);
+}
+.nandi-bull[data-state='done'] .nb-check path {
+  animation: nb-draw 0.5s 0.15s ease-out forwards;
+}
+@keyframes nb-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
+}
+@keyframes nb-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes nb-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6%);
+  }
+}
+@keyframes nb-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nandi-bull,
+  .nandi-bull * {
+    animation: none !important;
+    transition: none !important;
+  }
+  .nandi-bull[data-state='done'] .nb-check path {
+    stroke-dashoffset: 0;
+  }
+}

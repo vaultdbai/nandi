@@ -1,0 +1,24 @@
+id: no-raw-palette-colors
+message: |
+  Use the theme's tokens, not raw Tailwind palette colours or hex values:
+  those never change with the palette or the appearance.
+
+  BAD:  className="text-emerald-500"   className="bg-[#ff544d]"
+  GOOD: className="text-success"       className="bg-destructive/15"
+
+  Status: success, warning, info, destructive, highlight. Kinds:
+  kind-agent, kind-workflow, kind-tool, kind-pack, kind-trigger.
+severity: error
+language: Tsx
+files:
+  - 'src/components/**/*.tsx'
+ignores:
+  # shadcn primitives keep their upstream classes
+  - 'src/components/ui/**'
+  # The macOS traffic lights are the platform's own colours
+  - 'src/components/titlebar/MacOSWindowControls.tsx'
+rule:
+  kind: string_fragment
+  any:
+    - regex: '\b(text|bg|border|ring|fill|stroke|from|to|via|outline|decoration|divide|shadow)-(red|green|blue|amber|emerald|yellow|orange|purple|violet|sky|rose|pink|indigo|teal|cyan|lime|fuchsia|slate|gray|zinc|neutral|stone)-\d{2,3}\b'
+    - regex: '-\[#[0-9a-fA-F]{3,8}\]'

@@ -1,0 +1,134 @@
+name: CI
+
+# The gates of `pnpm run check:all`, on every pull request and on main
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # No debug info: smaller target dir, faster builds and cache restores
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # src-tauri/Cargo.toml's [patch] paths expect the sibling repos next to
+      # this one: ../nandi-spec (public) and ../nandi-relay (private; the
+      # app's tests use it as a dev-dependency). Checkout only writes inside
+      # the workspace, so they're moved up one level.
+      - name: Check out nandi-spec
+        uses: actions/checkout@v4
+        with:
+          repository: vaultdbai/nandi-spec
+          path: .siblings/nandi-spec
+
+      - name: Check out nandi-relay
+        uses: actions/checkout@v4
+        with:
+          repository: vaultdbai/nandi-relay
+          ssh-key: ${{ secrets.NANDI_RELAY_DEPLOY_KEY }}
+          path: .siblings/nandi-relay
+
+      - name: Place the sibling repos
+        shell: bash
+        run: mv .siblings/nandi-spec .siblings/nandi-relay .. && rmdir .siblings
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      # Tauri v2's Linux prerequisites, plus libdbus-1-dev and pkg-config
+      # for keyring's Secret Service backend
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential curl wget file pkg-config patchelf \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev
+
+      # Private repos run on the small hosted runner (2 cores, 7 GB). Linking
+      # the app's test binary needs more memory than that, so add swap, and
+      # free disk the target dir needs
+      - name: Make room for the Rust build
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo swapoff -a
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 12G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h
+          df -h / /mnt
+
+      # The channel and components come from rust-toolchain.toml
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      # Also installs ast-grep (allowed to build in pnpm-workspace.yaml)
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: ast-grep
+        run: pnpm run ast:lint
+
+      - name: Format check
+        run: pnpm run format:check
+
+      - name: Rust format check
+        run: pnpm run rust:fmt:check
+
+      # `tauri::generate_context!` needs `frontendDist` (../dist) to exist
+      - name: Build frontend
+        run: pnpm run build
+
+      - name: Clippy
+        run: pnpm run rust:clippy
+
+      - name: Frontend tests
+        run: pnpm run test:run
+
+      # `#[ignore]` tests (Docker, network, live CLIs) stay skipped. Two
+      # rustc jobs keep peak memory down on the small runner (see "Make room
+      # for the Rust build")
+      - name: Rust tests
+        run: pnpm run rust:test
+        env:
+          CARGO_BUILD_JOBS: 2
+
+      # Nandi with no relay: boots headless, runs an agent and a workflow,
+      # installs a starter pack from a folder, and checks person-to-person
+      # endpoints answer "not connected" (AGENTS.md, Works Without the Relay)
+      - name: Offline suite
+        run: pnpm run test:offline

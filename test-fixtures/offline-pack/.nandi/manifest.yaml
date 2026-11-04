@@ -1,0 +1,7 @@
+id: offline-pack
+name: Offline Pack
+description: A tiny starter pack installed from a local folder, for the offline suite
+version: 1.0.0
+min_nandi_version: 0.1.0
+agents: [offline-helper]
+workflows: [offline-hello]

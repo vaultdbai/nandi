@@ -1,0 +1,4 @@
+# Codex inside the Nandi harness container. The container is the sandbox:
+# Codex's own OS sandbox (Landlock/seccomp) can't nandi inside Docker, and
+# Nandi answers ACP permission requests itself.
+sandbox_mode = "danger-full-access"

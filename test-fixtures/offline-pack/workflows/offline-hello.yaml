@@ -1,0 +1,6 @@
+id: offline-hello
+name: Offline hello
+steps:
+  - id: greet
+    agent: offline-helper
+    input: Say hello

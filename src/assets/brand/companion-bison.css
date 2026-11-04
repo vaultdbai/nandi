@@ -1,0 +1,25 @@
+/*
+ * The companion's bison (CompanionBison.tsx): the moving image, or the
+ * still frame when Settings › Appearance › "Bison moves" is Never, or is
+ * "When the system allows" and the system asks for less motion
+ * (`data-bison-motion` on <html>, `lib/bison-motion.ts`).
+ */
+.companion-bison-still {
+  display: none;
+}
+
+:root[data-bison-motion='never'] .companion-bison-moving {
+  display: none;
+}
+:root[data-bison-motion='never'] .companion-bison-still {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-bison-motion='system'] .companion-bison-moving {
+    display: none;
+  }
+  :root[data-bison-motion='system'] .companion-bison-still {
+    display: block;
+  }
+}

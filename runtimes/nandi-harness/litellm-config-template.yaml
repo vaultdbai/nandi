@@ -1,0 +1,21 @@
+# LiteLLM proxy config for Nandi's Bedrock gateway
+# (services/harness/gateway.rs fills the placeholders). Claude Code talks
+# Anthropic Messages to the proxy; the proxy calls Bedrock Converse for
+# third-party models. AWS credentials and the master key come from the
+# container's environment, never from this file.
+model_list:
+  - model_name: '{{MODEL_ALIAS}}'
+    litellm_params:
+      model: 'bedrock/{{BEDROCK_MODEL}}'
+      aws_region_name: os.environ/AWS_REGION
+  # Claude Code's background calls (titles, summaries) use the same model
+  - model_name: '{{SMALL_MODEL_ALIAS}}'
+    litellm_params:
+      model: 'bedrock/{{BEDROCK_MODEL}}'
+      aws_region_name: os.environ/AWS_REGION
+
+litellm_settings:
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

@@ -1,0 +1,152 @@
+[package]
+name = "nandi"
+version = "0.1.0"
+description = "Nandi: a local-first desktop app for running AI agents"
+authors = ["VaultDB.ai"]
+license = "Apache-2.0"
+repository = "https://github.com/vaultdbai/nandi"
+edition = "2021"
+rust-version = "1.88"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "nandi_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "nandi"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["macos-private-api", "image-png"] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-log = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-persisted-scope = "2"
+tauri-plugin-process = "2"
+tauri-plugin-os = "2"
+tauri-plugin-global-shortcut = "2"
+log = "0.4"
+regex = "1"
+
+# Type-safe Tauri command bindings
+specta = { version = "=2.0.0-rc.22", features = ["derive", "serde_json"] }
+tauri-specta = { version = "=2.0.0-rc.21", features = ["typescript"] }
+specta-typescript = "=0.0.9"
+# The relay wire protocol, shared with the relay (vaultdbai/nandi-spec, MIT);
+# see the `[patch]` below for development builds
+nandi-protocol = { git = "https://github.com/vaultdbai/nandi-spec", branch = "main", features = ["specta"] }
+bollard = "0.21.1"
+serde_yaml = "0.9"
+dirs = "6"
+futures-util = "0.3"
+# Build contexts for the sandbox images (services::images)
+tar = "0.4"
+# Starter packs from a local .zip (services::marketplace::local)
+zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2"] }
+async-trait = "0.1"
+# HTTP servers: web transport (REST + WebSocket), LLM proxy, bridge_test.rs
+axum = { version = "0.8", features = ["ws"] }
+# Frontend bundle for the web transport (compiled in for release builds)
+rust-embed = { version = "8", features = ["mime-guess"] }
+tokio = { version = "1", features = ["full"] }
+# TEMPORARY (bridge_test.rs): container→host networking test server
+tower-http = { version = "0.6", features = ["cors"] }
+# Agent runtime: LLM providers, MCP client to container tool servers, keychain
+reqwest = { version = "0.13", features = ["json", "form", "stream"] }
+rmcp = { version = "3.5", default-features = false, features = ["client", "transport-streamable-http-client-reqwest", "transport-child-process"] }
+# OS keychain (used directly so services don't need a Tauri AppHandle)
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+# GitHub agents repo: clone/fast-forward pull (HTTPS only, token via callbacks)
+git2 = { version = "0.20", default-features = false, features = ["https"] }
+uuid = { version = "1", features = ["v4"] }
+r2d2 = "0.8.10"
+r2d2_sqlite = { version = "0.35", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["serde_json"] }
+# Egress proxy: AWS calls on agents' behalf, CONNECT tunnels for HTTPS_PROXY
+aws-sdk-s3 = { version = "1", default-features = false, features = ["http-1x", "default-https-client", "rt-tokio", "behavior-version-latest"] }
+aws-sdk-sts = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio", "behavior-version-latest"] }
+base64 = "0.22"
+sha2 = "0.10"
+hyper = "1"
+hyper-util = { version = "0.1", features = ["tokio"] }
+tower = { version = "0.5", features = ["util"] }
+croner = { version = "4.0.1", features = ["chrono"] }
+notify = "8.2.0"
+glob = "0.3.4"
+chrono = "0.4.45"
+# Marketplace: registry versions and min_nandi_version checks
+semver = "1"
+# Marketplace: publisher signatures (Ed25519)
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+# Wave 2A relay (Track B): the client WebSocket
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
+# Picks the relay's TLS crypto backend: the tree enables both ring and
+# aws-lc-rs, so rustls has no default without one (`relay::client`)
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+# Relay TLS: the client trusts public CAs, the OS store (a company's own CA)
+# and NANDI_RELAY_CA_FILE
+rustls-native-certs = "0.8"
+rustls-pki-types = { version = "1", features = ["std"] }
+webpki-roots = "0.26"
+# Wave B harnesses: the official ACP SDK (over child stdio via tokio-util's
+# futures compat), and PATH lookup for the harness CLIs
+agent-client-protocol = { version = "3.4.0", features = ["unstable_end_turn_token_usage"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+which = "8"
+# Codex's config.toml (read-only, for detection)
+toml = "0.9"
+# Bedrock: the user's AWS config, SSO cache, and credential chain as the
+# AWS SDK reads them, and the model catalog
+aws-config = { version = "1.8.13", default-features = false, features = ["sso", "credentials-process", "credentials-login", "default-https-client", "rt-tokio", "behavior-version-latest"] }
+# Setting up an SSO profile: the device sign-in, then the accounts and roles it may use
+aws-sdk-ssooidc = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio", "behavior-version-latest"] }
+aws-sdk-sso = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio", "behavior-version-latest"] }
+aws-sdk-bedrock = { version = "1", default-features = false, features = ["rt-tokio", "behavior-version-latest"] }
+aws-types = { version = "1", default-features = false }
+aws-credential-types = { version = "1", default-features = false }
+aws-runtime = { version = "1", default-features = false }
+
+# Development builds use a sibling checkout of nandi-spec (clone it next to
+# this repo, at `../nandi-spec`), so a protocol change and its use land
+# together. Without the patch, the git dependency above is used.
+[patch."https://github.com/vaultdbai/nandi-spec"]
+nandi-protocol = { path = "../../nandi-spec/crates/nandi-protocol" }
+
+[dev-dependencies]
+tempfile = "3"
+# The relay server (vaultdbai/nandi-relay, BUSL-1.1), for the relay client's
+# integration tests only: the app never links it (see
+# docs/developer/rust-architecture.md). The `[patch]` below uses a sibling
+# checkout at `../nandi-relay`
+nandi-relay = { git = "https://github.com/vaultdbai/nandi-relay", branch = "main" }
+
+[patch."https://github.com/vaultdbai/nandi-relay"]
+nandi-relay = { path = "../../nandi-relay" }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-window-state = "2"
+
+# Optimize for smaller binary size in release builds
+[profile.release]
+codegen-units = 1        # Better LLVM optimization (slower build, smaller binary)
+lto = true               # Link-time optimizations
+opt-level = "s"          # Optimize for size over speed
+panic = "abort"          # Don't include panic unwinding code
+strip = true             # Remove debug symbols
+
