@@ -235,6 +235,79 @@ impl RelayClient for MockRelay {
         Box::pin(async move { Ok(cards) })
     }
 
+    /// A stand-in for the relay's plan (the ranking is the relay's, see
+    /// `nandi-relay`): a named card alone while its instance is online;
+    /// else every online card that serves the capability and takes
+    /// requests, not excluded, pinned first, then free before full, then
+    /// by card ID
+    fn route<'a>(
+        &'a self,
+        query: &'a crate::services::relay::protocol::RoutingQuery,
+    ) -> BoxFuture<'a, Result<crate::services::relay::protocol::RoutePlan, String>> {
+        use crate::services::relay::protocol::{
+            RouteCandidate, RoutePlan, RouteReason, RouteTarget,
+        };
+        let relays: Vec<_> = self.hub.relays.lock().unwrap().values().cloned().collect();
+        let offline = self.hub.offline.lock().unwrap().clone();
+        let mut cards: Vec<AgentCard> = relays
+            .iter()
+            .filter_map(Weak::upgrade)
+            .filter(|relay| relay.instance != self.instance && !offline.contains(&relay.instance))
+            .flat_map(|relay| relay.cards.lock().unwrap().clone())
+            .collect();
+        let hints = &query.hints;
+        let listed = |list: &[String], card: &AgentCard| {
+            list.iter()
+                .any(|item| *item == card.id || *item == card.instance_id)
+        };
+        match &query.target {
+            RouteTarget::Agent { card_id } => cards.retain(|card| card.id == *card_id),
+            RouteTarget::Person { instance_id } => {
+                cards.retain(|card| card.instance_id == *instance_id)
+            }
+            RouteTarget::Anyone => cards.retain(|card| {
+                card.serves(&query.capability)
+                    && card.accepts_delegation
+                    && !listed(&hints.excluded, card)
+            }),
+        }
+        cards.sort_by(|a, b| {
+            let full = |card: &AgentCard| card.current_load >= card.max_concurrent.max(1);
+            (!listed(&hints.preferred, a))
+                .cmp(&!listed(&hints.preferred, b))
+                .then(full(a).cmp(&full(b)))
+                .then(a.id.cmp(&b.id))
+        });
+        let candidates = cards
+            .into_iter()
+            .take(hints.max_candidates.unwrap_or(3) as usize)
+            .map(|card| RouteCandidate {
+                target: card.id.clone(),
+                instance_id: card.instance_id.clone(),
+                name: card.owner.display_name.clone(),
+                handle: Some(card.owner.github_handle.clone()).filter(|h| !h.is_empty()),
+                agent_name: card.name.clone(),
+                provider_kind: Default::default(),
+                online: true,
+                load: card.current_load,
+                max_concurrent: card.max_concurrent,
+                wait_seconds: None,
+                redirected_from: None,
+                reasons: vec![RouteReason::Free {
+                    name: card.owner.display_name.clone(),
+                }],
+                public_keys: None,
+            })
+            .collect();
+        Box::pin(async move {
+            Ok(RoutePlan {
+                plan_id: "mock".into(),
+                candidates,
+                ..RoutePlan::default()
+            })
+        })
+    }
+
     fn delegate_task<'a>(&'a self, task: &'a Task) -> BoxFuture<'a, Result<String, String>> {
         Box::pin(async move {
             let provider_instance = instance_of(&task.target).to_string();
@@ -761,6 +834,16 @@ async fn local_delegation_works_without_a_relay() {
     let names = recorder.names();
     assert!(names.contains(&"delegation://task_started"));
     assert!(names.contains(&"delegation://task_completed"));
+
+    // A capability only others serve needs the relay's plan: not connected
+    let delegator = state.a2a_delegator().unwrap().clone();
+    let result = delegator.delegate("translate", json!("hi")).await.unwrap();
+    assert_eq!(result.status, TaskStatus::Failed);
+    let error = result.error.unwrap();
+    assert!(
+        crate::services::relay::unavailable::RelayUnavailable::is(&error),
+        "{error}"
+    );
     state.shutdown();
 }
 
@@ -1611,6 +1694,44 @@ mod lifecycle_tests {
     }
 
     #[tokio::test]
+    async fn my_own_agent_wins_unless_i_pinned_someone_elses() {
+        let world = two_instances(SERVES).await;
+        allow(&world);
+        echo_agents(&world.requester_state).await;
+        save_agent(&world.requester_state, "local", SERVES);
+        let me = instance(&world.requester_state);
+        let remote = format!("{}/papers", instance(&world.provider_state));
+
+        // Mine runs here, with no relay
+        let result = world
+            .requester
+            .run(from_writer("summarize", json!("hi")))
+            .await
+            .unwrap();
+        assert_eq!(result.status, TaskStatus::Completed, "{:?}", result.error);
+        assert_eq!(result.provider_agent, format!("{me}/local"));
+        assert!(world._relays.0.delegated().is_empty());
+
+        // Pinned and free at the relay: theirs first
+        crate::services::shared::set_provider_pin(
+            &world.requester_state,
+            "summarize",
+            Some(&remote),
+        )
+        .await
+        .unwrap();
+        let result = world
+            .requester
+            .run(from_writer("summarize", json!("hi")))
+            .await
+            .unwrap();
+        assert_eq!(result.status, TaskStatus::Completed, "{:?}", result.error);
+        assert_eq!(result.provider_agent, remote);
+        world.requester_state.shutdown();
+        world.provider_state.shutdown();
+    }
+
+    #[tokio::test]
     async fn progress_is_sent_only_when_the_task_wants_it() {
         let world = two_instances(SERVES).await;
         allow(&world);
@@ -1632,13 +1753,19 @@ mod lifecycle_tests {
         let id = result.task_id.clone();
         wait_until("the progress message", || {
             let (db, id) = (db.clone(), id.clone());
-            async move { !task::messages_of(&db, &id).await.unwrap().is_empty() }
+            async move {
+                task::messages_of(&db, &id)
+                    .await
+                    .unwrap()
+                    .iter()
+                    .any(|m| m.kind == task::PROGRESS_KIND)
+            }
         })
         .await;
-        assert_eq!(
-            task::messages_of(&db, &id).await.unwrap()[0].kind,
-            task::PROGRESS_KIND
-        );
+        // The relay's reasons come first: why it went there
+        let messages = task::messages_of(&db, &id).await.unwrap();
+        assert_eq!(messages[0].kind, route::ROUTE_KIND);
+        assert_eq!(messages[0].payload["reasons"][0]["code"], "free");
 
         // Heartbeats: only working tasks that want progress
         let requester = instance(&world.requester_state);
@@ -1709,13 +1836,6 @@ mod lifecycle_tests {
         assert_eq!(relay.sent_kinds(), ["task_timed_out"]);
         assert_eq!(relay.sent_peer.lock().unwrap()[0].0, "them");
         assert!(recorder.names().contains(&task::TASK_TIMED_OUT));
-        let circuit = state
-            .db()
-            .call(|conn| failover::circuit(conn, "them", "summarize"))
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(circuit.consecutive_failures, 1);
         state.shutdown();
     }
 
@@ -1965,16 +2085,11 @@ mod lifecycle_tests {
             .await
             .unwrap();
 
-        // The only other provider's circuit is open: nowhere to go
-        for _ in 0..failover::CIRCUIT_THRESHOLD {
-            failover::record_failure(state.db(), state.bus(), "other", "summarize")
-                .await
-                .unwrap();
-        }
+        // The relay has nobody else to plan (the other one is offline):
+        // nowhere to go
+        hub.set_online("other", false);
         assert!(service.failover(&failed).await.unwrap().is_none());
-        failover::record_success(state.db(), "other", "summarize")
-            .await
-            .unwrap();
+        hub.set_online("other", true);
 
         let next = service.failover(&failed).await.unwrap().unwrap();
         assert_eq!(next.attempt_number, 2);

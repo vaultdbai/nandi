@@ -462,15 +462,24 @@ impl TriggerEngine {
         if let (Some(secret_ref), Some(secret)) = (entity.secret_ref(), trigger.secret()) {
             self.secrets.set(secret_ref.as_str(), secret)?;
         }
+        // Inbound fires see the change before the projection does: once
+        // SQLite says a trigger is disabled, its webhook already refuses
+        self.triggers
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(trigger.id.clone(), trigger);
         let store = self.store.clone();
-        tokio::task::spawn_blocking(move || {
+        let written = tokio::task::spawn_blocking(move || {
             store.repos().triggers.save(&entity)?;
             store.commit(EntityKind::Trigger, entity.id().as_str())?;
             Ok::<_, String>(())
         })
         .await
-        .map_err(|e| format!("Trigger write failed: {e}"))??;
-        self.reload().await
+        .map_err(|e| format!("Trigger write failed: {e}"))
+        .and_then(|written| written);
+        // The files are the truth: a failed write puts the old rule back
+        let reloaded = self.reload().await;
+        written.and(reloaded)
     }
 
     /// Puts the trigger's secret (from the keyring) into its config. A

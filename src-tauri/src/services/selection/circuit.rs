@@ -1,11 +1,11 @@
-//! Per-provider circuit breakers (wave A, Track D): consecutive failures
-//! per (provider instance, provider ID, capability) in `provider_circuits`.
-//! Three in a row open the circuit for five minutes (`CIRCUIT_FAILURES`,
-//! `CIRCUIT_OPEN_MS`); a success or the cooldown closes it. Opening emits
-//! `task://circuit_opened`.
+//! Per-provider circuit breakers for this Nandi's own providers:
+//! consecutive failures per (provider instance, provider ID, capability)
+//! in `provider_circuits`. Three in a row open the circuit for five
+//! minutes (`CIRCUIT_FAILURES`, `CIRCUIT_OPEN_MS`); a success or the
+//! cooldown closes it. Opening emits `task://circuit_opened`.
 //!
-//! The instance-level `circuit_breakers` table (wave final) stays for the
-//! gateway path.
+//! Other members' circuits are the relay's: it keeps them from its ledger
+//! and leaves a failing provider out of its plans.
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};

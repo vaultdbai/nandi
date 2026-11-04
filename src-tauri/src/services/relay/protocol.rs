@@ -10,4 +10,8 @@ pub use super::opened::{DutyState, PeerDelivery, PeerMessage, TaskAssigned, Task
 pub use nandi_protocol::directory::{MemberRecord, PeopleMatch, ASK_ME};
 pub use nandi_protocol::message::{RelayMessage, TaskFailed, ALL_CAPABILITIES, VERSION_MISMATCH};
 pub use nandi_protocol::presence::{CapabilityPresence, InstancePresence, ProviderPresence};
+pub use nandi_protocol::routing::{
+    NoRoute, RequestKind, RouteCandidate, RoutePlan, RouteReason, RouteTarget, RoutingHints,
+    RoutingQuery, MAX_CANDIDATES,
+};
 pub use nandi_protocol::PROTOCOL_VERSION;

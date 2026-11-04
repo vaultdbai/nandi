@@ -4,7 +4,8 @@
 //! provider side runs delegated tasks as agent turns.
 //!
 //! - `delegator`: the requester side (`Delegator`), with fallback
-//! - `ranking`: who gets a task when several agents serve it
+//! - `route`: the network half of picking a provider (the relay's plan;
+//!   the relay ranks, this module asks)
 //! - `executor`: the provider side: checks, then runs the task as a turn
 //!   (`SourceType::Agent`) on the target agent's orchestrator
 //! - `history`: the `delegations` table, `delegation://` events, and the
@@ -28,8 +29,8 @@ pub mod delegator;
 pub mod executor;
 pub mod history;
 pub mod people;
-pub mod ranking;
 pub mod returns;
+pub mod route;
 pub mod settings;
 pub mod tool;
 // Wave final
@@ -89,7 +90,7 @@ pub struct DelegationRequest {
 
 /// Picks a provider for a capability and runs a task on it.
 pub trait A2ADelegator: Send + Sync {
-    /// The best provider for `capability` (see `ranking`), falling back to
+    /// The best provider for `capability` (see `route`), falling back to
     /// the next ones when it rejects the task or times out.
     fn delegate<'a>(
         &'a self,

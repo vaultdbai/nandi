@@ -158,6 +158,33 @@ describe('DelegationThreadView', () => {
     expect(screen.getByTestId('thread-result')).toHaveTextContent('"papers"')
   })
 
+  it("shows why the relay picked the provider, in the user's words", async () => {
+    Object.assign(commands, {
+      getTaskMessages: ok([
+        {
+          id: 1,
+          kind: 'route',
+          payload: {
+            provider: 'Bob',
+            reasons: [
+              { code: 'covers', name: 'Bob', awayName: 'Alice' },
+              { code: 'busy', name: 'Bob', load: 3, max: 3, waitMinutes: 20 },
+            ],
+            redirectedFrom: 'alice-1',
+          },
+          at: base + 1_000,
+        },
+      ]),
+    })
+    render(<DelegationThreadView taskId="task-1" />)
+
+    const route = await screen.findByTestId('thread-route')
+    expect(route).toHaveTextContent('Why Bob')
+    expect(route).toHaveTextContent(
+      'Alice is away; Bob covers · Bob 3/3 busy (about 20 min wait)'
+    )
+  })
+
   it('links to the provider profile and the requester agent', async () => {
     const user = userEvent.setup()
     render(<DelegationThreadView taskId="task-1" />)

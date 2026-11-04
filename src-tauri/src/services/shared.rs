@@ -7,24 +7,28 @@
 //! skipped rather than failing the whole list.
 //!
 //! `list_capability_providers` turns both lists around: per capability,
-//! everyone who serves it, ranked the way delegation would pick (see
-//! `a2a::ranking`), with my pin for it.
+//! everyone who serves it, in the order delegation would try them (my own
+//! first, then the relay's plan, see `a2a::route`), with the relay's
+//! reasons and my pin for it. The track record shown is mine (my
+//! delegations to them), never another member's.
 //!
 //! Trust applies to both (wave final): agents I blocked never show, and a
 //! member whose delegations I paused isn't offered as a provider.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use super::a2a::delegator::USER_REQUESTER;
-use super::a2a::ranking::{self, ProviderStats, RankData, Unavailable};
+use super::a2a::delegator::{self, USER_REQUESTER};
+use super::a2a::{route, TaskStatus};
 use super::domain::agent_card::{card_from_agent, OwnerRef};
 use super::domain::{Agent, AgentCard, EntityKind};
 use super::network;
 use super::relay;
+use super::relay::protocol::{RoutePlan, RouteReason, MAX_CANDIDATES};
+use super::repo_store::RepoStore;
 use super::repos::SingletonRepository;
 use super::team::trust::TrustFilter;
 use super::team::{TeamManager, TeamShare};
@@ -35,6 +39,50 @@ use crate::model::Timestamp;
 
 /// Call counts cover the last 30 days
 pub const CALL_WINDOW_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+
+/// My finished delegations to a provider needed before their success
+/// rate shows
+pub const MIN_SAMPLES: u32 = 3;
+
+/// My track record with a provider (outbound delegations). Only mine:
+/// other members' records stay at the relay.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderStats {
+    pub calls: u32,
+    pub succeeded: u32,
+    /// Failed or timed out (cancelled tasks don't count either way)
+    pub failed: u32,
+    /// Mean duration of the succeeded ones
+    pub avg_duration_ms: Option<u32>,
+}
+
+impl ProviderStats {
+    /// Succeeded / finished, once there are `MIN_SAMPLES` finished tasks
+    pub fn success_rate(&self) -> Option<f64> {
+        let finished = self.succeeded + self.failed;
+        (finished >= MIN_SAMPLES).then(|| f64::from(self.succeeded) / f64::from(finished))
+    }
+}
+
+/// Why a card can't take a task right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum Unavailable {
+    /// Doesn't serve the capability
+    NotServing,
+    /// `accepts_delegation` is off
+    Closed,
+    /// Running as many delegated tasks as it allows
+    Full,
+    /// It's the requester
+    IsRequester,
+    /// Not online at the relay (known only from a team registry)
+    Offline,
+    /// Online, but the relay doesn't pick them now (failing lately, or
+    /// missing what the request needs)
+    NotNow,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -77,6 +125,8 @@ pub struct ProviderOption {
     /// 1 = auto would pick it; `None` while it can't take tasks
     pub rank: Option<u32>,
     pub unavailable: Option<Unavailable>,
+    /// Why the relay picked them where it did (other members' only)
+    pub reasons: Vec<RouteReason>,
 }
 
 /// Everyone serving one capability, best first, and my pin for it.
@@ -235,22 +285,130 @@ fn option(card: AgentCard, mine: bool, online: bool) -> ProviderOption {
         success_rate: None,
         rank: None,
         unavailable: None,
+        reasons: Vec::new(),
     }
 }
 
+/// Whether `card` could take a `capability` task from `requester`.
+pub fn availability(
+    card: &AgentCard,
+    capability: &str,
+    requester: &str,
+) -> Result<(), Unavailable> {
+    if !card.serves(capability) {
+        Err(Unavailable::NotServing)
+    } else if card.id == requester {
+        Err(Unavailable::IsRequester)
+    } else if !card.accepts_delegation {
+        Err(Unavailable::Closed)
+    } else if card.current_load >= card.max_concurrent.max(1) {
+        Err(Unavailable::Full)
+    } else {
+        Ok(())
+    }
+}
+
+/// What the overview shows besides the cards, gathered once per listing.
+#[derive(Debug, Clone, Default)]
+pub struct OverviewData {
+    /// Capability → pinned card ID (`settings.yaml`)
+    pub pins: BTreeMap<String, String>,
+    /// Lowercase GitHub handles of my teams' members
+    pub teammates: HashSet<String>,
+    /// My delegations, by card ID
+    pub stats: HashMap<String, ProviderStats>,
+    /// The relay's plan per capability (none without a relay)
+    pub plans: HashMap<String, RoutePlan>,
+}
+
+impl OverviewData {
+    /// Pins from the gold copy, teammates from my teams, my history of the
+    /// last 30 days. A source that fails is left empty.
+    pub async fn gather(store: &RepoStore, db: &Db, teams: Option<&dyn TeamManager>) -> Self {
+        let pins = store.read(|repo| repo.settings().preferred_providers().clone());
+        let teammates = match teams {
+            Some(teams) => match teams.list_teams().await {
+                Ok(teams) => teams
+                    .iter()
+                    .flat_map(|team| &team.members)
+                    .map(|member| member.github_handle.to_lowercase())
+                    .filter(|handle| !handle.is_empty())
+                    .collect(),
+                Err(e) => {
+                    log::debug!("Providers without teammates: {e}");
+                    HashSet::new()
+                }
+            },
+            None => HashSet::new(),
+        };
+        let stats = load_stats(db, window_start()).unwrap_or_else(|e| {
+            log::debug!("Providers without history: {e}");
+            HashMap::new()
+        });
+        Self {
+            pins,
+            teammates,
+            stats,
+            plans: HashMap::new(),
+        }
+    }
+
+    fn is_teammate(&self, card: &AgentCard) -> bool {
+        let handle = card.owner.github_handle.to_lowercase();
+        !handle.is_empty() && self.teammates.contains(&handle)
+    }
+}
+
+/// The relay's plan's candidate for `card`, if the plan has it free
+fn free_in(plan: Option<&RoutePlan>, card_id: &str) -> bool {
+    plan.and_then(|plan| plan.candidates.iter().find(|c| c.target == card_id))
+        .is_some_and(|c| {
+            c.reasons
+                .iter()
+                .any(|reason| matches!(reason, RouteReason::Free { .. }))
+        })
+}
+
+/// Who an auto-picked `capability` task tries, in order (card IDs): a
+/// pinned card of another member that the relay has free, then my own
+/// (they run here, with no relay), then the relay's plan
+pub fn auto_order(
+    mine: &[AgentCard],
+    capability: &str,
+    requester: &str,
+    pin: Option<&str>,
+    plan: Option<&RoutePlan>,
+) -> Vec<String> {
+    let mut order = Vec::new();
+    if let Some(pin) = pin.filter(|pin| free_in(plan, pin)) {
+        order.push(pin.to_string());
+    }
+    order.extend(delegator::local_order(mine, capability, requester, pin));
+    for candidate in plan
+        .map(|plan| plan.candidates.as_slice())
+        .unwrap_or_default()
+    {
+        if !order.contains(&candidate.target) {
+            order.push(candidate.target.clone());
+        }
+    }
+    order
+}
+
 /// Per capability (sorted; just `only` when given): my cards and the ones
-/// shared with me, ranked as delegation from `requester` would rank them.
-/// Unavailable ones follow, by name.
+/// shared with me, in the order an auto-picked task from `requester`
+/// tries them (see [`auto_order`]), with the relay's reasons for the
+/// others'. Unavailable ones follow, by name.
 pub fn capability_overview(
     mine: Vec<AgentCard>,
     others: Vec<SharedAgent>,
-    data: &RankData,
-    local_instance: &str,
+    data: &OverviewData,
     requester: &str,
     only: Option<&str>,
 ) -> Vec<CapabilityProviders> {
     let mut options: Vec<ProviderOption> = mine
-        .into_iter()
+        .iter()
+        .cloned()
         .map(|card| option(card, true, true))
         .collect();
     options.extend(others.into_iter().map(|shared| {
@@ -275,30 +433,25 @@ pub fn capability_overview(
     capabilities
         .into_iter()
         .map(|capability| {
-            let ctx = data.context(local_instance, requester, &capability);
-            let serving: Vec<&ProviderOption> = options
+            let pin = data.pins.get(&capability).map(String::as_str);
+            let plan = data.plans.get(&capability);
+            let order = auto_order(&mine, &capability, requester, pin, plan);
+            let mut providers: Vec<ProviderOption> = options
                 .iter()
                 .filter(|option| option.card.serves(&capability))
-                .collect();
-            let online: Vec<AgentCard> = serving
-                .iter()
-                .filter(|option| option.online)
-                .map(|option| option.card.clone())
-                .collect();
-            let ranked: Vec<String> = ranking::rank_providers(&online, &capability, &ctx)
-                .into_iter()
-                .map(|card| card.id.clone())
-                .collect();
-
-            let mut providers: Vec<ProviderOption> = serving
-                .into_iter()
                 .map(|option| {
                     let mut option = option.clone();
                     let stats = data.stats.get(&option.card.id).copied().unwrap_or_default();
                     option.stats = stats;
                     option.success_rate = stats.success_rate();
-                    option.teammate = !option.mine && ctx.is_teammate(&option.card);
-                    option.rank = ranked
+                    option.teammate = !option.mine && data.is_teammate(&option.card);
+                    option.reasons = plan
+                        .and_then(|plan| {
+                            plan.candidates.iter().find(|c| c.target == option.card.id)
+                        })
+                        .map(|c| c.reasons.clone())
+                        .unwrap_or_default();
+                    option.rank = order
                         .iter()
                         .position(|id| *id == option.card.id)
                         .map(|i| i as u32 + 1);
@@ -307,7 +460,12 @@ pub fn capability_overview(
                     } else if !option.online {
                         Some(Unavailable::Offline)
                     } else {
-                        ranking::availability(&option.card, &capability, requester).err()
+                        // Online and open, but not in the relay's plan
+                        Some(
+                            availability(&option.card, &capability, requester)
+                                .err()
+                                .unwrap_or(Unavailable::NotNow),
+                        )
                     };
                     option
                 })
@@ -324,8 +482,11 @@ pub fn capability_overview(
                     .then_with(|| a.card.id.cmp(&b.card.id)),
             });
             CapabilityProviders {
-                pinned: ctx.pinned.map(str::to_string),
-                auto_choice: ranked.into_iter().next(),
+                pinned: pin.map(str::to_string),
+                auto_choice: providers
+                    .first()
+                    .filter(|p| p.rank.is_some())
+                    .map(|p| p.card.id.clone()),
                 capability,
                 providers,
             }
@@ -504,7 +665,8 @@ pub async fn list_agents_shared_by_me(state: &AppState) -> Result<Vec<SharedAgen
     Ok(merge_shared_by_me(cards, &shares, &calls))
 }
 
-/// Who serves each capability (or just `capability`), ranked, with my pin
+/// Who serves each capability (or just `capability`), in the order
+/// delegation tries them, with the relay's reasons and my pin
 pub async fn list_capability_providers(
     state: &AppState,
     capability: Option<&str>,
@@ -513,22 +675,87 @@ pub async fn list_capability_providers(
     let mine = local_cards(state, &instance_id);
     let trust = TrustFilter::load(state.db())?;
     let others = apply_trust(list_agents_shared_with_me(state).await?, &trust, true);
-    let data = RankData::gather(
+    let mut data = OverviewData::gather(
         state.store(),
         state.db(),
         state.team_manager().map(|manager| manager.as_ref()),
     )
     .await;
+    // The relay plans each capability someone else serves online
+    let mut remote: Vec<String> = others
+        .iter()
+        .filter(|shared| shared.sources.contains(&ShareSource::Relay))
+        .flat_map(|shared| shared.card.capabilities.iter().map(|c| c.name.clone()))
+        .filter(|name| capability.is_none_or(|only| only.trim() == name))
+        .collect();
+    remote.sort();
+    remote.dedup();
+    let plans = futures_util::future::join_all(remote.into_iter().map(|name| async move {
+        let mut hints = route::hints(state.store(), state.db(), &name, &HashSet::new());
+        hints.max_candidates = Some(MAX_CANDIDATES);
+        let query = route::query(&name, None, hints);
+        let plan = route::plan(state.relay_client(), &query).await;
+        (name, plan)
+    }))
+    .await;
+    for (name, plan) in plans {
+        match plan {
+            Ok(plan) => {
+                data.plans.insert(name, plan);
+            }
+            Err(e) => log::debug!("Providers of '{name}' without the relay's plan: {e}"),
+        }
+    }
     let requester = AgentCard::card_id(&instance_id, USER_REQUESTER);
     let only = capability.map(str::trim).filter(|c| !c.is_empty());
-    Ok(capability_overview(
-        mine,
-        others,
-        &data,
-        &instance_id,
-        &requester,
-        only,
-    ))
+    Ok(capability_overview(mine, others, &data, &requester, only))
+}
+
+/// Outbound delegations since `since_ms`, by provider card ID.
+pub fn load_stats(db: &Db, since_ms: i64) -> Result<HashMap<String, ProviderStats>, String> {
+    let conn = db.conn()?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT target_agent, status, started_at, ended_at FROM delegations
+              WHERE direction = 'outbound' AND started_at >= ?1 AND target_agent != ''",
+        )
+        .map_err(|e| format!("Database error: {e}"))?;
+    let rows = stmt
+        .query_map(params![since_ms], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+            ))
+        })
+        .map_err(|e| format!("Database error: {e}"))?;
+    let mut totals: HashMap<String, (ProviderStats, u64)> = HashMap::new();
+    for row in rows {
+        let (target, status, started, ended) = row.map_err(|e| format!("Database error: {e}"))?;
+        let (stats, total_ms) = totals.entry(target).or_default();
+        stats.calls += 1;
+        match TaskStatus::parse(&status) {
+            TaskStatus::Completed => {
+                stats.succeeded += 1;
+                if let Some(ended) = ended {
+                    *total_ms += u64::try_from(ended - started).unwrap_or(0);
+                }
+            }
+            TaskStatus::Failed | TaskStatus::TimedOut => stats.failed += 1,
+            TaskStatus::Running | TaskStatus::Cancelled => {}
+        }
+    }
+    Ok(totals
+        .into_iter()
+        .map(|(target, (mut stats, total_ms))| {
+            if stats.succeeded > 0 {
+                let avg = total_ms / u64::from(stats.succeeded);
+                stats.avg_duration_ms = Some(u32::try_from(avg).unwrap_or(u32::MAX));
+            }
+            (target, stats)
+        })
+        .collect())
 }
 
 /// Pins `card_id` for `capability` (my settings.yaml), or unpins it
@@ -854,6 +1081,107 @@ mod tests {
         state.shutdown();
     }
 
+    /// A plan of `targets`, each free
+    fn plan(targets: &[&str]) -> RoutePlan {
+        RoutePlan {
+            candidates: targets
+                .iter()
+                .map(|target| {
+                    let instance = target.split('/').next().unwrap();
+                    crate::services::relay::protocol::RouteCandidate {
+                        target: target.to_string(),
+                        instance_id: instance.to_string(),
+                        name: format!("{instance} owner"),
+                        handle: None,
+                        agent_name: String::new(),
+                        provider_kind: Default::default(),
+                        online: true,
+                        load: 0,
+                        max_concurrent: 1,
+                        wait_seconds: None,
+                        redirected_from: None,
+                        reasons: vec![RouteReason::Free {
+                            name: format!("{instance} owner"),
+                        }],
+                        public_keys: None,
+                    }
+                })
+                .collect(),
+            ..RoutePlan::default()
+        }
+    }
+
+    #[test]
+    fn my_track_record_needs_three_finished_tasks() {
+        let stats = |succeeded, failed| ProviderStats {
+            calls: succeeded + failed,
+            succeeded,
+            failed,
+            avg_duration_ms: None,
+        };
+        assert_eq!(stats(0, 2).success_rate(), None);
+        assert_eq!(stats(2, 1).success_rate(), Some(2.0 / 3.0));
+    }
+
+    #[test]
+    fn my_stats_count_outcomes_and_average_successes() {
+        let db = Db::in_memory();
+        let conn = db.conn().unwrap();
+        let rows = [
+            ("t1", "them/a", "completed", 0, Some(1_000)),
+            ("t2", "them/a", "completed", 0, Some(3_000)),
+            ("t3", "them/a", "failed", 0, Some(10)),
+            ("t4", "them/a", "cancelled", 0, None),
+            ("t5", "them/b", "timedOut", 0, None),
+        ];
+        for (id, target, status, started, ended) in rows {
+            conn.execute(
+                "INSERT INTO delegations (id, direction, capability, target_agent,
+                   requester_agent, status, started_at, ended_at)
+                 VALUES (?1, 'outbound', 'summarize', ?2, 'me/_user', ?3, ?4, ?5)",
+                params![id, target, status, started, ended],
+            )
+            .unwrap();
+        }
+        drop(conn); // the in-memory pool has one connection
+        let stats = load_stats(&db, 0).unwrap();
+        assert_eq!(
+            stats["them/a"],
+            ProviderStats {
+                calls: 4,
+                succeeded: 2,
+                failed: 1,
+                avg_duration_ms: Some(2_000),
+            }
+        );
+        assert_eq!(stats["them/b"].failed, 1);
+    }
+
+    #[test]
+    fn availability_names_the_reason() {
+        let requester = "me/_user";
+        let mut closed = card("x", "a", "A");
+        closed.accepts_delegation = false;
+        assert_eq!(
+            availability(&closed, "find-papers", requester),
+            Err(Unavailable::Closed)
+        );
+        assert_eq!(
+            availability(&card("x", "a", "A"), "translate", requester),
+            Err(Unavailable::NotServing)
+        );
+        let mut full = card("x", "a", "A");
+        full.current_load = full.max_concurrent.max(1);
+        assert_eq!(
+            availability(&full, "find-papers", requester),
+            Err(Unavailable::Full)
+        );
+        assert_eq!(
+            availability(&card("x", "a", "A"), "find-papers", requester),
+            Ok(())
+        );
+    }
+
     fn shared(card: AgentCard, source: ShareSource) -> SharedAgent {
         SharedAgent {
             card,
@@ -905,11 +1233,14 @@ mod tests {
         assert_eq!(apply_trust(others.clone(), &filter, false).len(), 2);
         // ...but not a provider
         let providers = apply_trust(others, &filter, true);
+        let data = OverviewData {
+            plans: HashMap::from([("find-papers".to_string(), plan(&["near/z"]))]),
+            ..OverviewData::default()
+        };
         let overview = capability_overview(
             Vec::new(),
             providers,
-            &RankData::default(),
-            "me",
+            &data,
             "me/_user",
             Some("find-papers"),
         );
@@ -941,12 +1272,13 @@ mod tests {
                 last_called_at: None,
             },
         ];
-        let data = RankData {
+        let mut data = OverviewData {
             pins: BTreeMap::from([("find-papers".to_string(), "far/y".to_string())]),
             teammates: ["far-owner".to_string()].into_iter().collect(),
             stats: HashMap::new(),
+            plans: HashMap::from([("find-papers".to_string(), plan(&["far/y"]))]),
         };
-        let overview = capability_overview(mine, others, &data, "me", "me/_user", None);
+        let overview = capability_overview(mine.clone(), others.clone(), &data, "me/_user", None);
         assert_eq!(overview.len(), 1);
         let papers = &overview[0];
         assert_eq!(papers.capability, "find-papers");
@@ -960,18 +1292,35 @@ mod tests {
         assert_eq!(ids, ["far/y", "me/papers", "remote/x"]);
         assert_eq!(papers.providers[0].rank, Some(1));
         assert!(papers.providers[0].teammate);
-        assert!(papers.providers[1].mine);
+        // The relay's reasons, for the others' only
+        assert_eq!(
+            papers.providers[0].reasons,
+            [RouteReason::Free {
+                name: "far owner".into()
+            }]
+        );
+        assert!(papers.providers[1].mine && papers.providers[1].reasons.is_empty());
         assert_eq!(papers.providers[2].unavailable, Some(Unavailable::Offline));
         assert_eq!(papers.providers[2].rank, None);
 
-        let none = capability_overview(
-            Vec::new(),
-            Vec::new(),
-            &data,
-            "me",
-            "me/_user",
-            Some("nope"),
+        // Without the pin my own goes first; without the relay's plan the
+        // online one isn't picked now
+        data.pins.clear();
+        data.plans.clear();
+        let overview = capability_overview(mine, others, &data, "me/_user", None);
+        let papers = &overview[0];
+        assert_eq!(papers.auto_choice.as_deref(), Some("me/papers"));
+        let far = papers
+            .providers
+            .iter()
+            .find(|p| p.card.id == "far/y")
+            .unwrap();
+        assert_eq!(
+            (far.rank, far.unavailable),
+            (None, Some(Unavailable::NotNow))
         );
+
+        let none = capability_overview(Vec::new(), Vec::new(), &data, "me/_user", Some("nope"));
         assert_eq!(none.len(), 1);
         assert!(none[0].providers.is_empty());
         assert_eq!(none[0].auto_choice, None);

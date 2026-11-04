@@ -61,6 +61,7 @@ export function providerOption(
     successRate: null,
     rank: null,
     unavailable: null,
+    reasons: [],
     ...overrides,
   }
 }

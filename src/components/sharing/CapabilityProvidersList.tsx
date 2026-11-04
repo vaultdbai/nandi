@@ -20,13 +20,16 @@ import {
   useSetProviderPin,
 } from '@/hooks/useSharedAgents'
 import type { CapabilityProviders, ProviderOption } from '@/lib/bindings'
+import { RouteReasons } from '@/components/network/RouteReasons'
 import { cn } from '@/lib/utils'
 import type { CallRequest } from './CallDialog'
 
 /**
  * "Who gets the work": every capability my agents and the agents shared
- * with me serve, with each provider's owner, reach, and track record, in
- * the order Auto would try them. Pinning one sends Auto tasks there first.
+ * with me serve, with each provider's owner, reach, and my track record
+ * with them, in the order Auto would try them: my own first, then the
+ * relay's plan, with the relay's reasons. Pinning one sends Auto tasks
+ * there first.
  */
 export function CapabilityProvidersList({
   search,
@@ -245,6 +248,7 @@ function ProviderRow({
               seconds: (stats.avgDurationMs / 1000).toFixed(1),
             })}`}
         </span>
+        <RouteReasons reasons={provider.reasons} />
       </div>
       <Button
         size="sm"

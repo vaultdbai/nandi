@@ -1,10 +1,14 @@
-//! The requester side: finds providers (local cards plus the relay's),
-//! ranks them (`ranking`), and runs the task: in-process for a local
-//! provider (no relay needed), else through `RelayClient::delegate_task`,
-//! waiting for the result up to the timeout (`TaskStatus::TimedOut` after
-//! it). When the pick rejects the task, can't be reached, or times out, the
-//! next ranked provider gets it (up to `MAX_ATTEMPTS`); a provider the
-//! caller named is never swapped.
+//! The requester side: picks providers and runs the task. One of this
+//! Nandi's own agents or workflows that serves the capability wins and
+//! runs in-process, with no relay; otherwise the relay plans who gets it
+//! (`route`: the relay ranks, the app doesn't), and it goes through
+//! `RelayClient::delegate_task`, waiting for the result up to the timeout
+//! (`TaskStatus::TimedOut` after it). When the pick rejects the task,
+//! can't be reached, or times out, the next provider gets it (up to
+//! `MAX_ATTEMPTS`): a failed remote one makes the relay plan again without
+//! everyone tried, and a failed local one asks the relay. A provider the
+//! caller named is never swapped (the relay may hand it to that person's
+//! own away-delegate).
 //!
 //! Every delegation gets an outbound history row, `delegation://` events,
 //! and audit log lines, however it ends. A failed attempt that was retried
@@ -15,9 +19,10 @@
 //! provider's lifecycle messages in between (handled by `TaskService`),
 //! then the result. Retries on another instance are failover attempts
 //! (`attempt_number`, `previous_attempt_id`, `source_kind = Failover`),
-//! never on an instance that already failed this delegation or whose
-//! circuit is open; with a `SelectionService` the rest is re-ranked before
-//! each one. When the relay can't deliver to the last candidate, the task
+//! never on an instance that already failed this delegation (the relay
+//! keeps providers with an open circuit out of its plans). Each remote
+//! attempt keeps why the relay picked it (a `route` message). When the
+//! relay can't deliver to the last candidate, the task
 //! stays `Submitted` in the offline queue (`queue`) and this waits for it
 //! as usual. Once acknowledged, the wait stretches to the timeout sweep's
 //! limit (3× the ETA); a timed-out wait ends the row too (`TimedOut`, or
@@ -36,7 +41,7 @@ use tokio::sync::oneshot;
 use super::executor::{self, Executor};
 use super::history::{self, AuditLog, Recorder};
 use super::queue::{self, TIMEOUT_ETA_FACTOR};
-use super::ranking::{self, RankData};
+use super::route::{self, Pick};
 use super::task::{
     self, ReasonKind, TaskRecord, TaskService, TaskSourceKind, TaskStage, TaskState,
 };
@@ -53,12 +58,11 @@ use crate::services::gateway::holds::{GatewayHoldChanged, HoldStatus};
 use crate::services::gateway::GATEWAY_AGENT_ID;
 use crate::services::network;
 use crate::services::orchestrator::Orchestrators;
-use crate::services::relay::protocol::PeerMessage;
+use crate::services::relay::protocol::{NoRoute, PeerMessage};
 use crate::services::relay::unavailable::{self, RelayUnavailable};
 use crate::services::relay::RelayClient;
 use crate::services::repo_store::RepoStore;
 use crate::services::team::trust as member_trust;
-use crate::services::team::TeamManager;
 use crate::services::AppState;
 
 /// `local_settings` key overriding `DEFAULT_TIMEOUT_SECS`
@@ -82,8 +86,6 @@ pub struct A2aDeps {
     pub instance_id: String,
     pub index: Option<Arc<RwLock<CapabilityIndex>>>,
     pub relay: Option<Arc<dyn RelayClient>>,
-    /// For ranking teammates first
-    pub teams: Option<Arc<dyn TeamManager>>,
     pub audit: AuditLog,
     /// How long a delegated task may take
     pub timeout: Duration,
@@ -125,7 +127,6 @@ impl A2aDeps {
             instance_id,
             index: state.capability_index().cloned(),
             relay: state.relay_client().cloned(),
-            teams: state.team_manager().cloned(),
             audit: AuditLog::default_location(),
             timeout: Duration::from_secs(timeout),
             dequeue_interval: Duration::from_secs(queue::DEQUEUE_INTERVAL_SECS),
@@ -410,29 +411,38 @@ impl Delegator {
             .requester_agent
             .clone()
             .unwrap_or_else(|| USER_REQUESTER.to_string());
-        let mut queue: VecDeque<_> = candidates.into();
+        let named = request.target.is_some();
+        // The relay planned some of these (else they're local, or named)
+        let mut planned = !named
+            && candidates
+                .iter()
+                .any(|pick| pick.instance() != self.deps.instance_id);
+        let mut queue: VecDeque<Pick> = candidates.into();
         // Instances that failed this delegation (never the local one)
-        let mut excluded: HashSet<String> = HashSet::new();
+        let mut tried: HashSet<String> = HashSet::new();
         let mut previous_remote: Option<TaskRecord> = None;
         let lasting = assignment::is_lasting(&capability);
         let mut attempt = 0;
-        while let Some((target, card)) = queue.pop_front() {
-            let target_instance = instance_of(&target).to_string();
+        while let Some(pick) = queue.pop_front() {
+            let target = pick.target.clone();
+            let target_instance = pick.instance().to_string();
             let local = target_instance == self.deps.instance_id;
-            if excluded.contains(&target_instance) {
+            if tried.contains(&target_instance) {
                 continue;
             }
-            // Whether another provider could take it after this one
+            // Whether another provider could take it after this one: the
+            // rest of the queue, or (after the local ones) the network
             let more = !lasting
+                && !named
                 && attempt + 1 < MAX_ATTEMPTS
-                && queue.iter().any(|(next, _)| {
-                    let instance = instance_of(next);
-                    !excluded.contains(instance) && (local || instance != target_instance)
-                });
+                && (queue.iter().any(|next| {
+                    let instance = next.instance();
+                    !tried.contains(instance) && (local || instance != target_instance)
+                }) || (local
+                    && !planned
+                    && unavailable::configured(self.deps.relay.as_ref()).is_ok()));
             result.provider_agent = target.clone();
-            result.provider_owner = card
-                .as_ref()
-                .and_then(|card| non_empty(&card.owner.github_handle));
+            result.provider_owner = pick.owner.clone();
             result.output = Value::Null;
             result.tokens_in = 0;
             result.tokens_out = 0;
@@ -475,7 +485,7 @@ impl Delegator {
                 (provided.status, provided.error)
             } else {
                 let record = self
-                    .attempt_record(&task, &requester_agent, previous_remote.as_ref())
+                    .attempt_record(&task, &requester_agent, previous_remote.as_ref(), &pick)
                     .await;
                 let outcome = self
                     .remote(&task, &mut result, !more, service.as_deref())
@@ -491,10 +501,14 @@ impl Delegator {
             }
             let did_work =
                 !result.output.is_null() || result.tokens_in > 0 || result.tokens_out > 0;
-            let retry = ranking::retryable(status, did_work);
-            // Wave A: the provider's own circuit (an open one keeps it out
-            // of the capability-aware ranking)
-            if let Some(selection) = service.as_ref().and_then(|s| s.selection.as_ref()) {
+            let retry = retryable(status, did_work);
+            // A local provider's own circuit (an open one keeps it out of
+            // the local ranking); the relay keeps remote ones
+            if let Some(selection) = service
+                .as_ref()
+                .and_then(|s| s.selection.as_ref())
+                .filter(|_| local)
+            {
                 let succeeded = status == TaskStatus::Completed;
                 if succeeded || retry {
                     let provider = target
@@ -509,44 +523,41 @@ impl Delegator {
                 }
             }
             if retry && !local {
-                excluded.insert(target_instance);
+                tried.insert(target_instance);
             }
 
             if more && retry {
-                // Keep this attempt in the history, then hand the task on
-                let mut failed = result.clone();
-                failed.task_id = format!("{base_id}-attempt{attempt}");
-                let reason = error.unwrap_or_else(|| status.as_str().to_string());
-                history::finish(
-                    &mut failed,
-                    status,
-                    Some(format!("{reason} (passed to the next provider)")),
-                );
-                self.recorder.finished(&failed).await;
-                log::info!("Delegation {base_id}: '{target}' didn't take it ({reason}); trying the next provider");
-                if let Some(selection) = service.as_ref().and_then(|s| s.selection.as_ref()) {
-                    // Cardless entries (workflow providers) keep their turn
-                    // after the re-ranked cards
-                    let (carded, cardless): (Vec<_>, Vec<_>) =
-                        queue.drain(..).partition(|(_, c)| c.is_some());
-                    let cards: Vec<AgentCard> = carded.into_iter().filter_map(|(_, c)| c).collect();
-                    let me = &self.deps.instance_id;
-                    let ranked = failover::rank_next(
-                        Some(selection),
-                        &capability,
-                        me,
-                        &requester.id,
-                        cards,
-                        &excluded,
-                    )
-                    .await;
-                    queue = ranked
-                        .into_iter()
-                        .map(|c| (c.id.clone(), Some(c)))
-                        .chain(cardless)
-                        .collect();
+                // A remote failure, or the last local one: the relay plans
+                // again, without everyone tried (the rest of the last plan
+                // stays when it can't)
+                if !local || queue.is_empty() {
+                    match self.network_picks(&capability, &tried).await {
+                        Ok(picks) => {
+                            // My own providers keep their turn
+                            let me = &self.deps.instance_id;
+                            let mine: Vec<Pick> =
+                                queue.drain(..).filter(|p| p.instance() == me).collect();
+                            queue = mine.into_iter().chain(picks).collect();
+                            planned = true;
+                        }
+                        Err(e) => log::info!("Delegation {base_id}: no new plan ({e})"),
+                    }
                 }
-                continue;
+                let next = queue.iter().any(|p| !tried.contains(p.instance()));
+                if next {
+                    // Keep this attempt in the history, then hand the task on
+                    let mut failed = result.clone();
+                    failed.task_id = format!("{base_id}-attempt{attempt}");
+                    let reason = error.unwrap_or_else(|| status.as_str().to_string());
+                    history::finish(
+                        &mut failed,
+                        status,
+                        Some(format!("{reason} (passed to the next provider)")),
+                    );
+                    self.recorder.finished(&failed).await;
+                    log::info!("Delegation {base_id}: '{target}' didn't take it ({reason}); trying the next provider");
+                    continue;
+                }
             }
             history::finish(&mut result, status, error);
             self.recorder.finished(&result).await;
@@ -625,72 +636,131 @@ impl Delegator {
         (TaskStatus::Running, None)
     }
 
-    /// Ranking inputs: my pins, teammates, and the providers' history
-    pub async fn rank_data(&self) -> RankData {
-        RankData::gather(self.deps.store(), &self.deps.db, self.deps.teams.as_deref()).await
-    }
-
-    /// Who to try, in order (never empty): the named target alone, else
-    /// the ranked providers (the run tries up to `MAX_ATTEMPTS`), without
-    /// remote ones whose circuit is open.
+    /// Who to try, in order (never empty): the named target alone (or, for
+    /// a person away, their own delegate, as the relay says), else this
+    /// Nandi's own providers (no relay), else the relay's plan.
     async fn candidates(
         &self,
         request: &DelegationRequest,
         capability: &str,
         requester: &AgentCard,
-    ) -> Result<Vec<(String, Option<AgentCard>)>, String> {
+    ) -> Result<Vec<Pick>, String> {
         if let Some(target) = &request.target {
             if *target == requester.id {
                 return Err("An agent can't delegate a task to itself".to_string());
             }
             let instance = instance_of(target);
-            if instance != self.deps.instance_id {
-                unavailable::configured(self.deps.relay.as_ref())?;
-                let who = member_name(&self.deps.db, instance);
-                if member_trust::is_paused(&self.deps.db, instance) {
-                    return Err(format!("You paused requests with {who}"));
+            if instance == self.deps.instance_id {
+                return Ok(vec![Pick::direct(
+                    target.clone(),
+                    non_empty(&self.owner().github_handle),
+                )]);
+            }
+            unavailable::configured(self.deps.relay.as_ref())?;
+            let who = member_name(&self.deps.db, instance);
+            if member_trust::is_paused(&self.deps.db, instance) {
+                return Err(format!("You paused requests with {who}"));
+            }
+            if member_trust::is_blocked(&self.deps.db, instance, target) {
+                return Err(format!("You blocked that agent of {who}"));
+            }
+            let query = route::query(capability, Some(target), Default::default());
+            match route::plan(self.deps.relay.as_ref(), &query).await {
+                Ok(plan) => {
+                    if let Some(pick) = route::picks(plan).into_iter().next() {
+                        return Ok(vec![pick]);
+                    }
                 }
-                if member_trust::is_blocked(&self.deps.db, instance, target) {
-                    return Err(format!("You blocked that agent of {who}"));
+                // Reconnecting: it goes as named and waits in the queue
+                Err(e) => log::info!("Sending to {target} without a plan: {e}"),
+            }
+            return Ok(vec![Pick::direct(target.clone(), None)]);
+        }
+        let local = self.local_picks(capability, &requester.id).await;
+        // My pin on someone else's agent goes first while the relay has it
+        // free; my own providers follow it
+        let pin = self.deps.store().read(|repo| {
+            repo.settings()
+                .preferred_provider(capability)
+                .map(str::to_string)
+        });
+        if let Some(pin) = pin.filter(|pin| instance_of(pin) != self.deps.instance_id) {
+            if let Ok(picks) = self.network_picks(capability, &HashSet::new()).await {
+                if let Some(pinned) = picks.into_iter().find(|p| p.target == pin && p.is_free()) {
+                    return Ok(std::iter::once(pinned).chain(local).collect());
                 }
             }
-            let card = self
-                .providers(capability)
-                .await
-                .into_iter()
-                .find(|card| card.id == *target);
-            return Ok(vec![(target.clone(), card)]);
         }
-        let cards = self.providers(capability).await;
-        let data = self.rank_data().await;
-        let ctx = data.context(&self.deps.instance_id, &requester.id, capability);
-        let mut ranked = Vec::new();
-        for card in ranking::rank_providers(&cards, capability, &ctx) {
-            let remote = card.instance_id != self.deps.instance_id;
-            if remote
-                && failover::is_circuit_open(&self.deps.db, &card.instance_id, capability)
-                    .await
-                    .unwrap_or(false)
-            {
-                continue;
-            }
-            ranked.push((card.id.clone(), Some(card.clone())));
+        if !local.is_empty() {
+            return Ok(local);
         }
-        // Wave A: providers without a required tool, or with an open
-        // provider circuit, drop out; workflow providers join
+        self.network_picks(capability, &HashSet::new())
+            .await
+            .map_err(|e| {
+                // Without the network, my own agents that are closed to
+                // requests say more than "not connected"
+                let mine = self.local_cards(capability);
+                let mut serving = mine
+                    .iter()
+                    .filter(|card| card.serves(capability) && card.id != requester.id)
+                    .peekable();
+                if RelayUnavailable::is(&e)
+                    && serving.peek().is_some()
+                    && serving.all(|card| !card.accepts_delegation)
+                {
+                    route::no_route_message(capability, Some(NoRoute::NotTakingRequests))
+                } else {
+                    e
+                }
+            })
+    }
+
+    /// This Nandi's own providers of `capability` (agents, and workflows
+    /// the local ranking adds), best first
+    async fn local_picks(&self, capability: &str, requester: &str) -> Vec<Pick> {
+        let cards = self.local_cards(capability);
+        let pin = self.deps.store().read(|repo| {
+            repo.settings()
+                .preferred_provider(capability)
+                .map(str::to_string)
+        });
+        let owner = non_empty(&self.owner().github_handle);
+        let ordered = local_order(&cards, capability, requester, pin.as_deref())
+            .into_iter()
+            .map(|id| (id, None))
+            .collect();
+        // Providers without a required tool, or with an open circuit, drop
+        // out; workflow providers join
         let selection = task::service_for(&self.deps.instance_id).and_then(|s| s.selection.clone());
-        let ranked = failover::capability_order(
+        failover::capability_order(
             selection.as_ref(),
             capability,
             &self.deps.instance_id,
             &HashSet::new(),
-            ranked,
+            ordered,
         )
-        .await;
-        if ranked.is_empty() {
-            return Err(no_provider_reason(capability, &cards, &requester.id));
+        .await
+        .into_iter()
+        .map(|(target, _)| Pick::direct(target, owner.clone()))
+        .collect()
+    }
+
+    /// The relay's plan for `capability`, without the instances `tried`
+    /// (never empty); `RelayUnavailable` without a relay
+    async fn network_picks(
+        &self,
+        capability: &str,
+        tried: &HashSet<String>,
+    ) -> Result<Vec<Pick>, String> {
+        let hints = route::hints(self.deps.store(), &self.deps.db, capability, tried);
+        let query = route::query(capability, None, hints);
+        let plan = route::plan(self.deps.relay.as_ref(), &query).await?;
+        let no_route = plan.no_route;
+        let picks = route::picks(plan);
+        if picks.is_empty() {
+            return Err(route::no_route_message(capability, no_route));
         }
-        Ok(ranked)
+        Ok(picks)
     }
 
     /// The requester `tasks` row of a cross-instance attempt (with the wire
@@ -700,6 +770,7 @@ impl Delegator {
         task: &Task,
         requester_agent: &str,
         previous: Option<&TaskRecord>,
+        pick: &Pick,
     ) -> TaskRecord {
         let fresh = TaskRecord::requester(
             &task.id,
@@ -721,6 +792,12 @@ impl Delegator {
         };
         if let Err(e) = task::create(&self.deps.db, &self.deps.bus, &record, Some(task)).await {
             log::error!("Failed to record task {}: {e}", task.id);
+        }
+        if let Some(why) = pick.route_message() {
+            if let Err(e) = task::add_message(&self.deps.db, &task.id, route::ROUTE_KIND, why).await
+            {
+                log::debug!("Task {}: why it went there isn't kept: {e}", task.id);
+            }
         }
         record
     }
@@ -1036,16 +1113,6 @@ impl Delegator {
                     Change::error(error.clone()).kind(ReasonKind::TimedOut, TaskStage::Result),
                 )
                 .await;
-                if let Err(e) = failover::record_failure(
-                    &self.deps.db,
-                    &self.deps.bus,
-                    &provider,
-                    &task.capability,
-                )
-                .await
-                {
-                    log::warn!("Task {}: {e}", task.id);
-                }
                 Some(PeerMessage::TaskTimedOut {
                     task_id: task.id.clone(),
                     reason: Some(error.clone()),
@@ -1189,19 +1256,42 @@ fn member_name(db: &Db, instance: &str) -> String {
         .unwrap_or_else(|| "the other Nandi".to_string())
 }
 
-fn no_provider_reason(capability: &str, cards: &[AgentCard], requester: &str) -> String {
-    let mut serving = cards
-        .iter()
-        .filter(|card| card.serves(capability) && card.id != requester)
-        .peekable();
-    if serving.peek().is_some() && serving.all(|card| !card.accepts_delegation) {
-        format!(
-            "The agents that offer '{capability}' don't take requests from other Nandis yet. \
-             Their owner can turn that on in the agent's settings."
-        )
-    } else {
-        format!("No agent that serves '{capability}' is online and accepts delegated tasks")
+/// Whether a failed attempt may go to the next provider. Only when the
+/// provider did no work: it rejected the task (trust, closed, full), the
+/// relay couldn't deliver it, or no result came in time.
+pub fn retryable(status: TaskStatus, did_work: bool) -> bool {
+    match status {
+        TaskStatus::TimedOut => true,
+        TaskStatus::Failed => !did_work,
+        _ => false,
     }
+}
+
+/// This instance's cards that could take a `capability` task from
+/// `requester`, in order: my pin, then lower load, then the card ID (the
+/// local ranking reorders them)
+pub fn local_order(
+    cards: &[AgentCard],
+    capability: &str,
+    requester: &str,
+    pin: Option<&str>,
+) -> Vec<String> {
+    let mut eligible: Vec<&AgentCard> = cards
+        .iter()
+        .filter(|card| {
+            card.serves(capability)
+                && card.id != requester
+                && card.accepts_delegation
+                && card.current_load < card.max_concurrent.max(1)
+        })
+        .collect();
+    eligible.sort_by(|a, b| {
+        (pin != Some(a.id.as_str()))
+            .cmp(&(pin != Some(b.id.as_str())))
+            .then(a.current_load.cmp(&b.current_load))
+            .then(a.id.cmp(&b.id))
+    });
+    eligible.into_iter().map(|card| card.id.clone()).collect()
 }
 
 #[cfg(test)]
@@ -1232,33 +1322,15 @@ mod tests {
         }
     }
 
-    fn pick(cards: &[AgentCard]) -> &str {
-        let ctx = ranking::RankContext::bare("me", "me/requester");
-        ranking::choose_provider(cards, "summarize", &ctx)
-            .map(|c| c.id.as_str())
-            .unwrap_or("none")
+    fn order(cards: &[AgentCard], pin: Option<&str>) -> Vec<String> {
+        local_order(cards, "summarize", "me/requester", pin)
     }
 
     #[test]
-    fn the_local_instance_wins_ties() {
-        let cards = [card("them/a", 0, 5.0), card("me/b", 0, 1.0)];
-        assert_eq!(pick(&cards), "me/b");
-    }
-
-    #[test]
-    fn lower_load_breaks_ties() {
-        let cards = [
-            card("them/busy", 2, 9.0),
-            card("them/idle", 0, 1.0),
-            card("other/some", 1, 9.0),
-        ];
-        assert_eq!(pick(&cards), "them/idle");
-    }
-
-    #[test]
-    fn fresher_heartbeat_breaks_ties() {
-        let cards = [card("them/stale", 1, 100.0), card("other/fresh", 1, 200.0)];
-        assert_eq!(pick(&cards), "other/fresh");
+    fn local_cards_go_pinned_first_then_by_load() {
+        let cards = [card("me/busy", 2, 9.0), card("me/idle", 0, 1.0)];
+        assert_eq!(order(&cards, None), ["me/idle", "me/busy"]);
+        assert_eq!(order(&cards, Some("me/busy")), ["me/busy", "me/idle"]);
     }
 
     #[test]
@@ -1270,6 +1342,15 @@ mod tests {
         let mut other = card("me/other", 0, 1.0);
         other.capabilities[0].name = "translate".into();
         let requester = card("me/requester", 0, 1.0);
-        assert_eq!(pick(&[full, closed, other, requester]), "none");
+        assert!(order(&[full, closed, other, requester], None).is_empty());
+    }
+
+    #[test]
+    fn only_rejections_and_timeouts_are_retried() {
+        assert!(retryable(TaskStatus::TimedOut, true));
+        assert!(retryable(TaskStatus::Failed, false));
+        assert!(!retryable(TaskStatus::Failed, true));
+        assert!(!retryable(TaskStatus::Completed, false));
+        assert!(!retryable(TaskStatus::Cancelled, false));
     }
 }

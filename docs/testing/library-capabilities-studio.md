@@ -626,13 +626,13 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 
 ### CP-19 — Provider selection and circuit breakers
 
-- **What:** Delegation ranks every provider of a capability (agents and workflows, local and relay presence) filtered by required tools; score weights capability match 30%, trust 25%, etc. Three consecutive failures open a per-provider circuit for five minutes (`task://circuit_opened`); a success or cooldown closes it. Workflows can provide capabilities via `provides:`.
+- **What:** Delegation ranks this Nandi's own providers of a capability (agents and workflows) filtered by required tools; score weights capability match 25%, trust 20%, etc. Three consecutive failures open a per-provider circuit for five minutes (`task://circuit_opened`); a success or cooldown closes it. Workflows can provide capabilities via `provides:`. Other members' providers, and their circuits, are the relay's (RL-14).
 - **Where:** `src-tauri/src/services/selection/{mod,capability,circuit}.rs`, `services/capability/workflow_provider.rs`, `services/capability_index.rs` (agents' `serves:` → `capability_index`).
 - **Preconditions:** Multiple providers.
 - **Steps:** Delegate repeatedly while one provider fails.
 - **Expected:** After 3 failures that provider is skipped for 5 min.
 - **Edge / negative cases:** Local provider wins over remote unless `target` is named (documented assumption).
-- **Automation:** Covered by: Rust `selection/mod.rs` (4), `selection/capability.rs` (6), `circuit.rs` (2), `workflow_provider.rs` (4), `capability_index.rs` (7) | Layer: unit | Gap: none.
+- **Automation:** Covered by: Rust `selection/mod.rs` (1), `selection/capability.rs` (6), `circuit.rs` (2), `workflow_provider.rs` (4), `capability_index.rs` (7) | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped (overlaps Delegation area)
 

@@ -100,8 +100,10 @@ availability:
   applies it to people search, the UI (`availability-model.ts`) to display.
 - The People card and the profile header show it with
   `MemberAvailability.tsx`: "Away until Tue, Nov 10 · Bob covers".
-- Redirecting work to the delegate is the relay's routing (design step 9);
-  today the delegate is shown, not used.
+- Redirecting work to the delegate is the relay's routing: a question or
+  assignment for someone away goes to their own `delegate_to` (and only
+  theirs), with "Alice is away; Bob covers" in the thread. See "Who Gets the
+  Work" in `a2a-delegation.md`.
 
 ### Responsibilities: finding people by topic
 

@@ -204,21 +204,22 @@ Notes that apply to the whole section:
 
 ### TM-13 — By capability: provider ranking, Auto and pins
 
-- **What:** For each capability, lists every provider (yours, teammates' and relay agents) in the order delegation would pick them. "Auto sends tasks to {name}" names the pick. Unavailable providers show the reason: offline, full, closed, not serving, or "That's you". **Pin** a provider so Auto uses it first. Pins are personal (`settings.yaml` `delegation.preferred_providers`).
-- **Where:** Library → Shared tab → pick a capability in the "Can do" filter; the provider list shows above the cards (`src/components/sharing/CapabilityProvidersList.tsx`, mounted by `SharedWithMe.tsx`). Code: `commands/shared.rs` (`list_capability_providers`, `set_provider_pin`), `services/a2a/ranking.rs`. HTTP: `GET /api/shared/capabilities?capability=`, `PUT /api/shared/pins {"capability","cardId"|null}`.
+- **What:** For each capability, lists every provider (yours, teammates' and relay agents) in the order delegation would try them: a pinned one the relay has free, then yours (they run here), then the relay's plan. "Auto sends tasks to {name}" names the pick. Other members' providers show the relay's reasons in your language ("Bob is free · Bob is usually quick"), never their success rate. Unavailable providers show the reason: offline, full, closed, not serving, "That's you", or "Online, but not picked right now". **Pin** a provider so Auto uses it first. Pins are personal (`settings.yaml` `delegation.preferred_providers`).
+- **Where:** Library → Shared tab → pick a capability in the "Can do" filter; the provider list shows above the cards (`src/components/sharing/CapabilityProvidersList.tsx`, mounted by `SharedWithMe.tsx`; reasons by `components/network/RouteReasons.tsx`). Code: `commands/shared.rs` (`list_capability_providers`, `set_provider_pin`), `services/shared.rs` (`auto_order`), the relay's plan (`a2a/route.rs`). HTTP: `GET /api/shared/capabilities?capability=`, `PUT /api/shared/pins {"capability","cardId"|null}`.
 - **Preconditions:** At least two providers serve the same capability.
 - **Steps:** 1. Open Library → Shared and choose the capability under "Can do". 2. Note the Auto pick. 3. Pin another provider. 4. Unpin it.
 - **Expected:**
   - The pinned provider becomes the Auto pick while it is eligible.
   - When the pinned provider is unavailable, the card shows `shared.capabilities.pinUnavailable`.
-  - Stats read "Your calls: N · success R" with the average duration.
+  - Stats read "Your calls: N · success R" with the average duration: your own calls only.
+  - Other members' rows show the relay's reasons; yours show none.
   - **Send task** opens the Call dialog.
 - **Edge / negative cases:**
-  - A provider under 50% success over at least 3 tasks ranks last.
+  - Without the relay, your own providers still rank; others show no rank.
   - Errors show `shared.capabilities.pinFailed`.
   - A paused member is never offered.
-- **Automation:** Covered by: `services/a2a/ranking.rs` (`a_pin_wins_over_everything_while_it_is_eligible`, `unreliable_providers_go_last_even_when_local`, `teammates_beat_strangers_on_the_relay`, `faster_wins_when_load_ties`, `availability_names_the_reason`), `services/shared.rs` (`the_overview_ranks_callable_providers_and_marks_the_rest`, `a_paused_member_is_not_offered_as_a_provider`) | Layer: api | Gap: no UI test for CapabilityProvidersList.
-- **Needs relay:** no
+- **Automation:** Covered by: `services/shared.rs` (`the_overview_ranks_callable_providers_and_marks_the_rest`, `a_paused_member_is_not_offered_as_a_provider`, `availability_names_the_reason`, `my_stats_count_outcomes_and_average_successes`), `a2a/tests.rs` (`my_own_agent_wins_unless_i_pinned_someone_elses`), `SharedWithMe.test.tsx` ("shows who gets the work …", with the reasons), `lib/route-reasons.test.ts`; the ranking itself: relay repo `src/routing/tests.rs` | Layer: api + unit | Gap: none.
+- **Needs relay:** no (your own providers); yes for others' order and reasons
 - **Status:** Shipped
 
 ### TM-14 — Call dialog (send one task to a shared agent)
@@ -789,7 +790,8 @@ Notes that apply to the whole section:
 ### RL-14 — Delegate a task: ranking, fallback, timeout, offline queue
 
 - **What:**
-  - `delegate_task(capability, input, target?)` ranks providers: your pin, then not unreliable, then this instance, then teammates, then load and speed. It also applies the capability-aware score and circuit breakers.
+  - `delegate_task(capability, input, target?)` picks providers: a named card alone (never swapped; a person away may be covered by their own delegate), a pinned one the relay has free, then your own (they run here, no relay), else the relay's plan (`RouteQuery` → `RoutePlan`: the relay ranks, with your pin as preferred and the members you paused or blocked excluded). Without a relay, a capability only others serve answers `RelayUnavailable`.
+  - The delegation thread shows "Why {name}" with the relay's reasons (`route` message).
   - It tries up to 3 providers. Each passed-on attempt is kept as `<id>-attempt<n>`.
   - A remote attempt is waited on live for 600 s (`local_settings.delegation_timeout_secs`). With another provider to try, it then times out and passes on. With none, it stays open until its due date (`input.due`, else 2 days for `ask-me`, 1 day otherwise) and the tool says `status: waiting`; a late answer is kept (`a_remote_request_without_an_answer_stays_open_until_it_is_due`, `an_answer_that_comes_after_the_live_wait_is_kept`).
   - A task for an offline member waits Submitted in the offline queue until its due date, however long they're away. The queue flushes in priority order. In-flight tasks resume after a restart.
@@ -831,6 +833,7 @@ Notes that apply to the whole section:
 ### RL-16 — Delegation thread view
 
 - **What:** One delegated task as a thread: delegated, state changes, progress (with %), status queries and responses with ETA, clarification requests and answers, notes, and "Reassigned to X by Y" with a link to the new attempt.
+  - For a provider the relay picked, "Why {name}" lists the relay's reasons in your language ("Alice is away; Bob covers · Bob 3/3 busy (about 20 min wait)").
   - It shows a queued-offline banner and a partial-result line.
   - The side panel shows source, attempt, priority, created, ETA, deadline, the clarification policy summary, Rerun, Details, previous attempt, provider and provider profile.
   - **Open as request** opens the Request page.

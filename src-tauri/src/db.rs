@@ -424,15 +424,6 @@ CREATE TABLE IF NOT EXISTS eta_history (
 );
 CREATE INDEX IF NOT EXISTS idx_eta_history ON eta_history(capability, provider_agent, at);
 
--- Consecutive failures per instance and capability, for the gateway path
-CREATE TABLE IF NOT EXISTS circuit_breakers (
-    instance_id          TEXT NOT NULL,
-    capability           TEXT NOT NULL,
-    consecutive_failures INTEGER NOT NULL DEFAULT 0,
-    opened_at            INTEGER,
-    PRIMARY KEY (instance_id, capability)
-);
-
 -- Per-caller gateway allowances
 CREATE TABLE IF NOT EXISTS gateway_callers (
     caller_instance      TEXT PRIMARY KEY,

@@ -11,11 +11,13 @@ import {
   ShieldAlert,
   StickyNote,
   UserRound,
+  Waypoints,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ClarificationCard } from '@/components/agent-console/ClarificationCard'
+import { RouteReasons } from '@/components/network/RouteReasons'
 import {
   DEFAULT_CLARIFICATION_POLICY,
   summarizePolicy,
@@ -48,6 +50,7 @@ import type {
   TaskRecord,
 } from '@/lib/bindings'
 import { formatDuration } from '@/lib/format-time'
+import { routeReasonsOf } from '@/lib/route-reasons'
 import { formatCostUsd, formatTokenCount } from '@/lib/format-usage'
 import { useNavigationStore } from '@/store/navigation-store'
 import {
@@ -549,6 +552,22 @@ function MessageEntry({
               {t('delegationThread.item.reassignedOpen')}
             </Button>
           )}
+        </Bubble>
+      )
+    }
+    case 'route': {
+      // Why the relay picked this provider (its typed reasons)
+      const provider =
+        typeof payload?.provider === 'string' ? payload.provider : '—'
+      return (
+        <Bubble
+          icon={<Waypoints />}
+          title={t('delegationThread.item.route', { name: provider })}
+          at={message.at}
+          tone="muted"
+          testId="thread-route"
+        >
+          <RouteReasons reasons={routeReasonsOf(message.payload)} />
         </Bubble>
       )
     }

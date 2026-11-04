@@ -27,7 +27,7 @@ use rusqlite::Connection;
 use super::eta::DEFAULT_MEDIAN_SECONDS;
 use super::task::{self, TaskRecord, TaskService, TaskState};
 use super::task_state::{self, Change};
-use super::{assignment, failover, history, TaskStatus};
+use super::{assignment, history, TaskStatus};
 use crate::services::relay::protocol::PeerMessage;
 
 /// Seconds a queued task waits for an offline provider
@@ -219,13 +219,6 @@ impl TaskService {
                     );
                 }
             }
-            failover::record_failure(
-                self.db(),
-                self.bus(),
-                &row.provider_instance,
-                &row.capability,
-            )
-            .await?;
             timed_out.push(row.id.clone());
             self.after_failure(ended);
         }

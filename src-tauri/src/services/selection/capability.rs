@@ -1,16 +1,16 @@
-//! Capability-aware selection (wave A, Track D): ranks every provider of a
-//! capability, agents and workflows, local (`capability_providers`) and
-//! remote (the relay's presence).
+//! Capability-aware selection of this Nandi's own providers: ranks its
+//! agents and workflows of a capability (`capability_providers` rows of
+//! this instance). Other members' providers are the relay's to rank.
 //!
 //! Filters: the capability's `required_tools` + `routing.require_tools` +
 //! the caller's (a provider must have every one), `excluded` providers,
-//! paused instances, open provider circuits (`circuit`).
+//! open provider circuits (`circuit`).
 //!
-//! Score: capability match 25%, trust 20% (this instance / trusted peer >
-//! known > unknown), recent success rate 20%, load 15%, ETA 10%, cost 5%,
-//! tool richness 5%. The strategy (`routing.strategy` unless the caller
-//! picks one) makes its own part dominant; `RoundRobin` takes turns over
-//! the providers left. `preferred` providers get +50%.
+//! Score: capability match 25%, trust 20% (this instance), recent success
+//! rate 20%, load 15%, ETA 10%, cost 5%, tool richness 5%. The strategy
+//! (`routing.strategy` unless the caller picks one) makes its own part
+//! dominant; `RoundRobin` takes turns over the providers left. `preferred`
+//! providers get +50%.
 
 use std::collections::{HashMap, HashSet};
 
@@ -18,13 +18,21 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::Deserialize;
 
 use super::{
-    circuit, eta_from, CandidateFacts, CapabilityRanking, CapabilitySelectionContext, DbSelection,
+    circuit, eta_from, CapabilityRanking, CapabilitySelectionContext, DbSelection,
     ProviderCandidate, SelectionError, ETA_WINDOW, MIN_SUCCESS_SAMPLES, SUCCESS_WINDOW,
 };
-use crate::services::a2a::task::TaskState;
+use crate::services::a2a::task::{EtaEstimate, TaskState};
 use crate::services::capability::{CapabilityRouteStrategy, ProviderKind};
-use crate::services::relay::protocol::InstancePresence;
 use crate::services::tools::definition::normalize_id;
+
+/// What SQLite knows about one local provider
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ProviderFacts {
+    /// (succeeded, finished) among its recent tasks for the capability
+    pub outcomes: (u32, u32),
+    pub eta: Option<EtaEstimate>,
+    pub circuit_open: bool,
+}
 
 /// What a capability's definition asks of its providers, merged with the
 /// caller's context
@@ -184,7 +192,7 @@ pub fn rank_providers(
     ctx: &CapabilitySelectionContext,
     req: &Requirements,
     providers: Vec<RawProvider>,
-    facts: impl Fn(&RawProvider) -> CandidateFacts,
+    facts: impl Fn(&RawProvider) -> ProviderFacts,
     turn: usize,
 ) -> Vec<ProviderCandidate> {
     let weights = CapabilityWeights::for_strategy(req.strategy);
@@ -194,7 +202,7 @@ pub fn rank_providers(
         .filter(|p| p.missing_tools(&req.required_tools).is_empty())
         .filter_map(|p| {
             let facts = facts(&p);
-            if facts.paused || facts.circuit_open {
+            if facts.circuit_open {
                 return None;
             }
             Some(score(ctx, req, p, &facts, &weights))
@@ -227,7 +235,7 @@ fn score(
     ctx: &CapabilitySelectionContext,
     req: &Requirements,
     provider: RawProvider,
-    facts: &CandidateFacts,
+    facts: &ProviderFacts,
     weights: &CapabilityWeights,
 ) -> ProviderCandidate {
     let mut reasons = vec![match provider.provider_kind {
@@ -239,14 +247,8 @@ fn score(
     let trust = if local {
         reasons.push("this instance".to_string());
         1.0
-    } else if facts.trusted {
-        reasons.push("trusted peer".to_string());
-        1.0
-    } else if facts.known {
-        reasons.push("worked with before".to_string());
-        0.6
     } else {
-        reasons.push("unknown instance".to_string());
+        reasons.push("another instance".to_string());
         0.3
     };
 
@@ -305,7 +307,7 @@ fn score(
     }
 
     ProviderCandidate {
-        trusted: local || facts.trusted,
+        trusted: local,
         instance_id: provider.instance_id,
         provider_kind: provider.provider_kind,
         provider_id: provider.provider_id,
@@ -360,8 +362,8 @@ fn tool_list(json: Option<String>) -> Vec<String> {
     tools
 }
 
-/// Enabled `capability_providers` rows for the capability; local ones
-/// carry their running task count as load
+/// This instance's enabled `capability_providers` rows for the
+/// capability, with their running task count as load
 pub fn registered_providers(
     conn: &Connection,
     capability_id: &str,
@@ -370,10 +372,10 @@ pub fn registered_providers(
     let mut stmt = conn.prepare(
         "SELECT instance_id, provider_kind, provider_id, max_concurrent, provided_tools
          FROM capability_providers
-         WHERE capability_id = ?1 AND COALESCE(enabled, 1) != 0",
+         WHERE capability_id = ?1 AND instance_id = ?2 AND COALESCE(enabled, 1) != 0",
     )?;
     let rows = stmt
-        .query_map([capability_id], |row| {
+        .query_map(params![capability_id, local_instance], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -385,11 +387,7 @@ pub fn registered_providers(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut providers = Vec::with_capacity(rows.len());
     for (instance_id, kind, provider_id, max, tools) in rows {
-        let load = if instance_id == local_instance {
-            running_tasks(conn, &instance_id, &provider_id)?
-        } else {
-            0
-        };
+        let load = running_tasks(conn, &instance_id, &provider_id)?;
         providers.push(RawProvider {
             provider_kind: serde_json::from_value(serde_json::Value::String(kind))
                 .unwrap_or_default(),
@@ -423,88 +421,14 @@ pub fn running_tasks(
         .count() as u32)
 }
 
-/// Relay presence as providers (normalized tools)
-pub fn from_presence(presence: Vec<InstancePresence>) -> Vec<RawProvider> {
-    presence
-        .into_iter()
-        .map(|p| {
-            let mut tools: Vec<String> = p
-                .provider
-                .provided_tools
-                .iter()
-                .map(|t| normalize_id(t))
-                .collect();
-            tools.sort();
-            tools.dedup();
-            RawProvider {
-                instance_id: p.instance_id,
-                provider_kind: p.provider.provider_kind,
-                provider_id: p.provider.provider_id,
-                load: p.provider.load,
-                max_concurrent: p.provider.max_concurrent.max(1),
-                provided_tools: tools,
-            }
-        })
-        .collect()
-}
-
-/// `registered` with `remote` merged in: a provider both list keeps the
-/// relay's (fresher) load and tools, except our own instance's
-pub fn merge(
-    registered: Vec<RawProvider>,
-    remote: Vec<RawProvider>,
-    local_instance: &str,
-) -> Vec<RawProvider> {
-    let mut by_key: HashMap<String, RawProvider> = HashMap::new();
-    let mut order = Vec::new();
-    for provider in registered {
-        let key = provider.key();
-        if !by_key.contains_key(&key) {
-            order.push(key.clone());
-        }
-        by_key.insert(key, provider);
-    }
-    for provider in remote {
-        let key = provider.key();
-        match by_key.get(&key) {
-            Some(_) if provider.instance_id == local_instance => {}
-            Some(_) => {
-                by_key.insert(key, provider);
-            }
-            None => {
-                order.push(key.clone());
-                by_key.insert(key, provider);
-            }
-        }
-    }
-    order
-        .into_iter()
-        .filter_map(|key| by_key.remove(&key))
-        .collect()
-}
-
 /// History for one provider of `capability_id`
 pub fn provider_facts(
     conn: &Connection,
     provider: &RawProvider,
     capability_id: &str,
     now: i64,
-) -> rusqlite::Result<CandidateFacts> {
+) -> rusqlite::Result<ProviderFacts> {
     let instance = provider.instance_id.as_str();
-    let (trusted, paused) = conn
-        .query_row(
-            "SELECT added_as_trusted_peer, delegations_paused FROM trust_relationships
-             WHERE instance_id = ?1",
-            [instance],
-            |row| Ok((row.get::<_, i64>(0)? != 0, row.get::<_, i64>(1)? != 0)),
-        )
-        .optional()?
-        .unwrap_or((false, false));
-    let known: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM tasks WHERE provider_instance = ?1 OR requester_instance = ?1)",
-        [instance],
-        |row| row.get(0),
-    )?;
 
     let mut stmt = conn.prepare(
         "SELECT state FROM tasks
@@ -542,10 +466,7 @@ pub fn provider_facts(
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
-    Ok(CandidateFacts {
-        trusted,
-        known,
-        paused,
+    Ok(ProviderFacts {
         outcomes: (succeeded, finished.len() as u32),
         eta: eta_from(durations.into_iter().map(|d| d.max(0) as u32).collect()),
         circuit_open: circuit::is_open_conn(
@@ -568,28 +489,17 @@ impl DbSelection {
         if capability_id.is_empty() {
             return Err("Choose a capability".to_string());
         }
-        let remote = match &self.presence {
-            Some(presence) => match presence(capability_id.clone()).await {
-                Ok(found) => from_presence(found),
-                Err(e) => {
-                    log::debug!("No relay presence for '{capability_id}': {e}");
-                    Vec::new()
-                }
-            },
-            None => Vec::new(),
-        };
         let now = (self.clock)();
         let local_instance = ctx.caller_instance.clone();
         let (definition, providers, facts) = self
             .db
             .call(move |conn| {
                 let definition = definition(conn, &capability_id)?;
-                let registered = registered_providers(conn, &capability_id, &local_instance)?;
-                let providers = merge(registered, remote, &local_instance);
+                let providers = registered_providers(conn, &capability_id, &local_instance)?;
                 let facts = providers
                     .iter()
                     .map(|p| Ok((p.key(), provider_facts(conn, p, &capability_id, now)?)))
-                    .collect::<rusqlite::Result<HashMap<String, CandidateFacts>>>()?;
+                    .collect::<rusqlite::Result<HashMap<String, ProviderFacts>>>()?;
                 Ok((definition, providers, facts))
             })
             .await?;
@@ -618,11 +528,8 @@ impl DbSelection {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
     use crate::db::Db;
-    use crate::services::relay::protocol::ProviderPresence;
     use crate::services::selection::SelectionService;
 
     fn provider(instance: &str, id: &str, load: u32, tools: &[&str]) -> RawProvider {
@@ -667,7 +574,7 @@ mod tests {
             &ctx("code-review"),
             &req(CapabilityRouteStrategy::LeastLoaded, &["shell"]),
             providers,
-            |_| CandidateFacts::default(),
+            |_| ProviderFacts::default(),
             0,
         );
         let mut found = keys(&ranked);
@@ -679,20 +586,18 @@ mod tests {
     }
 
     #[test]
-    fn excludes_circuit_broken_and_paused_providers() {
+    fn excludes_circuit_broken_providers() {
         let providers = vec![
             provider("a", "broken", 0, &[]),
-            provider("b", "paused", 0, &[]),
             provider("c", "fine", 0, &[]),
         ];
         let ranked = rank_providers(
             &ctx("x"),
             &req(CapabilityRouteStrategy::LeastLoaded, &[]),
             providers,
-            |p| CandidateFacts {
+            |p| ProviderFacts {
                 circuit_open: p.provider_id == "broken",
-                paused: p.provider_id == "paused",
-                ..CandidateFacts::default()
+                ..ProviderFacts::default()
             },
             0,
         );
@@ -715,7 +620,7 @@ mod tests {
             &ctx("x"),
             &requirements,
             providers,
-            |_| CandidateFacts::default(),
+            |_| ProviderFacts::default(),
             0,
         );
         assert_eq!(keys(&ranked), ["b/two", "a/one"]);
@@ -728,9 +633,9 @@ mod tests {
             provider("busy", "fast", 3, &[]),
             provider("idle", "slow", 0, &[]),
         ];
-        let facts = |p: &RawProvider| CandidateFacts {
+        let facts = |p: &RawProvider| ProviderFacts {
             eta: eta_from(vec![if p.provider_id == "fast" { 5 } else { 900 }]),
-            ..CandidateFacts::default()
+            ..ProviderFacts::default()
         };
         let pick = |strategy| {
             rank_providers(&ctx("x"), &req(strategy, &[]), providers.clone(), facts, 0)[0]
@@ -803,24 +708,8 @@ mod tests {
         assert_eq!(odd.routing.strategy, CapabilityRouteStrategy::LeastLoaded);
     }
 
-    fn presence(instance: &str, id: &str, load: u32, tools: &[&str]) -> InstancePresence {
-        InstancePresence {
-            instance_id: instance.to_string(),
-            capability_version: "1.0.0".into(),
-            provider: ProviderPresence {
-                provider_kind: ProviderKind::Workflow,
-                provider_id: id.to_string(),
-                load,
-                max_concurrent: 2,
-                provided_tools: tools.iter().map(|t| t.to_string()).collect(),
-                online_since: 0.0,
-                last_heartbeat: 0.0,
-            },
-        }
-    }
-
     #[tokio::test]
-    async fn ranks_local_and_relay_providers_from_sqlite() {
+    async fn ranks_this_instances_providers_from_sqlite() {
         let db = Db::in_memory();
         {
             let conn = db.conn().unwrap();
@@ -835,7 +724,9 @@ mod tests {
                      (capability_id, instance_id, provider_kind, provider_id, enabled, max_concurrent, provided_tools)
                  VALUES ('code-review', 'me', 'agent', 'local-reviewer', 1, 2, '[\"shell\"]'),
                         ('code-review', 'me', 'agent', 'no-shell', 1, 2, '[\"read_file\"]'),
-                        ('code-review', 'me', 'agent', 'disabled', 0, 2, '[\"shell\"]')",
+                        ('code-review', 'me', 'workflow', 'pipeline', 1, 2, '[\"builtin.shell\"]'),
+                        ('code-review', 'me', 'agent', 'disabled', 0, 2, '[\"shell\"]'),
+                        ('code-review', 'peer', 'agent', 'theirs', 1, 2, '[\"shell\"]')",
                 [],
             )
             .unwrap();
@@ -848,31 +739,17 @@ mod tests {
             )
             .unwrap();
         }
-        let source: crate::services::selection::PresenceSource = Arc::new(|capability: String| {
-            Box::pin(async move {
-                if capability != "code-review" {
-                    return Ok(Vec::new());
-                }
-                Ok(vec![
-                    presence(
-                        "peer",
-                        "pipeline",
-                        0,
-                        &["builtin.shell", "github.create_review"],
-                    ),
-                    presence("peer", "toolless", 0, &[]),
-                ])
-            })
-        });
-        let selection = DbSelection::new(db.clone(), None).with_presence(source);
+        let selection = DbSelection::new(db.clone(), None);
         let ranking = selection
             .capability_ranking(&ctx("code-review"))
             .await
             .unwrap();
         assert!(ranking.defined);
         assert_eq!(ranking.required_tools, ["builtin.shell"]);
+        // Another member's provider is the relay's to rank
         let found = keys(&ranking.candidates);
-        assert_eq!(found, ["peer/pipeline", "me/local-reviewer"]);
+        assert_eq!(found, ["me/pipeline", "me/local-reviewer"]);
+        assert!(!ranking.considered.contains(&"peer/theirs".to_string()));
         let local = &ranking.candidates[1];
         assert!(local.local);
         assert_eq!(local.load, 1);
@@ -881,7 +758,7 @@ mod tests {
         // Three failures open the pipeline's circuit; it drops out
         for _ in 0..3 {
             selection
-                .record_provider_outcome("peer", "pipeline", "code-review", false)
+                .record_provider_outcome("me", "pipeline", "code-review", false)
                 .await
                 .unwrap();
         }

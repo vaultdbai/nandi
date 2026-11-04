@@ -74,6 +74,37 @@ async fn eventually(mut check: impl AsyncFnMut() -> bool) -> bool {
 }
 
 #[tokio::test]
+async fn the_relay_plans_who_gets_a_request() {
+    use super::protocol::{RequestKind, RouteReason, RoutingQuery};
+    let addr = serve(local(), SECRET.to_vec()).await.unwrap();
+    let mut papers = card("prov", "papers", "find-papers");
+    papers.owner.display_name = "Prov".into();
+    let _provider = registered(addr, "prov", vec![papers]).await;
+    let requester = registered(addr, "req", vec![card("req", "writer", "find-papers")]).await;
+
+    let query = RoutingQuery::anyone(RequestKind::Delegate, "find-papers");
+    let plan = requester.route(&query).await.unwrap();
+    // Never the requester; the reasons are codes, not sentences
+    assert_eq!(plan.candidates.len(), 1);
+    assert_eq!(plan.candidates[0].target, "prov/papers");
+    assert_eq!(
+        plan.candidates[0].reasons[0],
+        RouteReason::Free {
+            name: "Prov".into()
+        }
+    );
+    assert!(
+        plan.candidates[0].public_keys.is_some(),
+        "the provider's pinned keys"
+    );
+
+    // Not connected: RelayUnavailable, at once
+    let offline = WsRelayClient::new(None, "lone");
+    let error = offline.route(&query).await.unwrap_err();
+    assert!(super::unavailable::RelayUnavailable::is(&error), "{error}");
+}
+
+#[tokio::test]
 async fn one_client_finds_the_others_card() {
     let addr = serve(local(), SECRET.to_vec()).await.unwrap();
     let provider = registered(addr, "prov", vec![card("prov", "papers", "find-papers")]).await;

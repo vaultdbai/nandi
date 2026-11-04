@@ -7,7 +7,7 @@
 //!
 //! One supervisor task per `connect` owns the socket: it reads frames,
 //! writes queued messages, and sends heartbeats. Requests that expect an
-//! answer (`register`, `query_capability`, `delegate_task`) park a oneshot
+//! answer (`register`, `query_capability`, `route`, `delegate_task`) park a oneshot
 //! that the reader resolves. A new `connect` (or `connect("")`, which
 //! disconnects) cancels the previous supervisor.
 //!
@@ -68,7 +68,8 @@ use tokio_tungstenite::tungstenite::Message;
 use super::client_api::{Handler, PeopleSearch, RelayClient};
 use super::protocol::{
     CapabilityPresence, InstancePresence, MemberRecord, PeerDelivery, PeerMessage, RelayMessage,
-    TaskAssigned, TaskCompleted, TaskFailed, ALL_CAPABILITIES, PROTOCOL_VERSION, VERSION_MISMATCH,
+    RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted, TaskFailed, ALL_CAPABILITIES,
+    PROTOCOL_VERSION, VERSION_MISMATCH,
 };
 use super::sealing::{self, MemoryKeyBook, Opening, PeerKeyBook, Sealer};
 use super::{
@@ -182,6 +183,8 @@ struct Shared {
     capabilities: Vec<CapabilityPresence>,
     tools: Vec<String>,
     waiting_presence: HashMap<String, Vec<oneshot::Sender<Vec<InstancePresence>>>>,
+    /// Route queries by query ID
+    waiting_routes: HashMap<String, oneshot::Sender<RoutePlan>>,
 }
 
 struct Inner {
@@ -725,6 +728,7 @@ impl Inner {
             shared.waiting_directory.clear();
             shared.waiting_people.clear();
             shared.waiting_presence.clear();
+            shared.waiting_routes.clear();
             shared.waiting_keys.clear();
             for (_, waiter) in shared.waiting_acks.drain() {
                 let _ = waiter.send(Err("Disconnected from the relay".to_string()));
@@ -829,6 +833,7 @@ impl Inner {
                     shared.waiting_presence.clear();
                     shared.waiting_directory.clear();
                     shared.waiting_people.clear();
+                    shared.waiting_routes.clear();
                     shared.waiting_keys.clear();
                     for (_, waiter) in shared.waiting_acks.drain() {
                         let _ = waiter.send(Err(message.clone()));
@@ -875,6 +880,11 @@ impl Inner {
                     .unwrap_or_default();
                 for waiter in waiters {
                     let _ = waiter.send(providers.clone());
+                }
+            }
+            RelayMessage::RoutePlan { query_id, plan } => {
+                if let Some(waiter) = self.lock().waiting_routes.remove(&query_id) {
+                    let _ = waiter.send(plan);
                 }
             }
             RelayMessage::Peer {
@@ -1517,6 +1527,38 @@ impl RelayClient for WsRelayClient {
             match message {
                 Some(message) => self.inner.send(message),
                 None => Ok(()),
+            }
+        }
+        .boxed()
+    }
+
+    fn route<'a>(&'a self, query: &'a RoutingQuery) -> BoxFuture<'a, Result<RoutePlan, String>> {
+        async move {
+            self.inner.until_registered().await?;
+            let query_id = uuid::Uuid::new_v4().to_string();
+            let (tx, rx) = oneshot::channel();
+            self.inner
+                .lock()
+                .waiting_routes
+                .insert(query_id.clone(), tx);
+            let sent = self.inner.send(RelayMessage::RouteQuery {
+                query_id: query_id.clone(),
+                query: query.clone(),
+            });
+            if let Err(e) = sent {
+                self.inner.lock().waiting_routes.remove(&query_id);
+                return Err(e);
+            }
+            match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
+                Ok(Ok(plan)) => Ok(plan),
+                Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+                Err(_) => {
+                    self.inner.lock().waiting_routes.remove(&query_id);
+                    Err(format!(
+                        "The relay didn't route within {}s",
+                        REQUEST_TIMEOUT.as_secs()
+                    ))
+                }
             }
         }
         .boxed()

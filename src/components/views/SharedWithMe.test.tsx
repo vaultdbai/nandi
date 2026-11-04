@@ -35,6 +35,10 @@ const findPapers: CapabilityProviders = {
       teammate: true,
       stats: { calls: 4, succeeded: 3, failed: 1, avgDurationMs: 2500 },
       successRate: 0.75,
+      reasons: [
+        { code: 'free', name: 'Bob' },
+        { code: 'usually_quick', name: 'Bob' },
+      ],
     }),
     providerOption(teamPapers.card, {
       online: false,
@@ -188,6 +192,10 @@ describe('SharedWithMeView', () => {
     const atlas = within(capability.getByTestId('provider-bob/atlas'))
     expect(atlas.getByText('#1')).toBeInTheDocument()
     expect(atlas.getByText('@bob-owner')).toBeInTheDocument()
+    // The relay's reasons, worded here
+    expect(atlas.getByTestId('route-reasons')).toHaveTextContent(
+      'Bob is free · Bob is usually quick'
+    )
     const papers = within(capability.getByTestId('provider-alice/papers'))
     expect(papers.getByText(/unavailable\.offline|Offline/)).toBeInTheDocument()
 

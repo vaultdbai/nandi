@@ -3233,11 +3233,11 @@ workflowStepStarted: "workflow://step_started"
 
 /** user-defined constants **/
 
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 
 /** user-defined types **/
 
@@ -5589,7 +5589,11 @@ successRate: number | null;
 /**
  * 1 = auto would pick it; `None` while it can't take tasks
  */
-rank: number | null; unavailable: Unavailable | null }
+rank: number | null; unavailable: Unavailable | null; 
+/**
+ * Why the relay picked them where it did (other members' only)
+ */
+reasons: RouteReason[] }
 /**
  * One agent or workflow providing a capability
  */
@@ -5603,7 +5607,8 @@ onlineSince: number;
  */
 lastHeartbeat: number }
 /**
- * A provider's track record with me (outbound delegations).
+ * My track record with a provider (outbound delegations). Only mine:
+ * other members' records stay at the relay.
  */
 export type ProviderStats = { calls: number; succeeded: number; 
 /**
@@ -6116,6 +6121,59 @@ export type RosterMember = { handle: string; displayName: string; instanceId: st
  * Teams we're both in
  */
 teamCount: number; delegationStats: DelegationStats }
+/**
+ * Why a candidate is where it is in the plan: a code and its
+ * parameters. `name` is the candidate's display name.
+ */
+export type RouteReason = 
+/**
+ * The requester asked for them by name
+ */
+{ code: "named"; name: string } | 
+/**
+ * The requester pinned them for this capability
+ */
+{ code: "pinned"; name: string } | 
+/**
+ * `away_name` is away (until `until`, epoch ms) and they cover
+ */
+{ code: "covers"; name: string; awayName: string; until?: number | null } | 
+/**
+ * Online with room
+ */
+{ code: "free"; name: string } | 
+/**
+ * At or over capacity; `wait_minutes` when the relay can estimate it
+ */
+{ code: "busy"; name: string; load: number; max: number; waitMinutes?: number | null } | 
+/**
+ * Offline: the request waits for them
+ */
+{ code: "offline"; name: string } | 
+/**
+ * Away (until `until`) with nobody covering: moved down
+ */
+{ code: "away"; name: string; until?: number | null } | 
+/**
+ * Usually quicker than the others
+ */
+{ code: "usually_quick"; name: string } | 
+/**
+ * Usually gets this done
+ */
+{ code: "dependable"; name: string } | 
+/**
+ * Has had fewer requests today than the others
+ */
+{ code: "lighter_day"; name: string } | 
+/**
+ * Their turn (round robin)
+ */
+{ code: "their_turn"; name: string } | 
+/**
+ * Back after recent failures: this request is the trial
+ */
+{ code: "trying_again"; name: string }
 export type RouteStrategy = "fastest" | "cheapest" | "mostTrusted" | "highestSuccessRate"
 export type RoutingConfig = { 
 /**
@@ -6829,7 +6887,12 @@ export type Unavailable =
 /**
  * Not online at the relay (known only from a team registry)
  */
-"offline"
+"offline" | 
+/**
+ * Online, but the relay doesn't pick them now (failing lately, or
+ * missing what the request needs)
+ */
+"notNow"
 /**
  * A newer version of something installed.
  */

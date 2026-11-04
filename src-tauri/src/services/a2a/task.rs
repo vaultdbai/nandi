@@ -48,7 +48,7 @@ use tokio::sync::{broadcast::error::RecvError, mpsc, oneshot};
 use super::delegator::{instance_of, A2aDeps};
 use super::executor::Executor;
 use super::task_state::{self, Change};
-use super::{assignment, eta, failover, Task, TaskStatus};
+use super::{assignment, eta, Task, TaskStatus};
 use crate::db::{now_ms, Db};
 use crate::model::Timestamp;
 use crate::services::events::{self, EventBus, NandiEvent};
@@ -788,18 +788,13 @@ pub async fn finish_requester(
     let Some(ended) = task_state::advance(db, bus, task_id, to, change).await? else {
         return Ok(None);
     };
-    match status {
-        TaskStatus::Completed => {
-            let seconds = ((now_ms() as f64 - task.created_at).max(0.0) / 1000.0) as u32;
-            let (capability, card) = (task.capability.clone(), task.provider_card());
-            db.call(move |conn| eta::record(conn, &capability, &card, seconds, now_ms()))
-                .await?;
-            failover::record_success(db, &task.provider_instance, &task.capability).await?;
-        }
-        TaskStatus::Cancelled => {}
-        _ => {
-            failover::record_failure(db, bus, &task.provider_instance, &task.capability).await?;
-        }
+    // The ETA we show next time; the providers' track record and
+    // circuits are the relay's
+    if status == TaskStatus::Completed {
+        let seconds = ((now_ms() as f64 - task.created_at).max(0.0) / 1000.0) as u32;
+        let (capability, card) = (task.capability.clone(), task.provider_card());
+        db.call(move |conn| eta::record(conn, &capability, &card, seconds, now_ms()))
+            .await?;
     }
     Ok(Some(ended))
 }
@@ -1547,8 +1542,6 @@ impl TaskService {
                 if let Some(ended) =
                     task_state::advance(db, bus, &task_id, TaskState::Rejected, change).await?
                 {
-                    failover::record_failure(db, bus, &task.provider_instance, &task.capability)
-                        .await?;
                     // Nobody waits on it (an assignment, held or listed):
                     // its history row is still open, and ending it puts
                     // "declined" (or why it was refused) in the Inbox

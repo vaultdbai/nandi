@@ -8,7 +8,7 @@ use futures_util::future::BoxFuture;
 
 use super::protocol::{
     CapabilityPresence, InstancePresence, MemberRecord, PeerDelivery, PeerMessage, PeopleMatch,
-    TaskAssigned, TaskCompleted, TaskFailed,
+    RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted, TaskFailed,
 };
 use super::RelayStatus;
 use crate::services::a2a::{Task, TaskResult};
@@ -118,6 +118,14 @@ pub trait RelayClient: Send + Sync {
         limit: u32,
     ) -> BoxFuture<'a, Result<PeopleSearch, String>> {
         let _ = (topic, limit);
+        Box::pin(async { Err("Not supported by this relay client".to_string()) })
+    }
+
+    /// Who should get a network request: the relay's plan (`RouteQuery`),
+    /// best first, or an error after 5s. Not connected: `RelayUnavailable`
+    /// (the caller runs local providers without asking).
+    fn route<'a>(&'a self, query: &'a RoutingQuery) -> BoxFuture<'a, Result<RoutePlan, String>> {
+        let _ = query;
         Box::pin(async { Err("Not supported by this relay client".to_string()) })
     }
 
