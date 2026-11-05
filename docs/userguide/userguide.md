@@ -85,7 +85,7 @@ Agents use DeepSeek unless their `skill.md` says otherwise. Open **Settings › 
 
 ![screenshot: Welcome to Nandi](placeholder)
 
-The first launch is four short steps: **Name → Model → Network → Agents**. Each step saves as you leave it, so if you quit midway Nandi opens where you stopped (**Skip the rest of setup** jumps straight in).
+The first launch is five short steps: **Name → Model → Email → Network → Agents**. Each step saves as you leave it, so if you quit midway Nandi opens where you stopped (**Skip the rest of setup** jumps straight in).
 
 ### 1. Name
 
@@ -106,11 +106,17 @@ Agents think with a model from a provider you choose. Keys go into your OS keych
 
 **Skip for now** asks once more, because without a model agents can't run. You can add one any time in **Settings › Models**.
 
-### 3. Work with other people? (optional)
+### 3. Connect your email (optional)
+
+Pick the mailboxes Chief of Staff should read, **Outlook**, **Gmail** or both, and connect each in turn: Nandi opens your browser to sign in. The step says what Nandi reads and what it never does (see [Connect your email](#connect-your-email)). Choose how often Chief of Staff checks: 5, 15 or 30 minutes (the default), 1 or 2 hours. A mailbox your Nandi can't connect says "Not available in this build".
+
+**Skip for now** goes on without email; Home then shows **Connect your email** until you connect one. When setup ends, Chief of Staff reads the last 14 days straight away, and the name and address of the mailbox go into its **My role** (edit them on the Chief of Staff's page).
+
+### 4. Work with other people? (optional)
 
 **Not now** keeps everything on this computer, and nothing connects. **Join the Nandi network** (when your Nandi comes with one) or **Join my team's network** (the relay's address and its join code, or **Paste invite**) joins a relay when you click **Join** or **Continue**; nothing joins, and no seat is taken, before that. If joining doesn't work, Nandi says why and **Continue anyway** goes on without a network. **Let others send requests to my Nandi** is off until you tick it; even then, a request only gets through once an agent accepts requests and you trust the person asking. You can do all of this later in **Network**.
 
-### 4. Starter packs
+### 5. Starter packs
 
 Pick one to three packs of ready-made agents and workflows. Today's packs:
 
@@ -592,10 +598,10 @@ Organizations on Microsoft 365 can back teams with Entra ID groups instead of Gi
 
 Chief of Staff can keep My notes up to date from your email, so you don't have to write them. Open **Settings › Email** and choose **Connect Outlook** (Outlook and Microsoft 365) or **Connect Gmail**, then sign in in your browser.
 
-- **What it reads.** New mail in your inbox and sent items, every few minutes (**Check every**, 5 minutes by default). Newsletters and notifications are left out. Add senders or domains under **Always include** if their mail matters even when it looks like a newsletter. The first check reads the last 14 days.
+- **What it reads.** New mail in your inbox and sent items, every 30 minutes by default (**Check every**: 5 minutes to 2 hours). Newsletters and notifications are left out. Add senders or domains under **Always include** if their mail matters even when it looks like a newsletter. The first check reads the last 14 days.
 - **What it does with it.** Chief of Staff notes what you're asked to do, what you promised, deadlines, decisions and who owns what. Each note says which email it came from: sender, date and subject. Edit or delete any note; it won't add a deleted one back.
 - **What it never does.** Nandi never sends, moves, deletes or marks your mail read, and keeps no copy of it: only where it got to, and the notes. Your sign-in stays in this computer's keychain and never goes into a container. Text in an email is never treated as an instruction.
-- **Your controls.** **Check now**, **Pause**, and **Stop reading my email**, which signs out and forgets where it got to. Your notes stay.
+- **Your controls.** **Check now**, **Pause**, and **Stop reading my email**, which signs out and forgets where it got to. Your notes stay. With no mailbox connected, Home shows **Connect your email** with the buttons to do it.
 - **If sign-in stops.** Some companies need an IT admin to approve Nandi first. Nandi says so and gives you a link to send them. Gmail test sign-ins end every 7 days: choose **Reconnect**.
 
 ### Finding who is responsible

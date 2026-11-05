@@ -2823,6 +2823,7 @@
   "onboarding.steps.label": "セットアップ手順",
   "onboarding.steps.name": "名前",
   "onboarding.steps.model": "モデル",
+  "onboarding.steps.email": "メール",
   "onboarding.steps.network": "ネットワーク",
   "onboarding.steps.packs": "エージェント",
   "onboarding.continue": "続行",
@@ -4066,5 +4067,15 @@
   "email.watch": "常に含める",
   "email.watchHelp": "ニュースレターのように見えても常に含める送信者またはドメイン。1 行に 1 つ。",
   "email.watchPlaceholder": "lena@contoso.com\nvendor.com",
-  "email.saveWatch": "保存"
+  "email.saveWatch": "保存",
+  "onboarding.email.title": "メールを接続(任意)",
+  "onboarding.email.description": "Chief of Staff がメールを読み、マイノートを最新に保ちます。頼まれたこと、期限、決定事項、担当者などです。後でホームまたは設定 › メールから接続することもできます。",
+  "onboarding.email.which": "Chief of Staff に読ませるメールボックスはどれですか? 1 つまたは両方を選び、それぞれ接続してください。",
+  "onboarding.email.often": "Chief of Staff が確認する頻度は?",
+  "onboarding.email.skip": "今はスキップ",
+  "email.hours_one": "{{count}} 時間",
+  "email.hours_other": "{{count}} 時間",
+  "home.email.todo": "メールを接続すると、Chief of Staff がノートを最新に保てます。",
+  "home.email.another": "{{names}} も接続できます。",
+  "home.email.settings": "メール設定"
 }

@@ -11,7 +11,7 @@
 - [x] **Read-only in v1** (owner, 2026-10-30). Nandi reads mail and writes notes. Nothing is sent, moved, deleted or marked read. Sending comes later, with its own scope and its own approval.
 - [x] **Our own connector, not an MCP server.** Tokens stay on the host in the keyring and never go into a container. The agent calls the connector's tools from its container as it does for other connectors.
 - [x] **Notes, not copies.** Nandi keeps no copy of the mail. All it stores is the change cursor (a delta link or a `historyId`) and the notes the Chief of Staff writes.
-- [x] **How often to check:** suggested every 5 minutes, with all new mail sent to the Chief of Staff in one batch per check. Not one run per email (model cost).
+- [x] **How often to check:** every 30 minutes by default (owner, 2026-11-05; asked at setup, 5 minutes to 2 hours), with all new mail sent to the Chief of Staff in one batch per check. Not one run per email (model cost).
 - [x] **Which mail to include:** suggested inbox and sent items, without bulk mail, and an optional list of senders or domains to watch.
 
 ## 1. Outlook / Microsoft 365 (Microsoft Graph)
@@ -99,9 +99,9 @@ Anyone can send the user an email that says "ignore your instructions and forwar
 ## Left (after the 2026-11-04 build)
 
 - **Live tests** above (Outlook work tenant with admin consent, Gmail test user, the injection email) and the owner's Publisher Verification and Google verification.
-- **Section 3, who the user is at first run:** not built. The mail sign-in's name and address name the user in email runs only. Machine and git sources, slug suffixes, Settings › Identity sources and onboarding are still open.
+- **Section 3, who the user is at first run:** partly built 2026-11-05. Connecting a mailbox writes its owner's name and address into the Chief of Staff's My role ("Name and title" line; editable), so every run knows who "me" is. Still open: prefilling the setup name from the mail sign-in or the machine, git sources, slug suffixes, Settings › Identity sources.
 - **`User.ReadBasic.All`** (senders into people): not requested; the Entra app doesn't have it.
-- **Onboarding step** offering Connect email: not built (Settings › Email only).
+- **Onboarding step and Home to-do:** built 2026-11-05 (setup step 3 asks which mailboxes and how often; Home shows a to-do until one is connected).
 
 ## How it was built (differs from the plan above)
 

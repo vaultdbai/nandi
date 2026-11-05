@@ -2823,6 +2823,7 @@
   "onboarding.steps.label": "خطوات الإعداد",
   "onboarding.steps.name": "الاسم",
   "onboarding.steps.model": "النموذج",
+  "onboarding.steps.email": "البريد",
   "onboarding.steps.network": "الشبكة",
   "onboarding.steps.packs": "الوكلاء",
   "onboarding.continue": "متابعة",
@@ -4066,5 +4067,15 @@
   "email.watch": "ضمّن دائمًا",
   "email.watchHelp": "مرسلون أو نطاقات يصل بريدها دائمًا، حتى لو بدا كنشرة. واحد في كل سطر.",
   "email.watchPlaceholder": "lena@contoso.com\nvendor.com",
-  "email.saveWatch": "حفظ"
+  "email.saveWatch": "حفظ",
+  "onboarding.email.title": "صِل بريدك (اختياري)",
+  "onboarding.email.description": "يقرأ رئيس الموظفين بريدك ويُبقي ملاحظاتي محدّثة: ما يُطلب منك، والمواعيد النهائية، والقرارات، ومن يتولى ماذا. يمكنك الاتصال لاحقًا من الصفحة الرئيسية أو الإعدادات › البريد الإلكتروني.",
+  "onboarding.email.which": "ما صناديق البريد التي يقرؤها رئيس الموظفين؟ اختر واحدًا أو كليهما، ثم صِل كلًّا منهما.",
+  "onboarding.email.often": "كم مرة يفحص رئيس الموظفين البريد؟",
+  "onboarding.email.skip": "تخطَّ الآن",
+  "email.hours_one": "{{count}} ساعة",
+  "email.hours_other": "{{count}} ساعة",
+  "home.email.todo": "صِل بريدك ليُبقي رئيس الموظفين ملاحظاتك محدّثة.",
+  "home.email.another": "يمكنك أيضًا وصل {{names}}.",
+  "home.email.settings": "إعدادات البريد"
 }

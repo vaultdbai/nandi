@@ -70,6 +70,76 @@ fn write_new(path: &Path, content: &str) -> Result<bool, String> {
     Ok(true)
 }
 
+/// The "My role" line that says who the user is
+const NAME_LINE: &str = "- **Name and title:**";
+
+/// The Chief of Staff's "My role" with a mailbox owner's name and address
+/// in its "Name and title" line, so every run knows who "me" is. The
+/// template's placeholder is replaced; a line the user wrote gets the
+/// address added. `None`: nothing to change (already there, or the user
+/// removed the line).
+pub fn with_mailbox_identity(
+    instructions: &str,
+    name: Option<&str>,
+    email: &str,
+) -> Option<String> {
+    let email = email.trim();
+    if email.is_empty() {
+        return None;
+    }
+    let mut changed = false;
+    let lines: Vec<String> = instructions
+        .lines()
+        .map(|line| {
+            let Some(rest) = line.trim_start().strip_prefix(NAME_LINE) else {
+                return line.to_string();
+            };
+            let rest = rest.trim();
+            if rest
+                .to_ascii_lowercase()
+                .contains(&email.to_ascii_lowercase())
+            {
+                return line.to_string();
+            }
+            changed = true;
+            let placeholder = rest.is_empty() || rest.starts_with("(e.g.");
+            match (placeholder, name.map(str::trim).filter(|n| !n.is_empty())) {
+                (true, Some(name)) => format!("{NAME_LINE} {name}, {email}"),
+                (true, None) => format!("{NAME_LINE} {email}"),
+                (false, _) => format!("{NAME_LINE} {rest}, {email}"),
+            }
+        })
+        .collect();
+    if !changed {
+        return None;
+    }
+    let mut text = lines.join("\n");
+    if instructions.ends_with('\n') {
+        text.push('\n');
+    }
+    Some(text)
+}
+
+/// Writes the mailbox owner into the Chief of Staff's "My role" (see
+/// [`with_mailbox_identity`]), through the agent repository
+pub fn note_identity(
+    store: &crate::services::repo_store::RepoStore,
+    name: Option<&str>,
+    email: &str,
+) -> Result<bool, String> {
+    let current = store.skill(CHIEF_OF_STAFF)?.instructions;
+    let Some(updated) = with_mailbox_identity(&current, name, email) else {
+        return Ok(false);
+    };
+    store
+        .repos()
+        .agents
+        .save_instructions(CHIEF_OF_STAFF, &updated)
+        .map_err(|e| e.to_string())?;
+    store.commit(crate::services::domain::EntityKind::Agent, CHIEF_OF_STAFF)?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,5 +191,34 @@ mod tests {
         let id = AgentId::parse(CHIEF_OF_STAFF).unwrap();
         let agent = Agent::from_skill_md(id, CHIEF_OF_STAFF_FILES[0].1).unwrap();
         assert_eq!(agent.name(), "Chief of Staff");
+    }
+
+    #[test]
+    fn the_mailbox_owner_goes_into_my_role() {
+        let template = CHIEF_OF_STAFF_FILES[1].1;
+        let filled =
+            with_mailbox_identity(template, Some("Dev Chechi"), "dev@company.com").unwrap();
+        assert!(filled.contains("- **Name and title:** Dev Chechi, dev@company.com\n"));
+        assert!(!filled.contains("(e.g. \"Dev, platform engineering lead\")"));
+        // The rest of the template stays
+        assert!(filled.contains("- **Team and manager:**"));
+        // Once there, nothing changes; a second mailbox adds its address
+        assert_eq!(
+            with_mailbox_identity(&filled, Some("Dev"), "DEV@company.com"),
+            None
+        );
+        let both = with_mailbox_identity(&filled, Some("Dev"), "dev@gmail.com").unwrap();
+        assert!(both.contains("Dev Chechi, dev@company.com, dev@gmail.com"));
+        // The user's own words are kept
+        let own = "# My role\n- **Name and title:** Dev, platform lead\n";
+        assert_eq!(
+            with_mailbox_identity(own, None, "dev@company.com").unwrap(),
+            "# My role\n- **Name and title:** Dev, platform lead, dev@company.com\n"
+        );
+        // A role without the line is left alone
+        assert_eq!(
+            with_mailbox_identity("# My role\nDev\n", None, "d@x.com"),
+            None
+        );
     }
 }

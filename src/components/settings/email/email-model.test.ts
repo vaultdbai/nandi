@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { EmailProviderStatus } from '@/lib/tauri-bindings'
 import {
+  DEFAULT_INTERVAL_MINUTES,
+  emailTodo,
   formatWatchList,
+  intervalLabel,
+  intervalOptions,
   mailboxCard,
   parseWatchList,
   problemKey,
@@ -94,4 +98,52 @@ describe('watch list', () => {
 
 it('names a problem key per kind', () => {
   expect(problemKey('adminApproval')).toBe('email.problem.adminApproval')
+})
+
+describe('check interval', () => {
+  it('defaults to 30 minutes and offers 5 minutes to 2 hours', () => {
+    expect(DEFAULT_INTERVAL_MINUTES).toBe(30)
+    expect(intervalOptions(30)).toEqual([5, 15, 30, 60, 120])
+    expect(intervalOptions(10)).toEqual([5, 10, 15, 30, 60, 120])
+  })
+
+  it('says hours for whole hours', () => {
+    const t = (key: string, { count }: { count: number }) => `${key}:${count}`
+    expect(intervalLabel(t, 120)).toBe('email.hours:2')
+    expect(intervalLabel(t, 30)).toBe('email.minutes:30')
+    expect(intervalLabel(t, 90)).toBe('email.minutes:90')
+  })
+})
+
+describe('emailTodo', () => {
+  it('asks to connect while nothing is connected', () => {
+    expect(emailTodo([status(), status({ provider: 'gmail' })])).toEqual({
+      kind: 'connect',
+      providers: ['outlook', 'gmail'],
+    })
+  })
+
+  it('offers the other one quietly once one is connected', () => {
+    expect(
+      emailTodo([
+        status({ connected: true, state: 'ready' }),
+        status({ provider: 'gmail' }),
+      ])
+    ).toEqual({ kind: 'another', providers: ['gmail'] })
+  })
+
+  it('shows nothing when both are connected or none can be', () => {
+    expect(
+      emailTodo([
+        status({ connected: true, state: 'ready' }),
+        status({ provider: 'gmail', connected: true, state: 'ready' }),
+      ])
+    ).toEqual({ kind: 'none' })
+    expect(
+      emailTodo([
+        status({ available: false }),
+        status({ provider: 'gmail', available: false }),
+      ])
+    ).toEqual({ kind: 'none' })
+  })
 })

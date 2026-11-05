@@ -85,7 +85,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### ON-02 — Onboarding steps, step indicator and resume
 
-- **What:** First-run setup has four steps: Name, Model, Network, Agents (starter packs). A numbered indicator shows done steps with a check. The step reached is saved per Nandi home, so quitting midway resumes there. A resumed setup offers "Skip the rest of setup".
+- **What:** First-run setup has five steps: Name, Model, Email (optional), Network, Agents (starter packs). A numbered indicator shows done steps with a check. The step reached is saved per Nandi home, so quitting midway resumes there. A resumed setup offers "Skip the rest of setup".
 - **Where:** `src/components/views/OnboardingView.tsx` (`StepIndicator`), `identity-model.ts` (`ONBOARDING_STEPS`, `resumeStep`), `set_onboarding_step` (`PUT /api/identity/onboarding-step`, body `{"step":"model"}`). Stored in `local_settings` key `onboarding.step` in `~/.nandi/local/state.db`.
 - **Preconditions:** A home that is not onboarded.
 - **Steps:**
@@ -100,7 +100,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - A failed step save is only logged ("Onboarding: saving the step failed"). Setup continues.
   - `PUT /api/identity/onboarding-step` without `step` returns 400 "Body needs a \"step\"".
   - An unknown stored value counts as unset.
-- **Automation:** Covered by: `src/components/views/OnboardingView.test.tsx` ('shows four steps', 'opens where an interrupted setup stopped', 'renders nothing on a home that finished setup'), `identity-model.test.ts`, Rust `onboarding_step_is_remembered_per_home` | Layer: api + unit | Gap: none significant.
+- **Automation:** Covered by: `src/components/views/OnboardingView.test.tsx` ('shows five steps', 'opens where an interrupted setup stopped', 'renders nothing on a home that finished setup'), `identity-model.test.ts`, Rust `onboarding_step_is_remembered_per_home` | Layer: api + unit | Gap: none significant.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -214,7 +214,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
-### ON-09 — Step 3: join a network (optional)
+### ON-09 — Step 4: join a network (optional)
 
 - **What:** The choices are "Not now" (the default), "Join the Nandi network" (the relay this build comes with, `RelayStatus.builtInUrl` from `NANDI_DEFAULT_RELAY_URL`, named by its host; not shown when the build has none) and "Join my team's network" (a `ws://` or `wss://` address, a **Join code** password field and **Paste invite**). Nothing joins and no seat is taken until the user clicks **Join** (team network) or **Continue**: that calls `join_relay` (the build's own join code for the Nandi network, which the UI never sees). The result shows "Joined <host>. Connecting…" or a calm line saying why (unreachable, code needed, wrong code, relay full with the relay's own words, version mismatch), and **Continue anyway** goes on without a network. The join code is cleared once used and never shown. A relay already joined (or set by `NANDI_RELAY_URL`) is preselected and not joined again; env-set relays say so. "Not now" leaves a relay alone, except one joined on this step, which it leaves again (`setRelayUrl('')`).
 - **Where:** `src/components/onboarding/Step3_Network.tsx`, `identity-model.ts` (`relayNeedsSave`, `skipTurnsRelayOff`, `isRelayUrl`), `components/network/JoinRelayFields.tsx`, `join-model.ts`, `relay-invite.ts`; `join_relay`, `set_relay_url`, `get_relay_status`.
@@ -239,7 +239,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** yes
 - **Status:** Shipped
 
-### ON-10 — Step 3: "Let others send requests to my Nandi"
+### ON-10 — Step 4: "Let others send requests to my Nandi"
 
 - **What:** With a relay chosen, ticking this publishes the gateway card at the relay once, when the step is left. A note says the user must still let an agent accept requests and trust callers. On failure a warning toast says the gateway can be turned on later in Network.
 - **Where:** `OnboardingView.tsx` (`publishGateway`), `make_gateway_reachable`, `identity-model.ts` (`publishesGateway`).
@@ -256,7 +256,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** yes
 - **Status:** Shipped
 
-### ON-11 — Step 4: starter packs
+### ON-11 — Step 5: starter packs
 
 - **What:** A compact picker of marketplace starter packs. Packs tagged `official` (the Nandi Dev Pack and Nandi Personal Backup) are listed first when their publisher signature verifies, and start ticked; the user can untick them. The user picks 1–3 (a 4th shows "Pick up to 3 now; add more from the Marketplace later."). Packs already installed are hidden. "Install n packs" shows progress per pack ("Installing n of m…"). Failures offer "Retry" or "Continue without them". The step also has Skip and Back. Load errors ("Couldn't load the starter packs") offer Retry or Skip. An empty catalog ("No new starter packs") offers Continue.
 - **Where:** `src/components/marketplace/StarterPackPicker.tsx` (`MAX_STARTER_PACKS = 3`), `OnboardingView.tsx`.
@@ -290,6 +290,18 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Automation:** Covered by: `src/components/home/Home.test.tsx` ('welcomes the packs just installed…'), `dashboard-model.test.ts` | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
+
+### ON-15 — Step 3: connect your email (optional)
+
+- **What:** Setup step 3 (Name → Model → **Email** → Network → Agents) asks which mailboxes Chief of Staff reads: a checkbox each for **Outlook** and **Gmail**, both allowed. Ticking one shows **Connect <name>**, which opens the browser sign-in; each mailbox shows its own progress and then "Connected as …". The step repeats what Nandi reads and never does. **How often should Chief of Staff check?** offers 5, 15, 30 minutes, 1 hour and 2 hours, with **30 minutes** chosen. A provider without a client ID in this build shows "Not available in this build" and can't be ticked. The button reads **Skip for now** until a mailbox is connected, then **Continue**; both save the interval.
+- **Where:** `src/components/onboarding/StepEmail.tsx`, `components/email/ConnectMailbox.tsx`, `EmailReads.tsx`, `EmailSignInStatus.tsx`, `components/views/OnboardingView.tsx`, `onboarding/identity-model.ts` (`ONBOARDING_STEPS`); `OnboardingStep::Email` (`services/auth/mod.rs`); `set_email_settings`.
+- **Preconditions:** A fresh `NANDI_HOME`; a build with `NANDI_MICROSOFT_CLIENT_ID` (and the Google ID and secret for Gmail).
+- **Steps:** 1. Finish steps 1 and 2. 2. Tick Outlook and Gmail. 3. **Connect Outlook**, sign in; **Connect Gmail**, sign in. 4. Pick 15 minutes. 5. **Continue**, finish setup. 6. Repeat on another fresh home and choose **Skip for now**.
+- **Expected:** Both cards say "Connected as …"; Settings › Email shows both, checking every 15 minutes. Right after setup, one "Email: N new emails" run starts for the Chief of Staff (not one interval later), and its My role "Name and title" line holds the account name and address. Quitting on this step resumes on it. Skipping goes on with the interval saved and leaves the Home to-do (SH-35).
+- **Edge / negative cases:** Sign-in problems explain themselves as in CP-03 (admin approval link, declined, network). Back returns to the model step. A mailbox connected earlier shows as connected and its box can't be unticked.
+- **Automation:** Covered by: `StepEmail.test.tsx` (both mailboxes, default 30 and skip, unavailable provider), `email-model.test.ts`, `OnboardingView.test.tsx`, `builtin_agents.rs` (`the_mailbox_owner_goes_into_my_role`) | Layer: unit | Gap: a live sign-in during setup (manual).
+- **Needs relay:** no
+- **Status:** Shipped (live test pending)
 
 ### ON-13 — Starter packs page (after setup)
 
@@ -1202,3 +1214,15 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - Sidebar and panel visibility and the last Settings section are not persisted across launches. This is by design, but worth knowing when testing.
   - There is no automated check that all four locale files have the same keys.
   - There are no tests for `services/recovery.rs`, `validate_filename`, the ErrorBoundary, the native menu, or ThemeProvider.
+
+### SH-35 — Home: connect your email to-do
+
+- **What:** With no mailbox connected (skipped at setup, or disconnected later), Home shows a card "Connect your email so Chief of Staff can keep your notes." with **Connect Outlook** and **Connect Gmail** (each provider this build can connect) and **Email settings**. Connecting signs in from the card. The card goes away once a mailbox is connected; while the other provider is still free, one quiet line says "You can also connect <name>." with **Email settings**. Nothing shows when both are connected or the build can connect neither.
+- **Where:** `src/components/home/EmailTodo.tsx`, `HomeView.tsx`, `settings/email/email-model.ts` (`emailTodo`), `useEmailStatus` (refreshes on `email://changed`).
+- **Preconditions:** A build with at least one email client ID.
+- **Steps:** 1. Skip the email step at setup; open Home. 2. **Connect Outlook** from the card and sign in. 3. Settings › Email › **Stop reading my email**; back to Home.
+- **Expected:** Step 1: the card. Step 2: the card goes; the "You can also connect Gmail." line remains (if Gmail is available). Step 3: the card is back.
+- **Edge / negative cases:** No dismiss: it is a to-do until a mailbox is connected. A mailbox that needs a new sign-in is handled in Settings › Email (Reconnect), not here.
+- **Automation:** Covered by: `EmailTodo.test.tsx`, `email-model.test.ts` (`emailTodo`) | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped

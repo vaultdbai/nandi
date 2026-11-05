@@ -16,26 +16,25 @@ import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
+import { EmailSignInStatus } from '@/components/email/EmailSignInStatus'
+import { EmailReads } from '@/components/email/EmailReads'
 import {
   useEmailAction,
   useEmailSignIn,
   useEmailStatus,
-  type EmailSignInState,
 } from '@/hooks/useEmail'
-import { client } from '@/lib/client'
 import { formatRelativeTime } from '@/lib/format-time'
 import type { EmailProviderStatus, EmailStatus } from '@/lib/tauri-bindings'
 import { cn } from '@/lib/utils'
 import {
   formatWatchList,
+  intervalLabel,
+  intervalOptions,
   mailboxCard,
   parseWatchList,
-  problemKey,
   type CardTone,
 } from '../email/email-model'
 import { SettingsGroup, SettingsSectionFrame } from '../SettingsFrame'
-
-const INTERVALS = [5, 10, 15, 30, 60]
 
 const TONE: Record<CardTone, string> = {
   muted: 'text-muted-foreground',
@@ -58,15 +57,7 @@ export function EmailSection() {
       title={t('settings.section.email')}
       description={t('email.description')}
     >
-      <div className="rounded-md border p-4 text-sm">
-        <p className="font-medium">{t('email.reads.title')}</p>
-        <ul className="mt-2 list-disc space-y-1 ps-5 text-muted-foreground">
-          <li>{t('email.reads.what')}</li>
-          <li>{t('email.reads.never')}</li>
-          <li>{t('email.reads.kept')}</li>
-          <li>{t('email.reads.cited')}</li>
-        </ul>
-      </div>
+      <EmailReads />
       {status.isPending && <Spinner />}
       {status.error && (
         <p className="text-sm text-destructive">{String(status.error)}</p>
@@ -145,7 +136,7 @@ function MailboxCardView({
       {card.error && (
         <p className="text-xs text-muted-foreground">{card.error}</p>
       )}
-      <SignInState state={signIn.state} />
+      <EmailSignInStatus state={signIn.state} />
       <div className="flex flex-wrap gap-2">
         {card.canConnect && !waiting && (
           <Button size="sm" onClick={() => void signIn.start()}>
@@ -242,71 +233,11 @@ function MailboxCardView({
   )
 }
 
-function SignInState({ state }: { state: EmailSignInState }) {
-  const { t } = useTranslation()
-  if (state.phase === 'waiting') {
-    return (
-      <div className="space-y-1 rounded-md border p-3 text-sm">
-        {state.flow.userCode ? (
-          <>
-            <p>{t('email.enterCode')}</p>
-            <p className="font-mono text-lg tracking-widest" dir="ltr">
-              {state.flow.userCode}
-            </p>
-          </>
-        ) : (
-          <p>{t('email.finishInBrowser')}</p>
-        )}
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Spinner />
-          {t('email.waiting')}
-        </p>
-      </div>
-    )
-  }
-  if (state.phase === 'connected') {
-    return <p className="text-sm text-success">{t('email.connected')}</p>
-  }
-  if (state.phase === 'failed') {
-    const { problem } = state
-    const link = problem.adminConsentUrl
-    return (
-      <div className="space-y-2 rounded-md border p-3 text-sm">
-        <p>{t(problemKey(problem.kind))}</p>
-        {link && (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void navigator.clipboard?.writeText(link)}
-            >
-              {t('email.copyAdminLink')}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void client.openExternal(link)}
-            >
-              {t('email.openAdminLink')}
-            </Button>
-          </div>
-        )}
-        <p className="text-xs break-words text-muted-foreground">
-          {problem.detail}
-        </p>
-      </div>
-    )
-  }
-  return null
-}
-
 function ScheduleSettings({ status }: { status: EmailStatus }) {
   const { t } = useTranslation()
   const action = useEmailAction()
   const [watch, setWatch] = useState(formatWatchList(status.watch))
-  const intervals = INTERVALS.includes(status.intervalMinutes)
-    ? INTERVALS
-    : [...INTERVALS, status.intervalMinutes].sort((a, b) => a - b)
+  const intervals = intervalOptions(status.intervalMinutes)
   const save = (intervalMinutes: number, watchText: string) =>
     action.mutate({
       kind: 'settings',
@@ -324,7 +255,7 @@ function ScheduleSettings({ status }: { status: EmailStatus }) {
         >
           {intervals.map(minutes => (
             <NativeSelectOption key={minutes} value={String(minutes)}>
-              {t('email.minutes', { count: minutes })}
+              {intervalLabel(t, minutes)}
             </NativeSelectOption>
           ))}
         </NativeSelect>

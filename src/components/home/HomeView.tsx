@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import { useDashboard } from '@/store/agent-store'
 import { useNavigationStore, type View } from '@/store/navigation-store'
 import { ViewHeader } from '@/components/views/ViewHeader'
+import { EmailTodo } from './EmailTodo'
 import { RecentRow, RunningRow } from './HomeRows'
 import type { HomeTile } from './home-model'
 
@@ -65,6 +66,7 @@ export function HomeView({
             <WelcomeStrip packIds={welcome.packIds} />
           )}
           {dashboard && <BackupNudge snapshot={dashboard} />}
+          <EmailTodo />
           {dashboard === null || home.isPending ? (
             <HomeSkeleton />
           ) : fresh ? (

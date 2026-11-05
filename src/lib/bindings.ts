@@ -3284,11 +3284,11 @@ workflowStepStarted: "workflow://step_started"
 
 /** user-defined constants **/
 
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 
 /** user-defined types **/
 
@@ -5452,7 +5452,11 @@ export type OllamaStatus = { running: boolean; models: string[] }
  * The first-run step to resume at. Machine-local runtime state in
  * `local_settings` (per Nandi home), not the gold copy.
  */
-export type OnboardingStep = "name" | "model" | "network" | "packs" | "done"
+export type OnboardingStep = "name" | "model" | 
+/**
+ * Connect the mailboxes the Chief of Staff reads (optional)
+ */
+"email" | "network" | "packs" | "done"
 export type OwnerKind = "user" | "team" | "org"
 /**
  * Who runs the instance an agent lives on.

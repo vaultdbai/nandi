@@ -546,6 +546,18 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
     } else {
         forget_progress(state, provider).await?;
     }
+    // Who "me" is, in every Chief of Staff run (editable in My role)
+    let store = state.store().clone();
+    let (name, address) = (identity.name.clone(), identity.email.clone());
+    match tokio::task::spawn_blocking(move || {
+        crate::services::builtin_agents::note_identity(&store, name.as_deref(), &address)
+    })
+    .await
+    {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => log::warn!("Couldn't note the mailbox owner in My role: {e}"),
+        Err(e) => log::warn!("Noting the mailbox owner failed: {e}"),
+    }
     log::info!("Connected {} for the Chief of Staff", provider.name());
     emit_changed(state);
     check_soon(state);

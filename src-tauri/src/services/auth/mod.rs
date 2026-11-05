@@ -65,6 +65,8 @@ pub struct IdentityStatus {
 pub enum OnboardingStep {
     Name,
     Model,
+    /// Connect the mailboxes the Chief of Staff reads (optional)
+    Email,
     Network,
     Packs,
     Done,
@@ -797,6 +799,7 @@ I'm Alice.
         );
         for step in [
             OnboardingStep::Model,
+            OnboardingStep::Email,
             OnboardingStep::Network,
             OnboardingStep::Done,
         ] {

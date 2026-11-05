@@ -2823,6 +2823,7 @@
   "onboarding.steps.label": "Setup steps",
   "onboarding.steps.name": "Name",
   "onboarding.steps.model": "Model",
+  "onboarding.steps.email": "Email",
   "onboarding.steps.network": "Network",
   "onboarding.steps.packs": "Agents",
   "onboarding.continue": "Continue",
@@ -4066,5 +4067,15 @@
   "email.watch": "Always include",
   "email.watchHelp": "Senders or domains whose mail always comes through, even if it looks like a newsletter. One per line.",
   "email.watchPlaceholder": "lena@contoso.com\nvendor.com",
-  "email.saveWatch": "Save"
+  "email.saveWatch": "Save",
+  "onboarding.email.title": "Connect your email (optional)",
+  "onboarding.email.description": "Chief of Staff reads your mail and keeps My notes up to date: what you're asked to do, deadlines, decisions and who owns what. You can connect later from Home or Settings › Email.",
+  "onboarding.email.which": "Which mailboxes should Chief of Staff read? Pick one or both, then connect each.",
+  "onboarding.email.often": "How often should Chief of Staff check?",
+  "onboarding.email.skip": "Skip for now",
+  "email.hours_one": "{{count}} hour",
+  "email.hours_other": "{{count}} hours",
+  "home.email.todo": "Connect your email so Chief of Staff can keep your notes.",
+  "home.email.another": "You can also connect {{names}}.",
+  "home.email.settings": "Email settings"
 }

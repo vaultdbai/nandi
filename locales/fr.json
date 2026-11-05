@@ -2823,6 +2823,7 @@
   "onboarding.steps.label": "Étapes de configuration",
   "onboarding.steps.name": "Nom",
   "onboarding.steps.model": "Modèle",
+  "onboarding.steps.email": "E-mail",
   "onboarding.steps.network": "Réseau",
   "onboarding.steps.packs": "Agents",
   "onboarding.continue": "Continuer",
@@ -4066,5 +4067,15 @@
   "email.watch": "Toujours inclure",
   "email.watchHelp": "Expéditeurs ou domaines dont les e-mails passent toujours, même s'ils ressemblent à une newsletter. Un par ligne.",
   "email.watchPlaceholder": "lena@contoso.com\nvendor.com",
-  "email.saveWatch": "Enregistrer"
+  "email.saveWatch": "Enregistrer",
+  "onboarding.email.title": "Connectez vos e-mails (facultatif)",
+  "onboarding.email.description": "Chief of Staff lit vos e-mails et tient Mes notes à jour : ce qu'on vous demande, les échéances, les décisions et qui s'occupe de quoi. Vous pourrez connecter plus tard depuis l'accueil ou Paramètres › E-mail.",
+  "onboarding.email.which": "Quelles boîtes mail Chief of Staff doit-il lire ? Choisissez-en une ou les deux, puis connectez chacune.",
+  "onboarding.email.often": "À quelle fréquence Chief of Staff doit-il vérifier ?",
+  "onboarding.email.skip": "Passer pour l'instant",
+  "email.hours_one": "{{count}} heure",
+  "email.hours_other": "{{count}} heures",
+  "home.email.todo": "Connectez vos e-mails pour que Chief of Staff tienne vos notes à jour.",
+  "home.email.another": "Vous pouvez aussi connecter {{names}}.",
+  "home.email.settings": "Paramètres e-mail"
 }

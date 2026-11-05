@@ -16,7 +16,7 @@ use specta::Type;
 use super::provider::MailProvider;
 use crate::model::Timestamp;
 
-pub const DEFAULT_INTERVAL_MINUTES: u32 = 5;
+pub const DEFAULT_INTERVAL_MINUTES: u32 = 30;
 pub const MIN_INTERVAL_MINUTES: u32 = 1;
 pub const MAX_INTERVAL_MINUTES: u32 = 240;
 /// Most watch-list entries

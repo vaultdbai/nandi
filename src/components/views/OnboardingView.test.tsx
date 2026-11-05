@@ -70,6 +70,27 @@ const gatewayStatus = {
   discoverable: true,
 } as unknown as GatewayStatus
 
+const mailbox = (provider: 'outlook' | 'gmail') => ({
+  provider,
+  available: true,
+  connected: false,
+  accountName: null,
+  accountEmail: null,
+  state: 'notConnected' as const,
+  error: null,
+  lastCheckedAt: null,
+  lastFound: 0,
+  lastRunId: null,
+})
+
+const emailStatus = {
+  providers: [mailbox('outlook'), mailbox('gmail')],
+  intervalMinutes: 30,
+  watch: [],
+  nextCheckAt: null,
+  checking: false,
+}
+
 const research = packManifest('research-pack', 'Research Pack', {
   suggestedAsks: ['Summarize this paper'],
 })
@@ -86,9 +107,15 @@ async function fillName(user: User) {
   await screen.findByText('Connect a model')
 }
 
-async function toNetwork(user: User) {
+async function toEmail(user: User) {
   await fillName(user)
   await user.click(await screen.findByRole('button', { name: 'Continue' }))
+  await screen.findByText('Connect your email (optional)')
+}
+
+async function toNetwork(user: User) {
+  await toEmail(user)
+  await user.click(await screen.findByRole('button', { name: 'Skip for now' }))
   await screen.findByText('Work with other people? (optional)')
 }
 
@@ -118,6 +145,9 @@ describe('OnboardingView', () => {
       joinRelay: ok({ kind: 'joined', relay: 'ws://relay.team.test/relay' }),
       getRelayStatus: ok(relayStatus(null)),
       makeGatewayReachable: ok(gatewayStatus),
+      getEmailStatus: ok(emailStatus),
+      setEmailSettings: ok(emailStatus),
+      checkEmailNow: ok(emailStatus),
       listMarketplacePacks: ok([research, productivity]),
       installPack: ok(null),
     })
@@ -224,10 +254,10 @@ describe('OnboardingView', () => {
       expect(screen.queryByText('Connect a model')).toBeNull()
     })
 
-    it('shows four steps', async () => {
+    it('shows five steps', async () => {
       render(<OnboardingView />)
       const steps = await screen.findByRole('list', { name: 'Setup steps' })
-      expect(steps).toHaveTextContent(/Name.*Model.*Network.*Agents/)
+      expect(steps).toHaveTextContent(/Name.*Model.*Email.*Network.*Agents/)
       expect(steps.querySelector('[aria-current="step"]')).toHaveTextContent(
         'Name'
       )
@@ -257,9 +287,9 @@ describe('OnboardingView', () => {
         'claude:claude-sonnet-5'
       )
       expect(
-        await screen.findByText('Work with other people? (optional)')
+        await screen.findByText('Connect your email (optional)')
       ).toBeInTheDocument()
-      expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('network')
+      expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('email')
     })
 
     it('tests a typed key before storing it', async () => {
@@ -352,8 +382,28 @@ describe('OnboardingView', () => {
       await user.click(screen.getByRole('button', { name: 'Skip for now' }))
       await user.click(screen.getByRole('button', { name: 'Skip anyway' }))
       expect(
+        await screen.findByText('Connect your email (optional)')
+      ).toBeInTheDocument()
+    })
+  })
+
+  describe('email', () => {
+    it('offers both mailboxes, checks every 30 minutes, and can be skipped', async () => {
+      const user = userEvent.setup()
+      render(<OnboardingView />)
+      await toEmail(user)
+      expect(screen.getByLabelText('Outlook')).toBeEnabled()
+      expect(screen.getByLabelText('Gmail')).toBeEnabled()
+      expect(screen.getByLabelText('30 minutes')).toBeChecked()
+      await user.click(screen.getByRole('button', { name: 'Skip for now' }))
+      expect(
         await screen.findByText('Work with other people? (optional)')
       ).toBeInTheDocument()
+      expect(mocks().setEmailSettings).toHaveBeenCalledWith({
+        intervalMinutes: 30,
+        watch: [],
+      })
+      expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('network')
     })
   })
 
@@ -613,6 +663,8 @@ describe('OnboardingView', () => {
       await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1))
       expect(mocks().installPack).toHaveBeenCalledWith('research-pack')
       expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('done')
+      // The Chief of Staff starts on the mail now, not one interval later
+      expect(mocks().checkEmailNow).toHaveBeenCalled()
       expect(useNavigationStore.getState().current).toEqual({
         kind: 'home',
         welcome: { packIds: ['research-pack'] },

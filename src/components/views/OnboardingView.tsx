@@ -12,6 +12,7 @@ import {
 } from '@/components/onboarding/Step1_Name'
 import { Step2Model } from '@/components/onboarding/Step2_Model'
 import { Step3Network } from '@/components/onboarding/Step3_Network'
+import { StepEmail } from '@/components/onboarding/StepEmail'
 import {
   DEFAULT_RELAY_DRAFT,
   needsOnboarding,
@@ -44,8 +45,10 @@ export interface OnboardingViewProps {
 }
 
 /**
- * First launch: name (1), model (2), network (3, optional), starter packs
- * (4), then the Dashboard. Each step saves its own setting as it's left,
+ * First launch: name (1), model (2), email (3, optional), network (4,
+ * optional), starter packs (5), then the Dashboard. Finishing starts the
+ * first email check at once, so the Chief of Staff has notes to work
+ * from before the first interval passes. Each step saves its own setting as it's left,
  * and the step reached is remembered on this Nandi home, so quitting midway
  * resumes there. The name is saved on step 1 because installing packs
  * writes agents into the repo. A relay that's already configured
@@ -163,6 +166,14 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
       })
     }
     void queryClient.invalidateQueries({ queryKey: identityQueryKeys.all })
+    // The Chief of Staff starts on the mail now, not one interval later
+    void client.checkEmailNow().then(result => {
+      if (result.status === 'error') {
+        logger.warn('Onboarding: the first email check failed', {
+          error: result.error,
+        })
+      }
+    })
     leave(packIds)
   }
 
@@ -205,8 +216,14 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
           )}
           {step === 'model' && (
             <Step2Model
-              onNext={() => advance('network')}
+              onNext={() => advance('email')}
               onBack={() => setStep('name')}
+            />
+          )}
+          {step === 'email' && (
+            <StepEmail
+              onNext={() => advance('network')}
+              onBack={() => setStep('model')}
             />
           )}
           {step === 'network' && (
@@ -217,7 +234,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
                 if (publishesGateway(relay)) void publishGateway()
                 advance('packs')
               }}
-              onBack={() => setStep('model')}
+              onBack={() => setStep('email')}
               configuredUrl={configuredRelayUrl}
               configuredSource={relayStatus.data?.relayUrlSource ?? null}
               builtInUrl={builtInRelayUrl}

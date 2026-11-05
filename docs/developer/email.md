@@ -24,6 +24,13 @@ the run: mail_* tools (host) + filesystem__* notes tools, no container, nothing 
 | Grants per agent and connector | `ConnectorGrant {agent, connector, access}` in `config.json`, kept until the user disconnects (Wave 2 of the connector hub adds saved grants and a dialog) |
 | Not in the Library             | Mailboxes are in Settings › Email, not `connectors.yaml`: the connection belongs to this computer's keyring, not the gold copy                             |
 
+## At first-run setup and on Home
+
+- Setup step 3 (`StepEmail.tsx`, `OnboardingStep::Email`) asks which mailboxes (Outlook, Gmail or both, connected in turn with `ConnectMailbox`) and how often (5, 15, 30, 60 or 120 minutes; **30 is the default**, `DEFAULT_INTERVAL_MINUTES` in Rust and the UI). Skip and Continue both save the interval.
+- Finishing setup calls `check_email_now`, so the first read starts at once.
+- Connecting writes the mailbox owner into the Chief of Staff's My role (`builtin_agents::note_identity`, through the agent repository): the template's "Name and title" placeholder becomes "<name>, <email>", a line the user wrote gets the address added, and a role without that line is left alone. Every Chief of Staff run then knows who "me" is.
+- Home's `EmailTodo` shows "Connect your email" while nothing is connected, then a one-line offer of the other provider (`email-model.ts` `emailTodo`).
+
 ## Where things live
 
 | What                                                 | Where                                                          |

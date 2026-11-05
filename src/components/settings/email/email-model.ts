@@ -115,3 +115,41 @@ export function parseWatchList(text: string): string[] {
 export function formatWatchList(watch: string[]): string {
   return watch.join('\n')
 }
+
+/** The check interval a new install starts with, in minutes */
+export const DEFAULT_INTERVAL_MINUTES = 30
+
+/** The intervals offered, plus the current one if it's another */
+export function intervalOptions(current: number): number[] {
+  const offered = [5, 15, 30, 60, 120]
+  return offered.includes(current)
+    ? offered
+    : [...offered, current].sort((a, b) => a - b)
+}
+
+/** "30 minutes" or "2 hours" */
+export function intervalLabel(
+  t: (key: string, options: { count: number }) => string,
+  minutes: number
+): string {
+  return minutes >= 60 && minutes % 60 === 0
+    ? t('email.hours', { count: minutes / 60 })
+    : t('email.minutes', { count: minutes })
+}
+
+/** What Home's email to-do offers */
+export type EmailTodo =
+  | { kind: 'none' }
+  /** Nothing connected: connect one of these */
+  | { kind: 'connect'; providers: MailProvider[] }
+  /** One connected: the other, as a small option */
+  | { kind: 'another'; providers: MailProvider[] }
+
+export function emailTodo(providers: EmailProviderStatus[]): EmailTodo {
+  const available = providers.filter(p => p.available && !p.connected)
+  if (available.length === 0) return { kind: 'none' }
+  const connected = providers.some(p => p.connected)
+  return connected
+    ? { kind: 'another', providers: available.map(p => p.provider) }
+    : { kind: 'connect', providers: available.map(p => p.provider) }
+}

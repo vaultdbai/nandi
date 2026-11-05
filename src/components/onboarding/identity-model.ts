@@ -185,7 +185,13 @@ export function publishesGateway(draft: RelayDraft): boolean {
 }
 
 /** Onboarding's steps, in order (the step indicator and resume use it) */
-export const ONBOARDING_STEPS = ['name', 'model', 'network', 'packs'] as const
+export const ONBOARDING_STEPS = [
+  'name',
+  'model',
+  'email',
+  'network',
+  'packs',
+] as const
 export type OnboardingStepKey = (typeof ONBOARDING_STEPS)[number]
 
 /**
