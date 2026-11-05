@@ -23,6 +23,7 @@ mod connectors;
 mod delegation;
 // Wave final
 mod delegation_clarification;
+mod email;
 mod gateway;
 mod harness_sessions;
 mod harnesses;
@@ -107,6 +108,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(gateway::api())
                 .merge(network::api())
                 .merge(notes::api())
+                .merge(email::api())
                 .merge(teams_roster::api())
                 // Wave A
                 .merge(capabilities::api())

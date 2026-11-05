@@ -25,6 +25,7 @@ Technical documentation for building and extending this app. These docs describe
 | [Relay Testing](https://github.com/vaultdbai/nandi-relay/blob/main/docs/relay-testing.md) | Running a relay, NANDI_HOME, one-machine and LAN tests (nandi-relay repo)  |
 | [Relay Defaults](./relay-defaults.md)                                                     | Relay URL precedence, the LAN prefill, public plan                         |
 | [GitHub Auth](./github-auth.md)                                                           | Device-flow GitHub sign-in: one token for every github.com repository      |
+| [Email](./email.md)                                                                       | Outlook and Gmail read-only for the Chief of Staff's notes; token refresh  |
 | [S3 Backup](./s3-backup.md)                                                               | Folder backups to S3 Deep Archive, AWS setup tools, derived triggers       |
 | [Entra ID Setup](./entra-setup.md)                                                        | v2, not in the app: Microsoft sign-in, app registration, Entra-group teams |
 | [Marketplace](./marketplace.md)                                                           | Registries, installing, forking, updating agents                           |

@@ -95,9 +95,15 @@ jobs:
         uses: tauri-apps/tauri-action@dev
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional override of the Nandi OAuth App client ID (connectors/oauth.rs).
+          # Optional override of the Nandi OAuth App client ID (services/auth/github.rs).
           # Leave the secret unset to ship the default Nandi OAuth App.
           NANDI_GITHUB_CLIENT_ID: ${{ secrets.NANDI_GITHUB_CLIENT_ID }}
+          # Email sign-in (services/email/provider.rs). Public client IDs; Google
+          # requires its desktop client secret, which isn't truly confidential.
+          # Unset = "not available in this build" for that provider
+          NANDI_MICROSOFT_CLIENT_ID: ${{ vars.NANDI_MICROSOFT_CLIENT_ID }}
+          NANDI_GOOGLE_CLIENT_ID: ${{ vars.NANDI_GOOGLE_CLIENT_ID }}
+          NANDI_GOOGLE_CLIENT_SECRET: ${{ secrets.NANDI_GOOGLE_CLIENT_SECRET }}
           # The free trial's DeepSeek key (services/llm_trial.rs); unset = no trial
           NANDI_TRIAL_DEEPSEEK_KEY: ${{ secrets.NANDI_TRIAL_DEEPSEEK_KEY }}
           # The relay a fresh install joins (services/relay/mod.rs), e.g. the

@@ -7,7 +7,7 @@ pub use crate::services::auth::github::GithubSignIn;
 pub use crate::services::auth::IdentityStatus;
 
 use crate::services::auth;
-use crate::services::connectors::DeviceFlowState;
+use crate::services::auth::oauth::DeviceFlowState;
 use crate::services::AppState;
 
 #[tauri::command]

@@ -13,6 +13,7 @@
 //! as they are. The file is replaced atomically (temp file + rename).
 
 pub mod github;
+pub mod oauth;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;

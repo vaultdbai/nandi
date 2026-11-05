@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ExternalLink, FolderOpen, FolderPlus, KeyRound, X } from 'lucide-react'
+import { ExternalLink, FolderOpen, FolderPlus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -23,14 +23,12 @@ import {
   useConfigureConnector,
   useConnectorAction,
   useFolderUsers,
-  useConnectorOAuth,
   useSetConnectorSecret,
   type ConnectorDetails,
   type ConnectorSecret,
 } from '@/hooks/useConnectors'
 import type { JsonValue } from '@/lib/bindings'
 import { client, isDesktop } from '@/lib/client'
-import { logger } from '@/lib/logger'
 import { GithubSignInPanel } from '@/components/github/GithubSignInPanel'
 import { startBlocked } from './library-model'
 import {
@@ -49,18 +47,11 @@ const KEY_LINKS: Record<string, string> = {
 
 /**
  * A connector's Setup section (§4.5): editable settings, write-only
- * secrets (Save / Replace / Clear, which asks first), OAuth sign-in, and
+ * secrets (Save / Replace / Clear, which asks first), and
  * Start, which stays disabled with the reason until everything is set.
  */
 export function ConnectorSetup({ connector }: { connector: ConnectorDetails }) {
   const { t } = useTranslation()
-  if (connector.availability === 'comingSoon') {
-    return (
-      <p className="text-sm text-muted-foreground">
-        {t('library.setup.notAvailable')}
-      </p>
-    )
-  }
   if (!connector.status.installed) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -68,9 +59,7 @@ export function ConnectorSetup({ connector }: { connector: ConnectorDetails }) {
       </p>
     )
   }
-  const secrets = (connector.secrets ?? []).filter(
-    secret => secret.key !== 'oauth_token'
-  )
+  const secrets = connector.secrets ?? []
   return (
     <div className="space-y-4">
       {connector.id === 'filesystem' ? (
@@ -85,7 +74,6 @@ export function ConnectorSetup({ connector }: { connector: ConnectorDetails }) {
         <SecretField key={secret.key} connector={connector} secret={secret} />
       ))}
       {connector.id === 'github' && <GithubSignInPanel showSignOut={false} />}
-      {connector.kind === 'oauth2' && <SignIn connector={connector} />}
       <StartRow connector={connector} />
     </div>
   )
@@ -563,62 +551,6 @@ function SecretField({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  )
-}
-
-function SignIn({ connector }: { connector: ConnectorDetails }) {
-  const { t } = useTranslation()
-  const { state, start, reset } = useConnectorOAuth(connector.id)
-
-  const signIn = async () => {
-    reset()
-    const flow = await start()
-    if (flow) {
-      client
-        .openExternal(flow.verificationUri)
-        .catch((error: unknown) =>
-          logger.warn('Could not open the sign-in page', { error })
-        )
-    }
-  }
-
-  return (
-    <div className="space-y-2">
-      {connector.signedIn && state.phase !== 'waiting' && (
-        <p className="text-sm text-muted-foreground">
-          {t('connectors.oauth.signedIn')}
-        </p>
-      )}
-      {state.phase === 'waiting' && (
-        <div className="space-y-1 rounded-md border p-3 text-sm">
-          {state.flow.userCode ? (
-            <>
-              <p>{t('connectors.oauth.enterCode')}</p>
-              <p className="font-mono text-lg tracking-widest">
-                {state.flow.userCode}
-              </p>
-            </>
-          ) : (
-            <p>{t('connectors.oauth.finishInBrowser')}</p>
-          )}
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Spinner />
-            {t('connectors.oauth.waiting')}
-          </p>
-        </div>
-      )}
-      {state.phase === 'error' && (
-        <p className="text-sm text-destructive">{state.message}</p>
-      )}
-      {state.phase !== 'waiting' && (
-        <Button size="sm" variant="outline" onClick={() => void signIn()}>
-          <KeyRound />
-          {connector.signedIn
-            ? t('connectors.oauth.reconnect')
-            : t('connectors.oauth.signIn', { name: connector.name })}
-        </Button>
-      )}
     </div>
   )
 }

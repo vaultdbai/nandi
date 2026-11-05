@@ -37,8 +37,7 @@ export function LibraryCard({
       data-testid={`library-card-${item.key}`}
       onClick={() => onOpenDrawer(item)}
       className={cn(
-        'flex cursor-pointer flex-col gap-2 rounded-xl border bg-card p-4 text-card-foreground shadow-xs transition-colors hover:bg-accent/30',
-        item.pill === 'comingSoon' && 'opacity-60'
+        'flex cursor-pointer flex-col gap-2 rounded-xl border bg-card p-4 text-card-foreground shadow-xs transition-colors hover:bg-accent/30'
       )}
     >
       <div className="flex items-start gap-3">
@@ -146,7 +145,6 @@ const PILL_TONES: Record<StatusPill, string> = {
   problem: 'border-destructive/40 text-destructive',
   updateAvailable: 'border-info/40 text-info',
   off: 'text-muted-foreground',
-  comingSoon: 'text-muted-foreground',
   notForThisComputer: 'text-muted-foreground',
 }
 

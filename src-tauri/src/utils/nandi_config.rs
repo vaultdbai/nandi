@@ -32,6 +32,13 @@ pub struct NandiConfig {
     /// keychain; see `services::auth::github`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub github_login: Option<String>,
+    /// Connected mailboxes and how often to check them (`services::email`;
+    /// the tokens are in the keychain)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<crate::services::email::EmailSettings>,
+    /// Which agent may use which connector, on this computer only
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connector_grants: Vec<crate::services::email::ConnectorGrant>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }

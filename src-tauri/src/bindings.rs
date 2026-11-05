@@ -4,11 +4,11 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::commands::{
         agents, analysis, ask, attachments, audit, aws_auth, bedrock, capabilities, capability,
         capability_registries, chat, companion, config, connectors, delegation,
-        delegation_clarification, docker, egress, gateway, harness_sessions, harnesses, identity,
-        images, llm_keys, manual_steps, marketplace, marketplace_search, mascot, memory, network,
-        notes, notifications, palette, pilots, policies, preferences, queue, reassign, recovery,
-        relay, relay_capabilities, remote, repo, requests, runs, shared, snapshots, studio, tasks,
-        teams, teams_roster, tools, triggers, work, workflow_builder, workflows,
+        delegation_clarification, docker, egress, email, gateway, harness_sessions, harnesses,
+        identity, images, llm_keys, manual_steps, marketplace, marketplace_search, mascot, memory,
+        network, notes, notifications, palette, pilots, policies, preferences, queue, reassign,
+        recovery, relay, relay_capabilities, remote, repo, requests, runs, shared, snapshots,
+        studio, tasks, teams, teams_roster, tools, triggers, work, workflow_builder, workflows,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;
@@ -18,6 +18,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::services::ask::{AskCompleted, AskStreamingDelta};
     use crate::services::config::repo_config::RepoLlmConfigStatus;
     use crate::services::connectors::{ConnectorChanged, ConnectorsChanged};
+    use crate::services::email::EmailChanged;
     use crate::services::events::*;
     use crate::services::marketplace::events::*;
     use crate::services::orchestrator::compaction::AgentRunCompacted;
@@ -160,8 +161,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             connectors::set_agent_connectors,
             connectors::list_folder_users,
             connectors::set_connector_secret,
-            connectors::start_oauth,
-            connectors::poll_oauth,
             // Wave 2A
             capability::find_agents_by_capability,
             capability::list_declared_capabilities,
@@ -223,6 +222,13 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             notes::save_note,
             notes::delete_note,
             notes::set_notes_agents_can_write,
+            email::get_email_status,
+            email::start_email_sign_in,
+            email::poll_email_sign_in,
+            email::check_email_now,
+            email::set_email_paused,
+            email::disconnect_email,
+            email::set_email_settings,
             memory::get_agent_memory_enabled,
             memory::set_agent_memory_enabled,
             // Wave final, network-first (Track A: identity, remote)
@@ -415,6 +421,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             PilotConsentNeeded,
             ConnectorChanged,
             ConnectorsChanged,
+            EmailChanged,
             RelayStatus,
             RelayAgentOnline,
             RelayAgentOffline,

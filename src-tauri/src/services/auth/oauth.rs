@@ -1,22 +1,24 @@
-//! OAuth2 for connectors: authorization code + PKCE with a one-shot
-//! localhost redirect server, falling back to the device flow (RFC 8628)
-//! for providers that support it. Tokens go to the OS keyring
-//! (`nandi.connector.<id>.oauth`) and never cross a transport.
+//! OAuth2 sign-in, shared by every feature that signs in to a provider
+//! (the GitHub sign-in, email): authorization code + PKCE with a one-shot
+//! loopback redirect server, falling back to the device flow (RFC 8628)
+//! for providers that support it, and token refresh. Tokens go to the OS
+//! keyring under the entry the caller names and never cross a transport.
 //!
-//! Both flows fit the frozen `start_oauth` / `poll_oauth` pair:
+//! Both flows fit one `start` / `poll` pair:
 //!
-//! - **PKCE**: `start_oauth` returns a `DeviceFlowState` whose
-//!   `verificationUri` is the provider's sign-in page and whose `userCode`
-//!   is empty. The browser comes back to `http://127.0.0.1:<port>/callback`;
-//!   the code is redeemed there. `poll_oauth` reports when that's done.
-//! - **Device**: the usual user code + verification URL; each `poll_oauth`
+//! - **PKCE**: `start` returns a `DeviceFlowState` whose `verificationUri`
+//!   is the provider's sign-in page and whose `userCode` is empty. The
+//!   browser comes back to the provider's loopback redirect
+//!   (`http://127.0.0.1:<port>/callback`, or `http://localhost:<port>` for
+//!   Microsoft); the code is redeemed there. `poll` reports when that's done.
+//! - **Device**: the usual user code + verification URL; each `poll`
 //!   asks the token endpoint once (no faster than `interval`).
 //!
-//! The one provider (`gmail`) is an auth-only stub: the API calls land in
-//! a later wave. Client IDs are baked in at build time (`NANDI_GOOGLE_CLIENT_ID`)
-//! or set per connector under `config.oauth` in `.nandi/connectors.yaml`
-//! (public values only). The app-wide GitHub sign-in (`services::auth::github`)
-//! runs on the same flows with its own keyring entry.
+//! [`fresh_access_token`] hands a feature a usable access token: the
+//! stored one while it's valid, else one renewed with the stored refresh
+//! token. When the provider refuses the refresh, the answer is
+//! [`TokenError::NeedsSignIn`] and the feature asks the user to sign in
+//! again.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -24,17 +26,14 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
-use futures_util::future::BoxFuture;
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sha2::{Digest, Sha256};
+use specta::Type;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::AbortHandle;
 
-use super::catalog::config_list;
-use super::{Connector, ConnectorDecl, DeviceFlowState, ToolDef};
 use crate::services::secrets::Secrets;
 
 /// How long a started sign-in stays valid
@@ -43,13 +42,56 @@ const DEVICE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
 const DEFAULT_INTERVAL: u64 = 5;
 const MAX_REQUEST_BYTES: usize = 8 * 1024;
 
+/// Codes for an in-progress sign-in (device flow or PKCE), shown to the
+/// user.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceFlowState {
+    /// Opaque code passed back to the poll
+    pub device_code: String,
+    /// Short code the user types at `verification_uri`; empty for PKCE
+    pub user_code: String,
+    pub verification_uri: String,
+    /// Minimum seconds between polls
+    pub interval: u32,
+    /// Unix timestamp (seconds) after which the codes are invalid
+    pub expires_at: u32,
+}
+
+/// Where the browser comes back to after a PKCE sign-in, as the provider
+/// has it registered. Nandi always listens on 127.0.0.1 (and `::1` for
+/// `localhost`), on a port picked at sign-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LoopbackRedirect {
+    pub host: &'static str,
+    pub path: &'static str,
+}
+
+impl LoopbackRedirect {
+    /// `http://127.0.0.1:<port>/callback` (Google, most providers)
+    pub const CALLBACK: Self = Self {
+        host: "127.0.0.1",
+        path: "/callback",
+    };
+    /// `http://localhost:<port>` (Microsoft Entra's `http://localhost`
+    /// registration, which matches any port)
+    pub const LOCALHOST: Self = Self {
+        host: "localhost",
+        path: "/",
+    };
+
+    fn uri(self, port: u16) -> String {
+        match self.path {
+            "/" => format!("http://{}:{port}", self.host),
+            path => format!("http://{}:{port}{path}", self.host),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct OAuthProvider {
     pub id: String,
     pub name: String,
-    pub description: String,
-    /// Shown in the Library but not installable yet ("Coming soon")
-    pub coming_soon: bool,
     /// Authorization endpoint (PKCE); `None` if the provider has none we can use
     pub authorize_url: Option<String>,
     pub token_url: String,
@@ -62,97 +104,15 @@ pub struct OAuthProvider {
     pub scopes: Vec<String>,
     /// Extra authorization parameters (e.g. Google's `access_type=offline`)
     pub auth_params: Vec<(String, String)>,
+    pub redirect: LoopbackRedirect,
 }
 
-impl OAuthProvider {
-    /// `pkce` | `device`: the flow `start_oauth` tries first
-    pub fn flow_kind(&self) -> &'static str {
-        if self.authorize_url.is_some() {
-            "pkce"
-        } else {
-            "device"
-        }
-    }
-}
-
-fn build_env(value: Option<&'static str>) -> Option<String> {
+/// A value baked in at build time (`option_env!`), if set and not blank
+pub fn build_env(value: Option<&'static str>) -> Option<String> {
     value
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .map(str::to_string)
-}
-
-/// The shipped providers (auth only for now).
-pub fn providers() -> Vec<OAuthProvider> {
-    vec![OAuthProvider {
-        id: "gmail".into(),
-        name: "Gmail".into(),
-        description: "Sign in with Google to give agents Gmail access.".into(),
-        coming_soon: true,
-        authorize_url: Some("https://accounts.google.com/o/oauth2/v2/auth".into()),
-        token_url: "https://oauth2.googleapis.com/token".into(),
-        // Google's device flow doesn't allow Gmail scopes
-        device_url: None,
-        client_id: build_env(option_env!("NANDI_GOOGLE_CLIENT_ID")),
-        client_secret: build_env(option_env!("NANDI_GOOGLE_CLIENT_SECRET")),
-        scopes: vec!["https://www.googleapis.com/auth/gmail.readonly".into()],
-        auth_params: vec![
-            ("access_type".into(), "offline".into()),
-            ("prompt".into(), "consent".into()),
-        ],
-    }]
-}
-
-/// The provider for an OAuth2 declaration (`kind: gmail`), with
-/// any `config.oauth` overrides:
-///
-/// ```yaml
-/// config:
-///   oauth: {client_id: abc.apps.googleusercontent.com, scopes: [...]}
-/// ```
-pub fn provider_for(decl: &ConnectorDecl) -> Result<OAuthProvider, String> {
-    let mut provider = providers()
-        .into_iter()
-        .find(|p| p.id == decl.kind)
-        .ok_or_else(|| format!("Connector '{}' doesn't use OAuth2", decl.id))?;
-    if let Some(serde_yaml::Value::Mapping(overrides)) = decl.config.get("oauth") {
-        let get = |key: &str| {
-            overrides
-                .get(key)
-                .and_then(serde_yaml::Value::as_str)
-                .map(str::to_string)
-        };
-        if let Some(url) = get("authorize_url") {
-            provider.authorize_url = Some(url);
-        }
-        if let Some(url) = get("token_url") {
-            provider.token_url = url;
-        }
-        if let Some(url) = get("device_url") {
-            provider.device_url = Some(url);
-        }
-        if let Some(id) = get("client_id") {
-            provider.client_id = Some(id);
-        }
-        let mut nested = decl.clone();
-        nested.config = overrides
-            .iter()
-            .filter_map(|(k, v)| Some((k.as_str()?.to_string(), v.clone())))
-            .collect();
-        let scopes = config_list(&nested, "scopes");
-        if !scopes.is_empty() {
-            provider.scopes = scopes;
-        }
-    }
-    Ok(provider)
-}
-
-/// Keyring entry for a connector's tokens.
-pub fn token_entry(connector_id: &str) -> String {
-    format!(
-        "nandi.connector.{}.oauth",
-        connector_id.to_ascii_lowercase()
-    )
 }
 
 /// No `Debug`: holds tokens.
@@ -168,18 +128,24 @@ struct StoredToken {
     token_type: Option<String>,
 }
 
+impl StoredToken {
+    fn is_fresh(&self, now: u64) -> bool {
+        !self.access_token.is_empty()
+            && self
+                .expires_at
+                .is_none_or(|at| now + EXPIRY_MARGIN_SECS < at)
+    }
+}
+
 fn load_token(entry: &str, secrets: &Secrets) -> Option<StoredToken> {
     let raw = secrets.get(entry).ok().flatten()?;
     serde_json::from_str(&raw).ok()
 }
 
-pub fn has_token(connector_id: &str, secrets: &Secrets) -> bool {
-    stored_access_token(&token_entry(connector_id), secrets).is_some()
-}
-
-/// The stored access token, for the connector's API calls (later waves).
-pub fn access_token(connector_id: &str, secrets: &Secrets) -> Option<String> {
-    stored_access_token(&token_entry(connector_id), secrets)
+/// Whether a sign-in stored anything at keyring `entry` (a token that may
+/// still be refreshed counts)
+pub fn has_sign_in(entry: &str, secrets: &Secrets) -> bool {
+    load_token(entry, secrets).is_some()
 }
 
 /// Seconds before `expires_at` a token counts as expired already, so it
@@ -190,11 +156,14 @@ const EXPIRY_MARGIN_SECS: u64 = 60;
 /// expired: a provider rejects it anyway, and treating it as signed out
 /// lets a fallback (the GitHub CLI's sign-in) and "Sign in" take over
 pub fn stored_access_token(entry: &str, secrets: &Secrets) -> Option<String> {
-    let now = unix_now();
     load_token(entry, secrets)
-        .filter(|t| t.expires_at.is_none_or(|at| now + EXPIRY_MARGIN_SECS < at))
+        .filter(|t| t.is_fresh(unix_now()))
         .map(|t| t.access_token)
-        .filter(|t| !t.is_empty())
+}
+
+/// Deletes the sign-in at keyring `entry` (signing out)
+pub fn forget(entry: &str, secrets: &Secrets) -> Result<(), String> {
+    secrets.delete(entry)
 }
 
 fn store_token(entry: &str, token: &StoredToken, secrets: &Secrets) -> Result<(), String> {
@@ -249,6 +218,8 @@ enum TokenPoll {
     SlowDown(u64),
 }
 
+/// `Err` only when the server couldn't be reached or didn't answer in
+/// JSON; OAuth errors are in the response
 async fn post_token(url: &str, form: &[(&str, &str)]) -> Result<TokenResponse, String> {
     let response = http_client()
         .post(url)
@@ -267,6 +238,14 @@ async fn post_token(url: &str, form: &[(&str, &str)]) -> Result<TokenResponse, S
         .map_err(|_| format!("Unexpected response from the sign-in server ({status})"))
 }
 
+/// `error: description`, or whichever of the two is there
+fn oauth_error(error: &str, description: Option<&str>) -> String {
+    match description.map(str::trim).filter(|d| !d.is_empty()) {
+        Some(description) => format!("{error}: {description}"),
+        None => error.to_string(),
+    }
+}
+
 fn interpret(response: TokenResponse) -> Result<TokenPoll, String> {
     if let Some(access_token) = response.access_token.filter(|t| !t.is_empty()) {
         return Ok(TokenPoll::Token(StoredToken {
@@ -283,10 +262,102 @@ fn interpret(response: TokenResponse) -> Result<TokenPoll, String> {
         )),
         Some("expired_token") => Err("The sign-in code expired. Please start again.".into()),
         Some("access_denied") => Err("Sign-in was cancelled.".into()),
-        Some(error) => Err(response
-            .error_description
-            .unwrap_or_else(|| error.to_string())),
+        Some(error) => Err(oauth_error(error, response.error_description.as_deref())),
         None => Err("The sign-in server didn't return a token".into()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Refresh
+// ---------------------------------------------------------------------------
+
+/// Why there's no usable access token
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TokenError {
+    /// Never signed in, or the provider refused the refresh token (revoked,
+    /// expired: Google's Testing mode ends sign-ins after 7 days). Only a
+    /// new sign-in helps.
+    NeedsSignIn(String),
+    /// The sign-in server couldn't be reached; try again later
+    Unavailable(String),
+}
+
+impl std::fmt::Display for TokenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NeedsSignIn(reason) | Self::Unavailable(reason) => f.write_str(reason),
+        }
+    }
+}
+
+/// One refresh at a time: providers that rotate refresh tokens (Microsoft)
+/// would otherwise see the same one redeemed twice
+fn refresh_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+/// A usable access token for the sign-in at keyring `entry`: the stored
+/// one while it's valid, else a refreshed one (stored again).
+pub async fn fresh_access_token(
+    entry: &str,
+    provider: &OAuthProvider,
+    secrets: &Secrets,
+) -> Result<String, TokenError> {
+    match load_token(entry, secrets) {
+        None => Err(TokenError::NeedsSignIn("Not signed in".into())),
+        Some(token) if token.is_fresh(unix_now()) => Ok(token.access_token),
+        Some(_) => refresh(entry, provider, secrets).await,
+    }
+}
+
+/// Renews the access token with the stored refresh token, even if the
+/// access token looks valid (after the API answered 401). A rotated refresh
+/// token replaces the old one; without one, the old one is kept.
+pub async fn refresh(
+    entry: &str,
+    provider: &OAuthProvider,
+    secrets: &Secrets,
+) -> Result<String, TokenError> {
+    let _one_at_a_time = refresh_lock().lock().await;
+    let stored = load_token(entry, secrets)
+        .ok_or_else(|| TokenError::NeedsSignIn("Not signed in".into()))?;
+    let refresh_token = stored
+        .refresh_token
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| TokenError::NeedsSignIn("The sign-in can't be renewed".into()))?;
+    let client_id = provider.client_id.clone().ok_or_else(|| {
+        TokenError::NeedsSignIn(format!("{} sign-in isn't set up", provider.name))
+    })?;
+    let scope = provider.scopes.join(" ");
+    let mut form = vec![
+        ("grant_type", "refresh_token"),
+        ("refresh_token", refresh_token.as_str()),
+        ("client_id", client_id.as_str()),
+        ("scope", scope.as_str()),
+    ];
+    if let Some(secret) = &provider.client_secret {
+        form.push(("client_secret", secret.as_str()));
+    }
+    let response = post_token(&provider.token_url, &form)
+        .await
+        .map_err(TokenError::Unavailable)?;
+    match interpret(response) {
+        Ok(TokenPoll::Token(mut token)) => {
+            if token.refresh_token.is_none() {
+                token.refresh_token = Some(refresh_token);
+            }
+            store_token(entry, &token, secrets).map_err(TokenError::Unavailable)?;
+            log::info!("Renewed the {} sign-in", provider.name);
+            Ok(token.access_token)
+        }
+        Ok(_) => Err(TokenError::Unavailable(
+            "The sign-in server didn't return a token".into(),
+        )),
+        Err(reason) => {
+            log::warn!("The {} sign-in can't be renewed: {reason}", provider.name);
+            Err(TokenError::NeedsSignIn(reason))
+        }
     }
 }
 
@@ -328,7 +399,7 @@ enum Flow {
     Device(DeviceFlow),
 }
 
-/// Sign-ins in progress, one per connector.
+/// Sign-ins in progress, one per keyring entry.
 #[derive(Default)]
 pub struct OAuthFlows(Mutex<HashMap<String, Flow>>);
 
@@ -337,10 +408,9 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl OAuthFlows {
-    /// Starts (or restarts) the sign-in whose token goes to keyring `entry`
-    /// (`token_entry(entry)` for a connector): PKCE when the provider
-    /// has an authorization endpoint, else (or if the redirect server can't
-    /// start) the device flow.
+    /// Starts (or restarts) the sign-in whose token goes to keyring `entry`:
+    /// PKCE when the provider has an authorization endpoint, else (or if
+    /// the redirect server can't start) the device flow.
     pub async fn start(
         &self,
         entry: &str,
@@ -379,6 +449,11 @@ impl OAuthFlows {
         lock(&self.0).insert(entry.to_string(), Flow::Device(flow));
         log::info!("Started the device sign-in for {}", provider.name);
         Ok(state)
+    }
+
+    /// Drops the sign-in in progress for `entry`, if any
+    pub fn cancel(&self, entry: &str) {
+        lock(&self.0).remove(entry);
     }
 
     /// Checks once; `true` once the token is in the keyring.
@@ -486,7 +561,7 @@ async fn start_device(
         .await
         .map_err(|e| format!("Unexpected response from {}: {e}", provider.name))?;
     if let Some(error) = body.error {
-        return Err(body.error_description.unwrap_or(error));
+        return Err(oauth_error(&error, body.error_description.as_deref()));
     }
     let (Some(device_code), Some(user_code), Some(verification_uri)) = (
         body.device_code,
@@ -525,6 +600,7 @@ struct Exchange {
     client_id: String,
     client_secret: Option<String>,
     redirect_uri: String,
+    redirect_path: &'static str,
     verifier: String,
     state: String,
     secrets: Secrets,
@@ -549,6 +625,38 @@ impl Exchange {
     }
 }
 
+/// The loopback listeners: 127.0.0.1, plus `::1` on the same port for a
+/// `localhost` redirect (a browser may resolve it to either)
+struct Listeners {
+    v4: TcpListener,
+    v6: Option<TcpListener>,
+}
+
+impl Listeners {
+    async fn bind(redirect: LoopbackRedirect) -> Result<(Self, u16), String> {
+        let v4 = TcpListener::bind("127.0.0.1:0")
+            .await
+            .map_err(|e| format!("Couldn't start the sign-in redirect server: {e}"))?;
+        let port = v4.local_addr().map_err(|e| e.to_string())?.port();
+        let v6 = if redirect.host == "localhost" {
+            TcpListener::bind(("::1", port)).await.ok()
+        } else {
+            None
+        };
+        Ok((Self { v4, v6 }, port))
+    }
+
+    async fn accept(&self) -> std::io::Result<TcpStream> {
+        match &self.v6 {
+            Some(v6) => tokio::select! {
+                accepted = self.v4.accept() => accepted.map(|(stream, _)| stream),
+                accepted = v6.accept() => accepted.map(|(stream, _)| stream),
+            },
+            None => self.v4.accept().await.map(|(stream, _)| stream),
+        }
+    }
+}
+
 async fn start_pkce(
     entry: &str,
     provider: &OAuthProvider,
@@ -556,11 +664,8 @@ async fn start_pkce(
     secrets: Secrets,
 ) -> Result<(PkceFlow, DeviceFlowState), String> {
     let authorize_url = provider.authorize_url.as_deref().unwrap_or_default();
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .map_err(|e| format!("Couldn't start the sign-in redirect server: {e}"))?;
-    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-    let redirect_uri = format!("http://127.0.0.1:{port}/callback");
+    let (listeners, port) = Listeners::bind(provider.redirect).await?;
+    let redirect_uri = provider.redirect.uri(port);
     let verifier = random_token(32);
     let state = random_token(16);
     let scope = provider.scopes.join(" ");
@@ -590,17 +695,18 @@ async fn start_pkce(
         client_id: client_id.to_string(),
         client_secret: provider.client_secret.clone(),
         redirect_uri,
+        redirect_path: provider.redirect.path,
         verifier,
         state,
         secrets,
     };
     let task_outcome = outcome.clone();
     let server = tokio::spawn(async move {
-        if tokio::time::timeout(FLOW_TTL, serve_redirect(listener, exchange, &task_outcome))
+        if tokio::time::timeout(FLOW_TTL, serve_redirect(listeners, exchange, &task_outcome))
             .await
             .is_err()
         {
-            log::info!("A connector sign-in expired before the browser came back");
+            log::info!("A sign-in expired before the browser came back");
         }
     })
     .abort_handle();
@@ -623,9 +729,9 @@ async fn start_pkce(
 }
 
 /// Answers browser requests until the matching callback arrives.
-async fn serve_redirect(listener: TcpListener, exchange: Exchange, outcome: &Mutex<Outcome>) {
+async fn serve_redirect(listeners: Listeners, exchange: Exchange, outcome: &Mutex<Outcome>) {
     loop {
-        let Ok((mut stream, _)) = listener.accept().await else {
+        let Ok(mut stream) = listeners.accept().await else {
             continue;
         };
         let Some(target) = read_request_target(&mut stream).await else {
@@ -635,7 +741,7 @@ async fn serve_redirect(listener: TcpListener, exchange: Exchange, outcome: &Mut
             respond(&mut stream, 400, "Bad request").await;
             continue;
         };
-        if url.path() != "/callback" {
+        if url.path() != exchange.redirect_path {
             respond(&mut stream, 404, "Not found").await;
             continue;
         }
@@ -651,11 +757,12 @@ async fn serve_redirect(listener: TcpListener, exchange: Exchange, outcome: &Mut
             continue;
         }
         if let Some(error) = query.get("error") {
-            *lock(outcome) = Outcome::Failed(format!("Sign-in was refused: {error}"));
+            let reason = oauth_error(error, query.get("error_description").map(String::as_str));
+            *lock(outcome) = Outcome::Failed(format!("Sign-in was refused: {reason}"));
             respond(
                 &mut stream,
                 200,
-                "Sign-in was cancelled. You can close this window.",
+                "Sign-in didn't finish. Return to Nandi to see why.",
             )
             .await;
             return;
@@ -729,57 +836,6 @@ async fn respond(stream: &mut TcpStream, status: u16, message: &str) {
     let _ = stream.shutdown().await;
 }
 
-// ---------------------------------------------------------------------------
-// The connector side: auth only for now
-// ---------------------------------------------------------------------------
-
-/// An OAuth2 connector (`gmail`). It has no tools yet; it's
-/// healthy once signed in.
-pub struct OAuthConnector {
-    connector_id: String,
-    provider: OAuthProvider,
-    secrets: Secrets,
-}
-
-impl OAuthConnector {
-    pub fn new(connector_id: &str, provider: OAuthProvider, secrets: Secrets) -> Self {
-        Self {
-            connector_id: connector_id.to_string(),
-            provider,
-            secrets,
-        }
-    }
-}
-
-impl Connector for OAuthConnector {
-    fn list_tools(&self) -> Vec<ToolDef> {
-        Vec::new()
-    }
-
-    fn call_tool<'a>(
-        &'a self,
-        name: &'a str,
-        _args: &'a Value,
-    ) -> BoxFuture<'a, Result<Value, String>> {
-        Box::pin(async move {
-            Err(format!(
-                "{} tools aren't available yet ('{name}')",
-                self.provider.name
-            ))
-        })
-    }
-
-    fn health_check(&self) -> BoxFuture<'_, Result<(), String>> {
-        Box::pin(async move {
-            if has_token(&self.connector_id, &self.secrets) {
-                Ok(())
-            } else {
-                Err(format!("Not signed in to {}", self.provider.name))
-            }
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -790,6 +846,8 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     type Captured = Arc<Mutex<Vec<HashMap<String, String>>>>;
+
+    const ENTRY: &str = "nandi.test.oauth";
 
     async fn serve(router: Router) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -802,8 +860,6 @@ mod tests {
         OAuthProvider {
             id: "mock".into(),
             name: "Mock".into(),
-            description: String::new(),
-            coming_soon: false,
             authorize_url: pkce.then(|| "https://auth.example/authorize".into()),
             token_url: format!("{base}/token"),
             device_url: (!pkce).then(|| format!("{base}/device")),
@@ -811,39 +867,60 @@ mod tests {
             client_secret: None,
             scopes: vec!["mail.read".into(), "profile".into()],
             auth_params: vec![("access_type".into(), "offline".into())],
+            redirect: LoopbackRedirect::CALLBACK,
         }
+    }
+
+    fn token_router(captured: Captured, answer: serde_json::Value) -> Router {
+        Router::new()
+            .route(
+                "/token",
+                post(
+                    move |State(captured): State<Captured>,
+                          Form(form): Form<HashMap<String, String>>| {
+                        let answer = answer.clone();
+                        async move {
+                            lock(&captured).push(form);
+                            Json(answer)
+                        }
+                    },
+                ),
+            )
+            .with_state(captured)
+    }
+
+    fn stored(secrets: &Secrets, access: &str, refresh: Option<&str>, expires_at: Option<u64>) {
+        store_token(
+            ENTRY,
+            &StoredToken {
+                access_token: access.into(),
+                refresh_token: refresh.map(str::to_string),
+                expires_at,
+                token_type: None,
+            },
+            secrets,
+        )
+        .unwrap();
     }
 
     #[tokio::test]
     async fn pkce_flow_redeems_the_code_with_the_verifier() {
         let captured: Captured = Arc::default();
-        let router = Router::new()
-            .route(
-                "/token",
-                post(
-                    |State(captured): State<Captured>,
-                     Form(form): Form<HashMap<String, String>>| async move {
-                        lock(&captured).push(form);
-                        Json(json!({
-                            "access_token": "tok-1",
-                            "refresh_token": "ref-1",
-                            "expires_in": 3600,
-                            "token_type": "Bearer",
-                        }))
-                    },
-                ),
-            )
-            .with_state(captured.clone());
-        let base = serve(router).await;
+        let base = serve(token_router(
+            captured.clone(),
+            json!({
+                "access_token": "tok-1",
+                "refresh_token": "ref-1",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            }),
+        ))
+        .await;
         let secrets = Secrets::in_memory();
         let flows = OAuthFlows::default();
 
         let started = flows
-            .start(
-                &token_entry("mail"),
-                mock_provider(&base, true),
-                secrets.clone(),
-            )
+            .start(ENTRY, mock_provider(&base, true), secrets.clone())
             .await
             .unwrap();
         assert!(started.user_code.is_empty(), "PKCE has no user code");
@@ -854,20 +931,21 @@ mod tests {
         assert_eq!(params["access_type"], "offline");
         let redirect = params["redirect_uri"].clone();
         assert!(redirect.starts_with("http://127.0.0.1:"));
-        assert!(!flows.poll(&token_entry("mail"), &secrets).await.unwrap());
+        assert!(redirect.ends_with("/callback"));
+        assert!(!flows.poll(ENTRY, &secrets).await.unwrap());
 
         // A callback without our state is refused and doesn't end the flow
         let forged = reqwest::get(format!("{redirect}?code=evil&state=forged"))
             .await
             .unwrap();
         assert_eq!(forged.status(), 400);
-        assert!(!flows.poll(&token_entry("mail"), &secrets).await.unwrap());
+        assert!(!flows.poll(ENTRY, &secrets).await.unwrap());
 
         let page = reqwest::get(format!("{redirect}?code=abc&state={}", params["state"]))
             .await
             .unwrap();
         assert!(page.text().await.unwrap().contains("Signed in"));
-        assert!(flows.poll(&token_entry("mail"), &secrets).await.unwrap());
+        assert!(flows.poll(ENTRY, &secrets).await.unwrap());
 
         let forms = lock(&captured).clone();
         assert_eq!(forms.len(), 1, "only the real code is redeemed");
@@ -879,38 +957,59 @@ mod tests {
             code_challenge(&form["code_verifier"]),
             params["code_challenge"]
         );
-        assert_eq!(access_token("mail", &secrets).as_deref(), Some("tok-1"));
-        let raw = secrets.get(&token_entry("mail")).unwrap().unwrap();
+        assert_eq!(
+            stored_access_token(ENTRY, &secrets).as_deref(),
+            Some("tok-1")
+        );
+        let raw = secrets.get(ENTRY).unwrap().unwrap();
         assert!(raw.contains("ref-1"), "refresh token kept in the keyring");
     }
 
     #[tokio::test]
-    async fn pkce_flow_reports_a_refusal() {
+    async fn a_localhost_redirect_has_no_path_and_answers_on_the_root() {
+        let captured: Captured = Arc::default();
+        let base = serve(token_router(captured, json!({"access_token": "t"}))).await;
+        let secrets = Secrets::in_memory();
+        let flows = OAuthFlows::default();
+        let mut provider = mock_provider(&base, true);
+        provider.redirect = LoopbackRedirect::LOCALHOST;
+        let started = flows.start(ENTRY, provider, secrets.clone()).await.unwrap();
+        let auth = reqwest::Url::parse(&started.verification_uri).unwrap();
+        let params: HashMap<String, String> = auth.query_pairs().into_owned().collect();
+        let redirect = reqwest::Url::parse(&params["redirect_uri"]).unwrap();
+        assert_eq!(redirect.host_str(), Some("localhost"));
+        assert_eq!(params["redirect_uri"].matches('/').count(), 2, "no path");
+        let port = redirect.port().unwrap();
+        reqwest::get(format!(
+            "http://127.0.0.1:{port}/?code=abc&state={}",
+            params["state"]
+        ))
+        .await
+        .unwrap();
+        assert!(flows.poll(ENTRY, &secrets).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn pkce_flow_reports_a_refusal_with_its_description() {
         let base = serve(Router::new()).await;
         let secrets = Secrets::in_memory();
         let flows = OAuthFlows::default();
         let started = flows
-            .start(
-                &token_entry("mail"),
-                mock_provider(&base, true),
-                secrets.clone(),
-            )
+            .start(ENTRY, mock_provider(&base, true), secrets.clone())
             .await
             .unwrap();
         let auth = reqwest::Url::parse(&started.verification_uri).unwrap();
         let params: HashMap<String, String> = auth.query_pairs().into_owned().collect();
         reqwest::get(format!(
-            "{}?error=access_denied&state={}",
+            "{}?error=access_denied&error_description=AADSTS65001%20needs%20consent&state={}",
             params["redirect_uri"], params["state"]
         ))
         .await
         .unwrap();
-        let error = flows
-            .poll(&token_entry("mail"), &secrets)
-            .await
-            .unwrap_err();
+        let error = flows.poll(ENTRY, &secrets).await.unwrap_err();
         assert!(error.contains("access_denied"));
-        assert!(!has_token("mail", &secrets));
+        assert!(error.contains("AADSTS65001"));
+        assert!(!has_sign_in(ENTRY, &secrets));
     }
 
     #[tokio::test]
@@ -949,25 +1048,24 @@ mod tests {
         let flows = OAuthFlows::default();
 
         let started = flows
-            .start(
-                &token_entry("gh"),
-                mock_provider(&base, false),
-                secrets.clone(),
-            )
+            .start(ENTRY, mock_provider(&base, false), secrets.clone())
             .await
             .unwrap();
         assert_eq!(started.user_code, "ABCD-1234");
         // Too soon: answered locally, without hitting the server
-        assert!(!flows.poll(&token_entry("gh"), &secrets).await.unwrap());
+        assert!(!flows.poll(ENTRY, &secrets).await.unwrap());
         assert_eq!(calls.load(Ordering::SeqCst), 0);
 
         tokio::time::sleep(Duration::from_millis(1100)).await;
-        assert!(!flows.poll(&token_entry("gh"), &secrets).await.unwrap());
+        assert!(!flows.poll(ENTRY, &secrets).await.unwrap());
         tokio::time::sleep(Duration::from_millis(1100)).await;
-        assert!(flows.poll(&token_entry("gh"), &secrets).await.unwrap());
-        assert_eq!(access_token("gh", &secrets).as_deref(), Some("gh-tok"));
+        assert!(flows.poll(ENTRY, &secrets).await.unwrap());
+        assert_eq!(
+            stored_access_token(ENTRY, &secrets).as_deref(),
+            Some("gh-tok")
+        );
         // Done: later polls see the stored token
-        assert!(flows.poll(&token_entry("gh"), &secrets).await.unwrap());
+        assert!(flows.poll(ENTRY, &secrets).await.unwrap());
     }
 
     #[tokio::test]
@@ -975,22 +1073,10 @@ mod tests {
         let mut provider = mock_provider("http://127.0.0.1:1", true);
         provider.client_id = None;
         let error = OAuthFlows::default()
-            .start(&token_entry("mail"), provider, Secrets::in_memory())
+            .start(ENTRY, provider, Secrets::in_memory())
             .await
             .unwrap_err();
         assert!(error.contains("client_id"));
-    }
-
-    #[test]
-    fn config_overrides_the_provider() {
-        let manifest = crate::services::domain::ConnectorManifest::from_yaml(
-            "connectors:\n  - id: mail\n    kind: gmail\n    config:\n      oauth:\n        client_id: my-client\n        scopes: [a, b]\n",
-        )
-        .unwrap();
-        let provider = provider_for(manifest.get("mail").unwrap()).unwrap();
-        assert_eq!(provider.client_id.as_deref(), Some("my-client"));
-        assert_eq!(provider.scopes, ["a", "b"]);
-        assert_eq!(provider.flow_kind(), "pkce");
     }
 
     #[test]
@@ -1004,45 +1090,117 @@ mod tests {
     #[test]
     fn an_expired_sign_in_counts_as_signed_out() {
         let secrets = Secrets::in_memory();
-        let stored = |expires_at: Option<u64>| {
-            store_token(
-                "nandi.test.token",
-                &StoredToken {
-                    access_token: "t".into(),
-                    refresh_token: Some("r".into()),
-                    expires_at,
-                    token_type: None,
-                },
-                &secrets,
-            )
-            .unwrap();
-            stored_access_token("nandi.test.token", &secrets)
+        let check = |expires_at: Option<u64>| {
+            stored(&secrets, "t", Some("r"), expires_at);
+            stored_access_token(ENTRY, &secrets)
         };
-        assert_eq!(stored(None).as_deref(), Some("t"));
-        assert_eq!(stored(Some(unix_now() + 3600)).as_deref(), Some("t"));
-        assert_eq!(stored(Some(unix_now() - 1)), None);
+        assert_eq!(check(None).as_deref(), Some("t"));
+        assert_eq!(check(Some(unix_now() + 3600)).as_deref(), Some("t"));
+        assert_eq!(check(Some(unix_now() - 1)), None);
         // About to run out: as good as expired
-        assert_eq!(stored(Some(unix_now() + 10)), None);
+        assert_eq!(check(Some(unix_now() + 10)), None);
+        // Still a sign-in: it can be renewed
+        assert!(has_sign_in(ENTRY, &secrets));
     }
 
     #[tokio::test]
-    async fn the_connector_is_healthy_once_signed_in() {
+    async fn a_fresh_token_is_used_without_asking_the_server() {
+        let captured: Captured = Arc::default();
+        let base = serve(token_router(captured.clone(), json!({"access_token": "x"}))).await;
         let secrets = Secrets::in_memory();
-        let connector =
-            OAuthConnector::new("gh", mock_provider("http://x", false), secrets.clone());
-        assert!(connector.list_tools().is_empty());
-        assert!(connector.health_check().await.is_err());
-        store_token(
-            &token_entry("gh"),
-            &StoredToken {
-                access_token: "t".into(),
-                refresh_token: None,
-                expires_at: None,
-                token_type: None,
-            },
-            &secrets,
-        )
-        .unwrap();
-        connector.health_check().await.unwrap();
+        stored(&secrets, "live", Some("r"), Some(unix_now() + 3600));
+        let token = fresh_access_token(ENTRY, &mock_provider(&base, true), &secrets)
+            .await
+            .unwrap();
+        assert_eq!(token, "live");
+        assert!(lock(&captured).is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_expired_token_is_refreshed_and_stored() {
+        let captured: Captured = Arc::default();
+        let base = serve(token_router(
+            captured.clone(),
+            json!({"access_token": "new", "expires_in": 3600}),
+        ))
+        .await;
+        let secrets = Secrets::in_memory();
+        stored(&secrets, "old", Some("ref-1"), Some(unix_now() - 5));
+        let mut provider = mock_provider(&base, true);
+        provider.client_secret = Some("desktop-secret".into());
+        let token = fresh_access_token(ENTRY, &provider, &secrets)
+            .await
+            .unwrap();
+        assert_eq!(token, "new");
+        let forms = lock(&captured).clone();
+        assert_eq!(forms.len(), 1);
+        assert_eq!(forms[0]["grant_type"], "refresh_token");
+        assert_eq!(forms[0]["refresh_token"], "ref-1");
+        assert_eq!(forms[0]["client_secret"], "desktop-secret");
+        assert_eq!(stored_access_token(ENTRY, &secrets).as_deref(), Some("new"));
+        // No new refresh token: the old one is kept
+        assert!(secrets.get(ENTRY).unwrap().unwrap().contains("ref-1"));
+    }
+
+    #[tokio::test]
+    async fn a_rotated_refresh_token_replaces_the_old_one() {
+        let captured: Captured = Arc::default();
+        let base = serve(token_router(
+            captured,
+            json!({"access_token": "new", "refresh_token": "ref-2", "expires_in": 60}),
+        ))
+        .await;
+        let secrets = Secrets::in_memory();
+        stored(&secrets, "old", Some("ref-1"), Some(unix_now() + 3600));
+        // Forced (the API answered 401), though the token looked valid
+        refresh(ENTRY, &mock_provider(&base, true), &secrets)
+            .await
+            .unwrap();
+        let raw = secrets.get(ENTRY).unwrap().unwrap();
+        assert!(raw.contains("ref-2") && !raw.contains("ref-1"));
+    }
+
+    #[tokio::test]
+    async fn a_refused_refresh_needs_a_new_sign_in() {
+        let captured: Captured = Arc::default();
+        let base = serve(token_router(
+            captured,
+            json!({"error": "invalid_grant", "error_description": "Token has been expired or revoked."}),
+        ))
+        .await;
+        let secrets = Secrets::in_memory();
+        stored(&secrets, "old", Some("ref-1"), Some(unix_now() - 5));
+        let error = fresh_access_token(ENTRY, &mock_provider(&base, true), &secrets)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, TokenError::NeedsSignIn(ref r) if r.contains("invalid_grant")));
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_server_is_not_a_sign_out() {
+        let secrets = Secrets::in_memory();
+        stored(&secrets, "old", Some("ref-1"), Some(unix_now() - 5));
+        let error = fresh_access_token(ENTRY, &mock_provider("http://127.0.0.1:1", true), &secrets)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, TokenError::Unavailable(_)));
+        assert!(has_sign_in(ENTRY, &secrets), "the sign-in is kept");
+    }
+
+    #[tokio::test]
+    async fn no_sign_in_or_no_refresh_token_needs_a_sign_in() {
+        let secrets = Secrets::in_memory();
+        let provider = mock_provider("http://127.0.0.1:1", true);
+        assert!(matches!(
+            fresh_access_token(ENTRY, &provider, &secrets).await,
+            Err(TokenError::NeedsSignIn(_))
+        ));
+        stored(&secrets, "old", None, Some(unix_now() - 5));
+        assert!(matches!(
+            fresh_access_token(ENTRY, &provider, &secrets).await,
+            Err(TokenError::NeedsSignIn(_))
+        ));
+        forget(ENTRY, &secrets).unwrap();
+        assert!(!has_sign_in(ENTRY, &secrets));
     }
 }

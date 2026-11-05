@@ -1,5 +1,5 @@
 //! Registry and service tests. Pieces have their own tests next to them
-//! (`tools`, `filesystem`, `web_search`, `mcp`, `oauth`, `audit`).
+//! (`tools`, `filesystem`, `web_search`, `mcp`, `audit`).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -36,7 +36,6 @@ fn definition(id: &str, sensitive: &[&str]) -> ConnectorDefinition {
         description: String::new(),
         kind: catalog::ConnectorKind::Mcp,
         sensitive_tools: sensitive.iter().map(|s| s.to_string()).collect(),
-        coming_soon: false,
     }
 }
 
@@ -501,14 +500,7 @@ fn lists_the_catalog_and_declared_connectors() {
     let ids: Vec<_> = infos.iter().map(|i| i.id.as_str()).collect();
     assert_eq!(
         ids,
-        [
-            "filesystem",
-            "web_search",
-            "github",
-            "aws",
-            "s3_backup",
-            "gmail"
-        ]
+        ["filesystem", "web_search", "github", "aws", "s3_backup",]
     );
     let fs = &infos[0];
     assert!(fs.status.installed && !fs.status.running);
@@ -550,21 +542,6 @@ fn lists_the_catalog_and_declared_connectors() {
         .tools
         .iter()
         .any(|t| t.name == "backup_folder" && !t.sensitive));
-    assert_eq!(infos[5].oauth_flow.as_deref(), Some("pkce"));
-}
-
-#[tokio::test]
-async fn coming_soon_connectors_list_but_never_install() {
-    let state = AppState::for_tests(vec![]);
-    let infos = list_connectors(&state).await.unwrap();
-    let availability = |id: &str| infos.iter().find(|i| i.id == id).unwrap().availability;
-    assert_eq!(availability("gmail"), ConnectorAvailability::ComingSoon);
-    assert_eq!(availability("github"), ConnectorAvailability::Available);
-    assert_eq!(availability("web_search"), ConnectorAvailability::Available);
-    let error = install_connector(&state, "gmail").await.unwrap_err();
-    assert!(error.contains("isn't available yet"), "{error}");
-    assert!(manifest(&state).get("gmail").is_none());
-    state.shutdown();
 }
 
 #[tokio::test]
@@ -612,11 +589,8 @@ async fn secrets_are_saved_write_only_and_gate_start() {
         state.secrets().get("connectors.github.token").unwrap(),
         None
     );
-    // Unknown keys and OAuth tokens can't be set by hand
+    // Unknown keys can't be set
     assert!(set_connector_secret(&state, "github", "nope", "x")
-        .await
-        .is_err());
-    assert!(set_connector_secret(&state, "gmail", "oauth_token", "x")
         .await
         .is_err());
     // Web search has no key at all

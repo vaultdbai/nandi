@@ -44,6 +44,7 @@ pub mod connectors;
 #[allow(dead_code)]
 pub mod domain;
 pub mod egress;
+pub mod email;
 pub mod events;
 // Wave final (Track D): the gateway agent (NANDI.md)
 #[allow(dead_code)]
@@ -193,7 +194,9 @@ struct Inner {
     /// Runtime MCP connectors
     connectors: Option<Arc<ConnectorRegistry>>,
     /// The GitHub sign-in in progress (`auth::github`)
-    github_sign_in_flows: connectors::oauth::OAuthFlows,
+    github_sign_in_flows: auth::oauth::OAuthFlows,
+    /// Reading the user's mail for the Chief of Staff
+    email: Arc<email::EmailService>,
     audit_store: Arc<AuditStore>,
     git_service: Arc<GitService>,
     // Set once by `network::init`
@@ -339,6 +342,8 @@ impl AppState {
                 log::error!("Failed to resume requests: {e}");
             }
         });
+        // The email check, every few minutes while a mailbox is connected
+        email::start_scheduler(&state);
         let triggers = state.triggers().clone();
         state.runtime().spawn(async move {
             if let Err(e) = triggers.start().await {
@@ -444,6 +449,7 @@ impl AppState {
             pilots: Some(pilots),
             connectors: Some(connectors),
             github_sign_in_flows: Default::default(),
+            email: Arc::new(email::EmailService::default()),
             audit_store: Arc::new(AuditStore::new()),
             git_service,
             capability_index: OnceLock::new(),
@@ -531,7 +537,11 @@ impl AppState {
     }
 
     /// The GitHub sign-in in progress
-    pub fn github_sign_in_flows(&self) -> &connectors::oauth::OAuthFlows {
+    pub fn email(&self) -> &Arc<email::EmailService> {
+        &self.0.email
+    }
+
+    pub fn github_sign_in_flows(&self) -> &auth::oauth::OAuthFlows {
         &self.0.github_sign_in_flows
     }
 

@@ -1,7 +1,7 @@
 /**
  * Connector list and status, kept live by `connector://` events.
  */
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import {
   useMutation,
   useQuery,
@@ -13,7 +13,6 @@ import type { AgentConnectorChoice, JsonValue } from '@/lib/bindings'
 import type {
   ConnectorInfo,
   ConnectorStatus,
-  DeviceFlowState,
   Result,
 } from '@/lib/tauri-bindings'
 
@@ -39,8 +38,6 @@ export type ConnectorDetails = ConnectorInfo & {
   tools?: ConnectorTool[]
   config?: Record<string, unknown>
   secrets?: ConnectorSecret[]
-  oauthFlow?: 'pkce' | 'device' | null
-  signedIn?: boolean
   setupHint?: string | null
 }
 
@@ -201,58 +198,4 @@ export function useSetAgentConnectors(agentId: string) {
       // The agent's own list, and who uses each folder
       queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),
   })
-}
-
-export type OAuthState =
-  | { phase: 'idle' }
-  | { phase: 'waiting'; flow: DeviceFlowState }
-  | { phase: 'done' }
-  | { phase: 'error'; message: string }
-
-/**
- * OAuth2 sign-in for one connector. `start()` begins the flow; while
- * waiting, the core is polled every `flow.interval` seconds.
- */
-export function useConnectorOAuth(connectorId: string) {
-  const queryClient = useQueryClient()
-  const [state, setState] = useState<OAuthState>({ phase: 'idle' })
-
-  const flow = state.phase === 'waiting' ? state.flow : null
-  useEffect(() => {
-    if (!flow) return
-    let cancelled = false
-    const timer = window.setInterval(
-      async () => {
-        const result = await client.pollOauth(connectorId)
-        if (cancelled) return
-        if (result.status === 'error') {
-          setState({ phase: 'error', message: result.error })
-        } else if (result.data) {
-          setState({ phase: 'done' })
-          void queryClient.invalidateQueries({
-            queryKey: connectorsQueryKeys.all,
-          })
-        }
-      },
-      Math.max(flow.interval, 1) * 1000
-    )
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [flow, connectorId, queryClient])
-
-  const start = async () => {
-    const result = await client.startOauth(connectorId)
-    if (result.status === 'error') {
-      setState({ phase: 'error', message: result.error })
-      return null
-    }
-    setState({ phase: 'waiting', flow: result.data })
-    return result.data
-  }
-
-  const reset = () => setState({ phase: 'idle' })
-
-  return { state, start, reset }
 }

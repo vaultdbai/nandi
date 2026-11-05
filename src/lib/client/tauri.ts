@@ -173,8 +173,6 @@ export const tauriClient: NandiClient = {
   setConnectorSecret: (id, key, value) =>
     commands.setConnectorSecret(id, key, value),
   connectorStatus: id => commands.connectorStatus(id),
-  startOauth: connectorId => commands.startOauth(connectorId),
-  pollOauth: connectorId => commands.pollOauth(connectorId),
 
   findAgentsByCapability: capability =>
     commands.findAgentsByCapability(capability),
@@ -317,6 +315,14 @@ export const tauriClient: NandiClient = {
   saveNote: (name, content) => commands.saveNote(name, content),
   deleteNote: name => commands.deleteNote(name),
   setNotesAgentsCanWrite: allow => commands.setNotesAgentsCanWrite(allow),
+  getEmailStatus: () => commands.getEmailStatus(),
+  startEmailSignIn: provider => commands.startEmailSignIn(provider),
+  pollEmailSignIn: provider => commands.pollEmailSignIn(provider),
+  checkEmailNow: () => commands.checkEmailNow(),
+  setEmailPaused: (provider, paused) =>
+    commands.setEmailPaused(provider, paused),
+  disconnectEmail: provider => commands.disconnectEmail(provider),
+  setEmailSettings: settings => commands.setEmailSettings(settings),
   closeGatewayAssignment: (taskId, done, note) =>
     commands.closeGatewayAssignment(taskId, done, note),
   getGatewayConfig: () => commands.getGatewayConfig(),

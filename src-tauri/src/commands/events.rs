@@ -11,6 +11,7 @@ use crate::services::a2a::{DelegationTaskCompleted, DelegationTaskFailed, Delega
 use crate::services::ask::{AskCompleted, AskStreamingDelta};
 use crate::services::config::repo_config::RepoLlmConfigStatus;
 use crate::services::connectors::{ConnectorChanged, ConnectorsChanged};
+use crate::services::email::EmailChanged;
 use crate::services::events::*;
 use crate::services::marketplace::events::*;
 use crate::services::orchestrator::compaction::AgentRunCompacted;
@@ -89,6 +90,7 @@ tauri_events!(
     PilotConsentNeeded,
     ConnectorChanged,
     ConnectorsChanged,
+    EmailChanged,
     RelayStatus,
     RelayAgentOnline,
     RelayAgentOffline,

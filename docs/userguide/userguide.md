@@ -512,7 +512,7 @@ Every trigger has **Test…** (works even while it's off). It warns that the tes
 
 ### Cards and details
 
-Every card shows what it is, who publishes it, one status (Installed, Running, Needs setup, Update available, Off, Coming soon…), one line of what it's allowed to do ("Reads files · Runs shell · Internet: 2 sites", or "No special access"), and one button. Click a card for its details: what it can do, what it's allowed to do, setup, which agents may use it, a pack's contents, and, under **Details**, the technical bits (ID, source, commit, port, keychain entries). **Verified** means the publisher signed the release and the code you'd install is exactly the signed commit.
+Every card shows what it is, who publishes it, one status (Installed, Running, Needs setup, Update available, Off…), one line of what it's allowed to do ("Reads files · Runs shell · Internet: 2 sites", or "No special access"), and one button. Click a card for its details: what it can do, what it's allowed to do, setup, which agents may use it, a pack's contents, and, under **Details**, the technical bits (ID, source, commit, port, keychain entries). **Verified** means the publisher signed the release and the code you'd install is exactly the signed commit.
 
 ### Install and allow
 
@@ -520,7 +520,7 @@ Every card shows what it is, who publishes it, one status (Installed, Running, N
 
 ### Tools, connectors and pilots
 
-Built-in tools (Run shell commands, Read files, Write files, List folders, Ask other agents) each have an **On/Off** switch; switching one off asks first, because agents that use it lose it. A connector that needs something shows **Set up**: its details have the settings (saved to `.nandi/connectors.yaml`, so they travel with your repo), a masked field for each key (saved to your keychain and never shown again; **Replace** or **Clear**, which asks first), or **Sign in**. **Start** stays off, with the reason, until setup is complete. Connectors marked **Coming soon** can't be installed yet. Pilots install, start, and stop from their card; one that can't run on this computer says so.
+Built-in tools (Run shell commands, Read files, Write files, List folders, Ask other agents) each have an **On/Off** switch; switching one off asks first, because agents that use it lose it. A connector that needs something shows **Set up**: its details have the settings (saved to `.nandi/connectors.yaml`, so they travel with your repo), a masked field for each key (saved to your keychain and never shown again; **Replace** or **Clear**, which asks first). **Start** stays off, with the reason, until setup is complete. Email isn't a Library connector: connect it in **Settings › Email** ([Connect your email](#connect-your-email)). Pilots install, start, and stop from their card; one that can't run on this computer says so.
 
 **Shared folders.** The **Filesystem** connector holds the folders agents can be given: **Add a folder**, give it a short name, and choose **Read only** or **Read and write**. No agent gets a folder until you give it one: on the agent's page, under **Permissions**, turn on Filesystem and pick each folder (**Not shared**, **Read only**, or **Read and write** where the folder allows it). Writing a file still asks first. You can also ask in Ask: "give the report agent read access to docs". Agents that run in a container see the folders at `/agent/folders/<name>`.
 
@@ -587,6 +587,16 @@ Organizations on Microsoft 365 can back teams with Entra ID groups instead of Gi
 - **Chief of Staff keeps them.** With **Let Chief of Staff keep them up to date** on, tell it things as they happen ("the walkthrough moved to Nov 19", "Lena is now backup for billing"). It notes them in the right file without asking each time, and says where. It also raises what's coming up: overdue items, deadlines this week, and notes that disagree. It does this while you're talking with it, not in the background (see [What runs on its own](#what-runs-on-its-own-and-what-doesnt)). New users: open Chief of Staff and say hello. It asks a few questions and writes your first notes.
 - **You can edit them too.** Pick a note and choose **Edit** (Markdown: `#` headings, `-` lists, `|` tables). Ctrl+S saves. Use **New note** for anything else, such as `runbooks/etl`.
 - **What others see.** Teammates' agents can ask your Chief of Staff about your work, and it answers from these notes. Anything in a `private/` folder is never used for that. What you own is published from **Network › Sharing › What you offer**; Chief of Staff suggests updating it when your notes change.
+
+### Connect your email
+
+Chief of Staff can keep My notes up to date from your email, so you don't have to write them. Open **Settings › Email** and choose **Connect Outlook** (Outlook and Microsoft 365) or **Connect Gmail**, then sign in in your browser.
+
+- **What it reads.** New mail in your inbox and sent items, every few minutes (**Check every**, 5 minutes by default). Newsletters and notifications are left out. Add senders or domains under **Always include** if their mail matters even when it looks like a newsletter. The first check reads the last 14 days.
+- **What it does with it.** Chief of Staff notes what you're asked to do, what you promised, deadlines, decisions and who owns what. Each note says which email it came from: sender, date and subject. Edit or delete any note; it won't add a deleted one back.
+- **What it never does.** Nandi never sends, moves, deletes or marks your mail read, and keeps no copy of it: only where it got to, and the notes. Your sign-in stays in this computer's keychain and never goes into a container. Text in an email is never treated as an instruction.
+- **Your controls.** **Check now**, **Pause**, and **Stop reading my email**, which signs out and forgets where it got to. Your notes stay.
+- **If sign-in stops.** Some companies need an IT admin to approve Nandi first. Nandi says so and gives you a link to send them. Gmail test sign-ins end every 7 days: choose **Reconnect**.
 
 ### Finding who is responsible
 

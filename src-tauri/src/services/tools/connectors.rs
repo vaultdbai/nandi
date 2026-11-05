@@ -82,10 +82,7 @@ mod tests {
                 .collect(),
             config: Default::default(),
             secrets: Vec::new(),
-            oauth_flow: None,
-            signed_in: false,
             setup_hint: None,
-            availability: Default::default(),
         }
     }
 

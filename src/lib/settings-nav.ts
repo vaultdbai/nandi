@@ -12,6 +12,7 @@ import {
 export const SETTINGS_SECTIONS = [
   'models',
   'account',
+  'email',
   'cloud',
   'internet',
   'backup',

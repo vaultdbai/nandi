@@ -20,6 +20,7 @@ import type {
   AgentWarning,
   ConnectorChanged,
   ConnectorsChanged,
+  EmailChanged,
   DashboardActivity,
   DashboardAttention,
   DelegationTaskCompleted,
@@ -112,6 +113,7 @@ interface NandiEventMap {
   'pilot://consent_needed': PilotConsentNeeded
   'connector://changed': ConnectorChanged
   'connectors://changed': ConnectorsChanged
+  'email://changed': EmailChanged
   /** A sandbox image build's output line, or its end (`finished`) */
   'images://build': {
     image: 'harness' | 'runtime'

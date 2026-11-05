@@ -31,6 +31,7 @@ describe('SettingsView', () => {
     ).toEqual([
       'Models & runtimes',
       'Account',
+      'Email',
       'Cloud credentials',
       'Internet access',
       'Backup',

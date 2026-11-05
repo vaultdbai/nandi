@@ -53,6 +53,7 @@ const SCREEN_ROUTES: &[&str] = &[
     "delegation/providers",
     "delegation/returns",
     "egress/status",
+    "email",
     "gateway/callers",
     "gateway/config",
     "gateway/holds",

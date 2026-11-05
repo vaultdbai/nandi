@@ -44,10 +44,8 @@ function connector(
     name: 'Web search',
     description: '',
     kind: 'mcp',
-    availability: 'available',
     status: { installed: true, running: false, healthy: false, error: null },
     secrets: [],
-    signedIn: false,
     setupHint: null,
     ...overrides,
   } as ConnectorDetails
@@ -144,9 +142,6 @@ describe('status pills', () => {
   })
 
   it('maps connector state', () => {
-    expect(connectorPill(connector({ availability: 'comingSoon' }))).toBe(
-      'comingSoon'
-    )
     expect(
       connectorPill(
         connector({
@@ -204,9 +199,6 @@ describe('status pills', () => {
 
 describe('connector rules', () => {
   it('says why Start is blocked', () => {
-    expect(startBlocked(connector({ availability: 'comingSoon' }))).toBe(
-      'comingSoon'
-    )
     expect(
       startBlocked(
         connector({
@@ -216,7 +208,6 @@ describe('connector rules', () => {
         })
       )
     ).toBe('secrets')
-    expect(startBlocked(connector({ kind: 'oauth2' }))).toBe('signIn')
     expect(
       startBlocked(connector({ setupHint: 'Choose the folder agents can use' }))
     ).toBe('setup')
@@ -224,9 +215,6 @@ describe('connector rules', () => {
   })
 
   it('offers one action per state', () => {
-    expect(connectorAction(connector({ availability: 'comingSoon' }))).toBe(
-      null
-    )
     expect(
       connectorAction(
         connector({
@@ -238,7 +226,6 @@ describe('connector rules', () => {
         })
       )
     ).toBe('install')
-    expect(connectorAction(connector({ kind: 'oauth2' }))).toBe('setUp')
     expect(connectorAction(connector())).toBe('start')
     expect(
       connectorAction(
@@ -258,11 +245,10 @@ describe('listing', () => {
     packItem(research),
     ...workflowItems([research]),
     builtinToolItem(tool('shell')),
-    connectorItem(connector({ id: 'gmail', availability: 'comingSoon' })),
     connectorItem(connector()),
   ]
 
-  it('keeps Installed to what is on this computer, never coming soon', () => {
+  it('keeps Installed to what is on this computer', () => {
     expect(itemsForTab('installed', items).map(i => i.key)).toEqual([
       'pack:research',
       'workflow:research-flow',
@@ -271,10 +257,8 @@ describe('listing', () => {
     ])
   })
 
-  it('shows everything on Browse, coming soon last', () => {
-    const browse = itemsForTab('browse', items)
-    expect(browse).toHaveLength(items.length)
-    expect(browse.at(-1)?.key).toBe('connector:gmail')
+  it('shows everything on Browse', () => {
+    expect(itemsForTab('browse', items)).toHaveLength(items.length)
   })
 
   it('searches every word, including the pack a workflow comes in', () => {

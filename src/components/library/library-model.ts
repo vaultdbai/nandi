@@ -35,7 +35,6 @@ export type StatusPill =
   | 'problem'
   | 'updateAvailable'
   | 'off'
-  | 'comingSoon'
   | 'notForThisComputer'
 
 /** One phrase of the permissions line, in the order §4.2 lists them */
@@ -238,24 +237,20 @@ export function builtinToolItem(entry: ToolEntry): LibraryItem {
 }
 
 /** Why Start can't run yet, if anything (§4.5) */
-export type StartBlocked = 'comingSoon' | 'secrets' | 'signIn' | 'setup'
+export type StartBlocked = 'secrets' | 'setup'
 
 export function startBlocked(connector: ConnectorDetails): StartBlocked | null {
-  if (connector.availability === 'comingSoon') return 'comingSoon'
   if (
     (connector.secrets ?? []).some(secret => secret.required && !secret.isSet)
   ) {
-    // OAuth tokens come from signing in, never from typing a secret
-    return connector.kind === 'oauth2' ? 'signIn' : 'secrets'
+    return 'secrets'
   }
-  if (connector.kind === 'oauth2' && !connector.signedIn) return 'signIn'
   if (connector.setupHint) return 'setup'
   return null
 }
 
 export function connectorPill(connector: ConnectorDetails): StatusPill | null {
   const { status } = connector
-  if (connector.availability === 'comingSoon') return 'comingSoon'
   if (!status.installed) return null
   if (!status.running && startBlocked(connector) !== null) return 'needsSetup'
   if (status.running && !status.healthy) return 'problem'
@@ -268,7 +263,6 @@ export type ConnectorAction = 'install' | 'setUp' | 'start' | 'stop'
 export function connectorAction(
   connector: ConnectorDetails
 ): ConnectorAction | null {
-  if (connector.availability === 'comingSoon') return null
   if (!connector.status.installed) return 'install'
   if (connector.status.running) return 'stop'
   return startBlocked(connector) === null ? 'start' : 'setUp'
@@ -290,7 +284,7 @@ export function connectorItem(connector: ConnectorDetails): LibraryItem {
     publisher: null,
     version: null,
     verified: true,
-    compatible: connector.availability !== 'comingSoon',
+    compatible: true,
   }
 }
 
@@ -330,18 +324,16 @@ export function pilotItem(
 
 /**
  * The items a tab shows: Installed has what's on this computer (built-in
- * tools always); Browse has everything, coming soon last and never
- * under Installed.
+ * tools always); Browse has everything.
  */
 export function itemsForTab(
   tab: Exclude<LibraryTabId, 'shared'>,
   items: LibraryItem[]
 ): LibraryItem[] {
   if (tab === 'installed') {
-    return items.filter(item => item.installed && item.pill !== 'comingSoon')
+    return items.filter(item => item.installed)
   }
-  const later = (item: LibraryItem) => (item.pill === 'comingSoon' ? 1 : 0)
-  return [...items].sort((a, b) => later(a) - later(b))
+  return items
 }
 
 export interface LibraryFilter {

@@ -1,5 +1,5 @@
 //! What connectors exist: the built-ins (filesystem, web_search, github,
-//! and the gmail OAuth2 stub) and external MCP servers declared as
+//! aws, s3_backup) and external MCP servers declared as
 //! `kind: mcp` in `.nandi/connectors.yaml`:
 //!
 //! ```yaml
@@ -26,7 +26,6 @@ use super::aws::{AwsConnector, CliRunner};
 use super::filesystem::FilesystemConnector;
 use super::github::{self, GithubConnector};
 use super::mcp::McpConnector;
-use super::oauth;
 use super::s3_backup::{self, BackupSettings, S3BackupConnector, SystemHost};
 use super::web_search::{Engine, WebSearchConnector};
 use super::{Connector, ConnectorDecl, ToolDef};
@@ -37,15 +36,12 @@ use crate::services::secrets::Secrets;
 pub enum ConnectorKind {
     /// An MCP server (in-process built-in or external process / URL)
     Mcp,
-    /// An OAuth2 sign-in for an external API
-    OAuth2,
 }
 
 impl ConnectorKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Mcp => "mcp",
-            Self::OAuth2 => "oauth2",
         }
     }
 }
@@ -59,8 +55,6 @@ pub struct ConnectorDefinition {
     pub kind: ConnectorKind,
     /// Tools that go through the approval flow
     pub sensitive_tools: Vec<String>,
-    /// Listed but not installable yet
-    pub coming_soon: bool,
 }
 
 pub(super) const FILESYSTEM: &str = "filesystem";
@@ -79,9 +73,8 @@ pub fn builtins() -> Vec<ConnectorDefinition> {
             description: description.to_string(),
             kind,
             sensitive_tools: sensitive.iter().map(|s| s.to_string()).collect(),
-            coming_soon: false,
         };
-    let mut all = vec![
+    vec![
         definition(
             FILESYSTEM,
             "Filesystem",
@@ -117,22 +110,7 @@ pub fn builtins() -> Vec<ConnectorDefinition> {
             ConnectorKind::Mcp,
             &["open_aws_signup", "create_backup_bucket", "create_upload_user"],
         ),
-    ];
-    all.extend(
-        oauth::providers()
-            .into_iter()
-            .map(|provider| ConnectorDefinition {
-                coming_soon: provider.coming_soon,
-                ..definition(
-                    &provider.id,
-                    &provider.name,
-                    &provider.description,
-                    ConnectorKind::OAuth2,
-                    &[],
-                )
-            }),
-    );
-    all
+    ]
 }
 
 pub fn builtin(id: &str) -> Option<ConnectorDefinition> {
@@ -209,7 +187,6 @@ pub fn definition_for(decl: &ConnectorDecl) -> ConnectorDefinition {
         },
         kind: ConnectorKind::Mcp,
         sensitive_tools: Vec::new(),
-        coming_soon: false,
     });
     definition.id = decl.id.to_string();
     if let Some(name) = config_str(decl, "name") {
@@ -240,12 +217,6 @@ pub fn static_tools(kind: &str) -> Vec<ToolDef> {
 pub fn secret_entries(decl: &ConnectorDecl) -> Vec<(String, String)> {
     if decl.kind == GITHUB {
         return vec![("token".to_string(), github::key_entry(decl))];
-    }
-    if oauth::provider_for(decl).is_ok() {
-        return vec![(
-            "oauth_token".to_string(),
-            oauth::token_entry(decl.id.as_str()),
-        )];
     }
     decl.secret_refs
         .iter()
@@ -291,9 +262,6 @@ pub fn setup_hint(decl: &ConnectorDecl, secrets: &Secrets) -> Option<String> {
         }
         MCP if config_str(decl, "command").is_none() && config_str(decl, "url").is_none() => {
             Some("Set the command or address of the MCP server".to_string())
-        }
-        _ if oauth::provider_for(decl).is_ok() && !oauth::has_token(decl.id.as_str(), secrets) => {
-            Some("Sign in to connect".to_string())
         }
         _ => None,
     }
@@ -347,14 +315,7 @@ pub async fn build(
             let connector = McpConnector::connect(decl, definition, secrets, placement).await?;
             Ok(Arc::new(connector))
         }
-        _ => match oauth::provider_for(decl) {
-            Ok(provider) => Ok(Arc::new(oauth::OAuthConnector::new(
-                decl.id.as_str(),
-                provider,
-                secrets.clone(),
-            ))),
-            Err(_) => Err(format!("Connector kind '{}' has no runtime yet", decl.kind)),
-        },
+        _ => Err(format!("Connector kind '{}' has no runtime yet", decl.kind)),
     }
 }
 
@@ -374,24 +335,13 @@ mod tests {
             .collect();
         assert_eq!(
             ids,
-            [
-                "filesystem",
-                "web_search",
-                "github",
-                "aws",
-                "s3_backup",
-                "gmail"
-            ]
+            ["filesystem", "web_search", "github", "aws", "s3_backup",]
         );
         let fs = definition_for(manifest.get("filesystem").unwrap());
         assert_eq!(fs.sensitive_tools, ["write_file"]);
         let github = definition_for(manifest.get("github").unwrap());
         assert_eq!(github.kind, ConnectorKind::Mcp);
         assert_eq!(github.sensitive_tools, ["post_review"]);
-        assert_eq!(
-            definition_for(manifest.get("gmail").unwrap()).kind,
-            ConnectorKind::OAuth2
-        );
     }
 
     #[test]
@@ -443,15 +393,5 @@ mod tests {
         github::set_cli_token_for_tests(None);
         secrets.set("connectors.github.token", "t").unwrap();
         assert_eq!(setup_hint(&github, &secrets), None);
-    }
-
-    #[test]
-    fn oauth_connectors_are_coming_soon_and_say_so_only_in_the_flag() {
-        let gmail = builtin("gmail").unwrap();
-        assert!(gmail.coming_soon);
-        assert!(!gmail.description.contains("coming soon"));
-        assert!(!builtin("github").unwrap().coming_soon);
-        assert!(!builtin("web_search").unwrap().coming_soon);
-        assert!(!builtin("filesystem").unwrap().coming_soon);
     }
 }

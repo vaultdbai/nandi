@@ -1089,29 +1089,6 @@ async setConnectorSecret(id: string, key: string, value: string) : Promise<Resul
 }
 },
 /**
- * Starts an OAuth2 sign-in. Device flow: show `userCode` and
- * `verificationUri`. PKCE (`userCode` empty): open `verificationUri`.
- */
-async startOauth(connectorId: string) : Promise<Result<DeviceFlowState, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("start_oauth", { connectorId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Polls once; `true` once the user authorized
- */
-async pollOauth(connectorId: string) : Promise<Result<boolean, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("poll_oauth", { connectorId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
  * Local agents serving `capability`
  */
 async findAgentsByCapability(capability: string) : Promise<Result<AgentCard[], string>> {
@@ -1710,6 +1687,78 @@ async deleteNote(name: string) : Promise<Result<null, string>> {
 async setNotesAgentsCanWrite(allow: boolean) : Promise<Result<MyNotes, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_notes_agents_can_write", { allow }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The mailboxes, what this build can connect, and when the next check is
+ */
+async getEmailStatus() : Promise<Result<EmailStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_email_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Starts connecting a mailbox: open `verificationUri` (PKCE), or show
+ * `userCode` (device flow)
+ */
+async startEmailSignIn(provider: MailProvider) : Promise<Result<DeviceFlowState, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_email_sign_in", { provider }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Checks the sign-in once; `connected` once the mailbox is set up
+ */
+async pollEmailSignIn(provider: MailProvider) : Promise<Result<EmailSignInPoll, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("poll_email_sign_in", { provider }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Checks every connected mailbox now, in the background
+ */
+async checkEmailNow() : Promise<Result<EmailStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_email_now") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setEmailPaused(provider: MailProvider, paused: boolean) : Promise<Result<EmailStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_email_paused", { provider, paused }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Signs out: deletes the sign-in, the cursor and the Chief of Staff's access
+ */
+async disconnectEmail(provider: MailProvider) : Promise<Result<EmailStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("disconnect_email", { provider }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setEmailSettings(settings: EmailSettingsInput) : Promise<Result<EmailStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_email_settings", { settings }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -3124,6 +3173,7 @@ dashboardAttention: DashboardAttention,
 delegationTaskCompleted: DelegationTaskCompleted,
 delegationTaskFailed: DelegationTaskFailed,
 delegationTaskStarted: DelegationTaskStarted,
+emailChanged: EmailChanged,
 marketplaceError: MarketplaceError,
 marketplaceForked: MarketplaceForked,
 marketplaceInstalled: MarketplaceInstalled,
@@ -3189,6 +3239,7 @@ dashboardAttention: "dashboard://attention",
 delegationTaskCompleted: "delegation://task_completed",
 delegationTaskFailed: "delegation://task_failed",
 delegationTaskStarted: "delegation://task_started",
+emailChanged: "email://changed",
 marketplaceError: "marketplace://error",
 marketplaceForked: "marketplace://forked",
 marketplaceInstalled: "marketplace://installed",
@@ -3233,10 +3284,10 @@ workflowStepStarted: "workflow://step_started"
 
 /** user-defined constants **/
 
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
 
 /** user-defined types **/
@@ -4252,7 +4303,6 @@ startBisonOnly: boolean }
  * Where an effective value came from
  */
 export type ConfigSource = "environment" | "repo" | "local"
-export type ConnectorAvailability = "available" | "comingSoon"
 /**
  * One connector was installed, started, stopped, signed in, or changed
  * health (`connector://changed`).
@@ -4260,7 +4310,7 @@ export type ConnectorAvailability = "available" | "comingSoon"
 export type ConnectorChanged = { connectorId: string; status: ConnectorStatus }
 export type ConnectorInfo = { id: string; name: string; description: string; 
 /**
- * e.g. `mcp` | `oauth2`
+ * `mcp`
  */
 kind: string; status: ConnectorStatus; 
 /**
@@ -4276,21 +4326,9 @@ config?: Partial<{ [key in string]: JsonValue }>;
  */
 secrets?: ConnectorSecretInfo[]; 
 /**
- * `pkce` | `device` for OAuth2 connectors
- */
-oauthFlow?: string | null; 
-/**
- * OAuth2 connectors: whether a token is in the keyring
- */
-signedIn?: boolean; 
-/**
  * What's missing before the connector can start, if anything
  */
-setupHint?: string | null; 
-/**
- * `comingSoon`: listed, but there's nothing to install yet
- */
-availability?: ConnectorAvailability }
+setupHint?: string | null }
 export type ConnectorSecretInfo = { key: string; keyringEntry: string; isSet: boolean; 
 /**
  * Start needs it set; `false` when the connector has another way in
@@ -4521,16 +4559,16 @@ export type DelegationTaskFailed = { taskId: string; status: TaskStatus; error: 
  */
 export type DelegationTaskStarted = { taskId: string; direction: DelegationDirection; capability: string; requesterAgent: string; targetAgent: string }
 /**
- * Codes for an in-progress connector sign-in (OAuth device flow or PKCE),
- * shown to the user.
+ * Codes for an in-progress sign-in (device flow or PKCE), shown to the
+ * user.
  */
 export type DeviceFlowState = { 
 /**
- * Opaque code passed back to `poll_oauth`
+ * Opaque code passed back to the poll
  */
 deviceCode: string; 
 /**
- * Short code the user types at `verification_uri`
+ * Short code the user types at `verification_uri`; empty for PKCE
  */
 userCode: string; verificationUri: string; 
 /**
@@ -4597,6 +4635,35 @@ proxyUrl: string; routes: EgressRoute[]; aws: AwsCredentialStatus;
  * Newest first
  */
 recentEntries: EgressLogEntry[] }
+export type EmailAccountState = "notConnected" | "ready" | "paused" | 
+/**
+ * The sign-in ended or was refused: Reconnect
+ */
+"needsSignIn" | 
+/**
+ * The last check failed (network, the provider); it tries again
+ */
+"error"
+/**
+ * `email://changed`: a mailbox connected, disconnected, or was checked
+ */
+export type EmailChanged = Record<string, never>
+export type EmailProviderStatus = { provider: MailProvider; 
+/**
+ * This build has the provider's client ID
+ */
+available: boolean; connected: boolean; accountName: string | null; accountEmail: string | null; state: EmailAccountState; error: string | null; lastCheckedAt: number | null; 
+/**
+ * Emails the last check handed to the Chief of Staff
+ */
+lastFound: number; lastRunId: string | null }
+export type EmailSettingsInput = { intervalMinutes: number; watch: string[] }
+export type EmailSignInPoll = { phase: SignInPhase; problem: SignInProblem | null }
+export type EmailStatus = { 
+/**
+ * Outlook, then Gmail
+ */
+providers: EmailProviderStatus[]; intervalMinutes: number; watch: string[]; nextCheckAt: number | null; checking: boolean }
 /**
  * From the last 100 completions of a capability on a provider agent
  */
@@ -5154,6 +5221,11 @@ endpoint?: string | null;
  */
 model?: string | null }
 export type LlmProviderKind = "bedrock" | "azure" | "litellm" | "anthropic" | "openai" | "ollama"
+export type MailProvider = 
+/**
+ * Outlook and Microsoft 365, through Microsoft Graph
+ */
+"outlook" | "gmail"
 /**
  * What an agent (or a pack's agents together) will be able to use.
  */
@@ -6340,6 +6412,29 @@ sources: ShareSource[]; teamIds: string[];
  * Delegations in the last 30 days
  */
 callCount: number; lastCalledAt: number | null }
+export type SignInPhase = "waiting" | "connected" | "failed"
+export type SignInProblem = { kind: SignInProblemKind; 
+/**
+ * The provider's words, for the details line
+ */
+detail: string; 
+/**
+ * For `adminApproval`: the page to forward to IT
+ */
+adminConsentUrl: string | null }
+export type SignInProblemKind = 
+/**
+ * The company needs an admin to approve Nandi first
+ */
+"adminApproval" | 
+/**
+ * The user said no on the consent page
+ */
+"declined" | "network" | 
+/**
+ * The sign-in took too long
+ */
+"expired" | "other"
 /**
  * Something an answer cites: a run event, an artifact, a revision, …
  */
@@ -6355,7 +6450,11 @@ export type SourceType = "user" | "workflow" |
 /**
  * Delegated by another agent (A2A)
  */
-"agent" | "scheduled" | "cron" | "calendar" | "file" | "webhook" | "device" | "event"
+"agent" | "scheduled" | "cron" | "calendar" | "file" | "webhook" | "device" | "event" | 
+/**
+ * The email check (`services::email`)
+ */
+"email"
 export type SsoAccount = { accountId: string; accountName: string; email: string | null; roles: string[] }
 /**
  * An `aws sso login` in progress (the CLI opens the browser)

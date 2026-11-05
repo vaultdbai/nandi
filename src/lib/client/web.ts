@@ -304,10 +304,6 @@ export const webClient: NandiClient = {
     request('PUT', `/connectors/${id(connectorId)}/secret`, { key, value }),
   connectorStatus: connectorId =>
     request('GET', `/connectors/${id(connectorId)}/status`),
-  startOauth: connectorId =>
-    request('POST', `/connectors/${id(connectorId)}/oauth/start`),
-  pollOauth: connectorId =>
-    request('POST', `/connectors/${id(connectorId)}/oauth/poll`),
 
   findAgentsByCapability: capability =>
     request('GET', `/capabilities/${id(capability)}/agents`),
@@ -497,6 +493,19 @@ export const webClient: NandiClient = {
     request('DELETE', `/notes/file?name=${encodeURIComponent(name)}`),
   setNotesAgentsCanWrite: allow =>
     request('PUT', '/notes/agents-can-write', { allow }),
+  getEmailStatus: () => request('GET', '/email'),
+  startEmailSignIn: provider =>
+    request('POST', `/email/${encodeURIComponent(provider)}/sign-in`),
+  pollEmailSignIn: provider =>
+    request('POST', `/email/${encodeURIComponent(provider)}/sign-in/poll`),
+  checkEmailNow: () => request('POST', '/email/check'),
+  setEmailPaused: (provider, paused) =>
+    request('PUT', `/email/${encodeURIComponent(provider)}/paused`, {
+      paused,
+    }),
+  disconnectEmail: provider =>
+    request('DELETE', `/email/${encodeURIComponent(provider)}`),
+  setEmailSettings: settings => request('PUT', '/email/settings', settings),
   closeGatewayAssignment: (taskId, done, note) =>
     request(
       'POST',

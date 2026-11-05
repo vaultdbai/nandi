@@ -1,9 +1,9 @@
-//! Runtime connectors: MCP servers (and their OAuth2 credentials) that give
+//! Runtime connectors: MCP servers that give
 //! agents access to external services. The orchestrator merges a running
 //! connector's tools into an agent's tool list.
 //!
 //! Connector *definitions* are gold-copy files (`services::repos::connector_repo`);
-//! this module owns their runtime side: install, run, health, and sign-in.
+//! this module owns their runtime side: install, run and health.
 //!
 //! ```text
 //! .nandi/connectors.yaml ──install──▶ declared ──start (or first use)──▶ running ──▶ tools
@@ -20,7 +20,7 @@
 //!   connector's tools are left out of the turn and the agent gets a warning.
 //! - Every call is audited to `~/.nandi/local/logs/connectors.log` (JSONL,
 //!   argument names only).
-//! - Secrets (API keys, OAuth tokens) live in the OS keyring only.
+//! - Secrets (API keys, tokens) live in the OS keyring only.
 //!
 //! FROZEN INTERFACE (wave 1): the types below are the contract between the
 //! backend and the UI. Track D (Connectors) fills in `ConnectorRegistry` and
@@ -34,7 +34,6 @@ mod filesystem;
 pub mod folders;
 mod github;
 mod mcp;
-pub mod oauth;
 mod s3_backup;
 mod tools;
 mod web_search;
@@ -76,22 +75,6 @@ pub fn catalog_config_list(decl: &ConnectorDecl, key: &str) -> Vec<String> {
 }
 pub use tools::{parse_prefixed, prefixed_name};
 
-/// Codes for an in-progress connector sign-in (OAuth device flow or PKCE),
-/// shown to the user.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceFlowState {
-    /// Opaque code passed back to `poll_oauth`
-    pub device_code: String,
-    /// Short code the user types at `verification_uri`
-    pub user_code: String,
-    pub verification_uri: String,
-    /// Minimum seconds between polls
-    pub interval: u32,
-    /// Unix timestamp (seconds) after which the codes are invalid
-    pub expires_at: u32,
-}
-
 /// How long a health check may take before the connector counts as unhealthy
 pub const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
 /// Upper bound on one connector tool call
@@ -116,7 +99,7 @@ pub struct ConnectorInfo {
     pub id: String,
     pub name: String,
     pub description: String,
-    /// e.g. `mcp` | `oauth2`
+    /// `mcp`
     pub kind: String,
     pub status: ConnectorStatus,
     /// The tools the connector exposes (unprefixed names)
@@ -128,26 +111,9 @@ pub struct ConnectorInfo {
     /// Keyring entries the connector reads (never their values)
     #[serde(default)]
     pub secrets: Vec<ConnectorSecretInfo>,
-    /// `pkce` | `device` for OAuth2 connectors
-    #[serde(default)]
-    pub oauth_flow: Option<String>,
-    /// OAuth2 connectors: whether a token is in the keyring
-    #[serde(default)]
-    pub signed_in: bool,
     /// What's missing before the connector can start, if anything
     #[serde(default)]
     pub setup_hint: Option<String>,
-    /// `comingSoon`: listed, but there's nothing to install yet
-    #[serde(default)]
-    pub availability: ConnectorAvailability,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub enum ConnectorAvailability {
-    #[default]
-    Available,
-    ComingSoon,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -272,7 +238,6 @@ pub struct ConnectorRegistry {
     stopped: Mutex<HashSet<String>>,
     /// Last health-check or start failure per connector
     errors: Mutex<HashMap<String, String>>,
-    oauth: oauth::OAuthFlows,
     audit: audit::AuditSink,
     /// Egress identities for connector containers (`connector:<id>`)
     proxy_tokens: Option<crate::runtime::ProxyTokens>,
@@ -645,27 +610,6 @@ impl ConnectorRegistry {
                 is_error: true,
             },
         })
-    }
-
-    /// Starts an OAuth2 sign-in for `decl` (PKCE, or device flow).
-    pub async fn start_oauth(
-        &self,
-        decl: &ConnectorDecl,
-        secrets: &Secrets,
-    ) -> Result<DeviceFlowState, String> {
-        let provider = oauth::provider_for(decl)?;
-        self.oauth
-            .start(
-                &oauth::token_entry(decl.id.as_str()),
-                provider,
-                secrets.clone(),
-            )
-            .await
-    }
-
-    /// Polls once; `true` once the token is in the keyring.
-    pub async fn poll_oauth(&self, id: &str, secrets: &Secrets) -> Result<bool, String> {
-        self.oauth.poll(&oauth::token_entry(id), secrets).await
     }
 
     /// Stops everything (app shutdown).
@@ -1068,8 +1012,6 @@ fn connector_info(
             keyring_entry: entry,
         })
         .collect();
-    let oauth = oauth::provider_for(decl).ok();
-    let signed_in = oauth.is_some() && oauth::has_token(id, secrets);
     ConnectorInfo {
         id: id.to_string(),
         name: definition.name.clone(),
@@ -1083,14 +1025,7 @@ fn connector_info(
             .filter_map(|(k, v)| serde_json::to_value(v).ok().map(|v| (k.clone(), v)))
             .collect(),
         secrets: secret_infos,
-        oauth_flow: oauth.map(|p| p.flow_kind().to_string()),
-        signed_in,
         setup_hint: catalog::setup_hint(decl, secrets),
-        availability: if definition.coming_soon {
-            ConnectorAvailability::ComingSoon
-        } else {
-            ConnectorAvailability::Available
-        },
     }
 }
 
@@ -1102,9 +1037,6 @@ pub async fn install_connector(state: &AppState, id: &str) -> Result<(), String>
         return Ok(());
     }
     let definition = catalog::builtin(id).ok_or_else(|| format!("Unknown connector '{id}'"))?;
-    if definition.coming_soon {
-        return Err(format!("{} isn't available yet", definition.name));
-    }
     let mut connectors = current.connectors().to_vec();
     connectors.push(catalog::declaration(&definition));
     save_manifest(state, connectors)?;
@@ -1245,9 +1177,6 @@ pub async fn declare_connector(
     let current = manifest(state);
     let existing = current.get(id.as_str()).cloned();
     let builtin = catalog::builtin(id.as_str());
-    if builtin.as_ref().is_some_and(|d| d.coming_soon) {
-        return Err(format!("{} isn't available yet", id));
-    }
     let kind = match (&declaration.kind, &existing, &builtin) {
         (Some(kind), _, _) => kind.clone(),
         (None, Some(existing), _) => existing.kind.clone(),
@@ -1350,12 +1279,8 @@ pub async fn set_connector_secret(
     Ok(())
 }
 
-/// The keyring entry behind a connector's secret `key` (OAuth tokens are
-/// written by the sign-in, never by hand)
+/// The keyring entry behind a connector's secret `key`
 fn secret_entry(decl: &ConnectorDecl, key: &str) -> Result<String, String> {
-    if key == "oauth_token" {
-        return Err("Sign in to connect instead".to_string());
-    }
     catalog::secret_entries(decl)
         .into_iter()
         .find(|(name, _)| name == key)
@@ -1421,26 +1346,6 @@ pub async fn connector_status(state: &AppState, id: &str) -> Result<ConnectorSta
         emit_status(state, id, after.clone());
     }
     Ok(after)
-}
-
-pub async fn start_oauth(state: &AppState, connector_id: &str) -> Result<DeviceFlowState, String> {
-    let registry = registry(state)?;
-    let decl = installed(state, connector_id)?;
-    registry.start_oauth(&decl, state.secrets()).await
-}
-
-pub async fn poll_oauth(state: &AppState, connector_id: &str) -> Result<bool, String> {
-    let registry = registry(state)?;
-    installed(state, connector_id)?;
-    let authorized = registry.poll_oauth(connector_id, state.secrets()).await?;
-    if authorized {
-        emit_status(
-            state,
-            connector_id,
-            registry.cached_status(connector_id, true),
-        );
-    }
-    Ok(authorized)
 }
 
 /// A connector ID from a client, checked before it touches anything.

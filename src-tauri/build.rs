@@ -30,6 +30,14 @@ fn write_trial_key() {
     use std::hash::{BuildHasher, Hasher};
 
     println!("cargo:rerun-if-env-changed=NANDI_TRIAL_DEEPSEEK_KEY");
+    // Email sign-in client IDs, read with `option_env!` (services::email::provider)
+    for name in [
+        "NANDI_MICROSOFT_CLIENT_ID",
+        "NANDI_GOOGLE_CLIENT_ID",
+        "NANDI_GOOGLE_CLIENT_SECRET",
+    ] {
+        println!("cargo:rerun-if-env-changed={name}");
+    }
     let key = std::env::var("NANDI_TRIAL_DEEPSEEK_KEY").unwrap_or_default();
     let key = key.trim().as_bytes();
     let random = std::collections::hash_map::RandomState::new();

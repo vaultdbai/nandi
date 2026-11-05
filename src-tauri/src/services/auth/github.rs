@@ -14,8 +14,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::services::connectors::oauth::{self, OAuthProvider};
-use crate::services::connectors::DeviceFlowState;
+use crate::services::auth::oauth::{self, DeviceFlowState, LoopbackRedirect, OAuthProvider};
 use crate::services::marketplace::github::GitHubApi;
 use crate::services::secrets::Secrets;
 use crate::services::AppState;
@@ -56,8 +55,6 @@ pub fn provider() -> OAuthProvider {
     OAuthProvider {
         id: "github".into(),
         name: "GitHub".into(),
-        description: "Sign in with GitHub once for every github.com repository Nandi uses.".into(),
-        coming_soon: false,
         authorize_url: None,
         token_url: TOKEN_URL.into(),
         device_url: Some(DEVICE_URL.into()),
@@ -65,6 +62,8 @@ pub fn provider() -> OAuthProvider {
         client_secret: None,
         scopes: SCOPES.iter().map(|s| (*s).to_string()).collect(),
         auth_params: Vec::new(),
+        // Device flow only: no redirect
+        redirect: LoopbackRedirect::CALLBACK,
     }
 }
 
@@ -185,7 +184,7 @@ mod tests {
     #[test]
     fn the_provider_uses_the_device_flow() {
         let provider = provider();
-        assert_eq!(provider.flow_kind(), "device");
+        assert!(provider.authorize_url.is_none() && provider.device_url.is_some());
         assert!(provider.client_id.is_some_and(|id| !id.is_empty()));
         assert!(provider.client_secret.is_none());
     }

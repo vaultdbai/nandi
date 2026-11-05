@@ -7,7 +7,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 use super::routes::ApiResult;
-use crate::services::connectors::{self, ConnectorInfo, ConnectorStatus, DeviceFlowState};
+use crate::services::connectors::{self, ConnectorInfo, ConnectorStatus};
 use crate::services::AppState;
 
 pub fn api() -> Router<AppState> {
@@ -19,10 +19,6 @@ pub fn api() -> Router<AppState> {
         .route("/connectors/{id}/stop", post(stop))
         // Returns `ConnectorStatus`
         .route("/connectors/{id}/status", get(status))
-        // Returns `DeviceFlowState`
-        .route("/connectors/{id}/oauth/start", post(oauth_start))
-        // Returns `true` once authorized
-        .route("/connectors/{id}/oauth/poll", post(oauth_poll))
         // Body `{ config }`: the connector's settings (never secrets)
         .route("/connectors/{id}/config", put(configure))
         // Body `{ key, value }`; an empty value removes it. Write only
@@ -135,23 +131,6 @@ async fn status(
 ) -> ApiResult<ConnectorStatus> {
     ApiResult(match connectors::parse_id(&id) {
         Ok(_) => connectors::connector_status(&state, &id).await,
-        Err(e) => Err(e),
-    })
-}
-
-async fn oauth_start(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<DeviceFlowState> {
-    ApiResult(match connectors::parse_id(&id) {
-        Ok(_) => connectors::start_oauth(&state, &id).await,
-        Err(e) => Err(e),
-    })
-}
-
-async fn oauth_poll(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<bool> {
-    ApiResult(match connectors::parse_id(&id) {
-        Ok(_) => connectors::poll_oauth(&state, &id).await,
         Err(e) => Err(e),
     })
 }

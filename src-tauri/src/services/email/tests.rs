@@ -1,0 +1,914 @@
+//! The email check against mock Graph and Gmail APIs (no network): delta
+//! paging and cursor resume, expired cursors, bulk filtering, one run per
+//! check, token refresh and refusal, sign-out, the tools, and that only
+//! `GET`s ever reach a mail API.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use axum::extract::{Request, State};
+use axum::response::IntoResponse;
+use axum::Router;
+use serde_json::{json, Value};
+use tokio::net::TcpListener;
+
+use super::mail::rfc3339_of;
+use super::provider::Endpoints;
+use super::*;
+use crate::services::AppState;
+
+// ---------------------------------------------------------------------------
+// The mock
+// ---------------------------------------------------------------------------
+
+struct Req {
+    method: String,
+    path: String,
+    query: HashMap<String, String>,
+    base: String,
+}
+
+type Responder = Arc<dyn Fn(&Req) -> (u16, Value) + Send + Sync>;
+
+#[derive(Clone)]
+struct Mock {
+    log: Arc<Mutex<Vec<(String, String)>>>,
+    respond: Arc<Mutex<Responder>>,
+    base: Arc<Mutex<String>>,
+}
+
+impl Mock {
+    fn requests(&self) -> Vec<(String, String)> {
+        self.log.lock().unwrap().clone()
+    }
+
+    fn api_requests(&self) -> Vec<(String, String)> {
+        self.requests()
+            .into_iter()
+            .filter(|(_, path)| !path.ends_with("/token"))
+            .collect()
+    }
+
+    fn clear(&self) {
+        self.log.lock().unwrap().clear();
+    }
+}
+
+async fn handle(State(mock): State<Mock>, request: Request) -> impl IntoResponse {
+    let method = request.method().to_string();
+    let path = request.uri().path().to_string();
+    let query: HashMap<String, String> = request.uri().query().map(url_pairs).unwrap_or_default();
+    mock.log
+        .lock()
+        .unwrap()
+        .push((method.clone(), path.clone()));
+    let respond = mock.respond.lock().unwrap().clone();
+    let base = mock.base.lock().unwrap().clone();
+    let (status, body) = respond(&Req {
+        method,
+        path,
+        query,
+        base,
+    });
+    (
+        axum::http::StatusCode::from_u16(status).unwrap(),
+        axum::Json(body),
+    )
+}
+
+fn url_pairs(query: &str) -> HashMap<String, String> {
+    reqwest::Url::parse(&format!("http://x/?{query}"))
+        .unwrap()
+        .query_pairs()
+        .into_owned()
+        .collect()
+}
+
+async fn mock(respond: impl Fn(&Req) -> (u16, Value) + Send + Sync + 'static) -> Mock {
+    let mock = Mock {
+        log: Arc::default(),
+        respond: Arc::new(Mutex::new(Arc::new(respond))),
+        base: Arc::default(),
+    };
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    *mock.base.lock().unwrap() = base;
+    let router = Router::new().fallback(handle).with_state(mock.clone());
+    tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    mock
+}
+
+fn setup(base: &str) -> ProviderSetup {
+    ProviderSetup {
+        endpoints: Endpoints {
+            microsoft_login: format!("{base}/ms"),
+            graph: format!("{base}/graph"),
+            google_authorize: format!("{base}/gauth"),
+            google_token: format!("{base}/gtoken/token"),
+            gmail: format!("{base}/gmail"),
+            google_userinfo: format!("{base}/userinfo"),
+        },
+        microsoft_client_id: Some("ms-client".into()),
+        google_client_id: Some("g-client".into()),
+        google_client_secret: Some("g-secret".into()),
+    }
+}
+
+#[derive(Default)]
+struct Recorder(Mutex<Vec<(String, String)>>);
+
+impl BatchSink for Recorder {
+    fn submit<'a>(
+        &'a self,
+        _state: &'a AppState,
+        title: String,
+        text: String,
+    ) -> BoxFuture<'a, Result<String, String>> {
+        Box::pin(async move {
+            let mut runs = self.0.lock().unwrap();
+            runs.push((title, text));
+            Ok(format!("run-{}", runs.len()))
+        })
+    }
+}
+
+impl Recorder {
+    fn runs(&self) -> Vec<(String, String)> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+fn unix_now() -> i64 {
+    db::now_ms() / 1000
+}
+
+fn token(secrets: &crate::services::secrets::Secrets, provider: MailProvider, expires_in: i64) {
+    secrets
+        .set(
+            &provider.token_entry(),
+            &json!({
+                "access_token": "tok-1",
+                "refresh_token": "ref-1",
+                "expires_at": unix_now() + expires_in,
+            })
+            .to_string(),
+        )
+        .unwrap();
+}
+
+async fn state_with(mock: &Mock) -> (AppState, Arc<Recorder>) {
+    let state = AppState::for_tests(vec![]);
+    let base = mock.base.lock().unwrap().clone();
+    state.email().set_setup(setup(&base));
+    state.email().set_auto_check(false);
+    let recorder = Arc::new(Recorder::default());
+    state.email().set_sink(recorder.clone());
+    (state, recorder)
+}
+
+/// Signs in to `provider` as far as the browser would, then connects
+async fn connected(state: &AppState, provider: MailProvider) {
+    token(state.secrets(), provider, 3600);
+    connect(state, provider).await.unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// Outlook
+// ---------------------------------------------------------------------------
+
+fn graph_message(id: &str, from: &str, subject: &str, class: &str, hours_ago: i64) -> Value {
+    json!({
+        "id": id,
+        "conversationId": format!("conv-{id}"),
+        "subject": subject,
+        "from": {"emailAddress": {"name": from, "address": format!("{}@contoso.com", from.to_lowercase())}},
+        "toRecipients": [{"emailAddress": {"name": "Dev Chechi", "address": "dev@company.com"}}],
+        "receivedDateTime": rfc3339_of(unix_now() - hours_ago * 3600),
+        "bodyPreview": format!("{subject} preview"),
+        "inferenceClassification": class,
+    })
+}
+
+/// A Graph mailbox: page 1 → next link → page 2 → delta link, then one
+/// more message on the next check
+fn outlook_api(req: &Req) -> (u16, Value) {
+    let graph = format!("{}/graph", req.base);
+    let p = req.path.as_str();
+    if req.method != "GET" {
+        return (405, json!({}));
+    }
+    match p {
+        "/graph/me" => (
+            200,
+            json!({"displayName": "Dev Chechi", "mail": "Dev@Company.com"}),
+        ),
+        "/graph/me/mailFolders/inbox/messages/delta" => {
+            match req.query.get("$deltatoken").map(String::as_str) {
+                None if req.query.contains_key("page") => (
+                    200,
+                    json!({
+                        "value": [graph_message("m3", "News", "Weekly digest", "focused", 3)],
+                        "@odata.deltaLink": format!("{graph}/me/mailFolders/inbox/messages/delta?$deltatoken=inbox-1"),
+                    }),
+                ),
+                None => {
+                    assert!(
+                        req.query
+                            .get("$filter")
+                            .is_some_and(|f| f.starts_with("receivedDateTime ge ")),
+                        "the first read asks for the window only"
+                    );
+                    (
+                        200,
+                        json!({
+                            "value": [
+                                graph_message("m1", "Lena", "Q3 audit evidence", "focused", 2),
+                                graph_message("m2", "Promo", "Sale", "other", 2),
+                            ],
+                            "@odata.nextLink": format!("{graph}/me/mailFolders/inbox/messages/delta?page=2"),
+                        }),
+                    )
+                }
+                Some("inbox-1") => (
+                    200,
+                    json!({
+                        "value": [graph_message("m4", "Sam", "Budget sign-off by Monday", "focused", 1)],
+                        "@odata.deltaLink": format!("{graph}/me/mailFolders/inbox/messages/delta?$deltatoken=inbox-2"),
+                    }),
+                ),
+                Some("expired") => (410, json!({"error": {"code": "SyncStateNotFound"}})),
+                Some(_) => (
+                    200,
+                    json!({"value": [], "@odata.deltaLink": format!("{graph}/me/mailFolders/inbox/messages/delta?$deltatoken=inbox-2")}),
+                ),
+            }
+        }
+        "/graph/me/mailFolders/sentitems/messages/delta" => (
+            200,
+            json!({
+                "value": if req.query.contains_key("$deltatoken") { json!([]) } else { json!([{
+                    "id": "s1",
+                    "conversationId": "conv-s1",
+                    "subject": "Re: offsite",
+                    "from": {"emailAddress": {"name": "Dev Chechi", "address": "dev@company.com"}},
+                    "toRecipients": [{"emailAddress": {"address": "lena@contoso.com"}}],
+                    "receivedDateTime": rfc3339_of(unix_now() - 7200),
+                    "bodyPreview": "I'll book the room by Thursday",
+                }, {
+                    "id": "s2",
+                    "conversationId": "conv-s2",
+                    "subject": "note to self",
+                    "from": {"emailAddress": {"address": "dev@company.com"}},
+                    "toRecipients": [{"emailAddress": {"address": "dev@company.com"}}],
+                    "receivedDateTime": rfc3339_of(unix_now() - 7200),
+                }]) },
+                "@odata.deltaLink": format!("{graph}/me/mailFolders/sentitems/messages/delta?$deltatoken=sent-1"),
+            }),
+        ),
+        "/graph/me/messages/m3" => (
+            200,
+            json!({"internetMessageHeaders": [{"name": "List-Unsubscribe", "value": "<mailto:u@news.com>"}]}),
+        ),
+        "/graph/me/messages/m1" if req.query.get("$select").is_some_and(|s| s.contains("body")) => {
+            (200, {
+                let mut m = graph_message("m1", "Lena", "Q3 audit evidence", "focused", 2);
+                m["body"] = json!({"contentType": "text", "content": format!("Can you send the evidence list by Friday?\n\nOn Mon, Lena wrote:\n> {}", "old text ".repeat(50))});
+                m
+            })
+        }
+        _ if p.starts_with("/graph/me/messages/") => (200, json!({"internetMessageHeaders": []})),
+        "/graph/me/mailFolders/inbox/messages" | "/graph/me/messages" => (
+            200,
+            json!({"value": [graph_message("m1", "Lena", "Q3 audit evidence", "focused", 2)]}),
+        ),
+        "/graph/me/mailFolders/sentitems/messages" => (200, json!({"value": []})),
+        _ => (404, json!({"error": "unknown"})),
+    }
+}
+
+#[tokio::test]
+async fn outlook_pages_to_the_delta_link_and_resumes_from_it() {
+    let mock = mock(outlook_api).await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+
+    // Connecting set up the account and the Chief of Staff's read grant
+    let status = status(&state).await;
+    let outlook = &status.providers[0];
+    assert!(outlook.connected && outlook.available);
+    assert_eq!(outlook.account_email.as_deref(), Some("dev@company.com"));
+    assert_eq!(outlook.account_name.as_deref(), Some("Dev Chechi"));
+    assert_eq!(outlook.state, EmailAccountState::Ready);
+    assert_eq!(granted(&state, CHIEF_OF_STAFF).len(), 1);
+
+    let first = check_all(&state).await;
+    // Lena, and the user's own sent mail; not the "other" promo, the
+    // List-Unsubscribe digest or the note to self
+    assert_eq!(first.found, 2);
+    assert_eq!(first.run_id.as_deref(), Some("run-1"));
+    let runs = recorder.runs();
+    assert_eq!(runs.len(), 1);
+    let text = &runs[0].1;
+    assert!(text.contains("first read, of the last 14 days"));
+    assert!(text.contains("Q3 audit evidence"));
+    assert!(text.contains("Re: offsite"));
+    assert!(
+        !text.contains("Sale") && !text.contains("Weekly digest") && !text.contains("note to self")
+    );
+    assert!(text.contains("for Dev Chechi <dev@company.com>"));
+
+    // The next check starts from the stored delta links
+    mock.clear();
+    let second = check_all(&state).await;
+    assert_eq!(second.found, 1);
+    let runs = recorder.runs();
+    assert_eq!(runs.len(), 2);
+    assert!(runs[1].1.contains("Budget sign-off by Monday"));
+    assert!(!runs[1].1.contains("first read"));
+    assert!(
+        mock.requests()
+            .iter()
+            .all(|(_, path)| !path.ends_with("/token")),
+        "the token was still good"
+    );
+
+    // Nothing new: no run at all
+    let third = check_all(&state).await;
+    assert_eq!(third, CheckOutcome::default());
+    assert_eq!(recorder.runs().len(), 2);
+    let status = super::status(&state).await;
+    assert_eq!(status.providers[0].last_found, 0);
+    assert!(status.providers[0].last_checked_at.is_some());
+    assert!(status.next_check_at.is_some());
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn an_expired_delta_link_reads_the_window_again() {
+    let mock = mock(outlook_api).await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    let graph = format!("{}/graph", mock.base.lock().unwrap());
+    save_setting(
+        &state,
+        MailProvider::Outlook.cursor_key(),
+        json!({
+            "inbox": format!("{graph}/me/mailFolders/inbox/messages/delta?$deltatoken=expired"),
+            "sentitems": format!("{graph}/me/mailFolders/sentitems/messages/delta?$deltatoken=sent-1"),
+        }),
+    )
+    .await
+    .unwrap();
+    let outcome = check_all(&state).await;
+    assert_eq!(outcome.found, 1, "Lena again, from the window");
+    assert!(recorder.runs()[0].1.contains("first read"));
+    let cursor: Value = load_setting(&state, MailProvider::Outlook.cursor_key()).await;
+    assert!(cursor["inbox"].as_str().unwrap().ends_with("inbox-1"));
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn watched_senders_come_through_even_as_bulk() {
+    let mock = mock(outlook_api).await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    set_settings(
+        &state,
+        EmailSettingsInput {
+            interval_minutes: 10,
+            watch: vec!["promo@contoso.com".into()],
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(check_all(&state).await.found, 3);
+    assert!(recorder.runs()[0].1.contains("Sale"));
+    assert_eq!(super::status(&state).await.interval_minutes, 10);
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn only_gets_ever_reach_the_mail_apis() {
+    let mock = mock(outlook_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    check_all(&state).await;
+    check_all(&state).await;
+    for name in [tool::LIST_NEW, tool::SEARCH] {
+        tool::call(&state, CHIEF_OF_STAFF, name, &json!({"query": "audit"})).await;
+    }
+    tool::call(
+        &state,
+        CHIEF_OF_STAFF,
+        tool::GET_MESSAGE,
+        &json!({"id": "outlook:m1"}),
+    )
+    .await;
+    tool::call(
+        &state,
+        CHIEF_OF_STAFF,
+        tool::GET_THREAD,
+        &json!({"thread_id": "outlook:conv-m1"}),
+    )
+    .await;
+    let requests = mock.api_requests();
+    assert!(requests.len() > 8, "{requests:?}");
+    for (method, path) in &requests {
+        assert_eq!(method, "GET", "{path}");
+        assert!(path.starts_with("/graph/me"), "{path}");
+        for verb in ["send", "move", "copy", "reply", "forward", "createReply"] {
+            assert!(
+                !path
+                    .to_ascii_lowercase()
+                    .ends_with(&verb.to_ascii_lowercase()),
+                "{path}"
+            );
+        }
+    }
+    state.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Tokens
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn an_expired_token_is_refreshed_before_the_check() {
+    let mock = mock(|req| {
+        if req.path == "/ms/token" {
+            assert_eq!(req.method, "POST");
+            return (200, json!({"access_token": "tok-2", "expires_in": 3600}));
+        }
+        outlook_api(req)
+    })
+    .await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    token(state.secrets(), MailProvider::Outlook, -10);
+    assert_eq!(check_all(&state).await.found, 2);
+    assert!(mock
+        .requests()
+        .contains(&("POST".into(), "/ms/token".into())));
+    let stored = state
+        .secrets()
+        .get(&MailProvider::Outlook.token_entry())
+        .unwrap()
+        .unwrap();
+    assert!(stored.contains("tok-2") && stored.contains("ref-1"));
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn a_401_renews_the_token_once_and_retries() {
+    let renewed = Arc::new(Mutex::new(false));
+    let flag = renewed.clone();
+    let mock = mock(move |req| {
+        if req.path == "/ms/token" {
+            *flag.lock().unwrap() = true;
+            return (200, json!({"access_token": "tok-2", "expires_in": 3600}));
+        }
+        if !*flag.lock().unwrap() && req.path != "/graph/me" {
+            return (
+                401,
+                json!({"error": {"code": "InvalidAuthenticationToken"}}),
+            );
+        }
+        outlook_api(req)
+    })
+    .await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    assert_eq!(check_all(&state).await.found, 2);
+    assert!(*renewed.lock().unwrap());
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn a_refused_refresh_asks_for_a_new_sign_in_and_keeps_the_cursor() {
+    let mock = mock(|req| {
+        if req.path == "/gtoken/token" {
+            return (
+                400,
+                json!({"error": "invalid_grant", "error_description": "Token has been expired or revoked."}),
+            );
+        }
+        gmail_api(req)
+    })
+    .await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Gmail).await;
+    check_all(&state).await;
+    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    // Google's Testing mode: the sign-in ends after 7 days
+    token(state.secrets(), MailProvider::Gmail, -10);
+    let outcome = check_all(&state).await;
+    assert_eq!(outcome, CheckOutcome::default());
+    assert_eq!(recorder.runs().len(), 1, "no run without mail");
+    let status = super::status(&state).await;
+    let gmail = &status.providers[1];
+    assert_eq!(gmail.state, EmailAccountState::NeedsSignIn);
+    assert!(gmail.error.as_deref().unwrap().contains("invalid_grant"));
+    let after: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    assert_eq!(cursor, after, "the cursor waits for the new sign-in");
+
+    // Signing in again clears it and carries on from the same cursor
+    connected(&state, MailProvider::Gmail).await;
+    assert_eq!(
+        super::status(&state).await.providers[1].state,
+        EmailAccountState::Ready
+    );
+    let resumed: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    assert_eq!(cursor, resumed);
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn disconnecting_wipes_the_sign_in_the_cursor_and_the_grant() {
+    let mock = mock(outlook_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    check_all(&state).await;
+    let cursor_key = MailProvider::Outlook.cursor_key();
+    let cursor: Value = load_setting(&state, cursor_key.clone()).await;
+    assert!(!cursor.is_null());
+
+    let status = disconnect(&state, MailProvider::Outlook).await.unwrap();
+    assert!(!status.providers[0].connected);
+    assert_eq!(status.providers[0].state, EmailAccountState::NotConnected);
+    assert_eq!(
+        state
+            .secrets()
+            .get(&MailProvider::Outlook.token_entry())
+            .unwrap(),
+        None
+    );
+    let cursor: Value = load_setting(&state, cursor_key).await;
+    assert!(cursor.is_null());
+    assert!(config(&state).connector_grants.is_empty());
+    assert!(tool::offered(&state, CHIEF_OF_STAFF).is_empty());
+    // Nothing to check any more
+    mock.clear();
+    assert_eq!(check_all(&state).await, CheckOutcome::default());
+    assert!(mock.requests().is_empty());
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn paused_mailboxes_are_not_read() {
+    let mock = mock(outlook_api).await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    let status = set_paused(&state, MailProvider::Outlook, true)
+        .await
+        .unwrap();
+    assert_eq!(status.providers[0].state, EmailAccountState::Paused);
+    assert_eq!(status.next_check_at, None);
+    mock.clear();
+    assert_eq!(check_all(&state).await, CheckOutcome::default());
+    assert!(mock.requests().is_empty() && recorder.runs().is_empty());
+    assert!(set_paused(&state, MailProvider::Gmail, true).await.is_err());
+    state.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Gmail, and both together
+// ---------------------------------------------------------------------------
+
+fn gmail_message(id: &str, labels: &[&str], from: &str, subject: &str, hours_ago: i64) -> Value {
+    json!({
+        "id": id,
+        "threadId": format!("t-{id}"),
+        "labelIds": labels,
+        "snippet": format!("{subject} snippet"),
+        "internalDate": ((unix_now() - hours_ago * 3600) * 1000).to_string(),
+        "payload": {"headers": [
+            {"name": "From", "value": from},
+            {"name": "To", "value": "Dev Chechi <dev@gmail.com>"},
+            {"name": "Subject", "value": subject},
+        ]},
+    })
+}
+
+fn gmail_api(req: &Req) -> (u16, Value) {
+    if req.method != "GET" {
+        return (405, json!({}));
+    }
+    match req.path.as_str() {
+        "/gmail/users/me/profile" => (
+            200,
+            json!({"emailAddress": "dev@gmail.com", "historyId": "100"}),
+        ),
+        "/userinfo" => (200, json!({"name": "Dev Chechi"})),
+        "/gmail/users/me/messages" => {
+            let q = req.query.get("q").cloned().unwrap_or_default();
+            assert!(q.starts_with("after:") || q == "evidence", "{q}");
+            (200, json!({"messages": [{"id": "g1"}, {"id": "g2"}]}))
+        }
+        "/gmail/users/me/history" => match req.query.get("startHistoryId").map(String::as_str) {
+            Some("100") => (
+                200,
+                json!({
+                    "historyId": "120",
+                    "history": [{"messagesAdded": [
+                        {"message": {"id": "g3", "labelIds": ["INBOX"]}},
+                        {"message": {"id": "g4", "labelIds": ["DRAFT"]}},
+                    ]}],
+                }),
+            ),
+            Some("1") => (404, json!({"error": {"code": 404}})),
+            _ => (200, json!({"historyId": "120"})),
+        },
+        "/gmail/users/me/messages/g1" => (
+            200,
+            gmail_message(
+                "g1",
+                &["INBOX"],
+                "Lena Park <lena@contoso.com>",
+                "Vendor contract due",
+                5,
+            ),
+        ),
+        "/gmail/users/me/messages/g2" => (
+            200,
+            gmail_message(
+                "g2",
+                &["INBOX", "CATEGORY_PROMOTIONS"],
+                "Shop <deals@shop.com>",
+                "50% off",
+                5,
+            ),
+        ),
+        "/gmail/users/me/messages/g3" => (
+            200,
+            gmail_message(
+                "g3",
+                &["INBOX"],
+                "Sam <sam@contoso.com>",
+                "Can you own the rota?",
+                1,
+            ),
+        ),
+        _ => (404, json!({})),
+    }
+}
+
+#[tokio::test]
+async fn gmail_reads_the_window_then_the_history() {
+    let mock = mock(gmail_api).await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Gmail).await;
+    assert_eq!(
+        super::status(&state).await.providers[1]
+            .account_name
+            .as_deref(),
+        Some("Dev Chechi")
+    );
+    assert_eq!(
+        check_all(&state).await.found,
+        1,
+        "the promotion is left out"
+    );
+    assert!(recorder.runs()[0].1.contains("Vendor contract due"));
+    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    assert_eq!(cursor, json!({"historyId": "100"}));
+
+    assert_eq!(check_all(&state).await.found, 1);
+    assert!(recorder.runs()[1].1.contains("Can you own the rota?"));
+    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    assert_eq!(cursor, json!({"historyId": "120"}));
+    // The draft was never read
+    assert!(!mock.requests().iter().any(|(_, p)| p.ends_with("/g4")));
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn gmail_history_too_old_reads_the_window_again() {
+    let mock = mock(gmail_api).await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Gmail).await;
+    save_setting(
+        &state,
+        MailProvider::Gmail.cursor_key(),
+        json!({"historyId": "1"}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(check_all(&state).await.found, 1);
+    assert!(recorder.runs()[0].1.contains("first read"));
+    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    assert_eq!(cursor, json!({"historyId": "100"}));
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn both_mailboxes_go_to_the_chief_of_staff_in_one_run() {
+    let mock = mock(|req| {
+        if req.path.starts_with("/graph") {
+            outlook_api(req)
+        } else {
+            gmail_api(req)
+        }
+    })
+    .await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    connected(&state, MailProvider::Gmail).await;
+    let outcome = check_all(&state).await;
+    assert_eq!(outcome.found, 3);
+    let runs = recorder.runs();
+    assert_eq!(runs.len(), 1, "one run per check");
+    assert_eq!(runs[0].0, "Email: 3 new emails");
+    let text = &runs[0].1;
+    assert!(text.contains("Dev Chechi <dev@company.com> and Dev Chechi <dev@gmail.com>"));
+    assert!(text.contains("id: outlook:m1") && text.contains("id: gmail:g1"));
+    let status = super::status(&state).await;
+    assert_eq!(status.providers[0].last_found, 2);
+    assert_eq!(status.providers[1].last_found, 1);
+    assert_eq!(status.providers[1].last_run_id.as_deref(), Some("run-1"));
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn a_failed_hand_over_keeps_the_cursor_so_no_mail_is_skipped() {
+    struct Refuses;
+    impl BatchSink for Refuses {
+        fn submit<'a>(
+            &'a self,
+            _state: &'a AppState,
+            _title: String,
+            _text: String,
+        ) -> BoxFuture<'a, Result<String, String>> {
+            Box::pin(async { Err("the agent is missing".to_string()) })
+        }
+    }
+    let mock = mock(gmail_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    state.email().set_sink(Arc::new(Refuses));
+    connected(&state, MailProvider::Gmail).await;
+    assert_eq!(check_all(&state).await.found, 0);
+    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    assert!(cursor.is_null());
+    let gmail = &super::status(&state).await.providers[1];
+    assert_eq!(gmail.state, EmailAccountState::Error);
+    assert!(gmail.error.as_deref().unwrap().contains("agent is missing"));
+    state.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// Tools
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn tools_are_only_for_an_agent_with_a_grant() {
+    let mock = mock(outlook_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    assert!(tool::offered(&state, CHIEF_OF_STAFF).is_empty());
+    connected(&state, MailProvider::Outlook).await;
+    let names: Vec<String> = tool::offered(&state, CHIEF_OF_STAFF)
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "mail_list_new",
+            "mail_get_message",
+            "mail_get_thread",
+            "mail_search"
+        ]
+    );
+    assert!(tool::offered(&state, "pr-reviewer").is_empty());
+    let refused = tool::call(
+        &state,
+        "pr-reviewer",
+        tool::GET_MESSAGE,
+        &json!({"id": "outlook:m1"}),
+    )
+    .await;
+    assert!(refused.is_error);
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn reading_a_message_trims_quotes_and_marks_it_untrusted() {
+    let mock = mock(outlook_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    let outcome = tool::call(
+        &state,
+        CHIEF_OF_STAFF,
+        tool::GET_MESSAGE,
+        &json!({"id": "outlook:m1"}),
+    )
+    .await;
+    assert!(!outcome.is_error, "{}", outcome.result);
+    assert!(outcome.result.contains("untrusted data"));
+    assert!(outcome.result.contains("<email-data>"));
+    assert!(outcome.result.contains("evidence list by Friday"));
+    assert!(
+        !outcome.result.contains("old text"),
+        "the quoted reply is cut"
+    );
+    // Wrong prefixes and missing mailboxes are refused calmly
+    let bad = tool::call(
+        &state,
+        CHIEF_OF_STAFF,
+        tool::GET_MESSAGE,
+        &json!({"id": "m1"}),
+    )
+    .await;
+    assert!(bad.is_error);
+    let gmail = tool::call(
+        &state,
+        CHIEF_OF_STAFF,
+        tool::GET_MESSAGE,
+        &json!({"id": "gmail:g1"}),
+    )
+    .await;
+    assert!(gmail.is_error && gmail.result.contains("isn't connected"));
+    let list = tool::call(&state, CHIEF_OF_STAFF, tool::LIST_NEW, &json!({})).await;
+    assert!(!list.is_error, "{}", list.result);
+    state.shutdown();
+}
+
+#[test]
+fn email_runs_get_only_the_notes_and_mail_tools() {
+    for allowed in [
+        "mail_get_message",
+        "filesystem__write_file",
+        "filesystem__read_file",
+    ] {
+        assert!(tool::allowed_in_email_run(allowed));
+    }
+    for refused in [
+        "delegate_to_agent",
+        "find_people",
+        "web_search__search",
+        "github__post_review",
+        "run_command",
+        "write_file",
+    ] {
+        assert!(!tool::allowed_in_email_run(refused), "{refused}");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Sign-in
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sign_in_problems_are_explained_calmly() {
+    let setup = setup("http://x");
+    let admin = classify_sign_in_error(
+        "Sign-in was refused: access_denied: AADSTS65001: The user or administrator has not consented",
+        &setup,
+    );
+    assert_eq!(admin.kind, SignInProblemKind::AdminApproval);
+    assert!(admin
+        .admin_consent_url
+        .unwrap()
+        .contains("client_id=ms-client"));
+    assert_eq!(
+        classify_sign_in_error("Sign-in was refused: access_denied", &setup).kind,
+        SignInProblemKind::Declined
+    );
+    assert_eq!(
+        classify_sign_in_error("Could not reach the sign-in server: timed out", &setup).kind,
+        SignInProblemKind::Network
+    );
+    assert_eq!(
+        classify_sign_in_error("The sign-in expired. Please start again.", &setup).kind,
+        SignInProblemKind::Expired
+    );
+}
+
+#[tokio::test]
+async fn a_build_without_client_ids_cant_connect() {
+    let state = AppState::for_tests(vec![]);
+    state.email().set_setup(ProviderSetup::default());
+    let status = super::status(&state).await;
+    assert!(status.providers.iter().all(|p| !p.available));
+    let error = start_sign_in(&state, MailProvider::Outlook)
+        .await
+        .unwrap_err();
+    assert!(error.contains("isn't available in this build"));
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn sign_in_opens_microsoft_with_read_only_scopes() {
+    let mock = mock(outlook_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    let flow = start_sign_in(&state, MailProvider::Outlook).await.unwrap();
+    assert!(flow.user_code.is_empty(), "PKCE");
+    let url = reqwest::Url::parse(&flow.verification_uri).unwrap();
+    let params: HashMap<String, String> = url.query_pairs().into_owned().collect();
+    assert_eq!(params["client_id"], "ms-client");
+    assert!(params["scope"].contains("Mail.Read") && params["scope"].contains("offline_access"));
+    assert!(params["redirect_uri"].starts_with("http://localhost:"));
+    assert_eq!(
+        poll_sign_in(&state, MailProvider::Outlook).await.phase,
+        SignInPhase::Waiting
+    );
+    state.shutdown();
+}

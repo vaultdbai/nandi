@@ -37,6 +37,10 @@ import type {
   CompanionSnapshot,
   ConnectorInfo,
   ConnectorStatus,
+  EmailSettingsInput,
+  EmailSignInPoll,
+  EmailStatus,
+  MailProvider,
   ConsentStatus,
   ConversationSnapshot,
   CreateAgentInput,
@@ -521,10 +525,6 @@ export interface NandiClient {
     value: string
   ): Promise<Result<null, string>>
   connectorStatus(id: string): Promise<Result<ConnectorStatus, string>>
-  /** Starts an OAuth2 device flow; show `userCode` and `verificationUri` */
-  startOauth(connectorId: string): Promise<Result<DeviceFlowState, string>>
-  /** Polls once; `true` once authorized */
-  pollOauth(connectorId: string): Promise<Result<boolean, string>>
 
   // Wave 2A: teams, sharing, and delegation
 
@@ -823,6 +823,28 @@ export interface NandiClient {
   deleteNote(name: string): Promise<Result<null, string>>
   /** Lets agents update the notes (without asking each time), or not */
   setNotesAgentsCanWrite(allow: boolean): Promise<Result<MyNotes, string>>
+  // Email (the Chief of Staff reads it to keep My notes)
+  /** Mailboxes, what this build can connect, and the next check */
+  getEmailStatus(): Promise<Result<EmailStatus, string>>
+  /** Starts connecting a mailbox: open `verificationUri` (or show `userCode`) */
+  startEmailSignIn(
+    provider: MailProvider
+  ): Promise<Result<DeviceFlowState, string>>
+  /** Checks the sign-in once */
+  pollEmailSignIn(
+    provider: MailProvider
+  ): Promise<Result<EmailSignInPoll, string>>
+  /** Checks every connected mailbox now, in the background */
+  checkEmailNow(): Promise<Result<EmailStatus, string>>
+  setEmailPaused(
+    provider: MailProvider,
+    paused: boolean
+  ): Promise<Result<EmailStatus, string>>
+  /** Signs out: the sign-in, the cursor and the Chief of Staff's access */
+  disconnectEmail(provider: MailProvider): Promise<Result<EmailStatus, string>>
+  setEmailSettings(
+    settings: EmailSettingsInput
+  ): Promise<Result<EmailStatus, string>>
   /** Work assigned to the owner that's still open, soonest due first */
   listGatewayAssignments(): Promise<Result<GatewayAssignment[], string>>
   /** Done (the requester gets the note) or Decline an assignment */

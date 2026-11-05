@@ -1039,6 +1039,27 @@ pub fn ensure_agent_conversation(conn: &Connection, agent_id: &str) -> rusqlite:
     Ok(id)
 }
 
+/// `email:<check id>`: one email check's own conversation, so its turn
+/// sees neither the user's chats nor earlier checks' mail, and later
+/// chats never see this mail in their history
+pub fn email_conversation_id(check_id: &str) -> String {
+    format!("email:{check_id}")
+}
+
+pub fn ensure_email_conversation(
+    conn: &Connection,
+    agent_id: &str,
+    check_id: &str,
+    title: &str,
+) -> rusqlite::Result<String> {
+    let id = email_conversation_id(check_id);
+    conn.execute(
+        "INSERT OR IGNORE INTO conversations (id, agent_id, created_at, title) VALUES (?1, ?2, ?3, ?4)",
+        params![id, agent_id, now_ms(), title],
+    )?;
+    Ok(id)
+}
+
 /// `task:<task id>`: a delegated task's own conversation, so its turn sees
 /// neither the owner's chats with the agent nor other requesters' tasks
 pub fn task_conversation_id(task_id: &str) -> String {
@@ -2020,13 +2041,19 @@ pub fn get_setting(conn: &Connection, key: &str) -> rusqlite::Result<Option<Valu
     .optional()
 }
 
-#[cfg(test)]
+/// Writes a machine-local runtime setting (`local_settings`).
 pub fn set_setting(conn: &Connection, key: &str, value: &Value) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO local_settings (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![key, value.to_string()],
     )?;
+    Ok(())
+}
+
+/// Removes a machine-local runtime setting.
+pub fn delete_setting(conn: &Connection, key: &str) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM local_settings WHERE key = ?1", [key])?;
     Ok(())
 }
 

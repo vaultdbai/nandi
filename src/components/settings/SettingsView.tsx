@@ -18,6 +18,7 @@ import { SettingsSectionFrame } from './SettingsFrame'
 import { AccountSection } from './sections/AccountSection'
 import { BackupSection } from './sections/BackupSection'
 import { CloudCredentialsSection } from './sections/CloudCredentialsSection'
+import { EmailSection } from './sections/EmailSection'
 import { InternetAccessSection } from './sections/InternetAccessSection'
 import { ModelsSection } from './sections/ModelsSection'
 import { SourcesSection } from './sections/SourcesSection'
@@ -100,6 +101,7 @@ export function SettingsView({
         <main className="min-h-0 min-w-0 flex-1" data-section={section}>
           {section === 'models' && <ModelsSection />}
           {section === 'account' && <AccountSection />}
+          {section === 'email' && <EmailSection />}
           {section === 'cloud' && <CloudCredentialsSection />}
           {section === 'internet' && (
             <InternetAccessSection agentId={view.agentId} />

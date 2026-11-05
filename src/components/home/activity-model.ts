@@ -76,6 +76,7 @@ const RUN_SOURCE: Record<SourceType, ActivitySource> = {
   webhook: 'trigger',
   device: 'trigger',
   event: 'trigger',
+  email: 'trigger',
 }
 
 const TASK_STATUS: Record<TaskResult['status'], ActivityStatus> = {

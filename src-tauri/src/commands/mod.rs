@@ -22,6 +22,7 @@ pub mod delegation;
 pub mod delegation_clarification;
 pub mod docker;
 pub mod egress;
+pub mod email;
 pub mod events;
 pub mod gateway;
 pub mod harness_sessions;

@@ -432,7 +432,6 @@ pub async fn call(state: &AppState, name: &str, args: &Value) -> ToolOutcome {
                     "name": c.name,
                     "description": excerpt(&c.description),
                     "installed": c.status.installed,
-                    "comingSoon": c.availability == crate::services::connectors::ConnectorAvailability::ComingSoon,
                     "tools": c.tools.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
                     "config": c.config,
                     "setup": c.setup_hint,

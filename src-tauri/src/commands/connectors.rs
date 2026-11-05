@@ -2,7 +2,7 @@
 
 use tauri::State;
 
-pub use crate::services::connectors::{ConnectorInfo, ConnectorStatus, DeviceFlowState};
+pub use crate::services::connectors::{ConnectorInfo, ConnectorStatus};
 
 use crate::services::connectors;
 use crate::services::AppState;
@@ -69,26 +69,6 @@ pub async fn connector_status(
 ) -> Result<ConnectorStatus, String> {
     connectors::parse_id(&id)?;
     connectors::connector_status(&state, &id).await
-}
-
-/// Starts an OAuth2 sign-in. Device flow: show `userCode` and
-/// `verificationUri`. PKCE (`userCode` empty): open `verificationUri`.
-#[tauri::command]
-#[specta::specta]
-pub async fn start_oauth(
-    state: State<'_, AppState>,
-    connector_id: String,
-) -> Result<DeviceFlowState, String> {
-    connectors::parse_id(&connector_id)?;
-    connectors::start_oauth(&state, &connector_id).await
-}
-
-/// Polls once; `true` once the user authorized
-#[tauri::command]
-#[specta::specta]
-pub async fn poll_oauth(state: State<'_, AppState>, connector_id: String) -> Result<bool, String> {
-    connectors::parse_id(&connector_id)?;
-    connectors::poll_oauth(&state, &connector_id).await
 }
 
 /// The connectors an agent uses, with its shared folders

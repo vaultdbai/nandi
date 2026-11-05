@@ -78,6 +78,8 @@ pub enum SourceType {
     Webhook,
     Device,
     Event,
+    /// The email check (`services::email`)
+    Email,
 }
 
 impl SourceType {
@@ -93,6 +95,7 @@ impl SourceType {
             SourceType::Webhook => "webhook",
             SourceType::Device => "device",
             SourceType::Event => "event",
+            SourceType::Email => "email",
         }
     }
 
@@ -107,6 +110,7 @@ impl SourceType {
             "webhook" => SourceType::Webhook,
             "device" => SourceType::Device,
             "event" => SourceType::Event,
+            "email" => SourceType::Email,
             _ => SourceType::User,
         }
     }
