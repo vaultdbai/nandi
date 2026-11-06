@@ -22,23 +22,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `bundle`/`ext`: where the installer lands and its extension;
-          # `download`: its stable name on vaultdb.ai
+          # `installers`: `<bundle folder>/<extension>=<stable name on
+          # vaultdb.ai>`, space separated. Windows ships two: the per-user
+          # NSIS setup.exe (no admin rights; the default download) and the
+          # per-machine MSI for IT deployment (Intune, GPO, SCCM)
           - platform: 'macos-latest'
             args: '--bundles app,dmg'
-            bundle: dmg
-            ext: dmg
-            download: VaultDB-Nandi-macos-arm64.dmg
+            installers: 'dmg/dmg=VaultDB-Nandi-macos-arm64.dmg'
           - platform: 'windows-latest'
-            args: '--bundles msi'
-            bundle: msi
-            ext: msi
-            download: VaultDB-Nandi-windows-x64.msi
+            args: '--bundles nsis,msi'
+            installers: 'nsis/exe=VaultDB-Nandi-windows-x64-setup.exe msi/msi=VaultDB-Nandi-windows-x64.msi'
           - platform: 'ubuntu-22.04'
             args: '--bundles appimage'
-            bundle: appimage
-            ext: AppImage
-            download: VaultDB-Nandi-linux-x64.AppImage
+            installers: 'appimage/AppImage=VaultDB-Nandi-linux-x64.AppImage'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -124,7 +120,7 @@ jobs:
 
             ### Installation Instructions
             - **macOS**: Download the `.dmg` file and drag to Applications folder
-            - **Windows**: Download the `.msi` file and run the installer
+            - **Windows**: `-setup.exe` (no admin rights needed) or `.msi` for IT deployment (`msiexec /i VaultDB-Nandi-windows-x64.msi /qn`)
             - **Linux**: Download the `.AppImage` file, make it executable (`chmod +x`), and run
 
             ### Auto-Updates
@@ -134,6 +130,10 @@ jobs:
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
+          # latest.json carries windows-x86_64-nsis and -msi; each install
+          # updates from its own kind, and the plain windows-x86_64 entry
+          # (older updaters) points at the setup.exe
+          updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
 
       # Downloads on vaultdb.ai: the same S3 bucket the vaultdb-web deploy
@@ -155,7 +155,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.S3_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Upload the installer to vaultdb.ai
+      - name: Upload the installers to vaultdb.ai
         if: steps.s3.outputs.enabled == 'true'
         shell: bash
         env:
@@ -164,18 +164,22 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          files=(src-tauri/target/release/bundle/${{ matrix.bundle }}/*.${{ matrix.ext }})
-          if [ ${#files[@]} -ne 1 ]; then
-            echo "Expected one .${{ matrix.ext }} installer, found ${#files[@]}" >&2
-            exit 1
-          fi
-          installer="${files[0]}"
           base="s3://$AWS_BUCKET/downloads/nandi"
-          # Versioned copy, kept
-          aws s3 cp "$installer" "$base/$VERSION/$(basename "$installer")"
-          # Stable name the website links to; cached briefly so new
-          # releases show up
-          aws s3 cp "$installer" "$base/latest/${{ matrix.download }}" \
-            --cache-control "public, max-age=300" \
-            --content-disposition "attachment; filename=${{ matrix.download }}"
+          for spec in ${{ matrix.installers }}; do
+            folder="${spec%%/*}"; rest="${spec#*/}"
+            ext="${rest%%=*}"; download="${rest#*=}"
+            files=(src-tauri/target/release/bundle/$folder/*.$ext)
+            if [ ${#files[@]} -ne 1 ]; then
+              echo "Expected one .$ext installer in $folder, found ${#files[@]}" >&2
+              exit 1
+            fi
+            installer="${files[0]}"
+            # Versioned copy, kept
+            aws s3 cp "$installer" "$base/$VERSION/$(basename "$installer")"
+            # Stable name the website links to; cached briefly so new
+            # releases show up
+            aws s3 cp "$installer" "$base/latest/$download" \
+              --cache-control "public, max-age=300" \
+              --content-disposition "attachment; filename=$download"
+          done
           echo "$VERSION" | aws s3 cp - "$base/latest/VERSION" --content-type text/plain --cache-control "public, max-age=300"

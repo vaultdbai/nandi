@@ -61,11 +61,20 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "publisher": "Your Name",
+    "publisher": "VaultDB.ai",
     "category": "DeveloperTool",
-    "shortDescription": "A Tauri React template application",
-    "longDescription": "A modern Tauri React template with comprehensive boilerplate code, TypeScript, Tailwind CSS, and shadcn/ui components.",
-    "copyright": "Copyright © 2025 Your Name. All rights reserved.",
+    "shortDescription": "Nandi runs your AI agents on your computer, in a sandbox, with your approval.",
+    "longDescription": "Nandi is a desktop app for running AI agents locally: each agent works in a sandbox container, asks before it acts, and keeps a record of every run. A Chief of Staff keeps your notes, finds who owns what and follows up for you.",
+    "copyright": "Copyright © 2026 VaultDB.ai",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
     "macOS": {
       "frameworks": [],
       "minimumSystemVersion": "10.15",

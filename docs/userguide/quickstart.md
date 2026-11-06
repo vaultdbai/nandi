@@ -7,7 +7,7 @@ From nothing to an agent that runs a command for you, in about fifteen minutes. 
 - **Docker** ([Docker Desktop](https://docs.docker.com/get-docker/) on Windows and macOS, Docker Engine on Linux), running.
 - **Nothing to build:** Nandi downloads its sandbox images from `ghcr.io/vaultdbai` when an agent first needs them (or click **Download** in Settings › Models & runtimes). Offline, **Build here** in the same place builds them on this computer.
 
-- **Nandi** itself, from the [downloads page](https://vaultdb.ai/downloads/nandi) (placeholder link: `.msi`/`.exe`, `.dmg`, `.AppImage`/`.deb`/`.rpm`), or from source with `pnpm install && pnpm run tauri:dev`.
+- **Nandi** itself, from the [downloads page](https://vaultdb.ai/downloads/nandi) (placeholder link: Windows `-setup.exe`, no admin rights needed, or `.msi` for IT; `.dmg`; `.AppImage`), or from source with `pnpm install && pnpm run tauri:dev`.
 
 ## 2. Set up Nandi
 

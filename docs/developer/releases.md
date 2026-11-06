@@ -159,7 +159,7 @@ Users can manually check via:
 Each release creates:
 
 - **macOS**: `.dmg` installer
-- **Windows**: `.msi` installer (when configured)
+- **Windows**: the per-user NSIS `-setup.exe` (`bundle.windows.nsis.installMode: currentUser`, no admin rights; the default download `VaultDB-Nandi-windows-x64-setup.exe`) and the per-machine `.msi` for IT (`VaultDB-Nandi-windows-x64.msi`, `msiexec /i … /qn`). `latest.json` has `windows-x86_64-nsis` and `windows-x86_64-msi`; the updater reads the entry matching the bundle type patched into the installed `nandi.exe`, and the plain `windows-x86_64` points at the setup.exe (`updaterJsonPreferNsis`)
 - **Linux**: `.deb` and `.AppImage` (when configured)
 - **Auto-updater**: `latest.json` manifest and `.sig` signature files
 
@@ -182,4 +182,4 @@ All updates are cryptographically signed:
 
 ### A local installer build
 
-`pnpm tauri build --bundles msi` (Windows) builds the installer at `src-tauri/target/release/bundle/msi/Nandi_<version>_x64_en-US.msi`, then fails with "A public key has been found, but no private key" unless `TAURI_SIGNING_PRIVATE_KEY` is set: `createUpdaterArtifacts` is on, so Tauri also signs the updater bundle. The `.msi` is complete at that point. To build without the updater artifacts (and a clean exit), add `--config '{"bundle":{"createUpdaterArtifacts":false}}'`. Such a build has no default relay or join code unless `NANDI_DEFAULT_RELAY_URL` and `NANDI_RELAY_JOIN_CODE` are set when it's built.
+`pnpm tauri build --bundles nsis,msi` (Windows) builds both installers, `src-tauri/target/release/bundle/nsis/Nandi_<version>_x64-setup.exe` and `bundle/msi/Nandi_<version>_x64_en-US.msi`, then fails with "A public key has been found, but no private key" unless `TAURI_SIGNING_PRIVATE_KEY` is set: `createUpdaterArtifacts` is on, so Tauri also signs the updater bundle. Both installers are complete at that point. To build without the updater artifacts (and a clean exit), add `--config '{"bundle":{"createUpdaterArtifacts":false}}'`. Such a build has no default relay or join code unless `NANDI_DEFAULT_RELAY_URL` and `NANDI_RELAY_JOIN_CODE` are set when it's built.

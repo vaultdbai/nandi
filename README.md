@@ -8,7 +8,7 @@
 
 A local-first desktop app for managing a team of AI agents. You act as the manager: each agent runs in its own Docker container, is defined by a `skill.md` file, and reports back to you through the **Agent Console**.
 
-> **Status:** 0.1.0, the first release. Download it from [Releases](https://github.com/vaultdbai/nandi/releases/latest) (Windows, macOS, Linux; requires Docker).
+> **Status:** 0.1.0, the first release. Download it from [Releases](https://github.com/vaultdbai/nandi/releases/latest) (Windows `-setup.exe`, no admin rights needed, or `.msi` for IT deployment; macOS `.dmg`; Linux `.AppImage`; requires Docker).
 
 ## Why it runs on your machine
 

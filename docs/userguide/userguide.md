@@ -60,13 +60,23 @@ Without the tool sandbox, agents still answer, but in text only: Nandi shows a "
 
 Download the installer for your platform from the [Nandi downloads page](https://vaultdb.ai/downloads/nandi) (placeholder link):
 
-| Platform | Installer                      | Notes                                                                     |
-| -------- | ------------------------------ | ------------------------------------------------------------------------- |
-| Windows  | `.msi` or `-setup.exe`         | Windows 10 or 11. WebView2 ships with Windows 11 and installs if missing. |
-| macOS    | `.dmg`                         | Drag Nandi to Applications.                                               |
-| Linux    | `.AppImage`, `.deb`, or `.rpm` | The AppImage needs `chmod +x`. WebKitGTK is a dependency of the packages. |
+| Platform | Installer                      | Notes                                                                                                                 |
+| -------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Windows  | `-setup.exe`                   | Windows 10 or 11. Installs for you only: no admin rights needed. WebView2 ships with Windows and installs if missing. |
+| macOS    | `.dmg`                         | Drag Nandi to Applications.                                                                                           |
+| Linux    | `.AppImage`, `.deb`, or `.rpm` | The AppImage needs `chmod +x`. WebKitGTK is a dependency of the packages.                                             |
 
 Installed builds update themselves: when a new version is ready, an **Update** button appears in the title bar.
+
+#### For IT: deploy to many machines
+
+`VaultDB-Nandi-windows-x64.msi` installs Nandi for every user of a machine (per-machine, under Program Files), so it needs admin rights. Push it with Intune, Group Policy or SCCM, or install it silently:
+
+```powershell
+msiexec /i VaultDB-Nandi-windows-x64.msi /qn
+```
+
+Updating a per-machine install needs admin rights too. Update it with your own tooling when a new version is out. Users without admin rights still see **Update** in the title bar; clicking it asks Windows for permission, and if they can't give it nothing changes and Nandi keeps working (**Retry update** stays until IT updates it). Individuals should use the `-setup.exe`, which updates itself without admin rights.
 
 **From source** (any platform), you need Node.js 20+, pnpm, Rust, and the [Tauri prerequisites](https://tauri.app/start/prerequisites/):
 
