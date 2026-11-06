@@ -165,6 +165,11 @@ pub fn serialize(manifest: &GatewayManifest, previous: Option<&str>) -> Result<S
         _ => Mapping::new(),
     };
     merge(&mut frontmatter, known);
+    // Available again: the old `availability:` goes (the merge keeps keys
+    // it isn't given)
+    if AvailabilityYaml::from_availability(&manifest.availability).is_none() {
+        frontmatter.remove("availability");
+    }
     // An empty handle is written as no handle
     if manifest.owner.github_handle.is_empty() {
         if let Some(Yaml::Mapping(owner)) = frontmatter.get_mut("owner") {
@@ -652,6 +657,23 @@ impl Frontmatter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn being_available_again_drops_the_old_availability() {
+        let away = "---
+name: X
+availability:
+  status: away
+  delegate_to: bob-1a2b
+---
+Body
+";
+        let mut manifest = parse(away).unwrap();
+        manifest.availability = Availability::available();
+        let written = serialize(&manifest, Some(away)).unwrap();
+        assert!(!written.contains("availability"), "{written}");
+        assert!(parse(&written).unwrap().availability.is_available());
+    }
 
     fn temp_root() -> PathBuf {
         let root = std::env::temp_dir().join(format!("nandi-gw-{}", uuid::Uuid::new_v4()));

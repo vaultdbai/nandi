@@ -828,8 +828,13 @@ impl Delegator {
                 None => {}
             },
             // A question or an assignment waits in the outbox for the
-            // relay to come back; nothing else does
-            Err(e) if lasting && service.is_some() && !RelayUnavailable::is(&e) => {
+            // relay to come back (unless the relay refused it); nothing
+            // else does
+            Err(e)
+                if lasting
+                    && service.is_some()
+                    && e.starts_with(crate::services::relay::client_api::REFUSED_BY_RELAY) =>
+            {
                 self.pending.forget(&task.id);
                 return self.not_sent(task, e).await;
             }

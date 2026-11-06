@@ -31,6 +31,10 @@ pub struct PeopleSearch {
     pub total: u32,
 }
 
+/// What a submission the relay refused (`TaskEvent::Refused`) answers
+/// with, before the relay's words; any other error means it didn't get there
+pub const REFUSED_BY_RELAY: &str = "The relay refused it: ";
+
 /// The relay took a submission
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Submitted {

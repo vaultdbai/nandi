@@ -783,6 +783,9 @@ impl Inner {
     /// each of `alternates` (an alternate we can't seal for is left out),
     /// and waits for the relay to take it
     async fn submit(&self, task: &Task, alternates: &[String]) -> Result<Submitted, String> {
+        // A fresh connection takes nothing before it's registered (an
+        // outbox flushed on connect would be refused otherwise)
+        self.until_registered().await?;
         let sealer = self.sealer()?;
         let mut attempts = Vec::new();
         for (n, target) in std::iter::once(&task.target).chain(alternates).enumerate() {
@@ -998,9 +1001,10 @@ impl Inner {
                         wire::TaskEvent::Accepted { task_id, held, .. } => {
                             Some((task_id.clone(), Ok(*held)))
                         }
-                        wire::TaskEvent::Refused { task_id, message } => {
-                            Some((task_id.clone(), Err(message.clone())))
-                        }
+                        wire::TaskEvent::Refused { task_id, message } => Some((
+                            task_id.clone(),
+                            Err(format!("{}{message}", super::client_api::REFUSED_BY_RELAY)),
+                        )),
                         _ => None,
                     };
                     if let Some((task_id, answer)) = answer {

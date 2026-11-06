@@ -21,6 +21,7 @@ use serde_json::json;
 
 use super::task::{self, TaskRecord, TaskService, TaskState};
 use super::task_state::{self, Change};
+use crate::services::relay::client_api::REFUSED_BY_RELAY;
 
 /// How often the provider side looks for a free slot
 pub const DEQUEUE_INTERVAL_SECS: u64 = 5;
@@ -102,10 +103,9 @@ impl TaskService {
                     accepted(self, &row.id, submitted.held).await;
                     sent.push(row.id);
                 }
-                Err(e) if crate::services::relay::RelayUnavailable::is(&e) => break,
-                Err(e) => {
+                Err(e) if e.starts_with(REFUSED_BY_RELAY) => {
                     // The relay refused it: it ends here
-                    let change = Change::error(format!("The relay refused it: {e}")).kind(
+                    let change = Change::error(e.clone()).kind(
                         super::task::ReasonKind::Offline,
                         super::task::TaskStage::Dispatch,
                     );
@@ -129,6 +129,12 @@ impl TaskService {
                         Some(e),
                     )
                     .await;
+                }
+                // It didn't get there (the relay went again, or isn't
+                // ready yet): the next flush tries again
+                Err(e) => {
+                    log::info!("Outbox: {} waits ({e})", row.id);
+                    break;
                 }
             }
         }
