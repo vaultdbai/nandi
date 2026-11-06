@@ -6640,9 +6640,10 @@ toName: string | null;
  */
 by: string; reason: string | null; 
 /**
- * The requester's new attempt, once created (requester side)
+ * We asked for the task (it moved away from its provider), not served
+ * it
  */
-newTaskId: string | null; reassignedAt: number }
+requester: boolean; reassignedAt: number }
 /**
  * One attempt at a delegated task (a `tasks` row).
  */

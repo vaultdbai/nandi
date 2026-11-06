@@ -621,7 +621,6 @@ enum Reply {
     Answered(HashMap<String, String>),
     TimedOut,
     Cancelled(String),
-    Undeliverable,
 }
 
 struct Waiting {
@@ -736,7 +735,6 @@ impl ClarificationService {
                 from_instance: self.instance_id.clone(),
                 target_instance: target_instance.to_string(),
                 body,
-                undeliverable: false,
             };
             self.spawn(|me| async move { me.handle_peer(delivery).await });
             return Ok(());
@@ -777,17 +775,13 @@ impl ClarificationService {
         let PeerDelivery {
             from_instance,
             body,
-            undeliverable,
             ..
         } = delivery;
         match body {
-            PeerMessage::ClarificationRequest(request) if !undeliverable => {
+            PeerMessage::ClarificationRequest(request) => {
                 self.on_request(&from_instance, request).await
             }
-            PeerMessage::ClarificationRequest(request) => {
-                self.wake(&request.task_id, None, Reply::Undeliverable)
-            }
-            PeerMessage::ClarificationResponse(response) if !undeliverable => {
+            PeerMessage::ClarificationResponse(response) => {
                 let round = response.round;
                 self.wake(
                     &response.task_id,
@@ -795,10 +789,10 @@ impl ClarificationService {
                     Reply::Answered(response.answers),
                 )
             }
-            PeerMessage::ClarificationTimeout { task_id } if !undeliverable => {
+            PeerMessage::ClarificationTimeout { task_id } => {
                 self.wake(&task_id, None, Reply::TimedOut)
             }
-            PeerMessage::CancelTask { task_id, reason } if !undeliverable => {
+            PeerMessage::CancelTask { task_id, reason } => {
                 let reason = reason.unwrap_or_else(|| "The task was cancelled".to_string());
                 self.wake(&task_id, None, Reply::Cancelled(reason));
                 // The provider gave up: nothing left to answer
@@ -808,10 +802,6 @@ impl ClarificationService {
                         .await;
                 }
             }
-            PeerMessage::ClarificationResponse(response) => log::warn!(
-                "The answers for task {} couldn't reach the provider",
-                response.task_id
-            ),
             _ => {}
         }
     }
@@ -1646,9 +1636,6 @@ impl ClarificationService {
             }
             Ok(Ok(Reply::Cancelled(reason))) => {
                 return Err(format!("The requester cancelled the task: {reason}"))
-            }
-            Ok(Ok(Reply::Undeliverable)) => {
-                return Err("The requester is offline right now".to_string())
             }
             Ok(Err(_)) => return Err("Clarification stopped".to_string()),
         };

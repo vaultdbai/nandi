@@ -4,8 +4,11 @@
 //!
 //! The mock relay seals and opens like the real client: every task,
 //! result and peer message between instances goes through each side's
-//! `Sealer` (`relay::sealing`), so these tests run with sealing on. The
-//! real relay's frames are checked in `relay/sealed_tests.rs`.
+//! `Sealer` (`relay::sealing`), so these tests run with sealing on. It
+//! also stores and forwards like the relay: what's for an instance that's
+//! offline waits until it's back, a refusal goes to the next candidate,
+//! and a reassignment moves the task. The real relay's frames are checked
+//! in `relay/sealed_tests.rs`; its rules are its own tests.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, Weak};
@@ -16,6 +19,7 @@ use serde_json::{json, Value};
 
 use super::delegator::{instance_of, A2aDeps, Delegator};
 use super::history::{self, AuditLog};
+use super::task::TaskState;
 use super::*;
 use crate::db;
 use crate::engine::CANNED_SCRIPT_KEY;
@@ -23,7 +27,7 @@ use crate::model::{ApprovalDecision, RunStatus};
 use crate::services::chat;
 use crate::services::domain::{Agent, AgentId};
 use crate::services::events::tests::RecordingSink;
-use crate::services::relay::client_api::Handler;
+use crate::services::relay::client_api::{Handler, Submitted};
 use crate::services::relay::protocol::{
     PeerDelivery, PeerMessage, TaskAssigned, TaskCompleted, TaskFailed, ALL_CAPABILITIES,
 };
@@ -119,19 +123,48 @@ where
 }
 
 // ---------------------------------------------------------------------------
-// A mock relay: instances on one hub route tasks and results to each other
+// A mock relay: instances on one hub, stored and forwarded like the relay
 // ---------------------------------------------------------------------------
+
+/// Something the hub holds for an instance until it's online, as the
+/// relay's mailbox does
+enum Held {
+    Task { task_id: String },
+    Result(nandi_protocol::ResultReport, String),
+    Peer(String, nandi_protocol::PeerMessage),
+    Event(crate::services::relay::protocol::TaskEvent),
+}
+
+/// A task as the hub carries it: who asked, and the request sealed for
+/// each candidate (the current one first among those left)
+struct Carried {
+    requester: String,
+    requester_card: AgentCard,
+    capability: String,
+    created_at: f64,
+    deadline: Option<f64>,
+    attempts: Vec<(String, Envelope)>,
+    current: usize,
+}
+
+impl Carried {
+    fn provider(&self) -> String {
+        instance_of(&self.attempts[self.current].0).to_string()
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct Hub {
     relays: Mutex<HashMap<String, Weak<MockRelay>>>,
-    /// Task ID → requester instance
-    routes: Mutex<HashMap<String, String>>,
-    /// Joined, but unreachable (tasks and peer messages bounce)
+    tasks: Mutex<HashMap<String, Carried>>,
+    /// Joined, but unreachable (what's for them waits)
     offline: Mutex<HashSet<String>>,
+    /// Waiting for instances that are offline, in order
+    held: Mutex<Vec<(String, Held)>>,
 }
 
 impl Hub {
+    /// `instance`'s client while it's online
     fn relay(&self, instance: &str) -> Option<Arc<MockRelay>> {
         if self.offline.lock().unwrap().contains(instance) {
             return None;
@@ -154,12 +187,188 @@ impl Hub {
             .ok_or_else(|| crate::services::relay::sealing::missing(instance))
     }
 
+    /// Takes `instance` off line or back; back, it gets what waited
     fn set_online(&self, instance: &str, online: bool) {
-        let mut offline = self.offline.lock().unwrap();
+        {
+            let mut offline = self.offline.lock().unwrap();
+            if online {
+                offline.remove(instance);
+            } else {
+                offline.insert(instance.to_string());
+            }
+        }
         if online {
-            offline.remove(instance);
+            let waiting: Vec<Held> = {
+                let mut held = self.held.lock().unwrap();
+                let (theirs, rest) = std::mem::take(&mut *held)
+                    .into_iter()
+                    .partition(|(to, _)| to == instance);
+                *held = rest;
+                theirs.into_iter().map(|(_, item)| item).collect()
+            };
+            for item in waiting {
+                self.post(instance, item);
+            }
+        }
+    }
+
+    /// Delivers `item` to `to` now, or keeps it until they're online
+    fn post(&self, to: &str, item: Held) {
+        let Some(target) = self.relay(to) else {
+            self.held.lock().unwrap().push((to.to_string(), item));
+            return;
+        };
+        match item {
+            Held::Task { task_id } => self.hand_over(&target, &task_id),
+            Held::Result(report, from) => {
+                let Ok(keys) = self.keys(&from) else { return };
+                if let Ok(Opening::Opened(result)) =
+                    target.sealer.open_result(report, (&from, &keys))
+                {
+                    for handler in target.completed.lock().unwrap().iter() {
+                        handler(TaskCompleted {
+                            task_id: result.task_id.clone(),
+                            result: result.clone(),
+                        });
+                    }
+                }
+            }
+            Held::Peer(from, wire) => {
+                let Ok(keys) = self.keys(&from) else { return };
+                if let Ok(Opening::Opened(body)) = target.sealer.open_peer(&from, wire, Some(&keys))
+                {
+                    let delivery = PeerDelivery {
+                        from_instance: from,
+                        target_instance: to.to_string(),
+                        body,
+                    };
+                    for handler in target.peer.lock().unwrap().iter() {
+                        handler(delivery.clone());
+                    }
+                }
+            }
+            Held::Event(event) => {
+                for handler in target.events.lock().unwrap().iter() {
+                    handler(event.clone());
+                }
+            }
+        }
+    }
+
+    /// Opens the current attempt of `task_id` as `provider` does and
+    /// hands it over
+    fn hand_over(&self, provider: &Arc<MockRelay>, task_id: &str) {
+        let sealed = {
+            let tasks = self.tasks.lock().unwrap();
+            let Some(carried) = tasks.get(task_id) else {
+                return;
+            };
+            let (target, envelope) = carried.attempts[carried.current].clone();
+            (
+                SealedTask {
+                    id: task_id.to_string(),
+                    requester: carried.requester_card.clone(),
+                    target,
+                    capability: carried.capability.clone(),
+                    created_at: carried.created_at,
+                    deadline: carried.deadline,
+                    envelope,
+                },
+                carried.requester.clone(),
+            )
+        };
+        let (sealed, requester) = sealed;
+        let Ok(keys) = self.keys(&requester) else {
+            return;
+        };
+        let Ok(Opening::Opened(opened)) = provider.sealer.open_task(sealed, &keys) else {
+            return;
+        };
+        provider
+            .delegated_here
+            .lock()
+            .unwrap()
+            .push(task_id.to_string());
+        for handler in provider.assigned.lock().unwrap().iter() {
+            handler(TaskAssigned {
+                task_id: task_id.to_string(),
+                provider_instance: provider.instance.clone(),
+                task: opened.clone(),
+            });
+        }
+    }
+
+    /// Gives `task_id` to its next candidate, as the relay does after a
+    /// refusal; false when there's none
+    fn fail_over(&self, task_id: &str, reason_kind: Option<task::ReasonKind>) -> bool {
+        let moved = {
+            let mut tasks = self.tasks.lock().unwrap();
+            let Some(carried) = tasks.get_mut(task_id) else {
+                return false;
+            };
+            if carried.current + 1 >= carried.attempts.len() {
+                return false;
+            }
+            let from = carried.provider();
+            carried.current += 1;
+            (
+                from,
+                carried.provider(),
+                carried.attempts[carried.current].0.clone(),
+                carried.requester.clone(),
+            )
+        };
+        let (from, to, target, requester) = moved;
+        self.post(
+            &to,
+            Held::Task {
+                task_id: task_id.to_string(),
+            },
+        );
+        self.post(
+            &requester,
+            Held::Event(crate::services::relay::protocol::TaskEvent::FailedOver {
+                task_id: task_id.to_string(),
+                from_instance: from,
+                provider_instance: to,
+                target,
+                cause: nandi_protocol::FailoverCause::Rejected,
+                reason_kind,
+            }),
+        );
+        true
+    }
+
+    /// Ends `task_id` for both sides, as the relay does past its due date
+    fn end(&self, task_id: &str, state: TaskState) {
+        let parties = {
+            let mut tasks = self.tasks.lock().unwrap();
+            let Some(carried) = tasks.remove(task_id) else {
+                return;
+            };
+            (carried.requester.clone(), carried.provider())
+        };
+        let event = crate::services::relay::protocol::TaskEvent::Ended {
+            task_id: task_id.to_string(),
+            state,
+            reason_kind: None,
+        };
+        self.post(&parties.1, Held::Event(event.clone()));
+        self.post(&parties.0, Held::Event(event));
+    }
+
+    /// The other side of `task_id` for `from`; `None` when `from` isn't a
+    /// side of it (any more)
+    fn other_side(&self, task_id: &str, from: &str) -> Option<String> {
+        let tasks = self.tasks.lock().unwrap();
+        let carried = tasks.get(task_id)?;
+        let provider = carried.provider();
+        if from == carried.requester {
+            Some(provider)
+        } else if from == provider {
+            Some(carried.requester.clone())
         } else {
-            offline.insert(instance.to_string());
+            None
         }
     }
 }
@@ -172,10 +381,16 @@ pub(crate) struct MockRelay {
     completed: Mutex<Vec<Handler<TaskCompleted>>>,
     failed: Mutex<Vec<Handler<TaskFailed>>>,
     peer: Mutex<Vec<Handler<PeerDelivery>>>,
+    events: Mutex<Vec<Handler<crate::services::relay::protocol::TaskEvent>>>,
     /// Every `send_peer`: (target, body)
     sent_peer: Mutex<Vec<(String, PeerMessage)>>,
-    /// Task IDs `delegate_task` delivered, in order
+    /// Task IDs this client submitted, in order
     delegated: Mutex<Vec<String>>,
+    /// Task IDs handed to this instance, in order
+    delegated_here: Mutex<Vec<String>>,
+    /// Whether this client counts as connected (an outbox test turns it
+    /// off)
+    connected: std::sync::atomic::AtomicBool,
     /// This instance's keys, sealing and opening as the real client does
     sealer: Sealer,
 }
@@ -190,8 +405,11 @@ impl MockRelay {
             completed: Mutex::default(),
             failed: Mutex::default(),
             peer: Mutex::default(),
+            events: Mutex::default(),
             sent_peer: Mutex::default(),
             delegated: Mutex::default(),
+            delegated_here: Mutex::default(),
+            connected: std::sync::atomic::AtomicBool::new(true),
             sealer: Sealer::new(instance, nandi_seal::DeviceKeys::generate().unwrap()),
         });
         hub.relays
@@ -199,6 +417,15 @@ impl MockRelay {
             .unwrap()
             .insert(instance.to_string(), Arc::downgrade(&relay));
         relay
+    }
+
+    fn set_connected(&self, connected: bool) {
+        self.connected
+            .store(connected, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn is_connected(&self) -> bool {
+        self.connected.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
@@ -308,53 +535,70 @@ impl RelayClient for MockRelay {
         })
     }
 
-    fn delegate_task<'a>(&'a self, task: &'a Task) -> BoxFuture<'a, Result<String, String>> {
-        Box::pin(async move {
-            let provider_instance = instance_of(&task.target).to_string();
-            let keys = self.hub.keys(&provider_instance)?;
-            let envelope = self.sealer.seal_task(task, (&provider_instance, &keys))?;
-            self.deliver_task(task, envelope, None)
-        })
-    }
-
-    fn delegate_resealed<'a>(
+    fn delegate_task<'a>(
         &'a self,
         task: &'a Task,
-        request: Envelope,
-    ) -> BoxFuture<'a, Result<String, String>> {
+        alternates: &'a [String],
+    ) -> BoxFuture<'a, Result<Submitted, String>> {
         Box::pin(async move {
-            let continues = request.sealed_for.task_id.clone();
-            self.deliver_task(task, request, Some(continues))
+            if !self.is_connected() {
+                return Err(crate::services::relay::RelayUnavailable.to_string());
+            }
+            let mut attempts = Vec::new();
+            for target in std::iter::once(&task.target).chain(alternates) {
+                let provider = instance_of(target).to_string();
+                let keys = self.hub.keys(&provider)?;
+                attempts.push((
+                    target.clone(),
+                    self.sealer.seal_task(task, (&provider, &keys))?,
+                ));
+            }
+            let provider = instance_of(&task.target).to_string();
+            {
+                let mut tasks = self.hub.tasks.lock().unwrap();
+                if tasks.contains_key(&task.id) {
+                    return Ok(Submitted {
+                        held: self.hub.relay(&provider).is_none(),
+                    });
+                }
+                tasks.insert(
+                    task.id.clone(),
+                    Carried {
+                        requester: self.instance.clone(),
+                        requester_card: task.requester.clone(),
+                        capability: task.capability.clone(),
+                        created_at: task.created_at,
+                        deadline: task.deadline,
+                        attempts,
+                        current: 0,
+                    },
+                );
+            }
+            self.delegated.lock().unwrap().push(task.id.clone());
+            let held = self.hub.relay(&provider).is_none();
+            self.hub.post(
+                &provider,
+                Held::Task {
+                    task_id: task.id.clone(),
+                },
+            );
+            Ok(Submitted { held })
         })
     }
 
     fn send_result(&self, result: TaskResult) -> BoxFuture<'_, Result<(), String>> {
         Box::pin(async move {
             // The relay knows who asked
-            let requester_instance = self
+            let requester = self
                 .hub
-                .routes
-                .lock()
-                .unwrap()
-                .remove(&result.task_id)
+                .other_side(&result.task_id, &self.instance)
                 .ok_or("No route back")?;
-            let report = self.sealer.seal_result(
-                &result,
-                (&requester_instance, &self.hub.keys(&requester_instance)?),
-            )?;
-            let requester = self.hub.relay(&requester_instance).ok_or("No route back")?;
-            let opened = requester
+            let report = self
                 .sealer
-                .open_result(report, (&self.instance, self.sealer.public_keys()))?;
-            let Opening::Opened(result) = opened else {
-                return Ok(());
-            };
-            for handler in requester.completed.lock().unwrap().iter() {
-                handler(TaskCompleted {
-                    task_id: result.task_id.clone(),
-                    result: result.clone(),
-                });
-            }
+                .seal_result(&result, (&requester, &self.hub.keys(&requester)?))?;
+            self.hub.tasks.lock().unwrap().remove(&result.task_id);
+            self.hub
+                .post(&requester, Held::Result(report, self.instance.clone()));
             Ok(())
         })
     }
@@ -374,9 +618,17 @@ impl RelayClient for MockRelay {
         Box::pin(async {})
     }
 
+    fn on_task_event(
+        &self,
+        handler: Handler<crate::services::relay::protocol::TaskEvent>,
+    ) -> BoxFuture<'_, ()> {
+        self.events.lock().unwrap().push(handler);
+        Box::pin(async {})
+    }
+
     fn status(&self) -> RelayStatus {
         RelayStatus {
-            connected: true,
+            connected: self.is_connected(),
             instance_id: self.instance.clone(),
             relay_url: Some("wss://relay.test/relay".into()),
             agents_online: 0,
@@ -393,44 +645,44 @@ impl RelayClient for MockRelay {
             .lock()
             .unwrap()
             .push((target_instance.clone(), body.clone()));
-        let sealed = self.seal_peer(&target_instance, body);
         Box::pin(async move {
-            let wire = sealed?;
-            let (to, delivery) = match self.hub.relay(&target_instance) {
-                Some(target) => {
-                    let opened = target.sealer.open_peer(
-                        &self.instance,
-                        wire,
-                        Some(self.sealer.public_keys()),
-                    )?;
-                    let Opening::Opened(body) = opened else {
-                        return Ok(());
-                    };
-                    (
-                        target,
-                        PeerDelivery {
-                            from_instance: self.instance.clone(),
-                            target_instance,
-                            body,
-                            undeliverable: false,
-                        },
-                    )
-                }
-                None => (
-                    self.hub
-                        .relay(&self.instance)
-                        .expect("the sender is online"),
-                    PeerDelivery {
-                        from_instance: self.instance.clone(),
-                        target_instance,
-                        body: Sealer::bounced(wire),
-                        undeliverable: true,
-                    },
-                ),
-            };
-            for handler in to.peer.lock().unwrap().iter() {
-                handler(delivery.clone());
+            let task_id = body.task_id().to_string();
+            if self.hub.other_side(&task_id, &self.instance).as_deref() != Some(&target_instance) {
+                return Err(format!("{} isn't a side of task {task_id}", self.instance));
             }
+            // A refusal goes to the next candidate while there is one
+            if let PeerMessage::RejectTask { reason_kind, .. } = &body {
+                let lasting = self
+                    .hub
+                    .tasks
+                    .lock()
+                    .unwrap()
+                    .get(&task_id)
+                    .is_some_and(|c| assignment::is_lasting(&c.capability));
+                if !lasting
+                    && *reason_kind != Some(task::ReasonKind::Declined)
+                    && self.hub.fail_over(&task_id, *reason_kind)
+                {
+                    return Ok(());
+                }
+            }
+            let keys = if Sealer::has_content(&body) {
+                Some(self.hub.keys(&target_instance)?)
+            } else {
+                None
+            };
+            let live_only = matches!(
+                body,
+                PeerMessage::StatusQuery { .. } | PeerMessage::StatusResponse { .. }
+            );
+            let wire = self
+                .sealer
+                .seal_peer(&target_instance, body, keys.as_ref())?;
+            if live_only && self.hub.relay(&target_instance).is_none() {
+                return Ok(());
+            }
+            self.hub
+                .post(&target_instance, Held::Peer(self.instance.clone(), wire));
             Ok(())
         })
     }
@@ -439,74 +691,83 @@ impl RelayClient for MockRelay {
         self.peer.lock().unwrap().push(handler);
         Box::pin(async {})
     }
+
+    /// The relay's move, with the request resealed for the new provider:
+    /// never back to the requester or to anyone who had it
+    fn reassign<'a>(
+        &'a self,
+        task_id: &'a str,
+        requester: &'a str,
+        target: &'a str,
+        by: &'a str,
+        reason: Option<String>,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            let to = instance_of(target).to_string();
+            let keys = self.hub.keys(&to)?;
+            let request = self
+                .sealer
+                .reseal_request(task_id, (&to, &keys))?
+                .ok_or("The request isn't held here")?;
+            let from = {
+                let mut tasks = self.hub.tasks.lock().unwrap();
+                let carried = tasks.get_mut(task_id).ok_or("No such task")?;
+                if carried.provider() != self.instance {
+                    return Err("Only the task's provider can hand it on".to_string());
+                }
+                let had = carried.attempts[..=carried.current]
+                    .iter()
+                    .any(|(card, _)| instance_of(card) == to);
+                if to == carried.requester || had {
+                    return Err(format!("{to} already had this task"));
+                }
+                carried.attempts.truncate(carried.current + 1);
+                carried.attempts.push((target.to_string(), request));
+                carried.current += 1;
+                self.instance.clone()
+            };
+            self.hub.post(
+                &to,
+                Held::Task {
+                    task_id: task_id.to_string(),
+                },
+            );
+            self.hub.post(
+                requester,
+                Held::Event(crate::services::relay::protocol::TaskEvent::Reassigned {
+                    task_id: task_id.to_string(),
+                    from_instance: from,
+                    provider_instance: to.clone(),
+                    target: target.to_string(),
+                    provider_name: Some(to),
+                    by: by.to_string(),
+                    note: reason,
+                }),
+            );
+            Ok(())
+        })
+    }
 }
 
 impl MockRelay {
-    /// Seals `task` for its provider, which opens it as the real client
-    /// does, and hands it over
-    fn deliver_task(
-        &self,
-        task: &Task,
-        envelope: Envelope,
-        continues: Option<String>,
-    ) -> Result<String, String> {
-        let provider_instance = instance_of(&task.target).to_string();
-        let provider = self
-            .hub
-            .relay(&provider_instance)
-            .ok_or_else(|| format!("{provider_instance} is offline"))?;
-        let sealed = SealedTask {
-            id: task.id.clone(),
-            requester: task.requester.clone(),
-            target: task.target.clone(),
-            capability: task.capability.clone(),
-            created_at: task.created_at,
-            deadline: task.deadline,
-            envelope,
-            continues,
-        };
-        let requester_keys = self.hub.keys(&task.requester.instance_id)?;
-        let Opening::Opened(opened) = provider.sealer.open_task(sealed, &requester_keys)? else {
-            return Err("delivered twice".into());
-        };
-        self.hub
-            .routes
-            .lock()
-            .unwrap()
-            .insert(task.id.clone(), self.instance.clone());
-        self.delegated.lock().unwrap().push(task.id.clone());
-        for handler in provider.assigned.lock().unwrap().iter() {
-            handler(TaskAssigned {
-                task_id: task.id.clone(),
-                provider_instance: provider_instance.clone(),
-                task: Some(opened.clone()),
-            });
-        }
-        Ok(task.id.clone())
-    }
-
-    /// `body` sealed for `target` (and a reassignment's request for its
-    /// new provider), as the real client seals it
-    fn seal_peer(
-        &self,
-        target: &str,
-        body: PeerMessage,
-    ) -> Result<nandi_protocol::PeerMessage, String> {
-        let keys = if Sealer::has_content(&body) {
-            Some(self.hub.keys(target)?)
-        } else {
-            None
-        };
-        let new_provider = match &body {
-            PeerMessage::ReassignTask {
-                task_id,
-                new_provider_instance,
-                ..
-            } if self.sealer.holds_request(task_id) => Some(self.hub.keys(new_provider_instance)?),
-            _ => None,
-        };
-        self.sealer
-            .seal_peer(target, body, keys.as_ref(), new_provider.as_ref())
+    /// Carries `task` (ours) as if it had been submitted earlier: the
+    /// relay knows where its result goes
+    fn track(&self, task: &Task) {
+        let provider = instance_of(&task.target).to_string();
+        let keys = self.hub.keys(&provider).unwrap();
+        let envelope = self.sealer.seal_task(task, (&provider, &keys)).unwrap();
+        self.hub.tasks.lock().unwrap().insert(
+            task.id.clone(),
+            Carried {
+                requester: self.instance.clone(),
+                requester_card: task.requester.clone(),
+                capability: task.capability.clone(),
+                created_at: task.created_at,
+                deadline: task.deadline,
+                attempts: vec![(task.target.clone(), envelope)],
+                current: 0,
+            },
+        );
     }
 
     /// What `send_peer` sent, by message kind (`acknowledge_task`, …)
@@ -996,13 +1257,13 @@ async fn a_remote_request_without_an_answer_stays_open_until_it_is_due() {
         TaskStatus::Running
     );
 
-    // Not before it's due
-    assert!(service.sweep_timeouts(due).await.unwrap().is_empty());
-    assert!(service.sweep_abandoned(due).await.unwrap().is_empty());
-    // Past it: it ends, and so does its history row
-    let mut ended = service.sweep_timeouts(due + 1).await.unwrap();
-    ended.extend(service.sweep_abandoned(due + 1).await.unwrap());
-    assert_eq!(ended, std::slice::from_ref(&result.task_id));
+    // The relay ends it past its due date: so does its history row
+    let _ = &service;
+    hub.end(&result.task_id, TaskState::TimedOut);
+    wait_until("the end", || async {
+        delegation(&state, &result.task_id).await.status == TaskStatus::TimedOut
+    })
+    .await;
     let closed = delegation(&state, &result.task_id).await;
     assert_eq!(closed.status, TaskStatus::TimedOut);
     assert!(closed.error.unwrap().contains("due date"));
@@ -1188,7 +1449,7 @@ mod lifecycle_tests {
     use crate::services::a2a::task::{
         self, TaskFilter, TaskRecord, TaskService, TaskSourceKind, TaskState,
     };
-    use crate::services::a2a::{failover, task_state};
+    use crate::services::a2a::task_state;
 
     const SERVES: &str = "serves: [{name: summarize}]\naccepts_delegation: true\n";
 
@@ -1502,25 +1763,16 @@ mod lifecycle_tests {
             TaskStatus::Running
         );
 
-        // Days later, still open: neither sweep touches it
-        let service = &world._services.0;
-        assert!(service
-            .sweep_timeouts(started + 2 * DAY)
-            .await
-            .unwrap()
-            .is_empty());
-        assert!(service
-            .sweep_abandoned(started + 2 * DAY)
-            .await
-            .unwrap()
-            .is_empty());
+        // Done while we're offline: the result waits at the relay
+        let me = instance(&world.requester_state);
+        world.hub.set_online(&me, false);
+        release.notify_one();
+        tokio::time::sleep(Duration::from_millis(200)).await;
         assert!(!row(&world.requester_state, &result.task_id)
             .await
             .state
             .is_terminal());
-
-        // Done: the result reaches the open row, and its history row ends
-        release.notify_one();
+        world.hub.set_online(&me, true);
         wait_until("the result", || async {
             state_of(&world.requester_state, &result.task_id).await == Some(TaskState::Completed)
         })
@@ -1547,65 +1799,6 @@ mod lifecycle_tests {
             json!({"status": "done", "note": "Uploaded"})
         );
 
-        // Done while its result couldn't reach us: the poll fetches it
-        let state = world.provider_state.clone();
-        let relay = world._relays.1.clone();
-        executor::set_gateway_handler(
-            &provider,
-            Arc::new(move |task: Task| {
-                let (state, relay) = (state.clone(), relay.clone());
-                Box::pin(async move {
-                    relay
-                        .send_peer(
-                            task.requester.instance_id.clone(),
-                            PeerMessage::AcknowledgeTask {
-                                task_id: task.id.clone(),
-                                eta_seconds: None,
-                                note: None,
-                            },
-                        )
-                        .await
-                        .unwrap();
-                    executor::gateway_dispatched(&state, &task, "On Lena's list".into(), None)
-                        .await;
-                    std::future::pending::<()>().await;
-                    unreachable!()
-                })
-            }),
-        );
-        let missed = world
-            .requester
-            .run(assign("Rotate the keys"))
-            .await
-            .unwrap();
-        assert_eq!(missed.status, TaskStatus::Running, "{:?}", missed.error);
-        wait_until("the provider working on it", || async {
-            state_of(&world.provider_state, &missed.task_id).await == Some(TaskState::Working)
-        })
-        .await;
-        task_state::advance(
-            world.provider_state.db(),
-            world.provider_state.bus(),
-            &missed.task_id,
-            TaskState::Completed,
-            task_state::Change {
-                result: Some(json!("Rotated")),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-        assert_eq!(service.poll_assignments(Some(&provider)).await, 1);
-        wait_until("the fetched result", || async {
-            state_of(&world.requester_state, &missed.task_id).await == Some(TaskState::Completed)
-        })
-        .await;
-        assert_eq!(
-            row(&world.requester_state, &missed.task_id).await.result,
-            Some(json!("Rotated"))
-        );
-        // Nothing open is left to ask about
-        assert_eq!(service.poll_assignments(None).await, 0);
         world.requester_state.shutdown();
         world.provider_state.shutdown();
     }
@@ -1776,6 +1969,7 @@ mod lifecycle_tests {
             ("hb-quiet", json!({"text": "x"})),
         ] {
             let task = wire(id, &requester, &target, input);
+            world._relays.0.track(&task);
             let mut record = TaskRecord::provider(&task, &provider);
             record.state = TaskState::Working;
             task::create(
@@ -1806,88 +2000,9 @@ mod lifecycle_tests {
     }
 
     #[tokio::test]
-    async fn the_timeout_sweep_fires_after_three_etas() {
-        let recorder = Arc::new(RecordingSink::default());
-        let (state, _hub, relay, service, _them) = requester_alone(Some(recorder.clone())).await;
-        let me = instance(&state);
-        let mut record = TaskRecord::requester(
-            "t",
-            &me,
-            "writer",
-            "them/papers",
-            "summarize",
-            &json!(1),
-            None,
-        );
-        record.state = TaskState::Acknowledged;
-        record.eta_seconds = Some(10);
-        record.acknowledged_at = Some(1_000_000.0);
-        task::create(state.db(), state.bus(), &record, None)
-            .await
-            .unwrap();
-
-        let limit = 1_000_000 + 3 * 10 * 1000;
-        assert!(service.sweep_timeouts(limit).await.unwrap().is_empty());
-        assert_eq!(state_of(&state, "t").await, Some(TaskState::Acknowledged));
-        assert_eq!(service.sweep_timeouts(limit + 1).await.unwrap(), ["t"]);
-        let timed_out = row(&state, "t").await;
-        assert_eq!(timed_out.state, TaskState::TimedOut);
-        assert!(timed_out.error.unwrap().contains("ETA"));
-        assert_eq!(relay.sent_kinds(), ["task_timed_out"]);
-        assert_eq!(relay.sent_peer.lock().unwrap()[0].0, "them");
-        assert!(recorder.names().contains(&task::TASK_TIMED_OUT));
-        state.shutdown();
-    }
-
-    #[tokio::test]
-    async fn tasks_for_an_offline_provider_are_abandoned() {
-        let (state, _hub, _relay, service, _them) = requester_alone(None).await;
-        service.set_presence(Arc::new(|instance: String| {
-            Box::pin(async move { instance == "up" })
-        }));
-        let me = instance(&state);
-        let t0 = 5_000_000.0;
-        for (id, provider, at) in [
-            ("queued", "them/papers", TaskState::Submitted),
-            ("sent", "them/papers", TaskState::Delivered),
-            ("reachable", "up/papers", TaskState::Delivered),
-        ] {
-            let mut record =
-                TaskRecord::requester(id, &me, "writer", provider, "summarize", &json!(1), None);
-            record.state = at;
-            record.created_at = t0;
-            task::create(state.db(), state.bus(), &record, None)
-                .await
-                .unwrap();
-        }
-        let t0 = t0 as i64;
-        assert!(service
-            .sweep_abandoned(t0 + 90_000)
-            .await
-            .unwrap()
-            .is_empty());
-        assert_eq!(
-            service.sweep_abandoned(t0 + 90_001).await.unwrap(),
-            ["sent"]
-        );
-        assert_eq!(
-            service.sweep_abandoned(t0 + 300_001).await.unwrap(),
-            ["queued"]
-        );
-        assert_eq!(state_of(&state, "queued").await, Some(TaskState::Abandoned));
-        assert_eq!(state_of(&state, "sent").await, Some(TaskState::Abandoned));
-        assert_eq!(
-            state_of(&state, "reachable").await,
-            Some(TaskState::Delivered),
-            "an online provider's task waits"
-        );
-        state.shutdown();
-    }
-
-    #[tokio::test]
-    async fn the_offline_queue_flushes_in_priority_order() {
-        let (state, hub, relay, service, _them) = requester_alone(None).await;
-        hub.set_online("them", false);
+    async fn the_outbox_flushes_in_priority_order_once_the_relay_is_back() {
+        let (state, _hub, relay, service, _them) = requester_alone(None).await;
+        relay.set_connected(false);
         let me = instance(&state);
         for (id, priority, created_at) in [("old", 0, 1.0), ("urgent", 5, 3.0), ("new", 0, 2.0)] {
             let mut record = TaskRecord::requester(
@@ -1906,25 +2021,26 @@ mod lifecycle_tests {
                 .await
                 .unwrap();
         }
-        // Offline: everything waits
-        assert!(service.flush(None).await.is_empty());
+        // No relay: everything waits
+        assert!(service.flush().await.is_empty());
         assert!(relay.delegated().is_empty());
         assert_eq!(state_of(&state, "old").await, Some(TaskState::Submitted));
 
-        hub.set_online("them", true);
-        // Two flushes at once (presence event + sweep) send each task once
-        let (first, second) = tokio::join!(service.flush(Some("them")), service.flush(None));
+        relay.set_connected(true);
+        // Two flushes at once (the relay connecting + the sweep) send each
+        // request once
+        let (first, second) = tokio::join!(service.flush(), service.flush());
         assert_eq!([first, second].concat(), ["urgent", "old", "new"]);
         assert_eq!(relay.delegated(), ["urgent", "old", "new"]);
         for id in ["urgent", "old", "new"] {
             assert_eq!(state_of(&state, id).await, Some(TaskState::Delivered));
         }
-        assert!(service.flush(None).await.is_empty(), "nothing left");
+        assert!(service.flush().await.is_empty(), "nothing left");
         state.shutdown();
     }
 
     #[tokio::test]
-    async fn a_delegation_to_an_offline_provider_waits_in_the_queue() {
+    async fn a_delegation_to_an_offline_provider_waits_at_the_relay() {
         let world = two_instances(SERVES).await;
         allow(&world);
         let provider = instance(&world.provider_state);
@@ -1951,12 +2067,12 @@ mod lifecycle_tests {
                 .unwrap()
             }
         };
-        wait_until("the queued task", || async { !queued().await.is_empty() }).await;
-        assert!(world._relays.0.delegated().is_empty());
+        wait_until("the held task", || async { !queued().await.is_empty() }).await;
+        // The relay has it: nothing for the outbox
+        assert_eq!(world._relays.0.delegated().len(), 1);
+        assert!(service(&world.requester_state).flush().await.is_empty());
 
         world.hub.set_online(&provider, true);
-        let sent = service(&world.requester_state).flush(Some(&provider)).await;
-        assert_eq!(sent.len(), 1);
         let result = running.await.unwrap().unwrap();
         assert_eq!(result.status, TaskStatus::Completed, "{:?}", result.error);
         assert_eq!(
@@ -2006,12 +2122,7 @@ mod lifecycle_tests {
         )
         .await
         .unwrap();
-        world
-            .hub
-            .routes
-            .lock()
-            .unwrap()
-            .insert("resumed".into(), requester.clone());
+        world._relays.0.track(&task);
         // Requester: a queued task
         let queued_task = wire("queued", &requester, &target, json!("later"));
         let queued = TaskRecord::requester(
@@ -2063,7 +2174,7 @@ mod lifecycle_tests {
     }
 
     #[tokio::test]
-    async fn failover_creates_the_next_attempt_elsewhere() {
+    async fn a_retry_creates_the_next_attempt_elsewhere() {
         let (state, hub, relay, service, them) = requester_alone(None).await;
         them.register(vec![serving("them/papers")]).await.unwrap();
         let other = MockRelay::join(&hub, "other");
@@ -2088,10 +2199,10 @@ mod lifecycle_tests {
         // The relay has nobody else to plan (the other one is offline):
         // nowhere to go
         hub.set_online("other", false);
-        assert!(service.failover(&failed).await.unwrap().is_none());
+        assert!(service.retry(&failed).await.unwrap().is_none());
         hub.set_online("other", true);
 
-        let next = service.failover(&failed).await.unwrap().unwrap();
+        let next = service.retry(&failed).await.unwrap().unwrap();
         assert_eq!(next.attempt_number, 2);
         assert_eq!(next.previous_attempt_id.as_deref(), Some("first"));
         assert_eq!(next.source_kind, TaskSourceKind::Failover);
@@ -2104,15 +2215,6 @@ mod lifecycle_tests {
             .unwrap();
         assert_eq!(sent.target, "other/papers");
         assert_eq!(sent.input, json!("x"));
-
-        assert!(
-            service.failover(&failed).await.unwrap().is_none(),
-            "one successor per attempt"
-        );
-        let mut last = next.clone();
-        last.state = TaskState::Failed;
-        last.attempt_number = failover::MAX_ATTEMPTS;
-        assert!(service.failover(&last).await.unwrap().is_none());
         state.shutdown();
     }
 
@@ -2141,6 +2243,7 @@ mod lifecycle_tests {
         )
         .await
         .unwrap();
+        world._relays.0.track(&task);
         let mut served = TaskRecord::provider(&task, &provider);
         served.state = TaskState::Working;
         served.eta_seconds = Some(42);
@@ -2211,7 +2314,7 @@ mod lifecycle_tests {
 
     #[tokio::test]
     async fn peers_can_only_move_their_own_tasks() {
-        let (state, _hub, _relay, _service, them) = requester_alone(None).await;
+        let (state, _hub, relay, _service, them) = requester_alone(None).await;
         let me = instance(&state);
         let mut record = TaskRecord::requester(
             "t",
@@ -2226,7 +2329,8 @@ mod lifecycle_tests {
         task::create(state.db(), state.bus(), &record, None)
             .await
             .unwrap();
-        // "intruder" isn't the provider
+        relay.track(&wire("t", &me, "them/papers", json!(1)));
+        // "intruder" isn't the provider: the relay refuses it
         let intruder = MockRelay::join(&_hub, "intruder");
         intruder
             .send_peer(
@@ -2238,7 +2342,7 @@ mod lifecycle_tests {
                 },
             )
             .await
-            .unwrap();
+            .unwrap_err();
         them.send_peer(
             me.clone(),
             PeerMessage::AcknowledgeTask {
@@ -3116,22 +3220,14 @@ async fn a_provider_reassigns_a_task_and_the_requester_gets_the_result() {
         result.provider_agent
     );
 
+    // One task, one row: it followed Bob, with the move in its thread
     let requester_db = world.requester_state.db();
-    let first = task::get_row(requester_db, &task_id)
+    let asked = task::get_row(requester_db, &task_id)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(first.state, task::TaskState::Reassigned);
-    let id = task_id.clone();
-    let next = requester_db
-        .call(move |conn| task::select(conn, "previous_attempt_id = ?1", &[&id]))
-        .await
-        .unwrap()
-        .remove(0);
-    assert_eq!(next.source_kind, task::TaskSourceKind::Reassign);
-    assert_eq!(next.provider_instance, bob);
-    assert_eq!(next.attempt_number, 2);
-    assert_eq!(next.state, task::TaskState::Completed);
+    assert_eq!(asked.state, task::TaskState::Completed);
+    assert_eq!(asked.provider_instance, bob);
     let notes = task::messages_of(requester_db, &task_id).await.unwrap();
     let note = notes
         .iter()
@@ -3139,8 +3235,8 @@ async fn a_provider_reassigns_a_task_and_the_requester_gets_the_result() {
         .expect("a reassigned note in the thread");
     assert_eq!(note.payload["toInstance"], json!(bob));
     assert_eq!(note.payload["reason"], json!("swamped"));
-    // Bob saw an ordinary delivered task
-    let served = task::get_row(bob_state.db(), &next.id)
+    // Bob saw an ordinary delivered task, under the same ID
+    let served = task::get_row(bob_state.db(), &task_id)
         .await
         .unwrap()
         .unwrap();
@@ -3149,89 +3245,4 @@ async fn a_provider_reassigns_a_task_and_the_requester_gets_the_result() {
     world.requester_state.shutdown();
     world.provider_state.shutdown();
     bob_state.shutdown();
-}
-
-#[tokio::test]
-async fn a_reassignment_back_to_an_earlier_provider_fails_the_attempt() {
-    let world = two_instances("serves: [{name: summarize}]\naccepts_delegation: true\n").await;
-    let me = instance(&world.requester_state);
-    let alice = instance(&world.provider_state);
-    let (db, bus) = (world.requester_state.db(), world.requester_state.bus());
-    // An earlier attempt went to Alice; this one went to Bob
-    let target = format!("{alice}/papers");
-    let first = Task {
-        id: "first".into(),
-        requester: user_card(&me),
-        target: target.clone(),
-        capability: "summarize".into(),
-        input: json!("x"),
-        created_at: db::now_ms() as f64,
-        deadline: None,
-    };
-    let mut earlier = task::TaskRecord::requester(
-        "first",
-        &me,
-        "writer",
-        &target,
-        "summarize",
-        &json!("x"),
-        None,
-    );
-    earlier.state = task::TaskState::Failed;
-    task::create(db, bus, &earlier, Some(&first)).await.unwrap();
-    let second = Task {
-        id: "second".into(),
-        target: "bob/papers".into(),
-        ..first.clone()
-    };
-    let mut current = failover::next_attempt(&earlier, "second", "bob/papers");
-    current.state = task::TaskState::Acknowledged;
-    task::create(db, bus, &current, Some(&second))
-        .await
-        .unwrap();
-    let bob = MockRelay::join(&world.hub, "bob");
-
-    // Bob tries to hand it to Alice, who already had it
-    bob.send_peer(
-        me.clone(),
-        PeerMessage::ReassignTask {
-            task_id: "second".into(),
-            new_provider_instance: alice.clone(),
-            new_provider_card: target.clone(),
-            new_provider_name: Some("Alice".into()),
-            by: "Bob".into(),
-            reason: None,
-            request: None,
-        },
-    )
-    .await
-    .unwrap();
-    let state = world.requester_state.clone();
-    wait_until("the looping handoff to fail the attempt", || {
-        let state = state.clone();
-        async move {
-            task::get_row(state.db(), "second")
-                .await
-                .unwrap()
-                .unwrap()
-                .state
-                == task::TaskState::Failed
-        }
-    })
-    .await;
-    let row = task::get_row(db, "second").await.unwrap().unwrap();
-    assert!(row.error.unwrap().contains("already had it"));
-    let successors = db
-        .call(|conn| {
-            task::select(
-                conn,
-                "previous_attempt_id = 'second' AND source_kind = 'reassign'",
-                &[],
-            )
-        })
-        .await
-        .unwrap();
-    assert!(successors.is_empty(), "no attempt goes back to Alice");
-    world.requester_state.shutdown();
-    world.provider_state.shutdown();
 }

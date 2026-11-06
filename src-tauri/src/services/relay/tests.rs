@@ -207,9 +207,7 @@ async fn tasks_are_routed_to_the_provider_and_back() {
     let (task_tx, mut task_rx) = tokio::sync::mpsc::unbounded_channel::<Task>();
     provider
         .on_task_assigned(Box::new(move |assigned| {
-            if let Some(task) = assigned.task {
-                let _ = task_tx.send(task);
-            }
+            let _ = task_tx.send(assigned.task);
         }))
         .await;
     let answering = provider.clone();
@@ -234,14 +232,14 @@ async fn tasks_are_routed_to_the_provider_and_back() {
         created_at: 1.0,
         deadline: None,
     };
-    assert_eq!(requester.delegate_task(&task).await.unwrap(), "t1");
+    assert!(!requester.delegate_task(&task, &[]).await.unwrap().held);
     assert!(eventually(async || !results.lock().unwrap().is_empty()).await);
     let done = results.lock().unwrap()[0].clone();
     assert_eq!(done.task_id, "t1");
     assert_eq!(done.result.output, json!({"echo": {"q": "relays"}}));
 
-    // An offline target fails right away, as the answer to the send only:
-    // it isn't a task result (the caller may queue it for later)
+    // A target the relay doesn't know is refused right away, as the
+    // answer to the send only: it isn't a task result
     let failures: Arc<Mutex<Vec<String>>> = Arc::default();
     let sink = failures.clone();
     requester
@@ -254,7 +252,7 @@ async fn tasks_are_routed_to_the_provider_and_back() {
         target: "gone/agent".into(),
         ..task
     };
-    assert!(requester.delegate_task(&missing).await.is_err());
+    assert!(requester.delegate_task(&missing, &[]).await.is_err());
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert!(failures.lock().unwrap().is_empty());
 }
@@ -295,9 +293,7 @@ async fn tasks_reach_a_gateway_only_instance() {
     let sink = assigned.clone();
     provider
         .on_task_assigned(Box::new(move |a| {
-            if let Some(task) = a.task {
-                sink.lock().unwrap().push(task.target);
-            }
+            sink.lock().unwrap().push(a.task.target);
         }))
         .await;
     let requester = registered(addr, "req", Vec::new()).await;
@@ -311,7 +307,7 @@ async fn tasks_reach_a_gateway_only_instance() {
         created_at: 1.0,
         deadline: None,
     };
-    assert_eq!(requester.delegate_task(&task).await.unwrap(), "g1");
+    assert!(!requester.delegate_task(&task, &[]).await.unwrap().held);
     assert!(eventually(async || !assigned.lock().unwrap().is_empty()).await);
     assert_eq!(assigned.lock().unwrap()[0], "prov/gateway");
     // Presence counts the instance, but its route card isn't an agent
@@ -336,7 +332,7 @@ async fn tasks_reach_a_gateway_only_instance() {
         })
         .await
     );
-    assert!(requester.delegate_task(&refused).await.is_err());
+    assert!(requester.delegate_task(&refused, &[]).await.is_err());
 }
 
 #[tokio::test]

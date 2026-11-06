@@ -53,8 +53,20 @@
 //!   (`on_task_failed`). A duplicate `(task, from, seq)` is dropped.
 //! - **Reassignment.** Handing a task on, we reseal the request we opened
 //!   for the new provider ([`nandi_seal::reseal`], the requester's
-//!   signature kept); the requester sends it on (`delegate_resealed`).
+//!   signature kept) and send `Reassign`; the relay moves it. As its
+//!   requester, asked to (`Reseal`), we seal our own request again.
 //! - Content over `MAX_ENVELOPE_BYTES` isn't sent (`ENVELOPE_TOO_LARGE`).
+//!
+//! # Store-and-forward
+//!
+//! The relay keeps everything for us in our mailbox until we ack it
+//! (protocol 6). After each registration the client sends `InboxSync`,
+//! and again whenever a handler is added, so nothing is acked before
+//! something here handles it. Each delivery goes through the opening
+//! queue in order, then is acked; one handled already on this connection
+//! is acked again and dropped. `delegate_task` sends `SubmitTask` with the
+//! request sealed for each candidate, so the relay can fail it over with
+//! us offline.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -65,11 +77,12 @@ use futures_util::{FutureExt, SinkExt, StreamExt};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
 
+use super::client_api::Submitted;
 use super::client_api::{Handler, PeopleSearch, RelayClient};
 use super::protocol::{
-    CapabilityPresence, InstancePresence, MemberRecord, PeerDelivery, PeerMessage, RelayMessage,
-    RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted, TaskFailed, ALL_CAPABILITIES,
-    PROTOCOL_VERSION, VERSION_MISMATCH,
+    CapabilityPresence, DutyDelivery, DutyState, InstancePresence, MemberRecord, PeerDelivery,
+    PeerMessage, RelayMessage, ResealRequest, RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted,
+    TaskEvent, TaskFailed, ALL_CAPABILITIES, PROTOCOL_VERSION, VERSION_MISMATCH,
 };
 use super::sealing::{self, MemoryKeyBook, Opening, PeerKeyBook, Sealer};
 use super::{
@@ -82,7 +95,7 @@ use crate::services::domain::AgentCard;
 use crate::services::events::{self, EventBus};
 use crate::services::gateway::{registration, GatewayCard};
 use crate::services::network::peer_keys::PEER_KEY_CHANGED;
-use nandi_protocol::{self as wire, Envelope, PROBE_PAYLOAD};
+use nandi_protocol::{self as wire, PROBE_PAYLOAD};
 use nandi_protocol::{PublicKeys, KEY_MISMATCH};
 use nandi_seal::DeviceKeys;
 
@@ -110,21 +123,11 @@ pub type PresenceStore = Box<dyn Fn(&[AgentCard]) + Send + Sync>;
 /// This device's keys (made on first use)
 pub type DeviceKeysSource = Arc<dyn Fn() -> Result<DeviceKeys, String> + Send + Sync>;
 
-/// A frame about a task, opened in order on the client's inbound queue
-enum Inbound {
-    Assigned(wire::TaskAssigned),
-    Completed(wire::TaskCompleted),
-    Failed(TaskFailed),
-    Peer {
-        from_instance: String,
-        target_instance: String,
-        body: wire::PeerMessage,
-    },
-    /// Ours, bounced: the target is offline
-    Bounced {
-        target_instance: String,
-        body: wire::PeerMessage,
-    },
+/// One delivery from our mailbox, opened in order on the client's inbound
+/// queue (mail ID 0: live only, not acked)
+struct Inbound {
+    mail_id: u64,
+    item: wire::Delivery,
 }
 
 #[derive(Default)]
@@ -133,6 +136,9 @@ struct Handlers {
     completed: Vec<Arc<Handler<TaskCompleted>>>,
     failed: Vec<Arc<Handler<TaskFailed>>>,
     peer: Vec<Arc<Handler<PeerDelivery>>>,
+    events: Vec<Arc<Handler<TaskEvent>>>,
+    reseal: Vec<Arc<Handler<ResealRequest>>>,
+    duty: Vec<Arc<Handler<DutyDelivery>>>,
 }
 
 #[derive(Default)]
@@ -173,7 +179,13 @@ struct Shared {
     /// Key queries by instance ID
     waiting_keys: HashMap<String, Vec<oneshot::Sender<Option<PublicKeys>>>>,
     waiting_queries: HashMap<String, Vec<oneshot::Sender<Vec<AgentCard>>>>,
-    waiting_acks: HashMap<String, oneshot::Sender<Result<(), String>>>,
+    /// Submissions by task ID: held (`Ok(true)`), with the provider, or
+    /// the relay's refusal
+    waiting_acks: HashMap<String, oneshot::Sender<Result<bool, String>>>,
+    /// `Reassign`s by task ID
+    waiting_reassign: HashMap<String, oneshot::Sender<Result<(), String>>>,
+    /// Mail handled on this connection (dropped when it comes again)
+    handled_mail: HashSet<u64>,
     /// Our gateway card (wave final); re-sent on reconnect
     gateway: Option<GatewayCard>,
     waiting_directory: Vec<oneshot::Sender<Vec<MemberRecord>>>,
@@ -467,101 +479,249 @@ impl Inner {
         }
     }
 
-    /// Opens one frame and hands it to the handlers
-    async fn open_inbound(&self, item: Inbound) {
+    /// Opens one delivery, hands it to the handlers and acks it. One with
+    /// no handler yet isn't acked: the next `InboxSync` brings it again.
+    async fn open_inbound(&self, inbound: Inbound) {
         let sealer = match self.sealer() {
             Ok(sealer) => sealer,
-            Err(e) => return log::warn!("Relay: can't open a frame: {e}"),
+            Err(e) => return log::warn!("Relay: can't open a delivery: {e}"),
         };
-        match item {
-            Inbound::Assigned(assigned) => {
-                let task = match assigned.task {
-                    None => None,
-                    Some(sealed) => {
-                        let (task_id, requester) =
-                            (sealed.id.clone(), sealed.requester.instance_id.clone());
-                        let opened = match self.author_keys(&requester, &task_id).await {
-                            Ok(keys) => sealer.open_task(sealed, &keys),
-                            Err(e) => Err(e),
+        let Inbound { mail_id, item } = inbound;
+        let me = self.lock().instance_id.clone();
+        let handled = match item {
+            wire::Delivery::Task { task: sealed } => {
+                let (task_id, requester) =
+                    (sealed.id.clone(), sealed.requester.instance_id.clone());
+                let handlers = self.handlers().assigned.clone();
+                if !handlers.is_empty() {
+                    let opened = match self.author_keys(&requester, &task_id).await {
+                        Ok(keys) => sealer.open_task(sealed, &keys),
+                        Err(e) => Err(e),
+                    };
+                    if let Some(task) = self.opened(opened, &requester, &task_id, false).await {
+                        let assigned = TaskAssigned {
+                            task_id,
+                            provider_instance: me,
+                            task,
                         };
-                        match self.opened(opened, &requester, &task_id, false).await {
-                            Some(task) => Some(task),
-                            None => return,
+                        for handler in handlers.iter() {
+                            handler(assigned.clone());
                         }
                     }
-                };
-                let assigned = TaskAssigned {
-                    task_id: assigned.task_id,
-                    provider_instance: assigned.provider_instance,
-                    task,
-                };
-                for handler in self.handlers().assigned.clone() {
-                    handler(assigned.clone());
                 }
+                !handlers.is_empty()
             }
-            Inbound::Completed(completed) => {
-                let task_id = completed.task_id.clone();
-                let provider = completed
-                    .result
+            wire::Delivery::Result { result } => {
+                let task_id = result.task_id.clone();
+                let provider = result
                     .provider_agent
                     .split('/')
                     .next()
                     .unwrap_or_default()
                     .to_string();
-                let opened = match self.author_keys(&provider, &task_id).await {
-                    Ok(keys) => sealer.open_result(completed.result, (&provider, &keys)),
-                    Err(e) => Err(e),
-                };
-                let Some(result) = self.opened(opened, &provider, &task_id, true).await else {
-                    return;
-                };
-                let completed = TaskCompleted { task_id, result };
-                for handler in self.handlers().completed.clone() {
-                    handler(completed.clone());
-                }
-            }
-            Inbound::Failed(failed) => {
-                for handler in self.handlers().failed.clone() {
-                    handler(failed.clone());
-                }
-            }
-            Inbound::Peer {
-                from_instance,
-                target_instance,
-                body,
-            } => {
-                let task_id = body.task_id().to_string();
-                let opened = if body.envelopes().is_empty() {
-                    sealer.open_peer(&from_instance, body, None)
-                } else {
-                    match self.author_keys(&from_instance, &task_id).await {
-                        Ok(keys) => sealer.open_peer(&from_instance, body, Some(&keys)),
+                let handlers = self.handlers().completed.clone();
+                if !handlers.is_empty() {
+                    let opened = match self.author_keys(&provider, &task_id).await {
+                        Ok(keys) => sealer.open_result(result, (&provider, &keys)),
                         Err(e) => Err(e),
+                    };
+                    if let Some(result) = self.opened(opened, &provider, &task_id, true).await {
+                        let completed = TaskCompleted { task_id, result };
+                        for handler in handlers.iter() {
+                            handler(completed.clone());
+                        }
                     }
-                };
-                let Some(body) = self.opened(opened, &from_instance, &task_id, true).await else {
-                    return;
-                };
-                self.deliver_peer(PeerDelivery {
-                    from_instance,
-                    target_instance,
-                    body,
-                    undeliverable: false,
-                });
+                }
+                !handlers.is_empty()
             }
-            Inbound::Bounced {
-                target_instance,
+            wire::Delivery::Peer {
+                from_instance,
                 body,
             } => {
-                let from_instance = self.lock().instance_id.clone();
-                self.deliver_peer(PeerDelivery {
-                    from_instance,
-                    target_instance,
-                    body: Sealer::bounced(body),
-                    undeliverable: true,
-                });
+                let handlers = self.handlers().peer.clone();
+                if !handlers.is_empty() {
+                    let task_id = body.task_id().to_string();
+                    let opened = if body.envelopes().is_empty() {
+                        sealer.open_peer(&from_instance, body, None)
+                    } else {
+                        match self.author_keys(&from_instance, &task_id).await {
+                            Ok(keys) => sealer.open_peer(&from_instance, body, Some(&keys)),
+                            Err(e) => Err(e),
+                        }
+                    };
+                    if let Some(body) = self.opened(opened, &from_instance, &task_id, true).await {
+                        let delivery = PeerDelivery {
+                            from_instance,
+                            target_instance: me,
+                            body,
+                        };
+                        for handler in handlers.iter() {
+                            handler(delivery.clone());
+                        }
+                    }
+                }
+                !handlers.is_empty()
             }
+            wire::Delivery::Event { event } => {
+                let handlers = self.handlers().events.clone();
+                if !handlers.is_empty() {
+                    if let Some(event) = self.open_event(&sealer, event).await {
+                        for handler in handlers.iter() {
+                            handler(event.clone());
+                        }
+                    }
+                }
+                !handlers.is_empty()
+            }
+            wire::Delivery::Reseal {
+                task_id,
+                target,
+                by,
+            } => {
+                let handlers = self.handlers().reseal.clone();
+                let request = ResealRequest {
+                    task_id,
+                    target,
+                    by,
+                };
+                for handler in handlers.iter() {
+                    handler(request.clone());
+                }
+                !handlers.is_empty()
+            }
+            wire::Delivery::DutyQuery {
+                duty_id,
+                backup_instance,
+            } => {
+                let handlers = self.handlers().duty.clone();
+                let query = DutyDelivery::Query {
+                    duty_id,
+                    backup_instance,
+                };
+                for handler in handlers.iter() {
+                    handler(query.clone());
+                }
+                !handlers.is_empty()
+            }
+            wire::Delivery::Duty {
+                duty_id,
+                decision,
+                envelope,
+            } => {
+                let handlers = self.handlers().duty.clone();
+                if !handlers.is_empty() {
+                    let error = match &envelope {
+                        Some(envelope) => {
+                            let primary = envelope.sealed_for.from.clone();
+                            let opened = match self.author_keys(&primary, &duty_id).await {
+                                Ok(keys) => {
+                                    sealer.open_note(Some(envelope), &duty_id, (&primary, &keys))
+                                }
+                                Err(e) => Err(e),
+                            };
+                            self.opened(opened, &primary, &duty_id, false)
+                                .await
+                                .flatten()
+                        }
+                        None => None,
+                    };
+                    let decision = DutyDelivery::Decision {
+                        duty_id,
+                        decision,
+                        error,
+                    };
+                    for handler in handlers.iter() {
+                        handler(decision.clone());
+                    }
+                }
+                !handlers.is_empty()
+            }
+        };
+        if handled && mail_id != 0 {
+            self.lock().handled_mail.insert(mail_id);
+            let _ = self.send(RelayMessage::Ack {
+                mail_ids: vec![mail_id],
+            });
         }
+    }
+
+    /// A task event, its note opened (a reassignment's reason, sealed by
+    /// whoever moved it)
+    async fn open_event(&self, sealer: &Sealer, event: wire::TaskEvent) -> Option<TaskEvent> {
+        Some(match event {
+            wire::TaskEvent::Accepted {
+                task_id,
+                provider_instance,
+                target,
+                held,
+            } => TaskEvent::Accepted {
+                task_id,
+                provider_instance,
+                target,
+                held,
+            },
+            wire::TaskEvent::Refused { task_id, message } => {
+                TaskEvent::Refused { task_id, message }
+            }
+            wire::TaskEvent::FailedOver {
+                task_id,
+                from_instance,
+                provider_instance,
+                target,
+                cause,
+                reason_kind,
+            } => TaskEvent::FailedOver {
+                task_id,
+                from_instance,
+                provider_instance,
+                target,
+                cause,
+                reason_kind,
+            },
+            wire::TaskEvent::Reassigned {
+                task_id,
+                from_instance,
+                provider_instance,
+                target,
+                provider_name,
+                by,
+                envelope,
+            } => {
+                let note = match envelope {
+                    Some(envelope) => {
+                        let opened = match self.author_keys(&from_instance, &task_id).await {
+                            Ok(keys) => {
+                                sealer.open_note(Some(&envelope), &task_id, (&from_instance, &keys))
+                            }
+                            Err(e) => Err(e),
+                        };
+                        // A note that doesn't open is left out; the move stands
+                        self.opened(opened, &from_instance, &task_id, false)
+                            .await
+                            .flatten()
+                    }
+                    None => None,
+                };
+                TaskEvent::Reassigned {
+                    task_id,
+                    from_instance,
+                    provider_instance,
+                    target,
+                    provider_name,
+                    by,
+                    note,
+                }
+            }
+            wire::TaskEvent::Ended {
+                task_id,
+                state,
+                reason_kind,
+            } => TaskEvent::Ended {
+                task_id,
+                state,
+                reason_kind,
+            },
+        })
     }
 
     /// The keys to check what `author` sent about `task_id` against
@@ -619,41 +779,83 @@ impl Inner {
         }
     }
 
-    /// Sends `DelegateTask` with `envelope` and waits for the relay to
-    /// route it
-    async fn delegate(
-        &self,
-        task: &Task,
-        envelope: Envelope,
-        continues: Option<String>,
-    ) -> Result<String, String> {
+    /// Sends `SubmitTask` for `task`, its input sealed for its target and
+    /// each of `alternates` (an alternate we can't seal for is left out),
+    /// and waits for the relay to take it
+    async fn submit(&self, task: &Task, alternates: &[String]) -> Result<Submitted, String> {
+        let sealer = self.sealer()?;
+        let mut attempts = Vec::new();
+        for (n, target) in std::iter::once(&task.target).chain(alternates).enumerate() {
+            let provider = target.split('/').next().unwrap_or_default();
+            let sealed = match self.keys_for(provider).await {
+                Ok(keys) => sealer.seal_task(task, (provider, &keys)),
+                Err(e) => Err(e),
+            };
+            match sealed {
+                Ok(envelope) => attempts.push(wire::TaskAttempt {
+                    target: target.clone(),
+                    envelope,
+                }),
+                // The first is the one asked for: its refusal is the answer
+                Err(e) if n == 0 => return Err(e),
+                Err(e) => log::info!("Task {}: {target} left out of the plan: {e}", task.id),
+            }
+        }
         let (tx, rx) = oneshot::channel();
         self.lock().waiting_acks.insert(task.id.clone(), tx);
-        let message = RelayMessage::DelegateTask {
+        let message = RelayMessage::SubmitTask {
             task_id: task.id.clone(),
-            target_agent: task.target.clone(),
+            kind: crate::services::a2a::route::kind_of(&task.capability),
             capability: task.capability.clone(),
             requester_card: task.requester.clone(),
             deadline: task.deadline,
             signature: self.token(),
-            envelope,
-            continues,
+            attempts,
         };
         if let Err(e) = self.send(message) {
             self.lock().waiting_acks.remove(&task.id);
             return Err(e);
         }
         match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-            Ok(Ok(Ok(()))) => Ok(task.id.clone()),
+            Ok(Ok(Ok(held))) => Ok(Submitted { held }),
             Ok(Ok(Err(e))) => Err(e),
             Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
             Err(_) => {
                 self.lock().waiting_acks.remove(&task.id);
                 Err(format!(
-                    "The relay didn't route the task within {}s",
+                    "The relay didn't take the task within {}s",
                     REQUEST_TIMEOUT.as_secs()
                 ))
             }
+        }
+    }
+
+    /// Sends `Reassign` and waits for the relay's answer
+    async fn reassign_at_relay(&self, message: RelayMessage, task_id: &str) -> Result<(), String> {
+        let (tx, rx) = oneshot::channel();
+        self.lock().waiting_reassign.insert(task_id.to_string(), tx);
+        if let Err(e) = self.send(message) {
+            self.lock().waiting_reassign.remove(task_id);
+            return Err(e);
+        }
+        match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
+            Ok(Ok(answer)) => answer,
+            Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+            Err(_) => {
+                self.lock().waiting_reassign.remove(task_id);
+                Err(format!(
+                    "The relay didn't answer within {}s",
+                    REQUEST_TIMEOUT.as_secs()
+                ))
+            }
+        }
+    }
+
+    /// Asks for what waits in our mailbox, when registered
+    fn sync_inbox(&self) {
+        let shared = self.lock();
+        if let (true, Some(outbound)) = (shared.registered, shared.outbound.as_ref()) {
+            let _ = outbound.send(RelayMessage::InboxSync {});
         }
     }
 
@@ -699,6 +901,7 @@ impl Inner {
             }
             shared.outbound = Some(outbound);
             shared.registered = false;
+            shared.handled_mail.clear();
             shared.refused = false;
             shared.version_mismatch = false;
             shared.key_mismatch = false;
@@ -733,6 +936,9 @@ impl Inner {
             for (_, waiter) in shared.waiting_acks.drain() {
                 let _ = waiter.send(Err("Disconnected from the relay".to_string()));
             }
+            for (_, waiter) in shared.waiting_reassign.drain() {
+                let _ = waiter.send(Err("Disconnected from the relay".to_string()));
+            }
         }
         self.emit_status();
     }
@@ -757,6 +963,10 @@ impl Inner {
                             card,
                         });
                     }
+                    // Then whatever waited for us
+                    if let Some(outbound) = shared.outbound.as_ref() {
+                        let _ = outbound.send(RelayMessage::InboxSync {});
+                    }
                     std::mem::take(&mut shared.waiting_registered)
                 };
                 for waiter in waiters {
@@ -774,30 +984,40 @@ impl Inner {
                     let _ = waiter.send(agents.clone());
                 }
             }
-            RelayMessage::TaskAssigned(assigned) => {
-                if assigned.task.is_none() {
-                    if let Some(waiter) = self.lock().waiting_acks.remove(&assigned.task_id) {
-                        let _ = waiter.send(Ok(()));
-                    }
-                }
-                self.queue_inbound(Inbound::Assigned(assigned));
-            }
-            RelayMessage::TaskCompleted(completed) => {
-                if let Some(waiter) = self.lock().waiting_acks.remove(&completed.task_id) {
-                    let _ = waiter.send(Ok(()));
-                }
-                self.queue_inbound(Inbound::Completed(completed));
-            }
-            RelayMessage::TaskFailed(failed) => {
-                // The relay refusing to route our send (provider offline):
-                // that answers `delegate_task`, whose caller decides (queue
-                // it, or try the next provider); it's no result of the task
-                let refused = self.lock().waiting_acks.remove(&failed.task_id);
-                if let Some(waiter) = refused {
-                    let _ = waiter.send(Err(failed.error.clone()));
+            RelayMessage::Deliver { mail_id, item } => {
+                if mail_id != 0 && self.lock().handled_mail.contains(&mail_id) {
+                    // Handled already on this connection: the ack went astray
+                    let _ = self.send(RelayMessage::Ack {
+                        mail_ids: vec![mail_id],
+                    });
                     return;
                 }
-                self.queue_inbound(Inbound::Failed(failed));
+                // The relay's answer to a submission
+                if let wire::Delivery::Event { event } = &item {
+                    let answer = match event {
+                        wire::TaskEvent::Accepted { task_id, held, .. } => {
+                            Some((task_id.clone(), Ok(*held)))
+                        }
+                        wire::TaskEvent::Refused { task_id, message } => {
+                            Some((task_id.clone(), Err(message.clone())))
+                        }
+                        _ => None,
+                    };
+                    if let Some((task_id, answer)) = answer {
+                        if let Some(waiter) = self.lock().waiting_acks.remove(&task_id) {
+                            let _ = waiter.send(answer);
+                        }
+                    }
+                }
+                self.queue_inbound(Inbound { mail_id, item });
+            }
+            RelayMessage::ReassignResult { task_id, error } => {
+                if let Some(waiter) = self.lock().waiting_reassign.remove(&task_id) {
+                    let _ = waiter.send(match error {
+                        Some(error) => Err(error),
+                        None => Ok(()),
+                    });
+                }
             }
             RelayMessage::PublicKeysResult { keys } => {
                 let mut shared = self.lock();
@@ -836,6 +1056,9 @@ impl Inner {
                     shared.waiting_routes.clear();
                     shared.waiting_keys.clear();
                     for (_, waiter) in shared.waiting_acks.drain() {
+                        let _ = waiter.send(Err(message.clone()));
+                    }
+                    for (_, waiter) in shared.waiting_reassign.drain() {
                         let _ = waiter.send(Err(message.clone()));
                     }
                 }
@@ -887,33 +1110,7 @@ impl Inner {
                     let _ = waiter.send(plan);
                 }
             }
-            RelayMessage::Peer {
-                from_instance,
-                target_instance,
-                body,
-            } => self.queue_inbound(Inbound::Peer {
-                from_instance,
-                target_instance,
-                body,
-            }),
-            RelayMessage::Undeliverable {
-                target_instance,
-                body,
-            } => self.queue_inbound(Inbound::Bounced {
-                target_instance,
-                body,
-            }),
             other => log::debug!("Relay: ignoring {other:?}"),
-        }
-    }
-
-    fn deliver_peer(&self, delivery: PeerDelivery) {
-        let handlers = self.handlers().peer.clone();
-        if handlers.is_empty() {
-            log::debug!("Relay: no handler for {:?}", delivery.body);
-        }
-        for handler in handlers {
-            handler(delivery.clone());
         }
     }
 
@@ -1309,35 +1506,12 @@ impl RelayClient for WsRelayClient {
         self.inner.query(capability).boxed()
     }
 
-    fn delegate_task<'a>(&'a self, task: &'a Task) -> BoxFuture<'a, Result<String, String>> {
-        async move {
-            let sealer = self.inner.sealer()?;
-            let provider = task.target.split('/').next().unwrap_or_default();
-            let keys = self.inner.keys_for(provider).await?;
-            let envelope = sealer.seal_task(task, (provider, &keys))?;
-            self.inner.delegate(task, envelope, None).await
-        }
-        .boxed()
-    }
-
-    fn delegate_resealed<'a>(
+    fn delegate_task<'a>(
         &'a self,
         task: &'a Task,
-        request: Envelope,
-    ) -> BoxFuture<'a, Result<String, String>> {
-        async move {
-            let provider = task.target.split('/').next().unwrap_or_default();
-            self.inner.may_send_to(provider)?;
-            if request.sealed_for.to != provider {
-                return Err(format!(
-                    "The handed-on request is sealed for {}, not {provider}",
-                    request.sealed_for.to
-                ));
-            }
-            let continues = request.sealed_for.task_id.clone();
-            self.inner.delegate(task, request, Some(continues)).await
-        }
-        .boxed()
+        alternates: &'a [String],
+    ) -> BoxFuture<'a, Result<Submitted, String>> {
+        self.inner.submit(task, alternates).boxed()
     }
 
     fn send_result(&self, result: TaskResult) -> BoxFuture<'_, Result<(), String>> {
@@ -1357,16 +1531,150 @@ impl RelayClient for WsRelayClient {
 
     fn on_task_assigned(&self, handler: Handler<TaskAssigned>) -> BoxFuture<'_, ()> {
         self.inner.handlers().assigned.push(Arc::new(handler));
+        self.inner.sync_inbox();
         async {}.boxed()
     }
 
     fn on_task_completed(&self, handler: Handler<TaskCompleted>) -> BoxFuture<'_, ()> {
         self.inner.handlers().completed.push(Arc::new(handler));
+        self.inner.sync_inbox();
         async {}.boxed()
     }
 
     fn on_task_failed(&self, handler: Handler<TaskFailed>) -> BoxFuture<'_, ()> {
         self.inner.handlers().failed.push(Arc::new(handler));
+        async {}.boxed()
+    }
+
+    fn on_task_event(&self, handler: Handler<TaskEvent>) -> BoxFuture<'_, ()> {
+        self.inner.handlers().events.push(Arc::new(handler));
+        self.inner.sync_inbox();
+        async {}.boxed()
+    }
+
+    fn reassign<'a>(
+        &'a self,
+        task_id: &'a str,
+        requester: &'a str,
+        target: &'a str,
+        by: &'a str,
+        reason: Option<String>,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        async move {
+            let sealer = self.inner.sealer()?;
+            let new_provider = target.split('/').next().unwrap_or_default();
+            // Without the opened request (a restart) the relay asks the
+            // requester to seal it again
+            let request = if sealer.holds_request(task_id) {
+                let keys = self.inner.keys_for(new_provider).await?;
+                sealer
+                    .reseal_request(task_id, (new_provider, &keys))?
+                    .map(Box::new)
+            } else {
+                self.inner.may_send_to(new_provider)?;
+                None
+            };
+            let envelope = match reason.filter(|r| !r.is_empty()) {
+                Some(reason) => {
+                    let keys = self.inner.keys_for(requester).await?;
+                    sealer.note(task_id, (requester, &keys), Some(reason))?
+                }
+                None => None,
+            };
+            let message = RelayMessage::Reassign {
+                task_id: task_id.to_string(),
+                target: target.to_string(),
+                by: by.to_string(),
+                envelope,
+                request,
+            };
+            self.inner.reassign_at_relay(message, task_id).await
+        }
+        .boxed()
+    }
+
+    fn reseal_as_author<'a>(
+        &'a self,
+        task: &'a Task,
+        target: &'a str,
+        by: &'a str,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        async move {
+            let sealer = self.inner.sealer()?;
+            let new_provider = target.split('/').next().unwrap_or_default();
+            let keys = self.inner.keys_for(new_provider).await?;
+            let request = sealer.seal_task(task, (new_provider, &keys))?;
+            let message = RelayMessage::Reassign {
+                task_id: task.id.clone(),
+                target: target.to_string(),
+                by: by.to_string(),
+                envelope: None,
+                request: Some(Box::new(request)),
+            };
+            self.inner.reassign_at_relay(message, &task.id).await
+        }
+        .boxed()
+    }
+
+    fn on_reseal(&self, handler: Handler<ResealRequest>) -> BoxFuture<'_, ()> {
+        self.inner.handlers().reseal.push(Arc::new(handler));
+        self.inner.sync_inbox();
+        async {}.boxed()
+    }
+
+    fn duty_watch<'a>(
+        &'a self,
+        duty_id: &'a str,
+        primary_instance: &'a str,
+        due_at: i64,
+        after_minutes: Option<u32>,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        async move {
+            self.inner.until_registered().await?;
+            self.inner.send(RelayMessage::DutyWatch {
+                duty_id: duty_id.to_string(),
+                primary_instance: primary_instance.to_string(),
+                due_at,
+                after_minutes,
+            })
+        }
+        .boxed()
+    }
+
+    fn duty_report<'a>(
+        &'a self,
+        duty_id: &'a str,
+        backup_instance: &'a str,
+        state: DutyState,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        async move {
+            let (state, error) = match state {
+                DutyState::Upcoming { due_at } => (wire::DutyState::Upcoming { due_at }, None),
+                DutyState::Running { since } => (wire::DutyState::Running { since }, None),
+                DutyState::Completed => (wire::DutyState::Completed, None),
+                DutyState::Failed { error } => (wire::DutyState::Failed, error),
+                DutyState::NotRun => (wire::DutyState::NotRun, None),
+            };
+            let envelope = match error.filter(|e| !e.is_empty()) {
+                Some(error) => {
+                    let sealer = self.inner.sealer()?;
+                    let keys = self.inner.keys_for(backup_instance).await?;
+                    sealer.note(duty_id, (backup_instance, &keys), Some(error))?
+                }
+                None => None,
+            };
+            self.inner.send(RelayMessage::DutyReport {
+                duty_id: duty_id.to_string(),
+                state,
+                envelope,
+            })
+        }
+        .boxed()
+    }
+
+    fn on_duty(&self, handler: Handler<DutyDelivery>) -> BoxFuture<'_, ()> {
+        self.inner.handlers().duty.push(Arc::new(handler));
+        self.inner.sync_inbox();
         async {}.boxed()
     }
 
@@ -1387,25 +1695,8 @@ impl RelayClient for WsRelayClient {
                 self.inner.may_send_to(&target_instance)?;
                 None
             };
-            // Handing a task on: its request, resealed for the new provider
-            let new_provider = match &body {
-                PeerMessage::ReassignTask {
-                    task_id,
-                    new_provider_instance,
-                    ..
-                } if sealer.holds_request(task_id) => {
-                    Some(self.inner.keys_for(new_provider_instance).await?)
-                }
-                _ => None,
-            };
-            let body = sealer.seal_peer(
-                &target_instance,
-                body,
-                target_keys.as_ref(),
-                new_provider.as_ref(),
-            )?;
+            let body = sealer.seal_peer(&target_instance, body, target_keys.as_ref())?;
             self.inner.send(RelayMessage::Peer {
-                from_instance: String::new(),
                 target_instance,
                 body,
             })
@@ -1415,6 +1706,7 @@ impl RelayClient for WsRelayClient {
 
     fn on_peer(&self, handler: Handler<PeerDelivery>) -> BoxFuture<'_, ()> {
         self.inner.handlers().peer.push(Arc::new(handler));
+        self.inner.sync_inbox();
         async {}.boxed()
     }
 

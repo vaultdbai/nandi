@@ -860,7 +860,11 @@ pub(crate) mod directory_tests {
         ) -> BoxFuture<'a, Result<Vec<AgentCard>, String>> {
             Box::pin(async { Ok(Vec::new()) })
         }
-        fn delegate_task<'a>(&'a self, _: &'a Task) -> BoxFuture<'a, Result<String, String>> {
+        fn delegate_task<'a>(
+            &'a self,
+            _: &'a Task,
+            _: &'a [String],
+        ) -> BoxFuture<'a, Result<crate::services::relay::client_api::Submitted, String>> {
             Box::pin(async { Err("unused".to_string()) })
         }
         fn send_result(&self, _: TaskResult) -> BoxFuture<'_, Result<(), String>> {

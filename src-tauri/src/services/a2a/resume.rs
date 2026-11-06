@@ -70,10 +70,10 @@ impl TaskService {
                 }
             });
         }
-        let flushed = self.flush(None).await;
+        let flushed = self.flush().await;
         if !resumed.is_empty() {
             log::info!(
-                "Resumed {} tasks after a restart ({} sent from the queue)",
+                "Resumed {} tasks after a restart ({} sent from the outbox)",
                 resumed.len(),
                 flushed.len()
             );

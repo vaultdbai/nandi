@@ -1,303 +1,138 @@
-//! Offline queue (wave final, Track B). Requester side: tasks for an
-//! offline provider stay `Submitted` and flush (priority, then age) when it
-//! comes online. Provider side: tasks over `max_concurrent` stay
-//! `Delivered` until a slot opens. Queued over [`ABANDON_AFTER_SECS`] with
-//! the provider still offline: `Abandoned`.
+//! Requester side: the outbox. Provider side: the slot queue.
 //!
-//! Also the requester's sweeps (run every `TaskConfig::sweep_interval`):
-//! - flush: queued tasks go to providers that are online again (also on
-//!   `relay://agent_online`)
-//! - timeouts: `Acknowledged` / `Working` longer than
-//!   [`TIMEOUT_ETA_FACTOR`] × the ETA since the acknowledgement →
-//!   `TimedOut`, and the provider gets `TaskTimedOut`
-//! - abandons: with the provider offline, `Submitted` (never sent) after
-//!   [`ABANDON_AFTER_SECS`], `Delivered` (sent, never acknowledged) after
-//!   [`ABANDON_DELIVERED_AFTER_SECS`] → `Abandoned`
+//! **Outbox.** The relay holds work for someone offline, fails it over,
+//! and ends it at its due date (relay design step 11). This Nandi only
+//! keeps what the relay hasn't taken yet: a question or an assignment
+//! (`ask-me`, `assign-me`) made while the relay was unreachable waits
+//! `Submitted` here, with no `_accepted` message, and is sent (priority,
+//! then age) when the relay connects and on every sweep. Anything else
+//! made with no relay is refused at once (`RelayUnavailable`). Once the
+//! relay takes a request it's marked `_accepted` and never sent again
+//! (the relay deduplicates a request sent twice by its ID anyway).
 //!
-//! Assignments (`assignment::ASSIGN_ME`) last until their person ends them:
-//! neither timeouts nor abandons touch them.
-//!
-//! Each sweep takes `now`, so tests move the clock instead of waiting.
+//! **Slot queue.** Inbound tasks over `max_concurrent` stay `Delivered`
+//! until a slot opens.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 use rusqlite::Connection;
+use serde_json::json;
 
-use super::eta::DEFAULT_MEDIAN_SECONDS;
 use super::task::{self, TaskRecord, TaskService, TaskState};
 use super::task_state::{self, Change};
-use super::{assignment, history, TaskStatus};
-use crate::services::relay::protocol::PeerMessage;
 
-/// Seconds a queued task waits for an offline provider
-pub const ABANDON_AFTER_SECS: u64 = 300;
 /// How often the provider side looks for a free slot
 pub const DEQUEUE_INTERVAL_SECS: u64 = 5;
-/// Seconds a sent but unacknowledged task waits for an offline provider
-pub const ABANDON_DELIVERED_AFTER_SECS: u64 = 90;
-/// A task times out this many ETAs after it was acknowledged
+/// A live wait stretches to this many ETAs after the acknowledgement
 pub const TIMEOUT_ETA_FACTOR: u32 = 3;
+/// `task_messages.kind` (internal) once the relay took a request
+pub const ACCEPTED_KIND: &str = "_accepted";
 
-/// Our queued tasks (requester rows still `Submitted`), for one provider
-/// instance or all: priority first, then the oldest.
-pub fn queued(
-    conn: &Connection,
-    local_instance: &str,
-    provider_instance: Option<&str>,
-) -> rusqlite::Result<Vec<TaskRecord>> {
-    let order = "ORDER BY priority DESC, created_at ASC, rowid ASC";
-    match provider_instance {
-        Some(provider) => task::select(
-            conn,
-            &format!(
-                "requester_instance = ?1 AND provider_instance = ?2 AND state = 'submitted' {order}"
-            ),
-            &[&local_instance, &provider],
-        ),
-        None => task::select(
-            conn,
-            &format!("requester_instance = ?1 AND provider_instance != ?1 AND state = 'submitted' {order}"),
-            &[&local_instance],
-        ),
-    }
+/// Our requests the relay hasn't taken yet: priority first, then the
+/// oldest
+pub fn outbox(conn: &Connection, local_instance: &str) -> rusqlite::Result<Vec<TaskRecord>> {
+    task::select(
+        conn,
+        "requester_instance = ?1 AND provider_instance != ?1 AND state = 'submitted'
+         AND NOT EXISTS (SELECT 1 FROM task_messages m WHERE m.task_id = tasks.id AND m.kind = '_accepted')
+         ORDER BY priority DESC, created_at ASC, rowid ASC",
+        &[&local_instance],
+    )
 }
 
-/// Instance presence, asked at most once per sweep
-#[derive(Default)]
-struct PresenceCache(HashMap<String, bool>);
-
-impl PresenceCache {
-    async fn online(&mut self, service: &TaskService, instance: &str) -> bool {
-        if let Some(&online) = self.0.get(instance) {
-            return online;
-        }
-        let online = service.is_online(instance).await;
-        self.0.insert(instance.to_string(), online);
-        online
+/// Records that the relay took `task_id` (`held`: its provider is offline,
+/// it waits at the relay for them), and moves it on: `Delivered` when the
+/// provider has it, else a note saying the relay holds it
+pub async fn accepted(service: &TaskService, task_id: &str, held: bool) {
+    let (db, bus) = (service.db(), service.bus());
+    if let Err(e) = task::add_message(db, task_id, ACCEPTED_KIND, json!({ "held": held })).await {
+        log::warn!("Task {task_id}: {e}");
+    }
+    let outcome = if held {
+        let mut change = Change::reason("waiting at the relay until they're online");
+        change.reason_kind = Some(super::task::ReasonKind::Offline);
+        change.stage = Some(super::task::TaskStage::Dispatch);
+        task_state::note(db, bus, task_id, change).await
+    } else {
+        task_state::advance(
+            db,
+            bus,
+            task_id,
+            TaskState::Delivered,
+            Change::reason("with the provider"),
+        )
+        .await
+        .map(|_| ())
+    };
+    if let Err(e) = outcome {
+        log::warn!("Task {task_id}: {e}");
     }
 }
 
 impl TaskService {
-    /// Sends queued tasks to providers that are online: `Some(instance)`
-    /// just came online (no presence check). A provider whose first send
-    /// fails keeps the rest queued. Returns the IDs sent, in order.
-    pub async fn flush(&self, provider_instance: Option<&str>) -> Vec<String> {
+    /// Sends what waits in the outbox, once the relay is connected; the
+    /// IDs the relay took, in order. Stops at the first send that fails
+    /// (the relay went away again).
+    pub async fn flush(&self) -> Vec<String> {
         let Some(relay) = self.relay().cloned() else {
             return Vec::new();
         };
-        // Held to the end: the next flush reads the queue after this one
-        // moved what it sent to `Delivered`
+        if !relay.status().connected {
+            return Vec::new();
+        }
+        // Held to the end: the next flush reads the outbox after this one
+        // marked what it sent
         let _flushing = self.flushing.lock().await;
         let me = self.instance_id().to_string();
-        let provider = provider_instance.map(str::to_string);
-        let rows = match self
-            .db()
-            .call(move |conn| queued(conn, &me, provider.as_deref()))
-            .await
-        {
+        let rows = match self.db().call(move |conn| outbox(conn, &me)).await {
             Ok(rows) => rows,
             Err(e) => {
-                log::warn!("Couldn't read the offline queue: {e}");
+                log::warn!("Couldn't read the outbox: {e}");
                 return Vec::new();
             }
         };
-        let mut presence = PresenceCache::default();
-        let mut stalled: HashSet<String> = HashSet::new();
         let mut sent = Vec::new();
         for row in rows {
-            let provider = row.provider_instance.clone();
-            if stalled.contains(&provider) {
-                continue;
-            }
-            if provider_instance.is_none() && !presence.online(self, &provider).await {
-                continue;
-            }
             let Ok(Some(request)) = task::request_of(self.db(), &row.id).await else {
                 continue;
             };
-            match relay.delegate_task(&request).await {
-                Ok(_) => {
-                    let delivered = task_state::advance(
+            match relay.delegate_task(&request, &[]).await {
+                Ok(submitted) => {
+                    accepted(self, &row.id, submitted.held).await;
+                    sent.push(row.id);
+                }
+                Err(e) if crate::services::relay::RelayUnavailable::is(&e) => break,
+                Err(e) => {
+                    // The relay refused it: it ends here
+                    let change = Change::error(format!("The relay refused it: {e}")).kind(
+                        super::task::ReasonKind::Offline,
+                        super::task::TaskStage::Dispatch,
+                    );
+                    if let Err(e) = task_state::advance(
                         self.db(),
                         self.bus(),
                         &row.id,
-                        TaskState::Delivered,
-                        Change::reason("sent from the offline queue"),
+                        TaskState::Abandoned,
+                        change,
                     )
-                    .await;
-                    if let Err(e) = delivered {
+                    .await
+                    {
                         log::warn!("Task {}: {e}", row.id);
                     }
-                    sent.push(row.id);
-                }
-                Err(e) => {
-                    log::debug!("Task {} stays queued for {provider}: {e}", row.id);
-                    stalled.insert(provider);
+                    let _ = super::history::close(
+                        self.db(),
+                        self.bus(),
+                        &row.id,
+                        super::TaskStatus::Failed,
+                        serde_json::Value::Null,
+                        Some(e),
+                    )
+                    .await;
                 }
             }
         }
         sent
-    }
-
-    /// `Acknowledged` / `Working` requester tasks past their due date (the
-    /// task's deadline; without one, [`TIMEOUT_ETA_FACTOR`] × their ETA
-    /// since the acknowledgement) → `TimedOut`, `TaskTimedOut` to the
-    /// provider, one failure on its circuit, and failover when nobody waits
-    /// on it.
-    pub async fn sweep_timeouts(self: &Arc<Self>, now: i64) -> Result<Vec<String>, String> {
-        let me = self.instance_id().to_string();
-        let rows = self
-            .db()
-            .call(move |conn| {
-                task::select(
-                    conn,
-                    "requester_instance = ?1 AND provider_instance != ?1 AND capability != ?2
-                     AND state IN ('acknowledged', 'working') AND acknowledged_at IS NOT NULL",
-                    &[&me, &assignment::ASSIGN_ME],
-                )
-            })
-            .await?;
-        let mut timed_out = Vec::new();
-        for row in rows {
-            let reason = match row.deadline {
-                Some(due) => {
-                    if now <= due as i64 {
-                        continue;
-                    }
-                    "No answer by its due date".to_string()
-                }
-                None => {
-                    let eta = row.eta_seconds.unwrap_or(DEFAULT_MEDIAN_SECONDS).max(1);
-                    let limit = TIMEOUT_ETA_FACTOR as i64 * eta as i64 * 1000;
-                    let since = row.acknowledged_at.unwrap_or(row.created_at) as i64;
-                    if now - since <= limit {
-                        continue;
-                    }
-                    format!(
-                        "No result within {}s ({TIMEOUT_ETA_FACTOR}× the {eta}s ETA)",
-                        limit / 1000
-                    )
-                }
-            };
-            let Some(ended) = task_state::advance(
-                self.db(),
-                self.bus(),
-                &row.id,
-                TaskState::TimedOut,
-                Change::error(reason.clone()),
-            )
-            .await?
-            else {
-                continue;
-            };
-            // A request nobody waited on live: its history row was open
-            history::close(
-                self.db(),
-                self.bus(),
-                &row.id,
-                TaskStatus::TimedOut,
-                serde_json::Value::Null,
-                Some(reason.clone()),
-            )
-            .await?;
-            if let Some(relay) = self.relay() {
-                let told = relay
-                    .send_peer(
-                        row.provider_instance.clone(),
-                        PeerMessage::TaskTimedOut {
-                            task_id: row.id.clone(),
-                            reason: Some(reason),
-                        },
-                    )
-                    .await;
-                if let Err(e) = told {
-                    log::debug!(
-                        "Couldn't tell {} task {} timed out: {e}",
-                        row.provider_instance,
-                        row.id
-                    );
-                }
-            }
-            timed_out.push(row.id.clone());
-            self.after_failure(ended);
-        }
-        Ok(timed_out)
-    }
-
-    /// Requester tasks the provider never picked up by their due date →
-    /// `Abandoned` (then failover when nobody waits on them). A task
-    /// without a due date is abandoned sooner, while its provider is
-    /// offline.
-    pub async fn sweep_abandoned(self: &Arc<Self>, now: i64) -> Result<Vec<String>, String> {
-        let me = self.instance_id().to_string();
-        let rows = self
-            .db()
-            .call(move |conn| {
-                task::select(
-                    conn,
-                    "requester_instance = ?1 AND provider_instance != ?1 AND capability != ?2
-                     AND state IN ('submitted', 'delivered')",
-                    &[&me, &assignment::ASSIGN_ME],
-                )
-            })
-            .await?;
-        let mut presence = PresenceCache::default();
-        let mut abandoned = Vec::new();
-        for row in rows {
-            let reason = match row.deadline {
-                // Queued or delivered and waiting for them, however long
-                // they're away, until it's due
-                Some(due) => {
-                    if now <= due as i64 {
-                        continue;
-                    }
-                    format!(
-                        "{} didn't pick it up by its due date",
-                        row.provider_instance
-                    )
-                }
-                None => {
-                    let after = if row.state == TaskState::Submitted {
-                        ABANDON_AFTER_SECS
-                    } else {
-                        ABANDON_DELIVERED_AFTER_SECS
-                    };
-                    if now - (row.created_at as i64) <= after as i64 * 1000 {
-                        continue;
-                    }
-                    if presence.online(self, &row.provider_instance).await {
-                        continue;
-                    }
-                    format!(
-                        "{} stayed offline for more than {after}s",
-                        row.provider_instance
-                    )
-                }
-            };
-            if let Some(ended) = task_state::advance(
-                self.db(),
-                self.bus(),
-                &row.id,
-                TaskState::Abandoned,
-                Change::error(reason.clone()),
-            )
-            .await?
-            {
-                history::close(
-                    self.db(),
-                    self.bus(),
-                    &row.id,
-                    TaskStatus::TimedOut,
-                    serde_json::Value::Null,
-                    Some(reason),
-                )
-                .await?;
-                abandoned.push(row.id.clone());
-                self.after_failure(ended);
-            }
-        }
-        Ok(abandoned)
     }
 }
 

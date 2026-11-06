@@ -777,8 +777,6 @@ CREATE TABLE IF NOT EXISTS reassigned_tasks (
     from_instance TEXT NOT NULL,
     to_instance   TEXT NOT NULL,
     reason        TEXT,
-    -- The requester's new attempt, once created
-    new_task_id   TEXT,
     reassigned_at INTEGER NOT NULL,
     PRIMARY KEY (task_id, to_instance)
 );

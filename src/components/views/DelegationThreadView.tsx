@@ -528,7 +528,6 @@ function MessageEntry({
       const to = text('toName') ?? text('toInstance') ?? '—'
       const by = text('by') ?? '—'
       const reason = text('reason')
-      const newTaskId = text('newTaskId')
       return (
         <Bubble
           icon={<ArrowRightLeft />}
@@ -538,20 +537,24 @@ function MessageEntry({
           testId="thread-reassigned"
         >
           {reason && <p>{reason}</p>}
-          {newTaskId && (
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto p-0"
-              onClick={() =>
-                useNavigationStore
-                  .getState()
-                  .navigate({ kind: 'delegation-thread', taskId: newTaskId })
-              }
-            >
-              {t('delegationThread.item.reassignedOpen')}
-            </Button>
-          )}
+        </Bubble>
+      )
+    }
+    case 'failed_over': {
+      // The relay gave it to the next candidate (relay design step 11)
+      const text = (key: string) =>
+        typeof payload?.[key] === 'string' ? (payload[key] as string) : null
+      const to = text('toName') ?? text('to') ?? '—'
+      const cause = text('cause') ?? 'rejected'
+      return (
+        <Bubble
+          icon={<ArrowRightLeft />}
+          title={t('delegationThread.item.failedOver', { to })}
+          at={message.at}
+          tone="muted"
+          testId="thread-failed-over"
+        >
+          <p>{t(`delegationThread.item.failedOverCause.${cause}`)}</p>
         </Bubble>
       )
     }

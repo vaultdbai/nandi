@@ -79,7 +79,11 @@ impl RelayClient for PeerRelay {
         Box::pin(async { Ok(Vec::new()) })
     }
 
-    fn delegate_task<'a>(&'a self, _: &'a Task) -> BoxFuture<'a, Result<String, String>> {
+    fn delegate_task<'a>(
+        &'a self,
+        _: &'a Task,
+        _: &'a [String],
+    ) -> BoxFuture<'a, Result<crate::services::relay::client_api::Submitted, String>> {
         Box::pin(async { Err("not in these tests".to_string()) })
     }
 
@@ -120,19 +124,13 @@ impl RelayClient for PeerRelay {
             .unwrap()
             .get(&target_instance)
             .and_then(Weak::upgrade);
-        match target {
-            Some(target) => target.deliver(PeerDelivery {
+        // Offline: the relay would keep it for them
+        if let Some(target) = target {
+            target.deliver(PeerDelivery {
                 from_instance: self.instance.clone(),
                 target_instance,
                 body,
-                undeliverable: false,
-            }),
-            None => self.deliver(PeerDelivery {
-                from_instance: self.instance.clone(),
-                target_instance,
-                body,
-                undeliverable: true,
-            }),
+            });
         }
         Box::pin(async { Ok(()) })
     }
@@ -853,22 +851,6 @@ async fn unknown_tasks_are_cancelled() {
         .await
         .unwrap_err();
     assert!(error.contains("doesn't know this task"), "{error}");
-}
-
-#[tokio::test]
-async fn an_offline_requester_ends_the_wait() {
-    let world = world(AUTO_FORMAT, Scripted::echo()).await;
-    let turn = DelegatedTurn {
-        task_id: world.task_id.clone(),
-        requester_instance: "offline-instance".into(),
-    };
-    let error = world
-        .provider
-        .service
-        .ask(&turn, vec![question("?", "format")])
-        .await
-        .unwrap_err();
-    assert!(error.contains("offline"), "{error}");
 }
 
 #[tokio::test]
