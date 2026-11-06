@@ -48,6 +48,10 @@ macro_rules! tauri_events {
         $(impl tauri_specta::Event for $ty {
             const NAME: &'static str = <$ty as NandiEvent>::NAME;
         })*
+
+        /// Every event name the webview can receive
+        #[cfg(test)]
+        const EVENT_NAMES: &[&str] = &[$(<$ty as NandiEvent>::NAME),*];
     };
 }
 
@@ -122,3 +126,15 @@ tauri_events!(
     // Task 14
     RequestUpdated,
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_event_name_is_one_tauri_accepts() {
+        for name in EVENT_NAMES {
+            assert!(crate::services::events::is_valid_event_name(name), "{name}");
+        }
+    }
+}

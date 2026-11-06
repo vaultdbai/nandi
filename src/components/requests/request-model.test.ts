@@ -135,7 +135,7 @@ describe('live updates', () => {
     ]) {
       expect(changesRequests(event)).toBe(true)
     }
-    expect(changesRequests('repo://agent.updated')).toBe(false)
+    expect(changesRequests('repo://agent-updated')).toBe(false)
   })
 })
 

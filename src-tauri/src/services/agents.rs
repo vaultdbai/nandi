@@ -473,7 +473,7 @@ fn new_agent(input: &CreateAgentInput) -> Result<domain::Agent, String> {
 
 /// Creates an agent: the domain validates it, the agent repository writes
 /// `<agents dir>/<id>/skill.md` (staged in git), and the commit updates the
-/// aggregate and projection and publishes `repo://agent.created` (which
+/// aggregate and projection and publishes `repo://agent-created` (which
 /// also starts its orchestrator). Fails if the agent already exists.
 pub async fn create_agent(state: &AppState, input: CreateAgentInput) -> Result<AgentInfo, String> {
     if input.name.trim().is_empty() {
@@ -505,7 +505,7 @@ pub async fn create_agent(state: &AppState, input: CreateAgentInput) -> Result<A
     .map_err(|e| format!("Create task failed: {e}"))??
     .ok_or_else(|| format!("Agent '{id}' was created but couldn't be read back"))?;
 
-    // The reactor already did on `repo://agent.created`; idempotent
+    // The reactor already did on `repo://agent-created`; idempotent
     state.orchestrators().ensure(&info.id);
     log::info!("Created agent '{}'", info.id);
     Ok(info)
@@ -535,7 +535,7 @@ pub async fn restart_agent(state: &AppState, agent_id: &str) -> Result<String, S
 
 /// Removes an agent: stops its container and orchestrator, moves its folder
 /// to the trash (not deleted), stages the removal, and publishes
-/// `repo://agent.deleted`. Run history stays in the DB. Refused while the
+/// `repo://agent-deleted`. Run history stays in the DB. Refused while the
 /// agent has an active run or queued requests, or while a workflow or
 /// trigger still uses it.
 pub async fn delete_agent(state: &AppState, agent_id: &str) -> Result<(), String> {
@@ -874,7 +874,7 @@ Body"#;
             "the new file is staged"
         );
         let names = recorder.names();
-        assert!(names.contains(&"repo://agent.created"), "{names:?}");
+        assert!(names.contains(&"repo://agent-created"), "{names:?}");
         assert!(names.contains(&"agent://agents_changed"), "{names:?}");
         let projected: String = state
             .db()
@@ -911,7 +911,7 @@ Body"#;
         state.triggers().delete("hook").await.unwrap();
         delete_agent(&state, "writer").await.unwrap();
         assert!(!state.store().layout().skill_path("writer").exists());
-        assert!(recorder.names().contains(&"repo://agent.deleted"));
+        assert!(recorder.names().contains(&"repo://agent-deleted"));
         assert!(state.store().agent("writer").is_err());
         state.shutdown();
     }

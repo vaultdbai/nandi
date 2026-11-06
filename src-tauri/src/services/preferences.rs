@@ -58,7 +58,7 @@ fn with_portable_settings(state: &AppState, mut preferences: AppPreferences) -> 
 }
 
 /// Writes changed theme/palette/language to settings.yaml (staged) and commits them
-/// to the aggregate and projection (`repo://settings.updated`).
+/// to the aggregate and projection (`repo://settings-updated`).
 async fn save_portable_settings(
     state: &AppState,
     preferences: &AppPreferences,
@@ -145,7 +145,7 @@ mod tests {
                 && yaml.contains("language: fr"),
             "{yaml}"
         );
-        assert!(recorder.names().contains(&"repo://settings.updated"));
+        assert!(recorder.names().contains(&"repo://settings-updated"));
         let loaded = load_preferences(&state).await.unwrap();
         assert_eq!(
             (loaded.theme.as_str(), loaded.language.as_deref()),

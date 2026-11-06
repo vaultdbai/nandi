@@ -366,6 +366,16 @@ pub fn emit<E: NandiEvent>(bus: &EventBus, event: &E) {
 // Bus
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
+/// Tauri v2 accepts only letters, digits, `-`, `/`, `:` and `_` in an
+/// event name; anything else is never delivered
+pub fn is_valid_event_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '/' | ':' | '_'))
+}
+
 /// Identifies the run an event belongs to.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RunContext {

@@ -587,6 +587,9 @@ struct Round {
     answers: HashMap<String, String>,
     /// Question ID → approval ID
     approvals: HashMap<String, String>,
+    /// Approval IDs whose row is written: only these are listed as
+    /// pending, so nobody can act on an approval that isn't there yet
+    stored_approvals: std::collections::HashSet<String>,
     /// Epoch ms
     deadline: i64,
     /// Some question went to the human (the task went `InputRequired`)
@@ -997,6 +1000,7 @@ impl ClarificationService {
             routes: routes.clone(),
             answers: HashMap::new(),
             approvals: HashMap::new(),
+            stored_approvals: Default::default(),
             deadline,
             escalated: false,
         };
@@ -1161,6 +1165,10 @@ impl ClarificationService {
             self.log
                 .record(task_id, round, "escalated", Some(&question.id), None)
                 .await;
+        }
+        if let Some(open) = lock(&self.rounds).get_mut(task_id) {
+            open.stored_approvals
+                .extend(opened.iter().map(|(id, _)| id.clone()));
         }
         self.set_state(
             task_id,
@@ -1469,6 +1477,9 @@ impl ClarificationService {
                     .filter(|q| {
                         r.routes.get(&q.id) == Some(&Route::Escalate)
                             && !r.answers.contains_key(&q.id)
+                            && r.approvals
+                                .get(&q.id)
+                                .is_none_or(|id| r.stored_approvals.contains(id))
                     })
                     .map(|q| PendingClarification {
                         task_id: r.task_id.clone(),

@@ -809,7 +809,7 @@ impl RepoStore {
 
     /// Writes the editor's input to agent `id`'s files (creating the agent
     /// if it has no folder), then commits: the aggregate and projection
-    /// update and `repo://agent.updated` (or `.created`) is published.
+    /// update and `repo://agent-updated` (or `.created`) is published.
     ///
     /// The domain validates before anything is written. If the write or
     /// the commit fails, the previous files are written back, so a failed
@@ -890,7 +890,7 @@ pub async fn save_agent(
     })
     .await
     .map_err(|e| format!("Save task failed: {e}"))??;
-    // The reactor already did on `repo://agent.created`; idempotent
+    // The reactor already did on `repo://agent-created`; idempotent
     state.orchestrators().ensure(&info.id);
     log::info!("Saved agent '{}'", info.id);
     Ok(info)
@@ -1321,7 +1321,7 @@ mod tests {
             .unwrap();
         assert_eq!(name, "Ghostwriter");
         // And the change was published
-        assert!(recorder.names().contains(&"repo://agent.updated"));
+        assert!(recorder.names().contains(&"repo://agent-updated"));
 
         // git status shows the change; a commit clears it
         let status = git_status(&state).await.unwrap();
@@ -1367,7 +1367,7 @@ mod tests {
         save_agent(&state, "fresh", edit).await.unwrap();
         let skill = state.store().layout().skill_path("fresh");
         assert!(skill.is_file());
-        assert!(recorder.names().contains(&"repo://agent.created"));
+        assert!(recorder.names().contains(&"repo://agent-created"));
         let before = fs::read_to_string(&skill).unwrap();
 
         let mut bad = input("Fresh");
@@ -1405,7 +1405,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 0);
-        assert!(recorder.names().contains(&"repo://agent.deleted"));
+        assert!(recorder.names().contains(&"repo://agent-deleted"));
         // A rebuild doesn't bring it back
         let stats = rebuild(&state, false).await.unwrap();
         assert_eq!(stats.agents, 0);

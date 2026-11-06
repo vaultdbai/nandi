@@ -456,7 +456,7 @@ impl TriggerEngine {
     /// The write path: the domain validates the rule, its secret goes to
     /// the keyring, the repository writes (and stages) the file, and the
     /// commit updates the aggregate and projection and publishes
-    /// `repo://trigger.*`. Then the rules are reloaded.
+    /// `repo://trigger-*`. Then the rules are reloaded.
     async fn save(&self, trigger: Trigger) -> Result<(), String> {
         let entity = repo::to_domain(&trigger)?;
         if let (Some(secret_ref), Some(secret)) = (entity.secret_ref(), trigger.secret()) {

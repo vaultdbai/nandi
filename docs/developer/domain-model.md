@@ -109,7 +109,7 @@ The reactor keeps running parts in step with any change, from a command or a fil
 | Topic                                                       | When                                                                       |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `repo://{agent,workflow,trigger}.{created,updated,deleted}` | an entity changed (payload: `kind, id, action, sourcePath, changedBy`)     |
-| `repo://settings.updated`, `repo://connector.updated`       | a singleton changed                                                        |
+| `repo://settings-updated`, `repo://connector-updated`       | a singleton changed                                                        |
 | `repo://validation_failed`                                  | a file failed to load; the last good version stays                         |
 | `repo://file_changed`                                       | the watcher reloaded an entity (`result: changed \| unchanged \| invalid`) |
 | `repo://rebuild_started`, `repo://rebuild_completed`        | a rebuild ran                                                              |

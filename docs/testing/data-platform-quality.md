@@ -44,7 +44,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-03 — Portable settings in `.nandi/settings.yaml`
 
 - **What:** Theme, palette, language, default model, notification prefs, agent defaults, marketplace settings, per-agent consent, delegation preferences and `secret_refs` are stored in the repo, so they follow the user to other machines. Unknown top-level keys and secret-looking values are rejected, so a pasted API key fails validation instead of being committed.
-- **Where:** `services/domain/settings.rs` (`Settings`, `SettingsFile` with `deny_unknown_fields`), `services/repos/settings_repo.rs`, `services/preferences.rs` (overlay + write-back, emits `repo://settings.updated`).
+- **Where:** `services/domain/settings.rs` (`Settings`, `SettingsFile` with `deny_unknown_fields`), `services/repos/settings_repo.rs`, `services/preferences.rs` (overlay + write-back, emits `repo://settings-updated`).
 - **Preconditions:** None.
 - **Steps:**
   1. Settings › Appearance: switch theme to Dark and language to another locale.
@@ -111,7 +111,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **Where:** Tauri `repo_save_agent`; `POST /api/repo/agents/{id}/save`; `services/repo_service.rs` (`save_agent`, `save_agent_definition`).
 - **Preconditions:** None.
 - **Steps:** Save an agent via the editor or the route; check `git status` and `GET /api/agents`.
-- **Expected:** File staged, projected row updated, `repo://agent.created|updated` emitted.
+- **Expected:** File staged, projected row updated, `repo://agent-created|updated` emitted.
 - **Edge / negative cases:** Invalid model / ID → error, nothing written; saving a marketplace agent → refused.
 - **Automation:** Covered by: `services/repo_service.rs` `saving_writes_the_files_projects_and_publishes`, `saving_an_unknown_agent_creates_it_and_invalid_saves_change_nothing`, `invalid_definitions_are_rejected_before_any_write`, `definitions_keep_what_the_editor_does_not_edit`, `deleting_removes_the_folder_and_the_projected_row` | Layer: unit, api | Gap: none.
 - **Needs relay:** no
@@ -201,7 +201,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
   2. Edit its description; then delete the folder.
   3. Edit a workflow YAML and a trigger YAML by hand.
   4. With an agent page open, add, break, then delete a policy in `.nandi/policies/`.
-- **Expected:** Agent appears in the sidebar within about 1 s, updates, then disappears; workflows/triggers lists refresh; `repo://agent.created/updated/deleted` and `repo://file_changed` events on the WS stream. Step 4: the agent's Permissions follow each change (PO-11); the broken policy also emits `repo://validation_failed` (`kind: policy`).
+- **Expected:** Agent appears in the sidebar within about 1 s, updates, then disappears; workflows/triggers lists refresh; `repo://agent-created/updated/deleted` and `repo://file_changed` events on the WS stream. Step 4: the agent's Permissions follow each change (PO-11); the broken policy also emits `repo://validation_failed` (`kind: policy`).
 - **Edge / negative cases:**
   - `git checkout` of many files at once: a single batch, each entity reloaded once.
   - Editor swap files (`.*.swp`, `*.tmp`, `*~`), `.git/`, the app's `.nandi-tmp-` files and workflow `runs/` artifacts are ignored.

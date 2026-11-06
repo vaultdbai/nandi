@@ -151,7 +151,7 @@ async fn write(
             })
             .await
             .map_err(|e| format!("Agent write failed: {e}"))??;
-            // The reactor already did on `repo://agent.created`; idempotent
+            // The reactor already did on `repo://agent-created`; idempotent
             state.orchestrators().ensure(id);
             Ok(created)
         }

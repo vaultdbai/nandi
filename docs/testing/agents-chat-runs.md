@@ -89,7 +89,7 @@ Shared preconditions used below:
 - **Steps:**
   1. Click New agent, enter name "Weekly Report", pick Researcher, click Create agent.
   2. Repeat with the same name.
-- **Expected:** Toast "Created Weekly Report"; the agent page opens. `~/.nandi/repo/.nandi/agents/weekly-report/skill.md` exists with `name: Weekly Report`, the description, and the Researcher instructions as body; the file is staged in git; `repo://agent.created` fires and the orchestrator starts. Second create gets ID `weekly-report-2`.
+- **Expected:** Toast "Created Weekly Report"; the agent page opens. `~/.nandi/repo/.nandi/agents/weekly-report/skill.md` exists with `name: Weekly Report`, the description, and the Researcher instructions as body; the file is staged in git; `repo://agent-created` fires and the orchestrator starts. Second create gets ID `weekly-report-2`.
 - **Edge / negative cases:**
   - Create agent is disabled with an empty name; the server also refuses ("Agent name is required").
   - Name over 200 chars is cut by the input; instructions over 200,000 chars are refused.
@@ -483,7 +483,7 @@ Shared preconditions used below:
 
 ### AG-23 — Delete an agent
 
-- **What:** "Delete <name>?" asks the user to type the agent's name ("Type <name> to confirm"), not its ID. The folder moves to the trash (`~/.nandi/trash`), the removal is staged in git, the container and orchestrator stop, `repo://agent.deleted` fires and the Agents list opens with "Deleted <name>". Run history stays in the DB.
+- **What:** "Delete <name>?" asks the user to type the agent's name ("Type <name> to confirm"), not its ID. The folder moves to the trash (`~/.nandi/trash`), the removal is staged in git, the container and orchestrator stop, `repo://agent-deleted` fires and the Agents list opens with "Deleted <name>". Run history stays in the DB.
 - **Where:** Agent page "⋯" → "Delete agent…", Settings → Danger zone, list row menu. `src/components/agents/DeleteAgentDialog.tsx`; `delete_agent` (`services/agents.rs::delete_agent`, `retire_agent`); HTTP `DELETE /api/agents/{id}`.
 - **Preconditions:** A local agent.
 - **Steps:**

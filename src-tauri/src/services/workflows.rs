@@ -762,7 +762,7 @@ impl WorkflowEngine {
     /// history is never touched.
     pub async fn sync_from_disk(&self) -> Result<(), String> {
         let store = self.store.clone();
-        // Publishes `repo://workflow.*` (and `workflow://changed`) itself
+        // Publishes `repo://workflow-*` (and `workflow://changed`) itself
         tokio::task::spawn_blocking(move || store.rescan(EntityKind::Workflow, ChangedBy::Watcher))
             .await
             .map_err(|e| format!("Workflow scan failed: {e}"))?;
@@ -804,7 +804,7 @@ impl WorkflowEngine {
 
     /// Validates a YAML workflow and saves it as `workflows/{id}.yaml`
     /// (staged), then commits it to the aggregate and projection, which
-    /// publishes `repo://workflow.created`. Re-importing identical content
+    /// publishes `repo://workflow-created`. Re-importing identical content
     /// is a no-op; a different workflow with the same ID is refused rather
     /// than overwritten. Steps naming agents that don't exist yet are
     /// allowed (and warned about): runs check them.

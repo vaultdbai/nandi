@@ -113,10 +113,10 @@ pub fn run() {
             let mut targets = vec![
                 // Always log to stdout for development
                 tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-                // Log to system logs on macOS (appears in Console.app)
-                #[cfg(target_os = "macos")]
+                // A file in the app's log folder on every platform
+                // (Windows: %LOCALAPPDATA%/com.nandi.app/logs/nandi.log)
                 tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
-                    file_name: None,
+                    file_name: Some("nandi".into()),
                 }),
             ];
             // Log to webview console — excluded on Linux where the WebKitGTK webview
@@ -125,13 +125,21 @@ pub fn run() {
             targets.push(tauri_plugin_log::Target::new(
                 tauri_plugin_log::TargetKind::Webview,
             ));
+            // Nandi's own logs: Debug in development, Info in release.
+            // Dependencies (HTTP stacks, keyring, Docker, AWS: aws_config
+            // logs the access key ID at Info) only at Warn.
+            let ours = if cfg!(debug_assertions) {
+                log::LevelFilter::Debug
+            } else {
+                log::LevelFilter::Info
+            };
             tauri_plugin_log::Builder::new()
-                // Use Debug level in development, Info in production
-                .level(if cfg!(debug_assertions) {
-                    log::LevelFilter::Debug
-                } else {
-                    log::LevelFilter::Info
-                })
+                .level(log::LevelFilter::Warn)
+                .level_for("nandi_lib", ours)
+                .level_for("nandi", ours)
+                .level_for("webview", ours)
+                .max_file_size(5 * 1024 * 1024)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(3))
                 .targets(targets)
                 .build()
         });

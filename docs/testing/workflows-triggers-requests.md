@@ -432,7 +432,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 
 ### TR-01 — Trigger rules as files (create, update, reload)
 
-- **What:** Each trigger is `~/.nandi/repo/.nandi/triggers/<id>.yaml` (`id`, `name`, `enabled`, `source{type,config}`, `target{type,id}`, `input_template`, `priority`, `rate_limit_seconds`), validated by `domain::trigger`, projected into `triggers`, with `trigger_state`/`trigger_fires` for history. Ids are slugs of the name (suffixed `-2`, `-3` if taken). Every change writes the file, commits (`repo://trigger.*`, `trigger://changed`) and re-registers cron jobs/watchers; hand edits are picked up by the watcher.
+- **What:** Each trigger is `~/.nandi/repo/.nandi/triggers/<id>.yaml` (`id`, `name`, `enabled`, `source{type,config}`, `target{type,id}`, `input_template`, `priority`, `rate_limit_seconds`), validated by `domain::trigger`, projected into `triggers`, with `trigger_state`/`trigger_fires` for history. Ids are slugs of the name (suffixed `-2`, `-3` if taken). Every change writes the file, commits (`repo://trigger-*`, `trigger://changed`) and re-registers cron jobs/watchers; hand edits are picked up by the watcher.
 - **Where:** `src-tauri/src/services/triggers/mod.rs` (`build`, `save`, `reload`), `repo.rs`, `src-tauri/src/services/domain/trigger.rs`; commands `create_trigger`, `update_trigger`, `list_triggers`, `get_trigger`.
 - **Preconditions:** None.
 - **Steps:** 1. Create a trigger in the UI; open the YAML. 2. Edit `name` by hand. 3. Write a file with a `secret` key in its config.

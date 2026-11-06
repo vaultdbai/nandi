@@ -656,7 +656,7 @@ mod tests {
         // The projection lands before the bus fan-out finishes, so wait for the events too
         wait_until("the created events", || {
             let names = recorder.names();
-            names.contains(&"repo://agent.created") && names.contains(&"repo://file_changed")
+            names.contains(&"repo://agent-created") && names.contains(&"repo://file_changed")
         })
         .await;
 
@@ -667,7 +667,7 @@ mod tests {
         })
         .await;
         wait_until("the updated event", || {
-            recorder.names().contains(&"repo://agent.updated")
+            recorder.names().contains(&"repo://agent-updated")
         })
         .await;
 
@@ -683,7 +683,7 @@ mod tests {
         // The folder deleted
         fs::remove_dir_all(skill.parent().unwrap()).unwrap();
         wait_until("the removal", || projected_name(&state, "writer").is_none()).await;
-        assert!(recorder.names().contains(&"repo://agent.deleted"));
+        assert!(recorder.names().contains(&"repo://agent-deleted"));
         state.shutdown();
     }
 

@@ -172,7 +172,7 @@ Updates are never automatic. `check_for_updates` compares each install with its 
 | `marketplace://error`            | `action, id, error`                              |
 | `marketplace://progress`         | `kind, id, receivedObjects, totalObjects` (≤5/s) |
 
-The re-scan also emits the usual `repo://agent.*` and `agent://agents_changed` events.
+The re-scan also emits the usual `repo://agent-*` and `agent://agents_changed` events.
 
 ## Commands and routes
 

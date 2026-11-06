@@ -69,7 +69,7 @@ Workflow targets start `run_workflow` and record the workflow run's ID. Workflow
 
 ## Storage
 
-Rules are files: `~/.nandi/repo/.nandi/triggers/<id>.yaml` (format below, validated by `domain::trigger`). The `triggers` table is their projection, `trigger_state` holds `last_fired_at`, and `trigger_fires` the fire history; see [data-model.md](./data-model.md). Every change (create, update, enable/disable, delete, rotate secret) writes the file through `TriggerRepository` (atomically, staged in git), commits it to the projection (`repo://trigger.*` + `trigger://changed`), and reloads the rules, re-registering cron jobs and watchers right away. Editing a file by hand, or pulling one, does the same through the file watcher.
+Rules are files: `~/.nandi/repo/.nandi/triggers/<id>.yaml` (format below, validated by `domain::trigger`). The `triggers` table is their projection, `trigger_state` holds `last_fired_at`, and `trigger_fires` the fire history; see [data-model.md](./data-model.md). Every change (create, update, enable/disable, delete, rotate secret) writes the file through `TriggerRepository` (atomically, staged in git), commits it to the projection (`repo://trigger-*` + `trigger://changed`), and reloads the rules, re-registering cron jobs and watchers right away. Editing a file by hand, or pulling one, does the same through the file watcher.
 
 ```yaml
 id: daily-digest

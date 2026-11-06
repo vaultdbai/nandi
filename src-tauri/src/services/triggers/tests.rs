@@ -601,7 +601,7 @@ async fn secrets_live_in_the_keyring_not_in_sqlite_or_files() {
     let yaml = std::fs::read_to_string(state.store().layout().trigger_path("hook")).unwrap();
     assert!(!yaml.contains(&secret), "{yaml}");
     assert!(list_triggers(&state).await.unwrap()[0].has_secret);
-    assert!(recorder.names().contains(&"repo://trigger.created"));
+    assert!(recorder.names().contains(&"repo://trigger-created"));
 
     // Requests still authenticate with it
     assert!(state
@@ -611,7 +611,7 @@ async fn secrets_live_in_the_keyring_not_in_sqlite_or_files() {
 
     delete_trigger(&state, "hook".into()).await.unwrap();
     assert_eq!(state.secrets().get("nandi.trigger.hook").unwrap(), None);
-    assert!(recorder.names().contains(&"repo://trigger.deleted"));
+    assert!(recorder.names().contains(&"repo://trigger-deleted"));
     state.shutdown();
 }
 

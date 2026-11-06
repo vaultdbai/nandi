@@ -54,7 +54,7 @@ Errors are `400 {"error": "…"}` with the same messages the IPC commands return
 
 ## Agent lifecycle
 
-`create_agent` writes `~/.nandi/repo/.nandi/agents/<id>/skill.md` (staged in git) and starts its orchestrator. `start_agent` / `stop_agent` / `restart_agent` manage its runtime container. `delete_agent` refuses during an active run or while requests are queued, stops the container and orchestrator, moves the folder to `~/.nandi/trash/` (run history stays), and is refused while a workflow or trigger uses the agent. Both emit `repo://agent.created`/`deleted` and `agent://agents_changed`.
+`create_agent` writes `~/.nandi/repo/.nandi/agents/<id>/skill.md` (staged in git) and starts its orchestrator. `start_agent` / `stop_agent` / `restart_agent` manage its runtime container. `delete_agent` refuses during an active run or while requests are queued, stops the container and orchestrator, moves the folder to `~/.nandi/trash/` (run history stays), and is refused while a workflow or trigger uses the agent. Both emit `repo://agent-created`/`deleted` and `agent://agents_changed`.
 
 The agent snapshot's `container` (`idle` / `starting` / `running` / `error`, plus the last start error) comes from `AgentRuntimes`; every status change also emits `agent://agents_changed`, so clients reload the snapshot. The Agent view's header has Start / Stop / Restart buttons over these commands. A container stopped outside Nandi is reconciled to `idle` within 15s, or immediately when the snapshot is loaded (see [Agent Runtime](./agent-runtime.md)).
 
