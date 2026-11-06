@@ -803,7 +803,13 @@ impl EventBus {
         let (ctx, call) = (ctx.clone(), call.clone());
         self.commit(move |conn, outbox| {
             let approval_id = uuid::Uuid::new_v4().to_string();
-            let expires_at = Some(db::now_ms() + crate::model::APPROVAL_TTL_MS);
+            // A hand-over waits for the person to finish in the browser
+            let ttl = if crate::services::pilots::handover::is_hand_over(&call.tool) {
+                crate::services::pilots::handover::TTL_MS
+            } else {
+                crate::model::APPROVAL_TTL_MS
+            };
+            let expires_at = Some(db::now_ms() + ttl);
             let message = MessageRow::new(
                 &approval_id,
                 &ctx.conversation_id,

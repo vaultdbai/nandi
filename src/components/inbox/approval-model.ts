@@ -23,6 +23,7 @@ export interface ApprovalSummary {
     | 'batchRestart'
     | 'ecsRedeploy'
     | 'connector'
+    | 'handOver'
     | 'other'
   values: Record<string, string>
 }
@@ -37,6 +38,30 @@ export function approvalPlan(tool: string, args: Args): ActionPlan | null {
   const plan = (args as Record<string, unknown>).plan
   if (typeof plan !== 'object' || plan === null) return null
   return Array.isArray((plan as ActionPlan).steps) ? (plan as ActionPlan) : null
+}
+
+/** The browser hand-over (`pilots::handover`): a person finishes the page */
+const HAND_OVER_TOOL = 'pilot_browser__browser_hand_over'
+
+export function isHandOver(tool: string): boolean {
+  return tool === HAND_OVER_TOOL
+}
+
+/** What a hand-over shows: where, what's ready, and the text as typed */
+export function handOverDraft(args: Args): {
+  site: string
+  summary: string
+  draft: string
+} {
+  const draft =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>).draft
+      : null
+  return {
+    site: field(args, 'site') ?? '',
+    summary: field(args, 'summary') ?? '',
+    draft: typeof draft === 'string' ? draft : '',
+  }
 }
 
 /** Studio saving a definition (`studio::save::SAVE_ARTIFACT`) */
@@ -94,6 +119,11 @@ export function approvalSummary(tool: string, args: Args): ApprovalSummary {
     }
     case PAUSE_TOOL:
       return { key: 'pause', values: { reason: value('reason') } }
+    case HAND_OVER_TOOL:
+      return {
+        key: 'handOver',
+        values: { site: value('site'), summary: value('summary') },
+      }
   }
   // The connector actions the demo agents ask for, in their own words
   switch (tool) {

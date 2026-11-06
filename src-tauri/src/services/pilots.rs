@@ -31,8 +31,10 @@
 pub mod audit;
 pub mod browser;
 pub mod catalog;
+pub mod handover;
 pub mod install;
 mod mcp;
+pub mod refusal;
 pub mod runtime;
 pub mod store;
 pub mod tools;

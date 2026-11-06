@@ -23,6 +23,11 @@
 //!   typing, submitting, typing a secret, files and paying ask unless the
 //!   agent's skill.md allows them (`pilots: [{id: browser, allow: [...]}]`).
 //!   The arbitrary-code tools are never offered.
+//! - Policies can refuse controls (`browser.refuse`, [`super::refusal`]):
+//!   before a call that acts on the page, Nandi asks the page what the
+//!   control is and where it is, and refuses it with the policy's words.
+//! - The visible browser also has `browser_hand_over` ([`super::handover`]):
+//!   the agent prepares a page and a person finishes it.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -38,10 +43,11 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Child;
 
 use super::mcp::PilotTool;
-use super::PilotDefinition;
+use super::{handover, refusal, PilotDefinition};
 use crate::llm::ToolSpec;
 use crate::runtime::ProxyTokens;
 use crate::services::domain::capability::PilotOptions;
+use crate::services::domain::policy::Refusal;
 use crate::services::domain::Agent;
 use crate::services::egress::capabilities::Capabilities;
 use crate::services::repo_store::RepoStore;
@@ -114,6 +120,25 @@ struct Instance {
 static POOL: LazyLock<tokio::sync::Mutex<HashMap<(String, String), Instance>>> =
     LazyLock::new(Default::default);
 
+/// `(agent, pilot)` → the URL its browser last showed, for deciding before
+/// a call runs whether a policy refuses it
+static PAGES: LazyLock<std::sync::Mutex<HashMap<(String, String), String>>> =
+    LazyLock::new(Default::default);
+
+pub(super) fn remember_page(agent: &str, pilot: &str, url: &str) {
+    if let Ok(mut pages) = PAGES.lock() {
+        pages.insert((agent.to_string(), pilot.to_string()), url.to_string());
+    }
+}
+
+fn last_page(agent: &str, pilot: &str) -> Option<String> {
+    PAGES
+        .lock()
+        .ok()?
+        .get(&(agent.to_string(), pilot.to_string()))
+        .cloned()
+}
+
 // ---------------------------------------------------------------------------
 // What may run without asking
 // ---------------------------------------------------------------------------
@@ -131,6 +156,8 @@ pub enum Action {
     Secret,
     Upload,
     Pay,
+    /// `browser_hand_over`: always waits for the person
+    HandOver,
 }
 
 const PAY_WORDS: &[&str] = &[
@@ -160,15 +187,7 @@ const SECRET_WORDS: &[&str] = &[
 ];
 
 fn says(text: &str, words: &[&str]) -> bool {
-    let text = text.to_ascii_lowercase();
-    words.iter().any(|word| {
-        text.match_indices(word).any(|(at, _)| {
-            // Whole words: "posted" isn't "post", "pinned" isn't "pin code"
-            let before = text[..at].chars().next_back();
-            let after = text[at + word.len()..].chars().next();
-            !before.is_some_and(char::is_alphanumeric) && !after.is_some_and(char::is_alphanumeric)
-        })
-    })
+    crate::services::domain::browser_rule::says(text, words)
 }
 
 /// Playwright MCP asks for an element's human-readable description exactly
@@ -195,6 +214,7 @@ pub fn action(tool: &str, args: &Value, read_only: bool, secret_names: &[String]
     let secret = typed.iter().any(|t| has_secret(t))
         || (!typed.is_empty() && field_names.iter().any(|n| says(n, SECRET_WORDS)));
     match tool {
+        handover::TOOL => Action::HandOver,
         "browser_navigate"
         | "browser_navigate_back"
         | "browser_tabs"
@@ -206,7 +226,10 @@ pub fn action(tool: &str, args: &Value, read_only: bool, secret_names: &[String]
         "browser_click" if says(element, FILE_WORDS) => Action::Upload,
         "browser_click" if says(element, SUBMIT_WORDS) => Action::Submit,
         "browser_type" if args["submit"].as_bool() == Some(true) => Action::Submit,
-        "browser_press_key" if args["key"].as_str() == Some("Enter") => Action::Submit,
+        // Enter, and Ctrl+Enter (which posts on many sites)
+        "browser_press_key" if args["key"].as_str().is_some_and(|k| k.ends_with("Enter")) => {
+            Action::Submit
+        }
         "browser_handle_dialog" if args["accept"].as_bool() == Some(true) => Action::Submit,
         _ if read_only => Action::Read,
         _ => Action::Interact,
@@ -223,7 +246,23 @@ pub fn needs_approval(action: Action, options: Option<&PilotOptions>) -> bool {
         Action::Secret => !allows("secrets"),
         Action::Upload => !allows("upload"),
         Action::Pay => !allows("pay"),
+        Action::HandOver => true,
     }
+}
+
+/// Whether a policy refuses this call on the page `agent`'s browser last
+/// showed: such a call isn't asked about, it's refused when it runs
+pub fn refused_before(
+    agent: &str,
+    pilot: &str,
+    refusals: &[Refusal],
+    tool: &str,
+    args: &Value,
+    action: Action,
+) -> bool {
+    !refusals.is_empty()
+        && last_page(agent, pilot)
+            .is_some_and(|url| refusal::refused(refusals, &url, tool, args, action, None).is_some())
 }
 
 // ---------------------------------------------------------------------------
@@ -359,12 +398,6 @@ pub async fn prerequisites(pilot: &PilotDefinition) -> Result<(), String> {
 // ---------------------------------------------------------------------------
 // Running
 // ---------------------------------------------------------------------------
-
-/// The agent's sites as the proxy sees them (`network.allow`, narrowed by
-/// its policies)
-fn sites(store: &RepoStore, agent: &str) -> Result<Capabilities, String> {
-    store.skill(agent).map(|skill| skill.capabilities)
-}
 
 /// The agent's secrets, read from the keychain, by the names it types
 fn read_secrets(
@@ -652,6 +685,9 @@ pub async fn stop_all(pilot: &str) {
     let keys: Vec<_> = pool.keys().filter(|(_, p)| p == pilot).cloned().collect();
     for key in keys {
         if let Some(instance) = pool.remove(&key) {
+            if let Ok(mut pages) = PAGES.lock() {
+                pages.remove(&key);
+            }
             if let Ok(host) = host() {
                 host.proxy_tokens.revoke(&identity(pilot, &key.0));
             }
@@ -664,14 +700,22 @@ pub async fn stop_all(pilot: &str) {
 pub async fn tools(agent: &Agent, pilot: &str) -> Result<Vec<PilotTool>, String> {
     let mut pool = POOL.lock().await;
     let instance = ensure(&mut pool, agent, pilot).await?;
-    Ok(instance
+    let mut tools: Vec<PilotTool> = instance
         .tools
         .iter()
         .map(|t| PilotTool {
             spec: t.spec.clone(),
             read_only: t.read_only,
         })
-        .collect())
+        .collect();
+    // Someone watches the visible browser, so the agent can hand over
+    if pilot == BROWSER {
+        tools.push(PilotTool {
+            spec: handover::spec(),
+            read_only: false,
+        });
+    }
+    Ok(tools)
 }
 
 /// Whether `url` may be opened: http(s) to an allowed site (and the blank
@@ -708,10 +752,13 @@ pub async fn call(
     tool: &str,
     args: &Value,
 ) -> Result<(String, bool), String> {
-    if HIDDEN_TOOLS.contains(&tool) {
+    // The hand-over is the person's, never the browser's (`pilots::tools`)
+    if HIDDEN_TOOLS.contains(&tool) || tool == handover::TOOL {
         return Ok((format!("'{tool}' isn't available"), true));
     }
     let host = host()?;
+    let agent_id = agent.id().as_str();
+    let skill = host.store.skill(agent_id)?;
     let mut args = args.clone();
     let url = match tool {
         "browser_navigate" => args["url"].as_str().map(str::to_string),
@@ -721,7 +768,7 @@ pub async fn call(
         _ => None,
     };
     if let Some(url) = url {
-        if let Err(refused) = allowed_url(&sites(&host.store, agent.id().as_str())?, &url) {
+        if let Err(refused) = allowed_url(&skill.capabilities, &url) {
             return Ok((refused, true));
         }
     }
@@ -738,20 +785,107 @@ pub async fn call(
     }
     let mut pool = POOL.lock().await;
     let instance = ensure(&mut pool, agent, pilot).await?;
-    let mut params = CallToolRequestParams::new(tool.to_string());
-    params.arguments = args.as_object().cloned();
-    let result = tokio::time::timeout(CALL_TIMEOUT, instance.service.call_tool(params))
-        .await
-        .map_err(|_| format!("'{tool}' timed out"))?
-        .map_err(|e| format!("'{tool}' failed: {e}"))?;
-    let result = serde_json::to_value(&result).unwrap_or_default();
-    let (mut content, is_error) = outcome(&result);
+    if !skill.browser_refusals.is_empty() && refusal::is_checked(tool) {
+        let options = agent.capabilities().pilot_options(pilot);
+        let secret_names: Vec<String> = options
+            .map(|o| o.secrets.keys().cloned().collect())
+            .unwrap_or_default();
+        let kind = action(tool, &args, false, &secret_names);
+        let predicted = refused_before(agent_id, pilot, &skill.browser_refusals, tool, &args, kind);
+        let (page, element) = inspect(instance, &args).await;
+        let refused = page.as_deref().and_then(|url| {
+            refusal::refused(
+                &skill.browser_refusals,
+                url,
+                tool,
+                &args,
+                kind,
+                element.as_ref(),
+            )
+        });
+        if let Some(message) = refused {
+            drop(pool);
+            crate::services::policies::audit_refused(&host.store, agent_id, "browser controls")
+                .await;
+            return Ok((message, true));
+        }
+        // It wasn't asked about because it looked refused, and the page
+        // has changed since: don't run it unasked
+        if predicted && needs_approval(kind, options) {
+            return Ok((
+                "The page changed since this step was planned. Take a snapshot and try again."
+                    .to_string(),
+                true,
+            ));
+        }
+    }
+    let (mut content, is_error) = run_tool(instance, tool, &args).await?;
+    if let Some(url) = refusal::page_url(&content) {
+        remember_page(agent_id, pilot, &url);
+    }
     if let (Some(name), false) = (saved, is_error) {
         content.push_str(&format!(
             "\nSaved the screenshot as {name} in the agent's files."
         ));
     }
     Ok((content, is_error))
+}
+
+/// One call to the browser's MCP server: `(content, is_error)`
+async fn run_tool(
+    instance: &mut Instance,
+    tool: &str,
+    args: &Value,
+) -> Result<(String, bool), String> {
+    let mut params = CallToolRequestParams::new(tool.to_string());
+    params.arguments = args.as_object().cloned();
+    let result = tokio::time::timeout(CALL_TIMEOUT, instance.service.call_tool(params))
+        .await
+        .map_err(|_| format!("'{tool}' timed out"))?
+        .map_err(|e| format!("'{tool}' failed: {e}"))?;
+    Ok(outcome(&serde_json::to_value(&result).unwrap_or_default()))
+}
+
+/// Where the page is and, for a call with a target, what the page calls
+/// that control: a snapshot of just the target, else the tab list
+async fn inspect(
+    instance: &mut Instance,
+    args: &Value,
+) -> (Option<String>, Option<refusal::Element>) {
+    let target = ["target", "startTarget"]
+        .iter()
+        .find_map(|key| args[*key].as_str())
+        .filter(|t| !t.trim().is_empty());
+    if let Some(target) = target {
+        let look = json!({ "target": target, "depth": 1 });
+        if let Ok((reply, false)) = run_tool(instance, "browser_snapshot", &look).await {
+            if let Some(url) = refusal::page_url(&reply) {
+                return (Some(url), refusal::element(&reply, target));
+            }
+        }
+    }
+    let tabs = run_tool(instance, "browser_tabs", &json!({ "action": "list" })).await;
+    (
+        tabs.ok().and_then(|(reply, _)| refusal::page_url(&reply)),
+        None,
+    )
+}
+
+/// Brings `agent`'s `pilot` browser window to the front, on its current tab
+pub async fn bring_to_front(agent: &str, pilot: &str) -> Result<(), String> {
+    let mut pool = POOL.lock().await;
+    let instance = pool
+        .get_mut(&(agent.to_string(), pilot.to_string()))
+        .ok_or("its browser isn't open")?;
+    let (tabs, _) = run_tool(instance, "browser_tabs", &json!({ "action": "list" })).await?;
+    let index = refusal::current_tab(&tabs).unwrap_or(0);
+    run_tool(
+        instance,
+        "browser_tabs",
+        &json!({ "action": "select", "index": index }),
+    )
+    .await
+    .map(|_| ())
 }
 
 /// The text blocks (images are files, not replies), cut to size

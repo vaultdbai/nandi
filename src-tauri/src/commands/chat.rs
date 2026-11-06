@@ -57,6 +57,18 @@ pub async fn approve_action(
     chat::approve_action(&state, Some(&agent_id), approval_id, decision).await
 }
 
+/// Answers a browser hand-over, whichever agent's: done, skipped, or
+/// changed (with the text that went out)
+#[tauri::command]
+#[specta::specta]
+pub async fn answer_hand_over(
+    state: State<'_, AppState>,
+    approval_id: String,
+    answer: crate::services::pilots::handover::HandOverAnswer,
+) -> Result<(), String> {
+    chat::answer_hand_over(&state, approval_id, answer).await
+}
+
 /// Every pending tool approval, oldest first, with when each expires
 #[tauri::command]
 #[specta::specta]

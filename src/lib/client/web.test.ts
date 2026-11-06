@@ -80,6 +80,20 @@ describe('webClient', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/agents/%40studio/approve')
   })
 
+  it('answers a hand-over by its approval', async () => {
+    respond(200, null)
+    await webClient.answerHandOver('ap/1', {
+      outcome: 'changed',
+      finalText: 'Final words',
+    })
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/approvals/ap%2F1/hand-over')
+    expect(JSON.parse(String(init.body))).toEqual({
+      outcome: 'changed',
+      finalText: 'Final words',
+    })
+  })
+
   it('returns errors in the same shape as IPC', async () => {
     respond(400, { error: 'Agent not found' })
     expect(await webClient.getAgentSnapshot('ghost')).toEqual({

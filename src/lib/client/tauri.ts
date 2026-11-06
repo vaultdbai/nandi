@@ -31,6 +31,8 @@ export const tauriClient: NandiClient = {
   createStudioConversation: () => commands.createStudioConversation(),
   approveAction: (agentId, approvalId, decision) =>
     commands.approveAction(agentId, approvalId, decision),
+  answerHandOver: (approvalId, answer) =>
+    commands.answerHandOver(approvalId, answer),
   listPendingApprovals: () => commands.listPendingApprovals(),
   cancelTurn: (agentId, turnId) => commands.cancelTurn(agentId, turnId),
 

@@ -188,6 +188,30 @@ The evaluator starts from what `skill.md` asks for (`Request`), narrows it by ev
 - **Needs relay:** no
 - **Status:** Shipped
 
+### PO-15 — Browser controls a policy refuses (`browser.refuse`)
+
+- **What:** A policy can refuse browser controls: `browser: { refuse: [{ controls: [post, like], kinds: [submit], sites: [x.com], except: [start a post], say: … }] }`. Before a call that acts on the page (click, type, key, form, dialog, drag, upload), Nandi asks the page for the control's role and name (`browser_snapshot {target, depth: 1}`, else the tab list for the URL). A rule refuses the call when the page is on its sites (subdomains included; none = everywhere) and the control's name says one of `controls` (whole words; fields such as textboxes are never controls) or the call is one of `kinds` (Enter and Ctrl+Enter are submits). Only the page's own name can match `except`. The refusal is a tool error with the policy's id and `say`, logged in `decisions.log` as `browser controls`. A call that would be refused on the page the browser last showed isn't asked about first. The agent page shows "browser controls: refuses …".
+- **Where:** `services/domain/browser_rule.rs`, `domain/policy.rs` (`Rules.browser`, `Effective.browser_refusals`), `services/pilots/refusal.rs`, `browser.rs` (`call`, `inspect`, `refused_before`), `tools.rs` (`requires_approval`).
+- **Preconditions:** An agent with the browser pilot; a policy with `browser.refuse` that applies to it.
+- **Steps:** 1. Have the agent click a refused button. 2. Press Ctrl+Enter on a refused site. 3. Click an `except` control. 4. Describe a refused button with the `except` words.
+- **Expected:** 1-2. Refused with the policy's words, no approval asked, a `refused` line in decisions.log. 3. Runs. 4. Still refused.
+- **Edge / negative cases:** An item with neither controls nor kinds, an unknown kind or a URL as a site is a broken policy (blocks the agents it names). Off the listed sites a "Post" button is not refused.
+- **Automation:** Covered by: Rust `domain/browser_rule.rs` (5), `domain/policy.rs` `browser_refusals_add_up_and_keep_the_pilot`, `pilots/refusal.rs` (per site: LinkedIn, X, Facebook, Instagram, YouTube, engagement everywhere), `pilots/tools.rs` `a_click_a_policy_refuses_is_refused_not_asked_about` | Layer: unit | Gap: live sites (owner run).
+- **Needs relay:** no
+- **Status:** Shipped
+
+### PO-16 — Policies a starter pack ships for its own agents
+
+- **What:** A pack may carry `policies/<id>.md`. The installer checks each parses, has rules, and names only the pack's own agents exactly (`applies_to: [agent:<id>]`; no `*`, tags, patterns or other agents), else the install is refused. Installed, they apply as `<pack>/<id>` from the vendored folder, read-only, and aren't listed for editing.
+- **Where:** `services/marketplace/install.rs` (`is_pack_policy`, `validate_pack_policies`), `domain/policy.rs` `Policy::only_for`, `services/repos/policy_repo.rs` (`load_all`, `pack_files`).
+- **Preconditions:** A pack with a policy (Nandi Social).
+- **Steps:** Install it; open the agent's Settings › Permissions.
+- **Expected:** "Policies applied: social-pack/social-posting" and its change.
+- **Edge / negative cases:** A pack policy for `*` or another agent: the install fails with the reason. Half-written installs (staging folders) are ignored.
+- **Automation:** Covered by: Rust `install.rs` `a_pack_ships_policies_for_its_own_agents_only`, `policy_repo.rs` `installed_packs_policies_apply_but_are_not_listed_for_editing` | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## Gaps and planned (not testable yet)
 
 From `docs/tasks-todo/task-x-enforced-policies.md`:

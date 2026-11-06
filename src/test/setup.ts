@@ -128,6 +128,7 @@ vi.mock('@/lib/tauri-bindings', () => {
       restartAgent: ok('container-1'),
       deleteAgent: ok(null),
       approveAction: ok(null),
+      answerHandOver: ok(null),
       listPendingApprovals: ok([]),
       listWork: ok([]),
       listPendingManualSteps: ok([]),

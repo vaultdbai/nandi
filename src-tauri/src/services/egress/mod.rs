@@ -555,6 +555,7 @@ pub(crate) mod tests {
             connectors: vec![],
             connectors_on_host: vec![],
             pilots: vec![],
+            browser_refusals: vec![],
             policies: vec![],
             model_rules: vec![],
         }

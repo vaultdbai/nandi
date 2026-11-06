@@ -25,6 +25,7 @@ import {
   approvalPlan,
   approvalSummary,
   delegateWho,
+  isHandOver,
   minutes,
 } from '@/components/inbox/approval-model'
 import { useNetworkSnapshot } from '@/hooks/useNetwork'
@@ -32,6 +33,7 @@ import { ActionPlanPreview } from '@/components/ask/ActionPlanPreview'
 import { cn } from '@/lib/utils'
 import type { ChatMessage } from '@/types/agent'
 import { formatJson } from './format-json'
+import { HandOverCard } from './HandOverCard'
 
 type ApprovalRequestMessage = Extract<ChatMessage, { kind: 'approval' }>
 
@@ -75,7 +77,22 @@ function agentLabel(id: string): string {
     .join(' ')
 }
 
-export function ApprovalRequestCard({
+export function ApprovalRequestCard(props: ApprovalRequestCardProps) {
+  // A hand-over is the person finishing a page, not a yes or no
+  if (isHandOver(props.message.tool)) {
+    return (
+      <HandOverCard
+        message={props.message}
+        agentName={props.agentName}
+        canAnswer={props.onDecide !== undefined}
+        className={props.className}
+      />
+    )
+  }
+  return <ToolApprovalCard {...props} />
+}
+
+function ToolApprovalCard({
   message,
   agentName,
   onDecide,

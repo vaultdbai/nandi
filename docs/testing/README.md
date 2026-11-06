@@ -414,6 +414,8 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | PO-12 | Studio policy form and agent tags                           | Shipped                                                                                    | unit  | no          |               |
 | PO-13 | Policies applied to every run                               | Shipped                                                                                    | unit  | no          |               |
 | PO-14 | Decisions log: who approved, and what a policy refused      | Shipped                                                                                    | unit  | no          |               |
+| PO-15 | Browser controls a policy refuses (`browser.refuse`)        | Shipped                                                                                    | unit  | no          |               |
+| PO-16 | Policies a starter pack ships for its own agents            | Shipped                                                                                    | unit  | no          |               |
 
 ### Workflows, triggers, requests and Inbox
 
@@ -550,6 +552,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | CP-08 | Pilot health monitor and access rule                                                      | Shipped                                                                        | unit          | no          |                 |
 | CP-09 | Pilot consent: grant and revoke per agent                                                 | Shipped                                                                        | api           | no          |                 |
 | CP-10 | Pilot tool approvals and audit log                                                        | Shipped                                                                        | unit          | no          |                 |
+| CP-29 | Browser hand-over: the agent prepares, a person publishes                                 | Shipped                                                                        | unit          | no          |                 |
 | CP-11 | Capabilities list (Network › Sharing › Capabilities)                                      | Shipped (overlaps Network area)                                                | unit          | no          |                 |
 | CP-12 | Capability detail: overview and tabs                                                      | Shipped                                                                        | unit          | no          |                 |
 | CP-13 | Create, edit and delete capability definitions                                            | Shipped                                                                        | api           | no          |                 |

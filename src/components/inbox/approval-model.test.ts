@@ -37,6 +37,12 @@ describe('approvalSummary', () => {
     ],
     ['continue_run', { reason: 'Spend $5?' }, 'pause', { reason: 'Spend $5?' }],
     [
+      'pilot_browser__browser_hand_over',
+      { site: 'x.com', summary: 'Launch post', draft: 'Hi' },
+      'handOver',
+      { site: 'x.com', summary: 'Launch post' },
+    ],
+    [
       'github__create_issue',
       {},
       'connector',

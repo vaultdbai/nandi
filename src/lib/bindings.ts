@@ -271,6 +271,18 @@ async approveAction(agentId: string, approvalId: string, decision: ApprovalDecis
 }
 },
 /**
+ * Answers a browser hand-over, whichever agent's: done, skipped, or
+ * changed (with the text that went out)
+ */
+async answerHandOver(approvalId: string, answer: HandOverAnswer) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("answer_hand_over", { approvalId, answer }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Every pending tool approval, oldest first, with when each expires
  */
 async listPendingApprovals() : Promise<Result<PendingApproval[], string>> {
@@ -3284,11 +3296,11 @@ workflowStepStarted: "workflow://step_started"
 
 /** user-defined constants **/
 
-export const SEAL_REFUSED = "seal_refused" as const;
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 
 /** user-defined types **/
 
@@ -4901,6 +4913,30 @@ input: string | null;
  * The agent's final reply
  */
 output: string | null; error: string | null; critical: boolean; continueOnFailure: boolean }
+/**
+ * The person's answer to a hand-over
+ */
+export type HandOverAnswer = { outcome: HandOverOutcome; 
+/**
+ * What went out, for `changed`
+ */
+finalText?: string | null }
+/**
+ * What the person did
+ */
+export type HandOverOutcome = 
+/**
+ * They published it as prepared
+ */
+"done" | 
+/**
+ * They didn't publish it
+ */
+"skipped" | 
+/**
+ * They changed it, then published it
+ */
+"changed"
 /**
  * What a harness CLI signs in with, from its own config and environment.
  * Never holds a secret.

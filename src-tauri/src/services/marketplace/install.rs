@@ -36,6 +36,7 @@ use crate::services::agents::describe_error;
 use crate::services::domain::installed::{
     local_source, InstallKind, InstalledAgent, InstalledFile, InstalledPack, LOCAL_REF,
 };
+use crate::services::domain::policy::Policy;
 use crate::services::domain::{
     Agent, AgentId, ChangedBy, EntityKind, PackId, PublisherHandle, Workflow, WorkflowId,
 };
@@ -169,10 +170,35 @@ fn select_pack_files(files: &FileSet, agents: &[AgentId], workflows: &[WorkflowI
                     .iter()
                     .any(|w| *file == format!("{w}.yaml") || *file == format!("{w}.yml"));
             }
-            false
+            is_pack_policy(path)
         })
         .map(|(path, bytes)| (path.clone(), bytes.clone()))
         .collect()
+}
+
+/// `policies/<id>.md`: a policy the pack ships for its own agents
+fn is_pack_policy(path: &str) -> bool {
+    path.strip_prefix("policies/")
+        .and_then(|file| file.strip_suffix(".md"))
+        .is_some_and(|id| AgentId::parse(id).is_ok())
+}
+
+/// A pack's policies must parse and name only its own agents: a pack can
+/// narrow what its agents do, never anyone else
+fn validate_pack_policies(files: &FileSet, agents: &[AgentId]) -> Result<(), String> {
+    let ids: Vec<&str> = agents.iter().map(AgentId::as_str).collect();
+    for path in files.keys().filter(|p| is_pack_policy(p)) {
+        let id = path.trim_start_matches("policies/").trim_end_matches(".md");
+        let policy = Policy::parse(id, text(files, path)?.unwrap_or_default())
+            .map_err(|e| format!("The pack's {path} isn't valid: {e}"))?;
+        if !policy.only_for(&ids) {
+            return Err(format!(
+                "The pack's {path} must apply only to its own agents (applies_to: [agent:<id>], one of {})",
+                ids.join(", ")
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn text<'a>(files: &'a FileSet, path: &str) -> Result<Option<&'a str>, String> {
@@ -294,6 +320,7 @@ fn read_pack(
             })?;
         validate_workflow(&path, &files)?;
     }
+    validate_pack_policies(&files, &agents)?;
     Ok(PackContents {
         file,
         files,
@@ -1355,6 +1382,99 @@ mod tests {
             }
         }
         files
+    }
+
+    fn pack(files: &[(&str, &str)]) -> FileSet {
+        files
+            .iter()
+            .map(|(path, text)| (path.to_string(), text.as_bytes().to_vec()))
+            .collect()
+    }
+
+    const MANIFEST: &str = "id: social
+name: Social
+version: 0.1.0
+agents: [poster]
+";
+    const POSTER: &str = "---
+name: Poster
+description: Posts
+---
+You post.
+";
+
+    #[test]
+    fn a_pack_ships_policies_for_its_own_agents_only() {
+        let own = "---
+applies_to: [agent:poster]
+browser: { refuse: [{ controls: [post] }] }
+---
+Why.
+";
+        let files = pack(&[
+            (PACK_MANIFEST_PATH, MANIFEST),
+            ("agents/poster/skill.md", POSTER),
+            ("policies/posting.md", own),
+            ("policies/notes.txt", "left behind"),
+        ]);
+        let read = read_pack(&files, "social", &[]).unwrap();
+        assert!(read.files.contains_key("policies/posting.md"));
+        assert!(!read.files.contains_key("policies/notes.txt"));
+
+        for (bad, why) in [
+            (
+                "---
+applies_to: ['*']
+tools: { deny: [shell] }
+---
+",
+                "everyone",
+            ),
+            (
+                "---
+applies_to: [agent:po*]
+tools: { deny: [shell] }
+---
+",
+                "a pattern",
+            ),
+            (
+                "---
+applies_to: [tag:social]
+tools: { deny: [shell] }
+---
+",
+                "a tag",
+            ),
+            (
+                "---
+applies_to: [agent:other]
+tools: { deny: [shell] }
+---
+",
+                "another agent",
+            ),
+            (
+                "Be kind.
+",
+                "prose: no rules",
+            ),
+            (
+                "---
+applies_to: [agent:poster]
+browser: { refuse: [{}] }
+---
+",
+                "broken",
+            ),
+        ] {
+            let files = pack(&[
+                (PACK_MANIFEST_PATH, MANIFEST),
+                ("agents/poster/skill.md", POSTER),
+                ("policies/posting.md", bad),
+            ]);
+            assert!(read_pack(&files, "social", &[]).is_err(), "{why}");
+        }
     }
 
     /// For pack authors: `NANDI_PACK_DIR=<checkout> cargo test --lib

@@ -19,6 +19,7 @@
 
 pub mod agent;
 pub mod agent_card;
+pub mod browser_rule;
 pub mod calendar;
 pub mod capability;
 pub mod connector;

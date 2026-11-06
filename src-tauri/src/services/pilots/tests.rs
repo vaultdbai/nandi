@@ -236,7 +236,7 @@ async fn pilot_tools_route_through_approval_and_consent() {
         set.consent_needed,
         [("opendesk".to_string(), pilot.capabilities.clone())]
     );
-    let refused = tools::call(&bus, &writer, "pilot_opendesk__click", &json!({})).await;
+    let refused = tools::call(&bus, &writer, "c1", "pilot_opendesk__click", &json!({})).await;
     assert!(refused.is_error && refused.result.contains("consent"));
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 
@@ -259,7 +259,14 @@ async fn pilot_tools_route_through_approval_and_consent() {
     assert!(set.requires_approval("pilot_opendesk__click", &json!({})));
     assert!(!set.requires_approval("pilot_opendesk__screenshot", &json!({})));
 
-    let done = tools::call(&bus, &writer, "pilot_opendesk__click", &json!({"x": 1})).await;
+    let done = tools::call(
+        &bus,
+        &writer,
+        "c1",
+        "pilot_opendesk__click",
+        &json!({"x": 1}),
+    )
+    .await;
     assert!(!done.is_error, "{}", done.result);
     assert_eq!(done.result, "click done");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -267,7 +274,7 @@ async fn pilot_tools_route_through_approval_and_consent() {
     // Another agent with the same declaration but no consent is refused
     let other = agent("other", "opendesk");
     assert!(
-        tools::call(&bus, &other, "pilot_opendesk__click", &json!({}))
+        tools::call(&bus, &other, "c1", "pilot_opendesk__click", &json!({}))
             .await
             .is_error
     );
@@ -283,7 +290,7 @@ async fn pilot_tools_route_through_approval_and_consent() {
         [("opendesk".to_string(), vec![first.clone()])]
     );
     assert!(
-        tools::call(&bus, &writer, "pilot_opendesk__click", &json!({}))
+        tools::call(&bus, &writer, "c1", "pilot_opendesk__click", &json!({}))
             .await
             .is_error
     );
@@ -302,4 +309,137 @@ async fn pilot_tools_route_through_approval_and_consent() {
             .healthy
     );
     assert!(sink.names().contains(&"pilot://changed"));
+}
+
+/// A hand-over waits for the person a day, not an hour; Changed it approves
+/// with the final text kept for the call's result; Skip rejects it
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_hand_over_waits_for_the_person_and_takes_their_answer() {
+    use crate::db;
+    use crate::services::chat;
+    use crate::services::domain::EntityKind;
+    use crate::services::repos::Repository;
+    use handover::{HandOverAnswer, HandOverOutcome};
+
+    let state = crate::services::AppState::for_tests(vec![]);
+    let root = state.store().layout().root.clone();
+    std::fs::create_dir_all(&root).unwrap();
+    git2::Repository::init(&root).unwrap();
+    state.store().load().unwrap();
+    let poster = Agent::from_skill_md(
+        AgentId::parse("poster").unwrap(),
+        "---\nname: Poster\npilots: [browser]\n---\nYou post.\n",
+    )
+    .unwrap();
+    state.store().repos().agents.save(&poster).unwrap();
+    state.store().commit(EntityKind::Agent, "poster").unwrap();
+    let hand_over = |draft: &str| {
+        json!({
+            "text": "Ready for you.",
+            "toolCalls": [{
+                "tool": "pilot_browser__browser_hand_over",
+                "args": { "site": "LinkedIn", "summary": "Launch post", "draft": draft },
+                "result": "answered",
+                "requiresApproval": true
+            }]
+        })
+    };
+    let script = json!({
+        "agent": [hand_over("Hello"), { "text": "Noted." }],
+        "studio": [],
+        "tokenDelayMs": 0
+    });
+    state
+        .db()
+        .call(move |conn| {
+            db::set_setting(conn, db::ENGINE_KEY, &json!("canned"))?;
+            db::set_setting(conn, crate::engine::CANNED_SCRIPT_KEY, &script)
+        })
+        .await
+        .unwrap();
+    let pending = || async {
+        state
+            .db()
+            .call(|conn| db::pending_approvals(conn, None))
+            .await
+            .unwrap()
+    };
+    let wait = |what: &'static str| async move {
+        for _ in 0..500 {
+            if !pending().await.is_empty() {
+                return pending().await.remove(0);
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("never saw {what}");
+    };
+
+    // The orchestrator closes an answered approval a moment later
+    let closed = |id: String| {
+        let state = state.clone();
+        async move {
+            for _ in 0..500 {
+                let id = id.clone();
+                let approval = state
+                    .db()
+                    .call(move |conn| db::get_approval(conn, &id))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                if approval.status != crate::model::ApprovalStatus::Pending {
+                    return approval;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            panic!("the approval never closed");
+        }
+    };
+
+    chat::send_message(&state, "poster".into(), "Post it".into(), vec![], None)
+        .await
+        .unwrap();
+    let first = wait("the hand-over").await;
+    assert_eq!(first.tool, "pilot_browser__browser_hand_over");
+    let waits = first.expires_at.unwrap() - first.created_at;
+    assert!(waits > 23.0 * 3_600_000.0, "a day, not an hour: {waits}");
+    // An approval that isn't a hand-over can't be answered as one, and a
+    // changed answer needs its text
+    let changed = |text: Option<&str>| HandOverAnswer {
+        outcome: HandOverOutcome::Changed,
+        final_text: text.map(str::to_string),
+    };
+    assert!(
+        chat::answer_hand_over(&state, first.id.clone(), changed(None))
+            .await
+            .is_err()
+    );
+    chat::answer_hand_over(&state, first.id.clone(), changed(Some("Hello, world")))
+        .await
+        .unwrap();
+    let decided = closed(first.id.clone()).await;
+    assert_eq!(decided.status, crate::model::ApprovalStatus::Approved);
+    // The canned engine answers the call itself; the answer waits for a
+    // real browser call, which reads it once
+    assert_eq!(
+        handover::take(&decided.tool_call_id),
+        Some(changed(Some("Hello, world")))
+    );
+
+    chat::send_message(&state, "poster".into(), "And this one".into(), vec![], None)
+        .await
+        .unwrap();
+    let second = wait("the second hand-over").await;
+    chat::answer_hand_over(
+        &state,
+        second.id.clone(),
+        HandOverAnswer {
+            outcome: HandOverOutcome::Skipped,
+            final_text: None,
+        },
+    )
+    .await
+    .unwrap();
+    let skipped = closed(second.id.clone()).await;
+    assert_eq!(skipped.status, crate::model::ApprovalStatus::Rejected);
+    state.shutdown();
 }

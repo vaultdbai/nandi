@@ -2,11 +2,16 @@
 //! (wave CD). Studio edits them; the ask box reads them as context; the
 //! ones with `applies_to` are enforced (`domain::policy`). They aren't
 //! projected into SQLite.
+//!
+//! Installed packs may ship policies for their own agents
+//! (`.nandi/agents/marketplace/packs/<pack>/policies/<id>.md`, checked by
+//! the installer). They apply like the others, as `<pack>/<id>`, and stay
+//! read-only: they aren't listed for editing.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::fs_atomic::write_if_changed;
+use super::fs_atomic::{write_if_changed, TEMP_MARKER};
 use super::git::GitIndex;
 use super::{RepoError, RepoLayout, RepoResult};
 use crate::services::domain::policy::{PolicySet, PolicySummary};
@@ -40,10 +45,12 @@ impl PolicyRepository {
         }
     }
 
-    /// Every `<id>.md`, parsed, with the broken ones kept apart (they still
-    /// block, `PolicySet::blocking`). No folder: no policies.
+    /// Every `<id>.md` and every installed pack's policy, parsed, with the
+    /// broken ones kept apart (they still block, `PolicySet::blocking`). No
+    /// folder: no policies.
     pub fn load_all(&self) -> RepoResult<PolicySet> {
-        let files = self.files()?;
+        let mut files = self.files()?;
+        files.extend(self.pack_files()?);
         Ok(PolicySet::parse(
             files
                 .iter()
@@ -62,27 +69,23 @@ impl PolicyRepository {
 
     /// `(id, content)` of every `<id>.md`, sorted by id
     fn files(&self) -> RepoResult<Vec<(String, String)>> {
-        let dir = self.dir();
-        let entries = match std::fs::read_dir(&dir) {
-            Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(e) => return Err(RepoError::io(&dir, e)),
+        markdown_files(&self.dir(), "")
+    }
+
+    /// `(<pack>/<id>, content)` of every installed pack's policy
+    fn pack_files(&self) -> RepoResult<Vec<(String, String)>> {
+        let packs = self.layout.marketplace_dir().join(super::layout::PACKS_DIR);
+        let Ok(entries) = std::fs::read_dir(&packs) else {
+            return Ok(Vec::new());
         };
         let mut files = Vec::new();
         for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name.contains(TEMP_MARKER) || !entry.path().is_dir() {
                 continue;
             }
-            let Some(id) = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(str::to_string)
-            else {
-                continue;
-            };
-            let content = std::fs::read_to_string(&path).map_err(|e| RepoError::io(&path, e))?;
-            files.push((id, content));
+            let dir = entry.path().join(super::layout::POLICIES_DIR);
+            files.extend(markdown_files(&dir, &format!("{name}/"))?);
         }
         files.sort();
         Ok(files)
@@ -100,6 +103,30 @@ impl PolicyRepository {
         }
         Ok(path)
     }
+}
+
+/// `(<prefix><stem>, content)` of every `*.md` in `dir`, sorted; no folder:
+/// none
+fn markdown_files(dir: &Path, prefix: &str) -> RepoResult<Vec<(String, String)>> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(RepoError::io(dir, e)),
+    };
+    let mut files = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let content = std::fs::read_to_string(&path).map_err(|e| RepoError::io(&path, e))?;
+        files.push((format!("{prefix}{stem}"), content));
+    }
+    files.sort();
+    Ok(files)
 }
 
 #[cfg(test)]
@@ -160,5 +187,41 @@ tools: { nope: 1 }
                 ("tone".into(), "tone".into(), true),
             ]
         );
+    }
+
+    #[test]
+    fn installed_packs_policies_apply_but_are_not_listed_for_editing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = RepoLayout::new(tmp.path(), tmp.path().join("trash"));
+        let repos = Repos::new(layout.clone());
+        let shipped = layout.pack_dir("social-pack").join("policies");
+        std::fs::create_dir_all(&shipped).unwrap();
+        std::fs::write(
+            shipped.join("posting.md"),
+            "---\napplies_to: [agent:social-manager]\nbrowser: { refuse: [{ controls: [post] }] }\n---\n",
+        )
+        .unwrap();
+        // A half-written install isn't read
+        let staging = layout
+            .marketplace_dir()
+            .join("packs")
+            .join(format!(".x{TEMP_MARKER}1"))
+            .join("policies");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("partial.md"), "---\napplies_to: [nope\n").unwrap();
+        repos.policies.save("local", "Be kind.\n").unwrap();
+
+        let set = repos.policies.load_all().unwrap();
+        let ids: Vec<&str> = set.policies.iter().map(|p| p.id()).collect();
+        assert_eq!(ids, ["local", "social-pack/posting"]);
+        assert!(set.broken.is_empty());
+        let listed: Vec<String> = repos
+            .policies
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|p| p.id)
+            .collect();
+        assert_eq!(listed, ["local"]);
     }
 }

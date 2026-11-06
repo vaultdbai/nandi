@@ -71,6 +71,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             chat::send_studio_message,
             chat::create_studio_conversation,
             chat::approve_action,
+            chat::answer_hand_over,
             chat::list_pending_approvals,
             chat::cancel_turn,
             queue::get_agent_queue,
