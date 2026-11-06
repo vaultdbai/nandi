@@ -4077,5 +4077,7 @@
   "email.hours_other": "{{count}} heures",
   "home.email.todo": "Connectez vos e-mails pour que Chief of Staff tienne vos notes à jour.",
   "home.email.another": "Vous pouvez aussi connecter {{names}}.",
-  "home.email.settings": "Paramètres e-mail"
+  "home.email.settings": "Paramètres e-mail",
+  "email.problem.appRegistration": "L'inscription de l'application Microsoft de Nandi est configurée pour un autre type d'application, Microsoft a donc refusé la connexion. Pour la personne qui la gère : dans Entra, Inscriptions d'applications › Nandi › Authentification, placez la redirection http://localhost sous « Applications mobiles et de bureau » (pas Web ni application monopage) et activez « Autoriser les flux de clients publics ».",
+  "email.problem.keychain": "Vous êtes connecté, mais Nandi n'a pas pu enregistrer la connexion dans le trousseau de cet ordinateur. Réessayez ; les détails ci-dessous indiquent pourquoi."
 }

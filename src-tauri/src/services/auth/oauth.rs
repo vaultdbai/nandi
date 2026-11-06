@@ -168,7 +168,10 @@ pub fn forget(entry: &str, secrets: &Secrets) -> Result<(), String> {
 
 fn store_token(entry: &str, token: &StoredToken, secrets: &Secrets) -> Result<(), String> {
     let json = serde_json::to_string(token).map_err(|e| e.to_string())?;
-    secrets.set(entry, &json)
+    secrets.set(entry, &json).map_err(|e| {
+        log::warn!("Saving the sign-in ({entry}) failed: {e}");
+        format!("Signed in, but couldn't save your sign-in ({e})")
+    })
 }
 
 fn unix_now() -> u64 {
@@ -758,6 +761,7 @@ async fn serve_redirect(listeners: Listeners, exchange: Exchange, outcome: &Mute
         }
         if let Some(error) = query.get("error") {
             let reason = oauth_error(error, query.get("error_description").map(String::as_str));
+            log::warn!("Sign-in ({}) was refused: {reason}", exchange.entry);
             *lock(outcome) = Outcome::Failed(format!("Sign-in was refused: {reason}"));
             respond(
                 &mut stream,
@@ -783,13 +787,17 @@ async fn serve_redirect(listeners: Listeners, exchange: Exchange, outcome: &Mute
                 .await;
             }
             Err(e) => {
-                *lock(outcome) = Outcome::Failed(e);
+                log::warn!("Sign-in ({}) failed: {e}", exchange.entry);
                 respond(
                     &mut stream,
                     200,
-                    "Sign-in failed. Return to Nandi to try again.",
+                    &format!(
+                        "Sign-in failed: {}. Return to Nandi to try again.",
+                        e.trim_end_matches('.')
+                    ),
                 )
                 .await;
+                *lock(outcome) = Outcome::Failed(e);
             }
         }
         return;
@@ -817,12 +825,21 @@ async fn read_request_target(stream: &mut TcpStream) -> Option<String> {
     (method == "GET" && target.starts_with('/')).then(|| target.to_string())
 }
 
+/// Text for the redirect page, with `<`, `>`, `&` and quotes escaped
+fn html_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 async fn respond(stream: &mut TcpStream, status: u16, message: &str) {
     let reason = match status {
         200 => "OK",
         404 => "Not Found",
         _ => "Bad Request",
     };
+    let message = html_escape(message);
     let body = format!(
         "<!doctype html><meta charset=\"utf-8\"><title>Nandi</title>\
          <body style=\"font-family:system-ui;padding:3rem\"><p>{message}</p></body>"
@@ -987,6 +1004,87 @@ mod tests {
         .await
         .unwrap();
         assert!(flows.poll(ENTRY, &secrets).await.unwrap());
+    }
+
+    /// Starts a PKCE sign-in against `base` and comes back with `code`;
+    /// returns the browser page
+    async fn sign_in_through_the_browser(
+        flows: &OAuthFlows,
+        base: &str,
+        secrets: &Secrets,
+    ) -> String {
+        let started = flows
+            .start(ENTRY, mock_provider(base, true), secrets.clone())
+            .await
+            .unwrap();
+        let auth = reqwest::Url::parse(&started.verification_uri).unwrap();
+        let params: HashMap<String, String> = auth.query_pairs().into_owned().collect();
+        reqwest::get(format!(
+            "{}?code=abc&state={}",
+            params["redirect_uri"], params["state"]
+        ))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_large_microsoft_sign_in_is_stored_within_the_windows_limit() {
+        // A personal Microsoft account's tokens: several KB, over the
+        // 2,560-byte credential limit (the in-memory store enforces it)
+        let captured: Captured = Arc::default();
+        let access = "EwB4A8l6BAAU".repeat(250);
+        let refresh = "M.C556_BAY.".repeat(120);
+        let base = serve(token_router(
+            captured,
+            json!({"access_token": access, "refresh_token": refresh, "expires_in": 3600, "token_type": "Bearer"}),
+        ))
+        .await;
+        let secrets = Secrets::in_memory();
+        let flows = OAuthFlows::default();
+        let page = sign_in_through_the_browser(&flows, &base, &secrets).await;
+        assert!(page.contains("Signed in"), "{page}");
+        assert!(flows.poll(ENTRY, &secrets).await.unwrap());
+        assert_eq!(
+            stored_access_token(ENTRY, &secrets).as_deref(),
+            Some(access.as_str())
+        );
+        assert!(secrets.get(ENTRY).unwrap().unwrap().contains(&refresh));
+    }
+
+    #[tokio::test]
+    async fn a_token_endpoint_error_is_shown_on_the_page_and_to_the_app() {
+        let captured: Captured = Arc::default();
+        let base = serve(token_router(
+            captured,
+            json!({
+                "error": "invalid_client",
+                "error_description": "AADSTS7000218: The request body must contain the following parameter: 'client_assertion' or 'client_secret'.",
+            }),
+        ))
+        .await;
+        let secrets = Secrets::in_memory();
+        let flows = OAuthFlows::default();
+        let page = sign_in_through_the_browser(&flows, &base, &secrets).await;
+        assert!(
+            page.contains("Sign-in failed: invalid_client: AADSTS7000218"),
+            "{page}"
+        );
+        // Escaped for the page
+        assert!(page.contains("&#39;") || page.contains("'client_secret'"));
+        let error = flows.poll(ENTRY, &secrets).await.unwrap_err();
+        assert!(error.contains("AADSTS7000218"), "{error}");
+        assert!(!has_sign_in(ENTRY, &secrets));
+    }
+
+    #[test]
+    fn the_page_escapes_html() {
+        assert_eq!(
+            html_escape("<b>\"x\" & y</b>"),
+            "&lt;b&gt;&quot;x&quot; &amp; y&lt;/b&gt;"
+        );
     }
 
     #[tokio::test]

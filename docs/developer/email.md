@@ -120,6 +120,19 @@ IDs carry their provider: `outlook:<id>`, `gmail:<id>`. Results are wrapped as u
 
 `email://changed` fires on connect, disconnect, pause and every check; `useEmailStatus` refetches on it.
 
+## When sign-in fails
+
+The real reason is on the browser page ("Sign-in failed: <OAuth error>: <description>"), under the Email card, and in the app log (`log::warn!`): `%LOCALAPPDATA%\com.nandi.app\logs\nandi.log` on Windows, `~/Library/Logs/com.nandi.app/nandi.log` on macOS, `~/.local/share/com.nandi.app/logs/nandi.log` on Linux. Tokens never appear in any of them.
+
+| What it says                                            | Why                                                                        | Fix                                                                                                                                                                                                                                            |
+| ------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AADSTS7000218 (`client_secret` required), AADSTS9002327 | The Entra app's redirect sits under **Web** or **Single-page application** | Entra admin center › **App registrations** › Nandi › **Authentication** › remove the Web/SPA `http://localhost` › **Add a platform** › **Mobile and desktop applications** › `http://localhost`; **Allow public client flows: Yes** › **Save** |
+| AADSTS65001, 90094                                      | The company needs an admin to approve Nandi                                | The admin-consent link on the card                                                                                                                                                                                                             |
+| "couldn't save your sign-in"                            | The keychain refused the value                                             | See the details; large sign-ins are split (`secrets.rs`), so this shouldn't happen for size                                                                                                                                                    |
+| "couldn't read whose mailbox this is"                   | Signed in, but `/me` (Graph) or the Gmail profile failed                   | The details carry the API's answer                                                                                                                                                                                                             |
+
+**Large sign-ins.** A personal Microsoft account's tokens are several KB, over Windows Credential Manager's 2,560-byte limit per credential. `services::secrets` splits any value over 1,280 UTF-16 units into `<entry>#1`, `<entry>#2`, … with a header in `<entry>`; the in-memory test store enforces the same limit.
+
 ## Local builds with sign-in
 
 PowerShell, from the repo:

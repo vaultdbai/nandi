@@ -4077,5 +4077,7 @@
   "email.hours_other": "{{count}} hours",
   "home.email.todo": "Connect your email so Chief of Staff can keep your notes.",
   "home.email.another": "You can also connect {{names}}.",
-  "home.email.settings": "Email settings"
+  "home.email.settings": "Email settings",
+  "email.problem.appRegistration": "Nandi's Microsoft app registration is set up for another kind of app, so Microsoft refused the sign-in. Whoever manages it: in Entra, App registrations › Nandi › Authentication, put the http://localhost redirect under \"Mobile and desktop applications\" (not Web or Single-page application) and turn on \"Allow public client flows\".",
+  "email.problem.keychain": "You signed in, but Nandi couldn't save the sign-in to this computer's keychain. Try again; the details below say why."
 }

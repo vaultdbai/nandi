@@ -136,6 +136,12 @@ pub enum SignInProblemKind {
     Network,
     /// The sign-in took too long
     Expired,
+    /// Nandi's app registration is set up for another kind of app (the
+    /// redirect under "Web" or "Single-page application" instead of
+    /// "Mobile and desktop applications"): a fix for whoever runs it
+    AppRegistration,
+    /// Signed in, but the sign-in couldn't be saved to the keychain
+    Keychain,
     Other,
 }
 
@@ -177,8 +183,20 @@ pub fn classify_sign_in_error(error: &str, setup: &ProviderSetup) -> SignInProbl
     ]
     .iter()
     .any(|code| lower.contains(code));
+    let registration = [
+        "aadsts7000218",
+        "aadsts9002327",
+        "aadsts50011",
+        "aadsts700025",
+    ]
+    .iter()
+    .any(|code| lower.contains(code));
     let kind = if admin {
         SignInProblemKind::AdminApproval
+    } else if registration {
+        SignInProblemKind::AppRegistration
+    } else if lower.contains("couldn't save your sign-in") {
+        SignInProblemKind::Keychain
     } else if lower.contains("could not reach") || lower.contains("couldn't reach") {
         SignInProblemKind::Network
     } else if lower.contains("access_denied")
@@ -510,7 +528,13 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
     let identity = Mailbox::new(provider, &setup, state.secrets())
         .identity()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::warn!(
+                "{} signed in, but reading the mailbox owner failed: {e}",
+                provider.name()
+            );
+            format!("Signed in, but Nandi couldn't read whose mailbox this is: {e}")
+        })?;
     // Reconnecting the same mailbox (after a sign-in ended) carries on from
     // its cursor; a new one starts with the window
     let same_mailbox = email_settings(state)

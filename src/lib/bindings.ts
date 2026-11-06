@@ -3284,11 +3284,11 @@ workflowStepStarted: "workflow://step_started"
 
 /** user-defined constants **/
 
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 
 /** user-defined types **/
 
@@ -6438,7 +6438,17 @@ export type SignInProblemKind =
 /**
  * The sign-in took too long
  */
-"expired" | "other"
+"expired" | 
+/**
+ * Nandi's app registration is set up for another kind of app (the
+ * redirect under "Web" or "Single-page application" instead of
+ * "Mobile and desktop applications"): a fix for whoever runs it
+ */
+"appRegistration" | 
+/**
+ * Signed in, but the sign-in couldn't be saved to the keychain
+ */
+"keychain" | "other"
 /**
  * Something an answer cites: a run event, an artifact, a revision, …
  */

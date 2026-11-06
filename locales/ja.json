@@ -4077,5 +4077,7 @@
   "email.hours_other": "{{count}} 時間",
   "home.email.todo": "メールを接続すると、Chief of Staff がノートを最新に保てます。",
   "home.email.another": "{{names}} も接続できます。",
-  "home.email.settings": "メール設定"
+  "home.email.settings": "メール設定",
+  "email.problem.appRegistration": "Nandi の Microsoft アプリ登録が別の種類のアプリ用に設定されているため、Microsoft がサインインを拒否しました。管理者の方へ: Entra の [アプリの登録] › Nandi › [認証] で、http://localhost のリダイレクトを「モバイル アプリケーションとデスクトップ アプリケーション」に置き(Web やシングルページ アプリケーションではなく)、「パブリック クライアント フローを許可する」をオンにしてください。",
+  "email.problem.keychain": "サインインはできましたが、Nandi がこのコンピューターのキーチェーンにサインイン情報を保存できませんでした。もう一度お試しください。理由は下の詳細に表示されます。"
 }

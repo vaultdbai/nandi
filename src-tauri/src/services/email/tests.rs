@@ -880,6 +880,22 @@ fn sign_in_problems_are_explained_calmly() {
         classify_sign_in_error("The sign-in expired. Please start again.", &setup).kind,
         SignInProblemKind::Expired
     );
+    assert_eq!(
+        classify_sign_in_error(
+            "invalid_client: AADSTS7000218: The request body must contain 'client_secret'",
+            &setup
+        )
+        .kind,
+        SignInProblemKind::AppRegistration
+    );
+    assert_eq!(
+        classify_sign_in_error(
+            "Signed in, but couldn't save your sign-in (Couldn't save to Windows Credential Manager: too long)",
+            &setup
+        )
+        .kind,
+        SignInProblemKind::Keychain
+    );
 }
 
 #[tokio::test]
