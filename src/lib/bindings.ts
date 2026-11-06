@@ -2611,7 +2611,8 @@ async listHarnesses() : Promise<Result<HarnessInfo[], string>> {
 }
 },
 /**
- * Whether `image` is built, Docker is running, and how a build is going
+ * Whether `image` is here and current, its download size, and how a
+ * download (or the advanced local build) is going
  */
 async getImageStatus(image: SandboxImage) : Promise<Result<ImageStatus, string>> {
     try {
@@ -2622,7 +2623,8 @@ async getImageStatus(image: SandboxImage) : Promise<Result<ImageStatus, string>>
 }
 },
 /**
- * Builds `image` in the background; progress arrives as `images://build`
+ * The advanced option: builds `image` here in the background; output
+ * arrives as `images://pull`. Nothing requires it
  */
 async buildImage(image: SandboxImage) : Promise<Result<null, string>> {
     try {
@@ -2634,11 +2636,35 @@ async buildImage(image: SandboxImage) : Promise<Result<null, string>> {
 },
 /**
  * Downloads `image` (pinned to this app's sandbox version) in the
- * background; progress arrives as `images://build`
+ * background; progress arrives as `images://pull`
  */
 async pullImage(image: SandboxImage) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("pull_image", { image }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Whether a first-use tool bundle (Claude Code) is installed, and how its
+ * install is going
+ */
+async getToolsStatus(bundle: ToolBundle) : Promise<Result<ToolsStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_tools_status", { bundle }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Gets a first-use tool bundle now (or again, after a failure) in the
+ * background; output arrives as `images://tools`
+ */
+async installTools(bundle: ToolBundle) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("install_tools", { bundle }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -3284,11 +3310,11 @@ workflowStepStarted: "workflow://step_started"
 
 /** user-defined constants **/
 
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 
 /** user-defined types **/
 
@@ -4993,7 +5019,8 @@ executable: string | null;
  */
 configDir: string | null; health: HarnessHealth; isDefault: boolean; defaultModel: string | null; supportedModels: ModelRef[]; detectedAt: number | null; 
 /**
- * The harness image is built, so sessions can run in a container
+ * The harness image is here. When it isn't, the first run downloads
+ * it (nothing is ever built)
  */
 imageAvailable: boolean }
 export type HarnessSessionStatus = "starting" | "running" | "finished" | "failed" | "killed"
@@ -5041,17 +5068,17 @@ branch: string | null;
  */
 onboardingStep?: OnboardingStep | null }
 /**
- * One image: is it there, is Docker running, is a build going, and how
- * the last build went
+ * One image: is it there, is Docker running, is a job going, and how the
+ * last one went
  */
 export type ImageStatus = { tag: string; present: boolean; 
 /**
  * Built for this app's sandbox (`runtime::SANDBOX_VERSION`); an image
- * that's present but not current must be rebuilt before agents use it
+ * that's present but not current is downloaded again before use
  */
 current: boolean; dockerRunning: boolean; 
 /**
- * Building it here
+ * Building it here (the advanced option)
  */
 building: boolean; 
 /**
@@ -5059,15 +5086,23 @@ building: boolean;
  */
 pulling: boolean; 
 /**
+ * How much to download (compressed), when the registry says
+ */
+downloadBytes: number | null; 
+/**
+ * The running download's progress
+ */
+progress: PullProgress | null; 
+/**
  * The app version that built the image here, when it says
  */
 builtBy: string | null; 
 /**
- * The last lines of the current or last build
+ * The last lines of the current or last job
  */
 log: string[]; 
 /**
- * Why the last build failed
+ * Why the last job failed
  */
 error: string | null }
 /**
@@ -5724,6 +5759,14 @@ export type PublisherInfo = { handle: string;
  * `https://github.com/<handle>`
  */
 profileUrl: string; agents: AgentSummary[] }
+/**
+ * How far a download is: bytes received of the image's compressed size
+ */
+export type PullProgress = { doneBytes: number; 
+/**
+ * From the registry before the pull, else the layers seen so far
+ */
+totalBytes: number | null }
 export type PullResult = { pulledCommits: number; 
 /**
  * The merge is left in progress; nothing was auto-resolved
@@ -6360,7 +6403,7 @@ parentRunId: string | null;
 compactionSummary: string | null }
 export type SandboxImage = 
 /**
- * Claude Code, Codex and Gemini CLI
+ * Codex, Gemini CLI, and where Claude Code is installed on first use
  */
 "harness" | 
 /**
@@ -6817,6 +6860,7 @@ export type TestedStatus =
  * Can't drive an agent (no tool use, embeddings, image-only)
  */
 "unsupported"
+export type ToolBundle = "claudeCode"
 export type ToolCallStatus = "running" | "done"
 export type ToolDefinition = { id: string; name: string; description: string; source: ToolSource; inputSchema: JsonValue | null; requiresApproval: boolean; costEstimate: CostSpec | null; latencyClass: LatencyClass; tags: string[] }
 /**
@@ -6840,6 +6884,22 @@ export type ToolSource =
  * Per-tool usage
  */
 export type ToolUsageStats = { toolId: string; calls: number; failures: number; lastUsedAt: number | null }
+/**
+ * A bundle as Settings shows it
+ */
+export type ToolsStatus = { volume: string; 
+/**
+ * Installed and checked: runs use it with no wait
+ */
+ready: boolean; installing: boolean; dockerRunning: boolean; 
+/**
+ * About how much the first use downloads
+ */
+downloadBytes: number; log: string[]; 
+/**
+ * Why the last install failed
+ */
+error: string | null }
 /**
  * The trial's progress on this computer
  */

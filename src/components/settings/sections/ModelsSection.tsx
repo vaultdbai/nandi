@@ -1,7 +1,11 @@
 import { useTranslation } from 'react-i18next'
 import { EnterpriseConfigSection } from '@/components/preferences/EnterpriseConfigSection'
 import { HarnessSessionList } from '@/components/harness/HarnessSessionList'
-import { ImageBuildPanel } from '@/components/harness/ImageBuildPanel'
+import { ClaudeCodeToolsPanel } from '@/components/harness/ClaudeCodeToolsPanel'
+import {
+  SandboxBuildPanel,
+  SandboxImagePanel,
+} from '@/components/harness/SandboxImagePanel'
 import {
   ModelChoiceFields,
   ProviderKeys,
@@ -17,7 +21,9 @@ import { RuntimesPanel } from './RuntimesSection'
  * Settings › Models & runtimes, one page for "what runs my agents":
  * Nandi's own loop (its model and the free tokens), the coding agents
  * that run in the sandbox (Claude Code, Codex, Gemini CLI), then the
- * provider keys both use, and team settings and sessions under Advanced.
+ * provider keys both use, and team settings, sessions and the optional
+ * local build of the sandbox images under Advanced. Nothing here has to be
+ * done first: Nandi downloads what an agent needs on first use.
  */
 export function ModelsSection() {
   const { t } = useTranslation()
@@ -31,14 +37,15 @@ export function ModelsSection() {
         description={t('models.group.nandiDescription')}
       >
         <ModelChoiceFields />
-        <ImageBuildPanel image="runtime" />
+        <SandboxImagePanel image="runtime" />
       </SettingsGroup>
       <div data-settings-focus="runtimes" className="rounded-md">
         <SettingsGroup
           title={t('models.group.agents')}
           description={t('harness.subtitle')}
         >
-          <ImageBuildPanel image="harness" />
+          <SandboxImagePanel image="harness" />
+          <ClaudeCodeToolsPanel />
           <RuntimesPanel />
         </SettingsGroup>
       </div>
@@ -49,6 +56,7 @@ export function ModelsSection() {
         <ProviderKeys />
       </SettingsGroup>
       <AdvancedBlock>
+        <SandboxBuildPanel />
         <EnterpriseConfigSection />
         <HarnessSessionList />
       </AdvancedBlock>

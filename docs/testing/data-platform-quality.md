@@ -724,7 +724,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 
 ### QA-05 — E2E smoke prerequisite script (Windows)
 
-- **What:** Read-only PowerShell check: Docker running, runtime image present (default `ghcr.io/vaultdbai/nandi-runtime:sandbox-5`), state DB schema, DeepSeek key (`nandi.llm.deepseek`) in Windows Credential Manager under `com.nandi.app`; prints pass/fail per item and the count missing. It reads `NANDI_HOME` (else `~/.nandi`) and checks `local/state.db`.
+- **What:** Read-only PowerShell check: Docker running, runtime image present (default `ghcr.io/vaultdbai/nandi-runtime:sandbox-6`), state DB schema, DeepSeek key (`nandi.llm.deepseek`) in Windows Credential Manager under `com.nandi.app`; prints pass/fail per item and the count missing. It reads `NANDI_HOME` (else `~/.nandi`) and checks `local/state.db`.
 - **Where:** `scripts/e2e-smoke.ps1`; `docs/developer/e2e-checklist.md`.
 - **Preconditions:** Windows, Docker.
 - **Steps:** `powershell -ExecutionPolicy Bypass -File scripts/e2e-smoke.ps1`.
@@ -736,7 +736,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 
 ### QA-06 — Test fixtures (`test-fixtures/echo-agent`)
 
-- **What:** A minimal agent (`deepseek:deepseek-flash`, `ghcr.io/vaultdbai/nandi-runtime:sandbox-5`, `allowed-tools: [shell]`) used by the agent-parsing unit tests and by the manual E2E checklist.
+- **What:** A minimal agent (`deepseek:deepseek-flash`, `ghcr.io/vaultdbai/nandi-runtime:sandbox-6`, `allowed-tools: [shell]`) used by the agent-parsing unit tests and by the manual E2E checklist.
 - **Where:** `test-fixtures/echo-agent/skill.md`; included by `src-tauri/src/services/agents.rs` tests (`include_str!`).
 - **Preconditions:** None (DeepSeek key + Docker for manual use).
 - **Steps:** Copy to `HOME/repo/.nandi/agents/echo-agent/skill.md`; `nandi verify --agent echo-agent`.

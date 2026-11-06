@@ -1,19 +1,17 @@
 # Harness Container
 
-Agents with a harness `runtime:` run their CLI in `ghcr.io/vaultdbai/nandi-harness:sandbox-5`
+Agents with a harness `runtime:` run their CLI in `ghcr.io/vaultdbai/nandi-harness:sandbox-6`
 (`runtimes/nandi-harness/`). It is Node plus the pinned harness CLIs, and
-nothing of Nandi's own: no tool server and no Python. The CLI's model writes
-files and runs commands with the CLI's built-in tools, and they execute in
-this container against the agent's workdir.
+nothing of Nandi's own: no tool server. The CLI's model writes files and
+runs commands with the CLI's built-in tools, and they execute in this
+container against the agent's workdir.
 
-Native agents keep using `ghcr.io/vaultdbai/nandi-runtime:sandbox-5` (the MCP tool server). The
+Native agents keep using `ghcr.io/vaultdbai/nandi-runtime:sandbox-6` (the MCP tool server). The
 two images are independent.
 
-## Get the images
+## Get the images (pull only)
 
-**For now only `nandi-runtime` is published.** The harness image bundles Claude Code, and whether its licence allows a public image is still being checked, so `nandi-harness` is built locally (Settings › Models & runtimes › Build here, or the `docker build` below). Its Download button reports that the image isn't available.
-
-The images are published to GitHub's container registry by `.github/workflows/images.yml` (only `nandi-runtime` for now) and pulled by the app (`services/images.rs`):
+Users never build an image. Both images are public on GitHub's container registry, published by `.github/workflows/images.yml`, and the app pulls what an agent needs the first time it needs it (`services/images/`).
 
 | Tag           | When it's pushed                               | Who uses it                      |
 | ------------- | ---------------------------------------------- | -------------------------------- |
@@ -22,31 +20,51 @@ The images are published to GitHub's container registry by `.github/workflows/im
 | `<X.Y.Z>`     | A `v*` tag (the app version)                   | Pinning a release                |
 | `latest`      | A `v*` tag                                     | People, not the app              |
 
-- **Names in one place:** `runtime::DEFAULT_RUNTIME_IMAGE` and `runtime::HARNESS_IMAGE` (`ghcr.io/vaultdbai/<name>:sandbox-<SANDBOX_VERSION>`). Raise `SANDBOX_VERSION` and the Dockerfiles' `LABEL org.nandi.sandbox` together; a test checks they match.
-- **Pull by default:** Settings › Models & runtimes › **Download**, or by itself when a run or connector needs a missing image (`images::start_pull`; a native run waits with `images::pull`).
-- **Build here** stays: the contexts are compiled into the app, and the build tags the same name, so the rest of the app doesn't care which. Offline or without the registry, a failed download says so and points to it.
-- **Labels:** `org.opencontainers.image.source`, `title`, `description`, `licenses` (`Apache-2.0` for `nandi-runtime`; `Apache-2.0 AND LicenseRef-Bundled-CLIs` for `nandi-harness`, whose CLIs keep their own licences), `vendor=VaultDB.ai`, and `org.nandi.built-by` (the app version).
+- **One image service:** `images::ensure(SandboxImage)` is the only way the app gets one of its images: here and labelled for this sandbox, else pull the pinned tag (size and progress on `images://pull`), then check `org.nandi.sandbox` again. `runtime::start_container`, `runtime_router` (harness runs), the harness Test button and the connectors' containers all call it. A new image (say `nandi-connectors`) is a new `SandboxImage` variant (its tag and build context) and nothing else.
+- **Size first:** `images::registry::download_size` reads the image's compressed size for this platform from the registry (an anonymous token from its `WWW-Authenticate` challenge) before the pull, so the UI says "Download now (450 MB)". Offline it's `None`, and the progress counts the layers seen.
+- **Progress:** `images://pull` carries `{ image, build, line, progress: { doneBytes, totalBytes }, finished, error }`, progress at most every 250 ms. Settings › Models & runtimes shows it, and `SandboxProgressToasts` shows one toast per job, whichever view is open.
+- **Failure:** a failed pull says what went wrong and to try again (Try again in the panel and the toast). It never falls back to a build.
+- **Names in one place:** `runtime::DEFAULT_RUNTIME_IMAGE` and `runtime::HARNESS_IMAGE` (`ghcr.io/vaultdbai/<name>:sandbox-<SANDBOX_VERSION>`). Raise `SANDBOX_VERSION` and the Dockerfiles' `LABEL org.nandi.sandbox` together; a test checks they match. Sandbox 6: the harness image lost Claude Code and gained the tools volume below.
+- **Build here (advanced, optional):** Settings › Models & runtimes › Advanced › "Build the sandboxes on this computer". The contexts are compiled into the app, and the build tags the same name, so the rest of the app doesn't care which. Nothing requires it.
+- **Labels:** `org.opencontainers.image.source`, `title`, `description`, `licenses` (`Apache-2.0`; the CLIs in the harness image keep their own Apache-2.0 licences), `vendor=VaultDB.ai`, and `org.nandi.built-by` (the app version).
 - **Platforms:** `linux/amd64` for now. Nandi Cloud (v2) needs arm64 too: add it when a native arm64 runner is available (QEMU makes the harness build slow).
+- **Signing:** neither image is signed yet. Cosign verification and digest pinning are planned in the workspace task `task-x-v1-sandbox-images.md`.
 - A business's own image builds `FROM ghcr.io/vaultdbai/nandi-runtime:sandbox-<N>` and inherits the label.
 
-## Build
+## What's in the harness image
+
+| Package                     | Version | Licence    | ACP command             |
+| --------------------------- | ------- | ---------- | ----------------------- |
+| `@openai/codex`             | 0.163.0 | Apache-2.0 | (driven by `codex-acp`) |
+| `@zed-industries/codex-acp` | 0.16.0  | Apache-2.0 | `codex-acp`             |
+| `@google/gemini-cli`        | 0.64.0  | Apache-2.0 | `gemini --acp`          |
+
+Plus git, ripgrep, Python 3 and uv (for connectors' `uvx` servers). Keep the versions in the Dockerfile and in `services/harness/*.rs` in step.
 
 ```bash
-docker build -t ghcr.io/vaultdbai/nandi-harness:sandbox-5 runtimes/nandi-harness
-docker run --rm ghcr.io/vaultdbai/nandi-harness:sandbox-5 claude --version
-docker run --rm ghcr.io/vaultdbai/nandi-harness:sandbox-5 codex --version
-docker run --rm ghcr.io/vaultdbai/nandi-harness:sandbox-5 gemini --version
+docker build -t ghcr.io/vaultdbai/nandi-harness:sandbox-6 runtimes/nandi-harness
+docker run --rm ghcr.io/vaultdbai/nandi-harness:sandbox-6 codex --version
+docker run --rm ghcr.io/vaultdbai/nandi-harness:sandbox-6 gemini --version
+# No Claude Code in the image:
+docker run --rm ghcr.io/vaultdbai/nandi-harness:sandbox-6 sh -c 'ls /usr/local/lib/node_modules'
 ```
 
-| Package                                 | Version | ACP command                    |
-| --------------------------------------- | ------- | ------------------------------ |
-| `@anthropic-ai/claude-code`             | 2.1.302 | (driven by `claude-agent-acp`) |
-| `@agentclientprotocol/claude-agent-acp` | 0.93.0  | `claude-agent-acp`             |
-| `@openai/codex`                         | 0.163.0 | (driven by `codex-acp`)        |
-| `@zed-industries/codex-acp`             | 0.16.0  | `codex-acp`                    |
-| `@google/gemini-cli`                    | 0.64.0  | `gemini --acp`                 |
+## Claude Code: the tools volume
 
-Keep the versions in the Dockerfile and in `services/harness/*.rs` in step.
+Claude Code is **not** in the image. Anthropic's licence (`SEE LICENSE IN README.md`, its Commercial Terms) doesn't clearly allow redistributing it. The same goes for the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`, same terms), which the Apache-2.0 ACP adapter `@agentclientprotocol/claude-agent-acp` depends on: the SDK ships the Claude Code binary. So the adapter stays out too. The image ships only their lockfile, `runtimes/nandi-harness/claude-code/package-lock.json`, and the user's computer fetches them from npm on first use (`services/images/tools.rs`):
+
+| Step      | What happens                                                                                                                                                                                                                                               |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| First use | A one-off harness container (as `node`, read-only root, `--cap-drop=ALL`, Docker's default network, the host's proxy variables by name) runs `install-tools.sh claude-code`: `npm ci` from the lockfile into the volume `nandi-tools-claude-code-<12 hex>` |
+| Integrity | `npm ci` checks every package against the lockfile's `sha512` hashes. The script then writes the lockfile's sha256 to `.nandi-ready`                                                                                                                       |
+| Check     | Once per app session, a `--network=none` container reads `.nandi-ready` and compares it with the app's embedded lockfile                                                                                                                                   |
+| Runs      | `-v nandi-tools-claude-code-<hex>:/opt/nandi-tools/claude-code:ro` (`Placement::Container.tools`). The image's `PATH` starts with its `node_modules/.bin`. The root filesystem stays read-only                                                             |
+| Update    | A new lockfile is a new volume name (its hash). After an install, the bundle's other volumes (label `org.nandi.tools=claude-code`) are removed; one still in use stays                                                                                     |
+
+- The adapter runs the SDK's bundled Claude Code (`@anthropic-ai/claude-agent-sdk-linux-<arch>`), never a separate `@anthropic-ai/claude-code` package. So the lockfile pins `claude-agent-acp@0.93.0` and, through it, SDK 0.3.300 (Claude Code 2.1.300). The script removes the musl build npm also installs (the image is glibc).
+- `images::tools::ensure` is called by `runtime_router::sandbox_ready` for `runtime: claude-code` (the run waits; progress on `images://tools`), by the harness Test button, and by Settings' **Get it now** / **Try again** (`install_tools`).
+- The user accepts Anthropic's terms when they sign in to Claude Code, as before.
+- To bump: change `ACP_VERSION` in `services/harness/claude_code.rs` and `claude-code/package.json`, then regenerate the lockfile in a container (`npm install --package-lock-only` in `node:22.20.0-bookworm-slim` with the folder mounted). A test checks the three agree and that every entry has an integrity hash.
 
 ## How a session runs
 
@@ -55,7 +73,8 @@ docker run -i --rm --init --name nandi-harness-<tag>-<agent>
   --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512
   --user=1000:1000 --read-only --tmpfs=/tmp:… --tmpfs=/home/node:…
   -w /agent/workdir -v <workdir>:/agent/workdir
-  --network=nandi-agents -e NAME ... ghcr.io/vaultdbai/nandi-harness:sandbox-5 <acp command>
+  [-v nandi-tools-claude-code-<hex>:/opt/nandi-tools/claude-code:ro]
+  --network=nandi-agents -e NAME ... ghcr.io/vaultdbai/nandi-harness:sandbox-6 <acp command>
 ```
 
 - stdin/stdout carry ACP (JSON-RPC, one message per line); stderr is kept
@@ -71,9 +90,9 @@ docker run -i --rm --init --name nandi-harness-<tag>-<agent>
   `sandbox_mode = "danger-full-access"`. The container is the sandbox. The
   file sits in `/opt/nandi`; `entrypoint.sh` copies it into the home tmpfs
   on each start.
-- The image carries `LABEL org.nandi.sandbox`. The app refuses an image
-  below `runtime::SANDBOX_VERSION` and asks for a rebuild (Settings ›
-  Models & runtimes shows "Built for an older Nandi").
+- The image carries `LABEL org.nandi.sandbox`. An image below
+  `runtime::SANDBOX_VERSION` is pulled again before use (Settings › Models
+  & runtimes shows "From an older Nandi").
 - Agents never run on the host: `placement: host` in older files is
   ignored (`runtime_router::plan`) and rewritten to `container` on save.
 

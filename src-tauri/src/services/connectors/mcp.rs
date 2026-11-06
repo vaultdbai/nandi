@@ -258,15 +258,8 @@ impl McpConnector {
         safe: HashSet<String>,
     ) -> Result<Self, String> {
         use crate::services::egress::relay::{self, RelayImage};
-        let image = crate::services::harness::HARNESS_IMAGE;
-        if !crate::runtime::image_present(image).await.unwrap_or(false) {
-            crate::services::images::start_pull(crate::services::images::SandboxImage::Harness);
-            return Err(format!(
-                "Connectors run in the coding agents' sandbox ({image}), which isn't on this \
-                 computer or is from an older Nandi. Download or build it in Settings › Models \
-                 & runtimes; Nandi has started the download."
-            ));
-        }
+        // Pulled when missing (progress on `images://pull`)
+        crate::services::images::ensure(crate::services::images::SandboxImage::Harness).await?;
         relay::ensure_ready(RelayImage::Harness).await?;
         env.extend(
             crate::services::egress::proxy_env(proxy_token)
@@ -613,7 +606,7 @@ pub(crate) mod tests {
             !joined.contains("ghp_secret"),
             "values never in the command line"
         );
-        assert!(joined.ends_with("nandi-harness:sandbox-5 -y @acme/github-mcp"));
+        assert!(joined.ends_with("nandi-harness:sandbox-6 -y @acme/github-mcp"));
         let tag = crate::utils::nandi_config::instance_tag();
         assert_eq!(
             container_name("a.b c"),
@@ -631,7 +624,7 @@ pub(crate) mod tests {
     }
 
     /// A stdio MCP server in its own container on `nandi-agents`: needs
-    /// Docker and `ghcr.io/vaultdbai/nandi-harness:sandbox-5`.
+    /// Docker and `ghcr.io/vaultdbai/nandi-harness:sandbox-6`.
     /// Run with: cargo test connector_container_e2e -- --ignored --nocapture
     #[tokio::test]
     #[ignore]

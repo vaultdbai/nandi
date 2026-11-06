@@ -17,6 +17,8 @@ import type {
   FolderUsers,
   ImageStatus,
   SandboxImage,
+  ToolBundle,
+  ToolsStatus,
   AgentDefinitionInput,
   AgentDelegationSettings,
   AgentDetail,
@@ -653,12 +655,16 @@ export interface NandiClient {
   toggleCompanionWindow(): Promise<Result<null, string>>
   /** Quits the desktop app (the companion's way out) */
   quitNandi(): Promise<void>
-  /** A sandbox image: built, Docker running, a build's progress */
+  /** A sandbox image: here, Docker running, its size, a download's progress */
   getImageStatus(image: SandboxImage): Promise<Result<ImageStatus, string>>
-  /** Builds it in the background (`images://build` events) */
+  /** The advanced option: builds it here (`images://pull` events) */
   buildImage(image: SandboxImage): Promise<Result<null, string>>
-  /** Downloads the pinned image in the background (`images://build` events) */
+  /** Downloads the pinned image in the background (`images://pull` events) */
   pullImage(image: SandboxImage): Promise<Result<null, string>>
+  /** A tool bundle fetched on first use (Claude Code): installed, or how */
+  getToolsStatus(bundle: ToolBundle): Promise<Result<ToolsStatus, string>>
+  /** Gets it now, or again after a failure (`images://tools` events) */
+  installTools(bundle: ToolBundle): Promise<Result<null, string>>
   /** Sizes the companion for `shape` and keeps it in its screen corner */
   placeCompanion(
     shape: 'collapsed' | 'expanded' | 'overlay'

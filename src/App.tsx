@@ -13,6 +13,7 @@ import { MainWindow } from './components/layout/MainWindow'
 import { AppShell } from './components/layout/AppShell'
 import { AuthGate } from './components/layout/AuthGate'
 import { PilotConsentPrompt } from './components/agent-console/PilotConsentPrompt'
+import { SandboxProgressToasts } from './components/harness/SandboxProgressToasts'
 import { ThemeProvider } from './components/ThemeProvider'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useSquareCornersEffect } from './hooks/useSquareCornersEffect'
@@ -84,6 +85,7 @@ function App() {
           <AuthGate>
             <AppShell />
             <PilotConsentPrompt />
+            <SandboxProgressToasts />
           </AuthGate>
         </MainWindow>
       </ThemeProvider>

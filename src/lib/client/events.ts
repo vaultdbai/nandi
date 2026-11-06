@@ -36,6 +36,9 @@ import type {
   MarketplaceUpdateAvailable,
   PilotChanged,
   PilotConsentNeeded,
+  PullProgress,
+  SandboxImage,
+  ToolBundle,
   RelayAgentOffline,
   RelayAgentOnline,
   RelayStatus,
@@ -114,9 +117,24 @@ interface NandiEventMap {
   'connector://changed': ConnectorChanged
   'connectors://changed': ConnectorsChanged
   'email://changed': EmailChanged
-  /** A sandbox image build's output line, or its end (`finished`) */
-  'images://build': {
-    image: 'harness' | 'runtime'
+  /**
+   * Getting a sandbox image: a line of output, the download's progress, or
+   * its end (`finished`). The advanced local build reports here too
+   */
+  'images://pull': {
+    image: SandboxImage
+    /** The advanced local build's output, not a download's */
+    build: boolean
+    line: string | null
+    progress: PullProgress | null
+    finished: boolean | null
+    error: string | null
+  }
+  /** A first-use tool bundle's install (Claude Code): a line, or its end */
+  'images://tools': {
+    bundle: ToolBundle
+    /** About how much it downloads */
+    downloadBytes: number
     line: string | null
     finished: boolean | null
     error: string | null
@@ -273,7 +291,8 @@ export const CORE_EVENT_NAMES = [
   'pilot://consent_needed',
   'connector://changed',
   'connectors://changed',
-  'images://build',
+  'images://pull',
+  'images://tools',
   'relay://status',
   'relay://agent_online',
   'relay://agent_offline',

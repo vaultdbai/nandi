@@ -9,7 +9,7 @@
 # See docs/developer/e2e-checklist.md.
 
 param(
-    [string]$Image = 'ghcr.io/vaultdbai/nandi-runtime:sandbox-5'
+    [string]$Image = 'ghcr.io/vaultdbai/nandi-runtime:sandbox-6'
 )
 
 $ErrorActionPreference = 'Stop'
