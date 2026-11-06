@@ -1693,6 +1693,28 @@ async setNotesAgentsCanWrite(allow: boolean) : Promise<Result<MyNotes, string>> 
 }
 },
 /**
+ * The latest file changes, newest first: who changed what
+ */
+async listRecentChanges() : Promise<Result<LiveChange[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_recent_changes") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Re-reads every definition from disk (the Refresh button, F5)
+ */
+async refreshFromDisk() : Promise<Result<RefreshReport, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("refresh_from_disk") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * The mailboxes, what this build can connect, and when the next check is
  */
 async getEmailStatus() : Promise<Result<EmailStatus, string>> {
@@ -3174,6 +3196,7 @@ delegationTaskCompleted: DelegationTaskCompleted,
 delegationTaskFailed: DelegationTaskFailed,
 delegationTaskStarted: DelegationTaskStarted,
 emailChanged: EmailChanged,
+liveChanged: LiveChange,
 marketplaceError: MarketplaceError,
 marketplaceForked: MarketplaceForked,
 marketplaceInstalled: MarketplaceInstalled,
@@ -3240,6 +3263,7 @@ delegationTaskCompleted: "delegation://task_completed",
 delegationTaskFailed: "delegation://task_failed",
 delegationTaskStarted: "delegation://task_started",
 emailChanged: "email://changed",
+liveChanged: "live://changed",
 marketplaceError: "marketplace://error",
 marketplaceForked: "marketplace://forked",
 marketplaceInstalled: "marketplace://installed",
@@ -3284,10 +3308,10 @@ workflowStepStarted: "workflow://step_started"
 
 /** user-defined constants **/
 
-export const SEAL_REFUSED = "seal_refused" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 
 /** user-defined types **/
@@ -4188,6 +4212,50 @@ export type CapabilitySource =
  */
 "network"
 export type CatalogWorkflow = { id: string; name: string; description: string }
+/**
+ * What kind of thing changed
+ */
+export type ChangeArea = "agent" | "workflow" | "trigger" | "policy" | 
+/**
+ * `.nandi/settings.yaml`
+ */
+"settings" | 
+/**
+ * `.nandi/connectors.yaml`
+ */
+"connectors" | 
+/**
+ * `.nandi/manifest.yaml`
+ */
+"manifest" | 
+/**
+ * `.nandi/installed.yaml`
+ */
+"packs" | 
+/**
+ * `NANDI.md`
+ */
+"profile" | 
+/**
+ * My notes
+ */
+"notes" | 
+/**
+ * An agent's work folder
+ */
+"work"
+/**
+ * Who made a change
+ */
+export type ChangeAuthor = 
+/**
+ * This app, on the user's command
+ */
+{ kind: "you" } | { kind: "agent"; agentId: string; agentName: string } | { kind: "workflow"; workflowId: string; workflowName: string } | 
+/**
+ * An editor, a script, a `git pull`
+ */
+{ kind: "outside" }
 export type ChangeOutcome = "removed" | "narrowed" | "mustAsk" | "onHost"
 /**
  * One entry in a conversation, as rendered by the chat UI.
@@ -4674,6 +4742,7 @@ export type EtaEstimate = { medianSeconds: number; p95Seconds: number;
 sampleCount: number }
 export type FallbackPolicy = "none" | "any_online" | "escalate_to_owner"
 export type FederationConfig = { enabled: boolean; trustedPeers: OwnerRef[] }
+export type FileAction = "created" | "updated" | "deleted"
 /**
  * The status of the run a fire dispatched, agent or workflow run, so a
  * fire reads "Completed" rather than staying "Queued"
@@ -5191,6 +5260,27 @@ endpoint: string | null;
  * The Bedrock model it serves
  */
 model: string | null; containerId: string | null; startedAt: number | null; error: string | null }
+/**
+ * One change, as `live://changed` sends it and the recent list keeps it
+ */
+export type LiveChange = { id: string; area: ChangeArea; 
+/**
+ * The entity, note (`runbooks/etl.md`) or, for work, agent ID;
+ * `None` when the whole area was re-read
+ */
+targetId: string | null; 
+/**
+ * What to call it: the agent's or workflow's name, the file's name
+ */
+label: string; 
+/**
+ * Up to five changed files, relative to their folder
+ */
+paths: string[]; 
+/**
+ * How many files changed in all
+ */
+pathCount: number; action: FileAction; author: ChangeAuthor; at: number }
 export type LlmKeyStatus = { provider: KeyedProvider; configured: boolean }
 /**
  * The result of checking one provider's key
@@ -5828,6 +5918,14 @@ export type RecoveryError =
  * JSON serialization/deserialization error
  */
 { type: "ParseError"; message: string }
+/**
+ * What [`refresh_from_disk`] found
+ */
+export type RefreshReport = { 
+/**
+ * Some definition differed from what the app had
+ */
+changed: boolean }
 /**
  * A configured registry, for the Registries tab.
  */

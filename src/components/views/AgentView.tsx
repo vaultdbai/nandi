@@ -82,7 +82,12 @@ import {
 } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
 import type { AgentInfo } from '@/types/agent'
+import { RefreshButton } from '@/components/live/RefreshButton'
+import { UpdatedBy } from '@/components/live/UpdatedBy'
 import { ViewHeader } from './ViewHeader'
+
+/** "Updated just now by …": its definition, or a file in its work folder */
+const AGENT_CHANGES = ['agent', 'work'] as const
 
 interface AgentViewProps {
   agentId: string
@@ -242,6 +247,12 @@ function AgentPage({
         subtitle={subtitle || t('agentPage.list.noDescription')}
         actions={
           <>
+            <UpdatedBy
+              areas={AGENT_CHANGES}
+              targetId={agent.id}
+              className="hidden md:block"
+            />
+            <RefreshButton />
             {agent.origin.kind === 'local' && (
               <Button
                 size="sm"

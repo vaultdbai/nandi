@@ -24,7 +24,6 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use super::connectors::{self, folders};
-use super::events::{self, NandiEvent};
 use super::AppState;
 use crate::model::Timestamp;
 use crate::utils::nandi_config;
@@ -34,9 +33,6 @@ pub const NOTES_FOLDER_ID: &str = "my-notes";
 
 /// The managed folder, under the Nandi home
 const MANAGED_DIR: &str = "notes";
-
-/// `notes://changed`
-pub const NOTES_CHANGED: &str = "notes://changed";
 
 /// Longest note name, folders included
 const MAX_NAME_CHARS: usize = 120;
@@ -71,17 +67,6 @@ pub struct MyNotes {
     pub agents_can_write: bool,
     /// Sorted by name
     pub notes: Vec<NoteFile>,
-}
-
-/// `notes://changed`: a note was saved or deleted
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct NotesChanged {
-    pub name: String,
-}
-
-impl NandiEvent for NotesChanged {
-    const NAME: &'static str = NOTES_CHANGED;
 }
 
 // -- The folder ---------------------------------------------------------------
@@ -180,6 +165,7 @@ impl NotesFolder {
                 .map_err(|e| format!("Can't create the folder for '{name}': {e}"))?;
         }
         let text = format!("{}\n", content.trim_end());
+        super::live::own_writes::note(&path);
         let temporary = path.with_extension("md.tmp");
         std::fs::write(&temporary, text).map_err(|e| format!("Can't save '{name}': {e}"))?;
         std::fs::rename(&temporary, &path).map_err(|e| {
@@ -191,6 +177,7 @@ impl NotesFolder {
 
     pub fn delete(&self, name: &str) -> Result<(), String> {
         let path = self.path_of(name)?;
+        super::live::own_writes::note(&path);
         std::fs::remove_file(&path).map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => format!("There's no note '{name}'"),
             _ => format!("Can't delete '{name}': {e}"),
@@ -329,9 +316,24 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| format!("Notes task failed: {e}"))?
 }
 
+/// Watches the notes folder (and the agents' work folders) for the live
+/// UI (`services::live`); a no-op when they're watched already
+pub fn watch(state: &AppState, folder: &NotesFolder) {
+    // `~/.nandi/local/work` (`nandi_config::work_dir`), or the test's own
+    let work = state.nandi_dir().join("local").join("work");
+    if let Err(e) = std::fs::create_dir_all(&work) {
+        log::warn!("Can't create {}: {e}", work.display());
+    }
+    state
+        .live()
+        .watch_folders(state, folder.root().to_path_buf(), work);
+}
+
 /// The folder and its notes (creating and sharing the folder on first use)
 pub async fn my_notes(state: &AppState) -> Result<MyNotes, String> {
     let (folder, managed) = self::folder(state).await?;
+    // The folder may have been shared anew since the app started
+    watch(state, &folder);
     // One kind of separator, however the home was given (`D:/x` + `notes`)
     let path = folder
         .root()
@@ -365,18 +367,12 @@ pub async fn save_note(
         let name = name.clone();
         blocking(move || folder.save(&name, &content)).await?
     };
-    events::emit(state.bus(), &NotesChanged { name });
     Ok(saved)
 }
 
 pub async fn delete_note(state: &AppState, name: String) -> Result<(), String> {
     let (folder, _) = self::folder(state).await?;
-    {
-        let name = name.clone();
-        blocking(move || folder.delete(&name)).await?;
-    }
-    events::emit(state.bus(), &NotesChanged { name });
-    Ok(())
+    blocking(move || folder.delete(&name)).await
 }
 
 #[cfg(test)]

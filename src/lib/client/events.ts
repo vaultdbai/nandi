@@ -21,6 +21,7 @@ import type {
   ConnectorChanged,
   ConnectorsChanged,
   EmailChanged,
+  LiveChange,
   DashboardActivity,
   DashboardAttention,
   DelegationTaskCompleted,
@@ -102,6 +103,8 @@ interface NandiEventMap {
   'marketplace://progress': MarketplaceProgress
   'repo://file_changed': RepoFileChanged
   'repo://validation_failed': RepoValidationFailed
+  /** A file the app shows changed on disk, and who changed it */
+  'live://changed': LiveChange
   'pilot://changed': PilotChanged
   /** One line of a pilot's install output, while it installs */
   'pilot://install_output': {
@@ -161,8 +164,6 @@ interface NandiEventMap {
   'gateway://hold_changed': unknown
   /** Work assigned to the owner opened or closed */
   'gateway://assignment_changed': unknown
-  /** A note was saved or deleted (My notes) */
-  'notes://changed': unknown
   'network://member_online': unknown
   'network://member_offline': unknown
   'network://membership_changed': unknown
@@ -268,6 +269,7 @@ export const CORE_EVENT_NAMES = [
   'marketplace://progress',
   'repo://file_changed',
   'repo://validation_failed',
+  'live://changed',
   'pilot://changed',
   'pilot://install_output',
   'pilot://consent_needed',
@@ -302,7 +304,6 @@ export const CORE_EVENT_NAMES = [
   'gateway://rate_limited',
   'gateway://hold_changed',
   'gateway://assignment_changed',
-  'notes://changed',
   'network://member_online',
   'network://member_offline',
   'network://membership_changed',

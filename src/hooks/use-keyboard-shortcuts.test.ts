@@ -9,6 +9,9 @@ const { executeCommand, isFullscreen } = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/commands/registry', () => ({ executeCommand }))
+vi.mock('@/lib/commands/live-commands', () => ({
+  REFRESH_COMMAND: 'refresh-from-disk',
+}))
 vi.mock('@/lib/client', () => ({ isDesktop: () => true }))
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({ isFullscreen }),
@@ -34,6 +37,17 @@ describe('useKeyboardShortcuts window keys', () => {
     fireEvent.keyDown(document, { key, metaKey: true })
     expect(executeCommand).toHaveBeenCalledTimes(2)
     expect(executeCommand).toHaveBeenCalledWith(commandId, context)
+  })
+
+  it('F5 and Cmd/Ctrl+R refresh from disk instead of reloading', () => {
+    renderHook(() => useKeyboardShortcuts(context))
+    const f5 = new KeyboardEvent('keydown', { key: 'F5', cancelable: true })
+    document.dispatchEvent(f5)
+    fireEvent.keyDown(document, { key: 'r', ctrlKey: true })
+    fireEvent.keyDown(document, { key: 'R', metaKey: true, shiftKey: true })
+    expect(f5.defaultPrevented).toBe(true)
+    expect(executeCommand).toHaveBeenCalledTimes(3)
+    expect(executeCommand).toHaveBeenCalledWith('refresh-from-disk', context)
   })
 
   it('leaves Cmd/Ctrl+Shift+W alone', () => {

@@ -809,7 +809,7 @@ impl RepoStore {
 
     /// Writes the editor's input to agent `id`'s files (creating the agent
     /// if it has no folder), then commits: the aggregate and projection
-    /// update and `repo://agent-updated` (or `.created`) is published.
+    /// update and `repo://agent-updated` (or `-created`) is published.
     ///
     /// The domain validates before anything is written. If the write or
     /// the commit fails, the previous files are written back, so a failed

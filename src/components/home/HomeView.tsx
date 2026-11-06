@@ -9,6 +9,7 @@ import {
 import { isFreshDashboard } from '@/components/dashboard/dashboard-model'
 import { Inbox } from '@/components/inbox/Inbox'
 import { LlmKeyNotice } from '@/components/layout/LlmKeyNotice'
+import { RecentChanges } from '@/components/live/RecentChanges'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -135,6 +136,7 @@ export function HomeView({
                   ))
                 )}
               </Section>
+              <RecentChanges />
             </>
           )}
         </div>

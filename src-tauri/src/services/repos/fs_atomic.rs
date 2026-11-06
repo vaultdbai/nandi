@@ -23,6 +23,7 @@ pub fn write_if_changed(path: &Path, contents: &[u8]) -> std::io::Result<bool> {
 }
 
 pub fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    crate::services::live::own_writes::note(path);
     let dir = path.parent().unwrap_or(Path::new("."));
     fs::create_dir_all(dir)?;
     let name = path
@@ -48,6 +49,7 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> std::io::Result<()> {
 
 /// Removes a file; a missing file is fine. Returns whether it existed.
 pub fn remove_if_exists(path: &Path) -> std::io::Result<bool> {
+    crate::services::live::own_writes::note(path);
     match fs::remove_file(path) {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -57,6 +59,7 @@ pub fn remove_if_exists(path: &Path) -> std::io::Result<bool> {
 
 /// Moves a folder to `<trash_dir>/<name>-<ms>` and returns where it went.
 pub fn move_to_trash(dir: &Path, trash_dir: &Path) -> std::io::Result<PathBuf> {
+    crate::services::live::own_writes::note(dir);
     fs::create_dir_all(trash_dir)?;
     let name = dir
         .file_name()

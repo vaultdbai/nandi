@@ -1,10 +1,9 @@
 /**
  * My notes: the folder Chief of Staff keeps for the user (`services::notes`).
- * Saves from the page emit `notes://changed`; Chief of Staff writes through
- * the filesystem connector, which doesn't, so the list also refreshes when
- * an agent's turn ends and every 15 s while the page is open.
+ * The core watches the folder, so a note saved here, written by an agent or
+ * edited in another editor arrives as `live://changed`, which refetches
+ * exactly that note and the list (`lib/live-changes.ts`).
  */
-import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import { unwrapResult } from '@/lib/tauri-bindings'
@@ -15,33 +14,10 @@ export const notesKeys = {
   note: (name: string) => ['notes', 'note', name] as const,
 }
 
-const NOTES_EVENTS = new Set([
-  'notes://changed',
-  'agent://turn_done',
-  'nandi://resync',
-])
-
-const REFRESH_MS = 15_000
-
-/** Refreshes every notes query when a note may have changed */
-function useNotesEvents() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const subscription = client.subscribe(event => {
-      if (NOTES_EVENTS.has(event.event)) {
-        void queryClient.invalidateQueries({ queryKey: notesKeys.all })
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [queryClient])
-}
-
 export function useMyNotes() {
-  useNotesEvents()
   return useQuery({
     queryKey: notesKeys.list,
     queryFn: async () => unwrapResult(await client.getMyNotes()),
-    refetchInterval: REFRESH_MS,
   })
 }
 
@@ -50,7 +26,6 @@ export function useNote(name: string | null) {
     queryKey: notesKeys.note(name ?? ''),
     queryFn: async () => unwrapResult(await client.readNote(name ?? '')),
     enabled: name !== null,
-    refetchInterval: REFRESH_MS,
   })
 }
 

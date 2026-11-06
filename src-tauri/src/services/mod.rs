@@ -54,6 +54,7 @@ pub mod gateway;
 pub mod harness;
 pub mod history;
 pub mod images;
+pub mod live;
 pub mod llm_keys;
 pub mod llm_trial;
 pub mod marketplace;
@@ -188,6 +189,8 @@ struct Inner {
     store: RepoStore,
     /// Applies edits to the repo files as they happen
     watcher: std::sync::Mutex<Option<watcher::RepoWatcher>>,
+    /// Who changed which file, and the notes and work folder watcher
+    live: live::LiveService,
     marketplace: marketplace::Marketplace,
     /// Host-side OS-control MCP servers
     pilots: Option<Arc<PilotRegistry>>,
@@ -328,8 +331,9 @@ impl AppState {
             let Some(state) = weak.upgrade() else {
                 return;
             };
-            if let Err(e) = notes::folder(&state).await {
-                log::warn!("The notes folder isn't ready: {e}");
+            match notes::folder(&state).await {
+                Ok((folder, _)) => notes::watch(&state, &folder),
+                Err(e) => log::warn!("The notes folder isn't ready: {e}"),
             }
         });
         // Local asks in progress pick up where they were (task 14)
@@ -381,6 +385,8 @@ impl AppState {
         sinks.push(Arc::new(broadcast.clone()));
         let bus = EventBus::new(db.clone(), Arc::new(FanoutSink::new(sinks)));
         store.subscribe(Arc::new(bus.clone()));
+        let feed = live::ChangeFeed::new(bus.clone());
+        live::StoreChanges::subscribe(&feed, &store);
         let proxy_tokens = ProxyTokens::default();
         let egress = Arc::new(EgressState::new(config.secrets.clone()));
         let runtimes =
@@ -445,6 +451,7 @@ impl AppState {
             triggers,
             store,
             watcher: std::sync::Mutex::new(None),
+            live: live::LiveService::new(feed),
             marketplace,
             pilots: Some(pilots),
             connectors: Some(connectors),
@@ -922,7 +929,12 @@ impl AppState {
     pub fn watch_repo(&self) {
         let mut slot = self.0.watcher.lock().unwrap_or_else(|e| e.into_inner());
         *slot = None;
-        match watcher::spawn(self.store().clone(), self.bus().clone(), self.runtime()) {
+        match watcher::spawn(
+            self.store().clone(),
+            self.bus().clone(),
+            self.live().feed().clone(),
+            self.runtime(),
+        ) {
             Ok(watcher) => *slot = Some(watcher),
             Err(e) => {
                 self.store().set_watching(false);
@@ -931,8 +943,14 @@ impl AppState {
         }
     }
 
+    /// Recent file changes and the notes and work folder watcher
+    pub fn live(&self) -> &live::LiveService {
+        &self.0.live
+    }
+
     /// Stops every orchestrator. Persisted runs resume on next launch.
     pub fn shutdown(&self) {
+        self.live().stop();
         if let Some(watcher) = self
             .0
             .watcher

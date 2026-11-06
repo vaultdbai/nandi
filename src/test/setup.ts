@@ -144,6 +144,9 @@ vi.mock('@/lib/tauri-bindings', () => {
         agentsCanWrite: true,
         notes: [],
       }),
+      // Home lists the recent file changes
+      listRecentChanges: ok([]),
+      refreshFromDisk: ok({ changed: false }),
       dismissWork: ok(null),
       cancelTurn: ok(null),
       getAgentQueue: ok([]),

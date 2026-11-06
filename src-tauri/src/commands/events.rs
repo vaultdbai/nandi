@@ -13,6 +13,7 @@ use crate::services::config::repo_config::RepoLlmConfigStatus;
 use crate::services::connectors::{ConnectorChanged, ConnectorsChanged};
 use crate::services::email::EmailChanged;
 use crate::services::events::*;
+use crate::services::live::LiveChange;
 use crate::services::marketplace::events::*;
 use crate::services::orchestrator::compaction::AgentRunCompacted;
 use crate::services::orchestrator::middleware::AgentTurnAborted;
@@ -125,6 +126,8 @@ tauri_events!(
     RepoLlmConfigStatus,
     // Task 14
     RequestUpdated,
+    // Live UI
+    LiveChange,
 );
 
 #[cfg(test)]

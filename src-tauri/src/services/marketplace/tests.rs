@@ -582,6 +582,7 @@ async fn the_watcher_picks_up_a_manually_cloned_agent_folder() {
     let _watcher = crate::services::watcher::spawn(
         state.store().clone(),
         state.bus().clone(),
+        state.live().feed().clone(),
         state.runtime(),
     )
     .unwrap();

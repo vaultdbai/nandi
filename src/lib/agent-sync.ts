@@ -17,6 +17,7 @@ import { runsQueryKeys } from '@/hooks/useRuns'
 import { sharedQueryKeys } from '@/hooks/useSharedAgents'
 import i18n from '@/i18n/config'
 import { logger } from '@/lib/logger'
+import { applyLiveChange, FILE_BACKED_KEYS } from '@/lib/live-changes'
 import { notify } from '@/lib/notifications'
 import { queryClient } from '@/lib/query-client'
 import { toastError } from '@/lib/toast-error'
@@ -368,6 +369,10 @@ export function handleNandiEvent(event: NandiEvent) {
     case 'repo://validation_failed':
       logger.warn('Repo file failed validation', event.payload)
       return
+    case 'live://changed':
+      // A file the app shows changed on disk, whoever changed it
+      applyLiveChange(event.payload)
+      return
     case 'pilot://changed':
       queryClient.setQueryData(
         ['pilotStatus', event.payload.pilotId],
@@ -541,6 +546,10 @@ async function resyncAll() {
   void queryClient.invalidateQueries({ queryKey: ['connectorStatus'] })
   // Wave 2A: the network views (relay, teams, delegation, capabilities)
   // and the shared views that cut across them
+  // My notes, settings, packs, NANDI.md and the recent changes
+  for (const queryKey of FILE_BACKED_KEYS) {
+    void queryClient.invalidateQueries({ queryKey })
+  }
   void queryClient.invalidateQueries({ queryKey: ['relay'] })
   void queryClient.invalidateQueries({ queryKey: ['teams'] })
   void queryClient.invalidateQueries({ queryKey: ['delegation'] })

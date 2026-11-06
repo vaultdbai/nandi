@@ -23,6 +23,16 @@
 //! `repo://file_changed`. Ignored: `.git/`, hidden and editor temp files
 //! (`.*.swp`, `*.tmp`, `*~`), the app's own atomic-write temp files, and
 //! workflow run artifacts (`runs/`).
+//!
+//! Every change also goes to the change feed (`services::live`): entities
+//! through the store, policies from here, and two files outside the store
+//! from here only: `installed.yaml` (the installed packs) and the repo
+//! root's `NANDI.md` (the user's profile).
+//!
+//! When the OS may have dropped events (it set the rescan flag, the
+//! watcher reported an error, or more than [`BURST_LIMIT`] paths changed
+//! in one batch, which is when a Windows change buffer overflows without
+//! saying so) the whole repo is re-scanned and the log says why.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
@@ -36,16 +46,102 @@ use tokio::time::Instant;
 
 use crate::services::domain::{ChangedBy, EntityKind};
 use crate::services::events::{self, EventBus, RepoFileChanged, RepoValidationFailed};
+use crate::services::gateway::manifest::MANIFEST_FILE as PROFILE_FILE;
+use crate::services::live::{ChangeArea, ChangeFeed};
 use crate::services::policies::{self, PolicyFile};
 use crate::services::repo_store::{Reload, RepoStore};
 use crate::services::repos::fs_atomic::TEMP_MARKER;
-use crate::services::repos::layout::{MARKETPLACE_DIR, OVERRIDES_DIR, PACKS_DIR};
+use crate::services::repos::layout::{INSTALLED_FILE, MARKETPLACE_DIR, OVERRIDES_DIR, PACKS_DIR};
 use crate::services::repos::RepoLayout;
 
 /// Quiet time before a batch of changes is applied
 pub const DEBOUNCE: Duration = Duration::from_millis(500);
 /// A steady stream of changes is still applied this often
 const MAX_DELAY: Duration = Duration::from_secs(2);
+/// More changed paths than this in one batch: the OS may have dropped
+/// some (a Windows change buffer overflows silently), so re-scan
+pub const BURST_LIMIT: usize = 512;
+
+/// What a notify callback hands the batching loop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Signal {
+    /// A path changed; `created` when the OS said it was created
+    Path { path: PathBuf, created: bool },
+    /// Events may have been lost: re-scan (the reason goes in the log)
+    Rescan(String),
+}
+
+/// The signals one notify callback result carries
+pub fn signals(result: notify::Result<notify::Event>) -> Vec<Signal> {
+    match result {
+        Ok(event) if event.need_rescan() => {
+            vec![Signal::Rescan("the OS dropped file events".to_string())]
+        }
+        Ok(event) if event.kind.is_access() => Vec::new(),
+        Ok(event) => {
+            let created = event.kind.is_create();
+            event
+                .paths
+                .into_iter()
+                .map(|path| Signal::Path { path, created })
+                .collect()
+        }
+        Err(e) => vec![Signal::Rescan(format!("the file watcher failed: {e}"))],
+    }
+}
+
+/// Signals that arrived close together (see [`next_batch`])
+#[derive(Debug, Default)]
+pub struct Batch {
+    /// Each changed path, and whether the OS said it was created
+    pub paths: HashMap<PathBuf, bool>,
+    /// Why to re-scan, when events may have been lost
+    pub rescan: Option<String>,
+}
+
+impl Batch {
+    pub fn add(&mut self, signal: Signal) {
+        match signal {
+            Signal::Path { path, created } => {
+                *self.paths.entry(path).or_default() |= created;
+            }
+            Signal::Rescan(why) => self.rescan = Some(why),
+        }
+        if self.rescan.is_none() && self.paths.len() > BURST_LIMIT {
+            self.rescan = Some(format!("more than {BURST_LIMIT} files changed at once"));
+        }
+    }
+}
+
+/// Waits for the next batch: from the first signal until the files have
+/// been quiet for [`DEBOUNCE`] (at most [`MAX_DELAY`]). `None` once the
+/// watcher is gone.
+pub async fn next_batch(rx: &mut mpsc::UnboundedReceiver<Signal>) -> Option<Batch> {
+    let mut batch = Batch::default();
+    batch.add(rx.recv().await?);
+    let started = Instant::now();
+    loop {
+        let quiet = tokio::time::sleep(DEBOUNCE);
+        let deadline = tokio::time::sleep_until(started + MAX_DELAY);
+        tokio::select! {
+            next = rx.recv() => match next {
+                Some(signal) => batch.add(signal),
+                None => return Some(batch),
+            },
+            _ = quiet => return Some(batch),
+            _ = deadline => return Some(batch),
+        }
+    }
+}
+
+/// A notify watcher that sends what each callback carries to `tx`
+pub fn notify_watcher(tx: mpsc::UnboundedSender<Signal>) -> notify::Result<RecommendedWatcher> {
+    notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
+        for signal in signals(result) {
+            let _ = tx.send(signal);
+        }
+    })
+}
 
 /// What a changed path means.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -61,6 +157,10 @@ pub enum Target {
     /// a checkout): check every policy in it. On Linux a file written into
     /// a new folder can arrive before the folder is watched
     Policies,
+    /// `.nandi/installed.yaml`: the installed packs (reported only)
+    Packs,
+    /// The repo root's `NANDI.md` (reported only; the gateway reads it)
+    Profile,
 }
 
 /// Takes changed capability paths (wave A); see `set_capability_handler`
@@ -113,6 +213,8 @@ enum Area {
 pub struct Classifier {
     /// Most specific first; each folder also under its canonical path
     areas: Vec<(PathBuf, Area)>,
+    /// Single files (`installed.yaml`, `NANDI.md`), also canonical
+    files: Vec<(PathBuf, Target)>,
 }
 
 impl Classifier {
@@ -135,10 +237,25 @@ impl Classifier {
                 }
             }
         }
-        Self { areas }
+        let mut files = Vec::new();
+        for (dir, name, target) in [
+            (&layout.meta_dir, INSTALLED_FILE, Target::Packs),
+            (&layout.root, PROFILE_FILE, Target::Profile),
+        ] {
+            files.push((dir.join(name), target.clone()));
+            if let Ok(canonical) = dir.canonicalize() {
+                if canonical != *dir {
+                    files.push((canonical.join(name), target));
+                }
+            }
+        }
+        Self { areas, files }
     }
 
     pub fn classify(&self, path: &Path) -> Option<Target> {
+        if let Some((_, target)) = self.files.iter().find(|(file, _)| file == path) {
+            return Some(target.clone());
+        }
         for (base, area) in &self.areas {
             let Ok(relative) = path.strip_prefix(base) else {
                 continue;
@@ -243,7 +360,7 @@ fn yaml_stem(name: &str) -> Option<String> {
 }
 
 /// Paths the watcher never acts on.
-fn ignored(part: &str) -> bool {
+pub(crate) fn ignored(part: &str) -> bool {
     part == ".git"
         || part == "runs"
         || part.contains(TEMP_MARKER)
@@ -258,24 +375,16 @@ fn ignored(part: &str) -> bool {
 pub fn spawn(
     store: RepoStore,
     bus: EventBus,
+    feed: ChangeFeed,
     runtime: &tokio::runtime::Handle,
 ) -> Result<RepoWatcher, String> {
     let layout = store.layout().clone();
     if !layout.root.is_dir() {
         return Err(format!("{} doesn't exist yet", layout.root.display()));
     }
-    let (tx, mut rx) = mpsc::unbounded_channel::<PathBuf>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<Signal>();
     let mut watcher =
-        notify::recommended_watcher(move |result: notify::Result<notify::Event>| match result {
-            Ok(event) if !event.kind.is_access() => {
-                for path in event.paths {
-                    let _ = tx.send(path);
-                }
-            }
-            Ok(_) => {}
-            Err(e) => log::warn!("Repo watcher error: {e}"),
-        })
-        .map_err(|e| format!("Couldn't create the repo watcher: {e}"))?;
+        notify_watcher(tx).map_err(|e| format!("Couldn't create the repo watcher: {e}"))?;
     watcher
         .watch(&layout.root, RecursiveMode::Recursive)
         .map_err(|e| format!("Couldn't watch {}: {e}", layout.root.display()))?;
@@ -285,46 +394,77 @@ pub fn spawn(
 
     let watched = store.clone();
     let task = runtime.spawn(async move {
-        loop {
-            // Wait for the first change of a batch
-            let Some(first) = rx.recv().await else { return };
-            let mut batch: HashSet<Target> = classifier.classify(&first).into_iter().collect();
-            let started = Instant::now();
-            loop {
-                let quiet = tokio::time::sleep(DEBOUNCE);
-                let deadline = tokio::time::sleep_until(started + MAX_DELAY);
-                tokio::select! {
-                    next = rx.recv() => match next {
-                        Some(path) => batch.extend(classifier.classify(&path)),
-                        None => return,
-                    },
-                    _ = quiet => break,
-                    _ = deadline => break,
-                }
+        while let Some(batch) = next_batch(&mut rx).await {
+            let targets = targets_of(&classifier, &batch, watched.layout());
+            if let Some(why) = &batch.rescan {
+                log::warn!("Re-scanning {}: {why}", watched.layout().root.display());
             }
-            let capabilities: Vec<PathBuf> = batch
-                .iter()
-                .filter_map(|t| match t {
-                    Target::Capability(path) => Some(path.clone()),
-                    _ => None,
-                })
-                .collect();
-            batch.retain(|t| !matches!(t, Target::Capability(_)));
-            if !capabilities.is_empty() {
-                match capability_handler(&watched.layout().root) {
-                    Some(handler) => handler(capabilities),
-                    None => log::debug!("Capability files changed; no capability service"),
-                }
-            }
-            if !batch.is_empty() {
-                apply(&watched, &bus, batch).await;
-            }
+            dispatch(&watched, &bus, &feed, targets).await;
         }
     });
     Ok(RepoWatcher {
         _watcher: watcher,
         task: task.abort_handle(),
     })
+}
+
+/// What a batch means. A batch that may have lost events means
+/// everything: every entity, policy and capability file.
+fn targets_of(classifier: &Classifier, batch: &Batch, layout: &RepoLayout) -> HashSet<Target> {
+    let mut targets: HashSet<Target> = batch
+        .paths
+        .keys()
+        .filter_map(|path| classifier.classify(path))
+        .collect();
+    if batch.rescan.is_some() {
+        targets.extend([
+            Target::Everything,
+            Target::Policies,
+            Target::Packs,
+            Target::Profile,
+            Target::Capability(layout.capabilities_dir()),
+        ]);
+    }
+    targets
+}
+
+/// Hands each target to whoever owns it
+async fn dispatch(
+    store: &RepoStore,
+    bus: &EventBus,
+    feed: &ChangeFeed,
+    mut targets: HashSet<Target>,
+) {
+    let capabilities: Vec<PathBuf> = targets
+        .iter()
+        .filter_map(|t| match t {
+            Target::Capability(path) => Some(path.clone()),
+            _ => None,
+        })
+        .collect();
+    targets.retain(|t| !matches!(t, Target::Capability(_)));
+    if !capabilities.is_empty() {
+        match capability_handler(&store.layout().root) {
+            Some(handler) => handler(capabilities),
+            None => log::debug!("Capability files changed; no capability service"),
+        }
+    }
+    let layout = store.layout();
+    for (target, area, path) in [
+        (Target::Packs, ChangeArea::Packs, layout.installed_path()),
+        (
+            Target::Profile,
+            ChangeArea::Profile,
+            layout.root.join(PROFILE_FILE),
+        ),
+    ] {
+        if targets.remove(&target) {
+            feed.file_changed(area, None, &path);
+        }
+    }
+    if !targets.is_empty() {
+        apply(store, bus, feed, targets).await;
+    }
 }
 
 /// One changed file, as `repo://file_changed` reports it
@@ -340,7 +480,7 @@ struct FileChange {
 
 /// Reloads every entity in a batch (or re-scans everything) and checks
 /// every changed policy.
-async fn apply(store: &RepoStore, bus: &EventBus, batch: HashSet<Target>) {
+async fn apply(store: &RepoStore, bus: &EventBus, feed: &ChangeFeed, batch: HashSet<Target>) {
     let store = store.clone();
     let changes = tokio::task::spawn_blocking(move || {
         let mut policies = Vec::new();
@@ -371,6 +511,9 @@ async fn apply(store: &RepoStore, bus: &EventBus, batch: HashSet<Target>) {
             change.id,
             change.result
         );
+        if change.kind == "policy" && change.result == "changed" {
+            feed.file_changed(ChangeArea::Policy, Some(change.id.clone()), &change.path);
+        }
         let source_path = change.path.display().to_string();
         let changed_by = ChangedBy::Watcher.as_str().to_string();
         if let Some(error) = change.error {
@@ -591,7 +734,11 @@ mod tests {
         assert_eq!(c.classify(&p("packs/research/README.md")), None);
         assert_eq!(c.classify(&p("packs/research/.nandi/manifest.yaml")), None);
         assert_eq!(c.classify(&p(".arxiv.nandi-tmp-1/skill.md")), None);
-        assert_eq!(c.classify(Path::new("/r/.nandi/installed.yaml")), None);
+        // Reported to the change feed, not reloaded
+        assert_eq!(
+            c.classify(Path::new("/r/.nandi/installed.yaml")),
+            Some(Target::Packs)
+        );
     }
 
     #[test]
@@ -614,17 +761,69 @@ mod tests {
         }
     }
 
-    // Up to 20 s: file events arrive late on a slow CI runner. A passing
-    // check returns at once
-    async fn wait_until(what: &str, mut check: impl FnMut() -> bool) {
-        for _ in 0..400 {
-            if check() {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        panic!("timed out waiting for {what}");
+    #[test]
+    fn classifies_the_profile_and_installed_packs() {
+        let layout = RepoLayout::new("/r", "/trash");
+        let c = Classifier::new(&layout);
+        assert_eq!(c.classify(Path::new("/r/NANDI.md")), Some(Target::Profile));
+        assert_eq!(
+            c.classify(Path::new("/r/.nandi/installed.yaml")),
+            Some(Target::Packs)
+        );
+        assert_eq!(c.classify(Path::new("/r/.nandi/NANDI.md")), None);
+        assert_eq!(c.classify(Path::new("/r/docs/NANDI.md")), None);
     }
+
+    #[test]
+    fn events_the_os_may_have_dropped_rescan_everything() {
+        use notify::event::{AccessKind, CreateKind, EventKind, Flag};
+        let path = PathBuf::from("/r/.nandi/agents/writer/skill.md");
+        let event = |kind| notify::Event::new(kind).add_path(path.clone());
+        assert_eq!(
+            signals(Ok(event(EventKind::Create(CreateKind::File)))),
+            [Signal::Path {
+                path: path.clone(),
+                created: true
+            }]
+        );
+        assert!(signals(Ok(event(EventKind::Access(AccessKind::Read)))).is_empty());
+        let dropped = notify::Event::new(EventKind::Other).set_flag(Flag::Rescan);
+        assert!(matches!(
+            signals(Ok(dropped)).as_slice(),
+            [Signal::Rescan(_)]
+        ));
+        let failed = notify::Error::generic("buffer overflow");
+        assert!(matches!(
+            signals(Err(failed)).as_slice(),
+            [Signal::Rescan(_)]
+        ));
+
+        // Too many paths at once counts as dropped too
+        let mut burst = Batch::default();
+        for n in 0..=BURST_LIMIT {
+            burst.add(Signal::Path {
+                path: PathBuf::from(format!("/r/.nandi/agents/a{n}/skill.md")),
+                created: false,
+            });
+        }
+        assert!(burst.rescan.is_some());
+
+        let layout = RepoLayout::new("/r", "/trash");
+        let mut batch = Batch::default();
+        batch.add(Signal::Rescan("the OS dropped file events".into()));
+        let targets = targets_of(&Classifier::new(&layout), &batch, &layout);
+        for target in [
+            Target::Everything,
+            Target::Policies,
+            Target::Packs,
+            Target::Profile,
+            Target::Capability(layout.capabilities_dir()),
+        ] {
+            assert!(targets.contains(&target), "{target:?}");
+        }
+    }
+
+    use crate::services::live::testing::wait_until;
 
     fn projected_name(state: &AppState, id: &str) -> Option<String> {
         use rusqlite::OptionalExtension;
@@ -642,7 +841,13 @@ mod tests {
         fs::create_dir_all(&layout.agents_dir).unwrap();
         fs::create_dir_all(&layout.root).unwrap();
         state.store().load().unwrap();
-        let _watcher = spawn(state.store().clone(), state.bus().clone(), state.runtime()).unwrap();
+        let _watcher = spawn(
+            state.store().clone(),
+            state.bus().clone(),
+            state.live().feed().clone(),
+            state.runtime(),
+        )
+        .unwrap();
         let skill = layout.skill_path("writer");
 
         // A new agent written by an editor
@@ -717,7 +922,13 @@ Write.",
         )
         .unwrap();
         state.store().load().unwrap();
-        let _watcher = spawn(state.store().clone(), state.bus().clone(), state.runtime()).unwrap();
+        let _watcher = spawn(
+            state.store().clone(),
+            state.bus().clone(),
+            state.live().feed().clone(),
+            state.runtime(),
+        )
+        .unwrap();
         let policy = layout.policy_path("no-shell");
         fs::create_dir_all(policy.parent().unwrap()).unwrap();
 

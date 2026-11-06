@@ -116,8 +116,10 @@ import type {
   GatewayManifest,
   GatewayStatus,
   GatewayAssignment,
+  LiveChange,
   MyNotes,
   NoteFile,
+  RefreshReport,
   GatewayHold,
   GatewayUsage,
   IdentityStatus,
@@ -823,6 +825,11 @@ export interface NandiClient {
   deleteNote(name: string): Promise<Result<null, string>>
   /** Lets agents update the notes (without asking each time), or not */
   setNotesAgentsCanWrite(allow: boolean): Promise<Result<MyNotes, string>>
+  // Live UI (`services::live`)
+  /** The latest file changes, newest first: who changed what */
+  listRecentChanges(): Promise<Result<LiveChange[], string>>
+  /** Re-reads every definition from disk (the Refresh button, F5) */
+  refreshFromDisk(): Promise<Result<RefreshReport, string>>
   // Email (the Chief of Staff reads it to keep My notes)
   /** Mailboxes, what this build can connect, and the next check */
   getEmailStatus(): Promise<Result<EmailStatus, string>>

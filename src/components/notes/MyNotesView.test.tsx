@@ -80,6 +80,33 @@ describe('My notes', () => {
     )
   })
 
+  it('says who changed the open note', async () => {
+    Object.assign(commands, {
+      listRecentChanges: ok([
+        {
+          id: 'c1',
+          area: 'notes',
+          targetId: 'deadlines.md',
+          label: 'deadlines.md',
+          paths: ['deadlines.md'],
+          pathCount: 1,
+          action: 'updated',
+          author: {
+            kind: 'agent',
+            agentId: 'chief-of-staff',
+            agentName: 'Chief of Staff',
+          },
+          at: Date.now(),
+        },
+      ]),
+    })
+    render(<MyNotesView />)
+    expect(
+      await screen.findByText('Updated just now by Chief of Staff')
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument()
+  })
+
   it('offers Chief of Staff when there are no notes', async () => {
     Object.assign(commands, {
       getMyNotes: ok({ ...mine(), notes: [] }),

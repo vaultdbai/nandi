@@ -29,6 +29,7 @@ mod harness_sessions;
 mod harnesses;
 mod identity;
 mod images;
+mod live;
 mod manual_steps;
 mod marketplace;
 mod marketplace_search;
@@ -108,6 +109,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(gateway::api())
                 .merge(network::api())
                 .merge(notes::api())
+                .merge(live::api())
                 .merge(email::api())
                 .merge(teams_roster::api())
                 // Wave A

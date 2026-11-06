@@ -1572,8 +1572,13 @@ required_tools: [shell]
         let layout = state.store().layout().clone();
         std::fs::create_dir_all(layout.capabilities_dir()).unwrap();
         state.store().load().unwrap();
-        let _watcher =
-            watcher::spawn(state.store().clone(), state.bus().clone(), state.runtime()).unwrap();
+        let _watcher = watcher::spawn(
+            state.store().clone(),
+            state.bus().clone(),
+            state.live().feed().clone(),
+            state.runtime(),
+        )
+        .unwrap();
         std::fs::write(layout.capability_path("test-cap"), TEST_CAP).unwrap();
         let service = state.capabilities().unwrap().clone();
         wait_until("the projected capability", || {
