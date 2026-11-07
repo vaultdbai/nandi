@@ -1089,6 +1089,73 @@ async setConnectorSecret(id: string, key: string, value: string) : Promise<Resul
 }
 },
 /**
+ * Connectors in the registries (Library › Browse › Connectors)
+ */
+async listRegistryConnectors(refresh: boolean) : Promise<Result<ConnectorEntry[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_registry_connectors", { refresh }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * What installing a registry connector gives, for the consent dialog
+ */
+async getConnectorConsent(registryUrl: string, connectorId: string) : Promise<Result<ConnectorConsent, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_connector_consent", { registryUrl, connectorId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Installs (or updates) a registry connector after the dialog; the API
+ * key, if any, goes to the keyring
+ */
+async installRegistryConnector(registryUrl: string, connectorId: string, apiKey: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("install_registry_connector", { registryUrl, connectorId, apiKey }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Removes an installed connector, its key and every grant on it
+ */
+async removeConnector(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_connector", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Studio › New connector: a connector.md from an existing MCP server
+ */
+async scaffoldConnector(input: ScaffoldConnectorInput) : Promise<Result<ConnectorInfo, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("scaffold_connector", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Publishes a connector made here to a registry
+ */
+async publishConnector(input: PublishConnectorInput) : Promise<Result<PublishConnectorResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("publish_connector", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Local agents serving `capability`
  */
 async findAgentsByCapability(capability: string) : Promise<Result<AgentCard[], string>> {
@@ -1682,6 +1749,28 @@ async deleteNote(name: string) : Promise<Result<null, string>> {
 }
 },
 /**
+ * The Chief of Staff's open capability suggestions
+ */
+async listNoteSuggestions() : Promise<Result<Suggestion[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_note_suggestions") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Accepts or dismisses a suggestion (remembered in corrections.md)
+ */
+async answerNoteSuggestion(id: string, accept: boolean) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("answer_note_suggestion", { id, accept }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Lets agents update the notes (without asking each time), or not
  */
 async setNotesAgentsCanWrite(allow: boolean) : Promise<Result<MyNotes, string>> {
@@ -1759,6 +1848,101 @@ async disconnectEmail(provider: MailProvider) : Promise<Result<EmailStatus, stri
 async setEmailSettings(settings: EmailSettingsInput) : Promise<Result<EmailStatus, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_email_settings", { settings }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getWorkspaceStatus() : Promise<Result<WorkspaceStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_workspace_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Starts connecting a calendar or drive: only its own scopes are asked for
+ */
+async startWorkspaceSignIn(kind: AccountKind) : Promise<Result<DeviceFlowState, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_workspace_sign_in", { kind }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async pollWorkspaceSignIn(kind: AccountKind) : Promise<Result<EmailSignInPoll, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("poll_workspace_sign_in", { kind }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async disconnectWorkspace(kind: AccountKind) : Promise<Result<WorkspaceStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("disconnect_workspace", { kind }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async checkCalendarNow() : Promise<Result<WorkspaceStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_calendar_now") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setCalendarInterval(minutes: number) : Promise<Result<WorkspaceStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_calendar_interval", { minutes }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Every grant, saved and on this computer
+ */
+async listConnectorGrants() : Promise<Result<GrantInfo[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_connector_grants") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Gives a grant up front (it lasts until removed)
+ */
+async grantConnectorAccess(agentId: string, connectorId: string, access: GrantAccess, scope: GrantScope) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("grant_connector_access", { agentId, connectorId, access, scope }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Removes a grant; the agent's next call asks again
+ */
+async revokeConnectorAccess(grant: GrantInfo) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("revoke_connector_access", { grant }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The person's answer to a paused run's access request
+ */
+async answerAccessRequest(approvalId: string, choice: AccessChoice) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("answer_access_request", { approvalId, choice }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -3174,6 +3358,7 @@ delegationTaskCompleted: DelegationTaskCompleted,
 delegationTaskFailed: DelegationTaskFailed,
 delegationTaskStarted: DelegationTaskStarted,
 emailChanged: EmailChanged,
+grantsChanged: GrantsChanged,
 marketplaceError: MarketplaceError,
 marketplaceForked: MarketplaceForked,
 marketplaceInstalled: MarketplaceInstalled,
@@ -3213,7 +3398,8 @@ workflowManualStepCompleted: ManualStepCompleted,
 workflowManualStepReady: PendingManualStep,
 workflowStepAwaitingApproval: WorkflowStepAwaitingApproval,
 workflowStepDone: WorkflowStepDone,
-workflowStepStarted: WorkflowStepStarted
+workflowStepStarted: WorkflowStepStarted,
+workspaceChanged: WorkspaceChanged
 }>({
 agentAgentsChanged: "agent://agents_changed",
 agentApprovalRequest: "agent://approval_request",
@@ -3240,6 +3426,7 @@ delegationTaskCompleted: "delegation://task_completed",
 delegationTaskFailed: "delegation://task_failed",
 delegationTaskStarted: "delegation://task_started",
 emailChanged: "email://changed",
+grantsChanged: "grants://changed",
 marketplaceError: "marketplace://error",
 marketplaceForked: "marketplace://forked",
 marketplaceInstalled: "marketplace://installed",
@@ -3279,16 +3466,17 @@ workflowManualStepCompleted: "workflow://manual_step_completed",
 workflowManualStepReady: "workflow://manual_step_ready",
 workflowStepAwaitingApproval: "workflow://step_awaiting_approval",
 workflowStepDone: "workflow://step_done",
-workflowStepStarted: "workflow://step_started"
+workflowStepStarted: "workflow://step_started",
+workspaceChanged: "workspace://changed"
 })
 
 /** user-defined constants **/
 
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 
 /** user-defined types **/
 
@@ -3297,6 +3485,40 @@ export type Access = "read" |
  * Read and write
  */
 "write"
+export type AccessChoice = 
+/**
+ * This run only
+ */
+"allowOnce" | 
+/**
+ * A grant on this computer only
+ */
+"allowLocal" | 
+/**
+ * A grant in the repo's settings.yaml
+ */
+"allowSaved" | "deny"
+/**
+ * What kind of data an account holds
+ */
+export type AccountFamily = "calendar" | "files"
+export type AccountKind = 
+/**
+ * Outlook and Microsoft 365 calendars, through Graph (`Calendars.Read`)
+ */
+"outlookCalendar" | 
+/**
+ * `calendar.readonly`
+ */
+"googleCalendar" | 
+/**
+ * OneDrive and files shared with the person (`Files.Read`, `Files.Read.All`)
+ */
+"oneDrive" | 
+/**
+ * `drive.readonly`
+ */
+"googleDrive"
 export type ActionPlan = { steps: PlanStep[]; estimatedDurationSeconds: number | null; estimatedCostUsd: number | null; warnings: string[]; 
 /**
  * Set when the ask is out of scope: why nothing can be planned
@@ -3852,6 +4074,16 @@ kind: string; agentId: string | null; tool: string | null;
  * Arguments with secrets and content removed
  */
 argsRedacted: JsonValue | null; outcome: string; durationMs: number | null }
+export type AuthKind = "none" | "api_key" | "oauth" | "device_code"
+export type AuthSpec = { kind: AuthKind; 
+/**
+ * api_key on a stdio server: the variables the key goes into
+ */
+env: string[]; scopes: string[]; 
+/**
+ * What the key or account is called ("Linear API key")
+ */
+label: string | null }
 /**
  * Someone's availability: busy or away until a time, and who covers for
  * them meanwhile.
@@ -4308,6 +4540,39 @@ export type ConfigSource = "environment" | "repo" | "local"
  * health (`connector://changed`).
  */
 export type ConnectorChanged = { connectorId: string; status: ConnectorStatus }
+/**
+ * What the install dialog shows: what the connector.md at the release
+ * says, checked against the entry
+ */
+export type ConnectorConsent = { id: string; name: string; description: string; publisher: string; verified: boolean; registry: string; package: PackageInfo; 
+/**
+ * The instructions agents get once granted
+ */
+instructions: string; installedVersion: string | null }
+/**
+ * A `connectors` entry of an index, as the Library lists it
+ */
+export type ConnectorEntry = { id: string; name: string; description: string; publisher: string; repo: string; path: string; version: string; gitRef: string; commit: string | null; signature: string | null; 
+/**
+ * `mcp-stdio`, `mcp-http` or `builtin`
+ */
+kind: string; placement: Placement; image: string | null; tags: string[]; reads: string[]; writes: string[]; hosts: string[]; 
+/**
+ * `none`, `api_key`, `oauth`, `device_code`
+ */
+auth: string; 
+/**
+ * The registry it came from
+ */
+registry: string; 
+/**
+ * Its signature verifies against the publisher's key
+ */
+verified: boolean; 
+/**
+ * The installed version, if it's installed
+ */
+installedVersion: string | null }
 export type ConnectorInfo = { id: string; name: string; description: string; 
 /**
  * `mcp`
@@ -4328,7 +4593,12 @@ secrets?: ConnectorSecretInfo[];
 /**
  * What's missing before the connector can start, if anything
  */
-setupHint?: string | null }
+setupHint?: string | null; 
+/**
+ * A published connector (`connector.md`): where it came from and what
+ * it can reach
+ */
+package?: PackageInfo | null }
 export type ConnectorSecretInfo = { key: string; keyringEntry: string; isSet: boolean; 
 /**
  * Start needs it set; `false` when the connector has another way in
@@ -4867,6 +5137,30 @@ export type GithubSignIn = { signedIn: boolean;
  * The GitHub login, once known
  */
 login: string | null }
+/**
+ * Read or write access, kept apart: a write grant doesn't let an agent read
+ */
+export type GrantAccess = "read" | "write"
+/**
+ * One grant, as Settings › Connectors › Access lists it
+ */
+export type GrantInfo = { agent: string; connector: string; access: GrantAccess; scope: GrantScope }
+/**
+ * Where a grant is kept
+ */
+export type GrantScope = 
+/**
+ * This computer only (`~/.nandi/settings.local.yaml`)
+ */
+"local" | 
+/**
+ * The repo's `settings.yaml`: backed up, and on a new computer too
+ */
+"saved"
+/**
+ * `grants://changed`: a grant was given or removed
+ */
+export type GrantsChanged = Record<string, never>
 export type GraphEdge = { from: string; to: string; 
 /**
  * `sequence` (runs after) | `data` (uses its output)
@@ -5483,11 +5777,34 @@ suggestedAsks: string[];
 /**
  * Everything the pack's agents together will request
  */
-capabilities: ManifestCapabilities; installSizeKb: number | null; estimatedCostUsd: CostRange | null; signature: string | null; 
+capabilities: ManifestCapabilities; 
+/**
+ * Connectors (registry IDs) the pack needs; installing the pack offers
+ * to install and sign in to the ones that aren't here
+ */
+requiresConnectors: string[]; installSizeKb: number | null; estimatedCostUsd: CostRange | null; signature: string | null; 
 /**
  * The release commit the signature names (pinned at install)
  */
 commit: string | null; iconUrl: string | null; readmeUrl: string | null; registry: string; compatible: boolean; installedVersion: string | null; verified: boolean }
+/**
+ * An installed connector package, as the Library and the consent dialog
+ * show it
+ */
+export type PackageInfo = { version: string; 
+/**
+ * The registry it was installed from; `None`: made here (Studio)
+ */
+registry: string | null; publisher: string | null; 
+/**
+ * `npx <package>@<version>`, `uvx …`, or the server's URL
+ */
+runs: string; placement: Placement; 
+/**
+ * Its own image, when it needs something unusual
+ */
+image: string | null; auth: AuthSpec; reads: string[]; writes: string[]; hosts: string[]; tools: PackageTool[] }
+export type PackageTool = { name: string; description: string; access: GrantAccess }
 /**
  * What running an action did: a message to show, and/or a view the UI
  * should navigate to (a navigation-store `View` as JSON).
@@ -5597,6 +5914,15 @@ export type PilotSecretStatus = {
  */
 name: string; isSet: boolean }
 export type PilotStatus = { installed: boolean; running: boolean; healthy: boolean; pid: number | null }
+export type Placement = 
+/**
+ * Its own container, reaching only its hosts through the egress proxy
+ */
+"container" | 
+/**
+ * On this computer, as the person. Never from the public registry
+ */
+"host"
 export type PlanStep = { kind: PlanStepKind; 
 /**
  * Agent ID, capability ID, workflow ID, or member instance ID
@@ -5703,6 +6029,16 @@ export type PublishAgentInput = { agentId: string;
  * One of the configured registries (on GitHub)
  */
 registryUrl: string; version: string; tags?: string[] }
+export type PublishConnectorInput = { connectorId: string; registryUrl: string }
+export type PublishConnectorResult = { 
+/**
+ * The pull request (GitHub registries); `None` for a local registry
+ */
+prUrl: string | null; 
+/**
+ * Listed right away (a local registry, or a community one you can push to)
+ */
+merged: boolean; tag: string; version: string; signed: boolean }
 export type PublishResult = { prUrl: string; 
 /**
  * Merged right away (a community registry the user can push to)
@@ -6366,11 +6702,36 @@ export type SandboxImage =
 /**
  * Nandi's own agents' tools
  */
-"runtime"
+"runtime" | 
+/**
+ * Published MCP connectors (Node, Python, uv)
+ */
+"connectors"
 /**
  * A saved trigger, plus its secret when one was just generated (shown once).
  */
 export type SavedTrigger = { trigger: Trigger; secret: string | null }
+export type ScaffoldConnectorInput = { id: string; name: string; description: string; 
+/**
+ * `x.y.z`, the first release
+ */
+version?: string; 
+/**
+ * `npx <package>@<version>` or `uvx <package>==<version>`; or `url`
+ */
+run?: string | null; url?: string | null; image?: string | null; auth?: AuthSpec; hosts?: string[]; 
+/**
+ * Empty: start the server once and list its tools
+ */
+tools?: PackageTool[]; reads?: string[]; writes?: string[]; tags?: string[]; 
+/**
+ * For agents: when to use it, what to be careful with
+ */
+instructions?: string; 
+/**
+ * The API key, for listing the tools and for use here (keyring only)
+ */
+apiKey?: string | null }
 export type SendMessageResult = { runId: string; 
 /**
  * The user message's ID (the client ID, if one was given). A queued
@@ -6468,7 +6829,11 @@ export type SourceType = "user" | "workflow" |
 /**
  * The email check (`services::email`)
  */
-"email"
+"email" | 
+/**
+ * The calendar check (`services::workspace`)
+ */
+"calendarCheck"
 export type SsoAccount = { accountId: string; accountName: string; email: string | null; roles: string[] }
 /**
  * An `aws sso login` in progress (the CLI opens the browser)
@@ -6541,6 +6906,14 @@ export type StudioConversationSummary = { id: string; title: string; createdAt: 
  * `studio://edit_previewed`
  */
 export type StudioEditPreviewed = { preview: EditPreview }
+/**
+ * One open suggestion
+ */
+export type Suggestion = { 
+/**
+ * Stable while the line is unchanged
+ */
+id: string; text: string }
 export type SyncResult = { url: string; commit: string | null; added: number; updated: number; removed: number; 
 /**
  * Files that didn't parse, IDs another registry already defines, ...
@@ -7257,6 +7630,20 @@ name: string; steps: TemplateStep[] }
  * Workflows were added, changed, or removed; reload the list.
  */
 export type WorkflowsChanged = Record<string, never>
+export type WorkspaceAccountStatus = { kind: AccountKind; id: string; family: AccountFamily; 
+/**
+ * This build can sign in to its cloud
+ */
+available: boolean; connected: boolean; accountEmail: string | null; needsSignIn: boolean; error: string | null; lastCheckedAt: number | null; 
+/**
+ * Calendar: events the last check handed to the Chief of Staff
+ */
+lastFound: number; lastRunId: string | null }
+/**
+ * `workspace://changed`
+ */
+export type WorkspaceChanged = Record<string, never>
+export type WorkspaceStatus = { accounts: WorkspaceAccountStatus[]; calendarIntervalMinutes: number; nextCalendarCheckAt: number | null; checking: boolean }
 
 /** tauri-specta globals **/
 

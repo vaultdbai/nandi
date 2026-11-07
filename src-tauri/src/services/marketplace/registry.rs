@@ -115,6 +115,8 @@ pub struct RegistryIndex {
     pub registry: String,
     pub agents: Vec<AgentManifest>,
     pub packs: Vec<PackManifest>,
+    /// `connectors` entries (`connector.schema.json`), checked on install
+    pub connectors: Vec<super::connectors::ConnectorEntry>,
     pub fetched_at: SystemTime,
     /// Set when this is a stale cache (rate-limited, offline)
     pub warning: Option<String>,
@@ -258,6 +260,7 @@ impl RegistryClient {
             registry: registry.url.clone(),
             agents: parsed.agents,
             packs: parsed.packs,
+            connectors: parsed.connectors,
             fetched_at,
             warning,
         })

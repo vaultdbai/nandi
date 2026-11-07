@@ -2,13 +2,14 @@ use tauri_specta::{collect_commands, collect_events, Builder};
 
 pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::commands::{
-        agents, analysis, ask, attachments, audit, aws_auth, bedrock, capabilities, capability,
-        capability_registries, chat, companion, config, connectors, delegation,
+        access, agents, analysis, ask, attachments, audit, aws_auth, bedrock, capabilities,
+        capability, capability_registries, chat, companion, config, connectors, delegation,
         delegation_clarification, docker, egress, email, gateway, harness_sessions, harnesses,
         identity, images, llm_keys, manual_steps, marketplace, marketplace_search, mascot, memory,
         network, notes, notifications, palette, pilots, policies, preferences, queue, reassign,
         recovery, relay, relay_capabilities, remote, repo, requests, runs, shared, snapshots,
         studio, tasks, teams, teams_roster, tools, triggers, work, workflow_builder, workflows,
+        workspace,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;
@@ -20,6 +21,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::services::connectors::{ConnectorChanged, ConnectorsChanged};
     use crate::services::email::EmailChanged;
     use crate::services::events::*;
+    use crate::services::grants::GrantsChanged;
     use crate::services::marketplace::events::*;
     use crate::services::orchestrator::compaction::AgentRunCompacted;
     use crate::services::orchestrator::middleware::AgentTurnAborted;
@@ -41,6 +43,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         WorkflowDone, WorkflowFailed, WorkflowStepAwaitingApproval, WorkflowStepDone,
         WorkflowStepStarted, WorkflowsChanged,
     };
+    use crate::services::workspace::WorkspaceChanged;
 
     Builder::<tauri::Wry>::new()
         .commands(collect_commands![
@@ -161,6 +164,12 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             connectors::set_agent_connectors,
             connectors::list_folder_users,
             connectors::set_connector_secret,
+            connectors::list_registry_connectors,
+            connectors::get_connector_consent,
+            connectors::install_registry_connector,
+            connectors::remove_connector,
+            connectors::scaffold_connector,
+            connectors::publish_connector,
             // Wave 2A
             capability::find_agents_by_capability,
             capability::list_declared_capabilities,
@@ -221,6 +230,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             notes::read_note,
             notes::save_note,
             notes::delete_note,
+            notes::list_note_suggestions,
+            notes::answer_note_suggestion,
             notes::set_notes_agents_can_write,
             email::get_email_status,
             email::start_email_sign_in,
@@ -229,6 +240,16 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             email::set_email_paused,
             email::disconnect_email,
             email::set_email_settings,
+            workspace::get_workspace_status,
+            workspace::start_workspace_sign_in,
+            workspace::poll_workspace_sign_in,
+            workspace::disconnect_workspace,
+            workspace::check_calendar_now,
+            workspace::set_calendar_interval,
+            access::list_connector_grants,
+            access::grant_connector_access,
+            access::revoke_connector_access,
+            access::answer_access_request,
             memory::get_agent_memory_enabled,
             memory::set_agent_memory_enabled,
             // Wave final, network-first (Track A: identity, remote)
@@ -422,6 +443,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             ConnectorChanged,
             ConnectorsChanged,
             EmailChanged,
+            GrantsChanged,
+            WorkspaceChanged,
             RelayStatus,
             RelayAgentOnline,
             RelayAgentOffline,

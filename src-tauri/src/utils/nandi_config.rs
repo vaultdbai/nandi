@@ -36,9 +36,10 @@ pub struct NandiConfig {
     /// the tokens are in the keychain)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<crate::services::email::EmailSettings>,
-    /// Which agent may use which connector, on this computer only
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub connector_grants: Vec<crate::services::email::ConnectorGrant>,
+    /// Connected calendars and drives (`services::workspace`; the tokens
+    /// are in the keychain)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<crate::services::workspace::WorkspaceSettings>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }

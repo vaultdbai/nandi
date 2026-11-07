@@ -33,6 +33,9 @@ pub const DEFAULT_RUNTIME_IMAGE: &str = "ghcr.io/vaultdbai/nandi-runtime:sandbox
 /// The harness container (`runtimes/nandi-harness`): Node and the harness
 /// CLIs, nothing of Nandi's own
 pub const HARNESS_IMAGE: &str = "ghcr.io/vaultdbai/nandi-harness:sandbox-5";
+/// Where published MCP connectors run (`runtimes/nandi-connectors`): Node
+/// LTS, Python and uv, nothing else
+pub const CONNECTORS_IMAGE: &str = "ghcr.io/vaultdbai/nandi-connectors:sandbox-5";
 /// Container limits when skill.md doesn't set `memory_mb` / `cpu`
 pub const DEFAULT_MEMORY_MB: u32 = 1024;
 pub const DEFAULT_CPU: f32 = 1.0;
@@ -370,6 +373,8 @@ mod tests {
             pilots: vec![],
             policies: vec![],
             model_rules: vec![],
+            connector_forbid: vec![],
+            connector_ask: vec![],
         }
     }
 

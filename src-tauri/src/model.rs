@@ -80,6 +80,8 @@ pub enum SourceType {
     Event,
     /// The email check (`services::email`)
     Email,
+    /// The calendar check (`services::workspace`)
+    CalendarCheck,
 }
 
 impl SourceType {
@@ -96,6 +98,7 @@ impl SourceType {
             SourceType::Device => "device",
             SourceType::Event => "event",
             SourceType::Email => "email",
+            SourceType::CalendarCheck => "calendar_check",
         }
     }
 
@@ -111,6 +114,7 @@ impl SourceType {
             "device" => SourceType::Device,
             "event" => SourceType::Event,
             "email" => SourceType::Email,
+            "calendar_check" => SourceType::CalendarCheck,
             _ => SourceType::User,
         }
     }

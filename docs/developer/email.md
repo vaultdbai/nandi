@@ -6,7 +6,7 @@ The Chief of Staff reads the user's Outlook or Gmail and keeps My notes up to da
 
 ```text
 Settings › Email › Connect ─ PKCE sign-in ─▶ keyring nandi.email.<provider>.oauth
-                                            + config.json email.accounts + connector_grants (chief-of-staff, read)
+                                            + config.json email.accounts + a saved grant (chief-of-staff, read)
 scheduler (every N minutes) or Check now:
   each connected, unpaused mailbox ─ changes since cursor ─▶ filter ─┐
   all new mail, newest 60 ─▶ ONE Chief of Staff run (source "email") ┘─▶ cursors saved
@@ -15,14 +15,14 @@ the run: mail_* tools (host) + filesystem__* notes tools, no container, nothing 
 
 ## Decisions
 
-| Decision                       | What it means in the code                                                                                                                                  |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Our own connector, not MCP     | `email/tool.rs` runs on the host. Tokens never go into a container                                                                                         |
-| Notes, not copies              | Only the change cursor (`local_settings`) and the notes are kept. Headers live for one check or one tool call                                              |
-| One run per check              | `check_all` hands every mailbox's new mail over in one `chat::submit`, only when there is some                                                             |
-| Email is untrusted             | Mail sits inside `<email-data>`; `text::neutralize` stops it closing the block; email runs get only mail and notes tools                                   |
-| Grants per agent and connector | `ConnectorGrant {agent, connector, access}` in `config.json`, kept until the user disconnects (Wave 2 of the connector hub adds saved grants and a dialog) |
-| Not in the Library             | Mailboxes are in Settings › Email, not `connectors.yaml`: the connection belongs to this computer's keyring, not the gold copy                             |
+| Decision                       | What it means in the code                                                                                                                                              |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Our own connector, not MCP     | `email/tool.rs` runs on the host. Tokens never go into a container                                                                                                     |
+| Notes, not copies              | Only the change cursor (`local_settings`) and the notes are kept. Headers live for one check or one tool call                                                          |
+| One run per check              | `check_all` hands every mailbox's new mail over in one `chat::submit`, only when there is some                                                                         |
+| Email is untrusted             | Mail sits inside `<email-data>`; `text::neutralize` stops it closing the block; email runs get only mail and notes tools                                               |
+| Grants per agent and connector | The one grant model ([connector-hub.md](./connector-hub.md)): connecting gives the Chief of Staff a saved read grant; disconnecting removes every grant on the mailbox |
+| Not in the Library             | Mailboxes are in Settings › Email, not `connectors.yaml`: the connection belongs to this computer's keyring, not the gold copy                                         |
 
 ## At first-run setup and on Home
 
@@ -37,7 +37,7 @@ the run: mail_* tools (host) + filesystem__* notes tools, no container, nothing 
 | ---------------------------------------------------- | -------------------------------------------------------------- |
 | Sign-in tokens (access, refresh, expiry)             | Keyring `nandi.email.outlook.oauth`, `nandi.email.gmail.oauth` |
 | Accounts (email, name, paused), interval, watch list | `~/.nandi/config.json` `email`                                 |
-| Which agent may read which mailbox                   | `~/.nandi/config.json` `connector_grants`                      |
+| Which agent may read which mailbox                   | grants: `settings.yaml` or `~/.nandi/settings.local.yaml`      |
 | Change cursor                                        | `local_settings` `email.<provider>.cursor`                     |
 | Last check (time, count, run, error, needs sign-in)  | `local_settings` `email.<provider>.state`                      |
 
@@ -152,6 +152,5 @@ CI's release build passes the repository variables `NANDI_MICROSOFT_CLIENT_ID`, 
 
 ## Not yet
 
-- Calendar (`Calendars.Read`, `calendar.readonly`) and OneDrive / Drive: same sign-in, later.
 - Who the user is at first run (task-1 §3): the mail identity is used in the email runs only.
 - Push instead of polling; IMAP; sending (with its own scope and approval).

@@ -49,12 +49,43 @@ pub fn allowed_in_email_run(name: &str) -> bool {
         )
 }
 
-/// The mail tools, when `agent_id` may read a connected mailbox
-pub fn offered(state: &AppState, agent_id: &str) -> Vec<ToolSpec> {
-    if granted(state, agent_id).is_empty() {
+/// The mail tools, while a mailbox is connected, for an agent that has a
+/// grant on one or names one in its skill.md `connectors:`. A call without
+/// a grant asks the person first (`services::access`)
+pub fn offered(state: &AppState, agent_id: &str, declared: &[String]) -> Vec<ToolSpec> {
+    let connected = super::connected(state);
+    let wanted = !granted(state, agent_id).is_empty()
+        || connected
+            .iter()
+            .any(|p| declared.iter().any(|d| d == p.id()));
+    if connected.is_empty() || !wanted {
         return Vec::new();
     }
     TOOLS.iter().filter_map(|name| spec(name)).collect()
+}
+
+/// The mailboxes a call reaches: the one its id names, else every
+/// connected one. Read access only
+pub fn access_need(state: &AppState, tool: &str, args: &Value) -> crate::services::access::Need {
+    let named = ["id", "thread_id"]
+        .iter()
+        .filter(|_| matches!(tool, GET_MESSAGE | GET_THREAD))
+        .find_map(|key| args.get(*key).and_then(Value::as_str))
+        .and_then(MailProvider::of_message_id)
+        .map(|(provider, _)| provider);
+    crate::services::access::Need {
+        family: crate::services::access::AccessFamily::Email,
+        connectors: super::connected(state)
+            .into_iter()
+            .filter(|p| named.is_none_or(|n| n == *p))
+            .map(|p| crate::services::access::AccessConnector {
+                id: p.id().to_string(),
+                name: p.name().to_string(),
+            })
+            .collect(),
+        access: crate::services::domain::grant::GrantAccess::Read,
+        details: Vec::new(),
+    }
 }
 
 fn spec(name: &str) -> Option<ToolSpec> {
@@ -130,8 +161,14 @@ fn headers_value(headers: &[Header]) -> Value {
     json!({ "messages": headers })
 }
 
-pub async fn call(state: &AppState, agent_id: &str, tool: &str, args: &Value) -> ToolOutcome {
-    let accounts = granted(state, agent_id);
+/// Runs a mail tool on the mailboxes in `allowed` (what `services::access`
+/// let this call use)
+pub async fn call(state: &AppState, allowed: &[String], tool: &str, args: &Value) -> ToolOutcome {
+    let accounts: Vec<EmailAccount> = email_settings(state)
+        .accounts
+        .into_iter()
+        .filter(|a| allowed.iter().any(|id| id == a.provider.id()))
+        .collect();
     if accounts.is_empty() {
         return error(format!(
             "Tool '{tool}' is not available: no mailbox is connected for this agent"

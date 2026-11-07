@@ -4,8 +4,9 @@
 //! variable; for HTTP, `secret_refs.bearer_token` is sent as the bearer token.
 //!
 //! A stdio server runs in its own container ([`Placement::Container`]): the
-//! coding agents' sandbox image (Node, Python and uv, so `npx` and `uvx`
-//! work), read-only, no capabilities, on the internal `nandi-agents` network
+//! connectors image (`nandi-connectors`: Node, Python and uv, so `npx` and
+//! `uvx` work), or the image its `config.image` names when it needs
+//! something unusual, read-only, no capabilities, on the internal `nandi-agents` network
 //! whose only way out is the egress proxy, as `connector:<id>`. It runs on
 //! the host only for agents whose policy lists it in
 //! `connectors.run_on_host` (desktop tools).
@@ -183,8 +184,11 @@ impl McpConnector {
             return match placement {
                 Placement::Host => Self::spawn(&command, &args, env, safe).await,
                 Placement::Container { proxy_token } => {
+                    let image = config_str(decl, "image")
+                        .unwrap_or_else(|| crate::runtime::CONNECTORS_IMAGE.to_string());
                     Self::spawn_in_container(
                         decl.id.as_str(),
+                        &image,
                         &command,
                         &args,
                         env,
@@ -251,6 +255,7 @@ impl McpConnector {
     /// command line.
     async fn spawn_in_container(
         id: &str,
+        image: &str,
         command: &str,
         args: &[String],
         mut env: Vec<(String, String)>,
@@ -258,16 +263,21 @@ impl McpConnector {
         safe: HashSet<String>,
     ) -> Result<Self, String> {
         use crate::services::egress::relay::{self, RelayImage};
-        let image = crate::services::harness::HARNESS_IMAGE;
-        if !crate::runtime::image_present(image).await.unwrap_or(false) {
-            crate::services::images::start_pull(crate::services::images::SandboxImage::Harness);
+        let ours = image == crate::runtime::CONNECTORS_IMAGE;
+        if !crate::runtime::image_present(crate::runtime::CONNECTORS_IMAGE)
+            .await
+            .unwrap_or(false)
+        {
+            crate::services::images::start_pull(crate::services::images::SandboxImage::Connectors);
             return Err(format!(
-                "Connectors run in the coding agents' sandbox ({image}), which isn't on this \
-                 computer or is from an older Nandi. Download or build it in Settings › Models \
-                 & runtimes; Nandi has started the download."
+                "Connectors run in Nandi's connectors image ({}), which isn't on this computer yet. Nandi has started the download; try again in a minute, or build it in Settings › Models & runtimes.",
+                crate::runtime::CONNECTORS_IMAGE
             ));
         }
-        relay::ensure_ready(RelayImage::Harness).await?;
+        if !ours && !crate::runtime::image_present(image).await.unwrap_or(false) {
+            pull_image(image).await?;
+        }
+        relay::ensure_ready(RelayImage::Connectors).await?;
         env.extend(
             crate::services::egress::proxy_env(proxy_token)
                 .into_iter()
@@ -285,7 +295,7 @@ impl McpConnector {
             .status()
             .await;
         let mut cmd = tokio::process::Command::new("docker");
-        cmd.args(container_args(id, &name, &env, command, args));
+        cmd.args(container_args(id, &name, image, &env, command, args));
         #[cfg(windows)]
         {
             cmd.creation_flags(0x0800_0000);
@@ -354,6 +364,7 @@ impl McpConnector {
 fn container_args(
     id: &str,
     name: &str,
+    image: &str,
     env: &[(String, String)],
     command: &str,
     args: &[String],
@@ -377,7 +388,7 @@ fn container_args(
         "--tmpfs=/home/node:rw,nosuid,nodev,size=512m,uid=1000,gid=1000",
         "--network",
         crate::services::egress::relay::AGENT_NETWORK,
-        // Past the image's entrypoint (it only sets up Codex)
+        // Past any entrypoint the image has
         "--entrypoint",
         command,
     ]
@@ -388,9 +399,34 @@ fn container_args(
         out.push("-e".to_string());
         out.push(name.clone());
     }
-    out.push(crate::services::harness::HARNESS_IMAGE.to_string());
+    out.push(image.to_string());
     out.extend(args.iter().cloned());
     out
+}
+
+/// `docker pull` for a connector that names its own image
+async fn pull_image(image: &str) -> Result<(), String> {
+    log::info!("Pulling the connector image {image}");
+    let mut cmd = tokio::process::Command::new("docker");
+    cmd.args(["pull", "--quiet", image])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(0x0800_0000);
+    }
+    let output = tokio::time::timeout(Duration::from_secs(600), cmd.output())
+        .await
+        .map_err(|_| format!("Downloading {image} took too long"))?
+        .map_err(|e| format!("Couldn't run docker to download {image}: {e}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Couldn't download the connector's image {image}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
 }
 
 /// On Windows, `npx`/`uvx` are `.cmd` shims that only `cmd` can run, and a
@@ -592,6 +628,7 @@ pub(crate) mod tests {
         let args = container_args(
             "github",
             "nandi-connector-github",
+            crate::runtime::CONNECTORS_IMAGE,
             &env,
             "npx",
             &["-y".to_string(), "@acme/github-mcp".to_string()],
@@ -613,7 +650,7 @@ pub(crate) mod tests {
             !joined.contains("ghp_secret"),
             "values never in the command line"
         );
-        assert!(joined.ends_with("nandi-harness:sandbox-5 -y @acme/github-mcp"));
+        assert!(joined.ends_with("nandi-connectors:sandbox-5 -y @acme/github-mcp"));
         let tag = crate::utils::nandi_config::instance_tag();
         assert_eq!(
             container_name("a.b c"),
@@ -631,7 +668,7 @@ pub(crate) mod tests {
     }
 
     /// A stdio MCP server in its own container on `nandi-agents`: needs
-    /// Docker and `ghcr.io/vaultdbai/nandi-harness:sandbox-5`.
+    /// Docker and `ghcr.io/vaultdbai/nandi-connectors:sandbox-5`.
     /// Run with: cargo test connector_container_e2e -- --ignored --nocapture
     #[tokio::test]
     #[ignore]

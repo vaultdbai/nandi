@@ -45,6 +45,8 @@ pub enum SandboxImage {
     Harness,
     /// Nandi's own agents' tools
     Runtime,
+    /// Published MCP connectors (Node, Python, uv)
+    Connectors,
 }
 
 impl SandboxImage {
@@ -53,6 +55,7 @@ impl SandboxImage {
         match self {
             Self::Harness => crate::runtime::HARNESS_IMAGE,
             Self::Runtime => crate::runtime::DEFAULT_RUNTIME_IMAGE,
+            Self::Connectors => crate::runtime::CONNECTORS_IMAGE,
         }
     }
 
@@ -99,6 +102,16 @@ impl SandboxImage {
                 (
                     "relay.py",
                     include_bytes!("../../../runtimes/nandi-runtime/relay.py"),
+                ),
+            ],
+            Self::Connectors => &[
+                (
+                    "Dockerfile",
+                    include_bytes!("../../../runtimes/nandi-connectors/Dockerfile"),
+                ),
+                (
+                    "relay.mjs",
+                    include_bytes!("../../../runtimes/nandi-connectors/relay.mjs"),
                 ),
             ],
         }
@@ -463,12 +476,20 @@ mod tests {
             names(&context_tar(SandboxImage::Runtime).unwrap()),
             ["Dockerfile", "requirements.txt", "app.py", "relay.py"]
         );
+        assert_eq!(
+            names(&context_tar(SandboxImage::Connectors).unwrap()),
+            ["Dockerfile", "relay.mjs"]
+        );
     }
 
     /// Every file a Dockerfile COPYs is in its context
     #[test]
     fn the_contexts_cover_every_copy() {
-        for image in [SandboxImage::Harness, SandboxImage::Runtime] {
+        for image in [
+            SandboxImage::Harness,
+            SandboxImage::Runtime,
+            SandboxImage::Connectors,
+        ] {
             let files: Vec<&str> = image.context().iter().map(|(p, _)| *p).collect();
             let dockerfile = std::str::from_utf8(image.context()[0].1).unwrap();
             for line in dockerfile
@@ -507,6 +528,10 @@ mod tests {
             SandboxImage::Runtime.tag(),
             "ghcr.io/vaultdbai/nandi-runtime:sandbox-5"
         );
+        assert_eq!(
+            SandboxImage::Connectors.tag(),
+            "ghcr.io/vaultdbai/nandi-connectors:sandbox-5"
+        );
     }
 
     /// The pinned tag follows the sandbox version, the Dockerfiles' label
@@ -514,7 +539,11 @@ mod tests {
     #[test]
     fn the_images_are_pinned_to_this_app_s_sandbox_version() {
         let pinned = format!("sandbox-{}", crate::runtime::SANDBOX_VERSION);
-        for image in [SandboxImage::Harness, SandboxImage::Runtime] {
+        for image in [
+            SandboxImage::Harness,
+            SandboxImage::Runtime,
+            SandboxImage::Connectors,
+        ] {
             let (repository, tag) = image.pull_ref();
             assert_eq!(tag, pinned, "{image:?}");
             assert!(

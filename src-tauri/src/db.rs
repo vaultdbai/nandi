@@ -1060,6 +1060,21 @@ pub fn ensure_email_conversation(
     Ok(id)
 }
 
+/// `calendar:<check id>`: one calendar check's own conversation
+pub fn ensure_calendar_conversation(
+    conn: &Connection,
+    agent_id: &str,
+    check_id: &str,
+    title: &str,
+) -> rusqlite::Result<String> {
+    let id = format!("calendar:{check_id}");
+    conn.execute(
+        "INSERT OR IGNORE INTO conversations (id, agent_id, created_at, title) VALUES (?1, ?2, ?3, ?4)",
+        params![id, agent_id, now_ms(), title],
+    )?;
+    Ok(id)
+}
+
 /// `task:<task id>`: a delegated task's own conversation, so its turn sees
 /// neither the owner's chats with the agent nor other requesters' tasks
 pub fn task_conversation_id(task_id: &str) -> String {
@@ -2004,6 +2019,43 @@ pub fn approvals_by_call(
         ))
     })?;
     rows.collect()
+}
+
+/// Every approval of `run_id` for one synthetic tool (connector access
+/// requests), oldest first
+pub fn run_approvals_for_tool(
+    conn: &Connection,
+    run_id: &str,
+    tool: &str,
+) -> rusqlite::Result<Vec<ApprovalRow>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {APPROVAL_COLUMNS} FROM approvals WHERE run_id = ?1 AND tool = ?2 ORDER BY created_at"
+    ))?;
+    let rows = stmt.query_map(params![run_id, tool], approval_row)?;
+    rows.collect()
+}
+
+/// Replaces an approval's arguments (an access request records the choice
+/// made) and mirrors them onto its chat message
+pub fn set_approval_args(
+    conn: &Connection,
+    approval: &ApprovalRow,
+    args: &Value,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE approvals SET args = ?2 WHERE id = ?1",
+        params![approval.id, args.to_string()],
+    )?;
+    update_message_metadata(
+        conn,
+        &approval.message_id,
+        ApprovalMeta {
+            tool: approval.tool.clone(),
+            args: args.clone(),
+            status: approval.status,
+            expires_at: approval.expires_at,
+        },
+    )
 }
 
 pub fn pending_approvals_for_run(

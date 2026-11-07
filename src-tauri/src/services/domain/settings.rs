@@ -27,6 +27,8 @@
 //! delegation:
 //!   preferred_providers:              # my pins: capability → provider card ID
 //!     find-papers: inst-7f3a/papers
+//! connector_grants:                   # saved grants (`grant.rs`); local ones are in settings.local.yaml
+//!   - { agent: chief-of-staff, connector: outlook, access: read }
 //! ```
 //!
 //! Machine-specific preferences (the quick pane shortcut) stay in the local
@@ -38,6 +40,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use super::agent::{model_ref_mapping, ModelRef, Provider};
+use super::grant::Grants;
 use super::{DomainError, DomainResult};
 
 /// The model agents use when skill.md doesn't name one.
@@ -363,6 +366,8 @@ pub struct Settings {
     /// Agent ID → what the user approved for it
     consent: BTreeMap<String, AgentConsent>,
     delegation: DelegationPrefs,
+    /// Saved connector grants: they travel with the repo
+    connector_grants: Grants,
 }
 
 impl Default for Settings {
@@ -379,6 +384,7 @@ impl Default for Settings {
             marketplace: MarketplaceSettings::default(),
             consent: BTreeMap::new(),
             delegation: DelegationPrefs::default(),
+            connector_grants: Grants::default(),
         }
     }
 }
@@ -406,6 +412,8 @@ struct SettingsFile {
     consent: BTreeMap<String, AgentConsent>,
     #[serde(default, skip_serializing_if = "is_default_delegation")]
     delegation: DelegationPrefs,
+    #[serde(default, skip_serializing_if = "Grants::is_empty")]
+    connector_grants: Grants,
 }
 
 fn is_default_delegation(value: &DelegationPrefs) -> bool {
@@ -442,6 +450,7 @@ impl Settings {
             marketplace: file.marketplace,
             consent: file.consent,
             delegation: file.delegation,
+            connector_grants: Grants::new(file.connector_grants.iter().cloned().collect())?,
         };
         settings.check()?;
         Ok(settings)
@@ -514,6 +523,7 @@ impl Settings {
             marketplace: self.marketplace.clone(),
             consent: self.consent.clone(),
             delegation: self.delegation.clone(),
+            connector_grants: self.connector_grants.clone(),
         };
         serde_yaml::to_string(&file).unwrap_or_default()
     }
@@ -587,6 +597,15 @@ impl Settings {
                 auth: None,
             }]
         })
+    }
+
+    /// The saved connector grants
+    pub fn connector_grants(&self) -> &Grants {
+        &self.connector_grants
+    }
+
+    pub fn connector_grants_mut(&mut self) -> &mut Grants {
+        &mut self.connector_grants
     }
 
     /// What the user approved for agent `id`, if anything.

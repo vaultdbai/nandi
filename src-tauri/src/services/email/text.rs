@@ -90,10 +90,16 @@ pub fn cap(text: &str, max: usize) -> (String, bool) {
 
 /// Mail text can't close (or open) the block that marks it as untrusted
 pub fn neutralize(text: &str) -> String {
+    neutralize_tag(text, DATA_TAG, "[email data]")
+}
+
+/// `text` can't close (or open) a `<tag>` block: each `<tag` or `</tag`
+/// becomes `replacement`
+pub fn neutralize_tag(text: &str, tag: &str, replacement: &str) -> String {
     let lower = text.to_ascii_lowercase();
     let mut out = String::with_capacity(text.len());
     let mut last = 0;
-    for (at, _) in lower.match_indices(DATA_TAG) {
+    for (at, _) in lower.match_indices(tag) {
         let before = &lower[..at];
         if before.ends_with('<') || before.ends_with("</") {
             let start = if before.ends_with("</") {
@@ -103,8 +109,8 @@ pub fn neutralize(text: &str) -> String {
             };
             if start >= last {
                 out.push_str(&text[last..start]);
-                out.push_str("[email data]");
-                last = at + DATA_TAG.len();
+                out.push_str(replacement);
+                last = at + tag.len();
             }
         }
     }

@@ -26,7 +26,7 @@ pub const USAGE: &str = "Usage: nandi [OPTIONS]
        nandi keygen [--key <PATH>]
        nandi name
        nandi rename <NAME> | --reset
-       nandi sign --kind <agent|pack> --id <ID> --release <VERSION>
+       nandi sign --kind <agent|pack|connector> --id <ID> --release <VERSION>
                  (--commit <SHA> | --repo <REPO>) [--key <PATH>]
 
 Options:
@@ -126,9 +126,9 @@ fn parse_publisher(
     if command == "keygen" {
         return Ok(PublisherCommand::Keygen { key: take("--key") });
     }
-    let kind = take("--kind").ok_or("sign needs --kind agent|pack")?;
-    if kind != "agent" && kind != "pack" {
-        return Err("--kind must be agent or pack".to_string());
+    let kind = take("--kind").ok_or("sign needs --kind agent|pack|connector")?;
+    if !matches!(kind.as_str(), "agent" | "pack" | "connector") {
+        return Err("--kind must be agent, pack or connector".to_string());
     }
     let id = take("--id").ok_or("sign needs --id <ID>")?;
     let release = take("--release").ok_or("sign needs --release <VERSION>")?;
@@ -355,7 +355,7 @@ mod tests {
             parse_err(&["sign", "--kind", "pack", "--id", "x", "--release", "1.0.0"])
                 .contains("exactly one")
         );
-        assert!(parse_err(&["sign", "--kind", "tool"]).contains("agent or pack"));
+        assert!(parse_err(&["sign", "--kind", "tool"]).contains("agent, pack or connector"));
         assert!(parse_err(&["keygen", "--server"]).contains("Unknown option"));
     }
 

@@ -116,8 +116,26 @@ pub fn entry(
     value
 }
 
-/// `index.json` with `entry` added to (or replacing its ID in) `agents`.
-pub fn upsert_index(index: &str, entry: &Value) -> Result<String, String> {
+/// Which list of the registry an entry goes in
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryList {
+    Agents,
+    Connectors,
+}
+
+impl EntryList {
+    /// The folder and the `index.json` list
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Agents => "agents",
+            Self::Connectors => "connectors",
+        }
+    }
+}
+
+/// `index.json` with `entry` added to (or replacing its ID in) `list`
+/// (`agents` or `connectors`).
+pub fn upsert_index(index: &str, list: &str, entry: &Value) -> Result<String, String> {
     let mut value: Value = if index.trim().is_empty() {
         json!({ "schema_version": 1, "agents": [], "packs": [] })
     } else {
@@ -129,12 +147,15 @@ pub fn upsert_index(index: &str, entry: &Value) -> Result<String, String> {
         value = json!({ "schema_version": 1, "agents": value, "packs": [] });
     }
     let id = entry["id"].as_str().unwrap_or_default().to_string();
-    let agents = value["agents"]
+    if value.get(list).is_none() {
+        value[list] = json!([]);
+    }
+    let entries = value[list]
         .as_array_mut()
-        .ok_or("The registry's index.json has no agents list")?;
-    match agents.iter_mut().find(|a| a["id"] == id.as_str()) {
+        .ok_or_else(|| format!("The registry's index.json has no {list} list"))?;
+    match entries.iter_mut().find(|a| a["id"] == id.as_str()) {
         Some(existing) => *existing = entry.clone(),
-        None => agents.push(entry.clone()),
+        None => entries.push(entry.clone()),
     }
     Ok(format!("{value:#}\n"))
 }
@@ -204,6 +225,7 @@ impl GitHubApi {
         registry: &str,
         auto_merge: bool,
         public_key: Option<&str>,
+        entry_list: EntryList,
     ) -> Result<Published, String> {
         parse_version(&release.version)?;
         let (agents_owner, agents_repo) =
@@ -243,7 +265,7 @@ impl GitHubApi {
             release.agent_id,
             release.version.trim_start_matches('v')
         );
-        let entry_path = format!("agents/{}.json", release.agent_id);
+        let entry_path = format!("{}/{}.json", entry_list.as_str(), release.agent_id);
         let existing = self
             .file(&target.owner, &target.name, &entry_path, Some(&branch))
             .await?;
@@ -262,7 +284,11 @@ impl GitHubApi {
         let index = self
             .file(&target.owner, &target.name, "index.json", Some(&branch))
             .await?;
-        let updated = upsert_index(index.as_ref().map_or("", |f| f.content.as_str()), entry)?;
+        let updated = upsert_index(
+            index.as_ref().map_or("", |f| f.content.as_str()),
+            entry_list.as_str(),
+            entry,
+        )?;
         self.put_file(
             &target.owner,
             &target.name,
@@ -320,8 +346,25 @@ impl GitHubApi {
             release.path,
             release.tag,
             &release.commit[..12.min(release.commit.len())],
-            list(&entry["capabilities"]["tools"]),
-            list(&entry["capabilities"]["network"]),
+            match entry_list {
+                EntryList::Agents => list(&entry["capabilities"]["tools"]),
+                EntryList::Connectors => list(&Value::Array(
+                    entry["tools"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|t| Value::from(format!(
+                            "{} ({})",
+                            t["name"].as_str().unwrap_or_default(),
+                            t["access"].as_str().unwrap_or_default()
+                        )))
+                        .collect(),
+                )),
+            },
+            match entry_list {
+                EntryList::Agents => list(&entry["capabilities"]["network"]),
+                EntryList::Connectors => list(&entry["hosts"]),
+            },
             if entry.get("signature").is_some() {
                 "yes"
             } else {
@@ -408,11 +451,16 @@ mod tests {
         assert_eq!(parsed.git_ref, "writer-v1.0.0");
         assert_eq!(parsed.commit.as_deref(), Some("a".repeat(40).as_str()));
 
-        let index = upsert_index("", &entry).unwrap();
-        let again = upsert_index(&index, &entry).unwrap();
+        let index = upsert_index("", "agents", &entry).unwrap();
+        let again = upsert_index(&index, "agents", &entry).unwrap();
         let parsed = super::super::manifest::parse_index(&again, "r").unwrap();
         assert_eq!(parsed.agents.len(), 1, "replaced, not duplicated");
-        assert!(upsert_index("not json", &entry).is_err());
+        assert!(upsert_index("not json", "agents", &entry).is_err());
+        // Connectors get their own list next to the agents
+        let both = upsert_index(&index, "connectors", &json!({"id": "fetch"})).unwrap();
+        let parsed: Value = serde_json::from_str(&both).unwrap();
+        assert_eq!(parsed["connectors"][0]["id"], "fetch");
+        assert_eq!(parsed["agents"].as_array().unwrap().len(), 1);
     }
 
     #[test]
@@ -579,6 +627,7 @@ mod tests {
                 "github.com/bob/registry",
                 true,
                 Some("ed25519:key"),
+                EntryList::Agents,
             )
             .await
             .unwrap();
@@ -620,7 +669,14 @@ mod tests {
         let release = release();
         let entry = entry(&agent(), &release, &[], false, None);
         let published = api
-            .publish(&release, &entry, "github.com/bob/registry", true, None)
+            .publish(
+                &release,
+                &entry,
+                "github.com/bob/registry",
+                true,
+                None,
+                EntryList::Agents,
+            )
             .await
             .unwrap();
         assert!(published.merged);
@@ -635,7 +691,14 @@ mod tests {
         let mut moved = release.clone();
         moved.commit = "c".repeat(40);
         let err = api
-            .publish(&moved, &entry, "github.com/bob/registry", true, None)
+            .publish(
+                &moved,
+                &entry,
+                "github.com/bob/registry",
+                true,
+                None,
+                EntryList::Agents,
+            )
             .await
             .unwrap_err();
         assert!(err.contains("another commit"), "{err}");

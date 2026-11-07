@@ -46,3 +46,23 @@ pub async fn set_notes_agents_can_write(
 ) -> Result<MyNotes, String> {
     notes::set_agents_can_write(&state, allow).await
 }
+
+/// The Chief of Staff's open capability suggestions
+#[tauri::command]
+#[specta::specta]
+pub async fn list_note_suggestions(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::services::notes::corrections::Suggestion>, String> {
+    notes::suggestions(&state).await
+}
+
+/// Accepts or dismisses a suggestion (remembered in corrections.md)
+#[tauri::command]
+#[specta::specta]
+pub async fn answer_note_suggestion(
+    state: State<'_, AppState>,
+    id: String,
+    accept: bool,
+) -> Result<String, String> {
+    notes::answer_suggestion(&state, id, accept).await
+}

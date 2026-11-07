@@ -5,13 +5,12 @@
 //! | -------------------------------------- | --------------------------------------- |
 //! | Sign-in tokens                         | keyring `nandi.email.<provider>.oauth`  |
 //! | Accounts, interval, watch list         | `~/.nandi/config.json` `email`          |
-//! | Which agent may read which mailbox     | `~/.nandi/config.json` `connector_grants` |
+//! | Which agent may read which mailbox     | grants (`services::grants`)               |
 //! | Change cursor, last check              | `local_settings` (`email.<provider>.*`) |
 //!
 //! No mail is kept anywhere.
 
 use serde::{Deserialize, Serialize};
-use specta::Type;
 
 use super::provider::MailProvider;
 use crate::model::Timestamp;
@@ -118,35 +117,6 @@ pub struct CheckState {
     pub error: Option<String>,
 }
 
-/// Read or write access, kept apart (Wave 2 adds write grants)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub enum GrantAccess {
-    Read,
-}
-
-/// "This agent may use this connector": per agent and connector, kept
-/// until the user removes it (`config.json`, this computer only)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct ConnectorGrant {
-    pub agent: String,
-    /// `outlook` or `gmail`
-    pub connector: String,
-    pub access: GrantAccess,
-}
-
-pub fn allows(
-    grants: &[ConnectorGrant],
-    agent: &str,
-    connector: &str,
-    access: GrantAccess,
-) -> bool {
-    grants
-        .iter()
-        .any(|g| g.agent == agent && g.connector == connector && g.access == access)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,33 +139,6 @@ mod tests {
         assert!(validate(241, &[]).is_err());
         assert!(validate(5, &["not a domain".into()]).is_err());
         assert!(validate(5, &["localhost".into()]).is_err());
-    }
-
-    #[test]
-    fn grants_are_per_agent_and_connector() {
-        let grants = [ConnectorGrant {
-            agent: "chief-of-staff".into(),
-            connector: "outlook".into(),
-            access: GrantAccess::Read,
-        }];
-        assert!(allows(
-            &grants,
-            "chief-of-staff",
-            "outlook",
-            GrantAccess::Read
-        ));
-        assert!(!allows(
-            &grants,
-            "chief-of-staff",
-            "gmail",
-            GrantAccess::Read
-        ));
-        assert!(!allows(
-            &grants,
-            "pr-reviewer",
-            "outlook",
-            GrantAccess::Read
-        ));
     }
 
     #[test]

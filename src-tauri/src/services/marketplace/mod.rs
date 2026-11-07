@@ -16,6 +16,7 @@
 //! See `docs/developer/marketplace.md`.
 
 pub mod community;
+pub mod connectors;
 pub mod consent;
 pub mod events;
 pub mod github;
@@ -1331,6 +1332,7 @@ pub async fn publish_agent(
                 &registry.url,
                 registry.kind == RegistryKind::Community,
                 public_key.as_deref(),
+                publish::EntryList::Agents,
             )
             .await?;
         if published.merged {

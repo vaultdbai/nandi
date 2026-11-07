@@ -22,8 +22,10 @@ pub mod agent_card;
 pub mod calendar;
 pub mod capability;
 pub mod connector;
+pub mod connector_package;
 pub mod error;
 pub mod events;
+pub mod grant;
 pub mod ids;
 pub mod installed;
 pub mod policy;
@@ -140,8 +142,10 @@ mod tests {
             ("calendar.rs", include_str!("calendar.rs")),
             ("capability.rs", include_str!("capability.rs")),
             ("connector.rs", include_str!("connector.rs")),
+            ("connector_package.rs", include_str!("connector_package.rs")),
             ("error.rs", include_str!("error.rs")),
             ("events.rs", include_str!("events.rs")),
+            ("grant.rs", include_str!("grant.rs")),
             ("ids.rs", include_str!("ids.rs")),
             ("installed.rs", include_str!("installed.rs")),
             ("repo.rs", include_str!("repo.rs")),

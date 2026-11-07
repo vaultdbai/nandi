@@ -4,7 +4,7 @@ name: Sandbox images
 # pulls the tag pinned to its sandbox version (`runtime::SANDBOX_VERSION`),
 # never `latest`:
 #
-#   ghcr.io/vaultdbai/nandi-runtime   ghcr.io/vaultdbai/nandi-harness
+#   ghcr.io/vaultdbai/nandi-runtime   ghcr.io/vaultdbai/nandi-connectors   ghcr.io/vaultdbai/nandi-harness
 #
 #   :sandbox-<N>   every publish; <N> is the Dockerfile's org.nandi.sandbox label
 #   :main          pushes to main that touch runtimes/
@@ -18,6 +18,7 @@ on:
     paths:
       - 'runtimes/nandi-runtime/**'
       - 'runtimes/nandi-harness/**'
+      - 'runtimes/nandi-connectors/**'
       - '.github/workflows/images.yml'
     tags: ['v*']
   workflow_dispatch:
@@ -40,6 +41,10 @@ jobs:
           - name: nandi-runtime
             title: Nandi tool sandbox
             description: Where Nandi's own agents run their tools (an MCP tool server), and the egress relay
+            licenses: Apache-2.0
+          - name: nandi-connectors
+            title: Nandi connectors
+            description: Where published MCP connectors run (npx and uvx packages) - Node LTS, Python and uv, nothing else
             licenses: Apache-2.0
           # nandi-harness is not published yet: it bundles Claude Code, whose
           # licence may not allow redistributing it in a public image. Until

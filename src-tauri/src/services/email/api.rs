@@ -67,9 +67,11 @@ fn is_under(url: &str, base: &str) -> bool {
         .is_some_and(|rest| rest.is_empty() || rest.starts_with('/') || rest.starts_with('?'))
 }
 
-/// One mailbox's read-only API, for one check or one tool call
+/// One account's read-only API (a mailbox, a calendar, a drive), for one
+/// check or one tool call
 pub struct MailApi {
-    pub provider: MailProvider,
+    /// The service's name, for messages ("Outlook", "Google Calendar")
+    name: String,
     oauth: OAuthProvider,
     entry: String,
     /// The only addresses the token goes to
@@ -80,11 +82,29 @@ pub struct MailApi {
 
 impl MailApi {
     pub fn new(provider: MailProvider, setup: &ProviderSetup, secrets: &Secrets) -> Self {
+        Self::for_account(
+            provider.name(),
+            setup.oauth(provider),
+            provider.token_entry(),
+            setup.api_bases(provider),
+            secrets,
+        )
+    }
+
+    /// Any signed-in account: its sign-in, keyring entry and the only API
+    /// addresses its token may go to
+    pub fn for_account(
+        name: &str,
+        oauth: OAuthProvider,
+        entry: String,
+        bases: Vec<String>,
+        secrets: &Secrets,
+    ) -> Self {
         Self {
-            provider,
-            oauth: setup.oauth(provider),
-            entry: provider.token_entry(),
-            bases: setup.api_bases(provider),
+            name: name.to_string(),
+            oauth,
+            entry,
+            bases,
             secrets: secrets.clone(),
             token: tokio::sync::Mutex::new(None),
         }
@@ -124,10 +144,41 @@ impl MailApi {
     /// `GET url` as JSON. `url` must be on the provider's API (a delta or
     /// next link the API returned counts, once checked).
     pub async fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Value, MailError> {
+        let response = self.send(url, headers).await?;
+        response.json().await.map_err(|e| {
+            MailError::Unavailable(format!(
+                "Unexpected answer from {}: {}",
+                self.name,
+                e.without_url()
+            ))
+        })
+    }
+
+    /// `GET url` as text, at most `max_bytes` (a file's content). A
+    /// download link the API redirects to gets no token (reqwest drops it
+    /// on a redirect to another host)
+    pub async fn get_text(&self, url: &str, max_bytes: usize) -> Result<String, MailError> {
+        let response = self.send(url, &[]).await?;
+        let bytes = response.bytes().await.map_err(|e| {
+            MailError::Unavailable(format!(
+                "Couldn't read from {}: {}",
+                self.name,
+                e.without_url()
+            ))
+        })?;
+        let cut = &bytes[..bytes.len().min(max_bytes)];
+        Ok(String::from_utf8_lossy(cut).into_owned())
+    }
+
+    async fn send(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+    ) -> Result<reqwest::Response, MailError> {
         if !self.bases.iter().any(|base| is_under(url, base)) {
             return Err(MailError::Failed(format!(
                 "Refusing to send the {} sign-in to another address",
-                self.provider.name()
+                self.name
             )));
         }
         let mut renewed = false;
@@ -139,23 +190,11 @@ impl MailApi {
                 request = request.header(*name, *value);
             }
             let response = request.send().await.map_err(|e| {
-                MailError::Unavailable(format!(
-                    "Couldn't reach {}: {}",
-                    self.provider.name(),
-                    e.without_url()
-                ))
+                MailError::Unavailable(format!("Couldn't reach {}: {}", self.name, e.without_url()))
             })?;
             let status = response.status().as_u16();
             match status {
-                200..=299 => {
-                    return response.json().await.map_err(|e| {
-                        MailError::Unavailable(format!(
-                            "Unexpected answer from {}: {}",
-                            self.provider.name(),
-                            e.without_url()
-                        ))
-                    })
-                }
+                200..=299 => return Ok(response),
                 401 if !renewed => {
                     renewed = true;
                     self.token(true).await?;
@@ -163,7 +202,7 @@ impl MailApi {
                 401 => {
                     return Err(MailError::NeedsSignIn(format!(
                         "{} refused the sign-in",
-                        self.provider.name()
+                        self.name
                     )))
                 }
                 404 => return Err(MailError::NotFound),
@@ -179,21 +218,21 @@ impl MailApi {
                     if wait > MAX_RETRY_WAIT {
                         return Err(MailError::Unavailable(format!(
                             "{} asked Nandi to wait; it checks again later",
-                            self.provider.name()
+                            self.name
                         )));
                     }
                     tokio::time::sleep(wait).await;
                 }
                 403 => {
                     return Err(MailError::Failed(format!(
-                        "{} didn't allow reading this mailbox (403)",
-                        self.provider.name()
+                        "{} didn't allow reading this (403)",
+                        self.name
                     )))
                 }
                 _ => {
                     return Err(MailError::Unavailable(format!(
                         "{} answered {status}",
-                        self.provider.name()
+                        self.name
                     )))
                 }
             }

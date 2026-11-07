@@ -25,6 +25,17 @@ pub fn api() -> Router<AppState> {
         .route("/connectors/{id}/secret", put(set_secret))
         // Returns `FolderUsers[]`
         .route("/connectors/{id}/folder-users", get(folder_users))
+        // Returns `ConnectorEntry[]` (`?refresh=true` asks the registries again)
+        .route("/registry-connectors", get(registry_list))
+        // Body `{ registryUrl, connectorId }`; returns `ConnectorConsent`
+        .route("/registry-connectors/consent", post(registry_consent))
+        // Body `{ registryUrl, connectorId, apiKey? }`
+        .route("/registry-connectors/install", post(registry_install))
+        .route("/connectors/{id}/remove", post(remove))
+        // Body `ScaffoldConnectorInput`; returns `ConnectorInfo`
+        .route("/connectors/scaffold", post(scaffold))
+        // Body `PublishConnectorInput`; returns `PublishConnectorResult`
+        .route("/connectors/publish", post(publish))
         // Returns `AgentConnectorChoice[]`; PUT body `{ connectors }`
         .route(
             "/agents/{agent_id}/connectors",
@@ -133,4 +144,79 @@ async fn status(
         Ok(_) => connectors::connector_status(&state, &id).await,
         Err(e) => Err(e),
     })
+}
+
+#[derive(Deserialize)]
+struct RefreshQuery {
+    #[serde(default)]
+    refresh: bool,
+}
+
+async fn registry_list(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<RefreshQuery>,
+) -> ApiResult<Vec<crate::services::marketplace::connectors::ConnectorEntry>> {
+    ApiResult(crate::services::marketplace::connectors::list(&state, query.refresh).await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RegistryConnectorBody {
+    registry_url: String,
+    connector_id: String,
+    #[serde(default)]
+    api_key: Option<String>,
+}
+
+async fn registry_consent(
+    State(state): State<AppState>,
+    Json(body): Json<RegistryConnectorBody>,
+) -> ApiResult<crate::services::marketplace::connectors::ConnectorConsent> {
+    ApiResult(
+        crate::services::marketplace::connectors::consent(
+            &state,
+            &body.registry_url,
+            &body.connector_id,
+        )
+        .await,
+    )
+}
+
+async fn registry_install(
+    State(state): State<AppState>,
+    Json(body): Json<RegistryConnectorBody>,
+) -> ApiResult<()> {
+    ApiResult(
+        crate::services::marketplace::connectors::install(
+            &state,
+            &body.registry_url,
+            &body.connector_id,
+            body.api_key,
+        )
+        .await,
+    )
+}
+
+async fn remove(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<()> {
+    ApiResult(
+        async {
+            connectors::parse_id(&id)?;
+            connectors::remove_connector(&state, &id).await
+        }
+        .await,
+    )
+}
+
+async fn scaffold(
+    State(state): State<AppState>,
+    Json(input): Json<crate::services::studio::connector::ScaffoldConnectorInput>,
+) -> ApiResult<ConnectorInfo> {
+    ApiResult(crate::services::studio::connector::scaffold(&state, input).await)
+}
+
+async fn publish(
+    State(state): State<AppState>,
+    Json(input): Json<crate::services::marketplace::connectors::PublishConnectorInput>,
+) -> ApiResult<crate::services::marketplace::connectors::PublishConnectorResult> {
+    ApiResult(crate::services::marketplace::connectors::publish(&state, input).await)
 }

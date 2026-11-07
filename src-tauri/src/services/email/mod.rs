@@ -20,7 +20,7 @@
 //! - A refused token refresh marks the mailbox "needs sign-in" (Google's
 //!   Testing mode ends sign-ins every 7 days); the UI offers Reconnect.
 
-mod api;
+pub(crate) mod api;
 pub mod batch;
 mod filter;
 mod gmail;
@@ -29,7 +29,7 @@ mod mailbox;
 mod outlook;
 pub mod provider;
 pub mod settings;
-mod text;
+pub(crate) mod text;
 pub mod tool;
 
 #[cfg(test)]
@@ -44,13 +44,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use specta::Type;
 
-pub use provider::{MailProvider, ProviderSetup};
-pub use settings::{ConnectorGrant, EmailSettings, GrantAccess};
+pub use provider::{Cloud, MailProvider, ProviderSetup};
+pub use settings::EmailSettings;
 
 use crate::db;
 use crate::model::{SourceType, Timestamp};
 use crate::services::auth::oauth::{self, DeviceFlowState, OAuthFlows};
 use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::domain::grant::{ConnectorGrant, GrantAccess, GrantScope};
 use crate::services::events::{self, NandiEvent};
 use crate::services::orchestrator::{RunSource, PRIORITY_SCHEDULED};
 use crate::services::AppState;
@@ -408,20 +409,20 @@ fn emit_changed(state: &AppState) {
 
 /// The mailboxes the Chief of Staff may read
 fn granted(state: &AppState, agent: &str) -> Vec<EmailAccount> {
-    let config = config(state);
-    config
-        .email
-        .unwrap_or_default()
+    let grants = state.grants();
+    email_settings(state)
         .accounts
         .into_iter()
-        .filter(|a| {
-            settings::allows(
-                &config.connector_grants,
-                agent,
-                a.provider.id(),
-                GrantAccess::Read,
-            )
-        })
+        .filter(|a| grants.allows(agent, a.provider.id(), GrantAccess::Read))
+        .collect()
+}
+
+/// The connected mailboxes (granted or not)
+pub fn connected(state: &AppState) -> Vec<MailProvider> {
+    email_settings(state)
+        .accounts
+        .iter()
+        .map(|a| a.provider)
         .collect()
 }
 
@@ -549,19 +550,22 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
             name: identity.name.clone(),
             paused: false,
         });
-        if !settings::allows(
-            &config.connector_grants,
-            CHIEF_OF_STAFF,
-            provider.id(),
-            GrantAccess::Read,
-        ) {
-            config.connector_grants.push(ConnectorGrant {
-                agent: CHIEF_OF_STAFF.into(),
-                connector: provider.id().into(),
-                access: GrantAccess::Read,
-            });
-        }
     })?;
+    // Connecting is the person's say-so for the Chief of Staff: a saved
+    // read grant, removable in Settings › Connectors › Access
+    let grant = ConnectorGrant::new(CHIEF_OF_STAFF, provider.id(), GrantAccess::Read)
+        .map_err(|e| e.to_string())?;
+    if state.grants().grant(grant, GrantScope::Saved)? {
+        let info = crate::services::grants::GrantInfo {
+            agent: CHIEF_OF_STAFF.into(),
+            connector: provider.id().into(),
+            access: GrantAccess::Read,
+            scope: GrantScope::Saved,
+        };
+        crate::services::grants::audit(&state.connector_audit(), "granted", &info, None, None)
+            .await;
+        events::emit(state.bus(), &crate::services::grants::GrantsChanged {});
+    }
     if same_mailbox {
         let mut check = check_state(state, provider).await;
         check.needs_sign_in = false;
@@ -610,10 +614,12 @@ pub async fn disconnect(state: &AppState, provider: MailProvider) -> Result<Emai
         if let Some(email) = config.email.as_mut() {
             email.accounts.retain(|a| a.provider != provider);
         }
-        config
-            .connector_grants
-            .retain(|g| g.connector != provider.id());
     })?;
+    for gone in state.grants().revoke_connector(provider.id())? {
+        crate::services::grants::audit(&state.connector_audit(), "removed", &gone, None, None)
+            .await;
+    }
+    events::emit(state.bus(), &crate::services::grants::GrantsChanged {});
     log::info!("Disconnected {}", provider.name());
     emit_changed(state);
     Ok(status(state).await)

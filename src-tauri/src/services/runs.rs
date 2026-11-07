@@ -91,7 +91,7 @@ const ALL_STATUSES: [RunStatus; 6] = [
     RunStatus::Cancelled,
 ];
 
-const ALL_SOURCES: [SourceType; 11] = [
+const ALL_SOURCES: [SourceType; 12] = [
     SourceType::User,
     SourceType::Workflow,
     SourceType::Agent,
@@ -103,9 +103,10 @@ const ALL_SOURCES: [SourceType; 11] = [
     SourceType::Device,
     SourceType::Event,
     SourceType::Email,
+    SourceType::CalendarCheck,
 ];
 
-const TRIGGER_SOURCES: [SourceType; 7] = [
+const TRIGGER_SOURCES: [SourceType; 8] = [
     SourceType::Cron,
     SourceType::Calendar,
     SourceType::File,
@@ -113,6 +114,7 @@ const TRIGGER_SOURCES: [SourceType; 7] = [
     SourceType::Device,
     SourceType::Event,
     SourceType::Email,
+    SourceType::CalendarCheck,
 ];
 
 /// Runs across every agent matching `filters`, newest first. Studio runs

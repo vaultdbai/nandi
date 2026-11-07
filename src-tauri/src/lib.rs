@@ -9,6 +9,8 @@ mod bindings;
 mod cli;
 mod cli_mascot;
 mod commands;
+#[cfg(test)]
+mod connector_hub_suite;
 mod db;
 mod engine;
 mod headless;

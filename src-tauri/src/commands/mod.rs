@@ -4,6 +4,7 @@
 //! exceptions are desktop-only features with no service equivalent: quick
 //! pane, native notifications, the native file picker, and window state.
 
+pub mod access;
 pub mod agents;
 pub mod analysis;
 pub mod ask;
@@ -62,3 +63,4 @@ pub mod triggers;
 pub mod work;
 pub mod workflow_builder;
 pub mod workflows;
+pub mod workspace;

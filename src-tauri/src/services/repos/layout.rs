@@ -7,6 +7,7 @@
 //! .nandi/manifest.yaml
 //! .nandi/settings.yaml
 //! .nandi/connectors.yaml
+//! .nandi/connectors/<id>/connector.md                     (connector packages)
 //! .nandi/agents/<id>/skill.md
 //! .nandi/agents/<id>/instructions.md
 //! .nandi/agents/<id>/workflows/<workflow>.yaml
@@ -36,6 +37,9 @@ pub const INSTRUCTIONS_FILE: &str = "instructions.md";
 pub const MEMORY_FILE: &str = "memory.md";
 pub const SETTINGS_FILE: &str = "settings.yaml";
 pub const CONNECTORS_FILE: &str = "connectors.yaml";
+/// Under `.nandi/`: one folder per connector package, holding `connector.md`
+pub const CONNECTOR_PACKAGES_DIR: &str = "connectors";
+pub const CONNECTOR_FILE: &str = "connector.md";
 pub const MANIFEST_FILE: &str = "manifest.yaml";
 pub const INSTALLED_FILE: &str = "installed.yaml";
 /// Under `.nandi/`: capability definitions (wave A)
@@ -120,6 +124,11 @@ impl RepoLayout {
 
     pub fn connectors_path(&self) -> PathBuf {
         self.meta_dir.join(CONNECTORS_FILE)
+    }
+
+    /// `.nandi/connectors/<id>/`: a connector package's folder
+    pub fn connector_package_dir(&self, id: &str) -> PathBuf {
+        self.meta_dir.join(CONNECTOR_PACKAGES_DIR).join(id)
     }
 
     pub fn manifest_path(&self) -> PathBuf {

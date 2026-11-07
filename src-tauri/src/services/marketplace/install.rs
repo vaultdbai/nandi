@@ -550,6 +550,10 @@ impl Installer {
             workflows: pack.workflows.iter().map(ToString::to_string).collect(),
             suggested_asks: Vec::new(),
             capabilities,
+            requires_connectors: super::manifest::connector_ids(
+                pack.file.requires_connectors.clone(),
+                id.as_str(),
+            )?,
             install_size_kb: Some(u32::try_from(size.div_ceil(1024)).unwrap_or(u32::MAX)),
             estimated_cost_usd: None,
             signature: None,

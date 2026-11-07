@@ -235,7 +235,7 @@ pub async fn approve_action(
 }
 
 /// The local user, by the name in NANDI.md (else their slug, else "you")
-fn decider(state: &AppState) -> String {
+pub(crate) fn decider(state: &AppState) -> String {
     let root = &state.store().layout().root;
     crate::services::auth::display_name_at(root)
         .or_else(|| crate::services::auth::user_slug_at(root))
