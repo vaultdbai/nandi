@@ -40,6 +40,7 @@ import type { PilotDefinition } from '@/lib/bindings'
 import { uninstallInstalled } from '@/lib/marketplace-actions'
 import { useNavigationStore } from '@/store/navigation-store'
 import { ConnectorSetup } from './ConnectorSetup'
+import { PackConnectorsNotice } from '@/components/connectors/PackConnectorsNotice'
 import { AccessList } from './InstallConsentDialog'
 import { updateItem } from './library-actions'
 import type { LibraryEntry } from './library-entry'
@@ -164,6 +165,10 @@ function DrawerBody({
             }
           />
         </Section>
+      )}
+
+      {source.type === 'pack' && (
+        <PackConnectorsNotice required={source.pack.requiresConnectors} />
       )}
 
       {source.type === 'builtinTool' && (

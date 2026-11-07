@@ -37,6 +37,7 @@ import {
   newNoteName,
   noteLabel,
 } from './notes-model'
+import { NoteSuggestions } from './NoteSuggestions'
 
 /** The agent that keeps the notes (built into Nandi) */
 const CHIEF_OF_STAFF = 'chief-of-staff'
@@ -143,6 +144,7 @@ export function MyNotesView({ note }: { note?: string }) {
           </Button>
         </div>
       </header>
+      <NoteSuggestions />
 
       {list.length === 0 && !creating ? (
         <EmptyNotes onNew={() => setCreating(true)} />

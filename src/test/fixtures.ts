@@ -182,6 +182,7 @@ export function packManifest(
       { id: `${id}-agent`, name: `${name} Agent`, description: 'Does things' },
     ],
     workflows: [`${id}-flow`],
+    requiresConnectors: [],
     suggestedAsks: [],
     capabilities: {
       tools: ['shell', 'read_file'],

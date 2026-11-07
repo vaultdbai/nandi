@@ -3,16 +3,18 @@
  * My notes. The status refreshes on `email://changed` (connect, disconnect,
  * every check) and after a resync.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import { logger } from '@/lib/logger'
 import {
   unwrapResult,
   type DeviceFlowState,
+  type EmailSignInPoll,
   type EmailSettingsInput,
   type EmailStatus,
   type MailProvider,
+  type Result,
   type SignInProblem,
 } from '@/lib/tauri-bindings'
 
@@ -79,16 +81,41 @@ const POLL_MS = 1500
  * the browser, then the core is polled until the sign-in ends.
  */
 export function useEmailSignIn(provider: MailProvider) {
+  return useSignInFlow(
+    provider,
+    () => client.startEmailSignIn(provider),
+    () => client.pollEmailSignIn(provider),
+    emailKeys.status
+  )
+}
+
+/**
+ * One device or browser sign-in (a mailbox, a calendar, a drive): `start()`
+ * opens the sign-in page, then `poll` runs until the sign-in ends and
+ * `queryKey` is refetched. `id` names the account; the flow restarts when
+ * it changes.
+ */
+export function useSignInFlow(
+  id: string,
+  startSignIn: () => Promise<Result<DeviceFlowState, string>>,
+  poll: () => Promise<Result<EmailSignInPoll, string>>,
+  queryKey: readonly unknown[]
+) {
   const queryClient = useQueryClient()
   const [state, setState] = useState<EmailSignInState>({ phase: 'idle' })
   const flow = state.phase === 'waiting' ? state.flow : null
+  // The latest poll and key, so the timer doesn't restart on each render
+  const latest = useRef({ poll, queryKey })
+  useEffect(() => {
+    latest.current = { poll, queryKey }
+  })
 
   useEffect(() => {
     if (!flow) return
     let cancelled = false
     const timer = window.setInterval(
       async () => {
-        const result = await client.pollEmailSignIn(provider)
+        const result = await latest.current.poll()
         if (cancelled) return
         if (result.status === 'error') {
           setState({
@@ -101,12 +128,14 @@ export function useEmailSignIn(provider: MailProvider) {
           })
           return
         }
-        const poll = result.data
-        if (poll.phase === 'connected') {
+        const polled = result.data
+        if (polled.phase === 'connected') {
           setState({ phase: 'connected' })
-          void queryClient.invalidateQueries({ queryKey: emailKeys.status })
-        } else if (poll.phase === 'failed' && poll.problem) {
-          setState({ phase: 'failed', problem: poll.problem })
+          void queryClient.invalidateQueries({
+            queryKey: latest.current.queryKey,
+          })
+        } else if (polled.phase === 'failed' && polled.problem) {
+          setState({ phase: 'failed', problem: polled.problem })
         }
       },
       Math.max(flow.interval * 1000, POLL_MS)
@@ -115,10 +144,10 @@ export function useEmailSignIn(provider: MailProvider) {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [flow, provider, queryClient])
+  }, [flow, id, queryClient])
 
   const start = async () => {
-    const result = await client.startEmailSignIn(provider)
+    const result = await startSignIn()
     if (result.status === 'error') {
       setState({
         phase: 'failed',

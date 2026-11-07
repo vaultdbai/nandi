@@ -114,6 +114,10 @@ interface NandiEventMap {
   'connector://changed': ConnectorChanged
   'connectors://changed': ConnectorsChanged
   'email://changed': EmailChanged
+  /** A connector grant was given or removed */
+  'grants://changed': unknown
+  /** A calendar or drive connected, disconnected or was checked */
+  'workspace://changed': unknown
   /** A sandbox image build's output line, or its end (`finished`) */
   'images://build': {
     image: 'harness' | 'runtime'
@@ -273,6 +277,8 @@ export const CORE_EVENT_NAMES = [
   'pilot://consent_needed',
   'connector://changed',
   'connectors://changed',
+  'grants://changed',
+  'workspace://changed',
   'images://build',
   'relay://status',
   'relay://agent_online',

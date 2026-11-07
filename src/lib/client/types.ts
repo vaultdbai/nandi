@@ -41,6 +41,18 @@ import type {
   EmailSignInPoll,
   EmailStatus,
   MailProvider,
+  AccessChoice,
+  AccountKind,
+  ConnectorConsent,
+  ConnectorEntry,
+  GrantAccess,
+  GrantInfo,
+  GrantScope,
+  PublishConnectorInput,
+  PublishConnectorResult,
+  ScaffoldConnectorInput,
+  Suggestion,
+  WorkspaceStatus,
   ConsentStatus,
   ConversationSnapshot,
   CreateAgentInput,
@@ -845,6 +857,61 @@ export interface NandiClient {
   setEmailSettings(
     settings: EmailSettingsInput
   ): Promise<Result<EmailStatus, string>>
+  // Connector hub: grants, registry connectors, calendars and files
+  /** Every connector grant, saved and this computer's */
+  listConnectorGrants(): Promise<Result<GrantInfo[], string>>
+  grantConnectorAccess(
+    agentId: string,
+    connectorId: string,
+    access: GrantAccess,
+    scope: GrantScope
+  ): Promise<Result<null, string>>
+  revokeConnectorAccess(grant: GrantInfo): Promise<Result<null, string>>
+  /** Answers a `connector_access` approval */
+  answerAccessRequest(
+    approvalId: string,
+    choice: AccessChoice
+  ): Promise<Result<null, string>>
+  /** Connectors listed in the configured registries */
+  listRegistryConnectors(
+    refresh: boolean
+  ): Promise<Result<ConnectorEntry[], string>>
+  getConnectorConsent(
+    registryUrl: string,
+    connectorId: string
+  ): Promise<Result<ConnectorConsent, string>>
+  installRegistryConnector(
+    registryUrl: string,
+    connectorId: string,
+    apiKey: string | null
+  ): Promise<Result<null, string>>
+  removeConnector(id: string): Promise<Result<null, string>>
+  scaffoldConnector(
+    input: ScaffoldConnectorInput
+  ): Promise<Result<ConnectorInfo, string>>
+  publishConnector(
+    input: PublishConnectorInput
+  ): Promise<Result<PublishConnectorResult, string>>
+  /** Calendars and drives (read-only), and the calendar check */
+  getWorkspaceStatus(): Promise<Result<WorkspaceStatus, string>>
+  startWorkspaceSignIn(
+    kind: AccountKind
+  ): Promise<Result<DeviceFlowState, string>>
+  pollWorkspaceSignIn(
+    kind: AccountKind
+  ): Promise<Result<EmailSignInPoll, string>>
+  disconnectWorkspace(
+    kind: AccountKind
+  ): Promise<Result<WorkspaceStatus, string>>
+  checkCalendarNow(): Promise<Result<WorkspaceStatus, string>>
+  setCalendarInterval(minutes: number): Promise<Result<WorkspaceStatus, string>>
+  /** Open `- [ ]` lines of the Chief of Staff's suggestions.md */
+  listNoteSuggestions(): Promise<Result<Suggestion[], string>>
+  /** Accept (tick) or dismiss (remove); returns the suggestion's text */
+  answerNoteSuggestion(
+    id: string,
+    accept: boolean
+  ): Promise<Result<string, string>>
   /** Work assigned to the owner that's still open, soonest due first */
   listGatewayAssignments(): Promise<Result<GatewayAssignment[], string>>
   /** Done (the requester gets the note) or Decline an assignment */

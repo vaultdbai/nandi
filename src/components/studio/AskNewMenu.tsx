@@ -5,11 +5,13 @@ import {
   ChevronDown,
   FileCode,
   MessageSquare,
+  Plug,
   Plus,
   Shield,
   Workflow,
 } from 'lucide-react'
 import { NewAgentDialog } from '@/components/agents/NewAgentDialog'
+import { NewConnectorDialog } from '@/components/connectors/NewConnectorDialog'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -35,6 +37,7 @@ function openTab(tab: ArtifactTab) {
 export function AskNewMenu() {
   const { t } = useTranslation()
   const [creatingAgent, setCreatingAgent] = useState(false)
+  const [creatingConnector, setCreatingConnector] = useState(false)
 
   return (
     <>
@@ -71,9 +74,17 @@ export function AskNewMenu() {
             <Shield />
             {t('studio.tab.policy')}
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setCreatingConnector(true)}>
+            <Plug />
+            {t('newConnector.menuItem')}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <NewAgentDialog open={creatingAgent} onOpenChange={setCreatingAgent} />
+      <NewConnectorDialog
+        open={creatingConnector}
+        onOpenChange={setCreatingConnector}
+      />
     </>
   )
 }

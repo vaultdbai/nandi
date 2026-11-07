@@ -32,6 +32,8 @@ describe('SettingsView', () => {
       'Models & runtimes',
       'Account',
       'Email',
+      'Calendar & files',
+      'Connector access',
       'Cloud credentials',
       'Internet access',
       'Backup',

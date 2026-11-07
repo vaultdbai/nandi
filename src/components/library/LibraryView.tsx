@@ -37,6 +37,7 @@ import {
   type LibraryTab,
   type View,
 } from '@/store/navigation-store'
+import { PackageConnectorsSection } from '@/components/connectors/PackageConnectorsSection'
 import { InstallConsentDialog } from './InstallConsentDialog'
 import { LocalPackInstall } from './LocalPackInstall'
 import { libraryEntries, type LibraryEntry } from './library-entry'
@@ -326,6 +327,9 @@ export function LibraryPageView({ view }: { view: LibraryView }) {
                   ) : null
                 })}
               </Grid>
+            )}
+            {!loading && (kind === 'all' || kind === 'tools') && (
+              <PackageConnectorsSection tab={tab} search={query} />
             )}
           </div>
         </ScrollArea>
