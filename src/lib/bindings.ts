@@ -2312,6 +2312,29 @@ async dismissQueuedWork(id: string) : Promise<Result<null, string>> {
 }
 },
 /**
+ * An intake thread (`intake:<id>`): what was queued in it and the
+ * Requests it became. Its messages come from `get_conversation`.
+ */
+async getIntakeThread(conversationId: string) : Promise<Result<IntakeThread, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_intake_thread", { conversationId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The user's message in an intake thread: a Chief of Staff turn there
+ */
+async sendIntakeMessage(conversationId: string, text: string, clientMessageId: string | null) : Promise<Result<SendMessageResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("send_intake_message", { conversationId, text, clientMessageId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Marks a step of a local Request that waits on the user done
  */
 async completeRequestStep(id: string, position: number) : Promise<Result<null, string>> {
@@ -3603,10 +3626,10 @@ workspaceChanged: "workspace://changed"
 /** user-defined constants **/
 
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 
 /** user-defined types **/
 
@@ -5089,7 +5112,16 @@ text: string | null;
 /**
  * Epoch ms
  */
-at: number }
+at: number; 
+/**
+ * Its Chief of Staff thread, when it came through intake
+ */
+threadId: string | null; 
+/**
+ * The step waiting on the user (a manual step or a person), for
+ * "Mark done" (`complete_request_step`)
+ */
+waitingStep: WaitingStep | null }
 export type DigestKind = 
 /**
  * Waiting on the user (shown until it's done)
@@ -5702,6 +5734,18 @@ export type IntakeAction =
  */
 "run"
 export type IntakeStatus = "pending" | "approved" | "dismissed"
+/**
+ * A thread as its page shows it
+ */
+export type IntakeThread = { conversationId: string; title: string; source: RequestSource; 
+/**
+ * Everything queued in it, oldest first (pending ones get Approve)
+ */
+items: QueuedWork[]; 
+/**
+ * The Requests (or teammates' tasks) it became
+ */
+requestIds: string[] }
 /**
  * What joining a relay came to. Everything but `Joined` leaves the
  * relay settings as they were.
@@ -6487,7 +6531,15 @@ sender: string | null; screening: Screening; status: IntakeStatus;
 /**
  * The Request it started or updated, once approved
  */
-resultRequestId: string | null }
+resultRequestId: string | null; 
+/**
+ * Its Chief of Staff thread (`intake:<id>`)
+ */
+threadId: string; 
+/**
+ * For `start`: who does it, planned when it was queued
+ */
+plan: ActionPlan | null }
 /**
  * Why a task waits or was refused: the Blocker kinds of work-model §2.3,
  * plus `declined` (the owner said no to a held request). Set where the
@@ -7824,6 +7876,7 @@ export type Verdict = "clean" |
  */
 export type VersionInfo = { version: string; gitRef: string; commit: string }
 export type Visibility = "private" | "team" | "network"
+export type WaitingStep = { position: number; label: string }
 export type WorkItem = { 
 /**
  * Workflow run ID or task ID

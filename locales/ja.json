@@ -4162,6 +4162,11 @@
   "home.chiefOfStaffDigest.queue.toast.open": "開く",
   "home.chiefOfStaffDigest.queue.toast.approveFailed": "この項目を承認できませんでした",
   "home.chiefOfStaffDigest.queue.toast.dismissFailed": "この項目を破棄できませんでした",
+  "home.chiefOfStaffDigest.queue.plan": "計画: {{steps}}",
+  "home.chiefOfStaffDigest.markDone.label": "完了にする",
+  "home.chiefOfStaffDigest.markDone.aria": "完了にする: {{step}}",
+  "home.chiefOfStaffDigest.markDone.done": "完了にしました",
+  "home.chiefOfStaffDigest.markDone.failed": "このステップを完了にできませんでした",
   "email.problem.appRegistration": "Nandi の Microsoft アプリ登録が別の種類のアプリ用に設定されているため、Microsoft がサインインを拒否しました。管理者の方へ: Entra の [アプリの登録] › Nandi › [認証] で、http://localhost のリダイレクトを「モバイル アプリケーションとデスクトップ アプリケーション」に置き(Web やシングルページ アプリケーションではなく)、「パブリック クライアント フローを許可する」をオンにしてください。",
   "email.problem.keychain": "サインインはできましたが、Nandi がこのコンピューターのキーチェーンにサインイン情報を保存できませんでした。もう一度お試しください。理由は下の詳細に表示されます。",
   "email.backfill.title": "古いメールもバックグラウンドで読む",
@@ -4385,5 +4390,13 @@
   "noteSuggestions.dismiss": "却下",
   "noteSuggestions.accepted": "承認しました",
   "noteSuggestions.openStudio": "Studio で取り組む",
-  "noteSuggestions.failed": "回答を保存できませんでした"
+  "noteSuggestions.failed": "回答を保存できませんでした",
+  "intakeThread.label": "Chief of Staff のスレッド",
+  "intakeThread.loadError.title": "このスレッドを読み込めませんでした",
+  "intakeThread.history": "対応済み",
+  "intakeThread.status.approved": "承認済み",
+  "intakeThread.status.dismissed": "却下済み",
+  "intakeThread.openRequest": "リクエストを開く",
+  "intakeThread.assistant": "Chief of Staff",
+  "intakeThread.placeholder": "この件について Chief of Staff に尋ねる"
 }

@@ -11,16 +11,22 @@
 //!   at once; anything else waits here. Approving lets that one task past
 //!   the trust check ([`is_approved_task`]).
 //!
+//! Each item gets a Chief of Staff thread ([`thread`]) to talk it over.
+//! Work to start is planned when it's queued, so the user approves who
+//! does it, not just what.
+//!
 //! Work the user asks for themselves (their own chat, the ask box, Studio)
 //! doesn't come through here.
 
 pub mod screen;
+pub mod thread;
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::db::{self, Db};
+use crate::services::ask::ActionPlan;
 use crate::services::events::{self, EventBus};
 use crate::services::requests::local::{self, RequestSource, RequestUpdated};
 use crate::services::AppState;
@@ -66,6 +72,10 @@ pub struct QueuedWork {
     pub status: IntakeStatus,
     /// The Request it started or updated, once approved
     pub result_request_id: Option<String>,
+    /// Its Chief of Staff thread (`intake:<id>`)
+    pub thread_id: String,
+    /// For `start`: who does it, planned when it was queued
+    pub plan: Option<ActionPlan>,
 }
 
 /// What the Chief of Staff wants done, before screening
@@ -76,6 +86,8 @@ pub struct Proposal {
     pub text: String,
     /// The email it came from (`outlook:<id>` / `gmail:<id>`), screened too
     pub message_id: Option<String>,
+    /// Queued from a thread: it joins that thread
+    pub thread_id: Option<String>,
 }
 
 fn enum_str<T: Serialize>(value: &T) -> String {
@@ -90,7 +102,7 @@ fn parse_enum<T: for<'de> Deserialize<'de>>(text: &str) -> Option<T> {
 }
 
 const COLUMNS: &str = "id, at, source, action, request_id, request_title, text, sender, screening,
-                       status, result_request_id";
+                       status, result_request_id, thread_id, plan";
 
 fn row(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueuedWork> {
     let source: String = row.get(2)?;
@@ -113,13 +125,17 @@ fn row(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueuedWork> {
         }),
         status: parse_enum(&status).unwrap_or(IntakeStatus::Dismissed),
         result_request_id: row.get(10)?,
+        thread_id: row.get(11)?,
+        plan: row
+            .get::<_, Option<String>>(12)?
+            .and_then(|plan| serde_json::from_str(&plan).ok()),
     })
 }
 
 pub fn save(conn: &Connection, item: &QueuedWork) -> rusqlite::Result<()> {
     conn.execute(
         &format!(
-            "INSERT INTO intake_queue ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            "INSERT INTO intake_queue ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(id) DO UPDATE SET status = excluded.status,
                  result_request_id = excluded.result_request_id"
         ),
@@ -135,6 +151,10 @@ pub fn save(conn: &Connection, item: &QueuedWork) -> rusqlite::Result<()> {
             serde_json::to_string(&item.screening).unwrap_or_default(),
             enum_str(&item.status),
             item.result_request_id,
+            item.thread_id,
+            item.plan
+                .as_ref()
+                .and_then(|plan| serde_json::to_string(plan).ok()),
         ],
     )?;
     Ok(())
@@ -155,6 +175,15 @@ pub fn pending(conn: &Connection) -> rusqlite::Result<Vec<QueuedWork>> {
         "SELECT {COLUMNS} FROM intake_queue WHERE status = 'pending' ORDER BY at LIMIT 100"
     ))?;
     let rows = stmt.query_map([], row)?;
+    rows.collect()
+}
+
+/// Everything queued in a thread, oldest first
+pub fn for_thread(conn: &Connection, thread_id: &str) -> rusqlite::Result<Vec<QueuedWork>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM intake_queue WHERE thread_id = ?1 ORDER BY at"
+    ))?;
+    let rows = stmt.query_map([thread_id], row)?;
     rows.collect()
 }
 
@@ -236,8 +265,10 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
     if task.screen_only || (task.trusted && screening.verdict == Verdict::Clean) {
         return Ok(Gate::Go);
     }
+    let id = uuid::Uuid::new_v4().to_string();
     let item = QueuedWork {
-        id: uuid::Uuid::new_v4().to_string(),
+        thread_id: thread::id_for(&id),
+        id,
         at: db::now_ms() as f64,
         source: RequestSource::Teammate,
         action: IntakeAction::Run,
@@ -248,8 +279,9 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
         screening,
         status: IntakeStatus::Pending,
         result_request_id: None,
+        plan: None,
     };
-    save(&conn, &item).map_err(|e| e.to_string())?;
+    queue(&conn, &item).map_err(|e| e.to_string())?;
     changed(bus);
     Ok(Gate::Wait(item.id))
 }
@@ -309,15 +341,45 @@ pub async fn propose(state: &AppState, proposal: Proposal) -> Result<QueuedWork,
         texts,
         own_addresses: own.iter().map(String::as_str).collect(),
     });
+    let action = if proposal.request_id.is_some() {
+        IntakeAction::Update
+    } else {
+        IntakeAction::Start
+    };
+    // Who does it, so the user approves that too; planned again on
+    // approval if the model can't plan now
+    let plan = match action {
+        IntakeAction::Start => {
+            match crate::services::requests::tool::plan_for(state, &proposal.text).await {
+                Ok(plan) => Some(plan),
+                Err(e) => {
+                    log::warn!("Intake: couldn't plan it now: {e}");
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    let thread_id = match (&proposal.thread_id, &proposal.request_id) {
+        (Some(thread_id), _) => Some(thread_id.clone()),
+        (None, Some(request_id)) => {
+            let lookup = request_id.clone();
+            state
+                .db()
+                .call(move |conn| thread::for_request(conn, &lookup))
+                .await?
+        }
+        (None, None) => None,
+    }
+    .unwrap_or_else(|| thread::id_for(&id));
     let item = QueuedWork {
-        id: uuid::Uuid::new_v4().to_string(),
+        id,
+        thread_id,
+        plan,
         at: db::now_ms() as f64,
         source: proposal.source,
-        action: if proposal.request_id.is_some() {
-            IntakeAction::Update
-        } else {
-            IntakeAction::Start
-        },
+        action,
         request_id: proposal.request_id,
         request_title,
         text: proposal.text.trim().to_string(),
@@ -330,9 +392,54 @@ pub async fn propose(state: &AppState, proposal: Proposal) -> Result<QueuedWork,
         result_request_id: None,
     };
     let saved = item.clone();
-    state.db().call(move |conn| save(conn, &saved)).await?;
+    state.db().call(move |conn| queue(conn, &saved)).await?;
     changed(state.bus());
     Ok(item)
+}
+
+/// Saves a new item and opens (or adds to) its thread
+fn queue(conn: &Connection, item: &QueuedWork) -> rusqlite::Result<()> {
+    save(conn, item)?;
+    thread::ensure(conn, &item.thread_id, &local::title_for(&item.text))?;
+    thread::note(conn, &item.thread_id, &queued_note(item))
+}
+
+/// The thread's note for a new item. Pure, for tests.
+pub fn queued_note(item: &QueuedWork) -> String {
+    let what = match (item.action, &item.request_title) {
+        (IntakeAction::Update, Some(title)) => format!("News for \"{title}\""),
+        (IntakeAction::Run, Some(target)) => format!("A request for {target}"),
+        _ => "New work".to_string(),
+    };
+    let from = match (&item.sender, item.source) {
+        (Some(sender), _) => format!(" from {sender}"),
+        (None, RequestSource::Email) => " from email".to_string(),
+        (None, RequestSource::Calendar) => " from your calendar".to_string(),
+        _ => String::new(),
+    };
+    let quoted = item.text.replace('\n', "\n> ");
+    let mut out = format!("{what}{from}:\n\n> {quoted}\n");
+    match item.screening.verdict {
+        Verdict::Clean => out.push_str("\nScreening: no warning signs.\n"),
+        Verdict::Suspicious => out.push_str(&format!(
+            "\nScreening: suspicious. {}\n",
+            item.screening.reasons.join("; ")
+        )),
+        Verdict::Blocked => out.push_str(&format!(
+            "\nScreening: blocked, so it can only be dismissed. {}\n",
+            item.screening.reasons.join("; ")
+        )),
+    }
+    if let Some(plan) = &item.plan {
+        out.push_str("\nPlan:\n");
+        for step in &plan.steps {
+            out.push_str(&format!("- {}\n", step.description));
+        }
+    }
+    if item.screening.verdict != Verdict::Blocked {
+        out.push_str("\nApprove it above, or tell me what to change.");
+    }
+    out
 }
 
 async fn decide(state: &AppState, id: &str) -> Result<QueuedWork, String> {
@@ -362,15 +469,31 @@ pub async fn approve(state: &AppState, id: String) -> Result<String, String> {
             local::add_update(state, request_id.clone(), item.text.clone(), item.source).await?;
             request_id
         }
-        _ => {
-            crate::services::requests::tool::start_now(state, item.source, &item.text)
-                .await?
-                .0
-        }
+        _ => match item.plan.clone() {
+            Some(plan) => {
+                local::start_request_from(state, plan, item.text.clone(), item.source).await?
+            }
+            None => {
+                crate::services::requests::tool::start_now(state, item.source, &item.text)
+                    .await?
+                    .0
+            }
+        },
+    };
+    let note = match item.action {
+        IntakeAction::Start => "Approved: it's started.",
+        IntakeAction::Update => "Approved: the news reached the work.",
+        IntakeAction::Run => "Approved: it's running.",
     };
     item.status = IntakeStatus::Approved;
     item.result_request_id = Some(request_id.clone());
-    state.db().call(move |conn| save(conn, &item)).await?;
+    state
+        .db()
+        .call(move |conn| {
+            save(conn, &item)?;
+            thread::note(conn, &item.thread_id, note)
+        })
+        .await?;
     changed(state.bus());
     Ok(request_id)
 }
@@ -378,7 +501,13 @@ pub async fn approve(state: &AppState, id: String) -> Result<String, String> {
 pub async fn dismiss(state: &AppState, id: String) -> Result<(), String> {
     let mut item = decide(state, &id).await?;
     item.status = IntakeStatus::Dismissed;
-    state.db().call(move |conn| save(conn, &item)).await?;
+    state
+        .db()
+        .call(move |conn| {
+            save(conn, &item)?;
+            thread::note(conn, &item.thread_id, "Dismissed: nothing was done.")
+        })
+        .await?;
     changed(state.bus());
     Ok(())
 }
@@ -418,6 +547,7 @@ mod tests {
                 request_id: Some(request_id.clone()),
                 text: "The due date moved to Monday".into(),
                 message_id: None,
+                thread_id: None,
             },
         )
         .await
@@ -536,6 +666,97 @@ mod tests {
             panic!("it should be refused");
         };
         assert!(why.starts_with("Screening stopped this request"));
+    }
+
+    async fn thread_notes(state: &AppState, thread_id: &str) -> Vec<String> {
+        let id = thread_id.to_string();
+        state
+            .db()
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT content FROM messages WHERE conversation_id = ?1 ORDER BY created_at",
+                )?;
+                let rows = stmt.query_map([id], |row| row.get::<_, String>(0))?;
+                rows.collect::<rusqlite::Result<Vec<String>>>()
+            })
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn each_item_gets_a_chief_of_staff_thread_that_its_news_joins() {
+        let state = AppState::for_tests(Vec::new());
+        let item = propose(
+            &state,
+            Proposal {
+                source: RequestSource::Email,
+                text: "Pay the power bill of $84 by Friday".into(),
+                ..Proposal::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(thread::is_thread(&item.thread_id));
+        let owner = {
+            let id = item.thread_id.clone();
+            state
+                .db()
+                .call(move |conn| db::conversation_agent(conn, &id))
+                .await
+                .unwrap()
+        };
+        assert_eq!(
+            owner.as_deref(),
+            Some(crate::services::builtin_agents::CHIEF_OF_STAFF)
+        );
+        let notes = thread_notes(&state, &item.thread_id).await;
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].contains("Pay the power bill"));
+        assert!(notes[0].contains("Approve it above"));
+
+        // Approved: it starts the plan it was queued with, noted in the thread
+        let request_id = approve(&state, item.id.clone()).await.unwrap();
+        assert!(thread_notes(&state, &item.thread_id).await[1].starts_with("Approved"));
+
+        // News for that work joins the same thread
+        let news = propose(
+            &state,
+            Proposal {
+                source: RequestSource::Email,
+                request_id: Some(request_id.clone()),
+                text: "The due date moved to Monday".into(),
+                ..Proposal::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(news.thread_id, item.thread_id);
+
+        let thread_id = item.thread_id.clone();
+        let loaded = state
+            .db()
+            .call(move |conn| Ok(thread::load(conn, &thread_id)))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.items.len(), 2);
+        assert_eq!(loaded.request_ids, vec![request_id]);
+        let thread_id = item.thread_id.clone();
+        let prompt = state
+            .db()
+            .call(move |conn| Ok(thread::prompt(conn, &thread_id)))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(prompt.contains("<task-data>"));
+        assert!(prompt.contains("The due date moved to Monday"));
+
+        // Only a thread takes thread messages
+        assert!(
+            thread::send(&state, "agent:chief-of-staff".into(), "hi".into(), None)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

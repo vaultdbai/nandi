@@ -4162,6 +4162,11 @@
   "home.chiefOfStaffDigest.queue.toast.open": "Ouvrir",
   "home.chiefOfStaffDigest.queue.toast.approveFailed": "Impossible d'approuver cet élément",
   "home.chiefOfStaffDigest.queue.toast.dismissFailed": "Impossible d'ignorer cet élément",
+  "home.chiefOfStaffDigest.queue.plan": "Plan : {{steps}}",
+  "home.chiefOfStaffDigest.markDone.label": "Marquer comme fait",
+  "home.chiefOfStaffDigest.markDone.aria": "Marquer comme fait : {{step}}",
+  "home.chiefOfStaffDigest.markDone.done": "Marqué comme fait",
+  "home.chiefOfStaffDigest.markDone.failed": "Impossible de marquer cette étape comme faite",
   "email.problem.appRegistration": "L'inscription de l'application Microsoft de Nandi est configurée pour un autre type d'application, Microsoft a donc refusé la connexion. Pour la personne qui la gère : dans Entra, Inscriptions d'applications › Nandi › Authentification, placez la redirection http://localhost sous « Applications mobiles et de bureau » (pas Web ni application monopage) et activez « Autoriser les flux de clients publics ».",
   "email.problem.keychain": "Vous êtes connecté, mais Nandi n'a pas pu enregistrer la connexion dans le trousseau de cet ordinateur. Réessayez ; les détails ci-dessous indiquent pourquoi.",
   "email.backfill.title": "Lire aussi les anciens e-mails en arrière-plan",
@@ -4385,5 +4390,13 @@
   "noteSuggestions.dismiss": "Ignorer",
   "noteSuggestions.accepted": "Accepté",
   "noteSuggestions.openStudio": "Y travailler dans Studio",
-  "noteSuggestions.failed": "Impossible d'enregistrer votre réponse"
+  "noteSuggestions.failed": "Impossible d'enregistrer votre réponse",
+  "intakeThread.label": "Fil du chef de cabinet",
+  "intakeThread.loadError.title": "Impossible de charger ce fil",
+  "intakeThread.history": "Traité",
+  "intakeThread.status.approved": "Approuvé",
+  "intakeThread.status.dismissed": "Ignoré",
+  "intakeThread.openRequest": "Ouvrir la demande",
+  "intakeThread.assistant": "Chef de cabinet",
+  "intakeThread.placeholder": "Demandez à votre chef de cabinet à ce sujet"
 }

@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import { unwrapResult } from '@/lib/tauri-bindings'
+import { requestQueryKeys } from '@/hooks/useRequests'
 
 export const digestKeys = {
   all: ['chief-of-staff', 'digest'] as const,
@@ -46,6 +47,22 @@ export function useDismissQueuedWork() {
       unwrapResult(await client.dismissQueuedWork(queueId)),
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: digestKeys.all }),
+  })
+}
+
+/** "Mark done" on a step of a local Request that waits on the user */
+export function useCompleteWaitingStep() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (target: { requestId: string; position: number }) =>
+      unwrapResult(
+        await client.completeRequestStep(target.requestId, target.position)
+      ),
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: digestKeys.all }),
+        queryClient.invalidateQueries({ queryKey: requestQueryKeys.all }),
+      ]),
   })
 }
 

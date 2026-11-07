@@ -19,6 +19,8 @@ function item(overrides: Partial<DigestItem> = {}): DigestItem {
     status: 'running',
     text: null,
     at: Date.now() - 5 * 60 * 1000,
+    threadId: null,
+    waitingStep: null,
     ...overrides,
   }
 }
@@ -42,6 +44,8 @@ function queued(overrides: Partial<QueuedWork> = {}): QueuedWork {
     screening: { verdict: 'clean', reasons: [], links: [] },
     status: 'pending',
     resultRequestId: null,
+    threadId: 'intake:q1',
+    plan: null,
     ...overrides,
   }
 }
@@ -51,17 +55,20 @@ describe('ChiefOfStaffDigest', () => {
   let originalSeen: unknown
   let originalApprove: unknown
   let originalDismiss: unknown
+  let originalComplete: unknown
   beforeEach(() => {
     originalGet = mocked.getChiefOfStaffDigest
     originalSeen = mocked.markChiefOfStaffDigestSeen
     originalApprove = mocked.approveQueuedWork
     originalDismiss = mocked.dismissQueuedWork
+    originalComplete = mocked.completeRequestStep
   })
   afterEach(() => {
     mocked.getChiefOfStaffDigest = originalGet
     mocked.markChiefOfStaffDigestSeen = originalSeen
     mocked.approveQueuedWork = originalApprove
     mocked.dismissQueuedWork = originalDismiss
+    mocked.completeRequestStep = originalComplete
   })
 
   it('renders nothing without items', async () => {
@@ -188,5 +195,53 @@ describe('ChiefOfStaffDigest', () => {
       await screen.findByRole('button', { name: 'Approve anyway' })
     )
     await vi.waitFor(() => expect(approve).toHaveBeenCalledWith('q1'))
+  })
+
+  it('opens the thread of a row and of a queued item', async () => {
+    mocked.getChiefOfStaffDigest = vi.fn(async () =>
+      ok(
+        digest(
+          [item({ title: 'Dentist', requestId: 'r2', threadId: 'intake:d' })],
+          1,
+          [queued()]
+        )
+      )
+    )
+    render(<DigestCard />)
+    await userEvent.click(await screen.findByText('Dentist'))
+    expect(useNavigationStore.getState().current).toEqual({
+      kind: 'intake-thread',
+      conversationId: 'intake:d',
+    })
+    await userEvent.click(screen.getByText('Your power bill is due Friday'))
+    expect(useNavigationStore.getState().current).toEqual({
+      kind: 'intake-thread',
+      conversationId: 'intake:q1',
+    })
+  })
+
+  it('marks the waiting step done from a needs-you row', async () => {
+    mocked.getChiefOfStaffDigest = vi.fn(async () =>
+      ok(
+        digest([
+          item({
+            kind: 'needsYou',
+            status: 'waiting',
+            waitingStep: { position: 2, label: 'Call the bank' },
+          }),
+          item({ requestId: 'r9', title: 'No step' }),
+        ])
+      )
+    )
+    const complete = vi.fn(async () => ok(null))
+    mocked.completeRequestStep = complete
+    render(<DigestCard />)
+    expect(
+      await screen.findAllByRole('button', { name: /Mark done/ })
+    ).toHaveLength(1)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Mark done: Call the bank' })
+    )
+    await vi.waitFor(() => expect(complete).toHaveBeenCalledWith('r1', 2))
   })
 })

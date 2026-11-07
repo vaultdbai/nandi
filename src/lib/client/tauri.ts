@@ -297,6 +297,9 @@ export const tauriClient: NandiClient = {
   markChiefOfStaffDigestSeen: () => commands.markChiefOfStaffDigestSeen(),
   approveQueuedWork: queueId => commands.approveQueuedWork(queueId),
   dismissQueuedWork: queueId => commands.dismissQueuedWork(queueId),
+  getIntakeThread: conversationId => commands.getIntakeThread(conversationId),
+  sendIntakeMessage: (conversationId, text, clientMessageId) =>
+    commands.sendIntakeMessage(conversationId, text, clientMessageId),
   cancelRequest: id => commands.cancelRequest(id),
   rerunRequest: id => commands.rerunRequest(id),
   mascotGet: () => commands.mascotGet(),

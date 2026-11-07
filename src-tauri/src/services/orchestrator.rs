@@ -69,6 +69,7 @@ use crate::services::events::{
     self, AgentMessageAdded, AgentWarning, EventBus, NandiEvent, RunContext,
 };
 use crate::services::history;
+use crate::services::intake;
 use crate::services::network;
 use crate::services::pilots::{self, tools::PilotToolset, PilotConsentNeeded};
 use crate::services::repo_store::RepoStore;
@@ -1297,6 +1298,20 @@ async fn llm_step(
                 crate::runtime::FOLDERS_MOUNT,
             ));
             system.push_str(&today_prompt(&chrono::Local::now()));
+            // An intake thread: the Chief of Staff gets the task it's about
+            if ctx.agent_id == CHIEF_OF_STAFF && intake::thread::is_thread(&ctx.conversation_id) {
+                let id = ctx.conversation_id.clone();
+                let task = deps
+                    .bus
+                    .db
+                    .call(move |conn| Ok(intake::thread::prompt(conn, &id)))
+                    .await
+                    .ok()
+                    .flatten();
+                if let Some(task) = task {
+                    system.push_str(&task);
+                }
+            }
             // Started by the email check: the notes and the read-only mail
             // tools only (the email is untrusted), and no container
             let data_run = data_run(deps, &ctx.run_id).await;
@@ -2012,8 +2027,24 @@ async fn run_call(
         _ if ctx.agent_id == CHIEF_OF_STAFF && requests::tool::is_work_tool(&call.tool) => {
             match app_state(deps) {
                 Some(state) => {
-                    let source = requests::tool::source_of(data_run);
-                    requests::tool::call(&state, source, &call.tool, &call.args).await
+                    // In an intake thread: its source, and everything queues
+                    let thread = intake::thread::is_thread(&ctx.conversation_id)
+                        .then(|| ctx.conversation_id.clone());
+                    let thread_source = match &thread {
+                        Some(id) => {
+                            let id = id.clone();
+                            state
+                                .db()
+                                .call(move |conn| Ok(intake::thread::source(conn, &id)))
+                                .await
+                                .ok()
+                                .flatten()
+                        }
+                        None => None,
+                    };
+                    let source =
+                        thread_source.unwrap_or_else(|| requests::tool::source_of(data_run));
+                    requests::tool::call(&state, source, thread, &call.tool, &call.args).await
                 }
                 None => ToolOutcome {
                     result: format!("Tool '{}' is not available right now", call.tool),

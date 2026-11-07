@@ -6,7 +6,9 @@ pub use crate::services::requests::digest::ChiefOfStaffDigest;
 pub use crate::services::requests::Request;
 
 use crate::services::ask::ActionPlan;
+use crate::services::chat::SendMessageResult;
 use crate::services::intake;
+use crate::services::intake::thread::IntakeThread;
 use crate::services::requests::{self, digest, local};
 use crate::services::AppState;
 
@@ -69,6 +71,29 @@ pub async fn mark_chief_of_staff_digest_seen(state: State<'_, AppState>) -> Resu
 #[specta::specta]
 pub async fn approve_queued_work(state: State<'_, AppState>, id: String) -> Result<String, String> {
     intake::approve(&state, id).await
+}
+
+/// An intake thread (`intake:<id>`): what was queued in it and the
+/// Requests it became. Its messages come from `get_conversation`.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_intake_thread(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<IntakeThread, String> {
+    intake::thread::get(&state, conversation_id).await
+}
+
+/// The user's message in an intake thread: a Chief of Staff turn there
+#[tauri::command]
+#[specta::specta]
+pub async fn send_intake_message(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    text: String,
+    client_message_id: Option<String>,
+) -> Result<SendMessageResult, String> {
+    intake::thread::send(&state, conversation_id, text, client_message_id).await
 }
 
 /// Drops work that arrived from outside without doing it

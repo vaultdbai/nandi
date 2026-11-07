@@ -5,7 +5,9 @@ import {
   digestRows,
   digestSummary,
   digestTitleKey,
+  queueRow,
   queueRows,
+  rowView,
 } from './digest-model'
 
 const NOW = new Date('2026-11-07T12:00:00Z')
@@ -19,6 +21,8 @@ function item(overrides: Partial<DigestItem> = {}): DigestItem {
     status: 'running',
     text: null,
     at: NOW.getTime() - 2 * 60 * 60 * 1000,
+    threadId: null,
+    waitingStep: null,
     ...overrides,
   }
 }
@@ -46,6 +50,8 @@ function queued(overrides: Partial<QueuedWork> = {}): QueuedWork {
     screening: { verdict: 'clean', reasons: [], links: [] },
     status: 'pending',
     resultRequestId: null,
+    threadId: 'intake:q1',
+    plan: null,
     ...overrides,
   }
 }
@@ -167,5 +173,56 @@ describe('digest-model', () => {
       needsConfirm: false,
       sourceKey: 'home.chiefOfStaffDigest.source.calendar',
     })
+  })
+
+  it('opens the thread when a row has one, else the Request', () => {
+    expect(rowView({ threadId: 'intake:q1', requestId: 'r1' })).toEqual({
+      kind: 'intake-thread',
+      conversationId: 'intake:q1',
+    })
+    expect(rowView({ threadId: null, requestId: 'r1' })).toEqual({
+      kind: 'request',
+      requestId: 'r1',
+    })
+  })
+
+  it('carries the thread and the waiting step on digest rows', () => {
+    const rows = digestRows(
+      digest([
+        item({
+          kind: 'needsYou',
+          threadId: 'intake:q1',
+          waitingStep: { position: 1, label: 'Call the bank' },
+        }),
+      ]),
+      'en',
+      NOW
+    )
+    expect(rows[0]).toMatchObject({
+      threadId: 'intake:q1',
+      waitingStep: { position: 1, label: 'Call the bank' },
+    })
+  })
+
+  it('lists the plan steps of a queued item', () => {
+    const row = queueRow(
+      queued({
+        plan: {
+          steps: [
+            { kind: 'localAgent', target: 'a', description: 'Pay it' },
+            { kind: 'manual', target: '', description: 'Check the amount' },
+          ],
+          estimatedDurationSeconds: null,
+          estimatedCostUsd: null,
+          warnings: [],
+          rejection: null,
+        },
+      }),
+      'en',
+      NOW
+    )
+    expect(row.planSteps).toEqual(['Pay it', 'Check the amount'])
+    expect(row.threadId).toBe('intake:q1')
+    expect(queueRow(queued(), 'en', NOW).planSteps).toEqual([])
   })
 })

@@ -859,9 +859,14 @@ CREATE TABLE IF NOT EXISTS intake_queue (
     screening         TEXT NOT NULL,
     -- pending | approved | dismissed
     status            TEXT NOT NULL,
-    result_request_id TEXT
+    result_request_id TEXT,
+    -- Its Chief of Staff thread (`intake:<id>`, a conversation)
+    thread_id         TEXT NOT NULL,
+    -- `ActionPlan` JSON, for `start`: planned when it was queued
+    plan              TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_intake_queue_status ON intake_queue(status, at);
+CREATE INDEX IF NOT EXISTS idx_intake_queue_thread ON intake_queue(thread_id);
 CREATE INDEX IF NOT EXISTS idx_request_steps_task ON request_steps(task_id);
 "#;
 

@@ -45,6 +45,7 @@ import type {
   EmailSettingsInput,
   EmailSignInPoll,
   ChiefOfStaffDigest,
+  IntakeThread,
   EmailStatus,
   MailProvider,
   AccessChoice,
@@ -805,6 +806,14 @@ export interface NandiClient {
   approveQueuedWork(id: string): Promise<Result<string, string>>
   /** Drops a queued item without acting on it */
   dismissQueuedWork(id: string): Promise<Result<null, string>>
+  /** One intake item's Chief of Staff thread: its items and Requests */
+  getIntakeThread(conversationId: string): Promise<Result<IntakeThread, string>>
+  /** A message to the Chief of Staff in an intake thread (a turn) */
+  sendIntakeMessage(
+    conversationId: string,
+    text: string,
+    clientMessageId: string | null
+  ): Promise<Result<SendMessageResult, string>>
   completeRequestStep(
     id: string,
     position: number

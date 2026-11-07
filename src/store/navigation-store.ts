@@ -88,6 +88,8 @@ export type View =
   | { kind: 'work-item'; id: string }
   /** One Request with its Steps (any of its task IDs); `stepId` opens a step */
   | { kind: 'request'; requestId: string; stepId?: string }
+  /** One intake item's Chief of Staff conversation (`intake:<id>`) */
+  | { kind: 'intake-thread'; conversationId: string }
 
 export const RUN_DETAIL_TABS = [
   'overview',
@@ -139,6 +141,7 @@ export function navSection(view: View): NavSection | null {
     case 'request':
     case 'work-item':
     case 'delegation-thread':
+    case 'intake-thread':
       return 'home'
     case 'agents':
     case 'agent':
@@ -331,6 +334,7 @@ const VIEW_KINDS: Record<View['kind'], true> = {
   'capability-detail': true,
   'work-item': true,
   request: true,
+  'intake-thread': true,
 }
 
 /**
@@ -386,6 +390,11 @@ export function isActiveView(current: View, target: View): boolean {
     case 'request':
       return (
         current.kind === 'request' && current.requestId === target.requestId
+      )
+    case 'intake-thread':
+      return (
+        current.kind === 'intake-thread' &&
+        current.conversationId === target.conversationId
       )
     default:
       return true

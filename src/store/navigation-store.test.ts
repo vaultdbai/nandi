@@ -102,6 +102,7 @@ describe('the seven pages', () => {
       [{ kind: 'request', requestId: 'r' }, 'home'],
       [{ kind: 'work-item', id: 'w' }, 'home'],
       [{ kind: 'delegation-thread', taskId: 't' }, 'home'],
+      [{ kind: 'intake-thread', conversationId: 'intake:q' }, 'home'],
       [{ kind: 'agent', agentId: 'a' }, 'agents'],
       [{ kind: 'run', agentId: 'a', runId: 'r' }, 'agents'],
       [{ kind: 'run-detail', runId: 'r' }, 'agents'],

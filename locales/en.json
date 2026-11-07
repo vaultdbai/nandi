@@ -4162,6 +4162,11 @@
   "home.chiefOfStaffDigest.queue.toast.open": "Open",
   "home.chiefOfStaffDigest.queue.toast.approveFailed": "Couldn't approve this item",
   "home.chiefOfStaffDigest.queue.toast.dismissFailed": "Couldn't dismiss this item",
+  "home.chiefOfStaffDigest.queue.plan": "Plan: {{steps}}",
+  "home.chiefOfStaffDigest.markDone.label": "Mark done",
+  "home.chiefOfStaffDigest.markDone.aria": "Mark done: {{step}}",
+  "home.chiefOfStaffDigest.markDone.done": "Marked done",
+  "home.chiefOfStaffDigest.markDone.failed": "Couldn't mark this step done",
   "email.problem.appRegistration": "Nandi's Microsoft app registration is set up for another kind of app, so Microsoft refused the sign-in. Whoever manages it: in Entra, App registrations › Nandi › Authentication, put the http://localhost redirect under \"Mobile and desktop applications\" (not Web or Single-page application) and turn on \"Allow public client flows\".",
   "email.problem.keychain": "You signed in, but Nandi couldn't save the sign-in to this computer's keychain. Try again; the details below say why.",
   "email.backfill.title": "Also read older mail in the background",
@@ -4385,5 +4390,13 @@
   "noteSuggestions.dismiss": "Dismiss",
   "noteSuggestions.accepted": "Accepted",
   "noteSuggestions.openStudio": "Work on it in Studio",
-  "noteSuggestions.failed": "Couldn't save your answer"
+  "noteSuggestions.failed": "Couldn't save your answer",
+  "intakeThread.label": "Chief of Staff thread",
+  "intakeThread.loadError.title": "Couldn't load this thread",
+  "intakeThread.history": "Decided",
+  "intakeThread.status.approved": "Approved",
+  "intakeThread.status.dismissed": "Dismissed",
+  "intakeThread.openRequest": "Open request",
+  "intakeThread.assistant": "Chief of Staff",
+  "intakeThread.placeholder": "Ask your Chief of Staff about this"
 }

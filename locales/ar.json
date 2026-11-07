@@ -4162,6 +4162,11 @@
   "home.chiefOfStaffDigest.queue.toast.open": "فتح",
   "home.chiefOfStaffDigest.queue.toast.approveFailed": "تعذّرت الموافقة على هذا العنصر",
   "home.chiefOfStaffDigest.queue.toast.dismissFailed": "تعذّر تجاهل هذا العنصر",
+  "home.chiefOfStaffDigest.queue.plan": "الخطة: {{steps}}",
+  "home.chiefOfStaffDigest.markDone.label": "تحديد كمنجز",
+  "home.chiefOfStaffDigest.markDone.aria": "تحديد كمنجز: {{step}}",
+  "home.chiefOfStaffDigest.markDone.done": "تم التحديد كمنجز",
+  "home.chiefOfStaffDigest.markDone.failed": "تعذّر تحديد هذه الخطوة كمنجزة",
   "email.problem.appRegistration": "تسجيل تطبيق Nandi لدى Microsoft مُعدّ لنوع آخر من التطبيقات، لذا رفضت Microsoft تسجيل الدخول. على مَن يديره: في Entra، تسجيلات التطبيقات › Nandi › المصادقة، ضع إعادة التوجيه http://localhost ضمن \"تطبيقات الأجهزة المحمولة وسطح المكتب\" (لا الويب ولا التطبيق أحادي الصفحة) وفعّل \"السماح بتدفقات العميل العامة\".",
   "email.problem.keychain": "سجّلت الدخول، لكن تعذّر على Nandi حفظ تسجيل الدخول في سلسلة مفاتيح هذا الحاسوب. حاول مجددًا؛ توضّح التفاصيل أدناه السبب.",
   "email.backfill.title": "اقرأ البريد الأقدم أيضًا في الخلفية",
@@ -4385,5 +4390,13 @@
   "noteSuggestions.dismiss": "تجاهل",
   "noteSuggestions.accepted": "تم القبول",
   "noteSuggestions.openStudio": "العمل عليه في Studio",
-  "noteSuggestions.failed": "تعذّر حفظ إجابتك"
+  "noteSuggestions.failed": "تعذّر حفظ إجابتك",
+  "intakeThread.label": "محادثة رئيس الأركان",
+  "intakeThread.loadError.title": "تعذّر تحميل هذه المحادثة",
+  "intakeThread.history": "تم البت فيه",
+  "intakeThread.status.approved": "تمت الموافقة",
+  "intakeThread.status.dismissed": "تم التجاهل",
+  "intakeThread.openRequest": "فتح الطلب",
+  "intakeThread.assistant": "رئيس الأركان",
+  "intakeThread.placeholder": "اسأل رئيس الأركان عن هذا"
 }

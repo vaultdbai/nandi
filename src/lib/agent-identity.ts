@@ -19,3 +19,6 @@ export function displayAgent(id: string, name: string): AgentInfo {
     builtin: false,
   }
 }
+
+/** The built-in Chief of Staff's agent ID */
+export const CHIEF_OF_STAFF_AGENT_ID = 'chief-of-staff'

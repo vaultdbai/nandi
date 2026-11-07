@@ -2,6 +2,7 @@ import { AgentView } from '@/components/views/AgentView'
 import { CapabilityDetailView } from '@/components/views/CapabilityDetailView'
 import { DelegationThreadView } from '@/components/views/DelegationThreadView'
 import { RequestDetailView } from '@/components/views/RequestDetailView'
+import { IntakeThreadView } from '@/components/views/IntakeThreadView'
 import { MemberProfileView } from '@/components/views/MemberProfileView'
 import { OnboardingView } from '@/components/views/OnboardingView'
 import { RunDetailView } from '@/components/views/RunDetailView'
@@ -115,6 +116,13 @@ function CurrentView({ view }: { view: View }) {
       return <CapabilityDetailView key={view.id} capabilityId={view.id} />
     case 'work-item':
       return <WorkflowProjectView key={view.id} workId={view.id} />
+    case 'intake-thread':
+      return (
+        <IntakeThreadView
+          key={view.conversationId}
+          conversationId={view.conversationId}
+        />
+      )
     case 'request':
       return (
         <RequestDetailView

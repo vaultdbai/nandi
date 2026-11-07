@@ -1134,6 +1134,30 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **Needs relay:** yes
 - **Status:** Shipped
 
+### RQ-31 — Each intake item has a Chief of Staff thread
+
+- **What:** Every item the Chief of Staff screens (email, calendar, a teammate's request) has its own conversation with it, a thread (`intake:<id>`). News for the same work joins the same thread. The backend writes the Chief of Staff's notes into it (queued, approved, dismissed). Home's rows open the thread. The thread page shows the item with its screening verdict and plan, **Approve** and **Dismiss**, the Requests it became (with their steps and **Mark done**), and the conversation. Asking for a draft gets a draft; asking to give the work to an agent queues an item in the same thread for approval instead of running it. **Mark done** on Home's "Needs you" row finishes a "For you" step.
+- **Where:** `IntakeThreadView.tsx`, `intake-thread-model.ts`, Home's `ChiefOfStaffDigest.tsx`, `services/intake/thread.rs`, `get_intake_thread`, `send_intake_message`.
+- **Preconditions:** Email connected (or a calendar event) so an item reaches the queue; an agent that can do the work.
+- **Steps:**
+  1. Let an email arrive that asks for something. Open Home and click the item.
+  2. Read the thread.
+  3. Ask: "draft a reply".
+  4. Ask: "give this to <agent>".
+  5. Click **Approve** in the thread header.
+  6. For a plan with a "For you" step, go back to Home and click **Mark done** on its "Needs you" row.
+- **Expected:**
+  - Step 1: the thread opens with the item's title and source.
+  - Step 2: the Chief of Staff's note says it queued the item; the header shows the screening verdict and the plan steps.
+  - Step 3: the Chief of Staff answers with a draft.
+  - Step 4: a new item waits in the same thread; nothing runs yet.
+  - Step 5: it starts, the thread gets an "approved" note, and the Request appears below with its steps.
+  - Step 6: the step finishes and the row leaves "Needs you".
+- **Edge / negative cases:** A blocked item shows "Blocked by screening" and only Dismiss. A suspicious item asks before it starts. Dismissing adds a "dismissed" note and the item moves to the history line. A teammate's request opens its thread too, and its Request has no Mark done. Without a relay everything works except teammates' items, which need the relay.
+- **Automation:** Covered by: `digest-model.test.ts`, `intake-thread-model.test.ts`, `services::intake::thread` tests | Layer: unit + manual | Gap: the page against live email is manual.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## Gaps and planned (not testable yet)
 
 - No way to delete a workflow in the UI or API; only by removing its YAML file (no `delete_workflow` command).

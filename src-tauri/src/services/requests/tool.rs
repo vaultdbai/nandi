@@ -153,12 +153,16 @@ pub fn for_the_user(mut plan: ActionPlan, title: &str) -> ActionPlan {
 }
 
 /// Runs a work tool
+/// Runs a work tool. `thread`: the call came from an intake thread, so
+/// whatever it starts or adds is queued for approval too.
 pub async fn call(
     state: &AppState,
     source: RequestSource,
+    thread: Option<String>,
     tool: &str,
     args: &Value,
 ) -> ToolOutcome {
+    let queued = from_outside(source) || thread.is_some();
     match tool {
         OPEN => open(state).await,
         START => {
@@ -167,8 +171,8 @@ pub async fn call(
                 return error("'what' is required");
             }
             let text = work_text(&what, &text_arg(args, "source"));
-            if from_outside(source) {
-                return queue(state, source, None, text, args).await;
+            if queued {
+                return queue(state, source, thread, None, text, args).await;
             }
             match start_now(state, source, &text).await {
                 Ok((id, plan)) => ok(started(&id, &plan)),
@@ -182,8 +186,8 @@ pub async fn call(
                 return error("'request_id' and 'news' are required");
             }
             let news = work_text(&news, &text_arg(args, "source"));
-            if from_outside(source) {
-                return queue(state, source, Some(id), news, args).await;
+            if queued {
+                return queue(state, source, thread, Some(id), news, args).await;
             }
             match local::add_update(state, id.clone(), news, source).await {
                 Ok(told) => ok(json!({ "request_id": id, "told_now": told })),
@@ -203,6 +207,7 @@ pub fn from_outside(source: RequestSource) -> bool {
 async fn queue(
     state: &AppState,
     source: RequestSource,
+    thread_id: Option<String>,
     request_id: Option<String>,
     text: String,
     args: &Value,
@@ -213,6 +218,7 @@ async fn queue(
         request_id,
         text,
         message_id,
+        thread_id,
     };
     match intake::propose(state, proposal).await {
         Ok(item) => ok(json!({
@@ -269,6 +275,14 @@ pub async fn start_now(
     source: RequestSource,
     text: &str,
 ) -> Result<(String, ActionPlan), String> {
+    let plan = plan_for(state, text).await?;
+    let id = local::start_request_from(state, plan.clone(), text.to_string(), source).await?;
+    Ok((id, plan))
+}
+
+/// Who would do `text`: the user's agents, workflows or teammates, never
+/// the Chief of Staff itself, else a step for the user
+pub async fn plan_for(state: &AppState, text: &str) -> Result<ActionPlan, String> {
     let service = state.ask().ok_or("Planning is unavailable right now")?;
     let context = ask::context::load(
         state,
@@ -279,9 +293,7 @@ pub async fn start_now(
     )
     .await;
     let plan = ask::planner::plan(service.llm().as_ref(), text, &context).await;
-    let plan = for_the_user(plan, &local::title_for(text));
-    let id = local::start_request_from(state, plan.clone(), text.to_string(), source).await?;
-    Ok((id, plan))
+    Ok(for_the_user(plan, &local::title_for(text)))
 }
 
 fn started(id: &str, plan: &ActionPlan) -> Value {

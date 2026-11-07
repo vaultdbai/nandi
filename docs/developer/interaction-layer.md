@@ -212,6 +212,26 @@ task past the `ask` trust check (`intake::is_approved_task` in `admit` and
 cancel or the task's deadline takes it off the queue (`drop_task`). The
 queue item survives a restart: the resumed task finds its decision.
 
+**Each item has a Chief of Staff thread** (`intake/thread.rs`). A
+conversation `intake:<item id>` owned by the Chief of Staff, so it runs
+with its skill, notes, grants and permissions, is made when the item is
+queued. News for the same work joins that thread (`thread::for_request`).
+What happens is noted in it as the Chief of Staff's messages (queued,
+with the screening and the plan; approved; dismissed). Work to start is
+planned when it's queued (`tool::plan_for`), so the user approves who does
+it, and Approve starts that plan.
+
+The user chats in the thread (`send_intake_message`,
+`POST /api/chief-of-staff/threads/{id}/messages`; the page loads
+`get_intake_thread` and the conversation): draft a reply, hand it to an
+agent, add what's missing. The orchestrator gives those turns the task
+(`thread::prompt`, inside `<task-data>`, untrusted). Work the Chief of
+Staff starts or news it adds there always queues for approval in the same
+thread (`requests::tool::call` with the thread), even when the user asked
+for it: Approve is a click, never a chat message. Home's rows open the
+thread, and a step waiting on the user can be marked done from Home
+(`DigestItem.waiting_step`, `complete_request_step`).
+
 **Screening** (`intake/screen.rs`, pure, offline) reads the request, and
 the email itself when the call names its `message_id`. No link is opened
 and no attachment is read (Nandi never downloads attachments; a malware

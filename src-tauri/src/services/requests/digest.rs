@@ -15,6 +15,7 @@ use specta::Type;
 use super::local::{self, LocalRequest, RequestSource, RequestUpdate};
 use super::RequestStatus;
 use crate::db;
+use crate::services::ask::PlanStepKind;
 use crate::services::intake::{self, QueuedWork};
 use crate::services::AppState;
 
@@ -47,6 +48,33 @@ pub struct DigestItem {
     pub text: Option<String>,
     /// Epoch ms
     pub at: f64,
+    /// Its Chief of Staff thread, when it came through intake
+    pub thread_id: Option<String>,
+    /// The step waiting on the user (a manual step or a person), for
+    /// "Mark done" (`complete_request_step`)
+    pub waiting_step: Option<WaitingStep>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitingStep {
+    pub position: u32,
+    pub label: String,
+}
+
+/// The first step that waits on the user. Pure.
+pub fn waiting_step(request: &LocalRequest) -> Option<WaitingStep> {
+    request
+        .steps
+        .iter()
+        .find(|s| {
+            s.status == super::StepStatus::Waiting
+                && matches!(s.kind, PlanStepKind::Manual | PlanStepKind::Human)
+        })
+        .map(|s| WaitingStep {
+            position: s.position,
+            label: s.label.clone(),
+        })
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
@@ -79,6 +107,10 @@ pub fn build(requests: &[LocalRequest], updates: &[RequestUpdate], seen: i64) ->
         status: r.status,
         text,
         at: at as f64,
+        thread_id: None,
+        waiting_step: (kind == DigestKind::NeedsYou)
+            .then(|| waiting_step(r))
+            .flatten(),
     };
     let mut items = Vec::new();
     let mut by_id = HashMap::new();
@@ -114,9 +146,13 @@ pub async fn get(state: &AppState) -> Result<ChiefOfStaffDigest, String> {
             let since = seen.unwrap_or(0);
             let requests = local::recent(conn, since)?;
             let updates = local::updates_since(conn, since)?;
+            let mut items = build(&requests, &updates, since);
+            for item in &mut items {
+                item.thread_id = intake::thread::for_request(conn, &item.request_id)?;
+            }
             Ok(ChiefOfStaffDigest {
                 since: seen.map(|at| at as f64),
-                items: build(&requests, &updates, since),
+                items,
                 queue: intake::pending(conn)?,
             })
         })
@@ -209,6 +245,29 @@ mod tests {
         assert_eq!(items[0].request_id, "bill");
         assert_eq!(items[0].kind, DigestKind::NeedsYou);
         assert_eq!(items[1].kind, DigestKind::Started);
+    }
+
+    #[test]
+    fn a_step_waiting_on_the_user_can_be_marked_done_from_home() {
+        let plan = ActionPlan {
+            steps: vec![crate::services::ask::PlanStep {
+                kind: PlanStepKind::Manual,
+                target: String::new(),
+                description: "For you: Pay the power bill".to_string(),
+            }],
+            ..ActionPlan::default()
+        };
+        let mut r = local::new_request("bill", "Pay it", &plan, RequestSource::Email, 10);
+        r.status = RequestStatus::Waiting;
+        r.steps[0].status = super::super::StepStatus::Waiting;
+        let items = build(&[r], &[], 100);
+        assert_eq!(
+            items[0].waiting_step,
+            Some(WaitingStep {
+                position: 0,
+                label: "For you: Pay the power bill".to_string()
+            })
+        );
     }
 
     #[test]

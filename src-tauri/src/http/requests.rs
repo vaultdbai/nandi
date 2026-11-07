@@ -41,6 +41,34 @@ pub fn api() -> Router<AppState> {
         .route("/chief-of-staff/queue/{id}/approve", post(approve_queued))
         // Returns `null` once it's dismissed
         .route("/chief-of-staff/queue/{id}/dismiss", post(dismiss_queued))
+        // Returns `IntakeThread` (`id`: the thread's conversation ID)
+        .route("/chief-of-staff/threads/{id}", get(intake_thread))
+        // Body `{ text, clientMessageId? }`; returns `SendMessageResult`
+        .route(
+            "/chief-of-staff/threads/{id}/messages",
+            post(intake_message),
+        )
+}
+
+async fn intake_thread(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(crate::services::intake::thread::get(&state, id).await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ThreadMessageBody {
+    text: String,
+    client_message_id: Option<String>,
+}
+
+async fn intake_message(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<ThreadMessageBody>,
+) -> impl IntoResponse {
+    ApiResult(
+        crate::services::intake::thread::send(&state, id, body.text, body.client_message_id).await,
+    )
 }
 
 async fn approve_queued(

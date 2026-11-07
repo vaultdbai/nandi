@@ -1,26 +1,16 @@
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  useApproveQueuedWork,
   useChiefOfStaffDigest,
-  useDismissQueuedWork,
+  useCompleteWaitingStep,
   useMarkDigestSeen,
 } from '@/hooks/useChiefOfStaffDigest'
+import { errorMessage } from '@/hooks/useDelegation'
+import { useQueueDecisions } from '@/hooks/useQueueDecisions'
 import { useViewOpener } from '@/hooks/useViewOpener'
 import { cn } from '@/lib/utils'
 import {
@@ -28,23 +18,24 @@ import {
   digestSummary,
   digestTitleKey,
   queueRows,
+  rowView,
   type DigestRow,
-  type QueueRow,
 } from './digest-model'
+import { ApproveSuspiciousDialog, QueueRowView } from './QueueRowView'
 
 /**
  * Home's "Since you were away": what the Chief of Staff started, updated
  * or finished on its own, and what waits on the user. "Got it" marks it
- * seen; needs-you rows stay until they are done.
+ * seen; needs-you rows stay until they are done. Rows open the item's
+ * Chief of Staff thread, or the Request when there is none.
  */
 export function ChiefOfStaffDigest() {
   const { t, i18n } = useTranslation()
   const { open } = useViewOpener()
   const digest = useChiefOfStaffDigest()
   const markSeen = useMarkDigestSeen()
-  const approve = useApproveQueuedWork()
-  const dismiss = useDismissQueuedWork()
-  const [confirming, setConfirming] = useState<QueueRow | null>(null)
+  const completeStep = useCompleteWaitingStep()
+  const decisions = useQueueDecisions('thread')
   if (!digest.data) return null
   if (digest.data.items.length === 0 && digest.data.queue.length === 0) {
     return null
@@ -66,37 +57,24 @@ export function ChiefOfStaffDigest() {
     }
   }
 
-  const approveRow = async (row: QueueRow) => {
-    setConfirming(null)
-    try {
-      const requestId = await approve.mutateAsync(row.id)
-      const message =
-        row.action === 'update' && row.requestTitle
-          ? t('home.chiefOfStaffDigest.queue.toast.addedTo', {
-              title: row.requestTitle,
-            })
-          : t('home.chiefOfStaffDigest.queue.toast.started')
-      toast.success(message, {
-        action: {
-          label: t('home.chiefOfStaffDigest.queue.toast.open'),
-          onClick: () => open({ kind: 'request', requestId }),
-        },
-      })
-    } catch (e) {
-      toast.error(t('home.chiefOfStaffDigest.queue.toast.approveFailed'), {
-        description: e instanceof Error ? e.message : String(e),
-      })
-    }
-  }
-
-  const dismissRow = async (row: QueueRow) => {
-    try {
-      await dismiss.mutateAsync(row.id)
-    } catch (e) {
-      toast.error(t('home.chiefOfStaffDigest.queue.toast.dismissFailed'), {
-        description: e instanceof Error ? e.message : String(e),
-      })
-    }
+  const markDone = (row: DigestRow) => {
+    if (!row.waitingStep) return
+    completeStep.mutate(
+      { requestId: row.requestId, position: row.waitingStep.position },
+      {
+        onSuccess: () =>
+          toast.success(t('home.chiefOfStaffDigest.markDone.done'), {
+            action: {
+              label: t('home.chiefOfStaffDigest.queue.toast.open'),
+              onClick: () => open(rowView(row)),
+            },
+          }),
+        onError: error =>
+          toast.error(t('home.chiefOfStaffDigest.markDone.failed'), {
+            description: errorMessage(error),
+          }),
+      }
+    )
   }
 
   return (
@@ -137,11 +115,12 @@ export function ChiefOfStaffDigest() {
               <QueueRowView
                 key={row.id}
                 row={row}
-                busy={approve.isPending || dismiss.isPending}
-                onApprove={() =>
-                  row.needsConfirm ? setConfirming(row) : void approveRow(row)
+                busy={decisions.busy}
+                onApprove={() => decisions.requestApprove(row)}
+                onDismiss={() => decisions.dismiss(row)}
+                onOpen={() =>
+                  open({ kind: 'intake-thread', conversationId: row.threadId })
                 }
-                onDismiss={() => void dismissRow(row)}
               />
             ))}
           </section>
@@ -151,152 +130,75 @@ export function ChiefOfStaffDigest() {
             // One Request can show twice (waiting on you, and updated)
             key={`${row.kind}-${row.requestId}-${index}`}
             row={row}
-            onOpen={() => open({ kind: 'request', requestId: row.requestId })}
+            busy={completeStep.isPending}
+            onOpen={() => open(rowView(row))}
+            onMarkDone={() => markDone(row)}
           />
         ))}
       </CardContent>
-      <AlertDialog
-        open={confirming !== null}
-        onOpenChange={next => {
-          if (!next) setConfirming(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t('home.chiefOfStaffDigest.queue.confirm.title')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('home.chiefOfStaffDigest.queue.confirm.description')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t('home.chiefOfStaffDigest.queue.confirm.cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => confirming && void approveRow(confirming)}
-            >
-              {t('home.chiefOfStaffDigest.queue.confirm.action')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ApproveSuspiciousDialog
+        open={decisions.confirming !== null}
+        onCancel={decisions.cancelConfirm}
+        onApprove={decisions.approveConfirmed}
+      />
     </Card>
-  )
-}
-
-function QueueRowView({
-  row,
-  busy,
-  onApprove,
-  onDismiss,
-}: {
-  row: QueueRow
-  busy: boolean
-  onApprove: () => void
-  onDismiss: () => void
-}) {
-  const { t } = useTranslation()
-  const label =
-    row.action !== 'start' && row.requestTitle
-      ? t(
-          row.action === 'run'
-            ? 'home.chiefOfStaffDigest.queue.run'
-            : 'home.chiefOfStaffDigest.queue.addTo',
-          { title: row.requestTitle }
-        )
-      : t('home.chiefOfStaffDigest.queue.start')
-  const origin = [row.sender, `${t(row.sourceKey)} · ${row.when}`]
-    .filter(Boolean)
-    .join(' · ')
-  return (
-    <div
-      data-testid="home-cos-queue-row"
-      data-verdict={row.verdict}
-      className="flex min-w-0 flex-col gap-1 rounded-md border px-3 py-2 text-sm"
-    >
-      <span className="flex min-w-0 items-center gap-2">
-        <Badge variant="secondary" className="min-w-0 truncate">
-          {label}
-        </Badge>
-        {row.verdict === 'suspicious' && (
-          <Badge
-            variant="outline"
-            className="shrink-0 border-warning/40 bg-warning/10 text-warning"
-          >
-            {t('home.chiefOfStaffDigest.queue.verdict.suspicious')}
-          </Badge>
-        )}
-        {row.verdict === 'blocked' && (
-          <Badge variant="destructive" className="shrink-0">
-            {t('home.chiefOfStaffDigest.queue.verdict.blocked')}
-          </Badge>
-        )}
-      </span>
-      <p className="line-clamp-2 font-medium">{row.text}</p>
-      <p className="truncate text-xs text-muted-foreground">{origin}</p>
-      {row.reasons.length > 0 && (
-        <ul
-          className={cn(
-            'list-disc ps-5 text-xs',
-            row.verdict === 'blocked' ? 'text-destructive' : 'text-warning'
-          )}
-        >
-          {row.reasons.map(reason => (
-            <li key={reason}>{reason}</li>
-          ))}
-        </ul>
-      )}
-      <div className="flex items-center justify-end gap-2">
-        {row.canApprove ? (
-          <Button size="sm" disabled={busy} onClick={onApprove}>
-            {t('home.chiefOfStaffDigest.queue.approve')}
-          </Button>
-        ) : (
-          <span className="me-auto text-xs text-muted-foreground">
-            {t('home.chiefOfStaffDigest.queue.blocked')}
-          </span>
-        )}
-        <Button size="sm" variant="outline" disabled={busy} onClick={onDismiss}>
-          {t('home.chiefOfStaffDigest.queue.dismiss')}
-        </Button>
-      </div>
-    </div>
   )
 }
 
 function DigestRowButton({
   row,
+  busy,
   onOpen,
+  onMarkDone,
 }: {
   row: DigestRow
+  busy: boolean
   onOpen: () => void
+  onMarkDone: () => void
 }) {
   const { t } = useTranslation()
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex min-w-0 flex-col gap-0.5 rounded-md px-2 py-2 text-start text-sm hover:bg-muted"
-    >
-      <span className="flex min-w-0 items-center gap-2">
-        <Badge
-          variant={row.kind === 'needsYou' ? 'default' : 'secondary'}
-          className="shrink-0"
+    <div className="flex min-w-0 items-center gap-2 rounded-md hover:bg-muted">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-md px-2 py-2 text-start text-sm"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <Badge
+            variant={row.kind === 'needsYou' ? 'default' : 'secondary'}
+            className="shrink-0"
+          >
+            {t(row.labelKey)}
+          </Badge>
+          <span className="min-w-0 flex-1 truncate font-medium">
+            {row.title}
+          </span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {t(row.sourceKey)} · {row.when}
+          </span>
+        </span>
+        {row.text && (
+          <span className={cn('truncate ps-2 text-xs text-muted-foreground')}>
+            {row.text}
+          </span>
+        )}
+      </button>
+      {row.waitingStep && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="me-2 shrink-0"
+          disabled={busy}
+          title={row.waitingStep.label}
+          aria-label={t('home.chiefOfStaffDigest.markDone.aria', {
+            step: row.waitingStep.label,
+          })}
+          onClick={onMarkDone}
         >
-          {t(row.labelKey)}
-        </Badge>
-        <span className="min-w-0 flex-1 truncate font-medium">{row.title}</span>
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {t(row.sourceKey)} · {row.when}
-        </span>
-      </span>
-      {row.text && (
-        <span className={cn('truncate ps-2 text-xs text-muted-foreground')}>
-          {row.text}
-        </span>
+          {t('home.chiefOfStaffDigest.markDone.label')}
+        </Button>
       )}
-    </button>
+    </div>
   )
 }

@@ -290,6 +290,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             requests::mark_chief_of_staff_digest_seen,
             requests::approve_queued_work,
             requests::dismiss_queued_work,
+            requests::get_intake_thread,
+            requests::send_intake_message,
             requests::complete_request_step,
             requests::cancel_request,
             requests::rerun_request,
