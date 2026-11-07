@@ -230,7 +230,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - **Needs relay:** no
 - **Status:** Shipped
 
-### RT-18 — ACP permission answers from `allowed-tools`
+### RT-30 — ACP permission answers from `allowed-tools`
 
 - **What:** ACP permission requests not covered by `requires_approval` are answered automatically from the agent's tools as ACP kinds: `shell` → execute, `read_file` and `list_dir` → read/search, `write_file` → edit/delete/move, `fetch` → fetch; other names are matched against the call's title. A request matching none of the allowed tools is rejected; if every listed tool is unknown, the agent is read-only. No `allowed-tools` means everything is allowed (the container is the sandbox), except tools a policy denies: those are rejected whatever else allows them (`PermissionPolicy::Except`, PO-13).
 - **Where:** `services/harness/acp.rs` (`PermissionPolicy`, `from_tools`), `services/orchestrator/runtime_router.rs` (`TOOL_KINDS`, `ToolGrant`), `services/harness/adapter.rs` (calls `PermissionPolicy::from_tools`).

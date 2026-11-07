@@ -121,38 +121,38 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-489 features to test: all 543 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+516 features to test: all 570 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
-| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 55       |
+| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 57       |
 | Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 72       |
-| Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 60       |
-| Policies                                    | [policies.md](./policies.md)                                       | 14       |
+| Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
+| Policies                                    | [policies.md](./policies.md)                                       | 16       |
 | Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 82       |
-| Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 66       |
-| Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 65       |
+| Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 75       |
+| Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 72       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
-| Data, platform and quality gates            | [data-platform-quality.md](./data-platform-quality.md)             | 55       |
+| Data, platform and quality gates            | [data-platform-quality.md](./data-platform-quality.md)             | 60       |
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 468   |
-| Partial     | 18    |
+| Shipped     | 497   |
+| Partial     | 16    |
 | Removed     | 11    |
 | Known issue | 3     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 250   |
-| `api`                 | 177   |
-| `manual`              | 38    |
+| `unit`                | 270   |
+| `api`                 | 185   |
+| `manual`              | 37    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 423   |
-| yes         | 66    |
+| no          | 443   |
+| yes         | 73    |
 
 ## Master index
 
@@ -177,9 +177,9 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ON-10 | Step 4: "Let others send requests to my Nandi"                           | Shipped                                              | unit       | yes         |                                        |
 | ON-11 | Step 5: starter packs                                                    | Shipped                                              | unit       | no          | 2026-11-01 pass                        |
 | ON-12 | Finishing setup and the welcome strip                                    | Shipped                                              | unit       | no          |                                        |
+| ON-15 | Step 3: connect your email (optional)                                    | Shipped (live test pending)                          | unit       | no          |                                        |
 | ON-13 | Starter packs page (after setup)                                         | Duplicate of LB-20                                   | —          | no          |                                        |
 | ON-14 | Upgrades from pre-identity installs                                      | Removed (2026-10-22, no legacy support)              | —          | no          |                                        |
-| ON-15 | Step 3: connect your email (optional)                                    | Shipped (live test pending)                          | unit       | no          |                                        |
 | SH-04 | Title bar and window controls                                            | Shipped                                              | ui-e2e     | no          |                                        |
 | SH-05 | Title-bar bull (status at a glance)                                      | Shipped                                              | unit       | no          |                                        |
 | SH-06 | Account menu                                                             | Shipped                                              | unit       | no          |                                        |
@@ -211,7 +211,6 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | SH-32 | Logging                                                                  | Partial (log file on macOS only)                     | manual     | no          |                                        |
 | SH-33 | Mascot name from the CLI                                                 | Shipped                                              | unit       | no          |                                        |
 | SH-34 | Mascot hidden phrase                                                     | Shipped                                              | unit       | no          |                                        |
-| SH-35 | Home: connect your email to-do                                           | Shipped                                              | unit       | no          |                                        |
 | ST-01 | Settings page and section rail                                           | Shipped                                              | unit       | no          |                                        |
 | ST-02 | Settings deep links and focus highlight                                  | Shipped                                              | unit       | no          |                                        |
 | ST-03 | Models: default model                                                    | Duplicate of MD-04, MD-05, MD-06                     | —          | no          |                                        |
@@ -244,6 +243,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-29 | Rename the mascot                                                        | Shipped                                              | api        | no          |                                        |
 | ST-30 | Appearance › Companion settings                                          | Duplicate of AI-17                                   | —          | no          |                                        |
 | ST-31 | Preferences persistence                                                  | Shipped                                              | api        | no          |                                        |
+| SH-35 | Home: connect your email to-do                                           | Shipped                                              | unit       | no          |                                        |
 
 ### Agents, chat and runs
 
@@ -331,6 +331,8 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RT-01 | Sandbox image status panels                                                     | Shipped                                                                                    | api           | no          |               |
 | RT-02 | Build the sandbox images here (advanced, optional)                              | Shipped                                                                                    | manual        | no          |               |
 | RT-03 | Missing or outdated image pulled at container start                             | Shipped                                                                                    | unit + manual | no          |               |
+| RT-18 | Download the pinned sandbox image from GitHub's container registry              | Shipped (needs the `images.yml` run that publishes `nandi-harness:sandbox-6` and `nandi... | unit          | no          |               |
+| RT-29 | Claude Code fetched on first use into a tools volume                            | Shipped                                                                                    | unit + live   | no          |               |
 | RT-04 | Agent tool container lifecycle (start, stop, restart, reconcile)                | Shipped                                                                                    | api           | no          |               |
 | RT-05 | Native container configuration (mounts, resources, no published ports)          | Shipped                                                                                    | unit + manual | no          |               |
 | RT-06 | Tool server in the container (shell, read_file, write_file, list_dir)           | Shipped                                                                                    | manual        | no          |               |
@@ -345,8 +347,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RT-15 | Harness session in the container                                                | Known issue (container turn on subscription token unverified)                              | manual        | no          |               |
 | RT-16 | Host placement retired                                                          | Removed (2026-10-22, no legacy support)                                                    | —             | no          |               |
 | RT-17 | Credentials handed to the harness container (company identity first, keys last) | Shipped                                                                                    | unit + manual | no          |               |
-| RT-18 | Download the pinned sandbox image from GitHub's container registry              | Shipped                                                                                    | unit          | no          |               |
-| RT-18 | ACP permission answers from `allowed-tools`                                     | Shipped                                                                                    | unit          | no          |               |
+| RT-30 | ACP permission answers from `allowed-tools`                                     | Shipped                                                                                    | unit          | no          |               |
 | RT-19 | Turn limit for harness runs (`max_turns`)                                       | Shipped                                                                                    | unit + manual | no          |               |
 | RT-20 | Harness run steps, usage and evidence                                           | Shipped                                                                                    | api           | no          |               |
 | RT-21 | Recent harness sessions list and Stop                                           | Shipped                                                                                    | api           | no          |               |
@@ -357,7 +358,6 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RT-26 | E2E smoke prerequisites script                                                  | Duplicate of QA-05                                                                         | —             | no          |               |
 | RT-27 | Canned turn engine (test fixture)                                               | Shipped                                                                                    | unit          | no          |               |
 | RT-28 | List Docker containers command                                                  | Partial (backend only)                                                                     | unit          | no          |               |
-| RT-29 | Claude Code fetched on first use into a tools volume                            | Shipped                                                                                    | unit + live   | no          |               |
 | MD-01 | Add a provider key (tested before saving)                                       | Shipped                                                                                    | api           | no          |               |
 | MD-02 | Key test result classification                                                  | Shipped                                                                                    | unit          | no          |               |
 | MD-03 | Remove a provider key                                                           | Shipped                                                                                    | unit          | no          |               |
@@ -408,13 +408,15 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | PO-05 | Effective permissions: tools and approvals                  | Shipped                                                                                    | unit  | no          |               |
 | PO-06 | Effective permissions: files and shared folders             | Shipped                                                                                    | unit  | no          |               |
 | PO-07 | Effective permissions: network and AWS                      | Shipped                                                                                    | unit  | no          |               |
-| PO-08 | Effective permissions: models                               | Shipped (Nandi's own runs: the agent's model; coding agents: the CLI's model as `claud...  | unit  | no          |               |
+| PO-08 | Effective permissions: models                               | Shipped (Nandi's own runs: the agent's model; coding agents: the CLI's model as `claude... | unit  | no          |               |
 | PO-09 | Effective permissions: connectors, pilots and `run_on_host` | Shipped                                                                                    | unit  | no          |               |
 | PO-10 | Broken policy files block the agents they may cover         | Shipped                                                                                    | unit  | no          |               |
 | PO-11 | Agent page: the policies over an agent                      | Shipped                                                                                    | api   | no          |               |
 | PO-12 | Studio policy form and agent tags                           | Shipped                                                                                    | unit  | no          |               |
 | PO-13 | Policies applied to every run                               | Shipped                                                                                    | unit  | no          |               |
 | PO-14 | Decisions log: who approved, and what a policy refused      | Shipped                                                                                    | unit  | no          |               |
+| PO-15 | Browser controls a policy refuses (`browser.refuse`)        | Shipped                                                                                    | unit  | no          |               |
+| PO-16 | Policies a starter pack ships for its own agents            | Shipped                                                                                    | unit  | no          |               |
 
 ### Workflows, triggers, requests and Inbox
 
@@ -509,84 +511,85 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 
 ### Library, capabilities, Studio and companion
 
-| ID    | Feature                                                                                   | Status                                                                         | Layer         | Needs relay | Last verified   |
-| ----- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------- | ----------- | --------------- |
-| LB-01 | Library page: tabs, kind chips, search, Can do                                            | Shipped                                                                        | unit          | no          |                 |
-| LB-02 | Library cards (one permissions line, one status pill, one action)                         | Shipped                                                                        | unit          | no          |                 |
-| LB-03 | Library detail drawer                                                                     | Shipped                                                                        | unit          | no          |                 |
-| LB-04 | Drawer ⋯ menu: Check for update, Fork, Uninstall, Copy ID                                 | Shipped                                                                        | ui-e2e        | no          |                 |
-| LB-05 | Built-in tools On/Off                                                                     | Duplicate of RT-07                                                             | —             | no          |                 |
-| LB-06 | Shared with me tab                                                                        | Shipped (content owned by the Teams/Network area)                              | manual        | yes         |                 |
-| LB-07 | Sources freshness, Refresh and Sources link (Browse)                                      | Shipped                                                                        | unit          | no          |                 |
-| LB-08 | Legacy route redirects into Library                                                       | Removed (2026-10-22, no legacy support)                                        | —             | no          |                 |
-| LB-09 | Install and allow (consent before install)                                                | Shipped                                                                        | api           | no          |                 |
-| LB-10 | Marketplace agent read-only banner and first-use consent                                  | Shipped                                                                        | api           | no          |                 |
-| LB-11 | Fork an installed agent                                                                   | Shipped                                                                        | api           | no          |                 |
-| LB-12 | Uninstall                                                                                 | Shipped                                                                        | api           | no          |                 |
-| LB-13 | Check for updates and apply update                                                        | Shipped                                                                        | api           | no          |                 |
-| LB-14 | Marketplace listing, detail and search APIs                                               | Shipped                                                                        | api           | no          |                 |
-| LB-15 | Registry index caching and offline behaviour                                              | Shipped                                                                        | unit          | no          |                 |
-| LB-16 | Marketplace sources (Settings › Sources: agents & packs)                                  | Shipped (overlaps Settings area)                                               | unit          | no          |                 |
-| LB-17 | Create my community registry                                                              | Shipped                                                                        | manual        | no          |                 |
-| LB-18 | Publish an agent to a registry                                                            | Shipped (docs say "in its header"; it is in the page's ⋯ menu)                 | api           | no          |                 |
-| LB-19 | Publisher keys and release signing CLI (`keygen`, `sign`)                                 | Shipped                                                                        | unit          | no          |                 |
-| LB-20 | Starter packs (onboarding step and view)                                                  | Shipped (overlaps Onboarding area)                                             | unit          | no          |                 |
-| LB-21 | Registry JSON schemas                                                                     | Shipped (README still says "Marketplace → Registries"; now Settings › Sources) | unit          | no          |                 |
-| LB-22 | Manually cloned agent folders are picked up                                               | Shipped                                                                        | api           | no          |                 |
-| LB-23 | Install a starter pack from this computer (folder or .zip)                                | Shipped                                                                        | api + unit    | no          | 2026-11-01 pass |
-| CP-01 | Connector catalog and lifecycle (install, start, stop, status)                            | Shipped (gmail: Coming soon)                                                   | api           | no          |                 |
-| CP-02 | Connector setup: config, masked secrets, Start gating                                     | Shipped                                                                        | unit          | no          |                 |
-| CP-03 | Email: connect Outlook or Gmail for the Chief of Staff                                    | Shipped (Outlook and Gmail; live sign-in not yet verified)                     | unit          | no          |                 |
-| CP-04 | Shared folders on the Filesystem connector                                                | Shipped                                                                        | unit          | no          |                 |
-| CP-05 | Per-agent connectors and folder grants                                                    | Shipped                                                                        | api           | no          |                 |
-| CP-06 | Connector tool calls: prefixing, approvals, audit log                                     | Shipped                                                                        | unit          | no          |                 |
-| CP-22 | Stdio connectors run in their own container                                               | Shipped                                                                        | manual        | no          |                 |
-| CP-23 | GitHub connector (pull requests, files, reviews)                                          | Shipped                                                                        | unit + manual | no          | 2026-10-30 pass |
-| CP-24 | AWS connector (alarms, logs, Batch jobs, approved restart)                                | Shipped                                                                        | unit + manual | no          |                 |
-| CP-26 | Browser pilots: a browser agents drive, only on allowed sites                             | Shipped                                                                        | unit + manual | no          | 2026-10-30 pass |
-| CP-25 | Web search on the agent's allowed sites, without a key                                    | Shipped                                                                        | unit          | no          |                 |
-| CP-27 | S3 Backup connector and the Personal Backup pack                                          | Shipped (pack 0.1.0 published 2026-10-30, an official starter pack)            | unit          | no          |                 |
-| CP-28 | Email: the Chief of Staff keeps My notes from new mail                                    | Shipped (live test pending)                                                    | unit          | no          |                 |
-| CP-29 | Email: reading older mail in the background                                               | Shipped (live test pending)                                                    | unit          | no          |                 |
-| CP-30 | Connector packages: install from the Agent Hub with a consent dialog                      | Shipped (live test pending)                                                    | api           | no          |                 |
-| CP-31 | Studio: make a connector from an MCP server and publish it                                | Shipped (live test pending)                                                    | api           | no          |                 |
-| CP-32 | Access while an agent works: Allow once, for this agent, Don't allow                      | Shipped (live test pending)                                                    | api           | no          |                 |
-| CP-33 | Settings › Connectors › Access and up-front grants                                        | Shipped                                                                        | unit + api    | no          |                 |
-| CP-34 | Calendars and files: Outlook, Google Calendar, OneDrive, Drive                            | Shipped (live test pending)                                                    | unit          | no          |                 |
-| CP-35 | The Chief of Staff keeps My notes from the calendar                                       | Shipped (live test pending)                                                    | unit          | no          |                 |
-| CP-07 | Pilot catalog, install, start, stop                                                       | Shipped                                                                        | manual        | no          | 2026-10-30 pass |
-| CP-08 | Pilot health monitor and access rule                                                      | Shipped                                                                        | unit          | no          |                 |
-| CP-09 | Pilot consent: grant and revoke per agent                                                 | Shipped                                                                        | api           | no          |                 |
-| CP-10 | Pilot tool approvals and audit log                                                        | Shipped                                                                        | unit          | no          |                 |
-| CP-11 | Capabilities list (Network › Sharing › Capabilities)                                      | Shipped (overlaps Network area)                                                | unit          | no          |                 |
-| CP-12 | Capability detail: overview and tabs                                                      | Shipped                                                                        | unit          | no          |                 |
-| CP-13 | Create, edit and delete capability definitions                                            | Shipped                                                                        | api           | no          |                 |
-| CP-14 | Capability policy form                                                                    | Shipped                                                                        | unit          | no          |                 |
-| CP-15 | Transfer capability ownership                                                             | Shipped                                                                        | unit          | yes         |                 |
-| CP-16 | Providers, provider breakdown and evidence                                                | Shipped                                                                        | api           | no          |                 |
-| CP-17 | Ambiguity clusters and promote to schema                                                  | Shipped                                                                        | unit          | no          |                 |
-| CP-18 | Delegate to a capability from its card                                                    | Shipped (overlaps Delegation area)                                             | unit          | no          |                 |
-| CP-19 | Provider selection and circuit breakers                                                   | Shipped (overlaps Delegation area)                                             | unit          | no          |                 |
-| CP-20 | Capability sources (registries)                                                           | Known issue (no sync-all route; filename/ID rule inconsistent)                 | api           | no          |                 |
-| CP-21 | Local capability lookups and agent cards                                                  | Shipped (presence: desktop only)                                               | api           | no          |                 |
-| AI-01 | Ask page layout and conversations                                                         | Shipped                                                                        | unit          | no          |                 |
-| AI-02 | Grounded Studio chat (read-only nandi_* tools and guides)                                 | Shipped                                                                        | unit          | no          | 2026-10-30 pass |
-| AI-03 | Chat saves what it builds (approval card)                                                 | Shipped                                                                        | api + unit    | no          |                 |
-| AI-04 | Chat starts work (nandi_start_request)                                                    | Shipped                                                                        | api           | no          |                 |
-| AI-05 | Artifact editor: open, forms, raw file, validation                                        | Shipped                                                                        | unit          | no          |                 |
-| AI-06 | Save, Discard, Push (commit targets)                                                      | Partial (`remoteBranchAndPr` does not open the PR; returns a warning)          | api           | no          |                 |
-| AI-07 | Ask box: classify, answer, plan, edit, clarify (streaming)                                | Shipped                                                                        | api           | no          |                 |
-| AI-08 | Action plan preview and Run plan                                                          | Shipped (Request execution itself belongs to the Requests area)                | api           | no          |                 |
-| AI-09 | Edit preview and Apply                                                                    | Shipped                                                                        | api           | no          |                 |
-| AI-10 | Ask history                                                                               | Shipped                                                                        | api           | no          |                 |
-| AI-11 | Companion window and global hotkey                                                        | Shipped                                                                        | manual        | no          |                 |
-| AI-12 | The bison: animation, badge, corner placement and drag-snap                               | Shipped                                                                        | unit          | no          |                 |
-| AI-13 | Companion card: Needs you, Running, Recent                                                | Shipped                                                                        | unit          | no          |                 |
-| AI-14 | Companion conversation, @Agent, Request scope and live cards                              | Shipped                                                                        | unit          | no          |                 |
-| AI-15 | Watch in companion                                                                        | Shipped                                                                        | unit + manual | no          |                 |
-| AI-16 | Companion notifications                                                                   | Shipped                                                                        | unit + manual | no          |                 |
-| AI-17 | Companion settings: Nandi on the desktop, start with only the bison, closing the main ... | Shipped (overlaps Settings area)                                               | manual        | no          |                 |
-| AI-18 | Companion opens views in the main window                                                  | Shipped                                                                        | manual        | no          |                 |
+| ID    | Feature                                                                                    | Status                                                                         | Layer              | Needs relay | Last verified   |
+| ----- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------ | ----------- | --------------- |
+| LB-01 | Library page: tabs, kind chips, search, Can do                                             | Shipped                                                                        | unit               | no          |                 |
+| LB-02 | Library cards (one permissions line, one status pill, one action)                          | Shipped                                                                        | unit               | no          |                 |
+| LB-03 | Library detail drawer                                                                      | Shipped                                                                        | unit               | no          |                 |
+| LB-04 | Drawer ⋯ menu: Check for update, Fork, Uninstall, Copy ID                                  | Shipped                                                                        | ui-e2e             | no          |                 |
+| LB-05 | Built-in tools On/Off                                                                      | Duplicate of RT-07                                                             | —                  | no          |                 |
+| LB-06 | Shared with me tab                                                                         | Shipped (content owned by the Teams/Network area)                              | manual             | yes         |                 |
+| LB-07 | Sources freshness, Refresh and Sources link (Browse)                                       | Shipped                                                                        | unit               | no          |                 |
+| LB-08 | Legacy route redirects into Library                                                        | Removed (2026-10-22, no legacy support)                                        | —                  | no          |                 |
+| LB-09 | Install and allow (consent before install)                                                 | Shipped                                                                        | api                | no          |                 |
+| LB-10 | Marketplace agent read-only banner and first-use consent                                   | Shipped                                                                        | api                | no          |                 |
+| LB-11 | Fork an installed agent                                                                    | Shipped                                                                        | api                | no          |                 |
+| LB-12 | Uninstall                                                                                  | Shipped                                                                        | api                | no          |                 |
+| LB-13 | Check for updates and apply update                                                         | Shipped                                                                        | api                | no          |                 |
+| LB-14 | Marketplace listing, detail and search APIs                                                | Shipped                                                                        | api                | no          |                 |
+| LB-15 | Registry index caching and offline behaviour                                               | Shipped                                                                        | unit               | no          |                 |
+| LB-16 | Marketplace sources (Settings › Sources: agents & packs)                                   | Shipped (overlaps Settings area)                                               | unit               | no          |                 |
+| LB-17 | Create my community registry                                                               | Shipped                                                                        | manual             | no          |                 |
+| LB-18 | Publish an agent to a registry                                                             | Shipped (docs say "in its header"; it is in the page's ⋯ menu)                 | api                | no          |                 |
+| LB-19 | Publisher keys and release signing CLI (`keygen`, `sign`)                                  | Shipped                                                                        | unit               | no          |                 |
+| LB-20 | Starter packs (onboarding step and view)                                                   | Shipped (overlaps Onboarding area)                                             | unit               | no          |                 |
+| LB-21 | Registry JSON schemas                                                                      | Shipped (README still says "Marketplace → Registries"; now Settings › Sources) | unit               | no          |                 |
+| LB-22 | Manually cloned agent folders are picked up                                                | Shipped                                                                        | api                | no          |                 |
+| LB-23 | Install a starter pack from this computer (folder or .zip)                                 | Shipped                                                                        | api + unit         | no          | 2026-11-01 pass |
+| CP-01 | Connector catalog and lifecycle (install, start, stop, status)                             | Shipped                                                                        | api                | no          |                 |
+| CP-02 | Connector setup: config, masked secrets, Start gating                                      | Shipped                                                                        | unit               | no          |                 |
+| CP-03 | Email: connect Outlook or Gmail for the Chief of Staff                                     | Shipped (Outlook and Gmail; live sign-in not yet verified)                     | unit               | no          |                 |
+| CP-28 | Email: the Chief of Staff keeps My notes from new mail                                     | Shipped (live test pending)                                                    | unit               | no          |                 |
+| CP-29 | Email: reading older mail in the background                                                | Shipped (live test pending)                                                    | unit               | no          |                 |
+| CP-30 | Connector packages: install from the Agent Hub with a consent dialog                       | Shipped (live test pending)                                                    | api                | no          |                 |
+| CP-31 | Studio: make a connector from an MCP server and publish it                                 | Shipped (live test pending)                                                    | api                | no          |                 |
+| CP-32 | Access while an agent works: Allow once, Allow for this agent, Don't allow                 | Shipped (live test pending)                                                    | api                | no          |                 |
+| CP-33 | Settings › Connectors › Access and up-front grants                                         | Shipped                                                                        | unit + api         | no          |                 |
+| CP-34 | Calendars and files: Outlook calendar, Google Calendar, OneDrive, Google Drive             | Shipped (live test pending)                                                    | unit               | no          |                 |
+| CP-35 | The Chief of Staff keeps My notes from the calendar                                        | Shipped (live test pending)                                                    | unit               | no          |                 |
+| CP-04 | Shared folders on the Filesystem connector                                                 | Shipped                                                                        | unit               | no          |                 |
+| CP-05 | Per-agent connectors and folder grants                                                     | Shipped                                                                        | api                | no          |                 |
+| CP-06 | Connector tool calls: prefixing, approvals, audit log                                      | Shipped                                                                        | unit               | no          |                 |
+| CP-22 | Stdio connectors run in their own container                                                | Shipped                                                                        | manual             | no          |                 |
+| CP-23 | GitHub connector (pull requests, files, reviews)                                           | Shipped                                                                        | unit + manual      | no          | 2026-10-30 pass |
+| CP-24 | AWS connector (alarms, logs, Batch jobs, approved restart)                                 | Shipped                                                                        | unit + manual      | no          |                 |
+| CP-26 | Browser pilots: a browser agents drive, only on allowed sites                              | Shipped                                                                        | unit + manual      | no          | 2026-10-30 pass |
+| CP-25 | Web search on the agent's allowed sites, without a key                                     | Shipped                                                                        | unit               | no          |                 |
+| CP-27 | S3 Backup connector and the Personal Backup pack                                           | Shipped (pack 0.1.0 published 2026-10-30, an official starter pack)            | unit               | no          |                 |
+| CP-07 | Pilot catalog, install, start, stop                                                        | Shipped                                                                        | manual             | no          | 2026-10-30 pass |
+| CP-08 | Pilot health monitor and access rule                                                       | Shipped                                                                        | unit               | no          |                 |
+| CP-09 | Pilot consent: grant and revoke per agent                                                  | Shipped                                                                        | api                | no          |                 |
+| CP-10 | Pilot tool approvals and audit log                                                         | Shipped                                                                        | unit               | no          |                 |
+| CP-36 | Browser hand-over: the agent prepares, a person publishes                                  | Shipped                                                                        | unit + integration | no          |                 |
+| CP-11 | Capabilities list (Network › Sharing › Capabilities)                                       | Shipped (overlaps Network area)                                                | unit               | no          |                 |
+| CP-12 | Capability detail: overview and tabs                                                       | Shipped                                                                        | unit               | no          |                 |
+| CP-13 | Create, edit and delete capability definitions                                             | Shipped                                                                        | api                | no          |                 |
+| CP-14 | Capability policy form                                                                     | Shipped                                                                        | unit               | no          |                 |
+| CP-15 | Transfer capability ownership                                                              | Shipped                                                                        | unit               | yes         |                 |
+| CP-16 | Providers, provider breakdown and evidence                                                 | Shipped                                                                        | api                | no          |                 |
+| CP-17 | Ambiguity clusters and promote to schema                                                   | Shipped                                                                        | unit               | no          |                 |
+| CP-18 | Delegate to a capability from its card                                                     | Shipped (overlaps Delegation area)                                             | unit               | no          |                 |
+| CP-19 | Provider selection and circuit breakers                                                    | Shipped (overlaps Delegation area)                                             | unit               | no          |                 |
+| CP-20 | Capability sources (registries)                                                            | Known issue (no sync-all route; filename/ID rule inconsistent)                 | api                | no          |                 |
+| CP-21 | Local capability lookups and agent cards                                                   | Shipped (presence: desktop only)                                               | api                | no          |                 |
+| AI-01 | Ask page layout and conversations                                                          | Shipped                                                                        | unit               | no          |                 |
+| AI-02 | Grounded Studio chat (read-only nandi_* tools and guides)                                  | Shipped                                                                        | unit               | no          | 2026-10-30 pass |
+| AI-03 | Chat saves what it builds (approval card)                                                  | Shipped                                                                        | api + unit         | no          |                 |
+| AI-04 | Chat starts work (nandi_start_request)                                                     | Shipped                                                                        | api                | no          |                 |
+| AI-05 | Artifact editor: open, forms, raw file, validation                                         | Shipped                                                                        | unit               | no          |                 |
+| AI-06 | Save, Discard, Push (commit targets)                                                       | Partial (`remoteBranchAndPr` does not open the PR; returns a warning)          | api                | no          |                 |
+| AI-07 | Ask box: classify, answer, plan, edit, clarify (streaming)                                 | Shipped                                                                        | api                | no          |                 |
+| AI-08 | Action plan preview and Run plan                                                           | Shipped (Request execution itself belongs to the Requests area)                | api                | no          |                 |
+| AI-09 | Edit preview and Apply                                                                     | Shipped                                                                        | api                | no          |                 |
+| AI-10 | Ask history                                                                                | Shipped                                                                        | api                | no          |                 |
+| AI-11 | Companion window and global hotkey                                                         | Shipped                                                                        | manual             | no          |                 |
+| AI-12 | The bison: animation, badge, corner placement and drag-snap                                | Shipped                                                                        | unit               | no          |                 |
+| AI-13 | Companion card: Needs you, Running, Recent                                                 | Shipped                                                                        | unit               | no          |                 |
+| AI-14 | Companion conversation, @Agent, Request scope and live cards                               | Shipped                                                                        | unit               | no          |                 |
+| AI-15 | Watch in companion                                                                         | Shipped                                                                        | unit + manual      | no          |                 |
+| AI-16 | Companion notifications                                                                    | Shipped                                                                        | unit + manual      | no          |                 |
+| AI-17 | Companion settings: Nandi on the desktop, start with only the bison, closing the main w... | Shipped (overlaps Settings area)                                               | manual             | no          |                 |
+| AI-18 | Companion opens views in the main window                                                   | Shipped                                                                        | manual             | no          |                 |
 
 ### Teams, network, delegation and relay
 
@@ -604,7 +607,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | TM-10 | Agent menu: Share with team, Callable over the relay                      | Shipped                                                                                   | ui-e2e          | yes         |                 |
 | TM-11 | Agent sharing dialog ("Share {name}")                                     | Shipped                                                                                   | ui-e2e          | yes         |                 |
 | TM-12 | Shared with me (agents from teams and the relay)                          | Shipped                                                                                   | api             | yes         |                 |
-| TM-13 | By capability: provider ranking, Auto and pins                            | Shipped                                                                                   | api             | no          |                 |
+| TM-13 | By capability: provider ranking, Auto and pins                            | Shipped                                                                                   | api + unit      | no          |                 |
 | TM-14 | Call dialog (send one task to a shared agent)                             | Shipped                                                                                   | api             | yes         |                 |
 | TM-15 | Shared by me                                                              | Shipped                                                                                   | api             | no          |                 |
 | TM-16 | Trust policies per caller and agent (Allow / Ask / Deny)                  | Shipped                                                                                   | api             | yes         |                 |
@@ -627,7 +630,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | NW-12 | Reassign a task you are serving to a teammate                             | Shipped                                                                                   | api             | yes         |                 |
 | NW-14 | Availability: busy or away until, and who covers                          | Shipped                                                                                   | unit + ui-e2e   | yes         | 2026-11-01 pass |
 | NW-13 | Device (instance) ID                                                      | Duplicate of ST-14                                                                        | —               | no          |                 |
-| RL-01 | Connection: Join a company relay, Change                                  | Shipped                                                                                   | api             | yes         | 2026-11-01 pass |
+| RL-01 | Connection: Join a company relay, Change                                  | Shipped                                                                                   | api + ui        | yes         | 2026-11-01 pass |
 | RL-02 | Test connection                                                           | Shipped                                                                                   | api             | yes         |                 |
 | RL-03 | Disconnect                                                                | Shipped                                                                                   | api             | yes         |                 |
 | RL-04 | Relay URL precedence (`NANDI_RELAY_URL` > config.json > none)             | Shipped                                                                                   | api             | yes         |                 |
@@ -755,7 +758,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | PL-05 | Other CLI commands (cross-references)                        | Shipped                                                                                    | unit       | no          |                 |
 | PL-06 | Single instance and window state                             | Duplicate of SH-02, SH-03                                                                  | —          | no          |                 |
 | PL-07 | Per-OS window and title bar                                  | Shipped                                                                                    | manual     | no          |                 |
-| PL-08 | In-app auto-updater                                          | Partial (the release workflow uploads installers and a VERSION file to `downloads/nandi... | unit       | no          |                 |
+| PL-08 | In-app auto-updater                                          | Shipped (2026-11-03: the endpoint is the `latest.json` the release workflow attaches to... | unit       | no          |                 |
 | PL-09 | Release workflow (GitHub Actions)                            | Partial (template metadata and old download names remain)                                  | manual     | no          |                 |
 | PL-10 | Release preparation script                                   | Shipped                                                                                    | manual     | no          |                 |
 | PL-11 | Product and binary naming (Nandi rename)                     | Shipped                                                                                    | manual     | no          |                 |

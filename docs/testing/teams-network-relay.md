@@ -219,7 +219,7 @@ Notes that apply to the whole section:
   - Errors show `shared.capabilities.pinFailed`.
   - A paused member is never offered.
 - **Automation:** Covered by: `services/shared.rs` (`the_overview_ranks_callable_providers_and_marks_the_rest`, `a_paused_member_is_not_offered_as_a_provider`, `availability_names_the_reason`, `my_stats_count_outcomes_and_average_successes`), `a2a/tests.rs` (`my_own_agent_wins_unless_i_pinned_someone_elses`), `SharedWithMe.test.tsx` ("shows who gets the work …", with the reasons), `lib/route-reasons.test.ts`; the ranking itself: relay repo `src/routing/tests.rs` | Layer: api + unit | Gap: none.
-- **Needs relay:** no (your own providers); yes for others' order and reasons
+- **Needs relay:** no
 - **Status:** Shipped
 
 ### TM-14 — Call dialog (send one task to a shared agent)
@@ -532,24 +532,6 @@ Notes that apply to the whole section:
   - A non-reassignable state is an error.
 - **Automation:** Covered by: `a2a/tests.rs` (`a_provider_reassigns_a_task_and_the_requester_gets_the_result`, `peers_can_only_move_their_own_tasks`); `relay/sealed_tests.rs` (`a_reassigned_task_reaches_the_new_provider_signed_by_the_requester`, against a real relay); nandi-relay `tests/dispatch.rs` (`a_provider_hands_a_task_on_and_nobody_gets_it_twice`, `a_managers_move_waits_for_the_reseal`); `src/components/agent-console/TaskStatusPanel.test.tsx`, `src/components/views/DelegationThreadView.test.tsx`, `src/lib/agent-sync.waveef.test.ts` | Layer: api (three instances) | Gap: no direct ReassignMenu test.
 - **Needs relay:** yes
-
-### NW-12 — Reassign a task you are serving to a teammate
-
-- **What:** A provider who is serving a delegated task can hand it to an online member who serves the same capability. The requester never resubmits. The provider's row becomes `Reassigned`, its run stops, and `task://reassigned` fires.
-- **Where:** Agent task strip → provider state panel → **Reassign** menu, which is shown only when candidates exist and the task state is reassignable (`src/components/agent-console/ReassignMenu.tsx`, `ProviderStatePanel.tsx`). Code: `commands/reassign.rs` (`reassign_task`, `list_reassign_candidates`), `services/a2a/reassign.rs`. HTTP: `POST /api/tasks/{id}/reassign {"newProviderInstance","reason"?}`, `GET /api/tasks/{id}/reassign-candidates`.
-- **Preconditions:** Three instances (requester C, provider A, teammate B). B is online and serves the same capability, and C's task to A is Delivered, Acknowledged, Working or InputRequired.
-- **Steps:** 1. C delegates to A. 2. On A, open Reassign and pick B. 3. Watch C and B.
-- **Expected:**
-  - A sees the toast "Reassigned to {name}" (`tasks.provider.reassigned`); its row is Reassigned.
-  - C's thread shows "Reassigned to Bob by Alice" with a link to the new attempt (`source_kind reassign`, `previous_attempt_id`), and C gets a toast.
-  - B runs the task as an ordinary task, and the result reaches C.
-  - A `reassigned_tasks` row is written.
-- **Edge / negative cases:**
-  - With no candidates, the menu is hidden.
-  - Reassigning to the requester, to yourself, or to an instance that already had the task is refused. A looping handoff fails the attempt and normal failover picks someone new.
-  - A non-reassignable state is an error.
-- **Automation:** Covered by: `a2a/tests.rs` (`a_provider_reassigns_a_task_and_the_requester_gets_the_result`, `a_reassignment_back_to_an_earlier_provider_fails_the_attempt`, `peers_can_only_move_their_own_tasks`); `src/components/agent-console/TaskStatusPanel.test.tsx`, `src/components/views/DelegationThreadView.test.tsx`, `src/lib/agent-sync.waveef.test.ts` | Layer: api (three instances) | Gap: no direct ReassignMenu test.
-- **Needs relay:** yes
 - **Status:** Shipped
 
 ### NW-14 — Availability: busy or away until, and who covers
@@ -828,7 +810,7 @@ Notes that apply to the whole section:
   - A task waiting for a clarification does not time out on its ETA.
   - **Retry** on a failed request makes a new attempt from a fresh plan without anyone it went to.
 - **Automation:** Covered by: `a2a/tests.rs` (`one_instance_delegates_to_another_through_the_relay`, `a_rejected_pick_falls_back_to_the_next_provider`, `a_remote_request_without_an_answer_stays_open_until_it_is_due`, `a_delegation_to_an_offline_provider_waits_at_the_relay`, `a_restart_resumes_in_flight_tasks`, `a_retry_creates_the_next_attempt_elsewhere`, `eta_estimates_come_from_history`), `a2a/eta.rs`; nandi-relay `tests/dispatch.rs` (`a_refusal_goes_to_the_next_candidate_without_the_requester`, `nobody_picking_it_up_fails_over_then_the_due_date_ends_it`, `a_declined_assignment_and_the_last_refusal_reach_the_requester`), `src/dispatch.rs` (the rules) | Layer: api | Gap: none.
-- **Needs relay:** no (your own providers); yes for others
+- **Needs relay:** no
 - **Status:** Shipped
 
 ### RL-15 — Inbound admission (provider side)
