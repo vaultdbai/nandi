@@ -52,6 +52,14 @@ describe('live changes', () => {
     ],
     [change({ targetId: null }), [['notes']]],
     [
+      change({ targetId: 'suggestions.md' }),
+      [
+        ['notes', 'list'],
+        ['notes', 'note', 'suggestions.md'],
+        ['notes', 'suggestions'],
+      ],
+    ],
+    [
       change({ area: 'agent', targetId: 'writer' }),
       [
         ['agent-definition', 'writer'],

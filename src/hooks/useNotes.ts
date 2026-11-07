@@ -41,7 +41,6 @@ export function useSaveNote() {
 
 /** The Chief of Staff's open suggestions (suggestions.md `- [ ]` lines) */
 export function useNoteSuggestions() {
-  useNotesEvents()
   return useQuery({
     queryKey: notesKeys.suggestions,
     queryFn: async () => unwrapResult(await client.listNoteSuggestions()),

@@ -20,6 +20,9 @@ import type { LiveChange, RefreshReport } from '@/lib/bindings'
 import { queryClient } from '@/lib/query-client'
 import { preferencesQueryKeys } from '@/services/preferences'
 
+/** `services::notes::corrections::SUGGESTIONS` */
+const SUGGESTIONS_NOTE = 'suggestions.md'
+
 export const liveQueryKeys = {
   recent: ['liveChanges', 'recent'] as const,
 }
@@ -58,7 +61,11 @@ export function queryKeysFor(change: LiveChange): QueryKey[] {
         gatewayQueryKeys.status,
       ]
     case 'notes':
-      return id ? [notesKeys.list, notesKeys.note(id)] : [notesKeys.all]
+      if (!id) return [notesKeys.all]
+      // The Chief of Staff's suggestions are a note with their own list
+      return id === SUGGESTIONS_NOTE
+        ? [notesKeys.list, notesKeys.note(id), notesKeys.suggestions]
+        : [notesKeys.list, notesKeys.note(id)]
     // Shown only in the recent list (no screen lists a work folder)
     case 'work':
     case 'manifest':
