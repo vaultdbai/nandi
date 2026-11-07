@@ -143,6 +143,7 @@ struct Member {
     peers: Arc<Mutex<Vec<PeerDelivery>>>,
     results: Arc<Mutex<Vec<TaskCompleted>>>,
     failures: Arc<Mutex<Vec<TaskFailed>>>,
+    moves: Arc<Mutex<Vec<super::protocol::TaskEvent>>>,
     events: Arc<RecordingSink>,
 }
 
@@ -170,16 +171,20 @@ impl Member {
             peers: Arc::default(),
             results: Arc::default(),
             failures: Arc::default(),
+            moves: Arc::default(),
             events,
         };
         let sink = member.tasks.clone();
         member
             .client
             .on_task_assigned(Box::new(move |assigned| {
-                if let Some(task) = assigned.task {
-                    sink.lock().unwrap().push(task);
-                }
+                sink.lock().unwrap().push(assigned.task)
             }))
+            .await;
+        let sink = member.moves.clone();
+        member
+            .client
+            .on_task_event(Box::new(move |event| sink.lock().unwrap().push(event)))
             .await;
         let sink = member.peers.clone();
         member
@@ -302,7 +307,7 @@ async fn a_task_its_questions_and_its_result_cross_the_relay_sealed() {
 
     // Ada's task reaches Bob opened
     let task = request("t1", "ada", "bob/writer");
-    ada.client.delegate_task(&task).await.unwrap();
+    ada.client.delegate_task(&task, &[]).await.unwrap();
     // (the relay stamps when it routed it)
     let at_bob = bob.task().await;
     assert_eq!(
@@ -411,56 +416,102 @@ async fn a_reassigned_task_reaches_the_new_provider_signed_by_the_requester() {
     let ada = Member::join(&tap, "ada", Vec::new(), ClientOptions::default()).await;
 
     let first = request("t1", "ada", "bob/writer");
-    ada.client.delegate_task(&first).await.unwrap();
+    ada.client.delegate_task(&first, &[]).await.unwrap();
     bob.task().await;
 
-    // Bob hands it to Cal: the request rides along, resealed for Cal
+    // Bob hands it to Cal: the relay moves it, the request resealed for Cal
     bob.client
-        .send_peer(
-            "ada".into(),
-            PeerMessage::ReassignTask {
-                task_id: "t1".into(),
-                new_provider_instance: "cal".into(),
-                new_provider_card: "cal/writer".into(),
-                new_provider_name: Some("Cal".into()),
-                by: "Bob".into(),
-                reason: Some(format!("swamped with {MARKER}")),
-                request: None,
-            },
+        .reassign(
+            "t1",
+            "ada",
+            "cal/writer",
+            "Bob",
+            Some(format!("swamped with {MARKER}")),
         )
         .await
         .unwrap();
-    let PeerMessage::ReassignTask {
-        reason,
-        request: Some(resealed),
-        ..
-    } = ada.peer(0).await
-    else {
-        panic!("expected the resealed request");
-    };
-    assert_eq!(reason, Some(format!("swamped with {MARKER}")));
-
-    // Ada sends it on unopened as attempt t2; Cal opens Ada's request
-    let second = Task {
-        id: "t2".into(),
-        target: "cal/writer".into(),
-        ..first.clone()
-    };
-    ada.client
-        .delegate_resealed(&second, *resealed)
-        .await
-        .unwrap();
     let at_cal = cal.task().await;
-    assert_eq!(at_cal.id, "t2");
+    assert_eq!(at_cal.id, "t1");
     assert_eq!(at_cal.input, first.input);
-    // Cal answers Ada directly
+    let moved = wait(|| {
+        ada.moves
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|e| matches!(e, super::protocol::TaskEvent::Reassigned { .. }))
+            .cloned()
+    })
+    .await;
+    let super::protocol::TaskEvent::Reassigned {
+        provider_instance,
+        by,
+        note,
+        ..
+    } = moved
+    else {
+        panic!("expected the move, got {moved:?}");
+    };
+    assert_eq!((provider_instance.as_str(), by.as_str()), ("cal", "Bob"));
+    assert_eq!(note, Some(format!("swamped with {MARKER}")));
+    // Bob can't speak for it any more; Cal answers Ada directly
+    assert!(bob
+        .client
+        .reassign("t1", "ada", "bob/writer", "Bob", None)
+        .await
+        .is_err());
     cal.client.send_result(result_of(&at_cal)).await.unwrap();
     let done = wait(|| ada.results.lock().unwrap().first().cloned()).await;
-    assert_eq!(done.task_id, "t2");
+    assert_eq!(done.task_id, "t1");
     assert!(cal.refusals().is_empty() && ada.refusals().is_empty());
     for frame in tap.frames() {
         assert!(!frame.contains(MARKER), "a frame in the clear: {frame}");
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn work_for_someone_offline_waits_at_the_relay_and_so_does_the_result() {
+    let tmp = tempfile::tempdir().unwrap();
+    let relay = serve_with("127.0.0.1:0".parse().unwrap(), company(tmp.path()))
+        .await
+        .unwrap();
+    let tap = Tap::new(relay).await;
+    // Bob joins (his keys are pinned), then goes away
+    let bob = Member::join(
+        &tap,
+        "bob",
+        vec![card("bob", "writer", "write")],
+        ClientOptions::default(),
+    )
+    .await;
+    let keys = bob.client.clone();
+    bob.client.connect("", "bob").await.unwrap();
+    let ada = Member::join(&tap, "ada", Vec::new(), ClientOptions::default()).await;
+    let task = request("t1", "ada", "bob/writer");
+    assert!(ada.client.delegate_task(&task, &[]).await.unwrap().held);
+
+    // Bob is back (the same device): the task was waiting for him
+    let token = issue_instance_token(SECRET, "bob");
+    keys.connect(&format!("ws://{}/relay?token={token}", tap.addr), "bob")
+        .await
+        .unwrap();
+    keys.register(vec![card("bob", "writer", "write")])
+        .await
+        .unwrap();
+    let at_bob = bob.task().await;
+    assert_eq!(at_bob.input, task.input);
+    // Ada goes away before the result; it waits for her
+    ada.client.connect("", "ada").await.unwrap();
+    keys.send_result(result_of(&at_bob)).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(ada.results.lock().unwrap().is_empty());
+    let token = issue_instance_token(SECRET, "ada");
+    ada.client
+        .connect(&format!("ws://{}/relay?token={token}", tap.addr), "ada")
+        .await
+        .unwrap();
+    ada.client.register(Vec::new()).await.unwrap();
+    let done = wait(|| ada.results.lock().unwrap().first().cloned()).await;
+    assert_eq!(done.task_id, "t1");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -475,7 +526,7 @@ async fn content_for_a_member_without_keys_is_refused_before_it_leaves() {
     let ada = Member::join(&tap, "ada", Vec::new(), ClientOptions::default()).await;
     let refused = ada
         .client
-        .delegate_task(&request("t1", "ada", "nobody/writer"))
+        .delegate_task(&request("t1", "ada", "nobody/writer"), &[])
         .await
         .unwrap_err();
     assert!(refused.starts_with(PEER_KEY_MISSING), "{refused}");
@@ -483,19 +534,7 @@ async fn content_for_a_member_without_keys_is_refused_before_it_leaves() {
     assert!(!tap
         .frames()
         .iter()
-        .any(|frame| frame.contains("delegate_task")));
-    // Without content there's nothing to seal: it goes (and bounces)
-    ada.client
-        .send_peer(
-            "nobody".into(),
-            PeerMessage::StatusQuery {
-                task_id: "t1".into(),
-            },
-        )
-        .await
-        .unwrap();
-    let bounced = wait(|| ada.peers.lock().unwrap().first().cloned()).await;
-    assert!(bounced.undeliverable);
+        .any(|frame| frame.contains("submit_task")));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -525,7 +564,7 @@ async fn a_result_from_a_replaced_device_is_refused_and_its_key_flagged() {
     )
     .await;
     let task = request("t1", "ada", "bob/writer");
-    ada.client.delegate_task(&task).await.unwrap();
+    ada.client.delegate_task(&task, &[]).await.unwrap();
     bob.task().await;
     assert!(peer_keys::pinned(&db, "bob").unwrap().is_some());
 

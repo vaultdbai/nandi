@@ -1,57 +1,23 @@
-//! Failover (wave final, Track B). A failed or timed out attempt below
-//! [`MAX_ATTEMPTS`] becomes a new attempt (`source_kind = Failover`,
-//! `previous_attempt_id`) on the next provider the relay plans, without
-//! every instance the task already went to.
-//!
-//! Two callers fail over: the delegator, for a delegation a caller still
-//! waits on (its attempt loop, see `delegator`), and
-//! [`TaskService::failover`] for one nobody waits on any more (timed out by
-//! the sweep, rejected after a restart, a queued task sent later). Both ask
-//! the relay for a new plan (`route`): who to try and remote circuits are
-//! the relay's. Step 11 of the relay design moves failover itself to the
-//! relay (pre-sealed candidates).
-//!
-//! [`capability_order`] is the local half: this Nandi's own providers,
-//! ordered by `selection::capability` (tools, local circuits, strategy).
+//! The local half of picking a provider: this Nandi's own providers,
+//! ordered by `selection::capability` (tools, local circuits, strategy)
+//! in [`capability_order`], and the trust filter over cards
+//! ([`without_untrusted`]). Failing over to someone else's provider is
+//! the relay's (relay design step 11): the requester seals the request for
+//! each candidate of the relay's plan and the relay gives it to the next
+//! one when the first can't take it.
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use super::delegator::instance_of;
 use super::route;
-use super::task::{self, TaskRecord, TaskService, TaskSourceKind, TaskStage, TaskState};
-use super::task_state::{self, Change};
+use super::task::{self, TaskRecord, TaskService, TaskSourceKind, TaskState};
 use super::Task;
 use crate::db::{now_ms, Db};
 use crate::services::capability::ProviderKind;
 use crate::services::domain::AgentCard;
+use crate::services::relay::unavailable;
 use crate::services::selection::{CapabilityRanking, CapabilitySelectionContext, SelectionService};
 use crate::services::team::trust::TrustFilter;
-
-pub const MAX_ATTEMPTS: u32 = 3;
-
-// ---------------------------------------------------------------------------
-// Attempts
-// ---------------------------------------------------------------------------
-
-/// The attempt after `previous`, to `provider_card`
-pub fn next_attempt(previous: &TaskRecord, id: &str, provider_card: &str) -> TaskRecord {
-    let mut next = TaskRecord::requester(
-        id,
-        &previous.requester_instance,
-        &previous.requester_agent,
-        provider_card,
-        &previous.capability,
-        &previous.input,
-        previous.deadline,
-    );
-    next.priority = previous.priority;
-    next.parent_task_id = previous.parent_task_id.clone();
-    next.source_kind = TaskSourceKind::Failover;
-    next.attempt_number = previous.attempt_number + 1;
-    next.previous_attempt_id = Some(previous.id.clone());
-    next
-}
 
 /// `cards` without other instances we paused delegations with, nor agents
 /// of theirs we blocked (Track E, `team::trust`). Our own instance is never
@@ -143,35 +109,25 @@ pub fn order_by_ranking(
 }
 
 impl TaskService {
-    /// A new attempt for a failed requester task nobody waits on, on the
-    /// next provider (never one tried before, nor one with an open
-    /// circuit). `Ok(None)`: nothing to do (not retryable, out of
-    /// attempts, already failed over, or no other provider).
-    pub async fn failover(&self, failed: &TaskRecord) -> Result<Option<TaskRecord>, String> {
+    /// The user's retry of a failed request of ours: a new attempt
+    /// (`source_kind = Failover`, linked by `previous_attempt_id`), planned
+    /// by the relay without anyone it already went to, and sealed for each
+    /// of the plan's candidates so the relay fails it over itself.
+    /// `Ok(None)`: nobody else to try (or it didn't fail).
+    pub async fn retry(&self, failed: &TaskRecord) -> Result<Option<TaskRecord>, String> {
         let me = self.instance_id().to_string();
         let retryable = matches!(
             failed.state,
             TaskState::Failed | TaskState::TimedOut | TaskState::Rejected | TaskState::Abandoned
         );
-        if !retryable || !failed.is_requester(&me) || failed.attempt_number >= MAX_ATTEMPTS {
-            return Ok(None);
-        }
-        let failed_id = failed.id.clone();
-        let successors = self
-            .db()
-            .call(move |conn| task::select(conn, "previous_attempt_id = ?1", &[&failed_id]))
-            .await?;
-        if !successors.is_empty() {
+        if !retryable || !failed.is_requester(&me) {
             return Ok(None);
         }
         let Some(request) = task::request_of(self.db(), &failed.id).await? else {
             return Ok(None);
         };
-        let Some(relay) = self.relay().cloned() else {
-            return Ok(None);
-        };
-
-        // Every instance this task already went to
+        let relay = unavailable::connected(self.relay())?.clone();
+        // Every instance this request already went to
         let mut excluded: HashSet<String> = HashSet::from([me.clone()]);
         let mut at = Some(failed.clone());
         while let Some(attempt) = at {
@@ -183,24 +139,29 @@ impl TaskService {
         }
         let hints = route::hints(self.deps.store(), self.db(), &failed.capability, &excluded);
         let query = route::query(&failed.capability, None, hints);
-        let next = match relay.route(&query).await {
-            Ok(plan) => route::picks(plan).into_iter().next(),
-            Err(e) => {
-                log::info!("Task {}: no plan to fail over with ({e})", failed.id);
-                None
-            }
-        };
-        let Some(next) = next else {
-            log::info!("Task {}: no other provider to fail over to", failed.id);
+        let picks = route::picks(relay.route(&query).await?);
+        let Some((first, rest)) = picks.split_first() else {
             return Ok(None);
         };
-
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms() as f64;
-        let record = next_attempt(failed, &id, &next.target);
+        let mut record = TaskRecord::requester(
+            &id,
+            &failed.requester_instance,
+            &failed.requester_agent,
+            &first.target,
+            &failed.capability,
+            &failed.input,
+            failed.deadline,
+        );
+        record.priority = failed.priority;
+        record.parent_task_id = failed.parent_task_id.clone();
+        record.source_kind = TaskSourceKind::Failover;
+        record.attempt_number = failed.attempt_number + 1;
+        record.previous_attempt_id = Some(failed.id.clone());
         let task = Task {
             id: id.clone(),
-            target: next.target.clone(),
+            target: first.target.clone(),
             created_at: now,
             // Due like any request to another Nandi
             deadline: Some(super::assignment::request_due_at(
@@ -210,30 +171,19 @@ impl TaskService {
             ) as f64),
             ..request
         };
+        record.deadline = task.deadline;
         self.create(&record, Some(&task)).await?;
-        if let Some(why) = next.route_message() {
+        if let Some(why) = first.route_message() {
             task::add_message(self.db(), &id, route::ROUTE_KIND, why).await?;
         }
+        let alternates: Vec<String> = rest.iter().map(|pick| pick.target.clone()).collect();
+        let submitted = relay.delegate_task(&task, &alternates).await?;
+        super::queue::accepted(self, &id, submitted.held).await;
         log::info!(
-            "Task {} failed over to '{}' as {id} (attempt {})",
+            "Task {} retried as {id} (attempt {})",
             failed.id,
-            next.target,
             record.attempt_number
         );
-        match relay.delegate_task(&task).await {
-            Ok(_) => {
-                task_state::advance(
-                    self.db(),
-                    self.bus(),
-                    &id,
-                    TaskState::Delivered,
-                    Change::reason("routed by the relay").at(TaskStage::Dispatch),
-                )
-                .await?;
-            }
-            // Queued: the next flush sends it
-            Err(e) => log::info!("Task {id} waits for {}: {e}", instance_of(&next.target)),
-        }
         Ok(Some(self.get(&id).await?))
     }
 }
@@ -241,21 +191,6 @@ impl TaskService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::a2a::task::tests::record;
-
-    #[test]
-    fn the_next_attempt_points_back() {
-        let mut previous = record("first");
-        previous.priority = 4;
-        let next = next_attempt(&previous, "second", "other/papers");
-        assert_eq!(next.attempt_number, 2);
-        assert_eq!(next.previous_attempt_id.as_deref(), Some("first"));
-        assert_eq!(next.source_kind, TaskSourceKind::Failover);
-        assert_eq!(next.provider_instance, "other");
-        assert_eq!(next.provider_agent, "papers");
-        assert_eq!(next.priority, 4);
-        assert_eq!(next.state, TaskState::Submitted);
-    }
 
     fn summarizer(id: &str) -> AgentCard {
         let (instance, _) = id.split_once('/').unwrap();

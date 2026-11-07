@@ -7,7 +7,7 @@
 //! | --- | --- | --- |
 //! | A task's input | The provider's pinned keys | Us (the requester) |
 //! | A result's output and error | The requester's pinned keys | Us (the provider) |
-//! | Notes, reasons, questions, answers, status results, duty errors | The other side's pinned keys | Us |
+//! | Notes, reasons, questions, answers, duty errors | The other side's pinned keys | Us |
 //! | A reassigned task's request | The new provider's pinned keys | The requester, kept by [`nandi_seal::reseal`] |
 //!
 //! Opening checks, in order, and refuses with [`SEAL_REFUSED`] when one
@@ -34,7 +34,7 @@ use nandi_protocol::{
 };
 use nandi_seal::{DeviceKeys, Opened};
 
-use super::opened::{DutyState, PeerMessage};
+use super::opened::PeerMessage;
 
 /// The stable code a refusal to send to a member with no keys starts with
 pub const PEER_KEY_MISSING: &str = "peer_key_missing";
@@ -246,7 +246,9 @@ impl Sealer {
         Ok(envelope)
     }
 
-    fn note(
+    /// `text` (when there is any) sealed for `to` as a note on `task_id`
+    /// (a duty's ID for a duty's error)
+    pub fn note(
         &self,
         task_id: &str,
         to: (&str, &PublicKeys),
@@ -300,7 +302,9 @@ impl Sealer {
         Ok(Opening::Opened((content, opened)))
     }
 
-    fn open_note(
+    /// The note in `envelope` (if any) on `task_id`, sealed for us by
+    /// `from`
+    pub fn open_note(
         &self,
         envelope: Option<&Envelope>,
         task_id: &str,
@@ -354,9 +358,11 @@ impl Sealer {
         requester: &PublicKeys,
     ) -> Result<Opening<Task>, String> {
         let author = sealed.requester.instance_id.clone();
+        // Sealed by the requester, or resealed by a provider it was
+        // reassigned from: either way the requester's signature is checked
         let expected = Expected {
-            task_id: sealed.sealed_task_id(),
-            from: sealed.continues.is_none().then_some(author.as_str()),
+            task_id: &sealed.id,
+            from: None,
             capability: &sealed.capability,
         };
         let (content, opened) =
@@ -383,7 +389,7 @@ impl Sealer {
 
     /// The request of `task_id` resealed for `to`, the requester's
     /// signature kept; `None` when we no longer hold it
-    fn reseal_request(
+    pub fn reseal_request(
         &self,
         task_id: &str,
         to: (&str, &PublicKeys),
@@ -478,35 +484,22 @@ impl Sealer {
             PeerMessage::AcknowledgeTask { note, .. }
             | PeerMessage::ProgressUpdate { note, .. } => text(note),
             PeerMessage::RejectTask { reason, .. } => !reason.is_empty(),
-            PeerMessage::StatusResponse { result, error, .. } => {
-                result.is_some() || error.is_some()
-            }
-            PeerMessage::CancelTask { reason, .. } | PeerMessage::TaskTimedOut { reason, .. } => {
-                text(reason)
-            }
+            PeerMessage::CancelTask { reason, .. } => text(reason),
             PeerMessage::ClarificationRequest(_) | PeerMessage::ClarificationResponse(_) => true,
-            // The request is resealed for the new provider whatever the
-            // reason says
-            PeerMessage::ReassignTask { .. } => true,
-            PeerMessage::DutyStatus { state, .. } => {
-                matches!(state, DutyState::Failed { error } if text(error))
-            }
             PeerMessage::StatusQuery { .. }
+            | PeerMessage::StatusResponse { .. }
             | PeerMessage::TaskDelivered { .. }
-            | PeerMessage::ClarificationTimeout { .. }
-            | PeerMessage::DutyQuery { .. } => false,
+            | PeerMessage::ClarificationTimeout { .. } => false,
         }
     }
 
     /// `body` for `target`, its content sealed with `target_keys` (needed
-    /// only when [`Self::has_content`]). A reassignment's request is
-    /// resealed for `new_provider` when we still hold it.
+    /// only when [`Self::has_content`])
     pub fn seal_peer(
         &self,
         target: &str,
         body: PeerMessage,
         target_keys: Option<&PublicKeys>,
-        new_provider: Option<&PublicKeys>,
     ) -> Result<wire::PeerMessage, String> {
         let task_id = body.task_id().to_string();
         let to = || -> Result<(&str, &PublicKeys), String> {
@@ -558,39 +551,17 @@ impl Sealer {
                 state,
                 eta_seconds,
                 elapsed_seconds,
-                result,
-                error,
-            } => {
-                let envelope = if result.is_some() || error.is_some() {
-                    Some(self.seal(
-                        &task_id,
-                        to()?,
-                        LIFECYCLE_CAPABILITY,
-                        &ResultContent {
-                            output: result.unwrap_or_default(),
-                            error,
-                        },
-                    )?)
-                } else {
-                    None
-                };
-                wire::PeerMessage::StatusResponse {
-                    task_id,
-                    state,
-                    eta_seconds,
-                    elapsed_seconds,
-                    envelope,
-                }
-            }
+            } => wire::PeerMessage::StatusResponse {
+                task_id,
+                state,
+                eta_seconds,
+                elapsed_seconds,
+            },
             PeerMessage::CancelTask { task_id, reason } => wire::PeerMessage::CancelTask {
                 envelope: note(reason)?,
                 task_id,
             },
             PeerMessage::TaskDelivered { task_id } => wire::PeerMessage::TaskDelivered { task_id },
-            PeerMessage::TaskTimedOut { task_id, reason } => wire::PeerMessage::TaskTimedOut {
-                envelope: note(reason)?,
-                task_id,
-            },
             PeerMessage::ClarificationRequest(request) => wire::PeerMessage::ClarificationRequest {
                 envelope: self.seal(
                     &request.task_id,
@@ -619,46 +590,6 @@ impl Sealer {
             }
             PeerMessage::ClarificationTimeout { task_id } => {
                 wire::PeerMessage::ClarificationTimeout { task_id }
-            }
-            PeerMessage::ReassignTask {
-                task_id,
-                new_provider_instance,
-                new_provider_card,
-                new_provider_name,
-                by,
-                reason,
-                request: _,
-            } => {
-                let request = match new_provider {
-                    Some(keys) => self
-                        .reseal_request(&task_id, (&new_provider_instance, keys))?
-                        .map(Box::new),
-                    None => None,
-                };
-                wire::PeerMessage::ReassignTask {
-                    envelope: note(reason)?,
-                    request,
-                    task_id,
-                    new_provider_instance,
-                    new_provider_card,
-                    new_provider_name,
-                    by,
-                }
-            }
-            PeerMessage::DutyQuery { duty_id } => wire::PeerMessage::DutyQuery { duty_id },
-            PeerMessage::DutyStatus { duty_id, state } => {
-                let (state, error) = match state {
-                    DutyState::Upcoming { due_at } => (wire::DutyState::Upcoming { due_at }, None),
-                    DutyState::Running { since } => (wire::DutyState::Running { since }, None),
-                    DutyState::Completed => (wire::DutyState::Completed, None),
-                    DutyState::Failed { error } => (wire::DutyState::Failed, error),
-                    DutyState::NotRun => (wire::DutyState::NotRun, None),
-                };
-                wire::PeerMessage::DutyStatus {
-                    envelope: note(error)?,
-                    duty_id,
-                    state,
-                }
             }
         })
     }
@@ -734,34 +665,17 @@ impl Sealer {
                 state,
                 eta_seconds,
                 elapsed_seconds,
-                envelope,
-            } => {
-                let (result, error) = match envelope {
-                    Some(envelope) => {
-                        let (content, _) =
-                            opened!(self.open::<ResultContent>(&envelope, &lifecycle, keys()?)?);
-                        (Some(content.output), content.error)
-                    }
-                    None => (None, None),
-                };
-                PeerMessage::StatusResponse {
-                    task_id,
-                    state,
-                    eta_seconds,
-                    elapsed_seconds,
-                    result,
-                    error,
-                }
-            }
+            } => PeerMessage::StatusResponse {
+                task_id,
+                state,
+                eta_seconds,
+                elapsed_seconds,
+            },
             wire::PeerMessage::CancelTask { task_id, envelope } => PeerMessage::CancelTask {
                 reason: opened!(note(envelope)?),
                 task_id,
             },
             wire::PeerMessage::TaskDelivered { task_id } => PeerMessage::TaskDelivered { task_id },
-            wire::PeerMessage::TaskTimedOut { task_id, envelope } => PeerMessage::TaskTimedOut {
-                reason: opened!(note(envelope)?),
-                task_id,
-            },
             wire::PeerMessage::ClarificationRequest {
                 task_id,
                 round,
@@ -791,166 +705,7 @@ impl Sealer {
             wire::PeerMessage::ClarificationTimeout { task_id } => {
                 PeerMessage::ClarificationTimeout { task_id }
             }
-            wire::PeerMessage::ReassignTask {
-                task_id,
-                new_provider_instance,
-                new_provider_card,
-                new_provider_name,
-                by,
-                envelope,
-                request,
-            } => {
-                // Sealed for the new provider: only checked for what it says
-                // it is (they open it)
-                if let Some(request) = &request {
-                    let sealed_for = &request.sealed_for;
-                    if sealed_for.to != new_provider_instance
-                        || sealed_for.from != from
-                        || sealed_for.purpose != wire::SealPurpose::Request
-                        || !request.is_within_limit()
-                    {
-                        return Err(refused(
-                            from,
-                            &task_id,
-                            "the request it hands on isn't sealed for the new provider",
-                        ));
-                    }
-                }
-                PeerMessage::ReassignTask {
-                    reason: opened!(note(envelope)?),
-                    task_id,
-                    new_provider_instance,
-                    new_provider_card,
-                    new_provider_name,
-                    by,
-                    request,
-                }
-            }
-            wire::PeerMessage::DutyQuery { duty_id } => PeerMessage::DutyQuery { duty_id },
-            wire::PeerMessage::DutyStatus {
-                duty_id,
-                state,
-                envelope,
-            } => {
-                let error = opened!(note(envelope)?);
-                PeerMessage::DutyStatus {
-                    state: match state {
-                        wire::DutyState::Upcoming { due_at } => DutyState::Upcoming { due_at },
-                        wire::DutyState::Running { since } => DutyState::Running { since },
-                        wire::DutyState::Completed => DutyState::Completed,
-                        wire::DutyState::Failed => DutyState::Failed { error },
-                        wire::DutyState::NotRun => DutyState::NotRun,
-                    },
-                    duty_id,
-                }
-            }
         }))
-    }
-
-    /// Our own `body`, bounced by the relay: its kind and IDs, without the
-    /// content (sealed for the target, so we can't open it again)
-    pub fn bounced(body: wire::PeerMessage) -> PeerMessage {
-        match body {
-            wire::PeerMessage::AcknowledgeTask {
-                task_id,
-                eta_seconds,
-                ..
-            } => PeerMessage::AcknowledgeTask {
-                task_id,
-                eta_seconds,
-                note: None,
-            },
-            wire::PeerMessage::RejectTask {
-                task_id,
-                reason_kind,
-                ..
-            } => PeerMessage::RejectTask {
-                task_id,
-                reason: String::new(),
-                reason_kind,
-            },
-            wire::PeerMessage::ProgressUpdate {
-                task_id,
-                percent,
-                reason_kind,
-                queue_position,
-                ..
-            } => PeerMessage::ProgressUpdate {
-                task_id,
-                percent,
-                note: None,
-                reason_kind,
-                queue_position,
-            },
-            wire::PeerMessage::StatusQuery { task_id } => PeerMessage::StatusQuery { task_id },
-            wire::PeerMessage::StatusResponse {
-                task_id,
-                state,
-                eta_seconds,
-                elapsed_seconds,
-                ..
-            } => PeerMessage::StatusResponse {
-                task_id,
-                state,
-                eta_seconds,
-                elapsed_seconds,
-                result: None,
-                error: None,
-            },
-            wire::PeerMessage::CancelTask { task_id, .. } => PeerMessage::CancelTask {
-                task_id,
-                reason: None,
-            },
-            wire::PeerMessage::TaskDelivered { task_id } => PeerMessage::TaskDelivered { task_id },
-            wire::PeerMessage::TaskTimedOut { task_id, .. } => PeerMessage::TaskTimedOut {
-                task_id,
-                reason: None,
-            },
-            wire::PeerMessage::ClarificationRequest { task_id, round, .. } => {
-                PeerMessage::ClarificationRequest(ClarificationRequest {
-                    task_id,
-                    round,
-                    questions: Vec::new(),
-                })
-            }
-            wire::PeerMessage::ClarificationResponse { task_id, round, .. } => {
-                PeerMessage::ClarificationResponse(ClarificationResponse {
-                    task_id,
-                    round,
-                    answers: HashMap::new(),
-                })
-            }
-            wire::PeerMessage::ClarificationTimeout { task_id } => {
-                PeerMessage::ClarificationTimeout { task_id }
-            }
-            wire::PeerMessage::ReassignTask {
-                task_id,
-                new_provider_instance,
-                new_provider_card,
-                new_provider_name,
-                by,
-                ..
-            } => PeerMessage::ReassignTask {
-                task_id,
-                new_provider_instance,
-                new_provider_card,
-                new_provider_name,
-                by,
-                reason: None,
-                request: None,
-            },
-            wire::PeerMessage::DutyQuery { duty_id } => PeerMessage::DutyQuery { duty_id },
-            wire::PeerMessage::DutyStatus { duty_id, state, .. } => PeerMessage::DutyStatus {
-                duty_id,
-                state: match state {
-                    wire::DutyState::Upcoming { due_at } => DutyState::Upcoming { due_at },
-                    wire::DutyState::Running { since } => DutyState::Running { since },
-                    wire::DutyState::Completed => DutyState::Completed,
-                    wire::DutyState::Failed => DutyState::Failed { error: None },
-                    wire::DutyState::NotRun => DutyState::NotRun,
-                },
-            },
-        }
     }
 }
 

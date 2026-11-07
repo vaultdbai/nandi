@@ -1251,8 +1251,8 @@ pub async fn request_for_run(state: &AppState, run_id: String) -> Result<Option<
         .await
 }
 
-/// A new attempt for a failed outgoing task, on the next provider, linked
-/// through `previous_attempt_id` (failover). Errors when there's none.
+/// A new attempt for a failed outgoing task, on the relay's next plan,
+/// linked through `previous_attempt_id`. Errors when there's nobody else.
 pub async fn retry_task(state: &AppState, id: String) -> Result<Request, String> {
     let tasks = state
         .tasks()
@@ -1266,7 +1266,7 @@ pub async fn retry_task(state: &AppState, id: String) -> Result<Request, String>
         .last()
         .map(|b| b.task.clone())
         .ok_or_else(|| format!("Request {id} not found"))?;
-    match tasks.failover(&latest).await? {
+    match tasks.retry(&latest).await? {
         Some(_) => get_request(state, id).await,
         None => Err("There's no other provider to try right now".to_string()),
     }

@@ -169,7 +169,7 @@ describe('TaskStatusPanel', () => {
     })
     render(<TaskStatusPanel taskId="task-1" />)
     expect(await screen.findByTestId('task-queued-offline')).toHaveTextContent(
-      'Peer Person is offline. The request is queued'
+      'Peer Person is offline. The relay keeps the request'
     )
   })
 

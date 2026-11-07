@@ -50,7 +50,6 @@ fn sealed_task(ada: &Sealer, task: &Task, to: (&str, &Sealer)) -> SealedTask {
         created_at: task.created_at,
         deadline: task.deadline,
         envelope: ada.seal_task(task, (to.0, to.1.public_keys())).unwrap(),
-        continues: None,
     }
 }
 
@@ -154,7 +153,6 @@ fn a_forged_author_or_a_moved_envelope_is_refused() {
                 note: Some("hi".into()),
             },
             Some(ada.public_keys()),
-            None,
         )
         .unwrap();
     let wire::PeerMessage::AcknowledgeTask {
@@ -203,8 +201,6 @@ fn every_peer_message_round_trips_with_its_content_sealed() {
             state: wire::TaskState::Completed,
             eta_seconds: None,
             elapsed_seconds: 4,
-            result: Some(json!({"text": "the secret plan"})),
-            error: None,
         },
         PeerMessage::CancelTask {
             task_id: "t1".into(),
@@ -212,10 +208,6 @@ fn every_peer_message_round_trips_with_its_content_sealed() {
         },
         PeerMessage::TaskDelivered {
             task_id: "t1".into(),
-        },
-        PeerMessage::TaskTimedOut {
-            task_id: "t1".into(),
-            reason: None,
         },
         PeerMessage::ClarificationRequest(ClarificationRequest {
             task_id: "t1".into(),
@@ -235,19 +227,10 @@ fn every_peer_message_round_trips_with_its_content_sealed() {
         PeerMessage::ClarificationTimeout {
             task_id: "t1".into(),
         },
-        PeerMessage::DutyQuery {
-            duty_id: "standup/2026-11-04/09:00".into(),
-        },
-        PeerMessage::DutyStatus {
-            duty_id: "standup/2026-11-04/09:00".into(),
-            state: DutyState::Failed {
-                error: Some("the secret plan crashed".into()),
-            },
-        },
     ];
     for body in bodies {
         let wire = bob
-            .seal_peer("ada", body.clone(), Some(ada.public_keys()), None)
+            .seal_peer("ada", body.clone(), Some(ada.public_keys()))
             .unwrap();
         let text = serde_json::to_string(&wire).unwrap();
         assert!(!text.contains("secret plan"), "{text}");
@@ -284,7 +267,7 @@ fn content_needs_the_targets_keys_and_a_sender_s_own_envelope() {
         })
     };
     assert!(bob
-        .seal_peer("ada", ask(), None, None)
+        .seal_peer("ada", ask(), None)
         .unwrap_err()
         .starts_with(PEER_KEY_MISSING));
     // Without content nothing is sealed, keys or not
@@ -294,12 +277,11 @@ fn content_needs_the_targets_keys_and_a_sender_s_own_envelope() {
             task_id: "t1".into(),
         },
         None,
-        None,
     )
     .unwrap();
     // Bob's envelope, relayed as if Eve sent it
     let wire = bob
-        .seal_peer("ada", ask(), Some(ada.public_keys()), None)
+        .seal_peer("ada", ask(), Some(ada.public_keys()))
         .unwrap();
     let refused = ada
         .open_peer("eve", wire, Some(eve.public_keys()))
@@ -333,164 +315,73 @@ fn a_reassigned_request_keeps_the_requesters_signature() {
     );
     assert!(bob.holds_request("t1"));
 
-    // Bob hands it to Cal: the reason for Ada, the request for Cal
-    let wire = bob
-        .seal_peer(
-            "ada",
-            PeerMessage::ReassignTask {
-                task_id: "t1".into(),
-                new_provider_instance: "cal".into(),
-                new_provider_card: "cal/writer".into(),
-                new_provider_name: Some("Cal".into()),
-                by: "Bob".into(),
-                reason: Some("too busy".into()),
-                request: None,
-            },
-            Some(ada.public_keys()),
-            Some(cal.public_keys()),
-        )
-        .unwrap();
-    let PeerMessage::ReassignTask {
-        reason,
-        request: Some(request),
-        ..
-    } = opened(ada.open_peer("bob", wire, Some(bob.public_keys())).unwrap())
-    else {
-        panic!("expected the resealed request");
-    };
-    assert_eq!(reason.as_deref(), Some("too busy"));
+    // Bob reseals it for Cal; the relay delivers it under the same task
+    let request = bob
+        .reseal_request("t1", ("cal", cal.public_keys()))
+        .unwrap()
+        .expect("Bob holds the request");
     assert_eq!(request.sealed_for.task_id, "t1");
     assert_eq!(request.sealed_for.to, "cal");
-
-    // Ada sends it on as attempt t2; Cal checks Ada signed it
-    let attempt = SealedTask {
-        id: "t2".into(),
+    assert_eq!(request.sealed_for.from, "bob");
+    let moved = SealedTask {
         target: "cal/writer".into(),
-        envelope: *request.clone(),
-        continues: Some("t1".into()),
+        envelope: request,
         ..sealed_task(&ada, &first, ("cal", &cal))
     };
-    // Only Ada's signature opens it, and only under the task it was sealed for
+    // Only Ada's signature opens it, and only under its own task
     let fresh = sealer("ada");
     assert!(cal
-        .open_task(attempt.clone(), fresh.public_keys())
+        .open_task(moved.clone(), fresh.public_keys())
         .unwrap_err()
         .contains("isn't signed by its author"));
     assert!(cal
         .open_task(
             SealedTask {
-                continues: Some("t9".into()),
-                ..attempt.clone()
+                id: "t9".into(),
+                ..moved.clone()
             },
             ada.public_keys(),
         )
         .unwrap_err()
         .contains("another task"));
-    let at_cal = opened(cal.open_task(attempt, ada.public_keys()).unwrap());
-    assert_eq!(at_cal.id, "t2");
+    let at_cal = opened(cal.open_task(moved, ada.public_keys()).unwrap());
+    assert_eq!(at_cal.id, "t1");
     assert_eq!(at_cal.input, first.input);
-    assert!(cal.holds_request("t2"));
+    assert!(cal.holds_request("t1"));
 
     // Without the opened request (a restart), no reseal: Ada seals again
     let restarted = sealer("bob");
-    let wire = restarted
-        .seal_peer(
-            "ada",
-            PeerMessage::ReassignTask {
-                task_id: "t1".into(),
-                new_provider_instance: "cal".into(),
-                new_provider_card: "cal/writer".into(),
-                new_provider_name: None,
-                by: "Bob".into(),
-                reason: None,
-                request: None,
-            },
-            Some(ada.public_keys()),
-            Some(cal.public_keys()),
-        )
-        .unwrap();
-    assert!(matches!(
-        wire,
-        wire::PeerMessage::ReassignTask { request: None, .. }
-    ));
+    assert!(restarted
+        .reseal_request("t1", ("cal", cal.public_keys()))
+        .unwrap()
+        .is_none());
 }
 
 #[test]
-fn a_handed_on_request_must_be_sealed_for_the_new_provider() {
-    let (ada, bob, cal) = (sealer("ada"), sealer("bob"), sealer("cal"));
-    let first = task("t1", "bob/writer");
-    opened(
-        bob.open_task(sealed_task(&ada, &first, ("bob", &bob)), ada.public_keys())
+fn a_duty_error_is_a_note_bound_to_the_duty() {
+    let (pia, ben) = (sealer("pia"), sealer("ben"));
+    let duty = "standup/2026-11-04/09:00";
+    let envelope = pia
+        .note(
+            duty,
+            ("ben", ben.public_keys()),
+            Some("the secret plan crashed".into()),
+        )
+        .unwrap()
+        .unwrap();
+    assert!(!serde_json::to_string(&envelope).unwrap().contains("secret"));
+    let text = opened(
+        ben.open_note(Some(&envelope), duty, ("pia", pia.public_keys()))
             .unwrap(),
     );
-    let wire = bob
-        .seal_peer(
-            "ada",
-            PeerMessage::ReassignTask {
-                task_id: "t1".into(),
-                new_provider_instance: "cal".into(),
-                new_provider_card: "cal/writer".into(),
-                new_provider_name: None,
-                by: "Bob".into(),
-                reason: None,
-                request: None,
-            },
-            Some(ada.public_keys()),
-            Some(cal.public_keys()),
+    assert_eq!(text.as_deref(), Some("the secret plan crashed"));
+    assert!(ben
+        .open_note(
+            Some(&envelope),
+            "other/2026-11-04/09:00",
+            ("pia", pia.public_keys())
         )
-        .unwrap();
-    let wire::PeerMessage::ReassignTask {
-        task_id,
-        new_provider_card,
-        new_provider_name,
-        by,
-        envelope,
-        request,
-        ..
-    } = wire
-    else {
-        unreachable!()
-    };
-    // The relay points it at someone else
-    let redirected = wire::PeerMessage::ReassignTask {
-        task_id,
-        new_provider_instance: "mallory".into(),
-        new_provider_card,
-        new_provider_name,
-        by,
-        envelope,
-        request,
-    };
-    let refused = ada
-        .open_peer("bob", redirected, Some(bob.public_keys()))
-        .unwrap_err();
-    assert!(
-        refused.contains("isn't sealed for the new provider"),
-        "{refused}"
-    );
-}
-
-#[test]
-fn a_bounced_message_keeps_its_kind_and_ids_only() {
-    let (ada, bob) = (sealer("ada"), sealer("bob"));
-    let wire = bob
-        .seal_peer(
-            "ada",
-            PeerMessage::CancelTask {
-                task_id: "t1".into(),
-                reason: Some("secret".into()),
-            },
-            Some(ada.public_keys()),
-            None,
-        )
-        .unwrap();
-    assert_eq!(
-        Sealer::bounced(wire),
-        PeerMessage::CancelTask {
-            task_id: "t1".into(),
-            reason: None,
-        }
-    );
+        .is_err());
 }
 
 #[test]

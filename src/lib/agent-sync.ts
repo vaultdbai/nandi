@@ -480,7 +480,7 @@ export function handleNandiEvent(event: NandiEvent) {
       return
     case 'task://reassigned':
       // The requester's side: their task moved to someone else
-      if (event.payload.newTaskId) {
+      if (event.payload.requester) {
         void notify(
           i18n.t('delegationThread.item.reassigned', {
             to: event.payload.toName ?? event.payload.toInstance,

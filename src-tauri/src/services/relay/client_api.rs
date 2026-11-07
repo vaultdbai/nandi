@@ -7,8 +7,9 @@ use std::collections::HashMap;
 use futures_util::future::BoxFuture;
 
 use super::protocol::{
-    CapabilityPresence, InstancePresence, MemberRecord, PeerDelivery, PeerMessage, PeopleMatch,
-    RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted, TaskFailed,
+    CapabilityPresence, DutyDelivery, DutyState, InstancePresence, MemberRecord, PeerDelivery,
+    PeerMessage, PeopleMatch, ResealRequest, RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted,
+    TaskEvent, TaskFailed,
 };
 use super::RelayStatus;
 use crate::services::a2a::{Task, TaskResult};
@@ -28,6 +29,17 @@ pub struct PeopleSearch {
     pub unstated: u32,
     /// Matches before the limit
     pub total: u32,
+}
+
+/// What a submission the relay refused (`TaskEvent::Refused`) answers
+/// with, before the relay's words; any other error means it didn't get there
+pub const REFUSED_BY_RELAY: &str = "The relay refused it: ";
+
+/// The relay took a submission
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Submitted {
+    /// Its provider is offline: it waits at the relay for them
+    pub held: bool,
 }
 
 /// One instance's connection to a relay.
@@ -51,22 +63,15 @@ pub trait RelayClient: Send + Sync {
         capability: &'a str,
     ) -> BoxFuture<'a, Result<Vec<AgentCard>, String>>;
 
-    /// Sends a signed `DelegateTask`, its input sealed for the provider;
-    /// returns the task ID
-    fn delegate_task<'a>(&'a self, task: &'a Task) -> BoxFuture<'a, Result<String, String>>;
-
-    /// Sends `task` (a reassigned task's next attempt) with the request
-    /// its last provider resealed for the new one, the requester's
-    /// signature kept (`ReassignTask.request`). Clients that don't seal
-    /// send it as any task.
-    fn delegate_resealed<'a>(
+    /// Sends a signed `SubmitTask`: `task` for its target, then (should
+    /// the relay fail it over) each of `alternates` (card IDs) in turn, its
+    /// input sealed for each. Answers once the relay took it (held for an
+    /// offline provider counts) or with the relay's refusal.
+    fn delegate_task<'a>(
         &'a self,
         task: &'a Task,
-        request: nandi_protocol::Envelope,
-    ) -> BoxFuture<'a, Result<String, String>> {
-        let _ = request;
-        self.delegate_task(task)
-    }
+        alternates: &'a [String],
+    ) -> BoxFuture<'a, Result<Submitted, String>>;
 
     /// Provider side: sends a finished task's result back
     fn send_result(&self, result: TaskResult) -> BoxFuture<'_, Result<(), String>>;
@@ -77,13 +82,85 @@ pub trait RelayClient: Send + Sync {
 
     fn on_task_failed(&self, handler: Handler<TaskFailed>) -> BoxFuture<'_, ()>;
 
+    /// What the relay did with a task we're a party to (failovers, moves,
+    /// endings, and its answers to our submissions)
+    fn on_task_event(&self, handler: Handler<TaskEvent>) -> BoxFuture<'_, ()> {
+        let _ = handler;
+        Box::pin(async {})
+    }
+
+    /// Provider side: hands `task_id` (asked for by `requester`) to the
+    /// card `target` through the relay, with the request resealed for the
+    /// new provider (when we still hold it) and `reason` sealed for the
+    /// requester. Answers once the relay moved it, or why not.
+    fn reassign<'a>(
+        &'a self,
+        task_id: &'a str,
+        requester: &'a str,
+        target: &'a str,
+        by: &'a str,
+        reason: Option<String>,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        let _ = (task_id, requester, target, by, reason);
+        Box::pin(async { Err("Not supported by this relay client".to_string()) })
+    }
+
+    /// Requester side: seals our own `task` again for `target` (the relay
+    /// asked: its provider no longer held the request)
+    fn reseal_as_author<'a>(
+        &'a self,
+        task: &'a Task,
+        target: &'a str,
+        by: &'a str,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        let _ = (task, target, by);
+        Box::pin(async { Err("Not supported by this relay client".to_string()) })
+    }
+
+    /// The relay asks us to reseal a task for a new provider
+    fn on_reseal(&self, handler: Handler<ResealRequest>) -> BoxFuture<'_, ()> {
+        let _ = handler;
+        Box::pin(async {})
+    }
+
+    /// As a calendar trigger's backup: asks the relay to watch
+    /// `primary_instance`'s `duty_id`, due at `due_at` (epoch ms)
+    fn duty_watch<'a>(
+        &'a self,
+        duty_id: &'a str,
+        primary_instance: &'a str,
+        due_at: i64,
+        after_minutes: Option<u32>,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        let _ = (duty_id, primary_instance, due_at, after_minutes);
+        Box::pin(async { Err("Not supported by this relay client".to_string()) })
+    }
+
+    /// As a primary: how `duty_id` is going, for the relay (a failure's
+    /// error sealed for `backup_instance`)
+    fn duty_report<'a>(
+        &'a self,
+        duty_id: &'a str,
+        backup_instance: &'a str,
+        state: DutyState,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        let _ = (duty_id, backup_instance, state);
+        Box::pin(async { Err("Not supported by this relay client".to_string()) })
+    }
+
+    /// Duty questions (as a primary) and decisions (as a backup)
+    fn on_duty(&self, handler: Handler<DutyDelivery>) -> BoxFuture<'_, ()> {
+        let _ = handler;
+        Box::pin(async {})
+    }
+
     fn status(&self) -> RelayStatus;
 
     // Wave final
 
-    /// Sends a lifecycle message to another instance through the relay.
-    /// `Err` only when we aren't connected; an offline target comes back as
-    /// an undeliverable `PeerDelivery`.
+    /// Sends a lifecycle message to the other side of a task through the
+    /// relay, which keeps it for them if they're offline (live-only kinds
+    /// go now or not at all). `Err` when we aren't connected.
     fn send_peer(
         &self,
         target_instance: String,
@@ -93,7 +170,7 @@ pub trait RelayClient: Send + Sync {
         Box::pin(async { Err("Not supported by this relay client".to_string()) })
     }
 
-    /// Every `Peer` / `Undeliverable` message that arrives
+    /// Every lifecycle message from the other side of a task
     fn on_peer(&self, handler: Handler<PeerDelivery>) -> BoxFuture<'_, ()> {
         let _ = handler;
         Box::pin(async {})

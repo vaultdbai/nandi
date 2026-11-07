@@ -6,9 +6,13 @@
 //! the rest of the app never sees an envelope. The relay client seals it
 //! on the way out and opens it on the way in (`sealing`).
 
-pub use super::opened::{DutyState, PeerDelivery, PeerMessage, TaskAssigned, TaskCompleted};
+pub use super::opened::{
+    DutyDelivery, DutyState, PeerDelivery, PeerMessage, ResealRequest, TaskAssigned, TaskCompleted,
+    TaskEvent, TaskFailed,
+};
 pub use nandi_protocol::directory::{MemberRecord, PeopleMatch, ASK_ME};
-pub use nandi_protocol::message::{RelayMessage, TaskFailed, ALL_CAPABILITIES, VERSION_MISMATCH};
+pub use nandi_protocol::duty::DutyDecision;
+pub use nandi_protocol::message::{RelayMessage, ALL_CAPABILITIES, VERSION_MISMATCH};
 pub use nandi_protocol::presence::{CapabilityPresence, InstancePresence, ProviderPresence};
 pub use nandi_protocol::routing::{
     NoRoute, RequestKind, RouteCandidate, RoutePlan, RouteReason, RouteTarget, RoutingHints,

@@ -295,6 +295,63 @@ pub async fn advance(
     Ok(changes.last().map(|changed| changed.task.clone()))
 }
 
+/// The relay gave our request to another provider (`provider_card`): a
+/// failover or a reassignment. The row follows it, back to `Submitted`
+/// (its acknowledgement and ETA were the last provider's), with an event
+/// saying why. A task that ended stays as it is (`Ok(None)`).
+pub async fn hand_on(
+    db: &Db,
+    bus: &EventBus,
+    task_id: &str,
+    provider_card: &str,
+    change: Change,
+) -> Result<Option<TaskRecord>, String> {
+    let (id, card) = (task_id.to_string(), provider_card.to_string());
+    let changed = db
+        .call(move |conn| {
+            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let Some(mut task) = task::load(&tx, &id)? else {
+                return Ok(Err(format!("Task {id} not found")));
+            };
+            if task.state.is_terminal() {
+                return Ok(Ok(None));
+            }
+            let from = task.state;
+            let now = now_ms();
+            let (instance, agent) = card.split_once('/').unwrap_or((card.as_str(), ""));
+            task.provider_instance = instance.to_string();
+            task.provider_agent = agent.to_string();
+            task.state = TaskState::Submitted;
+            task.acknowledged_at = None;
+            task.eta_seconds = None;
+            task.updated_at = now as f64;
+            tx.execute(
+                "UPDATE tasks SET provider_instance = ?1, provider_agent = ?2, state = ?3,
+                        acknowledged_at = NULL, eta_seconds = NULL, updated_at = ?4
+                  WHERE id = ?5",
+                params![instance, agent, TaskState::Submitted.as_str(), now, id],
+            )?;
+            let event = TaskEvent {
+                task_id: id.clone(),
+                from_state: Some(from),
+                to_state: TaskState::Submitted,
+                reason: change.reason.clone(),
+                reason_kind: change.reason_kind,
+                stage: change.stage,
+                at: now as f64,
+            };
+            task::insert_event(&tx, &event)?;
+            tx.commit()?;
+            Ok(Ok(Some(TaskStateChanged { task, event })))
+        })
+        .await??;
+    let Some(changed) = changed else {
+        return Ok(None);
+    };
+    emit_all(bus, std::slice::from_ref(&changed));
+    Ok(Some(changed.task))
+}
+
 /// The restart-resume `task_events` row (`from_state = to_state`)
 pub async fn record_resume(db: &Db, bus: &EventBus, task: &TaskRecord) -> Result<(), String> {
     record_note(db, bus, task, Change::reason(RESUMED_REASON)).await

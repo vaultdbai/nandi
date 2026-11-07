@@ -759,15 +759,16 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **What:** Each day has a backup: the stand-in's `backup`, else the calendar's `backup`, else the next person in the turns (never the primary). The backup takes over when the primary's run fails, never starts, or isn't finished `backupAfterMinutes` after it started. Taking over fires the trigger again with `role: backup`, `responsible` set to the backup, plus `primary` and `handover_reason`. Rate limits don't apply to that fire.
   - A Nandi **not** named in the calendar (an owner, such as a team lead's) fires every day and watches its own run.
   - A Nandi **named** in the calendar runs only on its owner's days.
-  - On its backup days it waits 5 minutes, then asks the primary's Nandi over the relay (`DutyQuery` → `DutyStatus`). The answer comes from the primary's fire row and run status.
-  - It fires for itself if that Nandi is offline, doesn't answer within 15 s, or reports that the run failed, ran late or never started.
-  - A Nandi answers only people named in that trigger's calendar.
-- **Where:** `src-tauri/src/services/triggers/handover.rs`, `src-tauri/src/services/relay/protocol.rs` (`DutyQuery`, `DutyStatus`).
+  - On its backup days it asks the relay to watch the duty (`DutyWatch`, relay design step 14). Five minutes after the time the relay asks the primary's Nandi (`DutyQuery` → `DutyReport`, from the primary's fire row and run status; a failure's error sealed for the backup) and decides: settled, ask again later, or hand over. The relay keeps the watch on disk, so restarting the relay loses nothing.
+  - The relay hands over when the primary's Nandi is offline, doesn't answer within 15 s, or reports that the run failed, ran late or never started.
+  - With the relay down past the 5 minutes, the backup's Nandi hands over by itself (the owner's decision 6).
+  - A Nandi answers only about people named in that trigger's calendar.
+- **Where:** `src-tauri/src/services/triggers/handover.rs` (`watch_remotely`, `RelayDutyNetwork`), `relay/client.rs` (`duty_watch`, `duty_report`, `on_duty`); nandi-relay `src/handover.rs`, `src/store/duties.rs`, `GET /team/watches`.
 - **Preconditions:** For the cross-machine case: two instances on one relay (RL-11) whose display names are in the calendar, the same trigger file in both repos, and a relay built from this version.
 - **Steps:** 1. Owner case: target an agent that fails, and set a backup. 2. Cross-machine case: on the primary's day, quit the primary's Nandi. 3. Same, with `backupAfterMinutes: 1` and a slow run.
 - **Expected:** Each calendar firing says who it was for: "On duty: Dev Chechi", or "Lena Fischer took over from Dev Chechi: <reason>". 1. A second fire with `role: backup` appears in Firings. 2. About 5 minutes after the time, the backup's Nandi fires, with a `handover_reason` saying the primary is offline. 3. The backup fires once the minute has passed. If the primary's run completes, there is no second fire.
 - **Edge / negative cases:** A third person named in the calendar does nothing that day. A question from someone not named in the trigger is ignored and logged.
-- **Automation:** Covered by: `decides_when_the_backup_takes_over`, `reads_the_duty_from_the_fire_and_its_run` (`handover.rs`), `calendar_duties_are_tracked_and_handovers_skip_the_rate_limit` (`triggers/tests.rs`) | Layer: api | Gap: no two-instance relay test. Watches live in memory, so a restart cuts one short and it is not resumed.
+- **Automation:** Covered by: `decides_when_the_backup_takes_over`, `reads_the_duty_from_the_fire_and_its_run` (`handover.rs`), `calendar_duties_are_tracked_and_handovers_skip_the_rate_limit` (`triggers/tests.rs`); nandi-relay `tests/handover.rs` (settled, failed with its error, overran, no answer, a watch across a relay restart) | Layer: api | Gap: the backup Nandi's side of a watch lives in memory, so a decision that arrives after the backup restarted is logged, not acted on.
 - **Needs relay:** yes
 - **Status:** Shipped
 

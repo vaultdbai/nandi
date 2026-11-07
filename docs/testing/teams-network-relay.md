@@ -474,7 +474,7 @@ Notes that apply to the whole section:
   - The toast reads "Request sent to {name}" (`members.ask.sent`) and the thread opens.
   - On the provider side, the task is acknowledged with the routing reason ("Routed to Bob's Helper: …"), then moves to Working and returns a result.
 - **Edge / negative cases:**
-  - When the member is offline, the task stays Submitted in the offline queue (RL-14).
+  - When the member is offline, the relay keeps the request and gives it to them when they're back (RL-43).
   - With no relay connected, the composer shows "Connect to your company's relay" (RL-36) instead of Send; a send that answers `RelayUnavailable` shows it too, with no error toast.
   - An untrusted requester is refused with a typed NotTrusted reason, which creates a trust request on their side.
   - A capability marked "Needs my approval" waits on a gateway hold.
@@ -512,6 +512,26 @@ Notes that apply to the whole section:
 
 - **Duplicate:** tested under CP-11. This ID is kept so old references stay valid; don't test it separately.
 - **Needs relay:** no
+
+### NW-12 — Reassign a task you are serving to a teammate
+
+- **What:** A provider who is serving a delegated task can hand it to an online member who serves the same capability. The relay moves it (relay design step 13): it checks the chain (never back to the requester or anyone who had it), delivers the request resealed for the new provider, and tells the requester. The requester never resubmits, and the task keeps its ID. The provider's row becomes `Reassigned`, its run stops, and `task://reassigned` fires.
+- **Where:** Agent task strip → provider state panel → **Reassign** menu, which is shown only when candidates exist and the task state is reassignable (`src/components/agent-console/ReassignMenu.tsx`, `ProviderStatePanel.tsx`). Code: `commands/reassign.rs` (`reassign_task`, `list_reassign_candidates`), `services/a2a/reassign.rs`, `relay/client.rs` (`reassign`). HTTP: `POST /api/tasks/{id}/reassign {"newProviderInstance","reason"?}`, `GET /api/tasks/{id}/reassign-candidates`. Relay: `Reassign` / `ReassignResult`, nandi-relay `src/dispatch.rs`.
+- **Preconditions:** Three instances (requester C, provider A, teammate B) on a relay. B serves the same capability, and C's task to A is Delivered, Acknowledged, Working or InputRequired.
+- **Steps:** 1. C delegates to A. 2. On A, open Reassign and pick B. 3. Watch C and B. 4. Take C offline during step 2.
+- **Expected:**
+  - A sees the toast "Reassigned to {name}" (`tasks.provider.reassigned`); its row is Reassigned.
+  - C's thread shows "Reassigned to Bob by Alice" (with A's reason) on the same task, which now names B as its provider; C gets a toast.
+  - B runs the task as an ordinary task, and the result reaches C, even when C was offline during the move.
+  - A `reassigned_tasks` row is written on both A and C.
+- **Edge / negative cases:**
+  - With no candidates, the menu is hidden.
+  - Reassigning to the requester, to yourself, or to an instance that already had the task is refused (by the app for what it knows, by the relay for the whole chain).
+  - A that restarted no longer holds the opened request: the relay asks C, the author, to seal it again, and B gets it then.
+  - A manager's move goes through the relay's management API and waits for A's Nandi to reseal (RL-44).
+  - A non-reassignable state is an error.
+- **Automation:** Covered by: `a2a/tests.rs` (`a_provider_reassigns_a_task_and_the_requester_gets_the_result`, `peers_can_only_move_their_own_tasks`); `relay/sealed_tests.rs` (`a_reassigned_task_reaches_the_new_provider_signed_by_the_requester`, against a real relay); nandi-relay `tests/dispatch.rs` (`a_provider_hands_a_task_on_and_nobody_gets_it_twice`, `a_managers_move_waits_for_the_reseal`); `src/components/agent-console/TaskStatusPanel.test.tsx`, `src/components/views/DelegationThreadView.test.tsx`, `src/lib/agent-sync.waveef.test.ts` | Layer: api (three instances) | Gap: no direct ReassignMenu test.
+- **Needs relay:** yes
 
 ### NW-12 — Reassign a task you are serving to a teammate
 
@@ -787,27 +807,28 @@ Notes that apply to the whole section:
 - **Needs relay:** no
 - **Status:** Shipped
 
-### RL-14 — Delegate a task: ranking, fallback, timeout, offline queue
+### RL-14 — Delegate a task: ranking, fallback, timeout, failover at the relay
 
 - **What:**
   - `delegate_task(capability, input, target?)` picks providers: a named card alone (never swapped; a person away may be covered by their own delegate), a pinned one the relay has free, then your own (they run here, no relay), else the relay's plan (`RouteQuery` → `RoutePlan`: the relay ranks, with your pin as preferred and the members you paused or blocked excluded). Without a relay, a capability only others serve answers `RelayUnavailable`.
   - The delegation thread shows "Why {name}" with the relay's reasons (`route` message).
-  - It tries up to 3 providers. Each passed-on attempt is kept as `<id>-attempt<n>`.
-  - A remote attempt is waited on live for 600 s (`local_settings.delegation_timeout_secs`). With another provider to try, it then times out and passes on. With none, it stays open until its due date (`input.due`, else 2 days for `ask-me`, 1 day otherwise) and the tool says `status: waiting`; a late answer is kept (`a_remote_request_without_an_answer_stays_open_until_it_is_due`, `an_answer_that_comes_after_the_live_wait_is_kept`).
-  - A task for an offline member waits Submitted in the offline queue until its due date, however long they're away. The queue flushes in priority order. In-flight tasks resume after a restart.
-- **Where:** `commands/delegation.rs` (`delegate_task`, `list_available_providers`), `services/a2a/delegator.rs`, `failover.rs`, `queue.rs`, `resume.rs`. HTTP: `POST /api/delegation/tasks`, `GET /api/delegation/providers?capability=`, `GET /api/eta/{capability}?providerAgent=`. Events: `delegation://*`, `task://state_changed`, `task://timed_out`, `task://circuit_opened`.
-- **Preconditions:** At least two providers for the capability, one of which refuses.
+  - Your own providers are tried in turn (up to 3); each passed-on attempt is kept as `<id>-attempt<n>`.
+  - A request to someone else goes to the relay sealed for every candidate of its plan (`SubmitTask`). The relay gives it to the next one when the first refuses it, doesn't pick it up within 90 s, or (work for an agent) takes over 3× its ETA, with you offline or not. The thread says "Passed to {name}" with why (`failed_over` message), and the task keeps its ID. A named person and an assignment get no one else.
+  - A remote request is waited on live for 600 s (`local_settings.delegation_timeout_secs`). Then it stays open until its due date (`input.due`, else 2 days for `ask-me`, 1 day otherwise) and the tool says `status: waiting`; a late answer is kept. Past its due date the relay ends it (abandoned if nobody took it up, else timed out) for both sides.
+- **Where:** `commands/delegation.rs` (`delegate_task`, `list_available_providers`), `services/a2a/delegator.rs`, `task.rs` (`on_event`), `task_state.rs` (`hand_on`), `queue.rs`, `resume.rs`; nandi-relay `src/dispatch.rs`. HTTP: `POST /api/delegation/tasks`, `GET /api/delegation/providers?capability=`, `GET /api/eta/{capability}?providerAgent=`. Events: `delegation://*`, `task://state_changed`, `task://timed_out`, `task://circuit_opened`.
+- **Preconditions:** At least two providers for the capability on other Nandis, one of which refuses.
 - **Steps:** 1. Delegate with no target. 2. Make the first pick reject (trust or closed). 3. Separately, delegate to an offline member, then bring them online.
 - **Expected:**
-  - The rejected pick falls back to the next provider.
-  - After 3 failures in a row, that provider's circuit opens for 5 minutes.
-  - The offline task is delivered when the member comes online.
+  - The rejected pick is passed to the next provider by the relay; the thread says "Passed to {name}".
+  - After 3 failures in a row, that provider's circuit opens for 5 minutes (at the relay).
+  - The offline member gets the task when they come online (RL-43).
 - **Edge / negative cases:**
   - A named target is never swapped.
-  - "No online agent … serves …" comes back only as the answer to that send.
-  - A task waiting for a clarification does not time out.
-- **Automation:** Covered by: `a2a/tests.rs` (`one_instance_delegates_to_another_through_the_relay`, `a_rejected_pick_falls_back_to_the_next_provider`, `a_remote_task_without_a_result_times_out`, `the_offline_queue_flushes_in_priority_order`, `a_delegation_to_an_offline_provider_waits_in_the_queue`, `a_restart_resumes_in_flight_tasks`, `failover_creates_the_next_attempt_elsewhere`, `the_timeout_sweep_fires_after_three_etas`, `eta_estimates_come_from_history`), `a2a/failover.rs`, `a2a/eta.rs` | Layer: api | Gap: none.
-- **Needs relay:** no
+  - A target the relay doesn't know is refused as the answer to that send.
+  - A task waiting for a clarification does not time out on its ETA.
+  - **Retry** on a failed request makes a new attempt from a fresh plan without anyone it went to.
+- **Automation:** Covered by: `a2a/tests.rs` (`one_instance_delegates_to_another_through_the_relay`, `a_rejected_pick_falls_back_to_the_next_provider`, `a_remote_request_without_an_answer_stays_open_until_it_is_due`, `a_delegation_to_an_offline_provider_waits_at_the_relay`, `a_restart_resumes_in_flight_tasks`, `a_retry_creates_the_next_attempt_elsewhere`, `eta_estimates_come_from_history`), `a2a/eta.rs`; nandi-relay `tests/dispatch.rs` (`a_refusal_goes_to_the_next_candidate_without_the_requester`, `nobody_picking_it_up_fails_over_then_the_due_date_ends_it`, `a_declined_assignment_and_the_last_refusal_reach_the_requester`), `src/dispatch.rs` (the rules) | Layer: api | Gap: none.
+- **Needs relay:** no (your own providers); yes for others
 - **Status:** Shipped
 
 ### RL-15 — Inbound admission (provider side)
@@ -832,7 +853,7 @@ Notes that apply to the whole section:
 
 ### RL-16 — Delegation thread view
 
-- **What:** One delegated task as a thread: delegated, state changes, progress (with %), status queries and responses with ETA, clarification requests and answers, notes, and "Reassigned to X by Y" with a link to the new attempt.
+- **What:** One delegated task as a thread: delegated, state changes, progress (with %), status queries and responses with ETA, clarification requests and answers, notes, "Passed to X" when the relay failed it over, and "Reassigned to X by Y".
   - For a provider the relay picked, "Why {name}" lists the relay's reasons in your language ("Alice is away; Bob covers · Bob 3/3 busy (about 20 min wait)").
   - It shows a queued-offline banner and a partial-result line.
   - The side panel shows source, attempt, priority, created, ETA, deadline, the clarification policy summary, Rerun, Details, previous attempt, provider and provider profile.
@@ -840,7 +861,7 @@ Notes that apply to the whole section:
 - **Where:** Opened from Ask, Call dialog, the provider or task panels, and Request banners (`{kind:'delegation-thread', taskId}`). Code: `src/components/views/DelegationThreadView.tsx`. HTTP: `GET /api/tasks/{id}`, `/events`, `/messages`, `/status`, `POST /api/tasks/{id}/cancel`.
 - **Preconditions:** A delegated task exists.
 - **Steps:** 1. Open a thread for a completed remote task. 2. Open one for a reassigned task. 3. Open one for a task to an offline member.
-- **Expected:** The entries render in order. The reassigned link ("Open the new attempt") opens the successor. The offline banner says "{name} is offline. The request is queued and will be sent automatically when they're back."
+- **Expected:** The entries render in order. A reassigned task stays one thread (same ID), now naming the new provider. The offline banner says "{name} is offline. The relay keeps the request and gives it to them when they're back."
 - **Edge / negative cases:** An unknown task ID shows `delegationThread.loadFailed`.
 - **Automation:** Covered by: `src/components/views/DelegationThreadView.test.tsx` | Layer: ui-e2e | Gap: none.
 - **Needs relay:** no
@@ -1188,9 +1209,10 @@ Notes that apply to the whole section:
 - **What:** Everything one person's Nandi sends another is sealed for that person's device (`nandi-seal-v1`, relay protocol 4): a task's input (gateway requests too), its result and error, clarification questions and answers, notes, reasons, late results and a failed duty's error. The relay forwards the envelopes and sees only metadata; it can't open them.
   - Something that doesn't open, isn't for this task or this person, or isn't signed by the sender's pinned key is refused: a toast says "Something they sent couldn't be verified…", nothing in it is used, and a request you sent with it fails with that reason.
   - A member who has no keys at the relay can't be sent content: "They haven't set up their keys yet…". Content over 1 MiB isn't sent: "This is too big to send… Share files as links".
-  - Reassigning keeps the requester's signature: the provider reseals the request for the new provider, and the requester passes it on without opening it.
+  - Reassigning keeps the requester's signature: the provider reseals the request for the new provider and the relay delivers it; without the opened request, the requester (the author) seals it again.
+  - What waits at the relay for someone offline (requests, results, notes, questions) waits sealed.
   - Your own agents (local delegation) are unchanged and never sealed.
-- **Where:** app `services/relay/sealing.rs` (`Sealer`), `opened.rs`, `client.rs` (keys, the inbound queue, `delegate_resealed`), `a2a/reassign.rs`, `src/lib/friendly-error.ts`, `agent-sync.ts` (`relay://seal_refused`); nandi-spec `nandi-protocol` (`content`, `Envelope`, `SealedTask`, `ResultReport`) and `nandi-seal`; nandi-relay `src/server.rs` (the envelope cap, `PublicKeysQuery`).
+- **Where:** app `services/relay/sealing.rs` (`Sealer`), `opened.rs`, `client.rs` (keys, the inbound queue, `reassign`, `reseal_as_author`), `a2a/reassign.rs`, `src/lib/friendly-error.ts`, `agent-sync.ts` (`relay://seal_refused`); nandi-spec `nandi-protocol` (`content`, `Envelope`, `SealedTask`, `ResultReport`) and `nandi-seal`; nandi-relay `src/server.rs` (the envelope cap, `PublicKeysQuery`).
 - **Preconditions:** Two (for reassignment, three) Nandis on a relay with a secret and a data directory.
 - **Steps:**
   1. Ask the other person something with a word you'll search for, have them ask a clarifying question back and answer it, then let it finish.
@@ -1202,8 +1224,39 @@ Notes that apply to the whole section:
   - Step 2: the word isn't found; the task's metadata is (RL-41).
   - Step 3: the third Nandi runs the original request; the result reaches the requester.
   - Step 4: the requester refuses it with the "couldn't be verified" toast, and the provider's profile says "Their key changed" (RL-40).
-- **Edge / negative cases:** a duplicate delivery is dropped; an envelope moved to another task, capability or person is refused; a bounced message keeps only its kind and IDs; with the relay down nothing is sealed or sent (RL-36).
-- **Automation:** Covered by: app `relay/sealed_tests.rs` (every frame through a WebSocket tap in front of a real relay, its database and WAL: no content in the clear; reassignment with the requester's signature; missing keys; a replaced device), `relay/sealing_tests.rs`, `a2a/tests.rs` (the mock hub seals and opens every message), `friendly-error.test.ts`; nandi-relay `tests/sealed.rs`; nandi-spec `nandi-protocol` and `nandi-seal` tests | Layer: unit + api | Gap: the three-Nandi run by hand hasn't been done.
+- **Edge / negative cases:** a duplicate delivery is dropped; an envelope moved to another task, capability or person is refused; with the relay down nothing is sealed or sent (RL-36).
+- **Automation:** Covered by: app `relay/sealed_tests.rs` (every frame through a WebSocket tap in front of a real relay, its database and WAL: no content in the clear; reassignment with the requester's signature; work and a result waiting at the relay; missing keys; a replaced device), `relay/sealing_tests.rs`, `a2a/tests.rs` (the mock hub seals and opens every message), `friendly-error.test.ts`; nandi-relay `tests/sealed.rs`; nandi-spec `nandi-protocol` and `nandi-seal` tests | Layer: unit + api | Gap: none (live three-Nandi run 2026-11-05, see `docs/testing/team-brain-live-run-2026-11-05.md`).
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### RL-43 — Store-and-forward: work and answers wait at the relay
+
+- **What:** The relay keeps everything for a Nandi in its mailbox until that Nandi says it has it (relay protocol 6): a task for someone offline, a result for a requester who went away, notes, questions and answers, what the relay did with a task (failed over, reassigned, ended). A Nandi catches up when it connects (`InboxSync`); nothing is polled. With the relay down, a question or an assignment to someone waits in this Nandi's outbox and goes when the relay is back; any other request to someone else says "Connect to your company's relay".
+- **Where:** app `services/relay/client.rs` (`Deliver`, `Ack`, `InboxSync`, acks only once a handler has it), `a2a/queue.rs` (the outbox, `flush` on connect and every sweep), `a2a/task.rs` (`on_event`); nandi-relay `src/mailbox.rs`, `src/dispatch.rs`, `src/store/mail.rs`.
+- **Preconditions:** Two Nandis on a relay with a data directory.
+- **Steps:**
+  1. Quit B. On A, ask B something. 2. Start B. 3. Answer on B, quit A before the answer arrives, then start A.
+  2. Stop the relay. On A, assign B some work. Start the relay.
+  3. Restart the relay while a task is open.
+- **Expected:**
+  - Step 1: A's thread says B is offline and the relay keeps the request. Step 2: B gets it.
+  - Step 3: A gets the answer when it starts.
+  - Step 4: the assignment waits on A ("waiting for the relay"), and B gets it once the relay is back.
+  - Step 5: nothing is lost; each delivery arrives once.
+- **Edge / negative cases:** a delivery that comes twice (live, then from the sync) is handled once; a delivery nothing here handles yet isn't acked and comes again; live-only messages (a status question, "still working") aren't stored.
+- **Automation:** Covered by: app `relay/sealed_tests.rs` (`work_for_someone_offline_waits_at_the_relay_and_so_does_the_result`), `a2a/tests.rs` (`the_outbox_flushes_in_priority_order_once_the_relay_is_back`, `a_delegation_to_an_offline_provider_waits_at_the_relay`, `an_assignment_stays_open_until_its_person_ends_it`); nandi-relay `tests/dispatch.rs` (`work_for_someone_offline_waits_and_the_result_waits_for_the_requester`, `unacked_mail_comes_again_and_survives_a_restart`, `a_cancel_takes_back_an_undelivered_task`) | Layer: api | Gap: none.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### RL-44 — The relay's management API (operator secret)
+
+- **What:** The relay's operator manages the team over HTTP with the relay secret (`Authorization: Bearer $NANDI_RELAY_SECRET`): `GET /team/members` (seat, online, last seen, availability and whether the operator set it, keys, open tasks), `PUT`/`DELETE /team/members/{id}/availability` (someone out sick: away, with who covers; routing and people search follow it), `GET /team/tasks?open=true`, `GET /team/tasks/{id}` (events and attempts), `POST /team/tasks/{id}/reassign {"target","by"}` (a manager's move: it waits for the provider's Nandi to reseal, 202), `GET /team/stats?days=` (per member and capability; members never see these), `GET /team/watches`, `GET /team/audit`. Every change is audited. Nothing changes in the app.
+- **Where:** nandi-relay `src/admin.rs`, `src/dispatch.rs` (`manager_reassign`), `src/store/keys.rs` (audit).
+- **Preconditions:** A relay with a secret, three Nandis.
+- **Steps:** 1. List members. 2. Set B away with C covering, then ask B for something from A. 3. Move an open task of B's to C. 4. Read the stats and the audit.
+- **Expected:** Step 2: the request goes to C with "B is away; C covers". Step 3: B's Nandi reseals it, C gets it, A's thread says "Reassigned to C by {by}". Step 4: both changes are in the audit.
+- **Edge / negative cases:** without the secret every endpoint answers 401; an open relay has none (404); a move to the requester or someone who had it is refused (409).
+- **Automation:** Covered by: nandi-relay `tests/admin.rs`, `tests/dispatch.rs` (`a_managers_move_waits_for_the_reseal`), `src/admin.rs` | Layer: api | Gap: none.
 - **Needs relay:** yes
 - **Status:** Shipped
 
@@ -1261,7 +1314,7 @@ Notes that apply to the whole section:
   - Step 4: no relay notice or toast anywhere.
   - `POST /api/delegation/tasks` with another Nandi's target answers 503 with the `relay_unavailable` error; delegating to your own agents still works.
 - **Edge / negative cases:**
-  - A configured relay that is reconnecting keeps a request to someone in the offline queue (RL-14) instead of refusing it.
+  - A configured relay that is reconnecting keeps a question or an assignment to someone in the outbox (RL-43) instead of refusing it.
   - The team inbox (holds, assignments) decides locally; answers go out when the relay is back.
 - **Automation:** Covered by: `relay/unavailable.rs` tests, `offline_suite.rs` (`with_no_relay_person_to_person_answers_not_connected`), `friendly-error.test.ts`, `NetworkView.test.tsx`, `MemberProfileView.test.tsx` | Layer: unit + api | Gap: no UI test for Sharing's line or the Call dialog.
 - **Needs relay:** no

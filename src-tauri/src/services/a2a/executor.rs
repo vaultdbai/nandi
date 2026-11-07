@@ -85,7 +85,8 @@ pub fn set_gateway_handler(instance_id: &str, handler: GatewayHandler) {
         .insert(instance_id.to_string(), handler);
 }
 
-/// Turns running for delegated tasks: task ID → (agent ID, run ID). Lets a
+/// Turns running for delegated tasks: `<instance>/<task>` → (agent ID, run
+/// ID). Lets a
 /// cancelled gateway task stop the turn its child runs (in-process
 /// children keep no `tasks` row to find it by).
 static RUNNING_TURNS: LazyLock<Mutex<HashMap<String, (String, String)>>> =
@@ -104,22 +105,24 @@ impl Drop for TurnEntry {
     }
 }
 
-/// Inbound tasks being handled right now. Claimed before the row check, so
-/// two deliveries of one task arriving together can't both run it (both
-/// would see no row yet).
+/// Inbound tasks being handled right now, by `<instance>/<task>` (a task
+/// keeps its ID when the relay moves it to another provider). Claimed
+/// before the row check, so two deliveries of one task arriving together
+/// can't both run it (both would see no row yet).
 static HANDLING: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(Mutex::default);
 
 /// Releases a [`HANDLING`] claim when the delivery is done
 struct Handling(String);
 
 impl Handling {
-    /// `None` when this task is already being handled
-    fn claim(task_id: &str) -> Option<Self> {
+    /// `None` when `instance` is already handling this task
+    fn claim(instance: &str, task_id: &str) -> Option<Self> {
+        let key = format!("{instance}/{task_id}");
         HANDLING
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(task_id.to_string())
-            .then(|| Self(task_id.to_string()))
+            .insert(key.clone())
+            .then(|| Self(key))
     }
 }
 
@@ -736,8 +739,9 @@ impl Executor {
             RunSource::delegation(&task.requester.id, label),
         )
         .await?;
-        running_turns().insert(task.id.clone(), (agent_id.clone(), sent.run_id.clone()));
-        let _entry = TurnEntry(task.id.clone());
+        let key = format!("{}/{}", self.deps.instance_id, task.id);
+        running_turns().insert(key.clone(), (agent_id.clone(), sent.run_id.clone()));
+        let _entry = TurnEntry(key);
         if let Some(life) = life {
             life.working(&agent_id, &sent.run_id).await;
         } else if let Some(gateway_task) = task.id.strip_suffix(GATEWAY_CHILD_SUFFIX) {
@@ -810,9 +814,10 @@ impl Executor {
     pub(crate) async fn stop_task(&self, task_id: &str) -> bool {
         let turn = {
             let turns = running_turns();
+            let me = &self.deps.instance_id;
             turns
-                .get(task_id)
-                .or_else(|| turns.get(&gateway_child_id(task_id)))
+                .get(&format!("{me}/{task_id}"))
+                .or_else(|| turns.get(&format!("{me}/{}", gateway_child_id(task_id))))
                 .cloned()
         };
         match turn {
@@ -1267,18 +1272,15 @@ pub async fn register(executor: &Arc<Executor>, relay: &Arc<dyn RelayClient>) {
     let runtime = tokio::runtime::Handle::current();
     relay
         .on_task_assigned(Box::new(move |assigned: TaskAssigned| {
-            // The requester's copy carries no task: nothing to run
-            let Some(task) = assigned.task else {
-                return;
-            };
+            let task = assigned.task;
             let (executor, sender) = (executor.clone(), sender.clone());
             runtime.spawn(async move {
                 let Some(executor) = executor.upgrade() else {
                     return;
                 };
-                // Sent again (the requester's queue, after a restart): a
+                // Sent again (a delivery the relay sent before our ack): a
                 // running task isn't run twice, a finished one answers again
-                let Some(_handling) = Handling::claim(&task.id) else {
+                let Some(_handling) = Handling::claim(&executor.deps.instance_id, &task.id) else {
                     log::info!("Task {}: delivered twice; already on it", task.id);
                     return;
                 };

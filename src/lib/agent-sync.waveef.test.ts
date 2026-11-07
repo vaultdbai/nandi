@@ -53,7 +53,7 @@ describe('agent-sync: wave EF events', () => {
       toName: 'Bob',
       by: 'Alice',
       reason: null,
-      newTaskId: 'task-2',
+      requester: true,
       reassignedAt: 1,
     }
     handleNandiEvent({ event: 'task://reassigned', payload: reassigned })
@@ -61,7 +61,7 @@ describe('agent-sync: wave EF events', () => {
     vi.mocked(notify).mockClear()
     handleNandiEvent({
       event: 'task://reassigned',
-      payload: { ...reassigned, newTaskId: null },
+      payload: { ...reassigned, requester: false },
     })
     expect(notify).not.toHaveBeenCalled()
   })

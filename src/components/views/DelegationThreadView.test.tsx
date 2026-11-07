@@ -208,8 +208,7 @@ describe('DelegationThreadView', () => {
     })
   })
 
-  it('says who reassigned the task and opens the new attempt', async () => {
-    const user = userEvent.setup()
+  it('says who reassigned the task', async () => {
     Object.assign(commands, {
       getTask: ok(taskFixture({ state: 'reassigned', createdAt: base })),
       getTaskEvents: ok([]),
@@ -224,7 +223,7 @@ describe('DelegationThreadView', () => {
             toName: 'Bob',
             by: 'Alice',
             reason: 'Swamped this week',
-            newTaskId: 'task-2',
+            requester: true,
             reassignedAt: base + 1_000,
           },
           at: base + 1_000,
@@ -235,13 +234,33 @@ describe('DelegationThreadView', () => {
     const note = await screen.findByTestId('thread-reassigned')
     expect(note).toHaveTextContent('Reassigned to Bob by Alice')
     expect(note).toHaveTextContent('Swamped this week')
-    await user.click(
-      within(note).getByRole('button', { name: 'Open the new attempt' })
-    )
-    expect(useNavigationStore.getState().current).toEqual({
-      kind: 'delegation-thread',
-      taskId: 'task-2',
+    // The same task moved: there's no other attempt to open
+    expect(within(note).queryByRole('button')).toBeNull()
+  })
+
+  it('says the relay passed it to the next candidate', async () => {
+    Object.assign(commands, {
+      getTask: ok(taskFixture({ state: 'submitted', createdAt: base })),
+      getTaskEvents: ok([]),
+      getTaskMessages: ok([
+        {
+          id: 1,
+          kind: 'failed_over',
+          payload: {
+            from: 'bob-1',
+            to: 'cy-1',
+            toName: 'Cy',
+            cause: 'not_picked_up',
+            reasonKind: 'offline',
+          },
+          at: base + 1_000,
+        },
+      ]),
     })
+    render(<DelegationThreadView taskId="task-1" />)
+    const note = await screen.findByTestId('thread-failed-over')
+    expect(note).toHaveTextContent('Passed to Cy')
+    expect(note).toHaveTextContent("didn't come online in time")
   })
 
   it("summarizes the local requester agent's own policy", async () => {
@@ -350,7 +369,7 @@ describe('DelegationThreadView', () => {
     expect(
       await screen.findByTestId('thread-queued-offline')
     ).toHaveTextContent(
-      "Peer Person is offline. The request is queued and will be sent automatically when they're back."
+      "Peer Person is offline. The relay keeps the request and gives it to them when they're back."
     )
   })
 

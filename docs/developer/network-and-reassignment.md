@@ -67,7 +67,7 @@ keeps this Nandi's own pin in the `peer_keys` table:
 | The pinned keys again | The change is dropped                                                   |
 
 - **Keys from the relay.** The first time this Nandi seals for someone, or opens something from them, without a pin, the client asks the relay (`PublicKeysQuery`) and pins the answer the same way (`peer_keys::learn`). The directory isn't needed: members with no gateway card are covered too.
-- **The block.** The relay client's key book (`ClientOptions::peer_keys` = `peer_keys::PinnedKeys`, set in `relay::init`) is asked before `delegate_task`, `delegate_resealed`, `send_result` and `send_peer`, and for every envelope opened. So every path to that member is covered: ask, assign, delegate, results, clarifications, reassignment, handover. The refusal starts with `PEER_KEY_CHANGED` (exported to `bindings.ts`); `friendly-error.ts` maps it to `errors.peerKeyChanged`.
+- **The block.** The relay client's key book (`ClientOptions::peer_keys` = `peer_keys::PinnedKeys`, set in `relay::init`) is asked before `delegate_task`, `reassign`, `reseal_as_author`, `send_result`, `send_peer` and `duty_report`, and for every envelope opened. So every path to that member is covered: ask, assign, delegate, results, clarifications, reassignment, handover. The refusal starts with `PEER_KEY_CHANGED` (exported to `bindings.ts`); `friendly-error.ts` maps it to `errors.peerKeyChanged`.
 - **Seen live.** When the client learns of a change (a send, or something from them that didn't open with the pinned key), it emits `network://member_key_changed`, and the profile refetches (`agent-sync.ts`).
 - **The profile.** `MemberProfile.key` (`PeerKeyStatus`: `fingerprint`, `changedFingerprint`) feeds `MemberKeyNotice`: the fingerprint, or "Their key changed" with both fingerprints and **Accept new key** (`accept_peer_key`, `POST /api/members/{id}/key/accept`).
 - Fingerprints are `nandi_seal::fingerprint`: the key ID's first 16 hex characters in groups of four.
@@ -138,38 +138,38 @@ a blocked requester agent) on arrival; the gateway treats a blocked
 instance like a paused one; delegation, failover, and the shared grids
 never pick or list blocked agents.
 
-## Supervisor reassignment
+## Reassignment (at the relay)
 
 A provider (Alice) hands a task she's serving to an online teammate (Bob)
-who serves the same capability. The requester never resubmits.
+who serves the same capability. The relay moves it (relay design step
+13); the requester never resubmits, and the task keeps its ID.
 
 ```text
-Alice (provider)                  requester                          Bob
-reassign_task ── ReassignTask ──▶ accept
-  row → Reassigned                  successor attempt (source_kind reassign,
-  run stopped                        previous_attempt_id = old) ── delegate ──▶ Delivered → ack
-  task://reassigned                 old attempt → Reassigned
-                                    reassigned_tasks row, "reassigned" thread note,
-                                    task://reassigned (newTaskId set)
+Alice (provider)             relay                          requester        Bob
+reassign_task ── Reassign ──▶ checks the chain
+ (request resealed for Bob)   attempt → reassigned           row follows Bob  task (same ID)
+ row → Reassigned ◀ ReassignResult   ── reassigned event ──▶ "Reassigned to Bob by Alice"
+ run stopped, task://reassigned                               task://reassigned (requester: true)
 ```
 
 - `TaskState::Reassigned` is terminal and legal from `Delivered`,
-  `Acknowledged`, `Working`, and `InputRequired`.
-- The requester's instance makes the new attempt, so trust, timeouts,
-  ETA, and failover work as for any attempt. Bob sees an ordinary task.
-- A delegation still waiting (`Delegator::remote`) follows the
-  successor: the task service re-keys the waiter (`TaskService::follow`)
-  before sending, and the delegator re-reads `reassigned_to` when its row
-  turns `Reassigned` or a result arrives for the moved waiter.
-- Loop prevention: the provider refuses the requester, itself, and
-  instances it knows already had the task; the requester checks the whole
-  attempt chain (providers plus `reassigned_tasks` hops). A looping
-  handoff fails the attempt (`Failed`), and normal failover picks someone
-  new.
+  `Acknowledged`, `Working`, and `InputRequired` (Alice's row).
+- The requester's row moves to Bob (`task_state::hand_on`): back to
+  `Submitted`, the same ID, a `reassigned` thread message and a
+  `reassigned_tasks` row. A delegation still waiting keeps waiting on the
+  same ID. Bob sees an ordinary task.
+- Loop prevention is the relay's: never the requester, never anyone who
+  had the task. The app leaves out of the candidates what it knows of.
+- Alice without the opened request (a restart): the relay asks the
+  requester to reseal it (`reassign::reseal`), and Bob gets it then.
+- A manager's move (`POST /team/tasks/{id}/reassign` at the relay) comes
+  to Alice's Nandi as a reseal request, which does the same handoff
+  (`reassign::reseal`). Nothing moves until a Nandi that can open the
+  request reseals it (decision 4: no team key).
 - UI: `ReassignMenu` in `ProviderStatePanel` (shown only when
   `list_reassign_candidates` finds someone); the delegation thread renders
-  the `reassigned` message as "Reassigned to Bob by Alice" with a link to
-  the new attempt; the requester gets a toast.
+  the `reassigned` message as "Reassigned to Bob by Alice"; the requester
+  gets a toast.
 
 ## Manual steps (long-running workflows)
 
@@ -249,7 +249,8 @@ are from v10 and unchanged.
 
 - `a2a::tests::a_provider_reassigns_a_task_and_the_requester_gets_the_result`:
   three instances on the mock relay, end to end
-- `a2a::tests::a_reassignment_back_to_an_earlier_provider_fails_the_attempt`
+- `relay::sealed_tests::a_reassigned_task_reaches_the_new_provider_signed_by_the_requester`
+  (a real relay); the relay's own rules in `nandi-relay/tests/dispatch.rs`
 - `a2a::tests::a_blocked_requester_instance_is_rejected_on_arrival`
 - `workflows::tests::a_manual_step_waits_for_a_person_and_survives_a_restart`
 - `config::repo_config::tests::*`, `runtime_router::tests::*repo*`

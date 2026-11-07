@@ -15,26 +15,29 @@
 //! Requester and provider each keep their own row for the same task ID
 //! (the requester's has `requester_instance` = us, the provider's
 //! `provider_instance` = us); the relay carries the transitions between
-//! them (`relay::protocol::PeerMessage`).
+//! them (`relay::protocol::PeerMessage`) and decides the rest: it holds
+//! work for someone offline, fails it over to the next candidate we
+//! sealed it for, hands it on when its provider reassigns it, and ends it
+//! at its due date (relay design steps 11 to 13). A task keeps its ID
+//! through all of that; our requester row follows its current provider
+//! (`task_state::hand_on`).
 //!
 //! Who writes what:
-//! - `delegator` (requester): a row per cross-instance attempt, `Submitted`
-//!   → `Delivered` when the relay routes it, then the result. A delegation
-//!   with a caller waiting on it is *live* ([`TaskService::is_live`]): the
-//!   delegator finishes it and fails it over itself.
+//! - `delegator` (requester): a row per cross-instance request,
+//!   `Submitted` → `Delivered` when the relay hands it over, then the
+//!   result. A delegation with a caller waiting on it is *live*
+//!   ([`TaskService::is_live`]): the delegator finishes it.
 //! - `executor` (provider): a row per inbound task, `TaskDelivered`, the
 //!   slot queue, `AcknowledgeTask` with an ETA, `Working`, the result.
-//! - [`TaskService`]: inbound `PeerMessage`s, results nobody is waiting for
-//!   (after a restart, or a queued task sent later), the sweeps
-//!   (`queue`), heartbeats, restart resume (`resume`), and failover of
-//!   tasks that aren't live (`failover`).
+//! - [`TaskService`]: inbound `PeerMessage`s, the relay's task events,
+//!   results nobody is waiting for (after a restart, an assignment), the
+//!   outbox (`queue`), heartbeats and restart resume (`resume`).
 //!
 //! `task_messages` kinds starting with `_` are internal (the wire `Task` a
 //! row was sent as, the provider's run) and not returned by
 //! `get_task_messages`.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, RwLock, Weak};
 use std::time::Duration;
 
@@ -45,17 +48,18 @@ use serde_json::{json, Value};
 use specta::Type;
 use tokio::sync::{broadcast::error::RecvError, mpsc, oneshot};
 
-use super::delegator::{instance_of, A2aDeps};
+use super::delegator::{instance_of, member_name, A2aDeps};
 use super::executor::Executor;
 use super::task_state::{self, Change};
-use super::{assignment, eta, Task, TaskStatus};
+use super::{eta, Task, TaskStatus};
 use crate::db::{now_ms, Db};
 use crate::model::Timestamp;
 use crate::services::events::{self, EventBus, NandiEvent};
 use crate::services::relay::protocol::{
-    PeerDelivery, PeerMessage, TaskCompleted, TaskFailed, ALL_CAPABILITIES,
+    PeerDelivery, PeerMessage, ResealRequest, TaskCompleted, TaskEvent as RelayTaskEvent,
+    TaskFailed, ALL_CAPABILITIES,
 };
-use crate::services::relay::{RelayAgentOnline, RelayClient};
+use crate::services::relay::{RelayClient, RelayStatus};
 use crate::services::selection::SelectionService;
 use crate::services::AppState;
 
@@ -324,6 +328,9 @@ pub const REQUEST_KIND: &str = "_request";
 /// The provider's turn: `{"agentId", "runId"}`
 pub const RUN_KIND: &str = "_run";
 pub const PROGRESS_KIND: &str = "progress";
+/// The relay gave the task to the next candidate: `{from, to, toName,
+/// cause, reasonKind}`
+pub const FAILED_OVER_KIND: &str = "failed_over";
 pub const STATUS_RESPONSE_KIND: &str = "status_response";
 
 /// Most rows `list_tasks` returns
@@ -806,7 +813,7 @@ pub async fn finish_requester(
 /// Background intervals; tests shorten them.
 #[derive(Debug, Clone)]
 pub struct TaskConfig {
-    /// Timeouts, abandons, and the requester's offline-queue flush
+    /// How often the outbox is flushed (also whenever the relay connects)
     pub sweep_interval: Duration,
     /// "still working" progress for tasks that want it
     pub heartbeat_interval: Duration,
@@ -836,6 +843,8 @@ enum Inbound {
     Peer(PeerDelivery),
     Completed(TaskCompleted),
     Failed(TaskFailed),
+    Event(RelayTaskEvent),
+    Reseal(ResealRequest),
 }
 
 /// Services by instance ID, so a delegator built before `task::init` (and
@@ -864,19 +873,11 @@ pub struct TaskService {
     presence: RwLock<Option<Presence>>,
     status_waiters: Mutex<HashMap<String, oneshot::Sender<Option<TaskStatusReport>>>>,
     live: Mutex<HashSet<String>>,
-    /// One offline-queue flush at a time: presence events and the sweep
-    /// both flush, and two at once sent the same queued task twice
+    /// One outbox flush at a time: the relay connecting and the sweep
+    /// both flush, and two at once would send the same request twice
     pub(super) flushing: tokio::sync::Mutex<()>,
     inbound: mpsc::UnboundedSender<Inbound>,
-    /// The delegator's: moves a live waiter from a reassigned attempt to
-    /// its successor before the successor is sent (wave EF)
-    rekey: std::sync::OnceLock<RekeyHook>,
-    /// When the sweep last asked after open assignments (epoch ms)
-    polled_at: AtomicI64,
 }
-
-/// `(from_task_id, to_task_id)`
-pub type RekeyHook = Box<dyn Fn(&str, &str) + Send + Sync>;
 
 impl TaskService {
     /// Starts the inbound consumer (one at a time, in arrival order).
@@ -897,11 +898,9 @@ impl TaskService {
             runtime: runtime.clone(),
             presence: RwLock::default(),
             status_waiters: Mutex::default(),
-            polled_at: AtomicI64::new(0),
             live: Mutex::default(),
             flushing: tokio::sync::Mutex::new(()),
             inbound: tx,
-            rekey: std::sync::OnceLock::new(),
         });
         let weak = Arc::downgrade(&service);
         runtime.spawn(async move {
@@ -935,23 +934,6 @@ impl TaskService {
         &self.runtime
     }
 
-    /// Set once, by the delegator that waits on this instance's tasks
-    pub(super) fn set_rekey_hook(&self, hook: impl FnOnce() -> RekeyHook) {
-        if self.rekey.get().is_none() {
-            let _ = self.rekey.set(hook());
-        }
-    }
-
-    /// A live attempt was reassigned: its waiter now waits on `to`
-    pub(super) fn follow(&self, from: &str, to: &str) {
-        if self.is_live(from) {
-            self.mark_live(to);
-            if let Some(rekey) = self.rekey.get() {
-                rekey(from, to);
-            }
-        }
-    }
-
     /// Makes [`service_for`] find this service (replacing any earlier one)
     pub fn register(self: &Arc<Self>) {
         SERVICES
@@ -960,8 +942,8 @@ impl TaskService {
             .insert(self.deps.instance_id.clone(), Arc::downgrade(self));
     }
 
-    /// Subscribes to `Peer` / `Undeliverable` traffic and results. No-op
-    /// without a relay client.
+    /// Subscribes to lifecycle traffic, results, the relay's task events
+    /// and its reseal requests. No-op without a relay client.
     pub async fn listen(&self) {
         let Some(relay) = self.relay() else {
             return;
@@ -984,10 +966,22 @@ impl TaskService {
                 let _ = tx.send(Inbound::Failed(failed));
             }))
             .await;
+        let tx = self.inbound.clone();
+        relay
+            .on_task_event(Box::new(move |event| {
+                let _ = tx.send(Inbound::Event(event));
+            }))
+            .await;
+        let tx = self.inbound.clone();
+        relay
+            .on_reseal(Box::new(move |request| {
+                let _ = tx.send(Inbound::Reseal(request));
+            }))
+            .await;
     }
 
-    /// Restart resume, then the sweeps, heartbeats, and the flush on
-    /// `relay://agent_online`. Each loop ends with the service.
+    /// Restart resume, then the outbox flush (on a timer and whenever the
+    /// relay connects) and heartbeats. Each loop ends with the service.
     pub fn start(self: &Arc<Self>) {
         let weak = Arc::downgrade(self);
         let sweep = self.config.sweep_interval;
@@ -1004,7 +998,7 @@ impl TaskService {
                 let Some(service) = weak.upgrade() else {
                     break;
                 };
-                service.sweep(now_ms()).await;
+                service.flush().await;
             }
         });
 
@@ -1028,40 +1022,19 @@ impl TaskService {
         let mut events = self.deps.broadcast.subscribe();
         self.runtime.spawn(async move {
             loop {
-                let instance = match events.recv().await {
-                    Ok(event) if event.event == RelayAgentOnline::NAME => event.payload["card"]
-                        ["instanceId"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_string(),
+                match events.recv().await {
+                    Ok(event)
+                        if event.event == RelayStatus::NAME
+                            && event.payload["connected"].as_bool() == Some(true) => {}
                     Ok(_) | Err(RecvError::Lagged(_)) => continue,
                     Err(RecvError::Closed) => break,
-                };
+                }
                 let Some(service) = weak.upgrade() else {
                     break;
                 };
-                if !instance.is_empty() {
-                    service.flush(Some(&instance)).await;
-                    service.poll_assignments(Some(&instance)).await;
-                }
+                service.flush().await;
             }
         });
-    }
-
-    /// One pass of every sweep (the loop's body)
-    pub async fn sweep(self: &Arc<Self>, now: i64) {
-        self.flush(None).await;
-        let last = self.polled_at.load(Ordering::Relaxed);
-        if now - last >= assignment::POLL_EVERY_MS {
-            self.polled_at.store(now, Ordering::Relaxed);
-            self.poll_assignments(None).await;
-        }
-        if let Err(e) = self.sweep_timeouts(now).await {
-            log::warn!("Task timeout sweep failed: {e}");
-        }
-        if let Err(e) = self.sweep_abandoned(now).await {
-            log::warn!("Task abandon sweep failed: {e}");
-        }
     }
 
     pub fn set_presence(&self, presence: Presence) {
@@ -1222,37 +1195,6 @@ impl TaskService {
             },
         )
         .await
-    }
-
-    /// Requester side: asks the provider of every open request nobody waits
-    /// on live (assignments, and questions and requests still waiting for
-    /// an answer), all or those of `provider_instance`, how it stands. A
-    /// `StatusResponse` with a result ends it here, however late. Returns
-    /// how many were asked.
-    pub async fn poll_assignments(&self, provider_instance: Option<&str>) -> usize {
-        let me = self.instance_id().to_string();
-        let provider = provider_instance.unwrap_or_default().to_string();
-        let rows = self
-            .db()
-            .call(move |conn| {
-                select(
-                    conn,
-                    "requester_instance = ?1 AND provider_instance != ?1
-                     AND state IN ('delivered', 'acknowledged', 'working', 'inputRequired')
-                     AND (?2 = '' OR provider_instance = ?2)",
-                    &[&me, &provider],
-                )
-            })
-            .await
-            .unwrap_or_default();
-        let mut asked = 0;
-        for row in rows.iter().filter(|row| !self.is_live(&row.id)) {
-            match self.send_status_query(&row.id).await {
-                Ok(()) => asked += 1,
-                Err(e) => log::debug!("Assignment {}: status not asked: {e}", row.id),
-            }
-        }
-        asked
     }
 
     /// "still working" to the requesters of our `Working` tasks that want
@@ -1427,6 +1369,8 @@ impl TaskService {
                 )
                 .await
             }
+            Inbound::Event(event) => self.on_event(event).await,
+            Inbound::Reseal(request) => super::reassign::reseal(self, request).await,
         };
         if let Err(e) = outcome {
             log::warn!("Task lifecycle: {e}");
@@ -1463,44 +1407,106 @@ impl TaskService {
         };
         // The requester's history row stayed open (an assignment, or a
         // request nobody had answered when the live wait ended)
+        let _ = ended;
         super::history::close(self.db(), self.bus(), task_id, status, output, error).await?;
-        self.after_failure(ended);
         Ok(())
     }
 
-    /// Fails a non-live requester task over (in the background) when it
-    /// ended in a way another provider could fix
-    pub(super) fn after_failure(self: &Arc<Self>, task: TaskRecord) {
-        let retryable = matches!(
-            task.state,
-            TaskState::Failed | TaskState::TimedOut | TaskState::Rejected | TaskState::Abandoned
-        );
-        if !retryable
-            || self.is_live(&task.id)
-            || !task.is_requester(self.instance_id())
-            || assignment::is_lasting(&task.capability)
-        {
-            return;
-        }
-        let service = self.clone();
-        self.runtime.spawn(async move {
-            if let Err(e) = service.failover(&task).await {
-                log::warn!("Failover of task {} failed: {e}", task.id);
+    /// What the relay did with one of our tasks. Its answers to our
+    /// submissions (`accepted`, `refused`) are for whoever submitted.
+    async fn on_event(self: &Arc<Self>, event: RelayTaskEvent) -> Result<(), String> {
+        let task_id = event.task_id().to_string();
+        let Some(task) = get_row(self.db(), &task_id).await? else {
+            log::debug!("Task {task_id}: no such task here");
+            return Ok(());
+        };
+        let requester = task.is_requester(self.instance_id());
+        let (db, bus) = (self.db(), self.bus());
+        match event {
+            RelayTaskEvent::Accepted { .. } | RelayTaskEvent::Refused { .. } => {}
+            RelayTaskEvent::FailedOver {
+                from_instance,
+                provider_instance,
+                target,
+                cause,
+                reason_kind,
+                ..
+            } if requester => {
+                let from = member_name(db, &from_instance);
+                let to = member_name(db, &provider_instance);
+                let mut change = Change::reason(format!(
+                    "{from} couldn't take it; the relay gave it to {to}"
+                ));
+                change.reason_kind = reason_kind;
+                change.stage = Some(TaskStage::Dispatch);
+                task_state::hand_on(db, bus, &task_id, &target, change).await?;
+                let payload = json!({
+                    "from": from_instance,
+                    "to": provider_instance,
+                    "toName": to,
+                    "cause": cause,
+                    "reasonKind": reason_kind,
+                });
+                add_message(db, &task_id, FAILED_OVER_KIND, payload).await?;
             }
-        });
+            RelayTaskEvent::Reassigned {
+                from_instance,
+                provider_instance,
+                target,
+                provider_name,
+                by,
+                note,
+                ..
+            } if requester => {
+                super::reassign::moved(
+                    self,
+                    &task,
+                    super::reassign::Move {
+                        from_instance,
+                        to_instance: provider_instance,
+                        to_card: target,
+                        to_name: provider_name,
+                        by,
+                        reason: note,
+                    },
+                )
+                .await?;
+            }
+            RelayTaskEvent::Ended {
+                state, reason_kind, ..
+            } => {
+                let error = match state {
+                    TaskState::Abandoned => "Nobody took it up by its due date".to_string(),
+                    _ if requester => "No result by its due date".to_string(),
+                    _ => "The relay gave it to someone else".to_string(),
+                };
+                let mut change = Change::error(error.clone());
+                change.reason_kind = reason_kind;
+                if requester {
+                    let ended = task_state::advance(db, bus, &task_id, state, change).await?;
+                    if ended.is_some() && !self.is_live(&task_id) {
+                        let status = if state == TaskState::TimedOut {
+                            TaskStatus::TimedOut
+                        } else {
+                            TaskStatus::Failed
+                        };
+                        super::history::close(db, bus, &task_id, status, Value::Null, Some(error))
+                            .await?;
+                    }
+                } else if task_state::advance(db, bus, &task_id, state, change)
+                    .await?
+                    .is_some()
+                {
+                    self.stop_run(&task_id).await;
+                }
+            }
+            other => log::debug!("Task {task_id}: ignoring {other:?} on this side"),
+        }
+        Ok(())
     }
 
     async fn on_peer(self: &Arc<Self>, delivery: PeerDelivery) -> Result<(), String> {
         let task_id = delivery.body.task_id().to_string();
-        if delivery.undeliverable {
-            // Ours, bounced: a status query gets the local answer now;
-            // anything else waits for the next sweep
-            if matches!(delivery.body, PeerMessage::StatusQuery { .. }) {
-                self.resolve_status(&task_id, None);
-            }
-            log::debug!("Task {task_id}: {} is offline", delivery.target_instance);
-            return Ok(());
-        }
         let Some(task) = get_row(self.db(), &task_id).await? else {
             log::debug!("Task {task_id}: no such task here");
             return Ok(());
@@ -1556,7 +1562,7 @@ impl TaskService {
                         )
                         .await?;
                     }
-                    self.after_failure(ended);
+                    let _ = ended;
                 }
             }
             PeerMessage::ProgressUpdate {
@@ -1618,7 +1624,6 @@ impl TaskService {
             }
             PeerMessage::StatusQuery { .. } if !requester => {
                 let report = task.status_report(true);
-                let ended = task.state.is_terminal();
                 self.send(
                     peer,
                     PeerMessage::StatusResponse {
@@ -1626,8 +1631,6 @@ impl TaskService {
                         state: report.state,
                         eta_seconds: report.eta_seconds,
                         elapsed_seconds: report.elapsed_seconds,
-                        result: task.result.clone().filter(|_| ended),
-                        error: task.error.clone().filter(|_| ended),
                     },
                 )
                 .await?;
@@ -1636,21 +1639,8 @@ impl TaskService {
                 state,
                 eta_seconds,
                 elapsed_seconds,
-                result,
-                error,
                 ..
             } if requester => {
-                // It ended while its result couldn't reach us
-                if state.is_terminal() && !task.state.is_terminal() && !self.is_live(&task_id) {
-                    let status = match state {
-                        TaskState::Completed => TaskStatus::Completed,
-                        TaskState::Cancelled => TaskStatus::Cancelled,
-                        TaskState::TimedOut => TaskStatus::TimedOut,
-                        _ => TaskStatus::Failed,
-                    };
-                    let output = result.unwrap_or(Value::Null);
-                    self.on_result(&task_id, status, output, error).await?;
-                }
                 let report = TaskStatusReport {
                     task_id: task_id.clone(),
                     state,
@@ -1689,43 +1679,6 @@ impl TaskService {
                     &task_id,
                     TaskState::Delivered,
                     Change::reason("reached the provider"),
-                )
-                .await?;
-            }
-            PeerMessage::TaskTimedOut { reason, .. } if !requester => {
-                let reason = reason.unwrap_or_else(|| "the requester stopped waiting".into());
-                let ended = task_state::advance(
-                    db,
-                    bus,
-                    &task_id,
-                    TaskState::TimedOut,
-                    Change::error(reason),
-                )
-                .await?;
-                if ended.is_some() {
-                    self.stop_run(&task_id).await;
-                }
-            }
-            PeerMessage::ReassignTask {
-                new_provider_instance,
-                new_provider_card,
-                new_provider_name,
-                by,
-                reason,
-                request,
-                ..
-            } if requester => {
-                super::reassign::accept(
-                    self,
-                    &task,
-                    super::reassign::Handoff {
-                        to_instance: new_provider_instance,
-                        to_card: new_provider_card,
-                        to_name: new_provider_name,
-                        by,
-                        reason,
-                        request,
-                    },
                 )
                 .await?;
             }

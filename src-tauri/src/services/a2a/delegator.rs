@@ -1,33 +1,31 @@
 //! The requester side: picks providers and runs the task. One of this
 //! Nandi's own agents or workflows that serves the capability wins and
 //! runs in-process, with no relay; otherwise the relay plans who gets it
-//! (`route`: the relay ranks, the app doesn't), and it goes through
-//! `RelayClient::delegate_task`, waiting for the result up to the timeout
-//! (`TaskStatus::TimedOut` after it). When the pick rejects the task,
-//! can't be reached, or times out, the next provider gets it (up to
-//! `MAX_ATTEMPTS`): a failed remote one makes the relay plan again without
-//! everyone tried, and a failed local one asks the relay. A provider the
+//! (`route`: the relay ranks, the app doesn't), and it goes to the relay
+//! with `RelayClient::delegate_task`: sealed for the first candidate and
+//! for each of the rest of the plan, so the relay gives it to the next one
+//! itself when the first refuses it, doesn't pick it up, or times out
+//! (relay design step 11). A failed local provider passes it to the next
+//! one (up to `MAX_ATTEMPTS`), then to the relay's plan. A provider the
 //! caller named is never swapped (the relay may hand it to that person's
-//! own away-delegate).
+//! own away-delegate), and neither named work nor an assignment goes to
+//! anyone else.
 //!
 //! Every delegation gets an outbound history row, `delegation://` events,
-//! and audit log lines, however it ends. A failed attempt that was retried
-//! keeps its own row (`<task_id>-attempt<n>`).
+//! and audit log lines, however it ends. A failed local attempt that was
+//! passed on keeps its own row (`<task_id>-attempt<n>`).
 //!
-//! Each cross-instance attempt also gets a requester `tasks` row (wave
-//! final, Track B): `Submitted`, `Delivered` once the relay routes it, the
+//! Each cross-instance request also gets a requester `tasks` row (wave
+//! final, Track B): `Submitted`, `Delivered` once the relay hands it over
+//! (or a note while the relay holds it for someone offline), the
 //! provider's lifecycle messages in between (handled by `TaskService`),
-//! then the result. Retries on another instance are failover attempts
-//! (`attempt_number`, `previous_attempt_id`, `source_kind = Failover`),
-//! never on an instance that already failed this delegation (the relay
-//! keeps providers with an open circuit out of its plans). Each remote
-//! attempt keeps why the relay picked it (a `route` message). When the
-//! relay can't deliver to the last candidate, the task
-//! stays `Submitted` in the offline queue (`queue`) and this waits for it
-//! as usual. Once acknowledged, the wait stretches to the timeout sweep's
-//! limit (3× the ETA); a timed-out wait ends the row too (`TimedOut`, or
-//! `Cancelled` before an acknowledgement, telling the provider either
-//! way), except a still-queued task, which the queue keeps.
+//! then the result. The row follows the relay's failovers and
+//! reassignments (same task ID, new provider). It keeps why the relay
+//! picked its provider (a `route` message). The caller waits live up to
+//! the timeout (3× the ETA once acknowledged); after that a request still
+//! due stays open and its answer comes later. With the relay down, a
+//! question or an assignment waits in the outbox (`queue`); anything else
+//! is refused with `RelayUnavailable`.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
@@ -42,9 +40,7 @@ use super::executor::{self, Executor};
 use super::history::{self, AuditLog, Recorder};
 use super::queue::{self, TIMEOUT_ETA_FACTOR};
 use super::route::{self, Pick};
-use super::task::{
-    self, ReasonKind, TaskRecord, TaskService, TaskSourceKind, TaskStage, TaskState,
-};
+use super::task::{self, ReasonKind, TaskRecord, TaskService, TaskStage, TaskState};
 use super::task_state::{self, Change};
 use super::{assignment, eta, failover};
 use super::{A2ADelegator, DelegationRequest, Task, TaskResult, TaskStatus, DEFAULT_TIMEOUT_SECS};
@@ -58,7 +54,8 @@ use crate::services::gateway::holds::{GatewayHoldChanged, HoldStatus};
 use crate::services::gateway::GATEWAY_AGENT_ID;
 use crate::services::network;
 use crate::services::orchestrator::Orchestrators;
-use crate::services::relay::protocol::{NoRoute, PeerMessage};
+use crate::services::relay::protocol::NoRoute;
+use crate::services::relay::protocol::MAX_CANDIDATES;
 use crate::services::relay::unavailable::{self, RelayUnavailable};
 use crate::services::relay::RelayClient;
 use crate::services::repo_store::RepoStore;
@@ -412,35 +409,26 @@ impl Delegator {
             .clone()
             .unwrap_or_else(|| USER_REQUESTER.to_string());
         let named = request.target.is_some();
+        let lasting = assignment::is_lasting(&capability);
         // The relay planned some of these (else they're local, or named)
         let mut planned = !named
             && candidates
                 .iter()
                 .any(|pick| pick.instance() != self.deps.instance_id);
         let mut queue: VecDeque<Pick> = candidates.into();
-        // Instances that failed this delegation (never the local one)
-        let mut tried: HashSet<String> = HashSet::new();
-        let mut previous_remote: Option<TaskRecord> = None;
-        let lasting = assignment::is_lasting(&capability);
         let mut attempt = 0;
         while let Some(pick) = queue.pop_front() {
             let target = pick.target.clone();
-            let target_instance = pick.instance().to_string();
-            let local = target_instance == self.deps.instance_id;
-            if tried.contains(&target_instance) {
-                continue;
-            }
-            // Whether another provider could take it after this one: the
-            // rest of the queue, or (after the local ones) the network
+            let local = pick.instance() == self.deps.instance_id;
+            // Another provider could take it after a local one: the rest
+            // of the queue, or the network
             let more = !lasting
                 && !named
                 && attempt + 1 < MAX_ATTEMPTS
-                && (queue.iter().any(|next| {
-                    let instance = next.instance();
-                    !tried.contains(instance) && (local || instance != target_instance)
-                }) || (local
-                    && !planned
-                    && unavailable::configured(self.deps.relay.as_ref()).is_ok()));
+                && (!queue.is_empty()
+                    || (local
+                        && !planned
+                        && unavailable::configured(self.deps.relay.as_ref()).is_ok()));
             result.provider_agent = target.clone();
             result.provider_owner = pick.owner.clone();
             result.output = Value::Null;
@@ -453,8 +441,8 @@ impl Delegator {
 
             let now = db::now_ms() as f64;
             let task = Task {
-                // A fresh ID on the wire, so a late reply from a provider we
-                // gave up on can't answer the retry
+                // A fresh ID on the wire after a local try, so nothing late
+                // can answer it
                 id: if attempt == 0 {
                     base_id.clone()
                 } else {
@@ -484,18 +472,29 @@ impl Delegator {
                 result.tokens_out = provided.tokens_out;
                 (provided.status, provided.error)
             } else {
-                let record = self
-                    .attempt_record(&task, &requester_agent, previous_remote.as_ref(), &pick)
-                    .await;
-                let outcome = self
-                    .remote(&task, &mut result, !more, service.as_deref())
-                    .await;
-                previous_remote = Some(record);
-                outcome
+                // The relay fails it over to the rest of its plan itself:
+                // they go along, sealed for each (never for a named person
+                // or an assignment, which are meant for that one)
+                let alternates: Vec<Pick> = if named || lasting {
+                    Vec::new()
+                } else {
+                    let mut rest = Vec::new();
+                    while queue
+                        .front()
+                        .is_some_and(|next| next.instance() != self.deps.instance_id)
+                        && rest.len() + 1 < MAX_CANDIDATES as usize
+                    {
+                        rest.extend(queue.pop_front());
+                    }
+                    rest
+                };
+                self.attempt_record(&task, &requester_agent, &pick).await;
+                self.remote(&task, &alternates, &mut result, service.as_deref())
+                    .await
             };
             attempt += 1;
-            // An assignment reached its person: it stays open (and so does
-            // its history row) until they end it
+            // An assignment reached its person, or a request waits for an
+            // answer: it stays open (and so does its history row)
             if status == TaskStatus::Running {
                 return Ok(result);
             }
@@ -512,39 +511,34 @@ impl Delegator {
                 let succeeded = status == TaskStatus::Completed;
                 if succeeded || retry {
                     let provider = target
-                        .strip_prefix(&format!("{target_instance}/"))
+                        .strip_prefix(&format!("{}/", self.deps.instance_id))
                         .unwrap_or(&target);
                     if let Err(e) = selection
-                        .record_provider_outcome(&target_instance, provider, &capability, succeeded)
+                        .record_provider_outcome(
+                            &self.deps.instance_id,
+                            provider,
+                            &capability,
+                            succeeded,
+                        )
                         .await
                     {
                         log::debug!("Delegation {base_id}: provider circuit not updated: {e}");
                     }
                 }
             }
-            if retry && !local {
-                tried.insert(target_instance);
-            }
-
-            if more && retry {
-                // A remote failure, or the last local one: the relay plans
-                // again, without everyone tried (the rest of the last plan
-                // stays when it can't)
-                if !local || queue.is_empty() {
-                    match self.network_picks(&capability, &tried).await {
+            // Only a local failure goes on here: the relay already tried
+            // everyone in its plan
+            if local && more && retry {
+                if queue.is_empty() {
+                    match self.network_picks(&capability).await {
                         Ok(picks) => {
-                            // My own providers keep their turn
-                            let me = &self.deps.instance_id;
-                            let mine: Vec<Pick> =
-                                queue.drain(..).filter(|p| p.instance() == me).collect();
-                            queue = mine.into_iter().chain(picks).collect();
+                            queue.extend(picks);
                             planned = true;
                         }
-                        Err(e) => log::info!("Delegation {base_id}: no new plan ({e})"),
+                        Err(e) => log::info!("Delegation {base_id}: no plan ({e})"),
                     }
                 }
-                let next = queue.iter().any(|p| !tried.contains(p.instance()));
-                if next {
+                if !queue.is_empty() {
                     // Keep this attempt in the history, then hand the task on
                     let mut failed = result.clone();
                     failed.task_id = format!("{base_id}-attempt{attempt}");
@@ -563,7 +557,6 @@ impl Delegator {
             self.recorder.finished(&result).await;
             return Ok(result);
         }
-        // Every candidate left was on an instance that already failed
         history::finish(
             &mut result,
             TaskStatus::Failed,
@@ -685,7 +678,7 @@ impl Delegator {
                 .map(str::to_string)
         });
         if let Some(pin) = pin.filter(|pin| instance_of(pin) != self.deps.instance_id) {
-            if let Ok(picks) = self.network_picks(capability, &HashSet::new()).await {
+            if let Ok(picks) = self.network_picks(capability).await {
                 if let Some(pinned) = picks.into_iter().find(|p| p.target == pin && p.is_free()) {
                     return Ok(std::iter::once(pinned).chain(local).collect());
                 }
@@ -694,25 +687,23 @@ impl Delegator {
         if !local.is_empty() {
             return Ok(local);
         }
-        self.network_picks(capability, &HashSet::new())
-            .await
-            .map_err(|e| {
-                // Without the network, my own agents that are closed to
-                // requests say more than "not connected"
-                let mine = self.local_cards(capability);
-                let mut serving = mine
-                    .iter()
-                    .filter(|card| card.serves(capability) && card.id != requester.id)
-                    .peekable();
-                if RelayUnavailable::is(&e)
-                    && serving.peek().is_some()
-                    && serving.all(|card| !card.accepts_delegation)
-                {
-                    route::no_route_message(capability, Some(NoRoute::NotTakingRequests))
-                } else {
-                    e
-                }
-            })
+        self.network_picks(capability).await.map_err(|e| {
+            // Without the network, my own agents that are closed to
+            // requests say more than "not connected"
+            let mine = self.local_cards(capability);
+            let mut serving = mine
+                .iter()
+                .filter(|card| card.serves(capability) && card.id != requester.id)
+                .peekable();
+            if RelayUnavailable::is(&e)
+                && serving.peek().is_some()
+                && serving.all(|card| !card.accepts_delegation)
+            {
+                route::no_route_message(capability, Some(NoRoute::NotTakingRequests))
+            } else {
+                e
+            }
+        })
     }
 
     /// This Nandi's own providers of `capability` (agents, and workflows
@@ -745,14 +736,15 @@ impl Delegator {
         .collect()
     }
 
-    /// The relay's plan for `capability`, without the instances `tried`
-    /// (never empty); `RelayUnavailable` without a relay
-    async fn network_picks(
-        &self,
-        capability: &str,
-        tried: &HashSet<String>,
-    ) -> Result<Vec<Pick>, String> {
-        let hints = route::hints(self.deps.store(), &self.deps.db, capability, tried);
+    /// The relay's plan for `capability` (never empty); `RelayUnavailable`
+    /// without a relay
+    async fn network_picks(&self, capability: &str) -> Result<Vec<Pick>, String> {
+        let hints = route::hints(
+            self.deps.store(),
+            &self.deps.db,
+            capability,
+            &HashSet::new(),
+        );
         let query = route::query(capability, None, hints);
         let plan = route::plan(self.deps.relay.as_ref(), &query).await?;
         let no_route = plan.no_route;
@@ -763,16 +755,10 @@ impl Delegator {
         Ok(picks)
     }
 
-    /// The requester `tasks` row of a cross-instance attempt (with the wire
-    /// task), linked to the previous remote attempt
-    async fn attempt_record(
-        &self,
-        task: &Task,
-        requester_agent: &str,
-        previous: Option<&TaskRecord>,
-        pick: &Pick,
-    ) -> TaskRecord {
-        let fresh = TaskRecord::requester(
+    /// The requester `tasks` row of a cross-instance request (with the
+    /// wire task), and why the relay picked its provider
+    async fn attempt_record(&self, task: &Task, requester_agent: &str, pick: &Pick) {
+        let record = TaskRecord::requester(
             &task.id,
             &self.deps.instance_id,
             requester_agent,
@@ -781,15 +767,6 @@ impl Delegator {
             &task.input,
             task.deadline,
         );
-        let record = match previous {
-            Some(previous) => {
-                let mut next = failover::next_attempt(previous, &task.id, &task.target);
-                next.source_kind = TaskSourceKind::Failover;
-                next.deadline = task.deadline;
-                next
-            }
-            None => fresh,
-        };
         if let Err(e) = task::create(&self.deps.db, &self.deps.bus, &record, Some(task)).await {
             log::error!("Failed to record task {}: {e}", task.id);
         }
@@ -799,7 +776,6 @@ impl Delegator {
                 log::debug!("Task {}: why it went there isn't kept: {e}", task.id);
             }
         }
-        record
     }
 
     /// Moves our row of `task_id` toward `to`, logging failures
@@ -813,126 +789,114 @@ impl Delegator {
         }
     }
 
-    /// Sends `task` through the relay and waits for its result. Fills in
-    /// the output and tokens; returns the status and error. `last`: no
-    /// other provider would get it, so an undeliverable task waits in the
-    /// offline queue instead of failing.
+    /// Hands `task` to the relay (sealed for its target, then for each of
+    /// `alternates` should the relay fail it over) and waits for its
+    /// result. Fills in the output and tokens; returns the status and
+    /// error.
     async fn remote(
         &self,
         task: &Task,
+        alternates: &[Pick],
         result: &mut TaskResult,
-        last: bool,
         service: Option<&TaskService>,
     ) -> (TaskStatus, Option<String>) {
+        let lasting = assignment::is_lasting(&task.capability);
         // Without a relay the request could never leave: say so now
-        // instead of queueing it forever. A configured relay that is
-        // reconnecting keeps it in the offline queue.
         let Ok(relay) = unavailable::configured(self.deps.relay.as_ref()) else {
-            let error = RelayUnavailable.to_string();
-            self.step(
-                &task.id,
-                TaskState::Abandoned,
-                Change::error(error.clone()).kind(ReasonKind::Offline, TaskStage::Dispatch),
-            )
-            .await;
-            return (TaskStatus::Failed, Some(error));
+            return self.not_sent(task, RelayUnavailable.to_string()).await;
         };
+        // Before sending: the result may come back before the relay's
+        // answer does
+        let mut waiting = self.pending.add(&task.id);
+        let targets: Vec<String> = alternates.iter().map(|pick| pick.target.clone()).collect();
+        let sent = if relay.status().connected {
+            relay.delegate_task(task, &targets).await
+        } else {
+            Err(RelayUnavailable.to_string())
+        };
+        match sent {
+            Ok(submitted) => match service {
+                Some(service) => queue::accepted(service, &task.id, submitted.held).await,
+                None if !submitted.held => {
+                    self.step(
+                        &task.id,
+                        TaskState::Delivered,
+                        Change::reason("with the provider"),
+                    )
+                    .await;
+                }
+                None => {}
+            },
+            // A question or an assignment waits in the outbox for the
+            // relay to come back (unless the relay refused it); nothing
+            // else does
+            Err(e)
+                if lasting
+                    && service.is_some()
+                    && e.starts_with(crate::services::relay::client_api::REFUSED_BY_RELAY) =>
+            {
+                self.pending.forget(&task.id);
+                return self.not_sent(task, e).await;
+            }
+            Err(e) if lasting && service.is_some() => {
+                self.pending.forget(&task.id);
+                log::info!("Task {} waits in the outbox: {e}", task.id);
+                result.output = json!({
+                    "state": TaskState::Submitted.as_str(),
+                    "due": task.deadline,
+                    "waiting": true,
+                    "outbox": true,
+                });
+                return (TaskStatus::Running, None);
+            }
+            Err(e) => {
+                self.pending.forget(&task.id);
+                return self.not_sent(task, e).await;
+            }
+        }
         if let Some(service) = service {
-            // A reassigned attempt's waiter moves to its successor
-            let pending = Arc::downgrade(&self.pending);
-            service.set_rekey_hook(|| {
-                Box::new(move |from: &str, to: &str| {
-                    if let Some(pending) = pending.upgrade() {
-                        pending.rekey(from, to);
-                    }
-                })
-            });
             service.mark_live(&task.id);
         }
-        let mut followed = Vec::new();
-        let outcome = self
-            .remote_attempt(relay, task, result, last, &mut followed)
-            .await;
+        let outcome = self.wait_remote(task, &mut waiting, result).await;
         if let Some(service) = service {
             service.unmark_live(&task.id);
-            for id in &followed {
-                service.unmark_live(id);
-            }
         }
         outcome
     }
 
-    async fn remote_attempt(
-        &self,
-        relay: &Arc<dyn RelayClient>,
-        task: &Task,
-        result: &mut TaskResult,
-        last: bool,
-        followed: &mut Vec<String>,
-    ) -> (TaskStatus, Option<String>) {
-        // Before sending: the result may come back before `delegate_task` does
-        let mut waiting = self.pending.add(&task.id);
-        match relay.delegate_task(task).await {
-            Ok(routed) => {
-                if routed != task.id {
-                    self.pending.rekey(&task.id, &routed);
-                }
-                self.step(
-                    &task.id,
-                    TaskState::Delivered,
-                    Change::reason("routed by the relay").at(TaskStage::Dispatch),
-                )
-                .await;
-            }
-            Err(e) if !last => {
-                self.pending.forget(&task.id);
-                let error = format!("The network couldn't deliver the request: {e}");
-                self.step(
-                    &task.id,
-                    TaskState::Abandoned,
-                    Change::error(error.clone()).kind(ReasonKind::Offline, TaskStage::Dispatch),
-                )
-                .await;
-                return (TaskStatus::Failed, Some(error));
-            }
-            // Queued: `TaskService::flush` sends it when the provider is back
-            Err(e) => log::info!("Task {} waits in the offline queue: {e}", task.id),
-        }
+    /// The relay didn't take `task`: it ends here
+    async fn not_sent(&self, task: &Task, error: String) -> (TaskStatus, Option<String>) {
+        let error = if RelayUnavailable::is(&error) {
+            error
+        } else {
+            format!("The network couldn't deliver the request: {error}")
+        };
+        self.step(
+            &task.id,
+            TaskState::Abandoned,
+            Change::error(error.clone()).kind(ReasonKind::Offline, TaskStage::Dispatch),
+        )
+        .await;
+        (TaskStatus::Failed, Some(error))
+    }
 
+    async fn wait_remote(
+        &self,
+        task: &Task,
+        waiting: &mut oneshot::Receiver<Result<TaskResult, String>>,
+        result: &mut TaskResult,
+    ) -> (TaskStatus, Option<String>) {
         let (db, bus) = (&self.deps.db, &self.deps.bus);
         let lasting = assignment::is_lasting(&task.capability);
-        // A provider may hand the task on (wave EF): wait on the attempt
-        // the requester's task service made for the new provider
-        let mut current = task.clone();
-        let waited = loop {
-            match self.wait(&current.id, &mut waiting, lasting).await {
-                Waited::Ended(row) if row.state == TaskState::Reassigned => {
-                    let Some(next) = reassigned_to(db, &row.id).await else {
-                        break Waited::Ended(row);
-                    };
-                    self.pending.rekey(&current.id, &next.id);
-                    followed.push(next.id.clone());
-                    current.target = next.provider_card();
-                    current.id = next.id;
-                }
-                waited => break waited,
-            }
-        };
-        // A result may reach the moved waiter before the poll above saw the
-        // handoff: it belongs to the newest attempt
-        if matches!(waited, Waited::Result(_)) {
-            while let Some(next) = reassigned_to(db, &current.id).await {
-                followed.push(next.id.clone());
-                current.target = next.provider_card();
-                current.id = next.id;
+        let waited = self.wait(&task.id, waiting, lasting).await;
+        // The relay may have given it to someone else meanwhile (a
+        // failover, a reassignment): the row has who
+        if let Some(row) = task::get_row(db, &task.id).await.ok().flatten() {
+            if row.provider_card() != task.target {
+                result.provider_agent = row.provider_card();
+                result.provider_owner = None;
             }
         }
-        if current.id != task.id {
-            // Handed on: the provider that took it over is the one answering
-            result.provider_agent = current.target.clone();
-            result.provider_owner = None;
-        }
-        let task = &current;
         let (status, output, error) = match waited {
             Waited::Result(Ok(provided)) => {
                 result.tokens_in = provided.tokens_in;
@@ -950,8 +914,8 @@ impl Delegator {
                 Value::Null,
                 Some("The relay connection closed before a result came".to_string()),
             ),
-            // Ended here (cancelled, timed out or abandoned by a sweep,
-            // rejected): already recorded
+            // Ended here (cancelled, rejected, ended by the relay): already
+            // recorded
             Waited::Ended(row) => {
                 self.pending.forget(&task.id);
                 let error = row
@@ -970,22 +934,30 @@ impl Delegator {
                 }
                 return (status, Some(error));
             }
+            // No answer yet: it stays open (at the relay, or with them) and
+            // the answer comes later, to the task service (`on_result`).
+            // The relay fails it over or ends it at its due date.
             Waited::TimedOut(row) => {
                 self.pending.forget(&task.id);
-                // No answer yet, nobody else to ask, and not due yet: it
-                // stays open (queued for them, or with them) and the answer
-                // comes later, to the task service (`on_result`)
-                if last {
-                    if let Some(row) = row.as_ref().filter(|row| still_due(row)) {
-                        result.output = json!({
-                            "state": row.state.as_str(),
-                            "due": row.deadline,
-                            "waiting": true,
-                        });
-                        return (TaskStatus::Running, None);
-                    }
+                if let Some(row) = row.as_ref().filter(|row| still_due(row)) {
+                    result.output = json!({
+                        "state": row.state.as_str(),
+                        "due": row.deadline,
+                        "waiting": true,
+                    });
+                    return (TaskStatus::Running, None);
                 }
-                return self.gave_up(relay, task, row).await;
+                let error = format!(
+                    "No result from {} by its due date",
+                    member_name(db, instance_of(&task.target))
+                );
+                self.step(
+                    &task.id,
+                    TaskState::TimedOut,
+                    Change::error(error.clone()).kind(ReasonKind::TimedOut, TaskStage::Result),
+                )
+                .await;
+                return (TaskStatus::TimedOut, Some(error));
             }
             // The result comes later, to the task service (`on_result`)
             Waited::Accepted(row) => {
@@ -1071,62 +1043,6 @@ impl Delegator {
             }
         }
     }
-
-    /// The wait ran out. A still-queued task stays in the queue; a sent one
-    /// ends (`Cancelled` before the provider acknowledged it, else
-    /// `TimedOut`) and the provider is told.
-    async fn gave_up(
-        &self,
-        relay: &Arc<dyn RelayClient>,
-        task: &Task,
-        row: Option<TaskRecord>,
-    ) -> (TaskStatus, Option<String>) {
-        let mut error = format!(
-            "No result from {} within {}s",
-            member_name(&self.deps.db, instance_of(&task.target)),
-            self.deps.timeout.as_secs_f32()
-        );
-        let state = row.as_ref().map(|r| r.state);
-        let provider = instance_of(&task.target).to_string();
-        let body = match state {
-            Some(TaskState::Submitted) => {
-                error.push_str(" (it stays queued until the provider is back online)");
-                None
-            }
-            Some(TaskState::Delivered) => {
-                let reason = "the requester stopped waiting".to_string();
-                self.step(
-                    &task.id,
-                    TaskState::Cancelled,
-                    Change::error(error.clone()).kind(ReasonKind::TimedOut, TaskStage::Result),
-                )
-                .await;
-                Some(PeerMessage::CancelTask {
-                    task_id: task.id.clone(),
-                    reason: Some(reason),
-                })
-            }
-            Some(_) => {
-                self.step(
-                    &task.id,
-                    TaskState::TimedOut,
-                    Change::error(error.clone()).kind(ReasonKind::TimedOut, TaskStage::Result),
-                )
-                .await;
-                Some(PeerMessage::TaskTimedOut {
-                    task_id: task.id.clone(),
-                    reason: Some(error.clone()),
-                })
-            }
-            None => None,
-        };
-        if let Some(body) = body {
-            if let Err(e) = relay.send_peer(provider, body).await {
-                log::debug!("Task {}: {e}", task.id);
-            }
-        }
-        (TaskStatus::TimedOut, Some(error))
-    }
 }
 
 /// Whether `row` is open and its due date hasn't passed
@@ -1135,22 +1051,6 @@ fn still_due(row: &TaskRecord) -> bool {
 }
 
 /// How waiting for a remote result ended
-/// The attempt the requester's task service made when the provider of
-/// `task_id` reassigned it
-async fn reassigned_to(db: &Db, task_id: &str) -> Option<TaskRecord> {
-    let id = task_id.to_string();
-    db.call(move |conn| {
-        task::select(
-            conn,
-            "previous_attempt_id = ?1 AND source_kind = 'reassign'",
-            &[&id],
-        )
-    })
-    .await
-    .ok()
-    .and_then(|rows| rows.into_iter().next())
-}
-
 enum Waited {
     Result(Result<TaskResult, String>),
     /// The waiter was dropped (the relay connection went away)
@@ -1247,7 +1147,7 @@ fn provided_or_failed(
 }
 
 /// A member's display name, from the network roster (never a device ID)
-fn member_name(db: &Db, instance: &str) -> String {
+pub(super) fn member_name(db: &Db, instance: &str) -> String {
     crate::services::network::known_members(db)
         .into_iter()
         .find(|m| m.instance_id == instance)

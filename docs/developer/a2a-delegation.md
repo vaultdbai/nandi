@@ -12,11 +12,12 @@ delegate_to_agent tool / "call" button / delegate_task
       else              → the relay's plan (RelayClient::route: RouteQuery → RoutePlan)
       up to MAX_ATTEMPTS (3) tried in order (see "Who gets the work")
       local provider  → Executor::execute in-process (no relay needed)
-      remote provider → RelayClient::delegate_task, wait live for TaskCompleted/TaskFailed
-                        up to the timeout (default 600s, `local_settings.delegation_timeout_secs`)
-                        → no answer yet, last provider, not due: TaskStatus::Running
-                          {"waiting": true, "due"}, the row stays open until its due date
-                        → another provider to try: TaskStatus::TimedOut, next provider
+      remote          → RelayClient::delegate_task(task, the rest of the plan): SubmitTask,
+                        sealed for every candidate; the relay fails it over itself
+                        wait live for the result up to the timeout (default 600s,
+                        `local_settings.delegation_timeout_secs`)
+                        → no answer yet, still due: TaskStatus::Running {"waiting": true,
+                          "due"}, the row stays open; the relay ends it at its due date
   → delegations row + delegation:// events + ~/.nandi/local/logs/delegations.log
 ```
 
@@ -24,24 +25,25 @@ delegate_to_agent tool / "call" button / delegate_task
 
 Every request to another Nandi has a due date (`Task.deadline`, `assignment::request_due_at`): `input.due` when the request names one, else 7 days for `assign-me`, 2 days for a question (`ask-me`) and 1 day for anything else, never less than an hour.
 
-- **The requester waits live** for the timeout, so a quick answer still comes back in the chat. Past that, if there's no one else to try, the tool returns `status: waiting` with the due date and the row stays open. The answer is kept whenever it arrives: pushed (`TaskService::on_result`, which also closes the `delegations` row), or fetched by the status poll that asks every open, non-live request's provider each minute (`poll_assignments`).
-- **Someone offline:** the request waits `Submitted` in the offline queue until they're back, however long, until its due date.
-- **The sweeps follow the due date:** `sweep_timeouts` ends an acknowledged request past it as `TimedOut`, and `sweep_abandoned` ends one never picked up as `Abandoned`, each with "…by its due date" and the `delegations` row closed. Rows without a deadline keep the old rules (3× the ETA; 300 s / 90 s while the provider is offline).
+- **The requester waits live** for the timeout, so a quick answer still comes back in the chat. Past that, the tool returns `status: waiting` with the due date and the row stays open. The answer is kept whenever it arrives: the relay keeps it until this Nandi acks it (`TaskService::on_result`, which also closes the `delegations` row). Nothing is polled.
+- **Someone offline:** the relay keeps the request until they're back, however long, until its due date. The row stays `Submitted` with a note that the relay holds it.
+- **The relay ends it at its due date** (relay design step 11): one nobody took up as `Abandoned`, one taken up as `TimedOut`, for both sides (`TaskEvent::Ended`); `TaskService::on_event` ends the row and the `delegations` row ("…by its due date"). An assignment never expires.
 - **The receiver's side:** a request held for approval, or waiting for a free slot, waits until the task's deadline (`gateway/router.rs` `wait_deadline`), not 1 h or 10 minutes.
-- **Failover** gives the next attempt its own due date the same way.
 
 ## Who Gets the Work
 
 The app decides **local or network**; the relay decides **who on the network**. The app has no scorer for other people's providers: that lives only in the relay (BUSL), from metadata (design decision 1).
 
-1. **A named card** (a "call" button pick, the tool's `target`) is tried alone and never swapped. Remote: the relay is asked with the card as the target, and may hand a question or assignment to that person's own away-delegate (never anyone else's choice, design decision 3). With the relay reconnecting, it goes as named and waits in the offline queue.
+1. **A named card** (a "call" button pick, the tool's `target`) is tried alone and never swapped. Remote: the relay is asked with the card as the target, and may hand a question or assignment to that person's own away-delegate (never anyone else's choice, design decision 3). With the relay reconnecting, a question or an assignment waits in the outbox and goes when the relay is back; anything else answers `RelayUnavailable`.
 2. **My pin on someone else's agent** (`settings.yaml` → `delegation.preferred_providers`) goes first while the relay's plan has it free (`Pick::is_free`).
 3. **My own providers** win next and run here with no relay: `delegator::local_order` (serves it, `accepts_delegation`, has room, not the requester; my pin, then lower load, then the card ID), reordered by `failover::capability_order` (below), which also adds my workflow providers.
 4. **Otherwise the relay plans it** (`a2a/route.rs`): `route::query` sends the kind (`delegate`, `ask` for `ask-me`, `assign` for `assign-me`), the capability and hints: my pin as `preferred` (1.5× at the relay), the members I paused or blocked and every instance this request already failed with as `excluded` (never stored at the relay). The plan's candidates (3 by default) come best first, each with its pinned keys and its reasons. No relay: `RelayUnavailable` (a local provider never waits for it). An empty plan says why (`NoRoute`: nobody serves it, nobody takes requests from other Nandis, nobody can take it now).
 
 The relay's ranking (filters, availability, score, busy ordering, fairness, circuits) is documented in the relay's `README.md` and `src/routing/`.
 
-**Fallback**: with no named target, if the pick rejects the task without doing any work (trust, closed, busy, not delivered) or times out, the next provider gets it: a failed remote pick, or the last of my own, makes the relay plan again without everyone tried (my own keep their turn ahead of the new plan). The task keeps its ID (the main row shows the final attempt); each passed-on attempt keeps its own row, `<task_id>-attempt<n>`, with "(passed to the next provider)" in its error. On the wire every retry has a fresh ID (`<task_id>-retry<n>`), so a late reply can't answer it. `TaskService::failover` (a task nobody waits on any more) asks the relay the same way. Pre-sealed candidates and failover at the relay are step 11 of the relay design.
+**Fallback**: with no named target, my own providers are tried in turn when one rejects the task without doing any work; after the last, the relay plans. Each passed-on local attempt keeps its own row, `<task_id>-attempt<n>`, with "(passed to the next provider)" in its error, and the next try has a fresh wire ID (`<task_id>-retry<n>`).
+
+**Failover at the relay** (relay design step 11): a request for someone else goes in one `SubmitTask` with the request sealed for every candidate of the plan (`delegate_task(task, alternates)`). The relay gives it to the next one when the first refuses it (not a declined assignment), doesn't pick it up within 90 s, or (work for an agent) takes more than 3× its ETA. The task keeps its ID; the requester row follows the new provider (`task_state::hand_on`, back to `Submitted`) and the thread gets a `failed_over` message ("Passed to Cy", with why). Named targets and assignments go alone. **Retry** on a failed request (`TaskService::retry`) makes a new attempt from a fresh plan without everyone it went to.
 
 **Why that provider**: each remote attempt keeps the relay's reasons as a `route` task message (`{provider, reasons, redirectedFrom}`, `route::ROUTE_KIND`). The delegation thread shows it as "Why Bob" with the reasons in the user's language (`components/network/RouteReasons.tsx`, `lib/route-reasons.ts`). Reasons are typed codes with parameters (`RouteReason`: `named`, `pinned`, `covers`, `free`, `busy`, `offline`, `away`, `usually_quick`, `dependable`, `lighter_day`, `their_turn`, `trying_again`), each with an i18n key under `routing.reason.*` in every locale. They never carry another member's success rate (design decision 9).
 
@@ -68,7 +70,7 @@ Most people don't publish individual agents; they publish a gateway (NANDI.md `r
 - **Routing at the relay**: relays route `DelegateTask` to agent cards only, so while the gateway accepts delegation the relay client adds a route card (`<instance>/gateway`, serving `gateway`, `gateway::registration::route_card`) to every `RegisterInstance`. It also makes a gateway-only instance count as online (queue flush, `is_online`). Route cards are left out of "agents online" lists. The relay server also routes to a registered accepting gateway card directly.
 - **Lifecycle**: an inbound gateway task gets a provider row like an agent task. Once the gateway routes it, `executor::gateway_dispatched` acknowledges it with the routing reason as the note ("Routed to Bob's Helper: …"), then moves it to `Working`. The provider always sends one "started" `ProgressUpdate` when work begins, and the requester treats progress as `Working` (there is no separate wire message). Cancelling stops the turn of the agent it was routed to (`RUNNING_TURNS`, keyed by task ID).
 - **Clarification**: when the router can't route confidently, a caller on another instance is asked through the clarification protocol (`ClarificationService::ask`; their task goes to `inputRequired` with a question card), and the answer is added to the request before routing again. Local callers (gateway chat) get the question as text.
-- **Offline**: a task for an offline member stays `Submitted` in the offline queue. A relay refusing to route a send ("No online agent …") only answers that send; it is not a task result. Flushes run one at a time, and the provider ignores a second delivery of a task it is already handling.
+- **Offline**: the relay keeps a task for an offline member until they're back (`TaskEvent::Accepted { held: true }`). A relay refusing a send ("No online agent …") only answers that send; it is not a task result. The provider ignores a second delivery of a task it is already handling.
 - **Hold and queue** (task 5): a capability marked "Needs my approval" opens a `gateway_holds` row and waits (`router::hold_for_approval`, `gateway::holds`, 1 h). A full gateway waits in `GatewayService::slots()` for up to 10 min. Both stay Delivered and tell the requester through a `ProgressUpdate` carrying `reason_kind` (and `queue_position`), which the requester records as a note event, not as `Working`.
 - **Agent changes** re-register the local cards at the relay (gathered over 500ms), so turning on `accepts_delegation` needs no restart.
 
@@ -88,8 +90,8 @@ Everything one person's Nandi sends another is sealed for the recipient (`nandi-
 - **Keys.** Sealed for the recipient's pinned keys (`network::peer_keys`); unknown ones are asked of the relay and pinned on first sight. A changed key refuses with `PEER_KEY_CHANGED`, a member with no keys with `PEER_KEY_MISSING`.
 - **Opening.** Inbound task frames go through one queue, opened in order. An envelope must be for us, for this task, purpose and (for a request or result) capability, from the sender, within `MAX_ENVELOPE_BYTES` (1 MiB), and signed by the author's pinned key. Anything else is refused with `SEAL_REFUSED`: logged, emitted as `relay://seal_refused` (a toast), and, for a task we asked for, its failure. A duplicate `(task, from, seq)` is dropped.
 - **Size.** Content over the cap isn't sent (`ENVELOPE_TOO_LARGE`): files go as links.
-- **Reassignment.** The provider's client reseals the request it opened for the new provider (`nandi_seal::reseal`, keeping the requester's signature); it rides in `ReassignTask.request`, and the requester sends it on unopened with `RelayClient::delegate_resealed` (`continues` names the task it's sealed under). The new provider checks the requester signed it. After a restart the provider no longer holds the opened request, so none rides along and the requester seals it again (it's the author). A manager's reassignment (relay design step 13) waits for the provider's Nandi to reseal: there's no team key.
-- **Bounced messages** (`Undeliverable`) come back with their kind and IDs only; their content was sealed for the target.
+- **Reassignment.** The provider's client reseals the request it opened for the new provider (`nandi_seal::reseal`, keeping the requester's signature) and sends it in `Reassign`; the relay delivers it under the same task ID. The new provider checks the requester signed it. After a restart the provider no longer holds the opened request, so none rides along and the relay asks the requester (the author) to seal it again (`Delivery::Reseal` → `RelayClient::reseal_as_author`). A manager's reassignment waits for the provider's Nandi to reseal: there's no team key.
+- **Waiting at the relay.** What the relay keeps for someone offline stays sealed. The client acks a delivery only once a handler has it (`InboxSync` after each registration and whenever a handler is added), and drops one it handled already on this connection.
 - **Local delegation** (our own agents, in process) never seals.
 
 What the relay operator can and can't see is in the relay's README.
@@ -123,11 +125,11 @@ A person's Chief of Staff therefore answers questions for them, and work assigne
 
 - **Deadline** = the due date (`input.due`, else 7 days), not `DEFAULT_TIMEOUT_SECS`.
 - **The caller doesn't wait for the work:** `Delegator::wait` returns `Waited::Accepted` once the provider acknowledged it (or after `ACCEPT_WINDOW` with no refusal); `delegate_request` returns `TaskStatus::Running` and the tool answers `status: assigned`. The task is no longer live, so its result goes to `TaskService::on_result`, which also ends the `delegations` row (`history::close`).
-- **Nothing gives up on it:** `sweep_timeouts`/`sweep_abandoned` skip it, and `after_failure` never fails it over (it was meant for that person).
+- **Nothing gives up on it:** the relay never expires an assignment and never fails it over (it was meant for that person).
 - **Assigning yourself (local gateway):** `Delegator::assign_locally` runs the gateway task in the background and returns `Running` once a `gateway://hold_changed` (pending) or `gateway://assignment_changed` event names the task (`state` `delivered` / `acknowledged`), or after `ACCEPT_WINDOW`; a refusal that comes first is returned as usual. The background task ends the `delegations` row when the owner closes it. There's no `tasks` row on a local path, so `my_requests` lists it from the open `gateway_assignments` instead (`people::self_assigned`: "from you", "on your list"), and a restart loses the waiter (the Inbox card stays; closing it then doesn't end the history row).
 - **Links:** `input.links` (`[url | {url, name?}]`) become `AssignmentLink`s in `gateway_assignment_links` (`assignments::links_of`: http(s) only, deduped, at most 10), shown on the Inbox card. The relay carries no files, so a file is shared as a link to where it lives.
 - **Provider:** after the hold is approved, `router::assign` opens a `gateway_assignments` row instead of routing; the task waits (no slot) for `close_gateway_assignment` (Done → result `{status, by, note}`, Decline → `Declined` refusal) or the requester's cancel.
-- **Late results:** `StatusResponse` carries `result`/`error` (sealed) once the provider's row ended, and the requester polls open assignments (`poll_assignments`, every `POLL_EVERY_MS` in the sweep and on `relay://agent_online`). The relay parses peer bodies, so it must run the same protocol version.
+- **Late results:** the relay keeps the result until the requester's Nandi acks it, so an assignment done while the requester was away arrives when it's back. Nothing is polled. The relay never expires an assignment.
 
 ```rust
 // ✅ GOOD: a capability that lasts gets its deadline and its wait from `assignment`
