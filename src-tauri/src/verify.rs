@@ -99,7 +99,7 @@ fn check_docker(report: &mut Report, image: &str) {
                 report.pass(format!("Image {image} exists"));
             } else if image == DEFAULT_RUNTIME_IMAGE {
                 report.fail(format!(
-                    "Image {image} not found, or from an older Nandi. Build it with: docker build -t {image} runtimes/nandi-runtime"
+                    "Image {image} not found, or from an older Nandi. Pull it with: docker pull {image} (the app pulls it by itself on first use)"
                 ));
             } else {
                 report.fail(format!(

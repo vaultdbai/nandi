@@ -136,6 +136,8 @@ pub enum Placement {
         network: Option<String>,
         /// The agent's shared folders (`runtime::folder_mounts`)
         folders: Vec<crate::runtime::FolderMount>,
+        /// Tool volumes fetched on first use (`images::tools`), read-only
+        tools: Vec<crate::services::images::tools::VolumeMount>,
     },
     /// Directly on the host (health checks, explicit opt-in)
     #[default]
@@ -484,6 +486,7 @@ pub fn docker_args(
         cpu,
         network,
         folders,
+        tools,
     } = placement
     else {
         return Vec::new();
@@ -518,6 +521,10 @@ pub fn docker_args(
         args.push("-v".to_string());
         let mode = if folder.read_only { ":ro" } else { "" };
         args.push(format!("{}:{}{mode}", folder.source, folder.target));
+    }
+    for tool in tools {
+        args.push("-v".to_string());
+        args.push(format!("{}:{}:ro", tool.volume, tool.target));
     }
     if let Some(memory) = memory_mb {
         args.push(format!("--memory={memory}m"));
@@ -1043,10 +1050,15 @@ mod tests {
                     target: "/agent/folders/docs".into(),
                     read_only: true,
                 }],
+                tools: vec![crate::services::images::tools::VolumeMount {
+                    volume: "nandi-tools-claude-code-abc".into(),
+                    target: "/opt/nandi-tools/claude-code".into(),
+                }],
             },
         );
         let joined = args.join(" ");
         assert!(joined.starts_with("run -i --rm --init --name nandi-harness-writer"));
+        assert!(joined.contains("-v nandi-tools-claude-code-abc:/opt/nandi-tools/claude-code:ro"));
         assert!(joined.contains("--cap-drop=ALL --security-opt=no-new-privileges"));
         assert!(joined.contains("--user=1000:1000 --read-only"));
         assert!(joined.contains("--tmpfs=/tmp:") && joined.contains("--tmpfs=/home/node:"));

@@ -10,7 +10,11 @@ name: Sandbox images
 #   :main          pushes to main that touch runtimes/
 #   :<X.Y.Z>       and :latest on a tag vX.Y.Z (the app version)
 #
-# The packages are public, so the app pulls them without logging in.
+# The packages are public, so the app pulls them without logging in. Users
+# never build them: the app pulls what an agent needs on first use.
+# nandi-harness carries no Claude Code (its licence doesn't clearly allow
+# redistribution): the app installs it on the user's computer on first use,
+# from the lockfile in runtimes/nandi-harness/claude-code/.
 # linux/amd64 only for now (arm64 under QEMU makes the harness build slow).
 on:
   push:
@@ -41,14 +45,10 @@ jobs:
             title: Nandi tool sandbox
             description: Where Nandi's own agents run their tools (an MCP tool server), and the egress relay
             licenses: Apache-2.0
-          # nandi-harness is not published yet: it bundles Claude Code, whose
-          # licence may not allow redistributing it in a public image. Until
-          # the owner decides, people build it locally (Settings › Models &
-          # runtimes › Build here). Re-add it here:
-          #   - name: nandi-harness
-          #     title: Nandi harness sandbox
-          #     description: Claude Code, Codex and Gemini CLI for Nandi agents. The bundled CLIs keep their own licences
-          #     licenses: Apache-2.0 AND LicenseRef-Bundled-CLIs
+          - name: nandi-harness
+            title: Nandi harness sandbox
+            description: Codex and Gemini CLI for Nandi agents; Claude Code is installed on first use, not bundled. The bundled CLIs keep their own licences
+            licenses: Apache-2.0
     steps:
       - uses: actions/checkout@v4
 

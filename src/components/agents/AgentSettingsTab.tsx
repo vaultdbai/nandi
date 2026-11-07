@@ -9,7 +9,10 @@ import { PermissionsPanel } from '@/components/agent-console/PermissionsPanel'
 import { AgentPolicies } from './AgentPolicies'
 import { AwsProfileField } from './AwsProfileField'
 import { AgentDelegationTab } from '@/components/agents/AgentDelegationTab'
-import { runtimeOptions } from '@/components/harness/runtime-options'
+import {
+  runtimeOptions,
+  runtimeUsable,
+} from '@/components/harness/runtime-options'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -397,7 +400,7 @@ function ModelSection({
     (harnesses.data ?? []).map(h => ({
       id: h.id,
       displayName: h.displayName,
-      installed: h.health.installed || h.imageAvailable,
+      installed: runtimeUsable(h),
     })),
     draft.runtime
   )

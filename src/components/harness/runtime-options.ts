@@ -21,23 +21,29 @@ export function runtimeOptions(
 
 /** One pill per runtime card */
 export type RuntimeStatus =
-  | 'ready'
-  | 'notFound'
-  | 'needsSandbox'
-  | 'needsSignIn'
-  | 'checking'
-  | 'couldntCheck'
+  'ready' | 'notFound' | 'needsSignIn' | 'checking' | 'couldntCheck'
+
+/**
+ * Whether agents can use a runtime. Nandi downloads the sandbox (and
+ * Claude Code) the first time an agent needs them, so Claude Code, Codex
+ * and Gemini CLI always can; a custom CLI must be on this computer or in
+ * the sandbox.
+ */
+export function runtimeUsable(
+  harness: Pick<HarnessInfo, 'id' | 'health' | 'imageAvailable'>
+): boolean {
+  if (!harness.id.startsWith('custom:')) return true
+  return harness.health.installed || harness.imageAvailable
+}
 
 /**
  * Agents run only in the sandbox container, so a runtime is ready when the
- * sandbox image is built and the sign-in reaches it. On this computer the
- * CLI is only where the user signs in.
+ * sign-in reaches it. The sandbox itself is downloaded on first use. On
+ * this computer the CLI is only where the user signs in.
  */
 export function runtimeStatus(harness: HarnessInfo): RuntimeStatus {
-  const { health } = harness
-  if (!health.installed && !harness.imageAvailable) return 'notFound'
-  if (!harness.imageAvailable) return 'needsSandbox'
-  return health.containerAuthenticated ? 'ready' : 'needsSignIn'
+  if (!runtimeUsable(harness)) return 'notFound'
+  return harness.health.containerAuthenticated ? 'ready' : 'needsSignIn'
 }
 
 /** `enterprise` → `Enterprise` */

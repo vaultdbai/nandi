@@ -335,6 +335,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             images::get_image_status,
             images::build_image,
             images::pull_image,
+            images::get_tools_status,
+            images::install_tools,
             harnesses::detect_harnesses,
             harnesses::get_harness_health,
             harnesses::test_harness,

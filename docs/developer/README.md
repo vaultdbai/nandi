@@ -49,18 +49,18 @@ Technical documentation for building and extending this app. These docs describe
 
 ## Data & Storage
 
-| Document                                                  | Description                                               |
-| --------------------------------------------------------- | --------------------------------------------------------- |
-| [Data Model](./data-model.md)                             | Gold copy (repo files) vs SQLite projection               |
-| [Reserved Conventions](./reserved-conventions.md)         | Model routing, inference agents, long-running containers  |
-| [Interaction Layer](./interaction-layer.md)               | Ask box, Studio split view, companion states, Work view   |
-| [Network and Reassignment](./network-and-reassignment.md) | Trust, task reassignment, manual steps, `.nandi/llm.yaml` |
-| [Harness Container](./harness-container.md)               | The harness image, session containers, LiteLLM gateway    |
-| [Runtime Routing](./runtime-routing.md)                   | `runtime:` in skill.md, native vs harness runs            |
-| [Sign-in](./sign-in.md)                                   | Company identity first, keys last; Claude Code for LLMs   |
-| [Domain Model](./domain-model.md)                         | Entities, value objects, aggregate, repos                 |
-| [Data Persistence](./data-persistence.md)                 | File storage patterns, atomic writes, SQLite              |
-| [External APIs](./external-apis.md)                       | HTTP API calls, authentication, caching                   |
+| Document                                                  | Description                                                |
+| --------------------------------------------------------- | ---------------------------------------------------------- |
+| [Data Model](./data-model.md)                             | Gold copy (repo files) vs SQLite projection                |
+| [Reserved Conventions](./reserved-conventions.md)         | Model routing, inference agents, long-running containers   |
+| [Interaction Layer](./interaction-layer.md)               | Ask box, Studio split view, companion states, Work view    |
+| [Network and Reassignment](./network-and-reassignment.md) | Trust, task reassignment, manual steps, `.nandi/llm.yaml`  |
+| [Harness Container](./harness-container.md)               | Pulling the images, the Claude Code tools volume, sessions |
+| [Runtime Routing](./runtime-routing.md)                   | `runtime:` in skill.md, native vs harness runs             |
+| [Sign-in](./sign-in.md)                                   | Company identity first, keys last; Claude Code for LLMs    |
+| [Domain Model](./domain-model.md)                         | Entities, value objects, aggregate, repos                  |
+| [Data Persistence](./data-persistence.md)                 | File storage patterns, atomic writes, SQLite               |
+| [External APIs](./external-apis.md)                       | HTTP API calls, authentication, caching                    |
 
 ## Quality & Tooling
 

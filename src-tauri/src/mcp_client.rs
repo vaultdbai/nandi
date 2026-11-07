@@ -208,7 +208,7 @@ mod tests {
     /// End-to-end against the real runtime image: container start on the
     /// internal network, MCP over `docker exec`, workdir confinement, and
     /// the sandbox: no way out but the relay, a read-only root, no keys.
-    /// Needs Docker and `ghcr.io/vaultdbai/nandi-runtime:sandbox-5` (pulled, or built from `runtimes/nandi-runtime`).
+    /// Needs Docker and `ghcr.io/vaultdbai/nandi-runtime:sandbox-6` (pulled on first use).
     /// Run with: cargo test runtime_e2e -- --ignored --nocapture
     #[tokio::test]
     #[ignore]

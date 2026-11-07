@@ -26,13 +26,14 @@ use crate::utils::nandi_config;
 /// Nandi's own sandbox images, as published to GitHub's container registry
 /// by `.github/workflows/images.yml` and pinned to this app's
 /// [`SANDBOX_VERSION`] (`sandbox-<version>`, never `latest`). The app pulls
-/// them when missing; a local build (Settings › Models & runtimes) tags the
-/// same name. The one place their names live.
+/// them when missing (`services::images::ensure`); the advanced local build
+/// tags the same name. The one place their names live.
 /// The tool server of Nandi's own agents (`runtimes/nandi-runtime`)
-pub const DEFAULT_RUNTIME_IMAGE: &str = "ghcr.io/vaultdbai/nandi-runtime:sandbox-5";
+pub const DEFAULT_RUNTIME_IMAGE: &str = "ghcr.io/vaultdbai/nandi-runtime:sandbox-6";
 /// The harness container (`runtimes/nandi-harness`): Node and the harness
-/// CLIs, nothing of Nandi's own
-pub const HARNESS_IMAGE: &str = "ghcr.io/vaultdbai/nandi-harness:sandbox-5";
+/// CLIs, nothing of Nandi's own. Claude Code is fetched on first use into a
+/// volume (`services::images::tools`)
+pub const HARNESS_IMAGE: &str = "ghcr.io/vaultdbai/nandi-harness:sandbox-6";
 /// Container limits when skill.md doesn't set `memory_mb` / `cpu`
 pub const DEFAULT_MEMORY_MB: u32 = 1024;
 pub const DEFAULT_CPU: f32 = 1.0;
@@ -119,7 +120,7 @@ pub async fn image_present(image: &str) -> Result<bool, String> {
 /// The `SANDBOX_LABEL` our Dockerfiles set. Raised when the containers
 /// need something new from the image (read-only root, stdio tools), so an
 /// image built for an older Nandi is rebuilt rather than half-working.
-pub const SANDBOX_VERSION: u32 = 5;
+pub const SANDBOX_VERSION: u32 = 6;
 pub const SANDBOX_LABEL: &str = "org.nandi.sandbox";
 
 /// Whether an image's labels say it was built for [`SANDBOX_VERSION`] or later
@@ -139,29 +140,21 @@ pub async fn start_container(
 ) -> Result<AgentContainer, String> {
     let docker = connect_docker()?;
     let image = skill.image.as_deref().unwrap_or(DEFAULT_RUNTIME_IMAGE);
-    let mut inspected = docker.inspect_image(image).await;
-    if inspected.is_err() && image == DEFAULT_RUNTIME_IMAGE {
-        // Missing: download it, with progress in Settings › Models & runtimes
-        crate::services::images::pull(crate::services::images::SandboxImage::Runtime).await?;
-        inspected = docker.inspect_image(image).await;
-    }
-    match inspected {
-        Err(_) if image == DEFAULT_RUNTIME_IMAGE => {
-            return Err(format!(
-                "The tool sandbox {image} isn't on this computer. Download or build it in \
-                 Settings › Models & runtimes"
-            ));
+    if image == DEFAULT_RUNTIME_IMAGE {
+        // Pulled when missing or older (progress on `images://pull`), and
+        // its sandbox label checked
+        crate::services::images::ensure(crate::services::images::SandboxImage::Runtime).await?;
+    } else {
+        match docker.inspect_image(image).await {
+            Err(_) => return Err(format!("Container image {image} not found locally")),
+            Ok(info) if !image_is_current(info.config.as_ref().and_then(|c| c.labels.as_ref())) => {
+                // Custom images build FROM nandi-runtime and inherit the label
+                return Err(format!(
+                    "Image {image} was built for an older Nandi and lacks its sandbox. Rebuild                      it FROM {DEFAULT_RUNTIME_IMAGE}"
+                ));
+            }
+            Ok(_) => {}
         }
-        Err(_) => return Err(format!("Container image {image} not found locally")),
-        Ok(info) if !image_is_current(info.config.as_ref().and_then(|c| c.labels.as_ref())) => {
-            // Custom images build FROM nandi-runtime and inherit the label
-            return Err(format!(
-                "Image {image} was built for an older Nandi and lacks its sandbox. Download \
-                 or rebuild it in Settings › Models & runtimes (a custom image: rebuild it \
-                 FROM {DEFAULT_RUNTIME_IMAGE})"
-            ));
-        }
-        Ok(_) => {}
     }
 
     let name = container_name(&skill.id);

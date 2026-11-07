@@ -4,7 +4,7 @@ A manual test that runs one full turn with a real DeepSeek model and a real runt
 
 ## Prerequisites
 
-1. Get the runtime image: Settings › Models & runtimes › Download (or `docker build -t ghcr.io/vaultdbai/nandi-runtime:sandbox-5 runtimes/nandi-runtime`)
+1. Get the runtime image: Settings › Models & runtimes › Download (or `docker build -t ghcr.io/vaultdbai/nandi-runtime:sandbox-6 runtimes/nandi-runtime`)
 2. Add a DeepSeek key in Nandi under **Settings → Models**. Launch Nandi once so `~/.nandi/local/state.db` exists and is migrated.
 3. Install the fixture **before launching Nandi** (agents found on disk get an orchestrator at startup):
 

@@ -6,7 +6,7 @@ Shared preconditions used below:
 
 - **App running**: the desktop app (`pnpm run tauri:dev` or a build), or the headless server for `api` tests. HTTP routes are under `/api` (`src-tauri/src/http/mod.rs`), authenticated with the server token.
 - **Model key**: a key for Anthropic, OpenAI or DeepSeek in Settings › Models & runtimes (OS keychain), or Ollama running, or the free trial. Without one, use the canned engine (`settings.engine = "canned"`, see `docs/developer/agent-runtime.md`).
-- **Docker + image**: Docker running and `ghcr.io/vaultdbai/nandi-runtime:sandbox-5` built from Settings › Models & runtimes → Tool sandbox → Build (RT-02; the image must carry `org.nandi.sandbox=5`), needed for any tool call. CLI-runtime agents also need `ghcr.io/vaultdbai/nandi-harness:sandbox-5` (Coding agents' sandbox).
+- **Docker + image**: Docker running and `ghcr.io/vaultdbai/nandi-runtime:sandbox-6` built from Settings › Models & runtimes → Tool sandbox → Build (RT-02; the image must carry `org.nandi.sandbox=5`), needed for any tool call. CLI-runtime agents also need `ghcr.io/vaultdbai/nandi-harness:sandbox-6` (Coding agents' sandbox).
 - **Agent**: an agent folder `~/.nandi/repo/.nandi/agents/<id>/skill.md`. The fixture `test-fixtures/echo-agent/skill.md` (`allowed shell`, `requires_approval: []`) is used in `docs/developer/e2e-checklist.md`.
 
 ## Agents list

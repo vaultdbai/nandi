@@ -267,6 +267,7 @@ mod tests {
             cpu: None,
             network: None,
             folders: Vec::new(),
+            tools: Vec::new(),
         }
     }
 

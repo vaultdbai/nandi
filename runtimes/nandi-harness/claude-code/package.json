@@ -1,0 +1,8 @@
+{
+  "name": "nandi-claude-code",
+  "private": true,
+  "description": "Claude Code for Nandi's sandbox: Anthropic's ACP adapter and the Claude Agent SDK, whose bundled CLI is Claude Code. Installed on first use into a nandi-tools volume with npm ci from this lockfile",
+  "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.93.0"
+  }
+}

@@ -274,8 +274,10 @@ describe('runtimeAuthMissing', () => {
     expect(
       runtimeAuthMissing(cli, [harness({ containerAuthenticated: true })])
     ).toBe(false)
-    // Nandi's own runtime, or a runtime this computer doesn't have
+    // Nandi's own runtime has no CLI sign-in
     expect(runtimeAuthMissing(overview(), [harness({})])).toBe(false)
-    expect(runtimeAuthMissing(cli, [harness({ installed: false })])).toBe(false)
+    // The sandbox downloads on first use, so a missing CLI here still
+    // needs a sign-in that reaches it
+    expect(runtimeAuthMissing(cli, [harness({ installed: false })])).toBe(true)
   })
 })

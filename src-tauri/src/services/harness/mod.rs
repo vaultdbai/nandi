@@ -84,7 +84,8 @@ pub struct HarnessInfo {
     pub default_model: Option<String>,
     pub supported_models: Vec<ModelRef>,
     pub detected_at: Option<Timestamp>,
-    /// The harness image is built, so sessions can run in a container
+    /// The harness image is here. When it isn't, the first run downloads
+    /// it (nothing is ever built)
     pub image_available: bool,
 }
 
@@ -709,9 +710,10 @@ impl HarnessService {
         let started = std::time::Instant::now();
         let health = self.health(harness_id).await?;
         let outcome = match self.get_adapter(harness_id).await {
-            Ok(adapter) if health.installed => {
-                adapter::test_session(adapter, self.test_config().await).await
-            }
+            Ok(adapter) if health.installed => match self.test_config(harness_id).await {
+                Ok(config) => adapter::test_session(adapter, config).await,
+                Err(error) => Err(HarnessError::Other(error)),
+            },
             Ok(_) => Err(HarnessError::NotInstalled(runtime.display_name())),
             Err(error) => Err(HarnessError::Other(error)),
         };
@@ -738,34 +740,35 @@ impl HarnessService {
 
 impl HarnessService {
     /// A throwaway session config: an empty temp folder, in the harness
-    /// container when its image is built, else on the host
-    async fn test_config(&self) -> HarnessConfig {
+    /// container (its image and tools fetched first, if they aren't here)
+    async fn test_config(&self, harness_id: &str) -> Result<HarnessConfig, String> {
+        use crate::services::images::{self, tools::ToolBundle, SandboxImage};
+        let tools = match ToolBundle::for_harness(harness_id) {
+            Some(bundle) => vec![images::tools::ensure(bundle).await?],
+            None => {
+                images::ensure(SandboxImage::Harness).await?;
+                Vec::new()
+            }
+        };
         let suffix = uuid::Uuid::new_v4().simple().to_string();
         let dir = std::env::temp_dir().join(format!("nandi-harness-test-{suffix}"));
         let _ = tokio::fs::create_dir_all(&dir).await;
-        let placement = if crate::runtime::image_present(HARNESS_IMAGE)
-            .await
-            .unwrap_or(false)
-        {
-            adapter::Placement::Container {
+        Ok(HarnessConfig {
+            working_dir: dir.clone(),
+            max_turns: 1,
+            placement: adapter::Placement::Container {
                 image: HARNESS_IMAGE.to_string(),
                 name: format!("nandi-harness-test-{}", &suffix[..12]),
-                host_workdir: dir.clone(),
+                host_workdir: dir,
                 memory_mb: None,
                 cpu: None,
                 network: None,
                 folders: Vec::new(),
-            }
-        } else {
-            adapter::Placement::Host
-        };
-        HarnessConfig {
-            working_dir: dir,
-            max_turns: 1,
-            placement,
+                tools,
+            },
             request_timeout: Some(std::time::Duration::from_secs(90)),
             ..HarnessConfig::default()
-        }
+        })
     }
 }
 

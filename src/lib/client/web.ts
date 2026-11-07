@@ -379,6 +379,8 @@ export const webClient: NandiClient = {
   getImageStatus: image => request('GET', `/images/${image}`),
   buildImage: image => request('POST', `/images/${image}/build`),
   pullImage: image => request('POST', `/images/${image}/pull`),
+  getToolsStatus: bundle => request('GET', `/tool-bundles/${bundle}`),
+  installTools: bundle => request('POST', `/tool-bundles/${bundle}/install`),
   // No companion window in a browser
   placeCompanion: () => Promise.resolve({ status: 'ok', data: null }),
   setCompanionBubble: () =>

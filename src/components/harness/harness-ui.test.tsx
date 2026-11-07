@@ -152,8 +152,8 @@ describe('HarnessCard', () => {
     )
   })
 
-  it('a harness that is neither installed nor in the image cannot be tested', () => {
-    render(<HarnessCard harness={harness('codex')} />)
+  it('a custom CLI that is neither here nor in the image cannot be tested', () => {
+    render(<HarnessCard harness={harness('custom:acme')} />)
     expect(screen.getByTestId('runtime-status')).toHaveTextContent(
       /not found|harness\.status\.notFound/i
     )
@@ -186,15 +186,22 @@ describe('HarnessCard', () => {
 })
 
 describe('runtimeStatus', () => {
-  it('is ready only when the sandbox can run and sign in', () => {
+  it('is ready when the sign-in reaches the sandbox, downloaded or not', () => {
     const signedInHere = harness(
       'claude-code',
       {},
       { installed: true, hostAuthenticated: true }
     )
-    expect(runtimeStatus(signedInHere)).toBe('needsSandbox')
+    expect(runtimeStatus(signedInHere)).toBe('needsSignIn')
+    // The sandbox downloads on first use: not having it yet is no problem
+    expect(runtimeStatus(claude)).toBe('ready')
     expect(runtimeStatus({ ...claude, imageAvailable: true })).toBe('ready')
-    expect(runtimeStatus(harness('codex'))).toBe('notFound')
+    expect(runtimeStatus(harness('codex'))).toBe('needsSignIn')
+    // Only a custom CLI has to be on this computer
+    expect(runtimeStatus(harness('custom:acme'))).toBe('notFound')
+    expect(runtimeStatus(harness('custom:acme', {}, { installed: true }))).toBe(
+      'needsSignIn'
+    )
   })
 })
 

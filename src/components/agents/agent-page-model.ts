@@ -12,6 +12,7 @@ import type {
   LlmKeyStatus,
   RunSummary,
 } from '@/lib/bindings'
+import { runtimeUsable } from '@/components/harness/runtime-options'
 import { KEYED_PROVIDERS, modelLabel, providersWithKeys } from '@/lib/models'
 import type { AgentInfo } from '@/types/agent'
 
@@ -71,9 +72,7 @@ export function runtimeAuthMissing(
 ): boolean {
   if (!overview || !isCliRuntime(overview.runtime)) return false
   const harness = harnesses?.find(h => h.id === overview.runtime)
-  if (!harness || (!harness.health.installed && !harness.imageAvailable)) {
-    return false
-  }
+  if (!harness || !runtimeUsable(harness)) return false
   return !harness.health.containerAuthenticated
 }
 

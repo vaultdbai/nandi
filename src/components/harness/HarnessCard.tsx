@@ -26,13 +26,13 @@ import { useAwsCredentials } from '@/hooks/useAwsAuth'
 import {
   authSummary,
   runtimeStatus,
+  runtimeUsable,
   type RuntimeStatus,
 } from './runtime-options'
 
 const PILL_CLASS: Record<RuntimeStatus, string> = {
   ready: 'text-success',
   notFound: 'text-muted-foreground',
-  needsSandbox: 'text-warning',
   needsSignIn: 'text-warning',
   checking: 'text-muted-foreground',
   couldntCheck: 'text-destructive',
@@ -52,7 +52,7 @@ export function RuntimeStatusPill({ status }: { status: RuntimeStatus }) {
         <CircleCheck />
       ) : status === 'couldntCheck' ? (
         <CircleX />
-      ) : status === 'needsSignIn' || status === 'needsSandbox' ? (
+      ) : status === 'needsSignIn' ? (
         <TriangleAlert />
       ) : null}
       {t(`harness.status.${status}`)}
@@ -92,7 +92,7 @@ export function HarnessCard({
 }) {
   const { t } = useTranslation()
   const { health } = harness
-  const usable = health.installed || harness.imageAvailable
+  const usable = runtimeUsable(harness)
   const status = runtimeStatus(harness)
   const auth = authSummary(health.auth)
   const bedrockProfile =
@@ -121,7 +121,7 @@ export function HarnessCard({
             ? t('harness.card.notInstalled', { name: harness.displayName })
             : harness.imageAvailable
               ? t('harness.card.runsInSandbox')
-              : t('harness.card.noSandbox')}
+              : t('harness.card.sandboxOnFirstUse')}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-1.5 text-sm">
@@ -165,7 +165,7 @@ export function HarnessCard({
             </code>
           </p>
         )}
-        {harness.imageAvailable && (
+        {usable && (
           <div
             data-testid="harness-container-auth"
             className="flex flex-wrap items-center gap-1.5"

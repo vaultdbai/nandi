@@ -33,6 +33,7 @@ use crate::services::harness::{
     evidence, gateway, HarnessErrorEvent, HarnessService, HarnessSessionStatus,
     HarnessTurnFinished, SessionMeta, HARNESS_IMAGE,
 };
+use crate::services::images::tools::VolumeMount;
 use crate::services::orchestrator::middleware::TurnPolicy;
 use crate::services::{events, AppState};
 
@@ -45,10 +46,25 @@ const TOOL_KINDS: &[(&str, &[&str])] = &[
     ("fetch", &["fetch"]),
 ];
 
+/// The harness sandbox for a run: ready, with the tool volumes the harness
+/// mounts (Claude Code's, `images::tools`), or why it isn't
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Sandbox {
+    Ready(Vec<VolumeMount>),
+    Unavailable(String),
+}
+
+impl Default for Sandbox {
+    fn default() -> Self {
+        Self::Ready(Vec::new())
+    }
+}
+
 /// What a run needs to know about the machine to pick a runtime
 #[derive(Debug, Clone, Default)]
 pub struct RouterInputs {
-    pub image_available: bool,
+    /// The harness image and this harness's tool volumes
+    pub sandbox: Sandbox,
     /// The default harness's model, when it's this harness
     pub default_model: Option<String>,
     /// The agent's workdir on the host
@@ -208,13 +224,10 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         }
     };
     let harness_id = runtime.as_str().into_owned();
-    if !inputs.image_available {
-        return fallback(format!(
-            "The harness image {HARNESS_IMAGE} isn't on this computer, or is from an older \
-             Nandi. Download or build it in Settings › Models & runtimes; Nandi has started \
-             the download"
-        ));
-    }
+    let tools = match &inputs.sandbox {
+        Sandbox::Ready(tools) => tools.clone(),
+        Sandbox::Unavailable(reason) => return fallback(reason.clone()),
+    };
     let placement = Placement::Container {
         image: HARNESS_IMAGE.to_string(),
         name: container_name(agent.id().as_str()),
@@ -224,6 +237,7 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         // Internal: its way out is the egress relay (`HTTPS_PROXY` below)
         network: Some(crate::services::egress::relay::AGENT_NETWORK.to_string()),
         folders: inputs.folders.clone(),
+        tools,
     };
     let mut credentials = inputs.credentials;
     let mut env: std::collections::HashMap<String, String> =
@@ -462,7 +476,7 @@ pub async fn resolve_runtime(app: &AppState, agent: &Agent) -> RuntimeDecision {
     plan(
         agent,
         RouterInputs {
-            image_available: harness_image_ready().await,
+            sandbox: sandbox_ready(&harness_id).await,
             default_model,
             workdir,
             credentials,
@@ -550,17 +564,20 @@ fn has_secret(credentials: &HarnessCredentials) -> bool {
 /// keys for Anthropic (only when Claude Code has no sign-in of its own)
 /// and OpenAI; the repo's Azure endpoint.
 /// Nothing for providers the CLI signs into itself.
-/// Whether the harness image is here and current. When Docker answers and
-/// it isn't, its download starts in the background (Settings › Models &
-/// runtimes shows the progress).
-async fn harness_image_ready() -> bool {
-    match crate::runtime::image_present(HARNESS_IMAGE).await {
-        Ok(true) => true,
-        Ok(false) => {
-            crate::services::images::start_pull(crate::services::images::SandboxImage::Harness);
-            false
-        }
-        Err(_) => false,
+/// Gets the harness sandbox ready for `harness_id`, waiting for it: the
+/// image (pulled when missing, progress on `images://pull`), then its tool
+/// volume on first use (Claude Code, progress on `images://tools`)
+async fn sandbox_ready(harness_id: &str) -> Sandbox {
+    use crate::services::images::{self, tools::ToolBundle, SandboxImage};
+    let ready = match ToolBundle::for_harness(harness_id) {
+        Some(bundle) => images::tools::ensure(bundle).await.map(|mount| vec![mount]),
+        None => images::ensure(SandboxImage::Harness)
+            .await
+            .map(|()| Vec::new()),
+    };
+    match ready {
+        Ok(tools) => Sandbox::Ready(tools),
+        Err(reason) => Sandbox::Unavailable(reason),
     }
 }
 
@@ -856,7 +873,7 @@ mod tests {
 
     fn inputs() -> RouterInputs {
         RouterInputs {
-            image_available: true,
+            sandbox: Sandbox::default(),
             workdir: PathBuf::from("/work/writer"),
             ..RouterInputs::default()
         }
@@ -1032,7 +1049,8 @@ mod tests {
     #[test]
     fn an_unavailable_harness_falls_back_only_when_asked() {
         let mut missing = inputs();
-        missing.image_available = false;
+        missing.sandbox =
+            Sandbox::Unavailable(format!("Couldn't download {HARNESS_IMAGE} (offline)"));
         let strict = agent("runtime: codex\n");
         assert!(matches!(
             plan(&strict, missing.clone()),
@@ -1408,5 +1426,130 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(session_status, "failed");
+    }
+
+    /// The run's plan for `harness_id` on this machine's sandbox, as a run
+    /// gets it, in a throwaway workdir on Docker's default network
+    async fn live_plan(harness_id: &str, workdir: &std::path::Path) -> HarnessPlan {
+        let Sandbox::Ready(tools) = sandbox_ready(harness_id).await else {
+            panic!("the {harness_id} sandbox isn't ready");
+        };
+        let mut inputs = inputs();
+        inputs.sandbox = Sandbox::Ready(tools);
+        inputs.workdir = workdir.to_path_buf();
+        let mut plan = harness_plan(plan(
+            &agent(&format!(
+                "runtime: {harness_id}
+"
+            )),
+            inputs,
+        ));
+        if let Placement::Container { network, name, .. } = &mut plan.config.placement {
+            *network = None;
+            *name = format!("nandi-harness-live-{harness_id}");
+        }
+        plan.config.working_dir = workdir.to_path_buf();
+        plan
+    }
+
+    /// No sign-in of this computer's reaches the container
+    fn signed_out() -> DetectEnv {
+        DetectEnv {
+            home: tempfile::tempdir().unwrap().keep(),
+            path: None,
+            vars: HashMap::new(),
+        }
+    }
+
+    /// Live (Docker and the harness image): the first Claude Code run
+    /// installs it into its volume, a second run reuses it, and the CLI
+    /// starts in the container with the volume mounted read-only.
+    /// `cargo test --lib first_use_claude_code_live -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn first_use_claude_code_live() {
+        use crate::services::harness::claude_code::ClaudeCodeAdapter;
+        use crate::services::images::tools::{self, ToolBundle};
+        let bundle = ToolBundle::ClaudeCode;
+        // A fresh machine: no tools volume
+        let _ = tokio::process::Command::new("docker")
+            .args(["volume", "rm", "-f", &bundle.volume()])
+            .status()
+            .await;
+        tools::forget(bundle);
+        let first = std::time::Instant::now();
+        let workdir = tempfile::tempdir().unwrap();
+        let plan = live_plan("claude-code", workdir.path()).await;
+        println!("first use: Claude Code installed in {:?}", first.elapsed());
+        let installed = tools::status(bundle).await;
+        assert!(installed.ready, "{installed:?}");
+        println!(
+            "install log tail: {:?}",
+            installed.log.iter().rev().take(3).collect::<Vec<_>>()
+        );
+        let Placement::Container { tools: mounts, .. } = &plan.config.placement else {
+            panic!("runs in the container");
+        };
+        assert_eq!(mounts, &vec![bundle.mount()]);
+        let args = crate::services::harness::adapter::docker_args(
+            &crate::services::harness::adapter::Invocation::new("claude-agent-acp", &[]),
+            &[],
+            &plan.config.placement,
+        );
+        assert!(args.contains(&format!(
+            "{}:/opt/nandi-tools/claude-code:ro",
+            bundle.volume()
+        )));
+
+        // The next app start: checked, not installed again
+        tools::forget(bundle);
+        let second = std::time::Instant::now();
+        live_plan("claude-code", workdir.path()).await;
+        let reused = tools::status(bundle).await;
+        println!("second run: reused the volume in {:?}", second.elapsed());
+        assert!(reused.ready && reused.log.is_empty(), "{reused:?}");
+        assert!(second.elapsed() < std::time::Duration::from_secs(30));
+
+        // The CLI starts in the sandbox (no sign-in: as far as that goes)
+        let adapter = ClaudeCodeAdapter::with_env(signed_out());
+        let outcome =
+            crate::services::harness::adapter::test_session(Box::new(adapter), plan.config).await;
+        println!("Claude Code in the sandbox: {outcome:?}");
+        assert!(
+            !matches!(
+                &outcome,
+                Err(HarnessError::NotInstalled(_) | HarnessError::Spawn(_))
+            ),
+            "{outcome:?}"
+        );
+    }
+
+    /// Live: a Codex run needs no extra step (it's in the image)
+    /// `cargo test --lib codex_runs_with_no_extra_step_live -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn codex_runs_with_no_extra_step_live() {
+        use crate::services::harness::codex::CodexAdapter;
+        let workdir = tempfile::tempdir().unwrap();
+        let started = std::time::Instant::now();
+        let plan = live_plan("codex", workdir.path()).await;
+        let Placement::Container { tools, .. } = &plan.config.placement else {
+            panic!("runs in the container");
+        };
+        assert!(tools.is_empty(), "Codex mounts nothing extra");
+        let adapter = CodexAdapter::with_env(signed_out());
+        let outcome =
+            crate::services::harness::adapter::test_session(Box::new(adapter), plan.config).await;
+        println!(
+            "Codex in the sandbox after {:?}: {outcome:?}",
+            started.elapsed()
+        );
+        assert!(
+            !matches!(
+                &outcome,
+                Err(HarnessError::NotInstalled(_) | HarnessError::Spawn(_))
+            ),
+            "{outcome:?}"
+        );
     }
 }

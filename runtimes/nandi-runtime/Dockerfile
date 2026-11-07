@@ -3,11 +3,11 @@
 # The image also carries the egress relay (relay.py) for the nandi-egress
 # container.
 #
-# Build: docker build -t ghcr.io/vaultdbai/nandi-runtime:sandbox-5 runtimes/nandi-runtime (or pull it)
+# Build: docker build -t ghcr.io/vaultdbai/nandi-runtime:sandbox-6 runtimes/nandi-runtime (or pull it)
 FROM python:3.12-slim
 
 # Checked by the app before it starts a container (runtime.rs SANDBOX_VERSION)
-LABEL org.nandi.sandbox="5"
+LABEL org.nandi.sandbox="6"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
