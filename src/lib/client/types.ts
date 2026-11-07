@@ -72,6 +72,7 @@ import type {
   EgressStatus,
   ForkedAgent,
   GitStatus,
+  HandOverAnswer,
   InstalledAgentInfo,
   InstalledItem,
   InstalledPackInfo,
@@ -261,6 +262,11 @@ export interface NandiClient {
     agentId: string,
     approvalId: string,
     decision: ApprovalDecision
+  ): Promise<Result<null, string>>
+  /** Answers a browser hand-over (`pilots::handover`), whichever agent's */
+  answerHandOver(
+    approvalId: string,
+    answer: HandOverAnswer
   ): Promise<Result<null, string>>
   /** Every agent's pending tool approvals, oldest first */
   listPendingApprovals(): Promise<Result<PendingApproval[], string>>

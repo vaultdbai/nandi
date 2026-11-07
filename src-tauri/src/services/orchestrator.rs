@@ -1593,12 +1593,14 @@ async fn agent_pilot_tools(deps: &RunDeps, agent_id: &str, step_index: u32) -> P
         _ => return PilotToolset::default(),
     };
     let mut set = pilots::tools::for_agent(&deps.bus, &agent).await;
-    // Pilots a policy took away (`services::policies`)
-    let allowed = deps
+    // Pilots a policy took away, and browser controls it refuses
+    // (`services::policies`)
+    let (allowed, refusals) = deps
         .store
         .skill(agent_id)
-        .map(|s| s.pilots)
+        .map(|s| (s.pilots, s.browser_refusals))
         .unwrap_or_default();
+    set.set_refusals(refusals);
     set.tools.retain(|tool| {
         pilots::tools::parse_tool_name(&tool.name)
             .is_some_and(|(pilot, _)| allowed.iter().any(|p| p == pilot))
@@ -1942,6 +1944,10 @@ async fn run_call(
         match approval.map(|a| a.status) {
             None => {
                 bus.approval_request(ctx, call).await?;
+                // The person finishes a hand-over in the browser: show it
+                if pilots::handover::is_hand_over(&call.tool) {
+                    pilots::handover::bring_forward(&ctx.agent_id).await;
+                }
                 return Ok(false);
             }
             Some(ApprovalStatus::Pending) => return Ok(false),
@@ -2099,7 +2105,7 @@ async fn execute_tool(
             return Ok(unavailable("a policy doesn't allow this pilot"));
         }
         let agent = deps.store.agent(&ctx.agent_id)?;
-        return Ok(pilots::tools::call(&deps.bus, &agent, &call.tool, &call.args).await);
+        return Ok(pilots::tools::call(&deps.bus, &agent, &call.id, &call.tool, &call.args).await);
     }
     if let Some(outcome) = connector_call(connector_registry(deps), deps, ctx, call).await {
         return Ok(outcome);

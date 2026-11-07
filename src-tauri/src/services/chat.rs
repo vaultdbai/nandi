@@ -13,6 +13,7 @@ use crate::model::{
 };
 use crate::services::harness::approvals as harness_approvals;
 use crate::services::orchestrator::{OrchestratorCommand, Orchestrators, RunSource, TurnRequest};
+use crate::services::pilots::handover::{self, HandOverAnswer, HandOverOutcome};
 use crate::services::{a2a, agents, attachments, AppState};
 
 const MAX_MESSAGE_CHARS: usize = 100_000;
@@ -232,6 +233,35 @@ pub async fn approve_action(
             },
         )
         .await
+}
+
+/// Answers a hand-over (`pilots::handover`): Done and Changed it approve
+/// the call, with the final text kept for its result; Skip rejects it.
+pub async fn answer_hand_over(
+    state: &AppState,
+    approval_id: String,
+    answer: HandOverAnswer,
+) -> Result<(), String> {
+    let answer = handover::validate(answer)?;
+    let id = approval_id.clone();
+    let approval = state
+        .db()
+        .call(move |conn| db::get_approval(conn, &id))
+        .await?
+        .ok_or("Approval not found")?;
+    if !handover::is_hand_over(&approval.tool) {
+        return Err("This approval isn't a hand-over".to_string());
+    }
+    let decision = match answer.outcome {
+        HandOverOutcome::Skipped => ApprovalDecision::Rejected,
+        HandOverOutcome::Done | HandOverOutcome::Changed => ApprovalDecision::Approved,
+    };
+    handover::record(&approval.tool_call_id, answer);
+    let decided = approve_action(state, Some(&approval.agent_id), approval_id, decision).await;
+    if decided.is_err() {
+        handover::take(&approval.tool_call_id);
+    }
+    decided
 }
 
 /// The local user, by the name in NANDI.md (else their slug, else "you")

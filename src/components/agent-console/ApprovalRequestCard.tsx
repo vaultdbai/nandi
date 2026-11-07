@@ -25,6 +25,7 @@ import {
   approvalPlan,
   approvalSummary,
   delegateWho,
+  isHandOver,
   minutes,
 } from '@/components/inbox/approval-model'
 import { useNetworkSnapshot } from '@/hooks/useNetwork'
@@ -38,6 +39,7 @@ import {
 } from '@/components/connectors/access-model'
 import { AccessRequestCard } from '@/components/connectors/AccessRequestCard'
 import { formatJson } from './format-json'
+import { HandOverCard } from './HandOverCard'
 
 type ApprovalRequestMessage = Extract<ChatMessage, { kind: 'approval' }>
 
@@ -70,6 +72,17 @@ interface ApprovalRequestCardProps {
  */
 export function ApprovalRequestCard(props: ApprovalRequestCardProps) {
   const { message } = props
+  // A hand-over is the person finishing a page, not a yes or no
+  if (isHandOver(message.tool)) {
+    return (
+      <HandOverCard
+        message={message}
+        agentName={props.agentName}
+        canAnswer={props.onDecide !== undefined}
+        className={props.className}
+      />
+    )
+  }
   const access =
     message.tool === ACCESS_TOOL ? parseAccessRequest(message.args) : null
   if (access) {

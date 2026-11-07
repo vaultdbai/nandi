@@ -13,6 +13,7 @@ import type {
   Result,
   SendMessageResult,
 } from '@/lib/tauri-bindings'
+import type { HandOverAnswer } from '@/lib/bindings'
 import { loadAgent, loadConversation } from '@/lib/agent-sync'
 import { useAgentStore } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
@@ -148,6 +149,19 @@ export async function decideApproval(
   decision: 'approved' | 'rejected'
 ): Promise<boolean> {
   const result = await client.approveAction(agentId, approvalId, decision)
+  if (result.status === 'error') {
+    toast.error(result.error)
+    return false
+  }
+  return true
+}
+
+/** Answers a browser hand-over: done, skipped, or changed with the text */
+export async function answerHandOver(
+  approvalId: string,
+  answer: HandOverAnswer
+): Promise<boolean> {
+  const result = await client.answerHandOver(approvalId, answer)
   if (result.status === 'error') {
     toast.error(result.error)
     return false

@@ -77,6 +77,20 @@ Before a navigation, Nandi checks the URL against the same rules and refuses wit
 
 The arbitrary-code tools (`browser_evaluate`, `browser_run_code_unsafe`) are never offered.
 
+**Hand-over** (`pilots/handover.rs`). The visible `browser` also offers `browser_hand_over {site, summary, draft}`, Nandi's own tool, for "prepare, a person finishes" (posting on social sites, sending a form the agent may not submit):
+
+| Step      | What happens                                                                                                                                                                                               |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Asking    | Always an approval (`Action::HandOver`; skill.md can't allow it), kept 24 h (`handover::TTL_MS`). `run_call` brings the window forward (`browser::bring_to_front`: the current tab, `browser_tabs select`) |
+| Answering | `answer_hand_over(approval_id, {outcome, finalText})` / `POST /api/approvals/{id}/hand-over`: Done and Changed approve, Skip rejects. `HandOverCard` in every approval surface                             |
+| Result    | `tools::call` answers it with `handover::result`: what the person did, and the final text for Changed. A plain Approve counts as Done                                                                      |
+
+✅ Fill the composer, then `browser_hand_over`. ❌ Click Post, press Enter or Ctrl+Enter to send.
+
+**Refused controls** (`pilots/refusal.rs`, policy `browser.refuse`, see `domain/browser_rule.rs`). Before a click, key, typing, form, dialog, drag or upload, when a policy refuses controls for the agent, Nandi asks the page: `browser_snapshot {target, depth: 1}` gives the URL and the control's own `role "name"`; with no target, the tab list gives the URL. A rule refuses by site, then by the control's name (clicks and drags only; fields are never controls) or by kind (the classifier above; Enter and Ctrl+Enter are submits). The agent's description can add to a refusal, never exempt one: only the page's name matches `except`. The last URL each browser showed (`PAGES`) decides before a call runs whether it's refused, so a refused call isn't put to the person for approval first; if the page changed in between and the call needs approval, it's refused with "the page changed". Refusals go to `decisions.log` as `browser controls`.
+
+Packs can ship such policies for their own agents (`policies/<id>.md`; the installer refuses any other target). They load from the vendored pack as `<pack>/<id>` and aren't editable. Nandi Social's `social-posting` policy is the example.
+
 **skill.md:** a `pilots:` item can be a mapping:
 
 ```yaml

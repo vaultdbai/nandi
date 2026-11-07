@@ -112,6 +112,8 @@ export const webClient: NandiClient = {
   createStudioConversation: () => request('POST', '/studio/conversations'),
   approveAction: (agentId, approvalId, decision) =>
     request('POST', `/agents/${id(agentId)}/approve`, { approvalId, decision }),
+  answerHandOver: (approvalId, answer) =>
+    request('POST', `/approvals/${id(approvalId)}/hand-over`, answer),
   listPendingApprovals: () => request('GET', '/approvals/pending'),
   cancelTurn: (agentId, turnId) =>
     request('POST', `/agents/${id(agentId)}/cancel`, { turnId }),

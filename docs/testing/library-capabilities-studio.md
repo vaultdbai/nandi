@@ -619,6 +619,18 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **Needs relay:** no
 - **Status:** Shipped
 
+### CP-36 — Browser hand-over: the agent prepares, a person publishes
+
+- **What:** The visible `browser` pilot offers `browser_hand_over` (Nandi's, not Playwright's). The agent calls it after filling a composer or form. It always waits for the person, whatever skill.md allows: an Inbox item "Your turn: review and post" with the site, summary and draft, waiting up to 24 hours (not 1), and Nandi brings the browser window to the front. The person presses Post themselves, then answers **Done** (approves), **Skip** (rejects) or **Changed it** with the final text (approves; the text is the call's result). The answer is the tool's result on the run.
+- **Where:** `services/pilots/handover.rs`; `browser.rs` (`tools`, `bring_to_front`, `Action::HandOver`); `tools.rs` (`call`); `orchestrator.rs` `run_call` (bring forward); `events.rs` `approval_request` (TTL); `chat.rs` `answer_hand_over`; command `answer_hand_over`, `POST /api/approvals/{id}/hand-over`; UI `HandOverCard.tsx` (inside `ApprovalRequestCard`, so chat, Run Detail, the Inbox and Requests show it).
+- **Preconditions:** CP-09 for an agent with `pilots: [browser]`; Chrome or Edge.
+- **Steps:** 1. Ask the agent to fill a form and hand over. 2. Check the window comes forward and the Inbox card. 3. Answer Changed it with new text. 4. Repeat and answer Skip.
+- **Expected:** 1-2. Card with draft, Done / Skip / Changed it, "Waits up to 24 h more"; no Approve / Reject. 3. The run's tool result: "The person changed it and published it … What went out: <text>". 4. "Rejected": the agent says nothing was published.
+- **Edge / negative cases:** Changed it with empty text is refused ("Paste the text that went out"). Answering an approval that isn't a hand-over is refused. A plain Approve (e.g. from the companion window) counts as Done. The final text crosses from the answer to the call in memory: a crash in that moment makes it Done. On Windows the OS may flash the browser's taskbar button instead of raising it.
+- **Automation:** Covered by: Rust `pilots/handover.rs` (4), `pilots/tests.rs` `a_hand_over_waits_for_the_person_and_takes_their_answer`, `pilots/tools.rs` (hand-over always asks); `HandOverCard.test.tsx` (4), `web.test.ts` | Layer: unit + integration (canned engine) | Gap: a real browser window coming forward (manual; mock composer run in the social pack's test report).
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## Capabilities
 
 ### CP-11 — Capabilities list (Network › Sharing › Capabilities)

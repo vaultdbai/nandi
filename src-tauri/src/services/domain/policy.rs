@@ -10,6 +10,7 @@
 //! models: { allow: ["claude:*"] }
 //! connectors: { allow: [github], run_on_host: [], forbid: [gmail, "tracker:write"], ask: [outlook] }
 //! pilots: { allow: [] }
+//! browser: { refuse: [{ controls: [post], sites: [linkedin.com] }] }
 //! ---
 //! Why this exists, in plain words. Never grants anything.
 //! ```
@@ -28,6 +29,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use super::agent::split_frontmatter;
+use super::browser_rule::{BrowserRules, ControlRule};
 use super::capability::{split_port, AwsGrant, AwsPolicy, HostRule, NetworkPolicy};
 use super::{DomainError, DomainResult};
 
@@ -42,6 +44,7 @@ pub const POLICY_KEYS: &[&str] = &[
     "connectors",
     "run_on_host",
     "pilots",
+    "browser",
 ];
 
 /// The rule blocks a policy can carry (a file with any of them must say
@@ -54,6 +57,7 @@ const RULE_KEYS: &[&str] = &[
     "models",
     "connectors",
     "pilots",
+    "browser",
 ];
 
 /// One `.nandi/policies/<id>.md`
@@ -174,6 +178,8 @@ pub struct Rules {
     pub models: Option<AllowList>,
     pub connectors: Option<ConnectorRules>,
     pub pilots: Option<AllowList>,
+    /// Controls a browser pilot may not use ([`super::browser_rule`])
+    pub browser: Option<BrowserRules>,
 }
 
 #[derive(Deserialize)]
@@ -194,6 +200,8 @@ struct Frontmatter {
     connectors: Option<ConnectorRules>,
     #[serde(default)]
     pilots: Option<AllowList>,
+    #[serde(default)]
+    browser: Option<BrowserRules>,
     /// Notes (`name`, `description`, …): kept in the file, not enforced
     #[serde(flatten)]
     _notes: BTreeMap<String, serde_yaml::Value>,
@@ -229,6 +237,10 @@ impl Policy {
                 .transpose()?,
             connectors: front.connectors,
             pilots: front.pilots,
+            browser: front
+                .browser
+                .map(|browser| browser.validated(id))
+                .transpose()?,
         };
         let applies_to = front
             .applies_to
@@ -276,6 +288,16 @@ impl Policy {
         !self.applies_to.is_empty()
     }
 
+    /// Whether it has rules, and names only these agents, exactly (what a
+    /// pack may ship: rules for its own agents)
+    pub fn only_for(&self, agents: &[&str]) -> bool {
+        self.is_enforced()
+            && self
+                .applies_to
+                .iter()
+                .all(|target| matches!(target, Target::Agent(p) if agents.contains(&p.as_str())))
+    }
+
     /// Whether it applies to `subject`
     pub fn applies(&self, subject: &Subject) -> bool {
         self.applies_to.iter().any(|target| target.matches(subject))
@@ -292,6 +314,7 @@ impl Rules {
             "models" => self.models.is_some(),
             "connectors" => self.connectors.is_some(),
             "pilots" => self.pilots.is_some(),
+            "browser" => self.browser.is_some(),
             _ => false,
         }
     }
@@ -644,7 +667,17 @@ pub struct Effective {
     /// Connector rules that ask every time, with their policy
     pub connector_ask: Vec<(String, String)>,
     pub pilots: Vec<String>,
+    /// Every applying `browser.refuse` rule, with its policy
+    pub browser_refusals: Vec<Refusal>,
     pub changes: Vec<Change>,
+}
+
+/// A `browser.refuse` rule and the policy it's from
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refusal {
+    pub rule: ControlRule,
+    /// The policy's id
+    pub by: String,
 }
 
 impl Effective {
@@ -846,6 +879,19 @@ fn apply(out: &mut Effective, policy: &Policy, request: &Request) {
             change(format!("pilot {pilot}"), Outcome::Removed);
         }
         out.pilots = kept;
+    }
+
+    if let Some(browser) = &rules.browser {
+        for rule in &browser.refuse {
+            change(
+                "browser controls".to_string(),
+                Outcome::Narrowed(format!("refuses {}", rule.describe())),
+            );
+            out.browser_refusals.push(Refusal {
+                rule: rule.clone(),
+                by: policy.id.clone(),
+            });
+        }
     }
 
     // Last: only connectors still allowed may run on the host
@@ -1223,6 +1269,46 @@ connectors: { forbid: [gmail, 'tracker:write'], ask: ['outlook*'] }",
             "read"
         ));
         assert!(!connector_rule_matches("gmail", "outlook", "read"));
+    }
+
+    #[test]
+    fn browser_refusals_add_up_and_keep_the_pilot() {
+        let social = policy(
+            "social",
+            "applies_to: [agent:a]\nbrowser:\n  refuse:\n    - { controls: [post], sites: [x.com], say: Hand over. }\n    - { controls: [like] }",
+        );
+        let company = policy(
+            "company",
+            "applies_to: ['*']\nbrowser: { refuse: [{ kinds: [pay] }] }",
+        );
+        let e = effective(&request(), &subject("a"), &[social.clone(), company]);
+        assert_eq!(
+            e.pilots,
+            ["browser"],
+            "a refusal narrows, it doesn't remove"
+        );
+        let by: Vec<&str> = e.browser_refusals.iter().map(|r| r.by.as_str()).collect();
+        assert_eq!(by, ["company", "social", "social"]);
+        assert_eq!(
+            e.browser_refusals[1].rule.say.as_deref(),
+            Some("Hand over.")
+        );
+        assert!(e.changes.iter().any(|c| c.item == "browser controls"
+            && c.outcome == Outcome::Narrowed("refuses post on x.com".into())));
+        assert!(effective(&request(), &subject("b"), &[social])
+            .browser_refusals
+            .is_empty());
+        // Rules need a target, like every other block
+        assert!(Policy::parse(
+            "x",
+            "---\nbrowser: { refuse: [{ controls: [post] }] }\n---\n"
+        )
+        .is_err());
+        assert!(Policy::parse(
+            "x",
+            "---\napplies_to: ['*']\nbrowser: { refuse: [{ sites: [x.com] }] }\n---\n"
+        )
+        .is_err());
     }
 
     #[test]

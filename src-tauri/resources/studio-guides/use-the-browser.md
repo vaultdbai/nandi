@@ -26,6 +26,12 @@ pilots:
 - `values` are plain values the agent may type (it reads them).
 - `secrets` are keychain entries: the agent types the name and the browser fills in the value. The user saves the value on the agent's Permissions tab. Never put a password in skill.md.
 
+## Hand over the last click
+
+When a person must make the final click (posting on a social site, sending a form the agent may not submit), the agent fills the page and calls `pilot_browser__browser_hand_over` with `site`, a one-line `summary` and the `draft` it typed. Only the visible Browser has it. Nandi brings the window forward and asks the user; they press the button themselves and answer Done, Skip or Changed it (with the final text), which is the call's result. Tell the agent to record that answer.
+
+A policy can refuse controls outright (`browser: { refuse: [{ controls: [post], sites: [linkedin.com], say: ... }] }`): the agent is told why and should hand over instead of looking for another way.
+
 ## Writing the instructions
 
 Say the steps in order: open the page, what to click, what to read, what to screenshot. The browser works from the page's accessibility tree, so name controls by their visible label ("the Sign in button", "the Email field"). Ask for a screenshot of the result; it is saved with the run's files.

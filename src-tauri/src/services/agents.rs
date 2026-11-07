@@ -129,6 +129,8 @@ pub struct SkillConfig {
     pub connectors_on_host: Vec<String>,
     /// The pilots it may use (`pilots:`, narrowed)
     pub pilots: Vec<String>,
+    /// Controls its browser pilots may not use (policies' `browser.refuse`)
+    pub browser_refusals: Vec<domain::policy::Refusal>,
     /// The policies that applied (`services::policies`)
     pub policies: Vec<String>,
     /// Every applying `models.allow` with its policy; a coding agent's CLI
@@ -165,6 +167,7 @@ impl SkillConfig {
                 .iter()
                 .map(|p| p.as_str().to_string())
                 .collect(),
+            browser_refusals: Vec::new(),
             policies: Vec::new(),
             model_rules: Vec::new(),
             connector_forbid: Vec::new(),

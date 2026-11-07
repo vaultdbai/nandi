@@ -18,13 +18,14 @@ use std::time::Instant;
 use serde_json::Value;
 
 use super::audit::{self, PilotAuditEntry};
-use super::browser;
 use super::mcp::PilotSession;
 use super::store::{self, PersistedPilot};
+use super::{browser, handover};
 use super::{catalog, runtime, PilotDefinition};
 use crate::db::Db;
 use crate::engine::ToolOutcome;
 use crate::llm::ToolSpec;
+use crate::services::domain::policy::Refusal;
 use crate::services::domain::Agent;
 use crate::services::events::EventBus;
 
@@ -142,6 +143,10 @@ pub struct PilotToolset {
     read_only: HashSet<String>,
     /// Browser pilots the agent uses, with what its skill.md allows
     browsers: std::collections::HashMap<String, BrowserRules>,
+    /// The agent these tools are for
+    agent: String,
+    /// Controls its policies refuse in a browser (`browser.refuse`)
+    refusals: Vec<Refusal>,
     /// One per declared pilot that isn't usable (for `agent://warning`)
     pub warnings: Vec<String>,
     /// For the system prompt: what each browser may type (skill.md's
@@ -161,11 +166,17 @@ struct BrowserRules {
 }
 
 impl PilotToolset {
+    /// The agent's `browser.refuse` rules (from its narrowed skill.md)
+    pub fn set_refusals(&mut self, refusals: Vec<Refusal>) {
+        self.refusals = refusals;
+    }
+
     /// Every pilot tool needs approval unless its pilot marks it read-only.
     /// A browser decides per call: reading and moving between allowed
     /// pages don't ask; the rest asks unless skill.md allows it
-    /// (`browser::needs_approval`). A pilot-shaped name the set doesn't
-    /// know (e.g. hallucinated) asks.
+    /// (`browser::needs_approval`); a call a policy refuses doesn't ask, it's
+    /// refused when it runs. A pilot-shaped name the set doesn't know (e.g.
+    /// hallucinated) asks.
     pub fn requires_approval(&self, name: &str, args: &Value) -> bool {
         let Some((pilot, tool)) = parse_tool_name(name) else {
             return false;
@@ -178,6 +189,9 @@ impl PilotToolset {
                     self.read_only.contains(name),
                     &rules.secret_names,
                 );
+                if browser::refused_before(&self.agent, pilot, &self.refusals, tool, args, action) {
+                    return false;
+                }
                 browser::needs_approval(action, rules.options.as_ref())
             }
             None => !self.read_only.contains(name),
@@ -189,7 +203,10 @@ impl PilotToolset {
 /// doesn't answer is marked unhealthy and skipped.
 pub async fn for_agent(bus: &EventBus, agent: &Agent) -> PilotToolset {
     let declared = declared(agent);
-    let mut set = PilotToolset::default();
+    let mut set = PilotToolset {
+        agent: agent.id().as_str().to_string(),
+        ..PilotToolset::default()
+    };
     for pilot_id in &declared {
         let pilot = match catalog::find(pilot_id) {
             Ok(pilot) => pilot,
@@ -308,10 +325,16 @@ pub async fn list(pilot: &PilotDefinition) -> Result<Vec<super::mcp::PilotTool>,
     tools
 }
 
-/// Runs a `pilot_<id>__<tool>` call for `agent`, re-checking access first
-/// (consent or health may have changed since the step was planned). Every
-/// call is audited. Failures are tool errors the model sees.
-pub async fn call(bus: &EventBus, agent: &Agent, name: &str, args: &Value) -> ToolOutcome {
+/// Runs a `pilot_<id>__<tool>` call (`call_id`) for `agent`, re-checking
+/// access first (consent or health may have changed since the step was
+/// planned). Every call is audited. Failures are tool errors the model sees.
+pub async fn call(
+    bus: &EventBus,
+    agent: &Agent,
+    call_id: &str,
+    name: &str,
+    args: &Value,
+) -> ToolOutcome {
     let Some((pilot_id, tool)) = parse_tool_name(name) else {
         return ToolOutcome {
             result: format!("'{name}' is not a pilot tool"),
@@ -320,7 +343,7 @@ pub async fn call(bus: &EventBus, agent: &Agent, name: &str, args: &Value) -> To
     };
     let mut entry = PilotAuditEntry::new(agent.id().as_str(), pilot_id, tool, args);
     let started = Instant::now();
-    let result = run(bus, agent, pilot_id, tool, args).await;
+    let result = run(bus, agent, call_id, pilot_id, tool, args).await;
     entry.duration_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
     let outcome = match result {
         Ok((content, is_error)) => {
@@ -346,6 +369,7 @@ pub async fn call(bus: &EventBus, agent: &Agent, name: &str, args: &Value) -> To
 async fn run(
     bus: &EventBus,
     agent: &Agent,
+    call_id: &str,
     pilot_id: &str,
     tool: &str,
     args: &Value,
@@ -356,6 +380,10 @@ async fn run(
         Ok(Access::Allowed) => {}
         Ok(denied) => return Err((denied.reason(&pilot), "denied")),
         Err(e) => return Err((e, "error")),
+    }
+    // Approved means the person answered: the hand-over's result is theirs
+    if handover::is_hand_over(&tool_name(&pilot.id, tool)) {
+        return Ok((handover::result(handover::take(call_id), args), false));
     }
     if browser::is_browser(&pilot.id) {
         return browser::call(agent, &pilot.id, tool, args)
@@ -487,5 +515,66 @@ mod tests {
         assert!(!set.requires_approval(&click, &next));
         let submit = serde_json::json!({"element": "Submit button"});
         assert!(set.requires_approval(&click, &submit));
+
+        // A hand-over always waits for the person, whatever skill.md allows
+        let everything = crate::services::domain::capability::PilotOptions {
+            allow: crate::services::domain::capability::PILOT_ALLOWS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            ..Default::default()
+        };
+        set.browsers.insert(
+            browser::BROWSER.into(),
+            BrowserRules {
+                options: Some(everything),
+                secret_names: vec![],
+            },
+        );
+        let hand_over = tool_name(browser::BROWSER, handover::TOOL);
+        assert!(set.requires_approval(&hand_over, &serde_json::json!({"site": "x.com"})));
+    }
+
+    #[test]
+    fn a_click_a_policy_refuses_is_refused_not_asked_about() {
+        let policy = crate::services::domain::policy::Policy::parse(
+            "social",
+            "---
+applies_to: ['*']
+browser: { refuse: [{ controls: [post], sites: [x.com] }] }
+---
+",
+        )
+        .unwrap();
+        let refusals: Vec<Refusal> = policy
+            .rules()
+            .browser
+            .as_ref()
+            .unwrap()
+            .refuse
+            .iter()
+            .map(|rule| Refusal {
+                rule: rule.clone(),
+                by: "social".into(),
+            })
+            .collect();
+        let mut set = PilotToolset {
+            agent: "poster".into(),
+            ..PilotToolset::default()
+        };
+        set.browsers
+            .insert(browser::BROWSER.into(), BrowserRules::default());
+        set.set_refusals(refusals);
+        let click = tool_name(browser::BROWSER, "browser_click");
+        let post = serde_json::json!({"element": "Post button", "target": "e21"});
+        // Nothing seen yet: it asks (a submit), and is checked when it runs
+        assert!(set.requires_approval(&click, &post));
+        browser::remember_page("poster", browser::BROWSER, "https://x.com/compose/post");
+        assert!(
+            !set.requires_approval(&click, &post),
+            "refused when it runs"
+        );
+        let other = serde_json::json!({"element": "Next link", "target": "e3"});
+        assert!(set.requires_approval(&click, &other), "the rest still asks");
     }
 }

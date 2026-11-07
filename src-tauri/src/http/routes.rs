@@ -73,6 +73,7 @@ pub fn api() -> Router<AppState> {
         .route("/agents/{id}/approve", post(approve_action))
         // Returns `PendingApproval[]` (every agent's, oldest first)
         .route("/approvals/pending", get(pending_approvals))
+        .route("/approvals/{id}/hand-over", post(answer_hand_over))
         .route("/agents/{id}/cancel", post(cancel_turn))
         .route("/agents/{id}/queue", get(agent_queue))
         .route("/agents/{id}/current", get(current_turn))
@@ -276,6 +277,14 @@ async fn approve_action(
     Json(body): Json<ApproveBody>,
 ) -> impl IntoResponse {
     ApiResult(chat::approve_action(&state, Some(&id), body.approval_id, body.decision).await)
+}
+
+async fn answer_hand_over(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(answer): Json<crate::services::pilots::handover::HandOverAnswer>,
+) -> impl IntoResponse {
+    ApiResult(chat::answer_hand_over(&state, id, answer).await)
 }
 
 #[derive(Deserialize)]
