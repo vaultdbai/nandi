@@ -4079,5 +4079,19 @@
   "home.email.another": "يمكنك أيضًا وصل {{names}}.",
   "home.email.settings": "إعدادات البريد",
   "email.problem.appRegistration": "تسجيل تطبيق Nandi لدى Microsoft مُعدّ لنوع آخر من التطبيقات، لذا رفضت Microsoft تسجيل الدخول. على مَن يديره: في Entra، تسجيلات التطبيقات › Nandi › المصادقة، ضع إعادة التوجيه http://localhost ضمن \"تطبيقات الأجهزة المحمولة وسطح المكتب\" (لا الويب ولا التطبيق أحادي الصفحة) وفعّل \"السماح بتدفقات العميل العامة\".",
-  "email.problem.keychain": "سجّلت الدخول، لكن تعذّر على Nandi حفظ تسجيل الدخول في سلسلة مفاتيح هذا الحاسوب. حاول مجددًا؛ توضّح التفاصيل أدناه السبب."
+  "email.problem.keychain": "سجّلت الدخول، لكن تعذّر على Nandi حفظ تسجيل الدخول في سلسلة مفاتيح هذا الحاسوب. حاول مجددًا؛ توضّح التفاصيل أدناه السبب.",
+  "email.backfill.title": "اقرأ البريد الأقدم أيضًا في الخلفية",
+  "email.backfill.range.threeMonths": "آخر 3 أشهر",
+  "email.backfill.range.year": "آخر سنة",
+  "email.backfill.range.everything": "كل شيء",
+  "email.backfill.range.off": "لا",
+  "email.backfill.help": "يقرؤه رئيس الموظفين دفعة بعد دفعة، كل 10 دقائق، فقط حين لا يكون منشغلًا بالبريد الجديد.",
+  "email.backfill.offHelp": "يُقرأ آخر 14 يومًا والبريد الجديد فقط.",
+  "email.backfill.estimate": "نحو {{emails}} رسالة، ونحو {{runs}} تشغيلًا لرئيس الموظفين، واحد كل 10 دقائق.",
+  "email.backfill.waiting": "يُقرأ البريد الأقدم بعد الفحص الأول.",
+  "email.backfill.starting": "جارٍ قراءة البريد الأقدم…",
+  "email.backfill.reading": "قراءة البريد الأقدم: حتى {{when}}، {{count}} رسالة حتى الآن",
+  "email.backfill.paused": "قراءة البريد الأقدم متوقفة مؤقتًا (حتى {{when}}، {{count}} رسالة حتى الآن)",
+  "email.backfill.done": "تمت قراءة البريد الأقدم",
+  "email.backfill.stop": "إيقاف"
 }

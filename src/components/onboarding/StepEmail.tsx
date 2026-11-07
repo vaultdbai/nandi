@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { BackfillChoice } from '@/components/email/BackfillChoice'
 import { ConnectMailbox } from '@/components/email/ConnectMailbox'
 import { EmailReads } from '@/components/email/EmailReads'
 import {
@@ -14,7 +15,11 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Spinner } from '@/components/ui/spinner'
 import { useEmailAction, useEmailStatus } from '@/hooks/useEmail'
-import type { EmailProviderStatus, MailProvider } from '@/lib/tauri-bindings'
+import type {
+  BackfillRange,
+  EmailProviderStatus,
+  MailProvider,
+} from '@/lib/tauri-bindings'
 
 export interface StepEmailProps {
   onNext: () => void
@@ -42,6 +47,8 @@ export function StepEmail({ onNext, onBack }: StepEmailProps) {
       ? status.data.intervalMinutes
       : DEFAULT_INTERVAL_MINUTES
   const interval = intervalEdit ?? savedInterval
+  const [backfillEdit, setBackfillEdit] = useState<BackfillRange | null>(null)
+  const backfill = backfillEdit ?? status.data?.backfillRange ?? 'everything'
 
   const toggle = (provider: MailProvider, on: boolean) =>
     setChosen(current =>
@@ -57,6 +64,7 @@ export function StepEmail({ onNext, onBack }: StepEmailProps) {
         settings: {
           intervalMinutes: interval,
           watch: status.data?.watch ?? [],
+          backfill,
         },
       },
       // Setup goes on: the interval can be changed in Settings › Email
@@ -117,6 +125,13 @@ export function StepEmail({ onNext, onBack }: StepEmailProps) {
         </RadioGroup>
         <p className="text-xs text-muted-foreground">{t('email.oneRun')}</p>
       </fieldset>
+
+      <BackfillChoice
+        value={backfill}
+        onChange={setBackfillEdit}
+        connected={connected.length > 0}
+        idPrefix="onboarding-email"
+      />
 
       <div className="flex justify-between gap-2">
         <Button variant="ghost" onClick={onBack}>

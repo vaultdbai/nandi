@@ -265,6 +265,41 @@ impl<'a> Gmail<'a> {
         self.headers(&ids).await
     }
 
+    /// Inbox and sent mail older than `before` (not older than `floor`),
+    /// without the bulk categories, newest first: one background-read batch
+    pub async fn older(
+        &self,
+        before: i64,
+        floor: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<Header>, MailError> {
+        let ids = self
+            .list(
+                &older_query(before, floor),
+                usize::try_from(limit).unwrap_or(usize::MAX),
+            )
+            .await?;
+        self.headers(&ids).await
+    }
+
+    /// Gmail's estimate of how many such emails there are
+    pub async fn count(&self, before: i64, floor: Option<i64>) -> Result<u64, MailError> {
+        let page = self
+            .api
+            .get(
+                &self.url(
+                    &["messages"],
+                    &[("q", &older_query(before, floor)), ("maxResults", "1")],
+                ),
+                &[],
+            )
+            .await?;
+        Ok(page
+            .get("resultSizeEstimate")
+            .and_then(Value::as_u64)
+            .unwrap_or(0))
+    }
+
     /// Inbox and sent mail since `since`, newest first
     pub async fn recent(&self, since: i64, limit: u32) -> Result<Vec<Header>, MailError> {
         let limit = usize::try_from(limit).unwrap_or(usize::MAX);
@@ -273,6 +308,18 @@ impl<'a> Gmail<'a> {
             .await?;
         self.headers(&ids).await
     }
+}
+
+/// Older mail for the background read: no bulk categories
+fn older_query(before: i64, floor: Option<i64>) -> String {
+    let mut query = format!(
+        "before:{before} {} -category:promotions -category:social -category:updates -category:forums",
+        mailbox_query()
+    );
+    if let Some(floor) = floor {
+        query.push_str(&format!(" after:{floor}"));
+    }
+    query
 }
 
 /// Inbox and sent mail, nothing else

@@ -31,6 +31,17 @@ the run: mail_* tools (host) + filesystem__* notes tools, no container, nothing 
 - Connecting writes the mailbox owner into the Chief of Staff's My role (`builtin_agents::note_identity`, through the agent repository): the template's "Name and title" placeholder becomes "<name>, <email>", a line the user wrote gets the address added, and a role without that line is left alone. Every Chief of Staff run then knows who "me" is.
 - Home's `EmailTodo` shows "Connect your email" while nothing is connected, then a one-line offer of the other provider (`email-model.ts` `emailTodo`).
 
+## Older mail (backfill)
+
+`email/backfill.rs`. After the first read (14 days), a background pass walks older Inbox and Sent mail, newest first, with the same filters, one batch of at most 60 emails per pass every 10 minutes (`BACKFILL_EVERY`).
+
+- **Its own position:** `local_settings` `email.<provider>.backfill` (`before`: the oldest time reached, `read`, `paused`, `done`). It never touches the change cursor. Outlook asks `GET /me/mailFolders/{inbox,sentitems}/messages?$filter=receivedDateTime lt <before> [and ge <floor>]&$orderby=receivedDateTime desc&$top=60`; Gmail `messages.list` with `q=before:<before> (in:inbox OR in:sent) -category:… [after:<floor>]`. A time cursor instead of page tokens: it survives restarts and needs nothing else.
+- **Never competes:** a pass is skipped while an email check runs or the Chief of Staff has a run going or queued. A 429 or an outage skips the pass.
+- **Range:** `EmailSettings.backfill` (`threeMonths`, `year`, `everything` by default, `off`), a floor in the queries. It's done when a batch comes back empty or the floor is reached.
+- **Estimate:** `estimate_email_backfill(range)`: Graph `$count=true` with `ConsistencyLevel: eventual` per folder, Gmail `resultSizeEstimate`. Bulk isn't left out of the count, so it says "about".
+- The batch says "older mail (backfill)": record owners, responsibilities and decisions; a passed deadline is history, not a to-do.
+- `set_email_backfill(provider, pause|resume|stop|restart)`. Disconnect deletes the position.
+
 ## Where things live
 
 | What                                                 | Where                                                          |

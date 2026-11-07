@@ -4079,5 +4079,19 @@
   "home.email.another": "Vous pouvez aussi connecter {{names}}.",
   "home.email.settings": "Paramètres e-mail",
   "email.problem.appRegistration": "L'inscription de l'application Microsoft de Nandi est configurée pour un autre type d'application, Microsoft a donc refusé la connexion. Pour la personne qui la gère : dans Entra, Inscriptions d'applications › Nandi › Authentification, placez la redirection http://localhost sous « Applications mobiles et de bureau » (pas Web ni application monopage) et activez « Autoriser les flux de clients publics ».",
-  "email.problem.keychain": "Vous êtes connecté, mais Nandi n'a pas pu enregistrer la connexion dans le trousseau de cet ordinateur. Réessayez ; les détails ci-dessous indiquent pourquoi."
+  "email.problem.keychain": "Vous êtes connecté, mais Nandi n'a pas pu enregistrer la connexion dans le trousseau de cet ordinateur. Réessayez ; les détails ci-dessous indiquent pourquoi.",
+  "email.backfill.title": "Lire aussi les anciens e-mails en arrière-plan",
+  "email.backfill.range.threeMonths": "3 derniers mois",
+  "email.backfill.range.year": "Dernière année",
+  "email.backfill.range.everything": "Tout",
+  "email.backfill.range.off": "Non",
+  "email.backfill.help": "Chief of Staff les lit par lots, toutes les 10 minutes, seulement quand il n'est pas occupé par les nouveaux e-mails.",
+  "email.backfill.offHelp": "Seuls les 14 derniers jours et les nouveaux e-mails sont lus.",
+  "email.backfill.estimate": "Environ {{emails}} e-mails, environ {{runs}} exécutions de Chief of Staff, une toutes les 10 minutes.",
+  "email.backfill.waiting": "Les anciens e-mails sont lus après la première vérification.",
+  "email.backfill.starting": "Lecture des anciens e-mails…",
+  "email.backfill.reading": "Lecture des anciens e-mails : jusqu'à {{when}}, {{count}} e-mails pour l'instant",
+  "email.backfill.paused": "Lecture des anciens e-mails en pause (jusqu'à {{when}}, {{count}} e-mails pour l'instant)",
+  "email.backfill.done": "Anciens e-mails lus",
+  "email.backfill.stop": "Arrêter"
 }

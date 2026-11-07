@@ -83,6 +83,25 @@ impl Mailbox {
         }
     }
 
+    pub async fn older(
+        &self,
+        before: i64,
+        floor: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<Header>, MailError> {
+        match self.provider() {
+            MailProvider::Outlook => self.outlook().older(before, floor, limit).await,
+            MailProvider::Gmail => self.gmail().older(before, floor, limit).await,
+        }
+    }
+
+    pub async fn count(&self, before: i64, floor: Option<i64>) -> Result<u64, MailError> {
+        match self.provider() {
+            MailProvider::Outlook => self.outlook().count(before, floor).await,
+            MailProvider::Gmail => self.gmail().count(before, floor).await,
+        }
+    }
+
     pub async fn recent(&self, since: i64, limit: u32) -> Result<Vec<Header>, MailError> {
         match self.provider() {
             MailProvider::Outlook => self.outlook().recent(since, limit).await,

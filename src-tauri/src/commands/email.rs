@@ -4,7 +4,8 @@ use tauri::State;
 
 use crate::services::auth::oauth::DeviceFlowState;
 use crate::services::email::{
-    self, EmailSettingsInput, EmailSignInPoll, EmailStatus, MailProvider,
+    self, BackfillAction, BackfillEstimate, BackfillRange, EmailSettingsInput, EmailSignInPoll,
+    EmailStatus, MailProvider,
 };
 use crate::services::AppState;
 
@@ -70,4 +71,25 @@ pub async fn set_email_settings(
     settings: EmailSettingsInput,
 ) -> Result<EmailStatus, String> {
     email::set_settings(&state, settings).await
+}
+
+/// Pause, Resume, Stop or Restart one mailbox's background read of older mail
+#[tauri::command]
+#[specta::specta]
+pub async fn set_email_backfill(
+    state: State<'_, AppState>,
+    provider: MailProvider,
+    action: BackfillAction,
+) -> Result<EmailStatus, String> {
+    email::backfill::set_backfill(&state, provider, action).await
+}
+
+/// About how much older mail `range` covers, per connected mailbox
+#[tauri::command]
+#[specta::specta]
+pub async fn estimate_email_backfill(
+    state: State<'_, AppState>,
+    range: BackfillRange,
+) -> Result<Vec<BackfillEstimate>, String> {
+    Ok(email::backfill::estimate(&state, range).await)
 }

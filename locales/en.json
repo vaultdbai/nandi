@@ -4079,5 +4079,19 @@
   "home.email.another": "You can also connect {{names}}.",
   "home.email.settings": "Email settings",
   "email.problem.appRegistration": "Nandi's Microsoft app registration is set up for another kind of app, so Microsoft refused the sign-in. Whoever manages it: in Entra, App registrations › Nandi › Authentication, put the http://localhost redirect under \"Mobile and desktop applications\" (not Web or Single-page application) and turn on \"Allow public client flows\".",
-  "email.problem.keychain": "You signed in, but Nandi couldn't save the sign-in to this computer's keychain. Try again; the details below say why."
+  "email.problem.keychain": "You signed in, but Nandi couldn't save the sign-in to this computer's keychain. Try again; the details below say why.",
+  "email.backfill.title": "Also read older mail in the background",
+  "email.backfill.range.threeMonths": "Last 3 months",
+  "email.backfill.range.year": "Last year",
+  "email.backfill.range.everything": "Everything",
+  "email.backfill.range.off": "Don't",
+  "email.backfill.help": "Chief of Staff reads it a batch at a time, every 10 minutes, only when it isn't busy with new mail.",
+  "email.backfill.offHelp": "Only the last 14 days and new mail are read.",
+  "email.backfill.estimate": "About {{emails}} emails, about {{runs}} Chief of Staff runs, one every 10 minutes.",
+  "email.backfill.waiting": "Older mail is read after the first check.",
+  "email.backfill.starting": "Reading older mail…",
+  "email.backfill.reading": "Reading older mail: back to {{when}}, {{count}} emails so far",
+  "email.backfill.paused": "Reading older mail is paused (back to {{when}}, {{count}} emails so far)",
+  "email.backfill.done": "Older mail read",
+  "email.backfill.stop": "Stop"
 }

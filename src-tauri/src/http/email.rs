@@ -9,7 +9,8 @@ use serde::Deserialize;
 use super::routes::ApiResult;
 use crate::services::auth::oauth::DeviceFlowState;
 use crate::services::email::{
-    self, EmailSettingsInput, EmailSignInPoll, EmailStatus, MailProvider,
+    self, BackfillAction, BackfillEstimate, BackfillRange, EmailSettingsInput, EmailSignInPoll,
+    EmailStatus, MailProvider,
 };
 use crate::services::AppState;
 
@@ -27,6 +28,10 @@ pub fn api() -> Router<AppState> {
         .route("/email/{provider}/sign-in/poll", post(poll))
         // PUT body `{"paused": bool}`; returns `EmailStatus`
         .route("/email/{provider}/paused", put(paused))
+        // PUT body `{"action": "pause"|"resume"|"stop"|"restart"}`; returns `EmailStatus`
+        .route("/email/{provider}/backfill", put(backfill))
+        // POST body `{"range": BackfillRange}`; returns `BackfillEstimate[]`
+        .route("/email/backfill/estimate", post(estimate))
         // Signs out; returns `EmailStatus`
         .route("/email/{provider}", delete(disconnect))
 }
@@ -95,4 +100,32 @@ async fn disconnect(
         Ok(p) => email::disconnect(&state, p).await,
         Err(e) => Err(e),
     })
+}
+
+#[derive(Deserialize)]
+struct BackfillBody {
+    action: BackfillAction,
+}
+
+async fn backfill(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<BackfillBody>,
+) -> ApiResult<EmailStatus> {
+    ApiResult(match provider(&id) {
+        Ok(p) => email::backfill::set_backfill(&state, p, body.action).await,
+        Err(e) => Err(e),
+    })
+}
+
+#[derive(Deserialize)]
+struct EstimateBody {
+    range: BackfillRange,
+}
+
+async fn estimate(
+    State(state): State<AppState>,
+    Json(body): Json<EstimateBody>,
+) -> ApiResult<Vec<BackfillEstimate>> {
+    ApiResult(Ok(email::backfill::estimate(&state, body.range).await))
 }

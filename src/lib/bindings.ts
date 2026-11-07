@@ -1764,6 +1764,28 @@ async setEmailSettings(settings: EmailSettingsInput) : Promise<Result<EmailStatu
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Pause, Resume, Stop or Restart one mailbox's background read of older mail
+ */
+async setEmailBackfill(provider: MailProvider, action: BackfillAction) : Promise<Result<EmailStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_email_backfill", { provider, action }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * About how much older mail `range` covers, per connected mailbox
+ */
+async estimateEmailBackfill(range: BackfillRange) : Promise<Result<BackfillEstimate[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("estimate_email_backfill", { range }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getAgentMemoryEnabled(agentId: string) : Promise<Result<boolean, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_agent_memory_enabled", { agentId }) };
@@ -3284,11 +3306,11 @@ workflowStepStarted: "workflow://step_started"
 
 /** user-defined constants **/
 
-export const SEAL_REFUSED = "seal_refused" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 
 /** user-defined types **/
 
@@ -3951,6 +3973,50 @@ actions?: string[];
  * ARN patterns (`*` wildcards); empty means any resource
  */
 resources?: string[] }
+export type BackfillAction = "pause" | "resume" | 
+/**
+ * Ends it for this mailbox (Settings can start it again)
+ */
+"stop" | 
+/**
+ * From the top again
+ */
+"restart"
+export type BackfillEstimate = { provider: MailProvider; 
+/**
+ * About how many emails the range holds (bulk not left out yet)
+ */
+emails: number; 
+/**
+ * About how many Chief of Staff runs that is
+ */
+runs: number }
+export type BackfillPhase = 
+/**
+ * Not chosen, or not connected
+ */
+"off" | 
+/**
+ * Starts after the first read
+ */
+"waiting" | "reading" | "paused" | 
+/**
+ * Read back to the start of the mailbox or the range, or stopped
+ */
+"done"
+/**
+ * How much older mail the background read covers
+ */
+export type BackfillRange = "threeMonths" | "year" | "everything" | "off"
+export type BackfillStatus = { phase: BackfillPhase; 
+/**
+ * Everything newer than this has been read
+ */
+backTo: number | null; 
+/**
+ * Emails handed to the Chief of Staff so far
+ */
+read: number }
 /**
  * Whether a Bedrock API key is available (never the key)
  */
@@ -4656,14 +4722,22 @@ available: boolean; connected: boolean; accountName: string | null; accountEmail
 /**
  * Emails the last check handed to the Chief of Staff
  */
-lastFound: number; lastRunId: string | null }
-export type EmailSettingsInput = { intervalMinutes: number; watch: string[] }
+lastFound: number; lastRunId: string | null; 
+/**
+ * The background read of older mail
+ */
+backfill: BackfillStatus }
+export type EmailSettingsInput = { intervalMinutes: number; watch: string[]; backfill: BackfillRange }
 export type EmailSignInPoll = { phase: SignInPhase; problem: SignInProblem | null }
 export type EmailStatus = { 
 /**
  * Outlook, then Gmail
  */
-providers: EmailProviderStatus[]; intervalMinutes: number; watch: string[]; nextCheckAt: number | null; checking: boolean }
+providers: EmailProviderStatus[]; intervalMinutes: number; watch: string[]; nextCheckAt: number | null; checking: boolean; 
+/**
+ * How far back the background read of older mail goes
+ */
+backfillRange: BackfillRange }
 /**
  * From the last 100 completions of a capability on a provider agent
  */

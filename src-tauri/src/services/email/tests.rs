@@ -377,6 +377,7 @@ async fn watched_senders_come_through_even_as_bulk() {
         EmailSettingsInput {
             interval_minutes: 10,
             watch: vec!["promo@contoso.com".into()],
+            backfill: BackfillRange::Everything,
         },
     )
     .await
@@ -926,5 +927,196 @@ async fn sign_in_opens_microsoft_with_read_only_scopes() {
         poll_sign_in(&state, MailProvider::Outlook).await.phase,
         SignInPhase::Waiting
     );
+    state.shutdown();
+}
+
+// ---------------------------------------------------------------------------
+// The background read of older mail
+// ---------------------------------------------------------------------------
+
+/// Days ago of the older mail in the mock Inbox, newest first
+const OLD_MAIL: [(&str, i64); 3] = [("o1", 20), ("o2", 40), ("o3", 400)];
+
+fn after_marker<'a>(filter: &'a str, marker: &str) -> Option<&'a str> {
+    let rest = &filter[filter.find(marker)? + marker.len()..];
+    Some(rest.split(" and ").next().unwrap_or(rest))
+}
+
+/// `outlook_api`, plus older Inbox mail served one message per request
+/// (newest older than the `lt` time, not older than the `ge` floor) and a
+/// `$count` answer
+fn outlook_with_old_mail(req: &Req) -> (u16, Value) {
+    let folder = match req.path.as_str() {
+        "/graph/me/mailFolders/inbox/messages" => "inbox",
+        "/graph/me/mailFolders/sentitems/messages" => "sentitems",
+        _ => return outlook_api(req),
+    };
+    let filter = req.query.get("$filter").cloned().unwrap_or_default();
+    if req.query.contains_key("$count") {
+        return (200, json!({"@odata.count": 130, "value": []}));
+    }
+    let Some(before) = after_marker(&filter, "receivedDateTime lt ") else {
+        return outlook_api(req);
+    };
+    if folder == "sentitems" {
+        return (200, json!({"value": []}));
+    }
+    let before = super::mail::unix_of(before);
+    let floor = after_marker(&filter, "receivedDateTime ge ").map(super::mail::unix_of);
+    let next = OLD_MAIL.iter().find_map(|(id, days)| {
+        let message = graph_message(id, "Ana", &format!("Old item {id}"), "focused", days * 24);
+        let at = super::mail::unix_of(message["receivedDateTime"].as_str().unwrap());
+        (at < before && floor.is_none_or(|f| at >= f)).then_some(message)
+    });
+    (
+        200,
+        json!({ "value": next.into_iter().collect::<Vec<_>>() }),
+    )
+}
+
+async fn backfill_of(state: &AppState) -> super::settings::BackfillState {
+    backfill::load(state, MailProvider::Outlook).await
+}
+
+#[tokio::test]
+async fn older_mail_is_read_oldest_ward_one_batch_a_pass_and_resumes() {
+    let mock = mock(outlook_with_old_mail).await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    // Not before the first read
+    assert_eq!(backfill::pass(&state).await, None);
+    check_all(&state).await;
+    let cursor: Value = load_setting(&state, MailProvider::Outlook.cursor_key()).await;
+
+    for (index, (id, _)) in OLD_MAIL.iter().enumerate() {
+        let run = backfill::pass(&state).await;
+        assert!(run.is_some(), "pass {index}");
+        let runs = recorder.runs();
+        let text = &runs.last().unwrap().1;
+        assert!(text.contains("older mail (backfill)"), "{text}");
+        assert!(text.contains("never as a to-do"));
+        assert!(text.contains(&format!("Old item {id}")));
+        // Its own position, saved: a restart carries on from here
+        let saved = backfill_of(&state).await;
+        assert_eq!(saved.read, u32::try_from(index + 1).unwrap());
+    }
+    let status = super::status(&state).await;
+    assert_eq!(
+        status.providers[0].backfill.phase,
+        backfill::BackfillPhase::Reading
+    );
+    assert_eq!(status.providers[0].backfill.read, 3);
+    // Nothing older: done
+    assert_eq!(backfill::pass(&state).await, None);
+    assert!(backfill_of(&state).await.done);
+    assert_eq!(
+        super::status(&state).await.providers[0].backfill.phase,
+        backfill::BackfillPhase::Done
+    );
+    // The change cursor never moved; only GETs reached Graph
+    let after: Value = load_setting(&state, MailProvider::Outlook.cursor_key()).await;
+    assert_eq!(cursor, after);
+    assert!(mock
+        .api_requests()
+        .iter()
+        .all(|(method, _)| method == "GET"));
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn older_mail_stops_at_the_chosen_range() {
+    let mock = mock(outlook_with_old_mail).await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    set_settings(
+        &state,
+        EmailSettingsInput {
+            interval_minutes: 30,
+            watch: Vec::new(),
+            backfill: BackfillRange::Year,
+        },
+    )
+    .await
+    .unwrap();
+    check_all(&state).await;
+    while backfill::pass(&state).await.is_some() {}
+    assert!(backfill_of(&state).await.done);
+    let texts: String = recorder.runs().into_iter().map(|(_, t)| t).collect();
+    assert!(texts.contains("Old item o2"));
+    assert!(!texts.contains("Old item o3"), "older than a year");
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn older_mail_waits_while_the_chief_of_staff_is_busy() {
+    let mock = mock(outlook_with_old_mail).await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    check_all(&state).await;
+    let runs_before = recorder.runs().len();
+    state
+        .db()
+        .call(|conn| {
+            let conversation = db::ensure_agent_conversation(conn, CHIEF_OF_STAFF)?;
+            conn.execute(
+                "INSERT INTO runs (id, agent_id, conversation_id, started_at, status, input, source_type, priority)
+                 VALUES ('busy', ?1, ?2, 0, 'running', 'hi', 'user', 10)",
+                rusqlite::params![CHIEF_OF_STAFF, conversation],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    mock.clear();
+    assert_eq!(backfill::pass(&state).await, None);
+    assert_eq!(recorder.runs().len(), runs_before);
+    assert!(mock.requests().is_empty(), "not even read");
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn older_mail_pauses_stops_and_is_forgotten_on_disconnect() {
+    let mock = mock(outlook_with_old_mail).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    check_all(&state).await;
+    assert!(backfill::pass(&state).await.is_some());
+
+    let status = backfill::set_backfill(&state, MailProvider::Outlook, BackfillAction::Pause)
+        .await
+        .unwrap();
+    assert_eq!(
+        status.providers[0].backfill.phase,
+        backfill::BackfillPhase::Paused
+    );
+    assert_eq!(backfill::pass(&state).await, None);
+    backfill::set_backfill(&state, MailProvider::Outlook, BackfillAction::Resume)
+        .await
+        .unwrap();
+    assert!(backfill::pass(&state).await.is_some());
+    backfill::set_backfill(&state, MailProvider::Outlook, BackfillAction::Stop)
+        .await
+        .unwrap();
+    assert_eq!(backfill::pass(&state).await, None);
+
+    disconnect(&state, MailProvider::Outlook).await.unwrap();
+    let position: Value = load_setting(&state, MailProvider::Outlook.backfill_key()).await;
+    assert!(position.is_null());
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn older_mail_is_estimated_before_it_starts() {
+    let mock = mock(outlook_with_old_mail).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    let estimates = backfill::estimate(&state, BackfillRange::Everything).await;
+    assert_eq!(estimates.len(), 1);
+    // 130 in Inbox and in Sent Items, 60 per run
+    assert_eq!(estimates[0].emails, 260);
+    assert_eq!(estimates[0].runs, 5);
+    assert!(backfill::estimate(&state, BackfillRange::Off)
+        .await
+        .is_empty());
     state.shutdown();
 }

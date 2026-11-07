@@ -229,6 +229,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             email::set_email_paused,
             email::disconnect_email,
             email::set_email_settings,
+            email::set_email_backfill,
+            email::estimate_email_backfill,
             memory::get_agent_memory_enabled,
             memory::set_agent_memory_enabled,
             // Wave final, network-first (Track A: identity, remote)

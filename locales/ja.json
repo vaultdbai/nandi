@@ -4079,5 +4079,19 @@
   "home.email.another": "{{names}} も接続できます。",
   "home.email.settings": "メール設定",
   "email.problem.appRegistration": "Nandi の Microsoft アプリ登録が別の種類のアプリ用に設定されているため、Microsoft がサインインを拒否しました。管理者の方へ: Entra の [アプリの登録] › Nandi › [認証] で、http://localhost のリダイレクトを「モバイル アプリケーションとデスクトップ アプリケーション」に置き(Web やシングルページ アプリケーションではなく)、「パブリック クライアント フローを許可する」をオンにしてください。",
-  "email.problem.keychain": "サインインはできましたが、Nandi がこのコンピューターのキーチェーンにサインイン情報を保存できませんでした。もう一度お試しください。理由は下の詳細に表示されます。"
+  "email.problem.keychain": "サインインはできましたが、Nandi がこのコンピューターのキーチェーンにサインイン情報を保存できませんでした。もう一度お試しください。理由は下の詳細に表示されます。",
+  "email.backfill.title": "古いメールもバックグラウンドで読む",
+  "email.backfill.range.threeMonths": "過去 3 か月",
+  "email.backfill.range.year": "過去 1 年",
+  "email.backfill.range.everything": "すべて",
+  "email.backfill.range.off": "読まない",
+  "email.backfill.help": "Chief of Staff は新着メールの処理中でないときだけ、10 分ごとに少しずつ読みます。",
+  "email.backfill.offHelp": "過去 14 日分と新着メールだけを読みます。",
+  "email.backfill.estimate": "約 {{emails}} 通、Chief of Staff の実行は約 {{runs}} 回(10 分ごとに 1 回)です。",
+  "email.backfill.waiting": "古いメールは最初の確認のあとに読みます。",
+  "email.backfill.starting": "古いメールを読んでいます…",
+  "email.backfill.reading": "古いメールを読んでいます: {{when}} まで、これまで {{count}} 通",
+  "email.backfill.paused": "古いメールの読み取りは一時停止中です({{when}} まで、これまで {{count}} 通)",
+  "email.backfill.done": "古いメールを読み終えました",
+  "email.backfill.stop": "停止"
 }

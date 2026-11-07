@@ -17,6 +17,7 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 import { EmailSignInStatus } from '@/components/email/EmailSignInStatus'
+import { BackfillChoice } from '@/components/email/BackfillChoice'
 import { EmailReads } from '@/components/email/EmailReads'
 import {
   useEmailAction,
@@ -27,6 +28,7 @@ import { formatRelativeTime } from '@/lib/format-time'
 import type { EmailProviderStatus, EmailStatus } from '@/lib/tauri-bindings'
 import { cn } from '@/lib/utils'
 import {
+  backfillLine,
   formatWatchList,
   intervalLabel,
   intervalOptions,
@@ -133,6 +135,7 @@ function MailboxCardView({
             : t('email.notCheckedYet')}
         </p>
       )}
+      <BackfillLineView status={status} />
       {card.error && (
         <p className="text-xs text-muted-foreground">{card.error}</p>
       )}
@@ -241,7 +244,11 @@ function ScheduleSettings({ status }: { status: EmailStatus }) {
   const save = (intervalMinutes: number, watchText: string) =>
     action.mutate({
       kind: 'settings',
-      settings: { intervalMinutes, watch: parseWatchList(watchText) },
+      settings: {
+        intervalMinutes,
+        watch: parseWatchList(watchText),
+        backfill: status.backfillRange,
+      },
     })
 
   return (
@@ -261,6 +268,21 @@ function ScheduleSettings({ status }: { status: EmailStatus }) {
         </NativeSelect>
       </label>
       <p className="text-xs text-muted-foreground">{t('email.oneRun')}</p>
+      <BackfillChoice
+        value={status.backfillRange}
+        onChange={backfill =>
+          action.mutate({
+            kind: 'settings',
+            settings: {
+              intervalMinutes: status.intervalMinutes,
+              watch: status.watch,
+              backfill,
+            },
+          })
+        }
+        connected={status.providers.some(p => p.connected)}
+        idPrefix="settings-email"
+      />
       <div className="space-y-2">
         <label htmlFor="email-watch" className="text-sm font-medium">
           {t('email.watch')}
@@ -287,5 +309,60 @@ function ScheduleSettings({ status }: { status: EmailStatus }) {
         )}
       </div>
     </SettingsGroup>
+  )
+}
+
+/** The background read of older mail: where it is, with its controls */
+function BackfillLineView({ status }: { status: EmailProviderStatus }) {
+  const { t, i18n } = useTranslation()
+  const action = useEmailAction()
+  const line = backfillLine(status.backfill)
+  if (line.key === null) return null
+  const when =
+    line.when === null
+      ? ''
+      : new Intl.DateTimeFormat(i18n.language, {
+          month: 'long',
+          year: 'numeric',
+        }).format(new Date(line.when))
+  const act = (kind: 'pause' | 'resume' | 'stop') =>
+    action.mutate({ kind: 'backfill', provider: status.provider, action: kind })
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+      data-testid="email-backfill"
+    >
+      <span>{t(line.key, { when, count: line.count })}</span>
+      {line.canPause && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7"
+          onClick={() => act('pause')}
+        >
+          {t('email.pause')}
+        </Button>
+      )}
+      {line.canResume && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7"
+          onClick={() => act('resume')}
+        >
+          {t('email.resume')}
+        </Button>
+      )}
+      {line.canStop && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7"
+          onClick={() => act('stop')}
+        >
+          {t('email.backfill.stop')}
+        </Button>
+      )}
+    </div>
   )
 }

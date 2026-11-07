@@ -243,6 +243,75 @@ impl<'a> Outlook<'a> {
             .collect())
     }
 
+    /// Inbox and Sent Items mail older than `before` (and not older than
+    /// `floor`), newest first, at most `limit`: one background-read batch
+    pub async fn older(
+        &self,
+        before: i64,
+        floor: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<Header>, MailError> {
+        let mut filter = format!("receivedDateTime lt {}", rfc3339_of(before));
+        if let Some(floor) = floor {
+            filter.push_str(&format!(" and receivedDateTime ge {}", rfc3339_of(floor)));
+        }
+        let top = limit.to_string();
+        let mut headers = Vec::new();
+        for (folder, kind) in FOLDERS {
+            let page = self
+                .api
+                .get(
+                    &self.url(
+                        &["me", "mailFolders", folder, "messages"],
+                        &[
+                            ("$filter", &filter),
+                            ("$orderby", "receivedDateTime desc"),
+                            ("$select", SELECT),
+                            ("$top", &top),
+                        ],
+                    ),
+                    &[],
+                )
+                .await?;
+            headers.extend(items(&page).filter_map(|item| header(item, kind)));
+        }
+        headers.sort_by_key(|h| std::cmp::Reverse(h.at));
+        headers.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
+        Ok(headers)
+    }
+
+    /// About how many Inbox and Sent Items emails are older than `before`
+    /// and not older than `floor` (`$count`, eventual consistency)
+    pub async fn count(&self, before: i64, floor: Option<i64>) -> Result<u64, MailError> {
+        let mut filter = format!("receivedDateTime lt {}", rfc3339_of(before));
+        if let Some(floor) = floor {
+            filter.push_str(&format!(" and receivedDateTime ge {}", rfc3339_of(floor)));
+        }
+        let mut total = 0;
+        for (folder, _) in FOLDERS {
+            let page = self
+                .api
+                .get(
+                    &self.url(
+                        &["me", "mailFolders", folder, "messages"],
+                        &[
+                            ("$count", "true"),
+                            ("$top", "1"),
+                            ("$select", "id"),
+                            ("$filter", &filter),
+                        ],
+                    ),
+                    &[("ConsistencyLevel", "eventual")],
+                )
+                .await?;
+            total += page
+                .get("@odata.count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+        }
+        Ok(total)
+    }
+
     /// Inbox and Sent Items mail since `since`, newest first
     pub async fn recent(&self, since: i64, limit: u32) -> Result<Vec<Header>, MailError> {
         let filter = format!("receivedDateTime ge {}", rfc3339_of(since));

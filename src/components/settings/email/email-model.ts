@@ -3,6 +3,9 @@
  * how a sign-in problem is explained, and the watch list's text form.
  */
 import type {
+  BackfillEstimate,
+  BackfillRange,
+  BackfillStatus,
   EmailProviderStatus,
   MailProvider,
   SignInProblemKind,
@@ -152,4 +155,70 @@ export function emailTodo(providers: EmailProviderStatus[]): EmailTodo {
   return connected
     ? { kind: 'another', providers: available.map(p => p.provider) }
     : { kind: 'connect', providers: available.map(p => p.provider) }
+}
+
+/** The background read's choices, in the order offered */
+export const BACKFILL_RANGES = [
+  'threeMonths',
+  'year',
+  'everything',
+  'off',
+] as const satisfies readonly BackfillRange[]
+
+export type BackfillLine =
+  | { key: null }
+  | {
+      key: string
+      when: number | null
+      count: number
+      canPause: boolean
+      canResume: boolean
+      canStop: boolean
+    }
+
+/** What a mailbox card says about its background read */
+export function backfillLine(status: BackfillStatus): BackfillLine {
+  const base = {
+    when: status.backTo,
+    count: status.read,
+    canPause: false,
+    canResume: false,
+    canStop: false,
+  }
+  switch (status.phase) {
+    case 'off':
+      return { key: null }
+    case 'waiting':
+      return { ...base, key: 'email.backfill.waiting', canStop: true }
+    case 'reading':
+      return {
+        ...base,
+        key:
+          status.backTo === null
+            ? 'email.backfill.starting'
+            : 'email.backfill.reading',
+        canPause: true,
+        canStop: true,
+      }
+    case 'paused':
+      return {
+        ...base,
+        key: 'email.backfill.paused',
+        canResume: true,
+        canStop: true,
+      }
+    case 'done':
+      return { ...base, key: 'email.backfill.done' }
+  }
+}
+
+/** "about N emails, about M runs" over every connected mailbox */
+export function estimateTotals(estimates: BackfillEstimate[]): {
+  emails: number
+  runs: number
+} {
+  return estimates.reduce(
+    (sum, e) => ({ emails: sum.emails + e.emails, runs: sum.runs + e.runs }),
+    { emails: 0, runs: 0 }
+  )
 }

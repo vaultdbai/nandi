@@ -23,6 +23,7 @@ function provider(
     lastCheckedAt: null,
     lastFound: 0,
     lastRunId: null,
+    backfill: { phase: 'off', backTo: null, read: 0 },
     ...overrides,
   }
 }
@@ -34,6 +35,7 @@ function status(providers: EmailProviderStatus[]): EmailStatus {
     watch: [],
     nextCheckAt: null,
     checking: false,
+    backfillRange: 'everything',
   }
 }
 

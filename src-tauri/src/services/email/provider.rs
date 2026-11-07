@@ -74,6 +74,10 @@ impl MailProvider {
     pub fn state_key(self) -> String {
         format!("email.{}.state", self.id())
     }
+
+    pub fn backfill_key(self) -> String {
+        format!("email.{}.backfill", self.id())
+    }
 }
 
 /// The APIs' addresses; tests point them at a local mock

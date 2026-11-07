@@ -506,6 +506,12 @@ export const webClient: NandiClient = {
   disconnectEmail: provider =>
     request('DELETE', `/email/${encodeURIComponent(provider)}`),
   setEmailSettings: settings => request('PUT', '/email/settings', settings),
+  setEmailBackfill: (provider, action) =>
+    request('PUT', `/email/${encodeURIComponent(provider)}/backfill`, {
+      action,
+    }),
+  estimateEmailBackfill: range =>
+    request('POST', '/email/backfill/estimate', { range }),
   closeGatewayAssignment: (taskId, done, note) =>
     request(
       'POST',

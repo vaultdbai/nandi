@@ -37,6 +37,9 @@ import type {
   CompanionSnapshot,
   ConnectorInfo,
   ConnectorStatus,
+  BackfillAction,
+  BackfillEstimate,
+  BackfillRange,
   EmailSettingsInput,
   EmailSignInPoll,
   EmailStatus,
@@ -845,6 +848,15 @@ export interface NandiClient {
   setEmailSettings(
     settings: EmailSettingsInput
   ): Promise<Result<EmailStatus, string>>
+  /** Pause, Resume, Stop or Restart a mailbox's background read */
+  setEmailBackfill(
+    provider: MailProvider,
+    action: BackfillAction
+  ): Promise<Result<EmailStatus, string>>
+  /** About how much older mail a range covers, per connected mailbox */
+  estimateEmailBackfill(
+    range: BackfillRange
+  ): Promise<Result<BackfillEstimate[], string>>
   /** Work assigned to the owner that's still open, soonest due first */
   listGatewayAssignments(): Promise<Result<GatewayAssignment[], string>>
   /** Done (the requester gets the note) or Decline an assignment */

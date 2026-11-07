@@ -21,6 +21,8 @@ pub struct Batch<'a> {
     pub first_read: bool,
     /// Days the first read goes back
     pub window_days: i64,
+    /// Older mail from the background read, not new mail
+    pub backfill: bool,
 }
 
 impl Batch<'_> {
@@ -40,7 +42,12 @@ impl Batch<'_> {
             "Email check: {count} new email{} for {who} (the user; \"me\" in these emails).\n",
             if count == 1 { "" } else { "s" }
         ));
-        if self.first_read {
+        if self.backfill {
+            out.push_str(
+                "This is older mail (backfill), read in the background: past items, newest first. Record owners, responsibilities and decisions. A deadline that has already passed is past: note it as history, never as a to-do. Don't repeat what the notes already have.
+",
+            );
+        } else if self.first_read {
             out.push_str(&format!(
                 "This is the first read, of the last {} days: build the notes from it.\n",
                 self.window_days
@@ -137,6 +144,7 @@ mod tests {
             omitted: 0,
             first_read: true,
             window_days: 14,
+            backfill: false,
         }
         .prompt();
         assert!(prompt.contains("for Dev Chechi <dev@company.com> (the user"));
@@ -164,6 +172,7 @@ mod tests {
             omitted: 3,
             first_read: false,
             window_days: 14,
+            backfill: false,
         }
         .prompt();
         assert_eq!(prompt.matches("</email-data>").count(), 1, "only ours");

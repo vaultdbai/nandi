@@ -81,6 +81,7 @@ const mailbox = (provider: 'outlook' | 'gmail') => ({
   lastCheckedAt: null,
   lastFound: 0,
   lastRunId: null,
+  backfill: { phase: 'off' as const, backTo: null, read: 0 },
 })
 
 const emailStatus = {
@@ -89,6 +90,7 @@ const emailStatus = {
   watch: [],
   nextCheckAt: null,
   checking: false,
+  backfillRange: 'everything' as const,
 }
 
 const research = packManifest('research-pack', 'Research Pack', {
@@ -402,6 +404,7 @@ describe('OnboardingView', () => {
       expect(mocks().setEmailSettings).toHaveBeenCalledWith({
         intervalMinutes: 30,
         watch: [],
+        backfill: 'everything',
       })
       expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('network')
     })

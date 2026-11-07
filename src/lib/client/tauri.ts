@@ -323,6 +323,9 @@ export const tauriClient: NandiClient = {
     commands.setEmailPaused(provider, paused),
   disconnectEmail: provider => commands.disconnectEmail(provider),
   setEmailSettings: settings => commands.setEmailSettings(settings),
+  setEmailBackfill: (provider, action) =>
+    commands.setEmailBackfill(provider, action),
+  estimateEmailBackfill: range => commands.estimateEmailBackfill(range),
   closeGatewayAssignment: (taskId, done, note) =>
     commands.closeGatewayAssignment(taskId, done, note),
   getGatewayConfig: () => commands.getGatewayConfig(),

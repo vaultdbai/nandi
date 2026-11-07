@@ -36,6 +36,51 @@ pub struct EmailSettings {
     pub watch: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub accounts: Vec<EmailAccount>,
+    /// How far back the background read of older mail goes
+    #[serde(default)]
+    pub backfill: BackfillRange,
+}
+
+/// How much older mail the background read covers
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum BackfillRange {
+    ThreeMonths,
+    Year,
+    #[default]
+    Everything,
+    Off,
+}
+
+impl BackfillRange {
+    /// The oldest time it reads back to (unix seconds); `None`: no limit
+    pub fn floor(self, now: i64) -> Option<i64> {
+        const DAY: i64 = 24 * 60 * 60;
+        match self {
+            Self::ThreeMonths => Some(now - 91 * DAY),
+            Self::Year => Some(now - 365 * DAY),
+            Self::Everything | Self::Off => None,
+        }
+    }
+}
+
+/// One mailbox's background read of older mail (`local_settings`
+/// `email.<provider>.backfill`), apart from the change cursor
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackfillState {
+    /// Unix seconds: everything newer has been read; the next batch is
+    /// older than this. `None` until the first batch
+    #[serde(default)]
+    pub before: Option<i64>,
+    /// Emails handed to the Chief of Staff so far
+    #[serde(default)]
+    pub read: u32,
+    #[serde(default)]
+    pub paused: bool,
+    /// Reached the start of the mailbox or the range, or stopped
+    #[serde(default)]
+    pub done: bool,
 }
 
 impl Default for EmailSettings {
@@ -44,6 +89,7 @@ impl Default for EmailSettings {
             interval_minutes: DEFAULT_INTERVAL_MINUTES,
             watch: Vec::new(),
             accounts: Vec::new(),
+            backfill: BackfillRange::default(),
         }
     }
 }

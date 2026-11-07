@@ -23,6 +23,7 @@ function provider(
     lastCheckedAt: null,
     lastFound: 0,
     lastRunId: null,
+    backfill: { phase: 'off', backTo: null, read: 0 },
     ...overrides,
   }
 }
@@ -33,6 +34,7 @@ const status = (providers: EmailProviderStatus[]): EmailStatus => ({
   watch: [],
   nextCheckAt: null,
   checking: false,
+  backfillRange: 'everything',
 })
 
 const NAMES = ['getEmailStatus', 'setEmailSettings', 'startEmailSignIn']
@@ -82,7 +84,11 @@ describe('StepEmail', () => {
     await user.click(screen.getByLabelText('15 minutes'))
     await user.click(screen.getByRole('button', { name: 'Skip for now' }))
     await waitFor(() => expect(onNext).toHaveBeenCalled())
-    expect(save).toHaveBeenCalledWith({ intervalMinutes: 15, watch: [] })
+    expect(save).toHaveBeenCalledWith({
+      intervalMinutes: 15,
+      watch: [],
+      backfill: 'everything',
+    })
   })
 
   it('shows a provider this build lacks calmly, without blocking', async () => {

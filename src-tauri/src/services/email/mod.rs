@@ -21,6 +21,7 @@
 //!   Testing mode ends sign-ins every 7 days); the UI offers Reconnect.
 
 mod api;
+pub mod backfill;
 pub mod batch;
 mod filter;
 mod gmail;
@@ -44,8 +45,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use specta::Type;
 
+pub use backfill::{BackfillAction, BackfillEstimate, BackfillStatus};
 pub use provider::{MailProvider, ProviderSetup};
-pub use settings::{ConnectorGrant, EmailSettings, GrantAccess};
+pub use settings::{BackfillRange, ConnectorGrant, EmailSettings, GrantAccess};
 
 use crate::db;
 use crate::model::{SourceType, Timestamp};
@@ -98,6 +100,8 @@ pub struct EmailProviderStatus {
     /// Emails the last check handed to the Chief of Staff
     pub last_found: u32,
     pub last_run_id: Option<String>,
+    /// The background read of older mail
+    pub backfill: BackfillStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -109,6 +113,8 @@ pub struct EmailStatus {
     pub watch: Vec<String>,
     pub next_check_at: Option<Timestamp>,
     pub checking: bool,
+    /// How far back the background read of older mail goes
+    pub backfill_range: BackfillRange,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -116,6 +122,7 @@ pub struct EmailStatus {
 pub struct EmailSettingsInput {
     pub interval_minutes: u32,
     pub watch: Vec<String>,
+    pub backfill: BackfillRange,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -340,6 +347,10 @@ impl EmailService {
         *self.sink.write().unwrap_or_else(|e| e.into_inner()) = sink;
     }
 
+    fn is_checking(&self) -> bool {
+        self.checking.load(Ordering::SeqCst)
+    }
+
     fn sink(&self) -> Arc<dyn BatchSink> {
         self.sink.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
@@ -452,6 +463,14 @@ pub async fn status(state: &AppState) -> EmailStatus {
             last_checked_at: check.last_checked_at,
             last_found: check.last_found,
             last_run_id: check.last_run_id,
+            backfill: backfill::status_of(
+                settings.backfill,
+                connected,
+                !load_setting::<Value>(state, provider.cursor_key())
+                    .await
+                    .is_null(),
+                &backfill::load(state, provider).await,
+            ),
         });
     }
     let any_active = settings.accounts.iter().any(|a| !a.paused);
@@ -465,6 +484,7 @@ pub async fn status(state: &AppState) -> EmailStatus {
             None
         },
         checking: email.checking.load(Ordering::SeqCst),
+        backfill_range: settings.backfill,
     }
 }
 
@@ -589,7 +609,11 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
 }
 
 async fn forget_progress(state: &AppState, provider: MailProvider) -> Result<(), String> {
-    let keys = [provider.cursor_key(), provider.state_key()];
+    let keys = [
+        provider.cursor_key(),
+        provider.state_key(),
+        provider.backfill_key(),
+    ];
     state
         .db()
         .call(move |conn| {
@@ -650,6 +674,7 @@ pub async fn set_settings(
         let email = config.email.get_or_insert_with(EmailSettings::default);
         email.interval_minutes = input.interval_minutes;
         email.watch = watch;
+        email.backfill = input.backfill;
     })?;
     state.email().schedule_next(input.interval_minutes);
     emit_changed(state);
@@ -782,6 +807,7 @@ async fn run_check(
             omitted,
             first_read,
             window_days: READ_WINDOW_DAYS,
+            backfill: false,
         }
         .prompt();
         let title = format!(
@@ -839,6 +865,7 @@ pub fn start_scheduler(state: &AppState) {
     *lock(&email.next_check) = Some(now() + FIRST_CHECK_AFTER.as_millis() as f64);
     let weak = state.downgrade();
     state.runtime().spawn(async move {
+        let mut next_backfill = tokio::time::Instant::now() + backfill::BACKFILL_EVERY;
         loop {
             let Some(state) = weak.upgrade() else {
                 break;
@@ -846,6 +873,9 @@ pub fn start_scheduler(state: &AppState) {
             let due = lock(&state.email().next_check).is_some_and(|at| at <= now());
             if due {
                 check_all(&state).await;
+            } else if tokio::time::Instant::now() >= next_backfill {
+                next_backfill = tokio::time::Instant::now() + backfill::BACKFILL_EVERY;
+                backfill::pass(&state).await;
             }
             let email = state.email().clone();
             drop(state);

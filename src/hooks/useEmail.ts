@@ -9,6 +9,8 @@ import { client } from '@/lib/client'
 import { logger } from '@/lib/logger'
 import {
   unwrapResult,
+  type BackfillAction,
+  type BackfillRange,
   type DeviceFlowState,
   type EmailSettingsInput,
   type EmailStatus,
@@ -48,6 +50,11 @@ export function useEmailAction() {
         | { kind: 'pause'; provider: MailProvider; paused: boolean }
         | { kind: 'disconnect'; provider: MailProvider }
         | { kind: 'settings'; settings: EmailSettingsInput }
+        | {
+            kind: 'backfill'
+            provider: MailProvider
+            action: BackfillAction
+          }
     ): Promise<EmailStatus> => {
       switch (action.kind) {
         case 'check':
@@ -60,9 +67,24 @@ export function useEmailAction() {
           return unwrapResult(await client.disconnectEmail(action.provider))
         case 'settings':
           return unwrapResult(await client.setEmailSettings(action.settings))
+        case 'backfill':
+          return unwrapResult(
+            await client.setEmailBackfill(action.provider, action.action)
+          )
       }
     },
     onSuccess: status => queryClient.setQueryData(emailKeys.status, status),
+  })
+}
+
+/** About how much older mail `range` covers (only asked while connected) */
+export function useBackfillEstimate(range: BackfillRange, enabled: boolean) {
+  return useQuery({
+    queryKey: ['email', 'backfillEstimate', range],
+    queryFn: async () =>
+      unwrapResult(await client.estimateEmailBackfill(range)),
+    enabled: enabled && range !== 'off',
+    staleTime: 5 * 60_000,
   })
 }
 

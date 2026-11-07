@@ -334,6 +334,18 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **Needs relay:** no
 - **Status:** Shipped (live test pending)
 
+### CP-29 — Email: reading older mail in the background
+
+- **What:** After the first 14-day read, Nandi reads older Inbox and Sent mail in the background, newest first, a batch of up to 60 emails every 10 minutes, each one Chief of Staff run marked "older mail (backfill)". Choice at setup and in Settings › Email: Last 3 months, Last year, Everything (default), Don't, with "About N emails, about M Chief of Staff runs". The card shows "Reading older mail: back to <month year>, N emails so far" with Pause / Resume / Stop, then "Older mail read".
+- **Where:** `services/email/backfill.rs` (`pass`, `estimate`, `set_backfill`), `outlook.rs`/`gmail.rs` (`older`, `count`), `components/email/BackfillChoice.tsx`, `EmailSection.tsx` (`BackfillLineView`); commands `set_email_backfill`, `estimate_email_backfill`.
+- **Preconditions:** CP-03; a mailbox with mail older than 14 days.
+- **Steps:** 1. Connect with Everything. 2. Wait past the first check and 10 minutes. 3. Watch the card and the Chief of Staff's runs. 4. Pause, Resume, Stop. 5. Disconnect.
+- **Expected:** One "Email: older mail, N emails" run per pass, never while another Chief of Staff run is going; the month on the card moves back; My notes gains owners and decisions with past deadlines as history. New mail still arrives on the regular check. Disconnect clears the position.
+- **Edge / negative cases:** Last year stops a year back. A 429 just skips the pass. Don't reads only the 14 days.
+- **Automation:** Covered by: `services/email/tests.rs` (`older_mail_is_read_oldest_ward_one_batch_a_pass_and_resumes`, `older_mail_stops_at_the_chosen_range`, `older_mail_waits_while_the_chief_of_staff_is_busy`, `older_mail_pauses_stops_and_is_forgotten_on_disconnect`, `older_mail_is_estimated_before_it_starts`), `backfill.rs` tests, `email-model.test.ts` | Layer: unit | Gap: live run on a large mailbox.
+- **Needs relay:** no
+- **Status:** Shipped (live test pending)
+
 ### CP-04 — Shared folders on the Filesystem connector
 
 - **What:** Filesystem holds a list of folders: **Add a folder** (native folder picker), short name, **Read only** or **Read and write**, remove (asks first, naming agents using it). Each row shows which agents use it. Agents in a container see folders at `/agent/folders/<name>`.

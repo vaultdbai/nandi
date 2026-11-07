@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { EmailProviderStatus } from '@/lib/tauri-bindings'
 import {
+  backfillLine,
+  estimateTotals,
   DEFAULT_INTERVAL_MINUTES,
   emailTodo,
   formatWatchList,
@@ -25,6 +27,7 @@ function status(
     lastCheckedAt: null,
     lastFound: 0,
     lastRunId: null,
+    backfill: { phase: 'off', backTo: null, read: 0 },
     ...overrides,
   }
 }
@@ -145,5 +148,42 @@ describe('emailTodo', () => {
         status({ provider: 'gmail', available: false }),
       ])
     ).toEqual({ kind: 'none' })
+  })
+})
+
+describe('backfillLine', () => {
+  it('says where the read of older mail is, with its controls', () => {
+    expect(backfillLine({ phase: 'off', backTo: null, read: 0 })).toEqual({
+      key: null,
+    })
+    expect(
+      backfillLine({ phase: 'reading', backTo: 1_700_000_000_000, read: 120 })
+    ).toMatchObject({
+      key: 'email.backfill.reading',
+      when: 1_700_000_000_000,
+      count: 120,
+      canPause: true,
+      canStop: true,
+      canResume: false,
+    })
+    expect(backfillLine({ phase: 'reading', backTo: null, read: 0 }).key).toBe(
+      'email.backfill.starting'
+    )
+    expect(backfillLine({ phase: 'paused', backTo: 1, read: 3 })).toMatchObject(
+      { canResume: true, canPause: false }
+    )
+    expect(backfillLine({ phase: 'done', backTo: 1, read: 9 })).toMatchObject({
+      key: 'email.backfill.done',
+      canStop: false,
+    })
+  })
+
+  it('adds up the estimates', () => {
+    expect(
+      estimateTotals([
+        { provider: 'outlook', emails: 260, runs: 5 },
+        { provider: 'gmail', emails: 60, runs: 1 },
+      ])
+    ).toEqual({ emails: 320, runs: 6 })
   })
 })
