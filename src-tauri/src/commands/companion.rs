@@ -29,7 +29,8 @@
 //!    focused; press again: back to the bison.
 //! 2. Drag the bison to the top-left and let go: it snaps into that corner.
 //!    Open the card: it opens from the top-left. Repeat on a second
-//!    monitor. Quit, relaunch: the bison is where you left it.
+//!    monitor, one with a different display scale too: it stays on the
+//!    monitor you drop it on. Quit, relaunch: the bison is where you left it.
 //! 3. Start an agent run: the bison carries; make it wait for an approval:
 //!    it waits with the count; approve: a check for a moment, then rest.
 //! 4. Settings › Appearance › Companion › Nandi on the desktop off: the
@@ -244,6 +245,22 @@ fn on_moved(app: &AppHandle) {
     });
 }
 
+/// Another monitor's scale. Our own placement crossed monitors: the same
+/// corner, at the new size. A drag crossed them: a move like any other, so
+/// it snaps to the monitor it's dropped on (placing it now would pull it
+/// back to the saved one mid-drag)
+fn on_scale_changed(app: &AppHandle) {
+    let Some(placement) = app.try_state::<Placement>() else {
+        return;
+    };
+    if Instant::now() < *lock(&placement.placed_until) {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move { place(&app, None).await });
+    } else {
+        on_moved(app);
+    }
+}
+
 async fn bubble_on(app: &AppHandle) -> bool {
     match app.try_state::<AppState>() {
         Some(state) => companion::is_bubble(&state).await.unwrap_or(true),
@@ -287,11 +304,7 @@ pub fn setup(app: &AppHandle) {
     let events_app = app.clone();
     window.on_window_event(move |event| match event {
         WindowEvent::Moved(_) => on_moved(&events_app),
-        // Another monitor's scale: the same corner, at the new size
-        WindowEvent::ScaleFactorChanged { .. } => {
-            let app = events_app.clone();
-            tauri::async_runtime::spawn(async move { place(&app, None).await });
-        }
+        WindowEvent::ScaleFactorChanged { .. } => on_scale_changed(&events_app),
         // Closing (e.g. Alt+F4) hides it, so the hotkey can bring it back
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
