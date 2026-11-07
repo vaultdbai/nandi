@@ -34,6 +34,14 @@ People search with the relay down (strict, decision 2) and failover of a refused
 1. **Available again didn't clear NANDI.md's `availability:`.** Writing the manifest kept keys it wasn't given, so once away, a person stayed away. Fixed in `gateway/manifest.rs` (`serialize` drops the old block; test `being_available_again_drops_the_old_availability`). Verified on the rerun: Bob available again, and the relay's directory says so.
 2. **The outbox lost a request when the relay came back.** It flushed as soon as the socket opened, before this Nandi and the provider had registered, and the relay refused the provider's gateway because its card wasn't resent yet; the refusal abandoned the request. Fixed on both sides: the relay counts the member's stored gateway card until the live one comes (nandi-relay `dispatch.rs`, test `a_member_back_before_its_gateway_card_still_gets_its_work`); the client waits for its registration before submitting, and the outbox abandons only what the relay refused (`REFUSED_BY_RELAY`), retrying anything that didn't get there. Verified on the rerun.
 
+## Rerun on Merged Main (2026-11-07)
+
+The same scenarios on `main` after the team brain, live UI, pull-only images, connector hub and social pack branches were merged, against nandi-relay main. Harness `D:/tmp/nandi-team-1106`. All eleven pass.
+
+One bug found and fixed: **a provider's reassignment of an assignment skipped the teammate's approval.** The candidate was the teammate's agent card (`cy/chief-of-staff`), so Cy's Chief of Staff ran the assignment as a task instead of Cy's gateway holding it. A request that came in through the gateway now goes to the teammate's gateway (`a2a/reassign.rs` `handed_to`). Verified on the rerun: Cy's Nandi held it, Cy approved and closed it, Ada saw it completed.
+
+Failover after a refusal was tried and not reached: a question with no target goes to Ada's own Chief of Staff first, so no remote refusal happens. It stays covered by nandi-relay `tests/dispatch.rs` and `a2a::tests`. Strict people search with the relay down needs a model run (`find_people` is an agent tool); `pnpm run test:offline` covers it.
+
 ## Harness
 
 `D:/tmp/nandi-team-1105` (`start.sh`, `stop.sh`, `s00-tokens.mjs`, `s01-setup.mjs`, `run.mjs <phase>`, `findings.log`). Local only.

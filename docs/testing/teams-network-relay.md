@@ -523,6 +523,7 @@ Notes that apply to the whole section:
   - A sees the toast "Reassigned to {name}" (`tasks.provider.reassigned`); its row is Reassigned.
   - C's thread shows "Reassigned to Bob by Alice" (with A's reason) on the same task, which now names B as its provider; C gets a toast.
   - B runs the task as an ordinary task, and the result reaches C, even when C was offline during the move.
+  - A request C sent to A as a person (an ask or an assignment to A's gateway) goes to B's gateway, so B's Nandi holds an assignment for B to approve like any other.
   - A `reassigned_tasks` row is written on both A and C.
 - **Edge / negative cases:**
   - With no candidates, the menu is hidden.

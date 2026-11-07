@@ -213,11 +213,24 @@ async fn candidates(
             let candidate = ReassignCandidate {
                 instance_id: card.instance_id.clone(),
                 display_name: card_name(&card),
-                card_id: card.id.clone(),
+                card_id: handed_to(&task.provider_agent, &card),
             };
             (candidate, card)
         })
         .collect())
+}
+
+/// Where a reassigned task goes on the teammate's Nandi. A request that
+/// came to us as a person (our gateway: an ask or an assignment) goes to
+/// them as a person, so their gateway holds it for them like any other;
+/// a task for one of our agents goes to the agent that serves it.
+fn handed_to(provider_agent: &str, card: &AgentCard) -> String {
+    use crate::services::gateway::GATEWAY_AGENT_ID;
+    if provider_agent == GATEWAY_AGENT_ID {
+        AgentCard::card_id(&card.instance_id, GATEWAY_AGENT_ID)
+    } else {
+        card.id.clone()
+    }
 }
 
 /// The provider task `task_id`, if it's one we could still hand on
@@ -434,4 +447,29 @@ pub async fn reassign_candidates_for(
         .into_iter()
         .map(|(candidate, _)| candidate)
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_request_to_a_person_goes_to_the_teammate_as_a_person() {
+        let card = AgentCard {
+            id: "cy/chief-of-staff".into(),
+            name: "Chief of Staff".into(),
+            description: String::new(),
+            instance_id: "cy".into(),
+            endpoint: String::new(),
+            capabilities: Vec::new(),
+            accepts_delegation: true,
+            max_concurrent: 1,
+            current_load: 0,
+            owner: OwnerRef::default(),
+            signature: None,
+            issued_at: 0.0,
+        };
+        assert_eq!(handed_to("gateway", &card), "cy/gateway");
+        assert_eq!(handed_to("papers", &card), "cy/chief-of-staff");
+    }
 }
