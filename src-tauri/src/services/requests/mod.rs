@@ -10,7 +10,9 @@
 //! [`project`] is pure; [`get_request`] loads what it needs.
 
 pub mod blocker;
+pub mod digest;
 pub mod local;
+pub mod tool;
 
 use std::collections::HashMap;
 

@@ -161,6 +161,30 @@ fn headers_value(headers: &[Header]) -> Value {
     json!({ "messages": headers })
 }
 
+/// The user's connected addresses
+pub fn own_addresses(state: &AppState) -> Vec<String> {
+    email_settings(state)
+        .accounts
+        .into_iter()
+        .map(|a| a.email)
+        .collect()
+}
+
+/// One email by its id, from whichever connected mailbox it names, so
+/// intake can screen it (`services::intake`)
+pub async fn message_by_id(state: &AppState, id: &str) -> Result<super::mail::Message, String> {
+    let (provider, raw) =
+        MailProvider::of_message_id(id).ok_or_else(|| format!("'{id}' isn't an email id"))?;
+    if !super::connected(state).contains(&provider) {
+        return Err(format!("{} isn't connected", provider.name()));
+    }
+    let setup = state.email().setup();
+    Mailbox::new(provider, &setup, state.secrets())
+        .message(raw)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Runs a mail tool on the mailboxes in `allowed` (what `services::access`
 /// let this call use)
 pub async fn call(state: &AppState, allowed: &[String], tool: &str, args: &Value) -> ToolOutcome {

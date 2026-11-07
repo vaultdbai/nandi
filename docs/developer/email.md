@@ -100,7 +100,7 @@ Sign-in failures are sorted by `classify_sign_in_error` into `adminApproval` (AA
 
 `email::check_all` builds the message with `batch::Batch::prompt`: who the user is (each connected account's name and address, the Chief of Staff's "me"), whether it's the first read, then one line per email (id, folder, date, from, to, cc, subject, a 240-character preview) inside `<email-data>`. Each check has its own conversation (`email:<uuid>`), so mail never enters the user's chat history.
 
-`orchestrator::llm_step` sees `source_type = email` (`is_email_run`) and offers only the notes tools (`filesystem__read_file`, `list_dir`, `write_file`) and the mail tools, without starting the container. Tool dispatch refuses anything else in that run.
+`orchestrator::llm_step` sees `source_type = email` (`is_email_run`) and offers only the notes tools (`filesystem__read_file`, `list_dir`, `write_file`), the mail tools and the Chief of Staff's work tools (`work_open`, `work_start`, `work_update`: it acts on what the mail calls for, see [the interaction layer](./interaction-layer.md#the-chief-of-staff-acts-on-what-arrives)), without starting the container. Tool dispatch refuses anything else in that run.
 
 The Chief of Staff's behaviour is in its `skill.md` › Email: note asks, promises, deadlines, decisions and owners; cite "(from <sender>, <date>, "<subject>")"; never copy more than a short phrase; don't re-add what the user deleted.
 

@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import { useDashboard } from '@/store/agent-store'
 import { useNavigationStore, type View } from '@/store/navigation-store'
 import { ViewHeader } from '@/components/views/ViewHeader'
+import { ChiefOfStaffDigest } from './ChiefOfStaffDigest'
 import { EmailTodo } from './EmailTodo'
 import { RecentRow, RunningRow } from './HomeRows'
 import type { HomeTile } from './home-model'
@@ -68,6 +69,7 @@ export function HomeView({
           )}
           {dashboard && <BackupNudge snapshot={dashboard} />}
           <EmailTodo />
+          <ChiefOfStaffDigest />
           {dashboard === null || home.isPending ? (
             <HomeSkeleton />
           ) : fresh ? (

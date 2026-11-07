@@ -293,6 +293,10 @@ export const tauriClient: NandiClient = {
   startRequest: (plan, text) => commands.startRequest(plan, text),
   completeRequestStep: (id, position) =>
     commands.completeRequestStep(id, position),
+  getChiefOfStaffDigest: () => commands.getChiefOfStaffDigest(),
+  markChiefOfStaffDigestSeen: () => commands.markChiefOfStaffDigestSeen(),
+  approveQueuedWork: queueId => commands.approveQueuedWork(queueId),
+  dismissQueuedWork: queueId => commands.dismissQueuedWork(queueId),
   cancelRequest: id => commands.cancelRequest(id),
   rerunRequest: id => commands.rerunRequest(id),
   mascotGet: () => commands.mascotGet(),

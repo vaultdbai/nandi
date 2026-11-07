@@ -793,7 +793,8 @@ CREATE TABLE IF NOT EXISTS repo_config_cache (
 CREATE TABLE IF NOT EXISTS requests (
     id         TEXT PRIMARY KEY,
     title      TEXT NOT NULL,
-    -- me (the ask box) for now; trigger | schedule | workflow | peer later
+    -- me (the ask box, Studio) | email | calendar | chiefOfStaff (work the
+    -- Chief of Staff started itself)
     source     TEXT NOT NULL,
     -- What was asked, word for word
     ask_text   TEXT NOT NULL DEFAULT '',
@@ -830,6 +831,37 @@ CREATE TABLE IF NOT EXISTS request_steps (
 );
 CREATE INDEX IF NOT EXISTS idx_request_steps_run ON request_steps(run_id);
 CREATE INDEX IF NOT EXISTS idx_request_steps_workflow_run ON request_steps(workflow_run_id);
+
+-- News the Chief of Staff added to a Request while it ran
+CREATE TABLE IF NOT EXISTS request_updates (
+    request_id TEXT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+    at         INTEGER NOT NULL,
+    -- email | calendar | chiefOfStaff
+    source     TEXT NOT NULL,
+    text       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_request_updates_at ON request_updates(at);
+
+-- Work from outside (mail, calendar), screened and waiting for the user's
+-- approval before it starts or reaches a Request (`services::intake`)
+CREATE TABLE IF NOT EXISTS intake_queue (
+    id                TEXT PRIMARY KEY,
+    at                INTEGER NOT NULL,
+    -- email | calendar (`RequestSource`)
+    source            TEXT NOT NULL,
+    -- start | update
+    action            TEXT NOT NULL,
+    request_id        TEXT,
+    request_title     TEXT,
+    text              TEXT NOT NULL,
+    sender            TEXT,
+    -- `Screening` JSON
+    screening         TEXT NOT NULL,
+    -- pending | approved | dismissed
+    status            TEXT NOT NULL,
+    result_request_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_intake_queue_status ON intake_queue(status, at);
 CREATE INDEX IF NOT EXISTS idx_request_steps_task ON request_steps(task_id);
 "#;
 

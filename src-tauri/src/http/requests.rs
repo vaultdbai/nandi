@@ -33,6 +33,36 @@ pub fn api() -> Router<AppState> {
         .route("/requests/{id}/rerun", post(rerun))
         // Returns the drafted workflow YAML
         .route("/requests/{id}/workflow-draft", post(draft_workflow))
+        // Returns `ChiefOfStaffDigest`
+        .route("/chief-of-staff/digest", get(digest))
+        // Returns `null` once it's marked seen
+        .route("/chief-of-staff/digest/seen", post(digest_seen))
+        // Returns the Request's ID once the queued work starts or reaches it
+        .route("/chief-of-staff/queue/{id}/approve", post(approve_queued))
+        // Returns `null` once it's dismissed
+        .route("/chief-of-staff/queue/{id}/dismiss", post(dismiss_queued))
+}
+
+async fn approve_queued(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    ApiResult(crate::services::intake::approve(&state, id).await)
+}
+
+async fn dismiss_queued(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    ApiResult(crate::services::intake::dismiss(&state, id).await)
+}
+
+async fn digest(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(requests::digest::get(&state).await)
+}
+
+async fn digest_seen(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(requests::digest::mark_seen(&state).await)
 }
 
 #[derive(Deserialize)]

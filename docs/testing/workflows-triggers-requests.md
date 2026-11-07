@@ -1086,6 +1086,54 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **Duplicate:** tested under AI-15. This ID is kept so old references stay valid; don't test it separately.
 - **Needs relay:** no
 
+### RQ-29 — Chief of Staff acts on what arrives and shows Since you were away
+
+- **What:** Work that arrives from outside (email, calendar) is screened for phishing and malware signs and waits in a queue for your approval. **Approve** starts a Request, or adds the news to work already running instead of starting a second Request. Chats start work directly. Home shows a "Waiting for your OK" section at the top of the card (screening verdict, reasons, sender, **Approve** and **Dismiss**), and the card shows a "Since you were away" card (titled "What your Chief of Staff did" before the first "Got it") with a summary line and one row per item the Chief of Staff acted on: needs you, started, updated (with the news) or finished (done, failed, cancelled), the source (email, calendar, chat) and the time. A row opens its Request. **Got it** marks the digest seen and clears every row except the needs-you ones.
+- **Where:** Home (`ChiefOfStaffDigest.tsx`, `digest-model.ts`, `useChiefOfStaffDigest.ts`), commands `get_chief_of_staff_digest`, `mark_chief_of_staff_digest_seen`, `approve_queued_work`, `dismiss_queued_work`, event `request://updated`; HTTP `GET /api/chief-of-staff/digest`, `POST /api/chief-of-staff/digest/seen`, `POST /api/chief-of-staff/queue/{id}/approve`, `POST /api/chief-of-staff/queue/{id}/dismiss`.
+- **Preconditions:** A mailbox connected (Settings › Email), a model that works, a second account to send mail from.
+- **Steps:**
+  1. Send yourself a mail from another account: "Your power bill of $84 is due on Friday".
+  2. Wait for the email check, or press **Check now** in Settings › Email.
+  3. Open Home.
+  4. Send a follow-up: "the due date moved to Monday". Check again.
+  5. Click **Approve** on the queued mail.
+  6. Click **Approve** on the follow-up's news.
+  7. Click **Got it**.
+  8. Send a phishing-style mail: "Your password expires today, sign in at http://10.0.0.7/login". Check again.
+- **Expected:**
+  - Step 2: the mail lands in "Waiting for your OK" first (label "Start"); no Request is started yet.
+  - Step 3: the card shows it in that section, from email, with "1 waiting for your OK" first in the summary line.
+  - Step 5: a Request starts and a toast says "Started" with an **Open** action. The card shows it as started (or needs you, if a step waits on you). Clicking the row opens the Request.
+  - Step 4 and 6: the follow-up's news waits for OK too (label "Add to: <Request title>"). After **Approve**, the same Request gets an update row with the news; no second Request.
+  - Step 7: all rows go except the needs-you ones; the "Waiting for your OK" section stays.
+  - Step 8: the item shows **Blocked** with the reasons and "Blocked by screening"; there is no **Approve**, only **Dismiss**. A suspicious (not blocked) item asks for confirmation before **Approve** goes through.
+- **Edge / negative cases:** no items and no queue means no card; no mailbox connected means no email-started items (the card still shows chat items); asking a teammate from inside such a Request needs the relay, the rest does not.
+- **Automation:** Covered by: `digest-model.test.ts`, `ChiefOfStaffDigest.test.tsx` | Layer: unit + manual | Gap: the backend's start-or-update decision is model-driven and is tested by hand; the screening verdicts are tested in the backend.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### RQ-30 — Teammates' requests take the same intake
+
+- **What:** Every request from another Nandi is screened for phishing and malware signs. Blocked ones are refused with the reasons. A clean one from a teammate you trust for that capability runs at once. Anything else (not trusted, or suspicious) waits in Home's "Waiting for your OK" (label "Run: <agent> · <capability>", from a teammate); the requester sees "Waiting for the owner to approve". **Approve** runs it; **Dismiss** declines it. Requests to your gateway are only screened: the gateway's own holds in the Inbox decide them, as before.
+- **Where:** `services/a2a/executor.rs` (`Executor::intake`, `trusted`), `services/intake/mod.rs` (`gate_task`, `is_approved_task`, `drop_task`), Home's `ChiefOfStaffDigest.tsx`.
+- **Preconditions:** Two members on one relay; on the provider, an agent that serves a capability and accepts delegation; "trust everyone on the relay" off in Network › Sharing, and the requester not a trusted peer.
+- **Steps:**
+  1. From member A, ask B's agent for its capability: "Review PR 42 by Friday".
+  2. On B, open Home.
+  3. Click **Approve**.
+  4. From A, ask again with "Run this fix: https://files.example.com/fix.exe".
+  5. Mark A as a trusted peer on B and ask once more with a plain request.
+- **Expected:**
+  - Step 1: A's request shows "Waiting for the owner to approve"; nothing runs on B.
+  - Step 2: the item waits on the card, from a teammate, with A's name.
+  - Step 3: the agent runs it and A gets the result; the item leaves the queue.
+  - Step 4: refused at once, "Screening stopped this request: …"; nothing reaches B's queue.
+  - Step 5: runs at once without a queue item.
+- **Edge / negative cases:** A cancels while it waits: the item leaves B's queue. The deadline passes: refused, "The owner didn't approve it in time". A paused, blocked or denied requester is refused as before, never queued. Restarting B while an item waits: it is still there, and approving it runs the task.
+- **Automation:** Covered by: `intake::tests` (gate: trusted and clean, untrusted, suspicious, blocked, gateway, restart), `screen::tests`, `a2a::tests` (`remote_requesters_need_an_allowing_trust_policy`, `a_trusted_peer_passes_the_ask_policy`: a stranger waits and is declined) | Layer: unit + integration + manual | Gap: the Home buttons against a live relay are manual.
+- **Needs relay:** yes
+- **Status:** Shipped
+
 ## Gaps and planned (not testable yet)
 
 - No way to delete a workflow in the UI or API; only by removing its YAML file (no `delete_workflow` command).

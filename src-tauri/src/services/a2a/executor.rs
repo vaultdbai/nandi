@@ -55,6 +55,7 @@ use crate::services::capability::workflow_provider;
 use crate::services::chat;
 use crate::services::domain::{Agent, AgentCard};
 use crate::services::events::{AgentTurnDone, NandiEvent, WireEvent};
+use crate::services::intake;
 use crate::services::orchestrator::{OrchestratorCommand, RunSource};
 use crate::services::relay::protocol::{PeerMessage, TaskAssigned};
 use crate::services::relay::RelayClient;
@@ -375,6 +376,8 @@ impl Executor {
                 // the company's relay
                 TrustPolicy::Ask
                     if member_trust::is_trusted(&self.deps.db, &task.requester.instance_id) => {}
+                // The owner approved this one task (`services::intake`)
+                TrustPolicy::Ask if intake::is_approved_task(&self.deps.db, &task.id) => {}
                 TrustPolicy::Ask => {
                     return Err(refuse(
                         NotTrusted,
@@ -409,6 +412,111 @@ impl Executor {
             return Err(refuse(format!("Requests from {who} are blocked")));
         }
         Ok(())
+    }
+
+    /// How `admit` sees the task before intake: admitted (trusted), held
+    /// only because the requester isn't trusted yet (`ask`: the owner may
+    /// approve it), or refused for another reason (`deny`, no such agent or
+    /// capability), which `admit` reports itself
+    fn standing(&self, task: &Task) -> Standing {
+        match self.admit(task) {
+            Ok(_) => Standing::Trusted,
+            Err(refusal) if refusal.kind == ReasonKind::NotTrusted && !self.denied(task) => {
+                Standing::Ask
+            }
+            Err(_) => Standing::Refused,
+        }
+    }
+
+    /// The trust policy denies the requester this agent
+    fn denied(&self, task: &Task) -> bool {
+        let prefix = format!("{}/", self.deps.instance_id);
+        task.target.strip_prefix(&prefix).is_some_and(|agent_id| {
+            trust::policy_for(&self.deps.db, &task.requester.id, agent_id)
+                .is_ok_and(|policy| policy == TrustPolicy::Deny)
+        })
+    }
+
+    /// Intake for a task from another Nandi (`services::intake`): screened,
+    /// then run at once (trusted and clean), refused (blocked, or the owner
+    /// declined), or held (still `Delivered`) until the owner decides, the
+    /// requester cancels, or its deadline passes. `None`: go on.
+    async fn intake(&self, task: &Task, life: &ProviderLife<'_>) -> Option<Refusal> {
+        if task.requester.instance_id == self.deps.instance_id
+            || self.check_member_trust(task).is_err()
+        {
+            // Ours, or refused by `admit` with its own reason
+            return None;
+        }
+        let refuse =
+            |message: String| Refusal::new(ReasonKind::NotAccepting, TaskStage::Admit, message);
+        let screen_only = self.is_gateway_task(task);
+        let trusted = if screen_only {
+            false
+        } else {
+            match self.standing(task) {
+                Standing::Trusted => true,
+                Standing::Ask => false,
+                // `admit` refuses it with its own reason
+                Standing::Refused => return None,
+            }
+        };
+        let requester = requester_name(task);
+        let agent = task.target.rsplit('/').next().unwrap_or(&task.target);
+        let target = format!("{agent} · {}", task.capability);
+        let text = match task.input.get("text").and_then(Value::as_str) {
+            Some(text) => text.to_string(),
+            None => task.input.to_string(),
+        };
+        let team_task = intake::TeamTask {
+            task_id: &task.id,
+            requester: &requester,
+            target: &target,
+            text: &text,
+            trusted,
+            // The gateway holds for the owner itself (Inbox)
+            screen_only,
+        };
+        let deadline = self.deadline(task);
+        let mut told = false;
+        loop {
+            match intake::gate_task(&self.deps.db, &self.deps.bus, &team_task) {
+                Ok(intake::Gate::Go) => return None,
+                Ok(intake::Gate::Refuse(why)) => return Some(refuse(why)),
+                Ok(intake::Gate::Declined) => {
+                    return Some(Refusal::new(
+                        ReasonKind::Declined,
+                        TaskStage::Admit,
+                        "The owner declined this request",
+                    ))
+                }
+                Ok(intake::Gate::Wait(_)) => {}
+                Err(e) => return Some(refuse(format!("This request couldn't be screened: {e}"))),
+            }
+            if !told {
+                told = true;
+                life.waiting(
+                    Change::reason("Waiting for the owner to approve")
+                        .kind(ReasonKind::NeedsTheirApproval, TaskStage::Admit),
+                    None,
+                )
+                .await;
+            }
+            if life.ended().await {
+                intake::drop_task(&self.deps.db, &self.deps.bus, &task.id);
+                return Some(refuse("The task ended while it waited".to_string()));
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                intake::drop_task(&self.deps.db, &self.deps.bus, &task.id);
+                return Some(Refusal::new(
+                    ReasonKind::TimedOut,
+                    TaskStage::Admit,
+                    "The owner didn't approve it in time",
+                ));
+            }
+            tokio::time::sleep((deadline - now).min(self.deps.dequeue_interval)).await;
+        }
     }
 
     /// Whether `task` is addressed to this instance's gateway
@@ -522,13 +630,20 @@ impl Executor {
         if inbound {
             self.recorder.started(&result).await;
         }
+        let life = inbound.then(|| ProviderLife::new(&self.deps, task));
+        if let Some(life) = &life {
+            life.begin(resumed).await;
+            // Screened, and held for the owner's approval unless trusted
+            if let Some(refusal) = self.intake(task, life).await {
+                life.reject(&refusal).await;
+                history::finish(&mut result, TaskStatus::Failed, Some(refusal.message));
+                self.recorder.finished(&result).await;
+                return result;
+            }
+        }
         if self.is_gateway_task(task) {
             // The provider row and lifecycle like an agent task's; the
             // gateway moves it on as it routes (`gateway_dispatched`)
-            let life = inbound.then(|| ProviderLife::new(&self.deps, task));
-            if let Some(life) = &life {
-                life.begin(resumed).await;
-            }
             let (result, refusal) = self.run_gateway(task, result).await;
             if let Some(life) = &life {
                 if result.status == TaskStatus::Failed && life.untouched().await {
@@ -553,10 +668,6 @@ impl Executor {
                 self.recorder.finished(&result).await;
             }
             return result;
-        }
-        let life = inbound.then(|| ProviderLife::new(&self.deps, task));
-        if let Some(life) = &life {
-            life.begin(resumed).await;
         }
 
         // Wave A seam (Track F): a workflow provider runs the task instead
@@ -685,6 +796,8 @@ impl Executor {
             {
                 Ok(())
             }
+            // The owner approved this one task (`services::intake`)
+            TrustPolicy::Ask if intake::is_approved_task(&self.deps.db, &task.id) => Ok(()),
             TrustPolicy::Deny => Err(not_trusted(format!(
                 "The workflow '{workflow_id}' doesn't take requests from {}",
                 requester_name(task)
@@ -867,6 +980,15 @@ impl Executor {
 /// The provider's `tasks` row of an inbound task, and the lifecycle
 /// messages each step sends the requester. Failures are logged: the
 /// lifecycle never fails the task itself.
+/// A task from another Nandi as `admit` sees it, before intake
+enum Standing {
+    Trusted,
+    /// Held only because the requester isn't trusted yet
+    Ask,
+    /// `admit` refuses it for another reason
+    Refused,
+}
+
 struct ProviderLife<'a> {
     deps: &'a A2aDeps,
     task: &'a Task,

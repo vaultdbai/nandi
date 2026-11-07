@@ -2266,6 +2266,52 @@ async startRequest(plan: ActionPlan, text: string) : Promise<Result<string, stri
 }
 },
 /**
+ * What the Chief of Staff did since the user last looked, and the work
+ * waiting on them
+ */
+async getChiefOfStaffDigest() : Promise<Result<ChiefOfStaffDigest, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_chief_of_staff_digest") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The user has seen the digest: only what waits on them stays
+ */
+async markChiefOfStaffDigestSeen() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("mark_chief_of_staff_digest_seen") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Approves work that arrived from outside: it starts, or its news reaches
+ * its Request. Returns the Request's ID. Blocked items can't be approved.
+ */
+async approveQueuedWork(id: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("approve_queued_work", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Drops work that arrived from outside without doing it
+ */
+async dismissQueuedWork(id: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("dismiss_queued_work", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Marks a step of a local Request that waits on the user done
  */
 async completeRequestStep(id: string, position: number) : Promise<Result<null, string>> {
@@ -3556,11 +3602,11 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 
 /** user-defined types **/
 
@@ -4605,6 +4651,20 @@ export type ChatMessage = { kind: "user"; id: string; runId: string | null; crea
  * The message ID is also the approval ID
  */
 { kind: "approval"; id: string; runId: string | null; createdAt: number; tool: string; args: JsonValue; status: ApprovalStatus; expiresAt: number | null } | { kind: "error"; id: string; runId: string | null; createdAt: number; content: string }
+export type ChiefOfStaffDigest = { 
+/**
+ * When the user last marked it seen, epoch ms (`None`: never)
+ */
+since: number | null; 
+/**
+ * Waiting on the user first, then newest first
+ */
+items: DigestItem[]; 
+/**
+ * From outside, screened, waiting for the user's approval before it
+ * starts or reaches its Request (`services::intake`), oldest first
+ */
+queue: QueuedWork[] }
 /**
  * How a requester agent answers a provider's questions, kept in its
  * skill.md (`clarification:`)
@@ -5021,6 +5081,28 @@ interval: number;
  * Unix timestamp (seconds) after which the codes are invalid
  */
 expiresAt: number }
+export type DigestItem = { requestId: string; title: string; source: RequestSource; kind: DigestKind; status: RequestStatus; 
+/**
+ * The news, for `updated`
+ */
+text: string | null; 
+/**
+ * Epoch ms
+ */
+at: number }
+export type DigestKind = 
+/**
+ * Waiting on the user (shown until it's done)
+ */
+"needsYou" | "started" | 
+/**
+ * News added to work in progress
+ */
+"updated" | 
+/**
+ * Done, failed or cancelled
+ */
+"finished"
 /**
  * Which side of the task this Nandi is on
  */
@@ -5606,6 +5688,20 @@ export type InstalledPackInfo = { id: string; version: string; commit: string; a
  * A provider as the relay reports it (which instance it's on)
  */
 export type InstancePresence = { instanceId: string; capabilityVersion: string; provider: ProviderPresence }
+export type IntakeAction = 
+/**
+ * Start new work
+ */
+"start" | 
+/**
+ * Add news to work in progress
+ */
+"update" | 
+/**
+ * Run a teammate's request on one of the user's agents
+ */
+"run"
+export type IntakeStatus = "pending" | "approved" | "dismissed"
 /**
  * What joining a relay came to. Everything but `Joined` leaves the
  * relay settings as they were.
@@ -6368,6 +6464,31 @@ message: string; attachments: AttachmentInfo[]; createdAt: number;
  */
 position: number }
 /**
+ * One item waiting for the user's approval
+ */
+export type QueuedWork = { id: string; 
+/**
+ * Epoch ms
+ */
+at: number; source: RequestSource; action: IntakeAction; 
+/**
+ * The work in progress it adds news to; for `run`, the teammate's task
+ * (a Request page too)
+ */
+requestId: string | null; requestTitle: string | null; 
+/**
+ * The request or news, in the Chief of Staff's words, with its source
+ */
+text: string; 
+/**
+ * Who it came from ("Name <address>"), when known
+ */
+sender: string | null; screening: Screening; status: IntakeStatus; 
+/**
+ * The Request it started or updated, once approved
+ */
+resultRequestId: string | null }
+/**
  * Why a task waits or was refused: the Blocker kinds of work-model §2.3,
  * plus `declined` (the owner said no to a held request). Set where the
  * decision is made, so nothing downstream parses reason text.
@@ -6732,6 +6853,30 @@ request: string; returnedAt: number }
  * `request://returned`
  */
 export type RequestReturned = { item: RequestReturn }
+/**
+ * Who started a local Request
+ */
+export type RequestSource = 
+/**
+ * The user, from the ask box or Studio
+ */
+"me" | 
+/**
+ * The Chief of Staff, from new mail
+ */
+"email" | 
+/**
+ * The Chief of Staff, from a calendar change
+ */
+"calendar" | 
+/**
+ * The Chief of Staff, in a chat
+ */
+"chiefOfStaff" | 
+/**
+ * A teammate's request to one of the user's agents (intake only)
+ */
+"teammate"
 export type RequestStatus = "planning" | "running" | "waiting" | "done" | "failed" | "cancelled"
 export type RequestStep = { id: string; kind: StepKind; 
 /**
@@ -6983,6 +7128,15 @@ instructions?: string;
  * The API key, for listing the tools and for use here (keyring only)
  */
 apiKey?: string | null }
+export type Screening = { verdict: Verdict; 
+/**
+ * Why, in plain words; empty when clean
+ */
+reasons: string[]; 
+/**
+ * Every link found
+ */
+links: string[] }
 export type SendMessageResult = { runId: string; 
 /**
  * The user message's ID (the client ID, if one was given). A queued
@@ -7656,6 +7810,15 @@ export type UpdateAvailable = { kind: string; id: string; currentVersion: string
  * What to pass to `apply_update`
  */
 latestRef: string; currentCommit: string; latestCommit: string }
+export type Verdict = "clean" | 
+/**
+ * Warnings: the user sees them before approving
+ */
+"suspicious" | 
+/**
+ * Can't be approved, only dismissed
+ */
+"blocked"
 /**
  * A release of an agent's source.
  */

@@ -169,6 +169,80 @@ same rule as Ask's `planNeedsApproval`. The approval card shows the plan
 (`ActionPlanPreview`). Running an existing workflow is a one-step plan, so
 there is no separate run-workflow tool.
 
+### The Chief of Staff acts on what arrives
+
+New mail, a calendar change or a chat can call for work: a bill due, a
+birthday, a colleague's ask. The Chief of Staff sets it going with three
+host tools (`services/requests/tool.rs`, offered only to it, in chats and in
+the email and calendar checks' runs):
+
+| Tool          | Does                                                                                                                    |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `work_open`   | Lists open local Requests and the intake queue, so news goes to work already going and nothing is queued twice          |
+| `work_start`  | Plans `what` over a fresh `GatewayContext` and starts the Request (`tool::start_now`)                                   |
+| `work_update` | Adds news (`local::add_update`): saved in `request_updates`, appended to the input, sent to the agent working on it now |
+
+**What comes from outside waits for the user** (`services/intake/`). From
+the email or calendar check (and any outside source added later:
+`tool::from_outside`), `work_start` and `work_update` don't act. The item
+is screened, saved in `intake_queue` and waits for the user's approval
+(`approve_queued_work`, `dismiss_queued_work`,
+`POST /api/chief-of-staff/queue/{id}/approve|dismiss`). Approving starts
+the work or adds the news. In the user's own chat the tools act at once:
+the user is there.
+
+**Teammates' requests take the same intake** (owner: "same intake for
+everyone"). `Executor::intake` runs for every task from another Nandi,
+right after `TaskDelivered`, through `intake::gate_task`. It first asks
+`admit` (`Executor::standing`): a task `admit` refuses for any reason other
+than "not trusted yet" (`deny`, paused, blocked, no such agent or
+capability) is left to `admit`, which refuses it as before.
+
+| Screening  | Admit says                  | Result                                                                                                               |
+| ---------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Blocked    | any                         | Refused (`NotAccepting`) with the reasons                                                                            |
+| Clean      | admitted (trusted)          | Runs at once, as before                                                                                              |
+| Clean      | not trusted yet (`ask`)     | Queued (`action: run`); the task waits, still `Delivered`, "Waiting for the owner to approve" (`NeedsTheirApproval`) |
+| Suspicious | admitted or not trusted yet | Queued, with the warnings                                                                                            |
+
+Tasks for the gateway are only screened (`screen_only`): the gateway
+already holds requests for the owner in the Inbox. Approving lets that one
+task past the `ask` trust check (`intake::is_approved_task` in `admit` and
+`admit_workflow`); dismissing refuses it as `Declined`. A requester's
+cancel or the task's deadline takes it off the queue (`drop_task`). The
+queue item survives a restart: the resumed task finds its decision.
+
+**Screening** (`intake/screen.rs`, pure, offline) reads the request, and
+the email itself when the call names its `message_id`. No link is opened
+and no attachment is read (Nandi never downloads attachments; a malware
+scanner plugs in here later).
+
+| Sign                                                                                                                    | Result  |
+| ----------------------------------------------------------------------------------------------------------------------- | ------- |
+| A link to a bare IP, a punycode host, an `@` in the link's host, or a program or script download                        | Block   |
+| A sign-in or account lure with a link; a sender domain that imitates the user's (one or two letters, or another ending) | Block   |
+| A shortened or `http://` link; a payment lure; urgency; a sender borrowing a brand or showing another address           | Warning |
+
+Any block, or three warnings, blocks the item: it can only be dismissed.
+Warnings show with the item before the user approves it. Free-mail
+domains are never lookalikes.
+
+- **Never back to itself.** `tool::for_the_user` drops plan steps that
+  target the Chief of Staff. A plan with nothing left becomes one manual
+  step, "For you: …", so the work still shows as the user's to do.
+- **Who started it** is the Request's `source`: `email`, `calendar` or
+  `chiefOfStaff` (`tool::source_of` reads the run); the ask box and Studio
+  stay `me`.
+- **Since you were away** (`requests/digest.rs`, `get_chief_of_staff_digest`,
+  `GET /api/chief-of-staff/digest`): the queue waiting for approval, then
+  Requests the Chief of Staff started, news it added and work that finished
+  since the user last looked (`mark_chief_of_staff_digest_seen`). Work
+  waiting on the user stays until it's done. Home shows it under the email
+  to-do.
+- The email batch tells it not to start work from backfill, and on the
+  first read only for what is still open and due soon. Its behaviour is
+  skill.md › Acting on what arrives.
+
 ### Chat saves what it builds
 
 `nandi_save_artifact` (`services/studio/save.rs`) writes a definition the

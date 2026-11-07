@@ -69,11 +69,29 @@ pub struct LocalStep {
     pub ended_at: Option<i64>,
 }
 
+/// Who started a local Request
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum RequestSource {
+    /// The user, from the ask box or Studio
+    #[default]
+    Me,
+    /// The Chief of Staff, from new mail
+    Email,
+    /// The Chief of Staff, from a calendar change
+    Calendar,
+    /// The Chief of Staff, in a chat
+    ChiefOfStaff,
+    /// A teammate's request to one of the user's agents (intake only)
+    Teammate,
+}
+
 /// A local Request (an ask's plan), as stored
 #[derive(Debug, Clone, PartialEq)]
 pub struct LocalRequest {
     pub id: String,
     pub title: String,
+    pub source: RequestSource,
     /// What was asked, word for word: each step's input
     pub ask_text: String,
     pub plan: ActionPlan,
@@ -105,7 +123,13 @@ pub fn title_for(text: &str) -> String {
 }
 
 /// A new Request for `plan`: its steps pending, each after the one before
-pub fn new_request(id: &str, text: &str, plan: &ActionPlan, now: i64) -> LocalRequest {
+pub fn new_request(
+    id: &str,
+    text: &str,
+    plan: &ActionPlan,
+    source: RequestSource,
+    now: i64,
+) -> LocalRequest {
     let steps = plan
         .steps
         .iter()
@@ -136,6 +160,7 @@ pub fn new_request(id: &str, text: &str, plan: &ActionPlan, now: i64) -> LocalRe
     LocalRequest {
         id: id.to_string(),
         title: title_for(text),
+        source,
         ask_text: text.trim().to_string(),
         plan: plan.clone(),
         status: RequestStatus::Running,
@@ -321,15 +346,18 @@ fn step_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LocalStep> {
 pub fn load(conn: &Connection, id: &str) -> rusqlite::Result<Option<LocalRequest>> {
     let request = conn
         .query_row(
-            "SELECT id, title, ask_text, plan, status, error, created_at, updated_at, ended_at
+            "SELECT id, title, ask_text, plan, status, error, created_at, updated_at, ended_at,
+                    source
                FROM requests WHERE id = ?1",
             [id],
             |row| {
                 let plan: String = row.get(3)?;
                 let status: String = row.get(4)?;
+                let source: String = row.get(9)?;
                 Ok(LocalRequest {
                     id: row.get(0)?,
                     title: row.get(1)?,
+                    source: parse_enum(&source).unwrap_or_default(),
                     ask_text: row.get(2)?,
                     plan: serde_json::from_str(&plan).unwrap_or_default(),
                     status: parse_enum(&status).unwrap_or(RequestStatus::Failed),
@@ -362,10 +390,10 @@ pub fn save(conn: &mut Connection, request: &LocalRequest) -> rusqlite::Result<(
     tx.execute(
         "INSERT INTO requests (id, title, source, ask_text, plan, status, error,
                                created_at, updated_at, ended_at)
-         VALUES (?1, ?2, 'me', ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         VALUES (?1, ?2, ?10, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(id) DO UPDATE SET title = excluded.title, status = excluded.status,
-             error = excluded.error, updated_at = excluded.updated_at,
-             ended_at = excluded.ended_at",
+             ask_text = excluded.ask_text, error = excluded.error,
+             updated_at = excluded.updated_at, ended_at = excluded.ended_at",
         params![
             request.id,
             request.title,
@@ -376,6 +404,7 @@ pub fn save(conn: &mut Connection, request: &LocalRequest) -> rusqlite::Result<(
             request.created_at,
             request.updated_at,
             request.ended_at,
+            enum_str(&request.source),
         ],
     )?;
     for step in &request.steps {
@@ -702,6 +731,16 @@ pub async fn start_request(
     plan: ActionPlan,
     text: String,
 ) -> Result<String, String> {
+    start_request_from(state, plan, text, RequestSource::Me).await
+}
+
+/// Like [`start_request`], for work the Chief of Staff started itself
+pub async fn start_request_from(
+    state: &AppState,
+    plan: ActionPlan,
+    text: String,
+    source: RequestSource,
+) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("There's nothing to do: the ask is empty".to_string());
     }
@@ -709,7 +748,7 @@ pub async fn start_request(
         return Err("This plan has no steps to carry out".to_string());
     }
     let id = uuid::Uuid::new_v4().to_string();
-    let request = new_request(&id, &text, &plan, db::now_ms());
+    let request = new_request(&id, &text, &plan, source, db::now_ms());
     state.db().call(move |conn| save(conn, &request)).await?;
     events::emit(state.bus(), &RequestUpdated { id: id.clone() });
     spawn_runner(state, id.clone());
@@ -747,6 +786,118 @@ pub async fn complete_request_step(
     events::emit(state.bus(), &RequestUpdated { id: id.clone() });
     spawn_runner(state, id);
     Ok(())
+}
+
+/// News for a Request, as stored (`request_updates`)
+#[derive(Debug, Clone, PartialEq)]
+pub struct RequestUpdate {
+    pub request_id: String,
+    pub at: i64,
+    pub source: RequestSource,
+    pub text: String,
+}
+
+/// The Request's input with `news` added, so the steps still to start get
+/// it. Pure, for tests.
+pub fn with_update(ask_text: &str, news: &str) -> String {
+    format!("{}\n\nUpdate: {}", ask_text.trim_end(), news.trim())
+}
+
+pub fn save_update(conn: &Connection, update: &RequestUpdate) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO request_updates (request_id, at, source, text) VALUES (?1, ?2, ?3, ?4)",
+        params![
+            update.request_id,
+            update.at,
+            enum_str(&update.source),
+            update.text
+        ],
+    )?;
+    Ok(())
+}
+
+/// Updates added after `since` (epoch ms), oldest first
+pub fn updates_since(conn: &Connection, since: i64) -> rusqlite::Result<Vec<RequestUpdate>> {
+    let mut stmt = conn.prepare(
+        "SELECT request_id, at, source, text FROM request_updates
+          WHERE at > ?1 ORDER BY at LIMIT 200",
+    )?;
+    let rows = stmt.query_map([since], |row| {
+        let source: String = row.get(2)?;
+        Ok(RequestUpdate {
+            request_id: row.get(0)?,
+            at: row.get(1)?,
+            source: parse_enum(&source).unwrap_or_default(),
+            text: row.get(3)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// Adds news to work in progress: the steps still to start get it with
+/// their input, and an agent working on it now gets it in its chat.
+/// Returns the agents told now.
+pub async fn add_update(
+    state: &AppState,
+    id: String,
+    news: String,
+    source: RequestSource,
+) -> Result<Vec<String>, String> {
+    if news.trim().is_empty() {
+        return Err("There's no news to add".to_string());
+    }
+    let lookup = id.clone();
+    let mut request = state
+        .db()
+        .call(move |conn| load(conn, &lookup))
+        .await?
+        .ok_or_else(|| format!("Request {id} not found"))?;
+    if is_terminal(request.status) {
+        return Err(format!(
+            "\"{}\" has ended; start new work for this instead",
+            request.title
+        ));
+    }
+    let now = db::now_ms();
+    request.ask_text = with_update(&request.ask_text, &news);
+    request.updated_at = now;
+    let update = RequestUpdate {
+        request_id: id.clone(),
+        at: now,
+        source,
+        text: news.trim().to_string(),
+    };
+    let saved = request.clone();
+    state
+        .db()
+        .call(move |conn| {
+            save(conn, &saved)?;
+            save_update(conn, &update)
+        })
+        .await?;
+    let mut told = Vec::new();
+    for step in &request.steps {
+        if step.kind == PlanStepKind::LocalAgent
+            && step.status == StepStatus::Running
+            && !told.contains(&step.target)
+        {
+            let text = format!("Update for \"{}\": {}", request.title, news.trim());
+            match crate::services::chat::send_message(
+                state,
+                step.target.clone(),
+                text,
+                Vec::new(),
+                None,
+            )
+            .await
+            {
+                Ok(_) => told.push(step.target.clone()),
+                Err(e) => log::warn!("Request {id}: couldn't tell {}: {e}", step.target),
+            }
+        }
+    }
+    events::emit(state.bus(), &RequestUpdated { id });
+    Ok(told)
 }
 
 /// Stops a local Request: what its running steps started is cancelled,
@@ -805,7 +956,7 @@ pub async fn rerun_request(state: &AppState, id: String) -> Result<String, Strin
         .call(move |conn| load(conn, &lookup))
         .await?
         .ok_or_else(|| format!("Request {id} not found"))?;
-    start_request(state, request.plan, request.ask_text).await
+    start_request_from(state, request.plan, request.ask_text, request.source).await
 }
 
 /// Save as workflow: a draft of the Request's plan as a workflow file
@@ -1009,6 +1160,7 @@ mod tests {
                 (PlanStepKind::LocalAgent, "writer"),
                 (PlanStepKind::Capability, "summarize"),
             ]),
+            RequestSource::Me,
             10,
         );
         assert_eq!(request.title, "Summarize the paper");
@@ -1027,6 +1179,7 @@ mod tests {
                 (PlanStepKind::LocalAgent, "a"),
                 (PlanStepKind::LocalAgent, "b"),
             ]),
+            RequestSource::Me,
             0,
         );
         request.steps[0].status = StepStatus::Running;
@@ -1041,6 +1194,7 @@ mod tests {
             "r1",
             "x",
             &plan(&[(PlanStepKind::Manual, "m"), (PlanStepKind::LocalAgent, "a")]),
+            RequestSource::Me,
             0,
         );
         request.steps[0].status = StepStatus::Waiting;
@@ -1062,6 +1216,7 @@ mod tests {
                 (PlanStepKind::LocalAgent, "a"),
                 (PlanStepKind::LocalAgent, "b"),
             ]),
+            RequestSource::Me,
             0,
         );
         request.steps[0].status = StepStatus::Failed;
@@ -1082,6 +1237,7 @@ mod tests {
                 (PlanStepKind::Capability, "summarize"),
                 (PlanStepKind::Human, "inst-priya"),
             ]),
+            RequestSource::Me,
             0,
         );
         let yaml = workflow_yaml(&request);
@@ -1103,6 +1259,7 @@ mod tests {
                 (PlanStepKind::Workflow, "daily"),
                 (PlanStepKind::Manual, "m"),
             ]),
+            RequestSource::Me,
             100,
         );
         save(&mut conn, &request).unwrap();
@@ -1196,6 +1353,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn news_from_email_reaches_work_in_progress_and_the_digest() {
+        use crate::services::requests::digest::{self, DigestKind};
+
+        let state = AppState::for_tests(Vec::new());
+        let id = start_request_from(
+            &state,
+            plan(&[(PlanStepKind::Manual, "pay")]),
+            "Pay the power bill by Friday".into(),
+            RequestSource::Email,
+        )
+        .await
+        .unwrap();
+        tick(&state, &id).await.unwrap();
+        let request = stored(&state, &id).await;
+        assert_eq!(request.source, RequestSource::Email);
+        assert_eq!(request.status, RequestStatus::Waiting);
+
+        let told = add_update(
+            &state,
+            id.clone(),
+            "The due date moved to Monday".into(),
+            RequestSource::Email,
+        )
+        .await
+        .unwrap();
+        assert!(told.is_empty(), "no agent is working on it");
+        assert_eq!(
+            stored(&state, &id).await.ask_text,
+            "Pay the power bill by Friday\n\nUpdate: The due date moved to Monday"
+        );
+
+        let kinds: Vec<DigestKind> = digest::get(&state)
+            .await
+            .unwrap()
+            .items
+            .iter()
+            .map(|i| i.kind)
+            .collect();
+        assert_eq!(kinds, vec![DigestKind::NeedsYou, DigestKind::Updated]);
+
+        // Seen: only the work waiting on the user stays
+        digest::mark_seen(&state).await.unwrap();
+        let after = digest::get(&state).await.unwrap();
+        assert!(after.since.is_some());
+        assert_eq!(after.items.len(), 1);
+        assert_eq!(after.items[0].kind, DigestKind::NeedsYou);
+
+        // Ended work takes no news
+        cancel_request(&state, id.clone()).await.unwrap();
+        assert!(add_update(&state, id, "late".into(), RequestSource::Email)
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
     async fn a_request_picks_up_after_a_restart() {
         let state = AppState::for_tests(vec![]);
         // As it was when the app stopped: step 1 done, step 2's workflow
@@ -1207,6 +1419,7 @@ mod tests {
                 (PlanStepKind::Manual, "prep"),
                 (PlanStepKind::Workflow, "onboarding"),
             ]),
+            RequestSource::Me,
             db::now_ms(),
         );
         request.steps[0].status = StepStatus::Done;

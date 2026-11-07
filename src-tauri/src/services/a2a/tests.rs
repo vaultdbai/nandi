@@ -953,18 +953,37 @@ async fn one_instance_delegates_to_another_through_the_relay() {
     world.provider_state.shutdown();
 }
 
+/// The owner dismisses the first request queued on `provider` (intake)
+async fn decline_when_queued(provider: &AppState) {
+    loop {
+        let queued = provider
+            .db()
+            .call(|conn| crate::services::intake::pending(conn))
+            .await
+            .unwrap();
+        if let Some(item) = queued.first() {
+            crate::services::intake::dismiss(provider, item.id.clone())
+                .await
+                .unwrap();
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
 #[tokio::test]
 async fn remote_requesters_need_an_allowing_trust_policy() {
     let world = two_instances("serves: [{name: summarize}]\naccepts_delegation: true\n").await;
-    // No rule: `ask`, which rejects
-    let result = world
-        .requester
-        .run(from_writer("summarize", json!("hi")))
-        .await
-        .unwrap();
+    // No rule: `ask`, which waits for the owner (`services::intake`);
+    // dismissed, it's declined
+    let (result, ()) = tokio::join!(
+        world.requester.run(from_writer("summarize", json!("hi"))),
+        decline_when_queued(&world.provider_state)
+    );
+    let result = result.unwrap();
     assert_eq!(result.status, TaskStatus::Failed);
     assert!(
-        result.error.as_deref().unwrap().contains("needs to trust"),
+        result.error.as_deref().unwrap().contains("declined"),
         "{:?}",
         result.error
     );
@@ -2826,14 +2845,15 @@ accepts_delegation: true
 ",
     )
     .await;
-    // Default policy `ask`: a stranger is turned away
-    let refused = world
-        .requester
-        .run(from_writer("summarize", json!("hi")))
-        .await
-        .unwrap();
+    // Default policy `ask`: a stranger waits for the owner (`services::intake`);
+    // dismissed, it's declined
+    let (refused, ()) = tokio::join!(
+        world.requester.run(from_writer("summarize", json!("hi"))),
+        decline_when_queued(&world.provider_state)
+    );
+    let refused = refused.unwrap();
     assert_eq!(refused.status, TaskStatus::Failed);
-    assert!(refused.error.unwrap_or_default().contains("needs to trust"));
+    assert!(refused.error.unwrap_or_default().contains("declined"));
 
     // Marked trusted in Network: let in
     update_relationship(

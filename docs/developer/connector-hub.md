@@ -135,7 +135,7 @@ Offered to an agent with a grant on a connected account, or that names the accou
 
 ## The Chief of Staff and the calendar
 
-Every hour by default (`set_calendar_interval`, 15 minutes to 24 hours), `workspace::check_calendars` reads each granted calendar's feed and hands every change to the Chief of Staff in **one** run (source `calendar_check`, conversation `calendar:<uuid>`), only when there is something. The run gets only the notes tools and `calendar_*` (`orchestrator::data_run_allows`), and events sit in `<calendar-data>` (untrusted). Its skill.md › Calendar keeps `meetings.md`, `time-off.md` and `suggestions.md`.
+Every hour by default (`set_calendar_interval`, 15 minutes to 24 hours), `workspace::check_calendars` reads each granted calendar's feed and hands every change to the Chief of Staff in **one** run (source `calendar_check`, conversation `calendar:<uuid>`), only when there is something. The run gets only the notes tools, `calendar_*` and the Chief of Staff's work tools (`orchestrator::data_run_allows`), and events sit in `<calendar-data>` (untrusted). Its skill.md › Calendar keeps `meetings.md`, `time-off.md` and `suggestions.md`.
 
 **Suggestions and corrections** (`notes/corrections.rs`): `- [ ] …` lines in `suggestions.md` are accepted (ticked) or dismissed (removed) on My notes; both are remembered in `corrections.md`. Saving a note from My notes that drops or changes a cited line (`(from …)`, `(calendar…)`) adds "Removed from <note>: …" there. The skill.md reads `corrections.md` first and never adds those back.
 

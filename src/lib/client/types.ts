@@ -44,6 +44,7 @@ import type {
   BackfillRange,
   EmailSettingsInput,
   EmailSignInPoll,
+  ChiefOfStaffDigest,
   EmailStatus,
   MailProvider,
   AccessChoice,
@@ -796,6 +797,14 @@ export interface NandiClient {
   /** Saves an ask's approved plan as a Request and starts it (its ID) */
   startRequest(plan: ActionPlan, text: string): Promise<Result<string, string>>
   /** Marks a step of a local Request that waits on the user done */
+  /** What the Chief of Staff did since the user last looked */
+  getChiefOfStaffDigest(): Promise<Result<ChiefOfStaffDigest, string>>
+  /** The user has seen the digest; needs-you items stay */
+  markChiefOfStaffDigestSeen(): Promise<Result<null, string>>
+  /** Starts (or adds to) the Request a screened item waits to become (its ID) */
+  approveQueuedWork(id: string): Promise<Result<string, string>>
+  /** Drops a queued item without acting on it */
+  dismissQueuedWork(id: string): Promise<Result<null, string>>
   completeRequestStep(
     id: string,
     position: number

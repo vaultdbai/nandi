@@ -121,7 +121,7 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-516 features to test: all 570 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+518 features to test: all 572 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
@@ -129,7 +129,7 @@ These turned up while building the catalog. In each case the catalog follows the
 | Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 72       |
 | Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
-| Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 82       |
+| Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 84       |
 | Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 75       |
 | Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 72       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
@@ -137,22 +137,22 @@ These turned up while building the catalog. In each case the catalog follows the
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 497   |
+| Shipped     | 499   |
 | Partial     | 16    |
 | Removed     | 11    |
 | Known issue | 3     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 270   |
+| `unit`                | 272   |
 | `api`                 | 185   |
 | `manual`              | 37    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 443   |
-| yes         | 73    |
+| no          | 444   |
+| yes         | 74    |
 
 ## Master index
 
@@ -507,6 +507,8 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RQ-28 | Told when a request comes back                                                   | Shipped                                                                                    | unit          | yes         | 2026-10-31 pass |
 | RQ-25 | Agent run queue (one turn per agent)                                             | Duplicate of CH-11                                                                         | —             | no          |                 |
 | RQ-26 | Watch a Request in the companion                                                 | Duplicate of AI-15                                                                         | —             | no          |                 |
+| RQ-29 | Chief of Staff acts on what arrives and shows Since you were away                | Shipped                                                                                    | unit + manual | no          |                 |
+| RQ-30 | Teammates' requests take the same intake                                         | Shipped                                                                                    | unit + manual | yes         |                 |
 | RQ-27 | What was asked, word for word                                                    | Shipped                                                                                    | unit + manual | no          | 2026-10-30 pass |
 
 ### Library, capabilities, Studio and companion

@@ -2,10 +2,12 @@
 
 use tauri::State;
 
+pub use crate::services::requests::digest::ChiefOfStaffDigest;
 pub use crate::services::requests::Request;
 
 use crate::services::ask::ActionPlan;
-use crate::services::requests::{self, local};
+use crate::services::intake;
+use crate::services::requests::{self, digest, local};
 use crate::services::AppState;
 
 /// One Request with its Steps; `id` is any of its task IDs
@@ -42,6 +44,38 @@ pub async fn start_request(
     text: String,
 ) -> Result<String, String> {
     local::start_request(&state, plan, text).await
+}
+
+/// What the Chief of Staff did since the user last looked, and the work
+/// waiting on them
+#[tauri::command]
+#[specta::specta]
+pub async fn get_chief_of_staff_digest(
+    state: State<'_, AppState>,
+) -> Result<ChiefOfStaffDigest, String> {
+    digest::get(&state).await
+}
+
+/// The user has seen the digest: only what waits on them stays
+#[tauri::command]
+#[specta::specta]
+pub async fn mark_chief_of_staff_digest_seen(state: State<'_, AppState>) -> Result<(), String> {
+    digest::mark_seen(&state).await
+}
+
+/// Approves work that arrived from outside: it starts, or its news reaches
+/// its Request. Returns the Request's ID. Blocked items can't be approved.
+#[tauri::command]
+#[specta::specta]
+pub async fn approve_queued_work(state: State<'_, AppState>, id: String) -> Result<String, String> {
+    intake::approve(&state, id).await
+}
+
+/// Drops work that arrived from outside without doing it
+#[tauri::command]
+#[specta::specta]
+pub async fn dismiss_queued_work(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    intake::dismiss(&state, id).await
 }
 
 /// Marks a step of a local Request that waits on the user done

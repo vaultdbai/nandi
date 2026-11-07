@@ -465,6 +465,13 @@ export const webClient: NandiClient = {
   startRequest: (plan, text) => request('POST', '/requests', { plan, text }),
   completeRequestStep: (requestId, position) =>
     request('POST', `/requests/${id(requestId)}/steps/${position}/complete`),
+  getChiefOfStaffDigest: () => request('GET', '/chief-of-staff/digest'),
+  markChiefOfStaffDigestSeen: () =>
+    request('POST', '/chief-of-staff/digest/seen'),
+  approveQueuedWork: queueId =>
+    request('POST', `/chief-of-staff/queue/${id(queueId)}/approve`),
+  dismissQueuedWork: queueId =>
+    request('POST', `/chief-of-staff/queue/${id(queueId)}/dismiss`),
   cancelRequest: requestId =>
     request('POST', `/requests/${id(requestId)}/cancel`),
   mascotGet: () => request('GET', '/mascot'),
