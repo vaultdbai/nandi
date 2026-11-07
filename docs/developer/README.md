@@ -16,6 +16,7 @@ Technical documentation for building and extending this app. These docs describe
 | Document                                                                                  | Description                                                                |
 | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | [Agent Runtime](./agent-runtime.md)                                                       | Orchestrators, SQLite state, events, snapshots                             |
+| [Live UI](./live-ui.md)                                                                   | File watchers, `live://changed`, who changed what, Refresh and F5          |
 | [E2E Checklist](./e2e-checklist.md)                                                       | Manual full-loop test with DeepSeek and a container                        |
 | [Sandbox and Policy Test Checklist](./sandbox-test-checklist.md)                          | Containers, approvals, the agents' network, policies                       |
 | [Egress Proxy](./egress.md)                                                               | LLM/AWS/HTTP proxy, skill.md capabilities, STS                             |

@@ -493,6 +493,8 @@ export const webClient: NandiClient = {
     request('DELETE', `/notes/file?name=${encodeURIComponent(name)}`),
   setNotesAgentsCanWrite: allow =>
     request('PUT', '/notes/agents-can-write', { allow }),
+  listRecentChanges: () => request('GET', '/changes'),
+  refreshFromDisk: () => request('POST', '/changes/refresh'),
   getEmailStatus: () => request('GET', '/email'),
   startEmailSignIn: provider =>
     request('POST', `/email/${encodeURIComponent(provider)}/sign-in`),

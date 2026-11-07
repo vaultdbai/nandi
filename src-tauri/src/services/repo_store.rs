@@ -57,6 +57,16 @@ enum Notice {
 #[derive(Clone)]
 pub struct RepoStore(Arc<Inner>);
 
+/// A [`RepoStore`] that doesn't keep it alive, for its own subscribers
+#[derive(Clone)]
+pub struct WeakRepoStore(std::sync::Weak<Inner>);
+
+impl WeakRepoStore {
+    pub fn upgrade(&self) -> Option<RepoStore> {
+        self.0.upgrade().map(RepoStore)
+    }
+}
+
 struct Inner {
     subscribers: RwLock<Vec<Arc<dyn EventPublisher>>>,
     /// The file watcher is keeping the aggregate fresh
@@ -98,6 +108,10 @@ impl RepoStore {
 
     pub fn repos(&self) -> &Repos {
         &self.0.repos
+    }
+
+    pub fn downgrade(&self) -> WeakRepoStore {
+        WeakRepoStore(Arc::downgrade(&self.0))
     }
 
     /// Whether the file watcher keeps the aggregate fresh (so listing can

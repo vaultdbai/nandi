@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { FileText, FolderOpen, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { MarkdownContent } from '@/components/agent-console/MarkdownContent'
+import { RefreshButton } from '@/components/live/RefreshButton'
+import { UpdatedBy } from '@/components/live/UpdatedBy'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,7 +29,6 @@ import {
   useSaveNote,
   useSetNotesAgentsCanWrite,
 } from '@/hooks/useNotes'
-import { formatRelativeTime } from '@/lib/format-time'
 import { cn } from '@/lib/utils'
 import { useNavigationStore } from '@/store/navigation-store'
 import { MarkdownEditor } from './MarkdownEditor'
@@ -37,6 +38,9 @@ import {
   newNoteName,
   noteLabel,
 } from './notes-model'
+
+/** "Updated just now by …" for a note */
+const NOTE_CHANGES = ['notes'] as const
 
 /** The agent that keeps the notes (built into Nandi) */
 const CHIEF_OF_STAFF = 'chief-of-staff'
@@ -137,6 +141,7 @@ export function MyNotesView({ note }: { note?: string }) {
         </div>
         <div className="flex items-center gap-4">
           <KeepSwitch allowed={mine.agentsCanWrite} />
+          <RefreshButton />
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus aria-hidden />
             {t('notes.new')}
@@ -310,7 +315,7 @@ function NotePanel({
   onDirty: (dirty: boolean) => void
   onDeleted: () => void
 }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const note = useNote(name)
   const save = useSaveNote()
   const remove = useDeleteNote()
@@ -343,13 +348,11 @@ function NotePanel({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{name}</p>
-          {updatedAt !== null && updatedAt > 0 && (
-            <p className="text-xs text-muted-foreground">
-              {t('notes.updated', {
-                when: formatRelativeTime(updatedAt, i18n.language),
-              })}
-            </p>
-          )}
+          <UpdatedBy
+            areas={NOTE_CHANGES}
+            targetId={name}
+            updatedAt={updatedAt}
+          />
         </div>
         <div className="flex items-center gap-2">
           <ToggleGroup

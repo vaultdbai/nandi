@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useUIStore } from '@/store/ui-store'
 import { executeCommand } from '@/lib/commands/registry'
+import { REFRESH_COMMAND } from '@/lib/commands/live-commands'
 import type { CommandContext } from '@/lib/commands/types'
 import { isDesktop } from '@/lib/client'
 
@@ -15,6 +16,8 @@ import { isDesktop } from '@/lib/client'
  * - Cmd/Ctrl+W : Close the window (desktop)
  * - Cmd/Ctrl+M : Minimize the window (desktop)
  * - F11        : Enter or leave fullscreen (desktop)
+ * - F5, Cmd/Ctrl+R : Refresh: re-read the files from disk (instead of
+ *   reloading the webview, which would drop what's on screen)
  */
 export function useKeyboardShortcuts(commandContext: CommandContext) {
   useEffect(() => {
@@ -22,6 +25,11 @@ export function useKeyboardShortcuts(commandContext: CommandContext) {
       if (e.key === 'F11') {
         e.preventDefault()
         void toggleFullscreen(commandContext)
+        return
+      }
+      if (e.key === 'F5') {
+        e.preventDefault()
+        void executeCommand(REFRESH_COMMAND, commandContext)
         return
       }
       if (e.metaKey || e.ctrlKey) {
@@ -54,6 +62,12 @@ export function useKeyboardShortcuts(commandContext: CommandContext) {
             if (e.shiftKey || e.altKey) break
             e.preventDefault()
             void executeCommand('window-minimize', commandContext)
+            break
+          }
+          case 'r': {
+            if (e.altKey) break
+            e.preventDefault()
+            void executeCommand(REFRESH_COMMAND, commandContext)
             break
           }
         }

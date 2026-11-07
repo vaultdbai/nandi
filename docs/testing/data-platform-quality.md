@@ -26,7 +26,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 
 ### DT-02 — Atomic, staged writes for every definition change
 
-- **What:** Every app write to the repo is atomic (temp file `.nandi-tmp-*` in the same folder, then rename) and skipped when content is identical; the change is then `git add`-ed so `git status` shows exactly what the app changed. Nothing is auto-committed by ordinary edits. Write path: domain validates, repository writes the file, `RepoStore::commit` updates aggregate + projection in one transaction and publishes `repo://<kind>.<action>`.
+- **What:** Every app write to the repo is atomic (temp file `.nandi-tmp-*` in the same folder, then rename) and skipped when content is identical; the change is then `git add`-ed so `git status` shows exactly what the app changed. Nothing is auto-committed by ordinary edits. Write path: domain validates, repository writes the file, `RepoStore::commit` updates aggregate + projection in one transaction and publishes `repo://<kind>-<action>`.
 - **Where:** `services/repos/fs_atomic.rs` (`write_if_changed`, `TEMP_MARKER`), `services/repos/git.rs` (`GitIndex`), `services/repo_store.rs` (`commit`), `services/repos/vendor_repo.rs` (whole-folder swap via hidden staging folder for marketplace installs).
 - **Preconditions:** Repo initialized.
 - **Steps:**
@@ -193,7 +193,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 
 ### DT-13 — Hand edits apply live
 
-- **What:** A recursive `notify` watcher on the repo batches events until files are quiet for 500 ms (at most 2 s after the first), maps paths to entities, and reloads each through `RepoStore` with `changed_by: watcher`. Valid changes update memory + projection and emit `repo://<kind>.<action>` plus `repo://file_changed`; the UI invalidates git status, the stored entity and the agent definition. The app's own writes have the same hash and are no-ops. Capability files go to the capability service's handler. Policy files (`.nandi/policies/<id>.md`) are checked, not reloaded (runs read them from disk): a change emits `repo://file_changed` with `kind: policy` and `result: changed` or `invalid`, a broken one also `repo://validation_failed`, and the UI refreshes every agent's policies (PO-11).
+- **What:** A recursive `notify` watcher on the repo batches events until files are quiet for 500 ms (at most 2 s after the first), maps paths to entities, and reloads each through `RepoStore` with `changed_by: watcher`. Valid changes update memory + projection and emit `repo://<kind>-<action>` plus `repo://file_changed`, and `live://changed` with who made it (DT-43, DT-44); the UI invalidates git status, the stored entity and the agent definition. The app's own writes have the same hash and are no-ops. Capability files go to the capability service's handler. Policy files (`.nandi/policies/<id>.md`) are checked, not reloaded (runs read them from disk): a change emits `repo://file_changed` with `kind: policy` and `result: changed` or `invalid`, a broken one also `repo://validation_failed`, and the UI refreshes every agent's policies (PO-11).
 - **Where:** `services/watcher.rs` (`spawn`, `classify`, `DEBOUNCE`, `Target::Policy`, `check_policy`), `services/policies.rs` (`check_file`), `services/repo_store.rs` (`reload`, `rescan`), `src/lib/agent-sync.ts` (`repo://file_changed` case), `src/hooks/useAgentMemory.ts`.
 - **Preconditions:** App running.
 - **Steps:**
@@ -530,6 +530,83 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **Expected:** JSON snapshots; path outside the workdir returns null (no traversal).
 - **Edge / negative cases:** Unknown IDs; deleted workdir.
 - **Automation:** Covered by: `services/snapshots.rs` tests (workdir_file) | Layer: api | Gap: detailed behaviour belongs to the owning sections.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### DT-43 — Live UI: notes and work folders are watched
+
+- **What:** Besides the repo (DT-13), Nandi watches My notes (AG-28) and every agent's work folder (`~/.nandi/local/work/<agent>/`). A note added, edited or deleted outside the app, or by an agent, shows on My notes within about a second, with no reload. The repo watcher also reports `installed.yaml` (installed packs) and `NANDI.md` (your profile). Every change is one `live://changed` event, and the screens refetch exactly what it affects: the note and the list, the agent's definition and policies, the workflow, the trigger, preferences for `settings.yaml`, connectors for `connectors.yaml`, the Library for packs, Settings › Account for `NANDI.md`.
+- **Where:** `services/live/` (`folders.rs` `FolderWatcher`, `watchable`; `mod.rs` `ChangeFeed`, `StoreChanges`, `LiveService::watch_folders`), `services/watcher.rs` (`Target::Packs`, `Target::Profile`), `services/notes.rs` (`watch`), `src/lib/live-changes.ts` (`queryKeysFor`, `applyLiveChange`), `src/lib/agent-sync.ts` (`live://changed`). Event `live://changed` (`LiveChange`).
+- **Preconditions:** App running; My notes opened once (or the first launch done).
+- **Steps:**
+  1. Open My notes on a note. Edit the same file in Notepad and save.
+  2. Add a new `.md` file to the notes folder in Explorer.
+  3. Edit `.nandi/connectors.yaml` or `.nandi/settings.yaml` by hand with Library or Settings open.
+  4. Save a file into `~/.nandi/local/work/<agent>/` while that agent's page is open.
+- **Expected:** Step 1: the note's text changes within about a second, "Updated just now outside Nandi". Step 2: the new note appears in the list. Step 3: the open screen shows the new values. Step 4: Home's Recent changes lists the file under that agent.
+- **Edge / negative cases:**
+  - Editor temp files (`.x.md.swp`, `x.md~`, `x.md.tmp`), hidden files and `.git/` are ignored; so are `node_modules`, `target`, `__pycache__`, `.venv`, `venv`, `.cache` and `dist` in work folders.
+  - A notes folder shared as a drive root or the home folder isn't watched (log: "Not watching …"); Refresh still works (DT-46).
+  - A note being edited keeps the unsaved text when the file changes underneath (see the task's follow-ups).
+- **Automation:** Covered by: `live/folders.rs` `classifies_notes_and_work_files`, `changes_in_real_folders_arrive_batched_by_area`, `the_home_folder_and_drive_roots_are_never_watched`; `live/tests.rs` `the_repo_watcher_reports_profile_and_pack_files`; `watcher.rs` `classifies_the_profile_and_installed_packs`; `src/lib/live-changes.test.ts` | Layer: unit (real folders) | Gap: none in automation; the Notepad check is manual.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### DT-44 — Who changed it: "Updated just now by …"
+
+- **What:** Each change names who made it: **by you** (the app, on your command), **by** an agent (its run was going when the file changed), **by the** … **workflow** (that run was a workflow step), or **outside Nandi** (an editor, a script, a `git pull`). An open note and an agent's page show "Updated just now by Chief of Staff"; with no change this session, a note shows its file time.
+- **Where:** `services/live/author.rs` (`writer`, `active_runs`, `author_of`), `services/live/own_writes.rs` (the app's own writes, noted by `fs_atomic` and `NotesFolder`), `src/components/live/UpdatedBy.tsx`, `live-model.ts` (`authorText`, `updatedText`), `MyNotesView.tsx`, `AgentView.tsx`.
+- **Preconditions:** App running; Chief of Staff may keep notes (AG-28).
+- **Steps:**
+  1. Save a note on the My notes page.
+  2. Edit it in Notepad.
+  3. Ask Chief of Staff to note something.
+  4. Run a workflow whose agent writes a file in its work folder.
+- **Expected:** 1: "Updated just now by you". 2: "… outside Nandi". 3: "… by Chief of Staff". 4: Recent changes says "by the <workflow> workflow".
+- **Edge / negative cases:**
+  - With the notes share read-only, a change during a run is still "outside Nandi" (agents can't write there).
+  - Two agents running at once: a note goes to Chief of Staff first, else the latest run.
+  - Changes made while the app was closed have no author.
+- **Automation:** Covered by: `live/tests.rs` `notes_say_who_changed_them`, `files_in_a_work_folder_name_the_agent_or_workflow_running`, `the_apps_own_definition_writes_are_by_you`, `active_runs_are_running_or_just_ended`; `live/author.rs` tests; `live/own_writes.rs` tests; `live-model.test.ts`; `MyNotesView.test.tsx` `says who changed the open note` | Layer: unit | Gap: the author is the run going at the time, not the exact writer (see `docs/developer/live-ui.md`).
+- **Needs relay:** no
+- **Status:** Shipped
+
+### DT-45 — Recent changes on Home
+
+- **What:** Home lists the latest 8 file changes (Recent changes): "Changed deadlines.md", "Added Analyst" with the files, who and when. Each row opens its page: the note, the agent, the workflow, the trigger, the Library or Settings. Hidden until something changes; the core keeps the last 200 this session.
+- **Where:** `src/components/live/RecentChanges.tsx`, `src/hooks/useLiveChanges.ts` (`useRecentChanges`), `services/live/mod.rs` (`ChangeFeed::recent`), command `list_recent_changes`, `GET /api/changes`.
+- **Preconditions:** App running.
+- **Steps:** Edit a note outside Nandi, save an agent in Studio, add a file to an agent's work folder; open Home.
+- **Expected:** Three rows, newest first, each with its author; clicking one opens its page.
+- **Edge / negative cases:** A restart empties the list (it's in memory).
+- **Automation:** Covered by: `RecentChanges.test.tsx`, `live/tests.rs` `the_recent_list_keeps_the_latest_changes_newest_first`, `live-changes.test.ts` | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### DT-46 — Refresh, F5 and Ctrl+R
+
+- **What:** A **Refresh** button on My notes, an agent's page, Workflows, Triggers and Home's Recent changes, F5 and Ctrl/Cmd+R anywhere in the main window, and **Refresh** in the command palette re-read every definition from disk and refetch every file-backed screen. It works with no watcher at all (a network drive, a laptop that slept). F5 no longer reloads the webview.
+- **Where:** `services/live/mod.rs` (`refresh_from_disk`), command `refresh_from_disk`, `POST /api/changes/refresh`, `src/lib/live-changes.ts` (`refreshFromDisk`, `FILE_BACKED_KEYS`), `src/components/live/RefreshButton.tsx`, `src/lib/commands/live-commands.ts`, `src/hooks/use-keyboard-shortcuts.ts`.
+- **Preconditions:** App running.
+- **Steps:**
+  1. Start with the watcher unable to see a change (for example `NANDI_HOME` on a network share), or just press F5 after an edit.
+  2. Edit a skill.md or a note outside Nandi.
+  3. Press F5, or click Refresh.
+- **Expected:** The screen shows the edit; the page doesn't reload (no flash, the open tab and scroll stay).
+- **Edge / negative cases:** A refresh that fails shows the error as a toast and refetches nothing.
+- **Automation:** Covered by: `live/tests.rs` `refresh_works_with_the_watcher_off`; `live-changes.test.ts` (`Refresh re-reads the disk, then every file-backed screen`); `use-keyboard-shortcuts.test.ts` (`F5 and Cmd/Ctrl+R refresh from disk instead of reloading`) | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### DT-47 — Re-scan when the OS drops file events
+
+- **What:** When the OS may have lost file events (it sets the rescan flag, the watcher reports an error, or more than 512 files change in one batch, as a big `git checkout` does), the watcher re-reads that whole area (every definition, policy, capability, `installed.yaml` and `NANDI.md`; or the whole notes or work folder) and logs `Re-scanning <folder>: <why>`.
+- **Where:** `services/watcher.rs` (`signals`, `Batch::add`, `BURST_LIMIT`, `targets_of`), `services/live/folders.rs` (`FolderClassifier::changes`).
+- **Preconditions:** App running.
+- **Steps:** Check out a branch that changes hundreds of files in the repo, or copy 600 files into the notes folder at once.
+- **Expected:** The log shows one "Re-scanning …" line; the screens end up current.
+- **Edge / negative cases:** A Windows change buffer overflow is silent; the burst rule covers it.
+- **Automation:** Covered by: `watcher.rs` `events_the_os_may_have_dropped_rescan_everything`; `live/folders.rs` `a_batch_that_lost_events_rescans_every_area` | Layer: unit | Gap: no test makes the OS really drop events.
 - **Needs relay:** no
 - **Status:** Shipped
 

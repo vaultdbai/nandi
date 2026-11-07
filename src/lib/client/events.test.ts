@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { CORE_EVENT_NAMES } from './events'
 
+/** Tauri refuses to emit any other name, and the event is lost */
+const TAURI_EVENT_NAME = /^[A-Za-z0-9\-/:_]+$/
+
 describe('CORE_EVENT_NAMES', () => {
   it('includes the wave 2A network events', () => {
     for (const name of [
@@ -61,6 +64,17 @@ describe('CORE_EVENT_NAMES', () => {
     for (const name of CORE_EVENT_NAMES) {
       expect(name).not.toMatch(/github|entra|microsoft/i)
     }
+  })
+
+  it('includes the live UI event', () => {
+    expect(CORE_EVENT_NAMES).toContain('live://changed')
+    expect(CORE_EVENT_NAMES).not.toContain('notes://changed')
+  })
+
+  it('are all names Tauri can emit', () => {
+    const bad = CORE_EVENT_NAMES.filter(name => !TAURI_EVENT_NAME.test(name))
+    expect(bad).toEqual([])
+    expect(TAURI_EVENT_NAME.test('repo://agent.created')).toBe(false)
   })
 
   it('has no duplicates', () => {

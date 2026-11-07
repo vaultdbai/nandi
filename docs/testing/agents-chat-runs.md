@@ -326,7 +326,7 @@ Shared preconditions used below:
 - **Where:**
   - `src/components/notes/` (`MyNotesView.tsx`, `MarkdownEditor.tsx`, `notes-model.ts`), `src/hooks/useNotes.ts`, navigation kind `notes`.
   - `services/notes.rs` (`NotesFolder`, `check_name`, `folder`, `my_notes`, `set_agents_can_write`, `is_notes_write`), `services/connectors.rs` (`shared_folder`, `share_folder`), `orchestrator.rs` (approval exemption).
-  - Commands `get_my_notes`, `read_note`, `save_note`, `delete_note`, `set_notes_agents_can_write`. HTTP `GET /api/notes`, `GET/PUT/DELETE /api/notes/file?name=…`, `PUT /api/notes/agents-can-write {"allow"}`. Event `notes://changed`.
+  - Commands `get_my_notes`, `read_note`, `save_note`, `delete_note`, `set_notes_agents_can_write`. HTTP `GET /api/notes`, `GET/PUT/DELETE /api/notes/file?name=…`, `PUT /api/notes/agents-can-write {"allow"}`. The folder is watched: every change arrives as `live://changed` (DT-43).
 - **Preconditions:** None: Chief of Staff comes with Nandi (AG-30).
 - **Steps:**
   1. Open My notes.
@@ -336,7 +336,7 @@ Shared preconditions used below:
 - **Expected:**
   - Step 1: the folder path and the notes, the first one open.
   - Step 2: "Saved {name}", and the file on disk has the change.
-  - Step 4: no approval card. It writes `deadlines.md` and `owners.md` (with "Last updated" bumped), says "Noted…", and the page shows the change within 15 s.
+  - Step 4: no approval card. It writes `deadlines.md` and `owners.md` (with "Last updated" bumped), says "Noted…", and the open note shows the change within about a second, with "Updated just now by Chief of Staff" (DT-44).
 - **Edge / negative cases:**
   - A name like `../x`, `.hidden`, `a/b/c/d` or `what?` is refused.
   - Notes over 256 KB are refused.

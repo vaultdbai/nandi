@@ -43,6 +43,7 @@ import { SOURCE_TYPES } from '@/lib/trigger-form'
 import type { Trigger, TriggerSourceType } from '@/lib/tauri-bindings'
 import { cn } from '@/lib/utils'
 import { useNavigationStore } from '@/store/navigation-store'
+import { RefreshButton } from '@/components/live/RefreshButton'
 import { ViewHeader } from './ViewHeader'
 
 type Filter = 'all' | TriggerSourceType
@@ -69,7 +70,12 @@ export function TriggersListView() {
       <ViewHeader
         title={t('nav.triggers')}
         subtitle={t('triggers.subtitle')}
-        actions={newButton('outline')}
+        actions={
+          <>
+            <RefreshButton />
+            {newButton('outline')}
+          </>
+        }
       />
       <NewTriggerDialog open={creating} onOpenChange={setCreating} />
       <ScrollArea className="min-h-0 flex-1">

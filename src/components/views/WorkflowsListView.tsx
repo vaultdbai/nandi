@@ -38,6 +38,7 @@ import { WORKFLOW_RUN_STATUS_CLASSES } from '@/lib/run-status'
 import type { Trigger, WorkflowSummary } from '@/lib/tauri-bindings'
 import { runWorkflow } from '@/lib/workflow-actions'
 import { useNavigationStore } from '@/store/navigation-store'
+import { RefreshButton } from '@/components/live/RefreshButton'
 import { ViewHeader } from './ViewHeader'
 
 /** Every workflow in the agents repo: what starts it, its last run, Run. */
@@ -56,7 +57,12 @@ export function WorkflowsListView() {
       <ViewHeader
         title={t('nav.workflows')}
         subtitle={t('workflows.subtitle')}
-        actions={<NewWorkflowMenu />}
+        actions={
+          <>
+            <RefreshButton />
+            <NewWorkflowMenu />
+          </>
+        }
       />
       <ScrollArea className="min-h-0 flex-1">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-6">

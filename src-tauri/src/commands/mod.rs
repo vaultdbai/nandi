@@ -29,6 +29,7 @@ pub mod harness_sessions;
 pub mod harnesses;
 pub mod identity;
 pub mod images;
+pub mod live;
 pub mod llm_keys;
 pub mod manual_steps;
 pub mod marketplace;

@@ -201,7 +201,7 @@ event!(AgentWarning, "agent://warning");
 // ---------------------------------------------------------------------------
 
 /// A repo entity was created, updated, or deleted. Sent as
-/// `repo://<kind>.<action>` (see `DomainEvent::topic`).
+/// `repo://<kind>-<action>` (see `DomainEvent::topic`).
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoChanged {

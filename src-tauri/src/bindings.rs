@@ -5,10 +5,11 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         agents, analysis, ask, attachments, audit, aws_auth, bedrock, capabilities, capability,
         capability_registries, chat, companion, config, connectors, delegation,
         delegation_clarification, docker, egress, email, gateway, harness_sessions, harnesses,
-        identity, images, llm_keys, manual_steps, marketplace, marketplace_search, mascot, memory,
-        network, notes, notifications, palette, pilots, policies, preferences, queue, reassign,
-        recovery, relay, relay_capabilities, remote, repo, requests, runs, shared, snapshots,
-        studio, tasks, teams, teams_roster, tools, triggers, work, workflow_builder, workflows,
+        identity, images, live, llm_keys, manual_steps, marketplace, marketplace_search, mascot,
+        memory, network, notes, notifications, palette, pilots, policies, preferences, queue,
+        reassign, recovery, relay, relay_capabilities, remote, repo, requests, runs, shared,
+        snapshots, studio, tasks, teams, teams_roster, tools, triggers, work, workflow_builder,
+        workflows,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;
@@ -20,6 +21,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::services::connectors::{ConnectorChanged, ConnectorsChanged};
     use crate::services::email::EmailChanged;
     use crate::services::events::*;
+    use crate::services::live::LiveChange;
     use crate::services::marketplace::events::*;
     use crate::services::orchestrator::compaction::AgentRunCompacted;
     use crate::services::orchestrator::middleware::AgentTurnAborted;
@@ -222,6 +224,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             notes::save_note,
             notes::delete_note,
             notes::set_notes_agents_can_write,
+            live::list_recent_changes,
+            live::refresh_from_disk,
             email::get_email_status,
             email::start_email_sign_in,
             email::poll_email_sign_in,
@@ -454,6 +458,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             RepoLlmConfigStatus,
             // Task 14
             RequestUpdated,
+            // Live UI
+            LiveChange,
         ])
         // The code a person-to-person command's error starts with when no
         // relay is connected (`services::relay::unavailable`)
