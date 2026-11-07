@@ -915,4 +915,30 @@ Use it to read a page the person names.
         changed["tools"][1]["access"] = json!("read");
         assert!(p.matches_entry(&changed).unwrap_err().contains("tools"));
     }
+
+    /// For connector authors: `NANDI_CONNECTORS_DIR=<checkout> cargo test
+    /// --lib connectors_checkout_parses -- --ignored --nocapture` checks
+    /// every `connectors/<id>/connector.md` the way an install does
+    #[test]
+    #[ignore = "reads a local connectors checkout named by NANDI_CONNECTORS_DIR"]
+    fn connectors_checkout_parses() {
+        let dir = std::env::var("NANDI_CONNECTORS_DIR").expect("set NANDI_CONNECTORS_DIR");
+        let mut checked = 0;
+        for folder in std::fs::read_dir(std::path::Path::new(&dir).join("connectors")).unwrap() {
+            let folder = folder.unwrap().path();
+            let id = folder.file_name().unwrap().to_string_lossy().to_string();
+            let content = std::fs::read_to_string(folder.join(FILE)).unwrap();
+            let package =
+                ConnectorPackage::parse(&id, &content).unwrap_or_else(|e| panic!("{id}: {e}"));
+            package.check_public().unwrap();
+            println!(
+                "{id} {}: {} ({} tools)",
+                package.version,
+                package.run.kind(),
+                package.tools.len()
+            );
+            checked += 1;
+        }
+        assert!(checked > 0, "no connectors in {dir}");
+    }
 }

@@ -355,4 +355,34 @@ mod tests {
         assert!(secrets.read("k").unwrap_err().contains("part 2 of 3"));
         assert_eq!(secrets.get("k").unwrap(), None);
     }
+
+    /// The same 6 KB token through this computer's real keychain (Windows
+    /// Credential Manager here), then deleted, pieces and all.
+    /// Run with: cargo test real_keychain -- --ignored --nocapture
+    #[test]
+    #[ignore = "writes to this computer's keychain"]
+    fn a_6_kb_token_round_trips_in_the_real_keychain() {
+        let service = format!("nandi.test.{}", std::process::id());
+        let secrets = Secrets::keychain(service);
+        let user = "nandi.email.outlook.oauth";
+        let token = format!(
+            "{{\"access_token\":\"{}\",\"refresh_token\":\"{}\"}}",
+            "EwB4A8l6BAAU".repeat(450),
+            "M.C556_BAY.".repeat(100)
+        );
+        assert!(token.len() > 6_000);
+        secrets.set(user, &token).unwrap();
+        let pieces = secrets.stored_chunks(user);
+        assert!(pieces > 2, "{pieces} pieces");
+        assert_eq!(secrets.read(user).unwrap().as_deref(), Some(token.as_str()));
+        secrets.delete(user).unwrap();
+        assert_eq!(secrets.get(user).unwrap(), None);
+        for index in 1..=pieces {
+            assert_eq!(secrets.raw_read(&chunk_entry(user, index)).unwrap(), None);
+        }
+        println!(
+            "6 KB token: {} bytes in {pieces} pieces, read back, deleted",
+            token.len()
+        );
+    }
 }
