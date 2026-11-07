@@ -62,6 +62,7 @@ import {
   resourceError,
   runtimeName,
 } from './agent-page-model'
+import { AgentConnectorGrants } from '@/components/connectors/AgentConnectorGrants'
 
 const sameDraft = (a: EditorDraft, b: EditorDraft) =>
   JSON.stringify(a) === JSON.stringify(b)
@@ -275,6 +276,7 @@ function SettingsForm({
             <PermissionsPanel agentId={agent.id} />
           </div>
           <AgentConnectors agentId={agent.id} />
+          <AgentConnectorGrants agentId={agent.id} />
         </Section>
 
         <Section title={t('agentPage.settings.sharing')}>

@@ -346,6 +346,75 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **Needs relay:** no
 - **Status:** Shipped (live test pending)
 
+### CP-30 — Connector packages: install from the Agent Hub with a consent dialog
+
+- **What:** Library › Browse › Connectors lists every registry's connectors (one `connector.md` each: an MCP server as `npx`/`uvx` pinned to an exact version, or an HTTP URL). **Install** opens a dialog with exactly what it can read and write, the hosts it reaches, the sign-in it needs (an API key goes to the keyring), where it runs (its container, or its own image when it says so) and its tools with read or write. Installing grants no agent anything. Updates: a newer registry version shows **Update**, which opens the same dialog.
+- **Where:** `services/marketplace/connectors.rs` (`list`, `consent`, `install`), `services/connectors.rs` (`install_package`, `remove_connector`), `domain/connector_package.rs`; Library connector cards and the consent dialog.
+- **Preconditions:** A registry with a `connectors` list (a `file://` registry works offline).
+- **Steps:** 1. Library › Browse › Connectors › a connector › **Install**. 2. Read the dialog; paste the key; **Install**. 3. Open `.nandi/connectors.yaml` and `.nandi/connectors/<id>/connector.md`. 4. **Remove** it.
+- **Expected:** Step 2: reads, writes, hosts, sign-in and tools match its connector.md. Step 3: the declaration pins the package and version; the key is only in the keyring (`nandi.connector.<id>.key`). Step 4: the declaration, file, key and every grant on it are gone.
+- **Edge / negative cases:** An entry whose connector.md says something else (another host, a tool marked read that the entry calls write) is refused. A moved release tag is refused. A `placement: host` connector from the public registry is left out and refused. Version ranges and `latest` never parse.
+- **Automation:** Covered by: `connector_hub_suite.rs` (`a_connector_is_published_installed_granted_and_revoked`), `connector_package.rs` tests, `connector_repo.rs` | Layer: api | Gap: the dialog UI and a real container start are manual.
+- **Needs relay:** no
+- **Status:** Shipped (live test pending)
+
+### CP-31 — Studio: make a connector from an MCP server and publish it
+
+- **What:** Studio › New connector: name, the server (`npx -y <pkg>@<x.y.z>`, `uvx <pkg>==<v>` or an `https://` URL), its sign-in and hosts. With no tools listed, Nandi starts the server once in its container to list them (read unless the name says it changes something). Saves `connector.md` in the agents repo and installs it here. **Publish** tags `<id>-v<version>`, signs the entry with this computer's publisher key, and opens the registry pull request (or writes a `file://` registry straight away).
+- **Where:** `services/studio/connector.rs`, `services/marketplace/connectors.rs` (`publish`), `marketplace/publish.rs` (`EntryList::Connectors`); Studio's connector form.
+- **Preconditions:** A registry you can publish to; for GitHub, the agents repo backed up and pushed.
+- **Steps:** 1. Studio › New connector; fill it in; **Create**. 2. **Publish** to a local registry folder. 3. On a second Nandi (`$env:NANDI_HOME`), add that folder as a registry and install it (CP-30).
+- **Expected:** `connectors/<id>.json` and the index's `connectors` list in the registry; `"signed": true` when `~/.nandi/keys/publisher.key` exists; the second Nandi's dialog shows the same reads, writes and hosts.
+- **Edge / negative cases:** A public registry refuses a host connector; an inexact version is refused; publishing the same version from changed content is refused ("raise the version").
+- **Automation:** Covered by: `connector_hub_suite.rs`, `studio/connector.rs` tests | Layer: api | Gap: the GitHub pull request is mocked only for agents (`publish.rs`).
+- **Needs relay:** no
+- **Status:** Shipped (live test pending)
+
+### CP-32 — Access while an agent works: Allow once, Allow for this agent, Don't allow
+
+- **What:** A call to a connector the agent hasn't been granted pauses the run: "Triager wants to read with Issue tracker" (or "…read your email (Outlook)") in the run, the Inbox and the companion. **Allow once** (this run), **Allow for this agent** (saved, the default, or on this computer only), **Don't allow**. Nothing reaches the connector before the choice. Read and write are separate; write tools still ask for each call's approval.
+- **Where:** `services/access.rs`, `orchestrator.rs` (`access_gate`), `services/grants.rs`; the access request card.
+- **Preconditions:** An installed connector (or a connected mailbox/calendar) named in the agent's skill.md `connectors:`.
+- **Steps:** 1. Ask the agent something that needs the connector. 2. **Allow for this agent** (saved). 3. Ask again. 4. Remove the grant (Settings › Connectors › Access). 5. Ask again; **Don't allow**.
+- **Expected:** Step 1: the run waits with the request. Step 2: the call runs; the request shows the choice and who made it; `settings.yaml` has the grant. Step 3: no question. Step 5: the run asks again; Don't allow gives the model a refusal and it isn't asked again in that run.
+- **Edge / negative cases:** Allow once keeps no grant: the next run asks. A request nobody answers expires as not allowed. A policy `connectors.forbid` refuses without asking; `connectors.ask` offers only Allow once and Don't allow. Removing a grant mid-run stops the next call.
+- **Automation:** Covered by: `connector_hub_suite.rs` (both tests), `grants.rs`, `domain/grant.rs`, `domain/policy.rs` (`connector_access_can_be_forbidden_or_always_asked`) | Layer: api | Gap: the card's UI is covered by its vitest only.
+- **Needs relay:** no
+- **Status:** Shipped (live test pending)
+
+### CP-33 — Settings › Connectors › Access and up-front grants
+
+- **What:** Every grant in one place: agent, connector, read or write, **Saved** or **This computer**, with **Remove**. Grants can be given up front on an agent's page › Connectors. Every grant, use refusal and removal goes to the connector audit log (`kind: connector_access`).
+- **Where:** `list_connector_grants`, `grant_connector_access`, `revoke_connector_access`; `~/.nandi/settings.local.yaml`; `.nandi/settings.yaml` `connector_grants`.
+- **Steps:** 1. Give an agent read on a connector, on this computer. 2. Open Settings › Connectors › Access. 3. Remove it.
+- **Expected:** The local grant is in `settings.local.yaml`, not in the repo; the list shows both kinds; removing takes effect on the agent's next call.
+- **Automation:** Covered by: `grants.rs` tests, `connector_hub_suite.rs` | Layer: unit + api
+- **Needs relay:** no
+- **Status:** Shipped
+
+### CP-34 — Calendars and files: Outlook calendar, Google Calendar, OneDrive, Google Drive
+
+- **What:** Settings › Calendar & files connects each account with only its own read-only scopes (`Calendars.Read`, `calendar.readonly`, `Files.Read` + `Files.Read.All`, `drive.readonly`). Agents get `calendar_*` and `files_*` tools (read-only, on the host); nothing is copied but cursors.
+- **Where:** `services/workspace/`.
+- **Preconditions:** A build with `NANDI_MICROSOFT_CLIENT_ID` / `NANDI_GOOGLE_CLIENT_ID` and secret.
+- **Steps:** 1. Connect Outlook calendar. 2. Ask the Chief of Staff "what's on my calendar next week?". 3. Connect OneDrive; ask it to read a Markdown file by name.
+- **Expected:** Step 1 asks only for calendar access. Step 2 lists events with organizers. Step 3 returns the text with a link.
+- **Edge / negative cases:** Only GET reaches the APIs; Office files are linked, not read; an agent without a grant is asked first.
+- **Automation:** Covered by: `services/workspace/tests.rs` (mock Graph and Google), `calendar.rs`, `files.rs`, `tool.rs` tests | Layer: unit | Gap: real sign-ins are manual.
+- **Needs relay:** no
+- **Status:** Shipped (live test pending)
+
+### CP-35 — The Chief of Staff keeps My notes from the calendar
+
+- **What:** Every hour (Settings › Calendar & files), changed events from each granted calendar go to the Chief of Staff in one run (source "Calendar check"), which keeps `meetings.md`, `time-off.md` and capability suggestions in `suggestions.md`. My notes shows suggestions with **Accept** and **Dismiss**; both, and cited lines you remove from a note, are remembered in `corrections.md` and never added back.
+- **Where:** `workspace::check_calendars`, `workspace/batch.rs`, `notes/corrections.rs`; the Chief of Staff's skill.md › Calendar.
+- **Steps:** 1. Connect a calendar with meetings this week and an out-of-office day. 2. **Check now**. 3. Open My notes. 4. Dismiss a suggestion; delete a cited meeting line; check again.
+- **Expected:** One run; meetings and time off cited by title and date; dismissed and removed items stay gone.
+- **Edge / negative cases:** Calendar-check runs get only the notes and calendar tools; event text is untrusted.
+- **Automation:** Covered by: `workspace/tests.rs` (`one_chief_of_staff_run_per_calendar_check_then_only_changes`), `batch.rs`, `corrections.rs` | Layer: unit | Gap: the model's notes are manual.
+- **Needs relay:** no
+- **Status:** Shipped (live test pending)
+
 ### CP-04 — Shared folders on the Filesystem connector
 
 - **What:** Filesystem holds a list of folders: **Add a folder** (native folder picker), short name, **Read only** or **Read and write**, remove (asks first, naming agents using it). Each row shows which agents use it. Agents in a container see folders at `/agent/folders/<name>`.

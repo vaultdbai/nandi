@@ -11,6 +11,7 @@ use super::provider::{MailProvider, ProviderSetup};
 use crate::services::secrets::Secrets;
 
 pub struct Mailbox {
+    provider: MailProvider,
     api: MailApi,
     endpoints: super::provider::Endpoints,
 }
@@ -18,13 +19,14 @@ pub struct Mailbox {
 impl Mailbox {
     pub fn new(provider: MailProvider, setup: &ProviderSetup, secrets: &Secrets) -> Self {
         Self {
+            provider,
             api: MailApi::new(provider, setup, secrets),
             endpoints: setup.endpoints.clone(),
         }
     }
 
     pub fn provider(&self) -> MailProvider {
-        self.api.provider
+        self.provider
     }
 
     fn outlook(&self) -> Outlook<'_> {

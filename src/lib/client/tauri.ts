@@ -330,6 +330,29 @@ export const tauriClient: NandiClient = {
   setEmailBackfill: (provider, action) =>
     commands.setEmailBackfill(provider, action),
   estimateEmailBackfill: range => commands.estimateEmailBackfill(range),
+  listConnectorGrants: () => commands.listConnectorGrants(),
+  grantConnectorAccess: (agentId, connectorId, access, scope) =>
+    commands.grantConnectorAccess(agentId, connectorId, access, scope),
+  revokeConnectorAccess: grant => commands.revokeConnectorAccess(grant),
+  answerAccessRequest: (approvalId, choice) =>
+    commands.answerAccessRequest(approvalId, choice),
+  listRegistryConnectors: refresh => commands.listRegistryConnectors(refresh),
+  getConnectorConsent: (registryUrl, connectorId) =>
+    commands.getConnectorConsent(registryUrl, connectorId),
+  installRegistryConnector: (registryUrl, connectorId, apiKey) =>
+    commands.installRegistryConnector(registryUrl, connectorId, apiKey),
+  removeConnector: id => commands.removeConnector(id),
+  scaffoldConnector: input => commands.scaffoldConnector(input),
+  publishConnector: input => commands.publishConnector(input),
+  getWorkspaceStatus: () => commands.getWorkspaceStatus(),
+  startWorkspaceSignIn: kind => commands.startWorkspaceSignIn(kind),
+  pollWorkspaceSignIn: kind => commands.pollWorkspaceSignIn(kind),
+  disconnectWorkspace: kind => commands.disconnectWorkspace(kind),
+  checkCalendarNow: () => commands.checkCalendarNow(),
+  setCalendarInterval: minutes => commands.setCalendarInterval(minutes),
+  listNoteSuggestions: () => commands.listNoteSuggestions(),
+  answerNoteSuggestion: (id, accept) =>
+    commands.answerNoteSuggestion(id, accept),
   closeGatewayAssignment: (taskId, done, note) =>
     commands.closeGatewayAssignment(taskId, done, note),
   getGatewayConfig: () => commands.getGatewayConfig(),

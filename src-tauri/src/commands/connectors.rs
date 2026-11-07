@@ -102,3 +102,66 @@ pub async fn list_folder_users(
     connectors::parse_id(&connector_id)?;
     Ok(connectors::folder_users(&state, &connector_id))
 }
+
+/// Connectors in the registries (Library › Browse › Connectors)
+#[tauri::command]
+#[specta::specta]
+pub async fn list_registry_connectors(
+    state: State<'_, AppState>,
+    refresh: bool,
+) -> Result<Vec<crate::services::marketplace::connectors::ConnectorEntry>, String> {
+    crate::services::marketplace::connectors::list(&state, refresh).await
+}
+
+/// What installing a registry connector gives, for the consent dialog
+#[tauri::command]
+#[specta::specta]
+pub async fn get_connector_consent(
+    state: State<'_, AppState>,
+    registry_url: String,
+    connector_id: String,
+) -> Result<crate::services::marketplace::connectors::ConnectorConsent, String> {
+    crate::services::marketplace::connectors::consent(&state, &registry_url, &connector_id).await
+}
+
+/// Installs (or updates) a registry connector after the dialog; the API
+/// key, if any, goes to the keyring
+#[tauri::command]
+#[specta::specta]
+pub async fn install_registry_connector(
+    state: State<'_, AppState>,
+    registry_url: String,
+    connector_id: String,
+    api_key: Option<String>,
+) -> Result<(), String> {
+    crate::services::marketplace::connectors::install(&state, &registry_url, &connector_id, api_key)
+        .await
+}
+
+/// Removes an installed connector, its key and every grant on it
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_connector(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    connectors::parse_id(&id)?;
+    connectors::remove_connector(&state, &id).await
+}
+
+/// Studio › New connector: a connector.md from an existing MCP server
+#[tauri::command]
+#[specta::specta]
+pub async fn scaffold_connector(
+    state: State<'_, AppState>,
+    input: crate::services::studio::connector::ScaffoldConnectorInput,
+) -> Result<ConnectorInfo, String> {
+    crate::services::studio::connector::scaffold(&state, input).await
+}
+
+/// Publishes a connector made here to a registry
+#[tauri::command]
+#[specta::specta]
+pub async fn publish_connector(
+    state: State<'_, AppState>,
+    input: crate::services::marketplace::connectors::PublishConnectorInput,
+) -> Result<crate::services::marketplace::connectors::PublishConnectorResult, String> {
+    crate::services::marketplace::connectors::publish(&state, input).await
+}

@@ -134,6 +134,10 @@ pub struct SkillConfig {
     /// Every applying `models.allow` with its policy; a coding agent's CLI
     /// model is checked against them when its run starts
     pub model_rules: Vec<(Vec<String>, String)>,
+    /// Connector rules no grant passes (`connectors.forbid`), with their policy
+    pub connector_forbid: Vec<(String, String)>,
+    /// Connector rules that ask every time (`connectors.ask`), with their policy
+    pub connector_ask: Vec<(String, String)>,
 }
 
 impl SkillConfig {
@@ -163,6 +167,8 @@ impl SkillConfig {
                 .collect(),
             policies: Vec::new(),
             model_rules: Vec::new(),
+            connector_forbid: Vec::new(),
+            connector_ask: Vec::new(),
         }
     }
 

@@ -57,7 +57,56 @@ use crate::services::repos::{Repository, SingletonRepository};
 use crate::services::secrets::Secrets;
 use crate::services::AppState;
 
-pub use catalog::ConnectorDefinition;
+pub use catalog::{definition_for, ConnectorDefinition, MCP as MCP_KIND};
+
+/// Connectors that are the person's own accounts, signed in under
+/// Settings › Email / Calendar / Files rather than installed: their tools
+/// run on the host (`services::email`, `services::workspace`). An agent
+/// names them in skill.md `connectors:` like any other
+pub const ACCOUNT_CONNECTORS: &[&str] = &[
+    "outlook",
+    "gmail",
+    "outlook-calendar",
+    "google-calendar",
+    "onedrive",
+    "google-drive",
+];
+
+pub fn is_account_connector(id: &str) -> bool {
+    ACCOUNT_CONNECTORS.contains(&id)
+}
+
+/// The instructions of the installed packages `agent` declares and holds a
+/// grant on, for its system prompt
+pub fn package_instructions(state: &AppState, agent: &str, declared: &[String]) -> String {
+    let grants = state.grants();
+    let mut out = String::new();
+    for id in declared {
+        let granted = [
+            domain::grant::GrantAccess::Read,
+            domain::grant::GrantAccess::Write,
+        ]
+        .into_iter()
+        .any(|access| grants.allows(agent, id, access));
+        let Ok(Some(package)) = state.store().repos().connectors.load_package(id) else {
+            continue;
+        };
+        if granted && !package.instructions.is_empty() {
+            out.push_str(&format!(
+                "\n\n## Connector: {} (tools `{}__*`)\n\n{}",
+                package.name,
+                tools::sanitize(id),
+                package.instructions
+            ));
+        } else if !granted {
+            out.push_str(&format!(
+                "\n\nThe {} connector's tools ask the person for access the first time you use them.",
+                package.name
+            ));
+        }
+    }
+    out
+}
 
 /// The IDs of the connectors the catalog offers (`github`, `s3_backup`, …)
 #[cfg(test)]
@@ -114,6 +163,65 @@ pub struct ConnectorInfo {
     /// What's missing before the connector can start, if anything
     #[serde(default)]
     pub setup_hint: Option<String>,
+    /// A published connector (`connector.md`): where it came from and what
+    /// it can reach
+    #[serde(default)]
+    pub package: Option<PackageInfo>,
+}
+
+/// An installed connector package, as the Library and the consent dialog
+/// show it
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageInfo {
+    pub version: String,
+    /// The registry it was installed from; `None`: made here (Studio)
+    pub registry: Option<String>,
+    pub publisher: Option<String>,
+    /// `npx <package>@<version>`, `uvx …`, or the server's URL
+    pub runs: String,
+    pub placement: domain::connector_package::Placement,
+    /// Its own image, when it needs something unusual
+    pub image: Option<String>,
+    pub auth: domain::connector_package::AuthSpec,
+    pub reads: Vec<String>,
+    pub writes: Vec<String>,
+    pub hosts: Vec<String>,
+    pub tools: Vec<domain::connector_package::PackageTool>,
+}
+
+impl PackageInfo {
+    pub fn of(
+        package: &domain::connector_package::ConnectorPackage,
+        decl: Option<&ConnectorDecl>,
+    ) -> Self {
+        let source = |key: &str| {
+            decl.and_then(|d| d.config.get("package"))
+                .and_then(|p| p.get(key))
+                .and_then(serde_yaml::Value::as_str)
+                .map(str::to_string)
+        };
+        let runs = match &package.run {
+            domain::connector_package::RunSpec::Url { url } => url.clone(),
+            run => run
+                .command_line()
+                .map(|(command, args)| format!("{command} {}", args.join(" ")))
+                .unwrap_or_default(),
+        };
+        Self {
+            version: package.version.to_string(),
+            registry: source("registry"),
+            publisher: source("publisher"),
+            runs,
+            placement: package.placement,
+            image: package.image.clone(),
+            auth: package.auth.clone(),
+            reads: package.reads.clone(),
+            writes: package.writes.clone(),
+            hosts: package.hosts.clone(),
+            tools: package.tools.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -286,6 +394,11 @@ impl ConnectorRegistry {
         }
     }
 
+    /// A sink writing where this registry's calls are audited
+    pub fn audit_sink(&self) -> audit::AuditSink {
+        self.audit.clone()
+    }
+
     pub fn is_running(&self, id: &str) -> bool {
         lock(&self.running).contains_key(id)
     }
@@ -395,6 +508,27 @@ impl ConnectorRegistry {
         Ok(key)
     }
 
+    /// Starts `decl` once in its container, lists its tools and stops it
+    /// (Studio, making a connector from an MCP server)
+    pub async fn discover_tools(
+        &self,
+        decl: &ConnectorDecl,
+        secrets: &Secrets,
+    ) -> Result<Vec<ToolDef>, String> {
+        let placement = mcp::Placement::Container {
+            proxy_token: self
+                .proxy_tokens
+                .as_ref()
+                .map(|tokens| tokens.issue(&mcp::proxy_identity(decl.id.as_str())))
+                .unwrap_or_default(),
+        };
+        let definition = catalog::definition_for(decl);
+        let connector = catalog::build(decl, &definition, secrets, &placement).await?;
+        let tools = connector.list_tools();
+        connector.shutdown().await;
+        Ok(tools)
+    }
+
     /// Stops the connector and keeps it stopped until started again.
     pub async fn stop(&self, id: &str) {
         lock(&self.stopped).insert(id.to_string());
@@ -470,6 +604,11 @@ impl ConnectorRegistry {
                 continue;
             }
             prefixes.insert(tools::sanitize(id), id);
+            // The person's accounts aren't installed: their tools come
+            // from `services::email` and `services::workspace`
+            if is_account_connector(id) {
+                continue;
+            }
             let Some(decl) = manifest.get(id) else {
                 set.warnings.push(format!(
                     "Connector '{id}' isn't installed; its tools are unavailable"
@@ -941,11 +1080,112 @@ fn emit_status(state: &AppState, id: &str, status: ConnectorStatus) {
 /// The built-in catalog plus everything declared in `.nandi/connectors.yaml`.
 pub async fn list_connectors(state: &AppState) -> Result<Vec<ConnectorInfo>, String> {
     let manifest = manifest(state);
-    Ok(connector_infos(
+    let mut infos = connector_infos(
         &manifest,
         state.connectors().map(Arc::as_ref),
         state.secrets(),
-    ))
+    );
+    // Packages: what connector.md says, before the server has started
+    for info in &mut infos {
+        let Ok(Some(package)) = state.store().repos().connectors.load_package(&info.id) else {
+            continue;
+        };
+        if info.tools.is_empty() {
+            info.tools = package
+                .tools
+                .iter()
+                .map(|t| ConnectorToolInfo {
+                    name: t.name.clone(),
+                    description: t.description.clone(),
+                    sensitive: t.access == domain::grant::GrantAccess::Write,
+                })
+                .collect();
+        }
+        info.package = Some(PackageInfo::of(&package, manifest.get(&info.id)));
+    }
+    Ok(infos)
+}
+
+/// Installs (or updates) a connector package: its `connector.md` in the
+/// repo, its declaration in `connectors.yaml`, and its API key, if it has
+/// one, in the keyring. Installing grants nothing: each agent asks first
+pub async fn install_package(
+    state: &AppState,
+    package: &domain::connector_package::ConnectorPackage,
+    source: Option<&domain::connector_package::PackageSource>,
+    api_key: Option<String>,
+) -> Result<(), String> {
+    let id = package.id.as_str();
+    if is_account_connector(id) || catalog::builtin(id).is_some() {
+        return Err(format!("'{id}' is one of Nandi's own connectors"));
+    }
+    let decl = package.declaration(source);
+    if let Some(key) = api_key
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty())
+    {
+        state.secrets().set(&package.key_entry(), &key)?;
+    }
+    let store = state.store();
+    store
+        .repos()
+        .connectors
+        .save_package(package)
+        .map_err(|e| e.to_string())?;
+    let mut connectors: Vec<ConnectorDecl> = manifest(state)
+        .connectors()
+        .iter()
+        .filter(|c| c.id.as_str() != id)
+        .cloned()
+        .collect();
+    connectors.push(decl);
+    save_manifest(state, connectors)?;
+    if let Some(registry) = state.connectors() {
+        if registry.is_running(id) {
+            registry.stop(id).await;
+            lock(&registry.stopped).remove(id);
+        }
+    }
+    events::emit(state.bus(), &ConnectorsChanged {});
+    log::info!("Installed connector '{id}' {}", package.version);
+    Ok(())
+}
+
+/// Removes an installed connector: its declaration, its package file, its
+/// key and every grant on it
+pub async fn remove_connector(state: &AppState, id: &str) -> Result<(), String> {
+    let current = manifest(state);
+    let decl = current
+        .get(id)
+        .cloned()
+        .ok_or_else(|| format!("Connector '{id}' isn't installed"))?;
+    if let Some(registry) = state.connectors() {
+        registry.stop(id).await;
+        lock(&registry.stopped).remove(id);
+    }
+    let connectors: Vec<ConnectorDecl> = current
+        .connectors()
+        .iter()
+        .filter(|c| c.id.as_str() != id)
+        .cloned()
+        .collect();
+    save_manifest(state, connectors)?;
+    state
+        .store()
+        .repos()
+        .connectors
+        .delete_package(id)
+        .map_err(|e| e.to_string())?;
+    for entry in decl.secret_refs.values() {
+        let _ = state.secrets().delete(entry.as_str());
+    }
+    for gone in state.grants().revoke_connector(id)? {
+        crate::services::grants::audit(&state.connector_audit(), "removed", &gone, None, None)
+            .await;
+    }
+    events::emit(state.bus(), &crate::services::grants::GrantsChanged {});
+    events::emit(state.bus(), &ConnectorsChanged {});
+    Ok(())
 }
 
 fn connector_infos(
@@ -1026,6 +1266,7 @@ fn connector_info(
             .collect(),
         secrets: secret_infos,
         setup_hint: catalog::setup_hint(decl, secrets),
+        package: None,
     }
 }
 

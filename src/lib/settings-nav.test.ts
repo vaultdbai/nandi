@@ -29,6 +29,8 @@ describe('openSettings', () => {
 
   it('knows its sections', () => {
     expect(isSettingsSection('cloud')).toBe(true)
+    expect(isSettingsSection('workspace')).toBe(true)
+    expect(isSettingsSection('access')).toBe(true)
     expect(isSettingsSection('identity')).toBe(false)
     expect(isSettingsSection(3)).toBe(false)
   })

@@ -26,6 +26,14 @@ const GOOGLE_SCOPES: &[&str] = &[
     "https://www.googleapis.com/auth/gmail.readonly",
 ];
 
+/// Whose sign-in an account uses
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum Cloud {
+    Microsoft,
+    Google,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum MailProvider {
@@ -90,6 +98,8 @@ pub struct Endpoints {
     pub google_token: String,
     pub gmail: String,
     pub google_userinfo: String,
+    pub google_calendar: String,
+    pub google_drive: String,
 }
 
 impl Default for Endpoints {
@@ -101,6 +111,8 @@ impl Default for Endpoints {
             google_token: "https://oauth2.googleapis.com/token".into(),
             gmail: "https://gmail.googleapis.com/gmail/v1".into(),
             google_userinfo: "https://openidconnect.googleapis.com/v1/userinfo".into(),
+            google_calendar: "https://www.googleapis.com/calendar/v3".into(),
+            google_drive: "https://www.googleapis.com/drive/v3".into(),
         }
     }
 }
@@ -137,11 +149,31 @@ impl ProviderSetup {
     }
 
     pub fn oauth(&self, provider: MailProvider) -> OAuthProvider {
-        let scopes = |list: &[&str]| list.iter().map(|s| (*s).to_string()).collect();
-        let login = &self.endpoints.microsoft_login;
         match provider {
-            MailProvider::Outlook => OAuthProvider {
-                id: provider.id().into(),
+            MailProvider::Outlook => {
+                self.account_oauth(Cloud::Microsoft, provider.id(), MICROSOFT_SCOPES)
+            }
+            MailProvider::Gmail => self.account_oauth(Cloud::Google, provider.id(), GOOGLE_SCOPES),
+        }
+    }
+
+    /// Whether this build can sign in to `cloud`
+    pub fn cloud_available(&self, cloud: Cloud) -> bool {
+        match cloud {
+            Cloud::Microsoft => self.available(MailProvider::Outlook),
+            Cloud::Google => self.available(MailProvider::Gmail),
+        }
+    }
+
+    /// The sign-in of one account connector (`id`) with exactly `scopes`:
+    /// incremental consent, so calendar and files scopes are asked for only
+    /// when the person connects them
+    pub fn account_oauth(&self, cloud: Cloud, id: &str, scope_list: &[&str]) -> OAuthProvider {
+        let scopes = scope_list.iter().map(|s| (*s).to_string()).collect();
+        let login = &self.endpoints.microsoft_login;
+        match cloud {
+            Cloud::Microsoft => OAuthProvider {
+                id: id.into(),
                 name: "Microsoft".into(),
                 authorize_url: Some(format!("{login}/authorize")),
                 token_url: format!("{login}/token"),
@@ -150,12 +182,12 @@ impl ProviderSetup {
                 device_url: Some(format!("{login}/devicecode")),
                 client_id: self.microsoft_client_id.clone(),
                 client_secret: None,
-                scopes: scopes(MICROSOFT_SCOPES),
+                scopes,
                 auth_params: vec![("prompt".into(), "select_account".into())],
                 redirect: LoopbackRedirect::LOCALHOST,
             },
-            MailProvider::Gmail => OAuthProvider {
-                id: provider.id().into(),
+            Cloud::Google => OAuthProvider {
+                id: id.into(),
                 name: "Google".into(),
                 authorize_url: Some(self.endpoints.google_authorize.clone()),
                 token_url: self.endpoints.google_token.clone(),
@@ -163,7 +195,7 @@ impl ProviderSetup {
                 device_url: None,
                 client_id: self.google_client_id.clone(),
                 client_secret: self.google_client_secret.clone(),
-                scopes: scopes(GOOGLE_SCOPES),
+                scopes,
                 auth_params: vec![
                     ("access_type".into(), "offline".into()),
                     ("prompt".into(), "consent".into()),

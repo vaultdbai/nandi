@@ -12,6 +12,7 @@ export const notesKeys = {
   all: ['notes'] as const,
   list: ['notes', 'list'] as const,
   note: (name: string) => ['notes', 'note', name] as const,
+  suggestions: ['notes', 'suggestions'] as const,
 }
 
 export function useMyNotes() {
@@ -34,6 +35,25 @@ export function useSaveNote() {
   return useMutation({
     mutationFn: async ({ name, content }: { name: string; content: string }) =>
       unwrapResult(await client.saveNote(name, content)),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: notesKeys.all }),
+  })
+}
+
+/** The Chief of Staff's open suggestions (suggestions.md `- [ ]` lines) */
+export function useNoteSuggestions() {
+  useNotesEvents()
+  return useQuery({
+    queryKey: notesKeys.suggestions,
+    queryFn: async () => unwrapResult(await client.listNoteSuggestions()),
+  })
+}
+
+/** Accept (tick) or dismiss (remove) one; resolves to its text */
+export function useAnswerSuggestion() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, accept }: { id: string; accept: boolean }) =>
+      unwrapResult(await client.answerNoteSuggestion(id, accept)),
     onSettled: () => queryClient.invalidateQueries({ queryKey: notesKeys.all }),
   })
 }

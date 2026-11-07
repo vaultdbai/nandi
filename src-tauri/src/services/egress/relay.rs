@@ -41,6 +41,8 @@ pub enum RelayImage {
     Runtime,
     /// `nandi-harness`: Node
     Harness,
+    /// `nandi-connectors`: Node
+    Connectors,
 }
 
 impl RelayImage {
@@ -48,13 +50,14 @@ impl RelayImage {
         match self {
             Self::Runtime => crate::runtime::DEFAULT_RUNTIME_IMAGE,
             Self::Harness => crate::services::harness::HARNESS_IMAGE,
+            Self::Connectors => crate::runtime::CONNECTORS_IMAGE,
         }
     }
 
     fn command(self, target_port: u16) -> Vec<String> {
         let (interpreter, script) = match self {
             Self::Runtime => ("python", "/opt/nandi/relay.py"),
-            Self::Harness => ("node", "/opt/nandi/relay.mjs"),
+            Self::Harness | Self::Connectors => ("node", "/opt/nandi/relay.mjs"),
         };
         [
             interpreter,

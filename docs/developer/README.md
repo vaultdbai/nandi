@@ -13,30 +13,31 @@ Technical documentation for building and extending this app. These docs describe
 
 ## Core Systems
 
-| Document                                                                                  | Description                                                                |
-| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| [Agent Runtime](./agent-runtime.md)                                                       | Orchestrators, SQLite state, events, snapshots                             |
-| [Live UI](./live-ui.md)                                                                   | File watchers, `live://changed`, who changed what, Refresh and F5          |
-| [E2E Checklist](./e2e-checklist.md)                                                       | Manual full-loop test with DeepSeek and a container                        |
-| [Sandbox and Policy Test Checklist](./sandbox-test-checklist.md)                          | Containers, approvals, the agents' network, policies                       |
-| [Egress Proxy](./egress.md)                                                               | LLM/AWS/HTTP proxy, skill.md capabilities, STS                             |
-| [Workflows](./workflows.md)                                                               | YAML pipelines of agents, executor, approvals                              |
-| [Triggers](./triggers.md)                                                                 | Cron, file, webhook, device, and event triggers                            |
-| [Transports](./transports.md)                                                             | Services layer, Tauri IPC + HTTP/WebSocket, web auth                       |
-| [Relay Testing](https://github.com/vaultdbai/nandi-relay/blob/main/docs/relay-testing.md) | Running a relay, NANDI_HOME, one-machine and LAN tests (nandi-relay repo)  |
-| [Relay Defaults](./relay-defaults.md)                                                     | Relay URL precedence, the LAN prefill, public plan                         |
-| [GitHub Auth](./github-auth.md)                                                           | Device-flow GitHub sign-in: one token for every github.com repository      |
-| [Email](./email.md)                                                                       | Outlook and Gmail read-only for the Chief of Staff's notes; token refresh  |
-| [S3 Backup](./s3-backup.md)                                                               | Folder backups to S3 Deep Archive, AWS setup tools, derived triggers       |
-| [Entra ID Setup](./entra-setup.md)                                                        | v2, not in the app: Microsoft sign-in, app registration, Entra-group teams |
-| [Marketplace](./marketplace.md)                                                           | Registries, installing, forking, updating agents                           |
-| [Pilots](./pilots.md)                                                                     | Host-side OS control, per-agent consent, revoking                          |
-| [Command System](./command-system.md)                                                     | Unified action dispatch, command registration                              |
-| [Keyboard Shortcuts](./keyboard-shortcuts.md)                                             | Global shortcut handling, platform modifiers                               |
-| [Menus](./menus.md)                                                                       | Native menu building with i18n                                             |
-| [Companion Window](./companion-window.md)                                                 | Second window, cross-window events, ViewOpener                             |
-| [Tauri Commands](./tauri-commands.md)                                                     | Type-safe Rust-TypeScript bridge (tauri-specta)                            |
-| [Tauri Plugins](./tauri-plugins.md)                                                       | Plugin usage and configuration                                             |
+| Document                                                                                  | Description                                                                       |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [Agent Runtime](./agent-runtime.md)                                                       | Orchestrators, SQLite state, events, snapshots                                    |
+| [Live UI](./live-ui.md) | File watchers, `live://changed`, who changed what, Refresh and F5 |
+| [E2E Checklist](./e2e-checklist.md)                                                       | Manual full-loop test with DeepSeek and a container                               |
+| [Sandbox and Policy Test Checklist](./sandbox-test-checklist.md)                          | Containers, approvals, the agents' network, policies                              |
+| [Egress Proxy](./egress.md)                                                               | LLM/AWS/HTTP proxy, skill.md capabilities, STS                                    |
+| [Workflows](./workflows.md)                                                               | YAML pipelines of agents, executor, approvals                                     |
+| [Triggers](./triggers.md)                                                                 | Cron, file, webhook, device, and event triggers                                   |
+| [Transports](./transports.md)                                                             | Services layer, Tauri IPC + HTTP/WebSocket, web auth                              |
+| [Relay Testing](https://github.com/vaultdbai/nandi-relay/blob/main/docs/relay-testing.md) | Running a relay, NANDI_HOME, one-machine and LAN tests (nandi-relay repo)         |
+| [Relay Defaults](./relay-defaults.md)                                                     | Relay URL precedence, the LAN prefill, public plan                                |
+| [GitHub Auth](./github-auth.md)                                                           | Device-flow GitHub sign-in: one token for every github.com repository             |
+| [Email](./email.md)                                                                       | Outlook and Gmail read-only for the Chief of Staff's notes; token refresh         |
+| [Connector hub](./connector-hub.md)                                                       | Connector packages, grants while agents work, calendars and files, calendar notes |
+| [S3 Backup](./s3-backup.md)                                                               | Folder backups to S3 Deep Archive, AWS setup tools, derived triggers              |
+| [Entra ID Setup](./entra-setup.md)                                                        | v2, not in the app: Microsoft sign-in, app registration, Entra-group teams        |
+| [Marketplace](./marketplace.md)                                                           | Registries, installing, forking, updating agents                                  |
+| [Pilots](./pilots.md)                                                                     | Host-side OS control, per-agent consent, revoking                                 |
+| [Command System](./command-system.md)                                                     | Unified action dispatch, command registration                                     |
+| [Keyboard Shortcuts](./keyboard-shortcuts.md)                                             | Global shortcut handling, platform modifiers                                      |
+| [Menus](./menus.md)                                                                       | Native menu building with i18n                                                    |
+| [Companion Window](./companion-window.md)                                                 | Second window, cross-window events, ViewOpener                                    |
+| [Tauri Commands](./tauri-commands.md)                                                     | Type-safe Rust-TypeScript bridge (tauri-specta)                                   |
+| [Tauri Plugins](./tauri-plugins.md)                                                       | Plugin usage and configuration                                                    |
 
 ## UI & UX
 

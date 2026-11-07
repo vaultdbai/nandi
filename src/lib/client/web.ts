@@ -4,7 +4,7 @@
  * HttpOnly cookie (set when the page was opened with `?token=`).
  */
 
-import type { Result } from '@/lib/bindings'
+import type { AccountKind, Result } from '@/lib/bindings'
 import type { NandiEvent } from './events'
 import { marketplaceQuery } from './marketplace-filter'
 import type { NandiClient } from './types'
@@ -47,6 +47,14 @@ async function request<T, E = string>(
 }
 
 const id = encodeURIComponent
+
+/** Workspace routes use the connector id, the commands the `AccountKind` */
+const WORKSPACE_ROUTE_IDS: Record<AccountKind, string> = {
+  outlookCalendar: 'outlook-calendar',
+  googleCalendar: 'google-calendar',
+  oneDrive: 'onedrive',
+  googleDrive: 'google-drive',
+}
 
 /** `?a=1&b=x` from the set values (`null`/`undefined` are left out) */
 function query(
@@ -516,6 +524,48 @@ export const webClient: NandiClient = {
     }),
   estimateEmailBackfill: range =>
     request('POST', '/email/backfill/estimate', { range }),
+  listConnectorGrants: () => request('GET', '/connector-grants'),
+  grantConnectorAccess: (agentId, connectorId, access, scope) =>
+    request('POST', '/connector-grants', {
+      agentId,
+      connectorId,
+      access,
+      scope,
+    }),
+  revokeConnectorAccess: grant =>
+    request('POST', '/connector-grants/revoke', grant),
+  answerAccessRequest: (approvalId, choice) =>
+    request('POST', `/access-requests/${id(approvalId)}`, { choice }),
+  listRegistryConnectors: refresh =>
+    request('GET', `/registry-connectors?refresh=${refresh}`),
+  getConnectorConsent: (registryUrl, connectorId) =>
+    request('POST', '/registry-connectors/consent', {
+      registryUrl,
+      connectorId,
+    }),
+  installRegistryConnector: (registryUrl, connectorId, apiKey) =>
+    request('POST', '/registry-connectors/install', {
+      registryUrl,
+      connectorId,
+      apiKey,
+    }),
+  removeConnector: connectorId =>
+    request('POST', `/connectors/${id(connectorId)}/remove`),
+  scaffoldConnector: input => request('POST', '/connectors/scaffold', input),
+  publishConnector: input => request('POST', '/connectors/publish', input),
+  getWorkspaceStatus: () => request('GET', '/workspace'),
+  startWorkspaceSignIn: kind =>
+    request('POST', `/workspace/${WORKSPACE_ROUTE_IDS[kind]}/sign-in`),
+  pollWorkspaceSignIn: kind =>
+    request('POST', `/workspace/${WORKSPACE_ROUTE_IDS[kind]}/sign-in/poll`),
+  disconnectWorkspace: kind =>
+    request('DELETE', `/workspace/${WORKSPACE_ROUTE_IDS[kind]}`),
+  checkCalendarNow: () => request('POST', '/workspace/calendar/check'),
+  setCalendarInterval: minutes =>
+    request('PUT', '/workspace/calendar/interval', { minutes }),
+  listNoteSuggestions: () => request('GET', '/notes/suggestions'),
+  answerNoteSuggestion: (suggestionId, accept) =>
+    request('POST', `/notes/suggestions/${id(suggestionId)}`, { accept }),
   closeGatewayAssignment: (taskId, done, note) =>
     request(
       'POST',

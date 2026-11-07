@@ -83,6 +83,7 @@ mod tests {
             config: Default::default(),
             secrets: Vec::new(),
             setup_hint: None,
+            package: None,
         }
     }
 

@@ -34,6 +34,9 @@ pub const DEFAULT_RUNTIME_IMAGE: &str = "ghcr.io/vaultdbai/nandi-runtime:sandbox
 /// CLIs, nothing of Nandi's own. Claude Code is fetched on first use into a
 /// volume (`services::images::tools`)
 pub const HARNESS_IMAGE: &str = "ghcr.io/vaultdbai/nandi-harness:sandbox-6";
+/// Where published MCP connectors run (`runtimes/nandi-connectors`): Node
+/// LTS, Python and uv, nothing else
+pub const CONNECTORS_IMAGE: &str = "ghcr.io/vaultdbai/nandi-connectors:sandbox-6";
 /// Container limits when skill.md doesn't set `memory_mb` / `cpu`
 pub const DEFAULT_MEMORY_MB: u32 = 1024;
 pub const DEFAULT_CPU: f32 = 1.0;
@@ -363,6 +366,8 @@ mod tests {
             pilots: vec![],
             policies: vec![],
             model_rules: vec![],
+            connector_forbid: vec![],
+            connector_ask: vec![],
         }
     }
 

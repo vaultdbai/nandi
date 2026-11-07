@@ -77,6 +77,7 @@ const RUN_SOURCE: Record<SourceType, ActivitySource> = {
   device: 'trigger',
   event: 'trigger',
   email: 'trigger',
+  calendarCheck: 'schedule',
 }
 
 const TASK_STATUS: Record<TaskResult['status'], ActivityStatus> = {

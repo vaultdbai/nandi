@@ -4,7 +4,7 @@ name: Sandbox images
 # pulls the tag pinned to its sandbox version (`runtime::SANDBOX_VERSION`),
 # never `latest`:
 #
-#   ghcr.io/vaultdbai/nandi-runtime   ghcr.io/vaultdbai/nandi-harness
+#   ghcr.io/vaultdbai/nandi-runtime   ghcr.io/vaultdbai/nandi-connectors   ghcr.io/vaultdbai/nandi-harness
 #
 #   :sandbox-<N>   every publish; <N> is the Dockerfile's org.nandi.sandbox label
 #   :main          pushes to main that touch runtimes/
@@ -22,6 +22,7 @@ on:
     paths:
       - 'runtimes/nandi-runtime/**'
       - 'runtimes/nandi-harness/**'
+      - 'runtimes/nandi-connectors/**'
       - '.github/workflows/images.yml'
     tags: ['v*']
   workflow_dispatch:
@@ -48,6 +49,10 @@ jobs:
           - name: nandi-harness
             title: Nandi harness sandbox
             description: Codex and Gemini CLI for Nandi agents; Claude Code is installed on first use, not bundled. The bundled CLIs keep their own licences
+            licenses: Apache-2.0
+          - name: nandi-connectors
+            title: Nandi connectors
+            description: Where published MCP connectors run (npx and uvx packages) - Node LTS, Python and uv, nothing else
             licenses: Apache-2.0
     steps:
       - uses: actions/checkout@v4

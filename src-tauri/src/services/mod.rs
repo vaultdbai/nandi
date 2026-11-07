@@ -10,6 +10,7 @@
 // Not every API has a caller yet
 #[allow(dead_code)]
 pub mod a2a;
+pub mod access;
 // Wave final (Track C)
 #[allow(dead_code)]
 pub mod agent_memory;
@@ -46,6 +47,7 @@ pub mod domain;
 pub mod egress;
 pub mod email;
 pub mod events;
+pub mod grants;
 // Wave final (Track D): the gateway agent (NANDI.md)
 #[allow(dead_code)]
 pub mod gateway;
@@ -122,6 +124,7 @@ pub mod work;
 #[allow(dead_code)]
 pub mod workflow_graph;
 pub mod workflows;
+pub mod workspace;
 
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock, RwLock};
@@ -200,6 +203,7 @@ struct Inner {
     github_sign_in_flows: auth::oauth::OAuthFlows,
     /// Reading the user's mail for the Chief of Staff
     email: Arc<email::EmailService>,
+    workspace: Arc<workspace::WorkspaceService>,
     audit_store: Arc<AuditStore>,
     git_service: Arc<GitService>,
     // Set once by `network::init`
@@ -348,6 +352,7 @@ impl AppState {
         });
         // The email check, every few minutes while a mailbox is connected
         email::start_scheduler(&state);
+        workspace::start_scheduler(&state);
         let triggers = state.triggers().clone();
         state.runtime().spawn(async move {
             if let Err(e) = triggers.start().await {
@@ -457,6 +462,7 @@ impl AppState {
             connectors: Some(connectors),
             github_sign_in_flows: Default::default(),
             email: Arc::new(email::EmailService::default()),
+            workspace: Arc::new(workspace::WorkspaceService::default()),
             audit_store: Arc::new(AuditStore::new()),
             git_service,
             capability_index: OnceLock::new(),
@@ -548,6 +554,11 @@ impl AppState {
         &self.0.email
     }
 
+    /// Calendars and files (`services::workspace`)
+    pub fn workspace(&self) -> &Arc<workspace::WorkspaceService> {
+        &self.0.workspace
+    }
+
     pub fn github_sign_in_flows(&self) -> &auth::oauth::OAuthFlows {
         &self.0.github_sign_in_flows
     }
@@ -592,6 +603,18 @@ impl AppState {
     /// Runtime connectors (always set)
     pub fn connectors(&self) -> Option<&Arc<ConnectorRegistry>> {
         self.0.connectors.as_ref()
+    }
+
+    /// Connector grants: saved in the repo, or on this computer only
+    pub fn grants(&self) -> grants::GrantStore {
+        grants::GrantStore::new(&self.0.store, &self.0.nandi_dir)
+    }
+
+    /// Where grant decisions are audited (the connector log)
+    pub fn connector_audit(&self) -> connectors::audit::AuditSink {
+        self.connectors()
+            .map(|registry| registry.audit_sink())
+            .unwrap_or_default()
     }
 
     /// Readers for the audit logs

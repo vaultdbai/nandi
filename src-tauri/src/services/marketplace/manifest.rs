@@ -189,6 +189,9 @@ pub struct PackManifest {
     pub suggested_asks: Vec<String>,
     /// Everything the pack's agents together will request
     pub capabilities: ManifestCapabilities,
+    /// Connectors (registry IDs) the pack needs; installing the pack offers
+    /// to install and sign in to the ones that aren't here
+    pub requires_connectors: Vec<String>,
     pub install_size_kb: Option<u32>,
     pub estimated_cost_usd: Option<CostRange>,
     pub signature: Option<String>,
@@ -258,6 +261,8 @@ struct PackEntry {
     #[serde(default)]
     capabilities: ManifestCapabilities,
     #[serde(default)]
+    requires_connectors: Vec<String>,
+    #[serde(default)]
     install_size_kb: Option<u32>,
     #[serde(default)]
     estimated_cost_usd: Option<CostRange>,
@@ -312,6 +317,8 @@ enum RawIndex {
         agents: Vec<serde_json::Value>,
         #[serde(default)]
         packs: Vec<serde_json::Value>,
+        #[serde(default)]
+        connectors: Vec<serde_json::Value>,
     },
     Agents(Vec<serde_json::Value>),
 }
@@ -325,6 +332,7 @@ fn one() -> u32 {
 pub struct ParsedIndex {
     pub agents: Vec<AgentManifest>,
     pub packs: Vec<PackManifest>,
+    pub connectors: Vec<super::connectors::ConnectorEntry>,
     pub skipped: Vec<String>,
 }
 
@@ -333,20 +341,21 @@ pub struct ParsedIndex {
 pub fn parse_index(json: &str, registry: &str) -> Result<ParsedIndex, String> {
     let raw: RawIndex =
         serde_json::from_str(json).map_err(|e| format!("The registry index isn't valid: {e}"))?;
-    let (agents, packs) = match raw {
+    let (agents, packs, connectors) = match raw {
         RawIndex::Catalog {
             schema_version,
             agents,
             packs,
+            connectors,
         } => {
             if schema_version > INDEX_SCHEMA_VERSION {
                 return Err(format!(
                     "The registry uses index format {schema_version}; this version of Nandi reads up to {INDEX_SCHEMA_VERSION}. Update Nandi."
                 ));
             }
-            (agents, packs)
+            (agents, packs, connectors)
         }
-        RawIndex::Agents(agents) => (agents, Vec::new()),
+        RawIndex::Agents(agents) => (agents, Vec::new(), Vec::new()),
     };
     let mut parsed = ParsedIndex::default();
     for value in agents {
@@ -358,6 +367,12 @@ pub fn parse_index(json: &str, registry: &str) -> Result<ParsedIndex, String> {
     for value in packs {
         match parse_pack_value(value, registry) {
             Ok(pack) => parsed.packs.push(pack),
+            Err(e) => parsed.skipped.push(e),
+        }
+    }
+    for value in connectors {
+        match super::connectors::ConnectorEntry::parse(value, registry) {
+            Ok(entry) => parsed.connectors.push(entry),
             Err(e) => parsed.skipped.push(e),
         }
     }
@@ -552,6 +567,7 @@ fn pack_from_entry(entry: PackEntry, registry: &str) -> Result<PackManifest, Str
         .unwrap_or_else(|| format!("v{}", entry.latest_version.trim_start_matches('v')));
     check_ref(&what, &git_ref)?;
     let commit = check_commit(&what, entry.commit)?;
+    let requires_connectors = connector_ids(entry.requires_connectors, &what)?;
     Ok(PackManifest {
         commit,
         compatible: is_compatible(&entry.min_nandi_version),
@@ -568,6 +584,7 @@ fn pack_from_entry(entry: PackEntry, registry: &str) -> Result<PackManifest, Str
         workflows: entry.workflows,
         suggested_asks: suggested_asks(entry.suggested_asks),
         capabilities: entry.capabilities,
+        requires_connectors,
         install_size_kb: entry.install_size_kb,
         estimated_cost_usd: entry.estimated_cost_usd,
         signature: entry.signature,
@@ -606,6 +623,22 @@ pub struct PackFile {
     /// Empty: every file under `workflows/`
     #[serde(default)]
     pub workflows: Vec<WorkflowId>,
+    /// Connectors the pack's agents need, by registry ID
+    #[serde(default)]
+    pub requires_connectors: Vec<String>,
+}
+
+/// Valid connector IDs, without duplicates
+pub fn connector_ids(ids: Vec<String>, pack: &str) -> Result<Vec<String>, String> {
+    let mut out: Vec<String> = Vec::new();
+    for id in ids {
+        crate::services::domain::ConnectorId::parse(id.clone())
+            .map_err(|e| format!("Pack '{pack}' requires_connectors: {e}"))?;
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    Ok(out)
 }
 
 /// Where a pack repo's manifest lives.

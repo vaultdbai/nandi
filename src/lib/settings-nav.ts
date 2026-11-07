@@ -13,6 +13,8 @@ export const SETTINGS_SECTIONS = [
   'models',
   'account',
   'email',
+  'workspace',
+  'access',
   'cloud',
   'internet',
   'backup',

@@ -21,6 +21,30 @@ pub fn api() -> Router<AppState> {
         // PUT body `{"allow": bool}`: agents may update the notes; returns
         // `MyNotes`
         .route("/notes/agents-can-write", axum::routing::put(set_write))
+        // Returns `Suggestion[]`
+        .route("/notes/suggestions", get(suggestions))
+        // POST body `{"accept": bool}`; returns the suggestion's text
+        .route(
+            "/notes/suggestions/{id}",
+            axum::routing::post(answer_suggestion),
+        )
+}
+
+async fn suggestions(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(notes::suggestions(&state).await)
+}
+
+#[derive(Deserialize)]
+struct AnswerBody {
+    accept: bool,
+}
+
+async fn answer_suggestion(
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(body): Json<AnswerBody>,
+) -> impl IntoResponse {
+    ApiResult(notes::answer_suggestion(&state, id, body.accept).await)
 }
 
 #[derive(Deserialize)]

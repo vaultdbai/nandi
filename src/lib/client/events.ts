@@ -120,6 +120,10 @@ interface NandiEventMap {
   'connector://changed': ConnectorChanged
   'connectors://changed': ConnectorsChanged
   'email://changed': EmailChanged
+  /** A connector grant was given or removed */
+  'grants://changed': unknown
+  /** A calendar or drive connected, disconnected or was checked */
+  'workspace://changed': unknown
   /**
    * Getting a sandbox image: a line of output, the download's progress, or
    * its end (`finished`). The advanced local build reports here too
@@ -293,6 +297,8 @@ export const CORE_EVENT_NAMES = [
   'pilot://consent_needed',
   'connector://changed',
   'connectors://changed',
+  'grants://changed',
+  'workspace://changed',
   'images://pull',
   'images://tools',
   'relay://status',

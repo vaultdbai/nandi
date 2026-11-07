@@ -8,7 +8,7 @@
 //! network: { allow: [{ host: "*.amazonaws.com" }] }
 //! aws: { services: [{ service: s3, actions: ["Get*", "List*"] }] }
 //! models: { allow: ["claude:*"] }
-//! connectors: { allow: [github], run_on_host: [] }
+//! connectors: { allow: [github], run_on_host: [], forbid: [gmail, "tracker:write"], ask: [outlook] }
 //! pilots: { allow: [] }
 //! ---
 //! Why this exists, in plain words. Never grants anything.
@@ -144,6 +144,24 @@ pub struct ConnectorRules {
     /// Trusted connectors that run on the host rather than in a container
     #[serde(default)]
     pub run_on_host: Vec<String>,
+    /// Never granted, whatever the person chooses: `<connector>` (read
+    /// and write) or `<connector>:read|write`; globs allowed (`google-*`)
+    #[serde(default)]
+    pub forbid: Vec<String>,
+    /// Asked every time: the grant dialog offers only Allow once and
+    /// Don't allow, and lasting grants don't count
+    #[serde(default)]
+    pub ask: Vec<String>,
+}
+
+/// `<connector>` or `<connector>:<read|write>` against one use
+pub fn connector_rule_matches(rule: &str, connector: &str, access: &str) -> bool {
+    let (pattern, scope) = match rule.rsplit_once(':') {
+        Some((pattern, scope @ ("read" | "write"))) => (pattern, Some(scope)),
+        _ => (rule, None),
+    };
+    scope.is_none_or(|s| s == access)
+        && glob::Pattern::new(pattern).is_ok_and(|p| p.matches(connector))
 }
 
 /// The rule blocks; `None` leaves that area alone
@@ -621,6 +639,10 @@ pub struct Effective {
     pub folders: Vec<FolderRequest>,
     pub connectors: Vec<String>,
     pub connectors_on_host: Vec<String>,
+    /// Connector rules no grant can pass, with the policy that set each
+    pub connector_forbid: Vec<(String, String)>,
+    /// Connector rules that ask every time, with their policy
+    pub connector_ask: Vec<(String, String)>,
     pub pilots: Vec<String>,
     pub changes: Vec<Change>,
 }
@@ -837,6 +859,14 @@ fn apply(out: &mut Effective, policy: &Policy, request: &Request) {
     }
     out.connectors_on_host
         .retain(|c| out.connectors.contains(c));
+    if let Some(connectors) = &rules.connectors {
+        for rule in &connectors.forbid {
+            out.connector_forbid.push((rule.clone(), by.clone()));
+        }
+        for rule in &connectors.ask {
+            out.connector_ask.push((rule.clone(), by.clone()));
+        }
+    }
 }
 
 fn matches_any(patterns: &[String], text: &str) -> bool {
@@ -1160,6 +1190,39 @@ mod tests {
         let e = effective(&request(), &subject("b"), &[p, only_github]);
         assert_eq!(e.connectors, ["github"]);
         assert!(e.connectors_on_host.is_empty());
+    }
+
+    #[test]
+    fn connector_access_can_be_forbidden_or_always_asked() {
+        let p = policy(
+            "mail",
+            "applies_to: [agent:a]
+connectors: { forbid: [gmail, 'tracker:write'], ask: ['outlook*'] }",
+        );
+        let e = effective(&request(), &subject("a"), std::slice::from_ref(&p));
+        assert_eq!(
+            e.connector_forbid,
+            [
+                ("gmail".to_string(), "mail".to_string()),
+                ("tracker:write".to_string(), "mail".to_string())
+            ]
+        );
+        assert_eq!(
+            e.connector_ask,
+            [("outlook*".to_string(), "mail".to_string())]
+        );
+        assert!(effective(&request(), &subject("b"), &[p])
+            .connector_forbid
+            .is_empty());
+        assert!(connector_rule_matches("gmail", "gmail", "read"));
+        assert!(connector_rule_matches("tracker:write", "tracker", "write"));
+        assert!(!connector_rule_matches("tracker:write", "tracker", "read"));
+        assert!(connector_rule_matches(
+            "outlook*",
+            "outlook-calendar",
+            "read"
+        ));
+        assert!(!connector_rule_matches("gmail", "outlook", "read"));
     }
 
     #[test]

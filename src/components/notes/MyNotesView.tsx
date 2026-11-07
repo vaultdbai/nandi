@@ -38,6 +38,7 @@ import {
   newNoteName,
   noteLabel,
 } from './notes-model'
+import { NoteSuggestions } from './NoteSuggestions'
 
 /** "Updated just now by …" for a note */
 const NOTE_CHANGES = ['notes'] as const
@@ -148,6 +149,7 @@ export function MyNotesView({ note }: { note?: string }) {
           </Button>
         </div>
       </header>
+      <NoteSuggestions />
 
       {list.length === 0 && !creating ? (
         <EmptyNotes onNew={() => setCreating(true)} />

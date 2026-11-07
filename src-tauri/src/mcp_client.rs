@@ -237,6 +237,8 @@ mod tests {
             pilots: vec![],
             policies: vec![],
             model_rules: vec![],
+            connector_forbid: vec![],
+            connector_ask: vec![],
         };
 
         let egress = crate::services::egress::EgressState::new(

@@ -107,6 +107,8 @@ fn setup(base: &str) -> ProviderSetup {
             google_token: format!("{base}/gtoken/token"),
             gmail: format!("{base}/gmail"),
             google_userinfo: format!("{base}/userinfo"),
+            google_calendar: format!("{base}/gcal"),
+            google_drive: format!("{base}/gdrive"),
         },
         microsoft_client_id: Some("ms-client".into()),
         google_client_id: Some("g-client".into()),
@@ -388,6 +390,15 @@ async fn watched_senders_come_through_even_as_bulk() {
     state.shutdown();
 }
 
+/// The mailboxes `agent` has a read grant on (what `services::access`
+/// would let a call use)
+fn allowed(state: &AppState, agent: &str) -> Vec<String> {
+    granted(state, agent)
+        .into_iter()
+        .map(|a| a.provider.id().to_string())
+        .collect()
+}
+
 #[tokio::test]
 async fn only_gets_ever_reach_the_mail_apis() {
     let mock = mock(outlook_api).await;
@@ -396,18 +407,24 @@ async fn only_gets_ever_reach_the_mail_apis() {
     check_all(&state).await;
     check_all(&state).await;
     for name in [tool::LIST_NEW, tool::SEARCH] {
-        tool::call(&state, CHIEF_OF_STAFF, name, &json!({"query": "audit"})).await;
+        tool::call(
+            &state,
+            &allowed(&state, CHIEF_OF_STAFF),
+            name,
+            &json!({"query": "audit"}),
+        )
+        .await;
     }
     tool::call(
         &state,
-        CHIEF_OF_STAFF,
+        &allowed(&state, CHIEF_OF_STAFF),
         tool::GET_MESSAGE,
         &json!({"id": "outlook:m1"}),
     )
     .await;
     tool::call(
         &state,
-        CHIEF_OF_STAFF,
+        &allowed(&state, CHIEF_OF_STAFF),
         tool::GET_THREAD,
         &json!({"thread_id": "outlook:conv-m1"}),
     )
@@ -545,8 +562,8 @@ async fn disconnecting_wipes_the_sign_in_the_cursor_and_the_grant() {
     );
     let cursor: Value = load_setting(&state, cursor_key).await;
     assert!(cursor.is_null());
-    assert!(config(&state).connector_grants.is_empty());
-    assert!(tool::offered(&state, CHIEF_OF_STAFF).is_empty());
+    assert!(state.grants().list().is_empty());
+    assert!(tool::offered(&state, CHIEF_OF_STAFF, &[]).is_empty());
     // Nothing to check any more
     mock.clear();
     assert_eq!(check_all(&state).await, CheckOutcome::default());
@@ -763,9 +780,9 @@ async fn a_failed_hand_over_keeps_the_cursor_so_no_mail_is_skipped() {
 async fn tools_are_only_for_an_agent_with_a_grant() {
     let mock = mock(outlook_api).await;
     let (state, _recorder) = state_with(&mock).await;
-    assert!(tool::offered(&state, CHIEF_OF_STAFF).is_empty());
+    assert!(tool::offered(&state, CHIEF_OF_STAFF, &[]).is_empty());
     connected(&state, MailProvider::Outlook).await;
-    let names: Vec<String> = tool::offered(&state, CHIEF_OF_STAFF)
+    let names: Vec<String> = tool::offered(&state, CHIEF_OF_STAFF, &[])
         .into_iter()
         .map(|t| t.name)
         .collect();
@@ -778,10 +795,10 @@ async fn tools_are_only_for_an_agent_with_a_grant() {
             "mail_search"
         ]
     );
-    assert!(tool::offered(&state, "pr-reviewer").is_empty());
+    assert!(tool::offered(&state, "pr-reviewer", &[]).is_empty());
     let refused = tool::call(
         &state,
-        "pr-reviewer",
+        &allowed(&state, "pr-reviewer"),
         tool::GET_MESSAGE,
         &json!({"id": "outlook:m1"}),
     )
@@ -797,7 +814,7 @@ async fn reading_a_message_trims_quotes_and_marks_it_untrusted() {
     connected(&state, MailProvider::Outlook).await;
     let outcome = tool::call(
         &state,
-        CHIEF_OF_STAFF,
+        &allowed(&state, CHIEF_OF_STAFF),
         tool::GET_MESSAGE,
         &json!({"id": "outlook:m1"}),
     )
@@ -813,7 +830,7 @@ async fn reading_a_message_trims_quotes_and_marks_it_untrusted() {
     // Wrong prefixes and missing mailboxes are refused calmly
     let bad = tool::call(
         &state,
-        CHIEF_OF_STAFF,
+        &allowed(&state, CHIEF_OF_STAFF),
         tool::GET_MESSAGE,
         &json!({"id": "m1"}),
     )
@@ -821,13 +838,19 @@ async fn reading_a_message_trims_quotes_and_marks_it_untrusted() {
     assert!(bad.is_error);
     let gmail = tool::call(
         &state,
-        CHIEF_OF_STAFF,
+        &allowed(&state, CHIEF_OF_STAFF),
         tool::GET_MESSAGE,
         &json!({"id": "gmail:g1"}),
     )
     .await;
     assert!(gmail.is_error && gmail.result.contains("isn't connected"));
-    let list = tool::call(&state, CHIEF_OF_STAFF, tool::LIST_NEW, &json!({})).await;
+    let list = tool::call(
+        &state,
+        &allowed(&state, CHIEF_OF_STAFF),
+        tool::LIST_NEW,
+        &json!({}),
+    )
+    .await;
     assert!(!list.is_error, "{}", list.result);
     state.shutdown();
 }

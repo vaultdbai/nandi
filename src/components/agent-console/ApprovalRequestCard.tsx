@@ -31,6 +31,12 @@ import { useNetworkSnapshot } from '@/hooks/useNetwork'
 import { ActionPlanPreview } from '@/components/ask/ActionPlanPreview'
 import { cn } from '@/lib/utils'
 import type { ChatMessage } from '@/types/agent'
+import {
+  ACCESS_TOOL,
+  agentLabel,
+  parseAccessRequest,
+} from '@/components/connectors/access-model'
+import { AccessRequestCard } from '@/components/connectors/AccessRequestCard'
 import { formatJson } from './format-json'
 
 type ApprovalRequestMessage = Extract<ChatMessage, { kind: 'approval' }>
@@ -62,20 +68,28 @@ interface ApprovalRequestCardProps {
  * Approve doesn't (the card itself shows what will happen). The same card
  * is used in chat, Run Detail, the Inbox and a Request.
  */
-/** `pr-reviewer` → "PR Reviewer" (short words are acronyms) */
-function agentLabel(id: string): string {
-  return id
-    .split(/[-_]/)
-    .filter(Boolean)
-    .map(word =>
-      word.length <= 2
-        ? word.toUpperCase()
-        : `${word[0]?.toUpperCase() ?? ''}${word.slice(1)}`
+export function ApprovalRequestCard(props: ApprovalRequestCardProps) {
+  const { message } = props
+  const access =
+    message.tool === ACCESS_TOOL ? parseAccessRequest(message.args) : null
+  if (access) {
+    return (
+      <AccessRequestCard
+        approvalId={message.id}
+        request={access}
+        status={message.status}
+        createdAt={message.createdAt}
+        expiresAt={message.expiresAt}
+        agentName={props.agentName}
+        interactive={props.onDecide !== undefined}
+        className={props.className}
+      />
     )
-    .join(' ')
+  }
+  return <ToolApprovalCard {...props} />
 }
 
-export function ApprovalRequestCard({
+function ToolApprovalCard({
   message,
   agentName,
   onDecide,

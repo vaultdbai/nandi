@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { capabilityNotice } from '@/lib/marketplace-capabilities'
 import type { ManifestCapabilities } from '@/lib/bindings'
+import { PackConnectorsNotice } from '@/components/connectors/PackConnectorsNotice'
 import { installAndAllow } from './library-actions'
 import type { LibraryEntry } from './library-entry'
 
@@ -91,6 +92,12 @@ export function InstallConsentDialog({
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AccessList capabilities={target.capabilities} />
+            {source?.type === 'pack' && (
+              <PackConnectorsNotice
+                required={source.pack.requiresConnectors}
+                actions={false}
+              />
+            )}
             {target.kind === 'pack' && (
               <details className="text-sm">
                 <summary className="cursor-pointer text-muted-foreground">

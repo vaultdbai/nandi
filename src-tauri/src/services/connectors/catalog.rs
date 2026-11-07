@@ -62,7 +62,7 @@ const WEB_SEARCH: &str = "web_search";
 const GITHUB: &str = "github";
 const AWS: &str = "aws";
 pub(super) const S3_BACKUP: &str = "s3_backup";
-pub(super) const MCP: &str = "mcp";
+pub const MCP: &str = "mcp";
 
 /// The connectors the catalog offers to install.
 pub fn builtins() -> Vec<ConnectorDefinition> {

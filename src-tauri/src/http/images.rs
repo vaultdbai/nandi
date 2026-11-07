@@ -45,6 +45,7 @@ fn parse(image: &str) -> Result<SandboxImage, String> {
     match image {
         "harness" => Ok(SandboxImage::Harness),
         "runtime" => Ok(SandboxImage::Runtime),
+        "connectors" => Ok(SandboxImage::Connectors),
         other => Err(format!("Unknown image '{other}'")),
     }
 }

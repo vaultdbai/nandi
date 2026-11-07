@@ -4,6 +4,11 @@
  */
 
 import type { ActionPlan } from '@/lib/bindings'
+import {
+  ACCESS_TOOL,
+  agentLabel,
+  parseAccessRequest,
+} from '@/components/connectors/access-model'
 
 type Args = unknown
 
@@ -23,6 +28,7 @@ export interface ApprovalSummary {
     | 'batchRestart'
     | 'ecsRedeploy'
     | 'connector'
+    | 'connectorAccess'
     | 'other'
   values: Record<string, string>
 }
@@ -94,6 +100,17 @@ export function approvalSummary(tool: string, args: Args): ApprovalSummary {
     }
     case PAUSE_TOOL:
       return { key: 'pause', values: { reason: value('reason') } }
+    case ACCESS_TOOL: {
+      const request = parseAccessRequest(args)
+      if (!request) break
+      return {
+        key: 'connectorAccess',
+        values: {
+          agent: agentLabel(request.agent),
+          names: request.connectors.map(c => c.name).join(', '),
+        },
+      }
+    }
   }
   // The connector actions the demo agents ask for, in their own words
   switch (tool) {

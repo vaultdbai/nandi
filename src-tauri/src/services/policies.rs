@@ -249,6 +249,8 @@ fn apply(mut skill: SkillConfig, effective: &Effective) -> SkillConfig {
     skill.pilots = effective.pilots.clone();
     skill.policies = effective.policies.clone();
     skill.model_rules = effective.model_rules.clone();
+    skill.connector_forbid = effective.connector_forbid.clone();
+    skill.connector_ask = effective.connector_ask.clone();
     skill
 }
 

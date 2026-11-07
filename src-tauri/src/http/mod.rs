@@ -5,6 +5,7 @@
 //! Binds `127.0.0.1:0` (a random free port) by default; `0.0.0.0` only
 //! with an explicit `--server`.
 
+mod access;
 mod analysis;
 // Wave CD (see docs/developer/interaction-layer.md)
 mod ask;
@@ -55,6 +56,7 @@ mod tools;
 mod triggers;
 mod work;
 mod workflow_builder;
+mod workspace;
 pub mod ws;
 
 use std::net::SocketAddr;
@@ -111,6 +113,8 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(notes::api())
                 .merge(live::api())
                 .merge(email::api())
+                .merge(workspace::api())
+                .merge(access::api())
                 .merge(teams_roster::api())
                 // Wave A
                 .merge(capabilities::api())

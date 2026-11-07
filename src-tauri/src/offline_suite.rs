@@ -54,6 +54,8 @@ const SCREEN_ROUTES: &[&str] = &[
     "delegation/returns",
     "egress/status",
     "email",
+    "connector-grants",
+    "workspace",
     "gateway/callers",
     "gateway/config",
     "gateway/holds",
@@ -91,7 +93,7 @@ const SCREEN_ROUTES: &[&str] = &[
 ];
 
 /// A core with no relay of its own: `built_in` is what the build ships
-fn boot(built_in: BuiltInRelay) -> (AppState, Router) {
+pub(crate) fn boot(built_in: BuiltInRelay) -> (AppState, Router) {
     assert!(
         crate::utils::env::var(RELAY_URL_ENV).is_none(),
         "Unset {RELAY_URL_ENV} to run the offline suite"
@@ -117,7 +119,12 @@ fn unreachable_default_relay() -> BuiltInRelay {
     )
 }
 
-async fn call(router: &Router, method: &str, uri: &str, body: Value) -> (StatusCode, Value) {
+pub(crate) async fn call(
+    router: &Router,
+    method: &str,
+    uri: &str,
+    body: Value,
+) -> (StatusCode, Value) {
     let request = Request::builder()
         .method(method)
         .uri(format!("/api/{uri}"))
@@ -141,20 +148,20 @@ async fn call(router: &Router, method: &str, uri: &str, body: Value) -> (StatusC
     )
 }
 
-async fn get(router: &Router, uri: &str) -> Value {
+pub(crate) async fn get(router: &Router, uri: &str) -> Value {
     let (status, body) = call(router, "GET", uri, Value::Null).await;
     assert_eq!(status, StatusCode::OK, "GET /api/{uri}: {body}");
     body
 }
 
-async fn post(router: &Router, uri: &str, body: Value) -> Value {
+pub(crate) async fn post(router: &Router, uri: &str, body: Value) -> Value {
     let (status, answer) = call(router, "POST", uri, body).await;
     assert_eq!(status, StatusCode::OK, "POST /api/{uri}: {answer}");
     answer
 }
 
 /// Polls `GET uri` until `done` holds (up to 10s)
-async fn until(router: &Router, uri: &str, done: impl Fn(&Value) -> bool) -> Value {
+pub(crate) async fn until(router: &Router, uri: &str, done: impl Fn(&Value) -> bool) -> Value {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         let body = get(router, uri).await;
@@ -170,7 +177,7 @@ async fn until(router: &Router, uri: &str, done: impl Fn(&Value) -> bool) -> Val
 }
 
 /// Agents answer from the canned engine, without delays
-async fn canned(state: &AppState, script: Value) {
+pub(crate) async fn canned(state: &AppState, script: Value) {
     state
         .db()
         .call(move |conn| {

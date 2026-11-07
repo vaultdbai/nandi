@@ -18,6 +18,8 @@
 //! NANDI.md's `responsibilities`, not from here: the notes stay private
 //! unless Chief of Staff quotes them in an answer.
 
+pub mod corrections;
+
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -365,9 +367,71 @@ pub async fn save_note(
     let (folder, _) = self::folder(state).await?;
     let saved = {
         let name = name.clone();
-        blocking(move || folder.save(&name, &content)).await?
+        blocking(move || {
+            // The person removing or changing a cited line is a correction
+            // the Chief of Staff remembers
+            let tracked = name != corrections::CORRECTIONS && name != corrections::SUGGESTIONS;
+            let before = if tracked {
+                folder.read(&name).ok()
+            } else {
+                None
+            };
+            let saved = folder.save(&name, &content)?;
+            if let Some(before) = before {
+                let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+                let lines: Vec<String> = corrections::removed_lines(&before, &content)
+                    .into_iter()
+                    .map(|line| format!("- Removed from {name}: {line} ({today})"))
+                    .collect();
+                if !lines.is_empty() {
+                    let current = folder.read(corrections::CORRECTIONS).unwrap_or_default();
+                    folder.save(
+                        corrections::CORRECTIONS,
+                        &corrections::append(&current, &lines),
+                    )?;
+                }
+            }
+            Ok(saved)
+        })
+        .await?
     };
     Ok(saved)
+}
+
+/// The Chief of Staff's open capability suggestions (`suggestions.md`)
+pub async fn suggestions(state: &AppState) -> Result<Vec<corrections::Suggestion>, String> {
+    let (folder, _) = self::folder(state).await?;
+    blocking(move || {
+        Ok(corrections::open_suggestions(
+            &folder.read(corrections::SUGGESTIONS).unwrap_or_default(),
+        ))
+    })
+    .await
+}
+
+/// Accepts or dismisses a suggestion; either is remembered in
+/// `corrections.md`. Returns the suggestion's text (accepted: what to build)
+pub async fn answer_suggestion(
+    state: &AppState,
+    id: String,
+    accept: bool,
+) -> Result<String, String> {
+    let (folder, _) = self::folder(state).await?;
+    let text = blocking(move || {
+        let content = folder.read(corrections::SUGGESTIONS).unwrap_or_default();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let (file, line, text) = corrections::answer(&content, &id, accept, &today)
+            .ok_or("That suggestion isn't open any more")?;
+        folder.save(corrections::SUGGESTIONS, &file)?;
+        let current = folder.read(corrections::CORRECTIONS).unwrap_or_default();
+        folder.save(
+            corrections::CORRECTIONS,
+            &corrections::append(&current, &[line]),
+        )?;
+        Ok(text)
+    })
+    .await?;
+    Ok(text)
 }
 
 pub async fn delete_note(state: &AppState, name: String) -> Result<(), String> {

@@ -5,6 +5,7 @@
 
 pub mod artifact_loader;
 pub mod artifact_saver;
+pub mod connector;
 pub mod guides;
 pub mod prompt;
 pub mod save;

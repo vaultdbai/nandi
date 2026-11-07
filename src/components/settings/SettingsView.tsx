@@ -18,10 +18,12 @@ import { SettingsSectionFrame } from './SettingsFrame'
 import { AccountSection } from './sections/AccountSection'
 import { BackupSection } from './sections/BackupSection'
 import { CloudCredentialsSection } from './sections/CloudCredentialsSection'
+import { ConnectorAccessSection } from './sections/ConnectorAccessSection'
 import { EmailSection } from './sections/EmailSection'
 import { InternetAccessSection } from './sections/InternetAccessSection'
 import { ModelsSection } from './sections/ModelsSection'
 import { SourcesSection } from './sections/SourcesSection'
+import { WorkspaceSection } from './sections/WorkspaceSection'
 
 /**
  * Settings: one full page with a section rail (a select below 900 px).
@@ -102,6 +104,8 @@ export function SettingsView({
           {section === 'models' && <ModelsSection />}
           {section === 'account' && <AccountSection />}
           {section === 'email' && <EmailSection />}
+          {section === 'workspace' && <WorkspaceSection />}
+          {section === 'access' && <ConnectorAccessSection />}
           {section === 'cloud' && <CloudCredentialsSection />}
           {section === 'internet' && (
             <InternetAccessSection agentId={view.agentId} />

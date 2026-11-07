@@ -13,6 +13,7 @@ use crate::services::config::repo_config::RepoLlmConfigStatus;
 use crate::services::connectors::{ConnectorChanged, ConnectorsChanged};
 use crate::services::email::EmailChanged;
 use crate::services::events::*;
+use crate::services::grants::GrantsChanged;
 use crate::services::live::LiveChange;
 use crate::services::marketplace::events::*;
 use crate::services::orchestrator::compaction::AgentRunCompacted;
@@ -33,6 +34,7 @@ use crate::services::workflows::{
     WorkflowDone, WorkflowFailed, WorkflowStepAwaitingApproval, WorkflowStepDone,
     WorkflowStepStarted, WorkflowsChanged,
 };
+use crate::services::workspace::WorkspaceChanged;
 
 pub struct TauriSink(pub AppHandle);
 
@@ -96,6 +98,8 @@ tauri_events!(
     ConnectorChanged,
     ConnectorsChanged,
     EmailChanged,
+    GrantsChanged,
+    WorkspaceChanged,
     RelayStatus,
     RelayAgentOnline,
     RelayAgentOffline,
