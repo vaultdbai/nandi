@@ -114,7 +114,7 @@ pub(crate) fn builtin_ids() -> Vec<String> {
     catalog::builtins().into_iter().map(|d| d.id).collect()
 }
 pub use filesystem::expand_home;
-pub use mcp::connector_of_identity;
+pub use mcp::{connector_of_identity, proxy_identity};
 /// Shared with the browser pilot (`pilots::browser`)
 pub(crate) use mcp::{host_command, LineTransport};
 
@@ -523,10 +523,23 @@ impl ConnectorRegistry {
                 .unwrap_or_default(),
         };
         let definition = catalog::definition_for(decl);
-        let connector = catalog::build(decl, &definition, secrets, &placement).await?;
-        let tools = connector.list_tools();
-        connector.shutdown().await;
-        Ok(tools)
+        // Not installed yet, so the egress proxy learns its hosts from here
+        let identity = mcp::proxy_identity(decl.id.as_str());
+        crate::services::egress::allow_session_hosts(
+            &identity,
+            &crate::services::egress::connector_hosts(decl),
+        );
+        let built = catalog::build(decl, &definition, secrets, &placement).await;
+        let tools = match built {
+            Ok(connector) => {
+                let tools = connector.list_tools();
+                connector.shutdown().await;
+                Ok(tools)
+            }
+            Err(e) => Err(e),
+        };
+        crate::services::egress::clear_session_hosts(&identity);
+        tools
     }
 
     /// Stops the connector and keeps it stopped until started again.

@@ -377,7 +377,9 @@ fn container_args(
         "--user=1000:1000",
         "--read-only",
         "--tmpfs=/tmp:rw,nosuid,nodev,size=512m",
-        "--tmpfs=/home/node:rw,nosuid,nodev,size=512m,uid=1000,gid=1000",
+        // `exec`: Docker mounts a tmpfs noexec by default, and uvx runs the
+        // server it installs into ~/.cache
+        "--tmpfs=/home/node:rw,exec,nosuid,nodev,size=512m,uid=1000,gid=1000",
         "--network",
         crate::services::egress::relay::AGENT_NETWORK,
         // Past any entrypoint the image has
@@ -641,6 +643,10 @@ pub(crate) mod tests {
         assert!(
             !joined.contains("ghp_secret"),
             "values never in the command line"
+        );
+        assert!(
+            joined.contains("--tmpfs=/home/node:rw,exec,"),
+            "uvx runs what it installs in the home folder"
         );
         assert!(joined.ends_with("nandi-connectors:sandbox-6 -y @acme/github-mcp"));
         let tag = crate::utils::nandi_config::instance_tag();

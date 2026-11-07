@@ -242,6 +242,14 @@ pub fn clear_session_hosts(agent_id: &str) {
         .remove(agent_id);
 }
 
+fn session_hosts(agent_id: &str) -> Option<Vec<capabilities::HostRule>> {
+    SESSION_HOSTS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(agent_id)
+        .cloned()
+}
+
 /// `capabilities` plus the hosts `agent_id`'s running session needs
 fn with_session_hosts(agent_id: &str, mut capabilities: Capabilities) -> Capabilities {
     if let Some(hosts) = SESSION_HOSTS
@@ -259,22 +267,40 @@ const PACKAGE_REGISTRIES: &[&str] = &["registry.npmjs.org", "pypi.org", "files.p
 
 /// What a stdio connector's container may reach: its package registry and
 /// the hosts in `config.network` (connectors.yaml)
+pub fn connector_hosts(decl: &crate::services::domain::connector::Connector) -> Vec<String> {
+    PACKAGE_REGISTRIES
+        .iter()
+        .map(|h| h.to_string())
+        .chain(crate::services::connectors::catalog_config_list(
+            decl, "network",
+        ))
+        .map(|host| host.trim().to_ascii_lowercase())
+        .collect()
+}
+
+/// [`connector_hosts`] of an installed connector. One not installed yet
+/// (Studio starting it once to list its tools) reaches only what that run
+/// was allowed ([`allow_session_hosts`]).
 fn connector_capabilities(
     store: &crate::services::repo_store::RepoStore,
     id: &str,
 ) -> Result<Capabilities, String> {
-    let decl = store
-        .read(|repo| repo.connectors().get(id).cloned())
-        .ok_or_else(|| format!("Connector '{id}' isn't installed"))?;
-    let hosts = PACKAGE_REGISTRIES.iter().map(|h| h.to_string()).chain(
-        crate::services::connectors::catalog_config_list(&decl, "network"),
-    );
+    let Some(decl) = store.read(|repo| repo.connectors().get(id).cloned()) else {
+        let identity = crate::services::connectors::proxy_identity(id);
+        return session_hosts(&identity)
+            .map(|allow| Capabilities {
+                aws: None,
+                network: capabilities::NetworkCapabilities { allow },
+            })
+            .ok_or_else(|| format!("Connector '{id}' isn't installed"));
+    };
     Ok(Capabilities {
         aws: None,
         network: capabilities::NetworkCapabilities {
-            allow: hosts
+            allow: connector_hosts(&decl)
+                .into_iter()
                 .map(|host| capabilities::HostRule {
-                    host: host.trim().to_ascii_lowercase(),
+                    host,
                     methods: Vec::new(),
                 })
                 .collect(),
@@ -621,6 +647,14 @@ pub(crate) mod tests {
 
         let missing = connector_capabilities(&store, "ghost").unwrap_err();
         assert!(missing.contains("isn't installed"), "{missing}");
+
+        // Studio's one start of a connector not installed yet
+        allow_session_hosts("connector:ghost", &["pypi.org".to_string()]);
+        let probe = connector_capabilities(&store, "ghost").unwrap();
+        clear_session_hosts("connector:ghost");
+        assert!(probe.allows_tunnel("pypi.org", 443));
+        assert!(!probe.allows_tunnel("api.notes.dev", 443));
+        assert!(connector_capabilities(&store, "ghost").is_err());
     }
 
     #[test]
