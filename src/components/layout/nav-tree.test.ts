@@ -46,7 +46,7 @@ const input = (overrides: Partial<NavTreeInput> = {}): NavTreeInput => ({
 const ids = (nodes: NavNode[] | undefined) => nodes?.map(n => n.id)
 
 describe('buildNavTree', () => {
-  it('keeps the eight pages, with Home as one item and its count', () => {
+  it('keeps the eight pages, with Inbox and All activity under Home', () => {
     const tree = buildNavTree(input({ inboxCount: 3 }))
     expect(ids(tree)).toEqual([
       'home',
@@ -58,9 +58,11 @@ describe('buildNavTree', () => {
       'network',
       'settings',
     ])
-    expect(tree[0]?.children).toBeUndefined()
+    expect(ids(tree[0]?.children)).toEqual(['home:inbox', 'home:activity'])
     expect(tree[0]?.badge).toBe(3)
+    expect(tree[0]?.children?.[0]?.badge).toBe(3)
     expect(buildNavTree(input())[0]?.badge).toBeUndefined()
+    expect(buildNavTree(input())[0]?.children?.[0]?.badge).toBeUndefined()
   })
 
   it('has New chat, the newest five chats and All chats under Ask', () => {

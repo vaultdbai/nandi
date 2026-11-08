@@ -384,28 +384,29 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### SH-07 — Panes and panel toggles
 
-- **What:** There are two resizable panes:
+- **What:** There are three resizable panes:
   - The sidebar: default 20%, 14–32%.
   - The current view: at least 35%.
+  - The work tray (SH-36): default 18%, 14–28%.
 
-  Cmd/Ctrl+1, the title-bar button and View › Toggle Left Sidebar show or hide the sidebar. Visibility is session-only (it resets on relaunch). There is no right panel: every page holds its own detail (a workflow's steps and their status are on its Overview and Graph).
+  Cmd/Ctrl+1, the title-bar button and View › Toggle Left Sidebar show or hide the sidebar. Cmd/Ctrl+2, the title-bar button on the right, the tray's own close button and View › Toggle Work Tray show or hide the tray. Visibility is session-only (it resets on relaunch).
 
-- **Where:** `src/components/layout/AppShell.tsx`, `LeftSideBar.tsx`, `MainPane.tsx`, `src/store/ui-store.ts`.
+- **Where:** `src/components/layout/AppShell.tsx`, `LeftSideBar.tsx`, `MainPane.tsx`, `src/components/tray/WorkTray.tsx`, `src/store/ui-store.ts`.
 - **Preconditions:** None.
 - **Steps:**
   1. Press Ctrl+1 twice.
-  2. Drag the handle between the panes.
-- **Expected:** (1) The sidebar hides, then shows. (2) The pane widths change within their limits.
+  2. Press Ctrl+2 twice.
+  3. Drag the handles between the panes.
+- **Expected:** (1) The sidebar hides, then shows. (2) The tray hides, then shows. (3) The pane widths change within their limits.
 - **Edge / negative cases:**
-  - Relaunch: the sidebar is visible again (not persisted).
-  - The title bar has no right-panel button and View has no Toggle Right Sidebar.
+  - Relaunch: both side panes are visible again (not persisted).
 - **Automation:** Covered by: `src/store/ui-store.test.ts`, `src/components/layout/AppShell.test.tsx` | Layer: unit | Gap: resizing is manual.
 - **Needs relay:** no
 - **Status:** Shipped
 
-### SH-08 — Sidebar: the seven pages
+### SH-08 — Sidebar: the eight pages
 
-- **What:** The sidebar is a tree with seven top items: Home, Ask, Agents, Automations, Library, Network, Settings. Each opens its page. The current page is highlighted, and a parent stays bold while a child is open. Views without their own node (a run, a request, a member profile) light their page.
+- **What:** The sidebar is a tree with eight top items: Home, Ask, Notes, Agents, Automations, Library, Network, Settings. Home has two children: Inbox (with the same count as Home) and All activity. Each opens its page. The current page is highlighted, and a parent stays bold while a child is open. Views without their own node (a run, a request, a member profile) light their page.
 - **Where:** `src/components/layout/Sidebar.tsx`, `nav-tree.ts` (`buildNavTree`, `activePath`), `src/store/navigation-store.ts` (`NAV_SECTIONS`, `SECTION_VIEWS`, `navSection`).
 - **Preconditions:** None.
 - **Steps:**
@@ -624,6 +625,24 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
+### SH-36 — Work tray (Needs you · Working · Done)
+
+- **What:** A right-hand pane on every page shows three groups in small type, each row one line with a coloured dot: **Needs you** (the Inbox, amber), **Working** (Home's Running, blue, pulsing) and **Done** (Home's Recent: green, red when it failed, grey when cancelled; finished rows read quieter). Each group shows its count and a few rows (5, 6, 8), and an **All** link: Needs you opens the Inbox page, Working opens All activity filtered to running, Done opens All activity. A row opens its own page; a tool approval has ✓ and ✗ to decide it in place. The open page's row is highlighted.
+- **Where:** `src/components/tray/WorkTray.tsx`, `tray-model.ts` (`buildTray`, `inboxTrayRow`, `homeTrayRow`), `src/components/inbox/InboxView.tsx`; data from `useHomeFeed`.
+- **Preconditions:** None. With a relay, held requests, assignments and trust requests also show under Needs you.
+- **Steps:**
+  1. Start an agent run that asks for a tool approval, from any page other than Home.
+  2. Click ✓ on its tray row.
+  3. Let a workflow run finish; click its row under Done.
+  4. Click **All** on each group.
+- **Expected:** (1) The approval appears under Needs you, the run under Working, without leaving the page. (2) The run goes on; the row leaves Needs you. (3) The run's page opens. (4) The Inbox page, All activity (running) and All activity open.
+- **Edge / negative cases:**
+  - An empty group says so in one muted line ("Nothing running").
+  - No relay: the tray works the same; person-to-person rows just never appear.
+- **Automation:** Covered by: `src/components/tray/tray-model.test.ts` | Layer: unit | Gap: no render test of the tray yet.
+- **Needs relay:** no
+- **Status:** Prototype (branch `ui/work-tray`)
+
 ## 1.5 Command palette, commands and shortcuts
 
 ### SH-21 — Command palette: open, search, open results
@@ -713,7 +732,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### SH-25 — Global keyboard shortcuts
 
-- **What:** Cmd/Ctrl+K opens the palette. Cmd/Ctrl+, opens Settings. Cmd/Ctrl+1 toggles the sidebar. On desktop, Cmd/Ctrl+W closes the window, Cmd/Ctrl+M minimizes it and F11 enters or leaves fullscreen: these run the palette's window commands, so the keys the palette shows are the keys that work. Each calls `preventDefault`. The companion hotkey Ctrl/Cmd+Shift+Space is a global OS shortcut (companion area).
+- **What:** Cmd/Ctrl+K opens the palette. Cmd/Ctrl+, opens Settings. Cmd/Ctrl+1 toggles the sidebar. Cmd/Ctrl+2 toggles the work tray. On desktop, Cmd/Ctrl+W closes the window, Cmd/Ctrl+M minimizes it and F11 enters or leaves fullscreen: these run the palette's window commands, so the keys the palette shows are the keys that work. Each calls `preventDefault`. The companion hotkey Ctrl/Cmd+Shift+Space is a global OS shortcut (companion area).
 - **Where:** `src/hooks/use-keyboard-shortcuts.ts`, `src/lib/commands/window-commands.ts`, `useMainWindowEventListeners.ts`, `docs/developer/keyboard-shortcuts.md`.
 - **Preconditions:** None.
 - **Steps:**

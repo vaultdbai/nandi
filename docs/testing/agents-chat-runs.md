@@ -1059,7 +1059,7 @@ Shared preconditions used below:
 
 ### RN-01 — Run Detail page and header
 
-- **What:** Title "<agent> · <first line of input, 60 chars> · <time>", started date-time, duration (ticks live while active), status, **Stop** while active, **Re-run** once ended, and an Actions menu (Copy run ID, Open agent, View this agent's runs). Opens on Timeline for an active run and Overview for a finished one (or a requested tab). The "Ask about this run" panel sits beside the tabs (~65/35), collapsible behind a toggle on narrow widths. A "Run details" list shows Engine (model label, "No model connected — this run used built-in replies" with **Add a model**, or "Didn't reach a model"), source (You or the workflow/trigger/agent label), duration, tool calls and events.
+- **What:** Title "<agent> · <first line of input, 60 chars> · <time>", started date-time, duration (ticks live while active), status, **Stop** while active, **Re-run** once ended, and an Actions menu (Copy run ID, Open agent, View this agent's runs). Opens on Timeline for an active run and Overview for a finished one (or a requested tab). The tabs use the full width; an ask box sits under every tab and sends its answers to the Summary tab (RN-08). A "Run details" list shows Engine (model label, "No model connected — this run used built-in replies" with **Add a model**, or "Didn't reach a model"), source (You or the workflow/trigger/agent label), duration, tool calls and events.
 - **Where:** Agent → Runs → row, Home, a Request step, links `{ kind: 'run-detail' }`. `src/components/views/RunHistoryView.tsx` (wrapper), `src/components/views/RunDetailView.tsx`, `RunDetailTabs.tsx` (`RunMetadata`), `run-logs-model.ts` (`inputHeadline`); `get_run_detail`.
 - **Preconditions:** A finished run and an active run.
 - **Steps:** Open both; use each actions menu item; open a deleted run ID.
@@ -1141,15 +1141,15 @@ Shared preconditions used below:
 - **Needs relay:** no
 - **Status:** Shipped
 
-### RN-08 — Ask about this run (analysis)
+### RN-08 — Run summary and questions (analysis)
 
-- **What:** On first open, a cached summary (three short paragraphs plus key risks); then free-text questions answered only from the run's own record (events, messages, artifacts), each answer with cited sources (`[event:12]`, `[message:<id>]`) shown as a list; uncited IDs are dropped. Answers are cached per run and normalized question in `local_settings`; active runs aren't cached ("Saved answer" badge on reuse). Without a key: "Add an API key in Settings to use run analysis." with **Open Settings**, which opens Settings › Models & runtimes. Analysis tab shows the summary, or "No analysis yet" with **Open the panel**.
-- **Where:** `src/components/agent-console/RunAnalysisPanel.tsx`, `RunDetailTabs.tsx` (`RunAnalysisTab`); `analyze_run`, `summarize_run` (`commands/analysis.rs`, `services/run_analysis.rs`); HTTP `POST /api/runs/{id}/analyze` `{question}`, `GET /api/runs/{id}/summary`.
+- **What:** The **Summary** tab (second, after Overview) generates a cached summary on first open (three short paragraphs plus key risks); then free-text questions answered only from the run's own record (events, messages, artifacts), each answer with cited sources (`[event:12]`, `[message:<id>]`) shown as a list; uncited IDs are dropped. Answers are cached per run and normalized question in `local_settings`; active runs aren't cached ("Saved answer" badge on reuse). Without a key: "Add an API key in Settings to use run analysis." with **Open Settings**, which opens Settings › Models & runtimes. An ask box sits under every tab; sending from any tab opens **Summary**, where the answers collect. The summary is not generated until Summary is opened.
+- **Where:** `src/components/agent-console/RunSummary.tsx` (`RunSummaryTab`, `RunAskBox`), `RunDetailView.tsx`; `analyze_run`, `summarize_run` (`commands/analysis.rs`, `services/run_analysis.rs`); HTTP `POST /api/runs/{id}/analyze` `{question}`, `GET /api/runs/{id}/summary`.
 - **Preconditions:** Model key; a finished run.
-- **Steps:** Open the panel; ask "why did step 3 fail?"; ask the same with different case/spacing.
-- **Expected:** Answer with sources; the second ask is served from cache.
+- **Steps:** On the Files tab, ask "why did step 3 fail?"; ask the same with different case/spacing.
+- **Expected:** Summary opens with the answer and its sources; long citation ids wrap and the page keeps its width; the second ask is served from cache.
 - **Edge / negative cases:** Empty question or unknown run refused; question over 2,000 chars refused; context capped at 60,000 chars.
-- **Automation:** Covered by: `RunAnalysisPanel.test.tsx`, Rust tests in `services/run_analysis.rs` | Layer: api | Gap: none.
+- **Automation:** Covered by: `RunSummary.test.tsx`, `RunDetailView.test.tsx`, Rust tests in `services/run_analysis.rs` | Layer: api | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 

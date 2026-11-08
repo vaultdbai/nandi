@@ -80,6 +80,12 @@ export async function buildAppMenu(): Promise<Menu> {
           accelerator: 'CmdOrCtrl+1',
           action: handleToggleLeftSidebar,
         }),
+        await MenuItem.new({
+          id: 'toggle-right-sidebar',
+          text: t('menu.toggleRightSidebar'),
+          accelerator: 'CmdOrCtrl+2',
+          action: handleToggleRightSidebar,
+        }),
       ],
     })
 
@@ -157,4 +163,9 @@ function handleOpenPreferences(): void {
 function handleToggleLeftSidebar(): void {
   logger.info('Toggle Left Sidebar menu item clicked')
   useUIStore.getState().toggleLeftSidebar()
+}
+
+function handleToggleRightSidebar(): void {
+  logger.info('Toggle Right Sidebar menu item clicked')
+  useUIStore.getState().toggleRightSidebar()
 }

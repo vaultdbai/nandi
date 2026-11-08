@@ -1,8 +1,8 @@
 /**
- * The sidebar's tree: the seven pages, and one level under three of them:
- * Ask's latest chats, every agent, and Automations' workflows and
- * triggers. Home, Library, Network and Settings are single items (their
- * pages have their own tabs and sections).
+ * The sidebar's tree: the eight pages, and one level under four of them:
+ * Home's Inbox and All activity, Ask's latest chats, every agent, and
+ * Automations' workflows and triggers. Library, Network, Notes and
+ * Settings are single items (their pages have their own tabs and sections).
  * Pure: the sidebar passes in the lists and renders what comes back.
  *
  * - Two levels, never more.
@@ -38,7 +38,7 @@ export interface NavNode {
   id: string
   label: NavLabel
   view?: View
-  /** A count on the right (Home's Inbox) */
+  /** A count on the right (Home and its Inbox) */
   badge?: number
   dot?: NavDot
   /** "All chats": quieter than the list */
@@ -142,8 +142,14 @@ const tab = (id: string, label: string, view: View): NavNode => ({
 /** The whole tree, in sidebar order */
 export function buildNavTree(input: NavTreeInput): NavNode[] {
   const children: Record<NavSection, NavNode[] | undefined> = {
-    // Home stays one item
-    home: undefined,
+    // Both reachable without Home's scroll; the Inbox carries its count
+    home: [
+      {
+        ...tab('home:inbox', 'nav.tree.inbox', { kind: 'inbox' }),
+        badge: input.inboxCount > 0 ? input.inboxCount : undefined,
+      },
+      tab('home:activity', 'home.allActivity', { kind: 'home-activity' }),
+    ],
     studio: chatNodes(input.chats),
     agents: agentNodes(input.agents),
     automations: [

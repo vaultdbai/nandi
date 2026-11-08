@@ -4,10 +4,14 @@ import type { SettingsSection } from '@/lib/settings-nav'
 
 interface UIState {
   leftSidebarVisible: boolean
+  /** The work tray on the right */
+  rightSidebarVisible: boolean
   commandPaletteOpen: boolean
 
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
+  toggleRightSidebar: () => void
+  setRightSidebarVisible: (visible: boolean) => void
   toggleCommandPalette: () => void
   setCommandPaletteOpen: (open: boolean) => void
   /** Until when (epoch ms) the bull shows `done` */
@@ -24,6 +28,7 @@ export const useUIStore = create<UIState>()(
   devtools(
     set => ({
       leftSidebarVisible: true,
+      rightSidebarVisible: true,
       commandPaletteOpen: false,
       settingsSection: null,
       mascotDoneUntil: 0,
@@ -40,6 +45,20 @@ export const useUIStore = create<UIState>()(
           { leftSidebarVisible: visible },
           undefined,
           'setLeftSidebarVisible'
+        ),
+
+      toggleRightSidebar: () =>
+        set(
+          state => ({ rightSidebarVisible: !state.rightSidebarVisible }),
+          undefined,
+          'toggleRightSidebar'
+        ),
+
+      setRightSidebarVisible: visible =>
+        set(
+          { rightSidebarVisible: visible },
+          undefined,
+          'setRightSidebarVisible'
         ),
 
       toggleCommandPalette: () =>

@@ -37,6 +37,38 @@ export const navigationCommands: AppCommand[] = [
   },
 
   {
+    id: 'show-right-sidebar',
+    labelKey: 'commands.showRightSidebar.label',
+    descriptionKey: 'commands.showRightSidebar.description',
+    icon: Sidebar,
+    group: 'navigation',
+    shortcut: '⌘+2',
+    keywords: ['tray', 'work', 'right', 'panel', 'show'],
+
+    execute: () => {
+      useUIStore.getState().setRightSidebarVisible(true)
+    },
+
+    isAvailable: () => !useUIStore.getState().rightSidebarVisible,
+  },
+
+  {
+    id: 'hide-right-sidebar',
+    labelKey: 'commands.hideRightSidebar.label',
+    descriptionKey: 'commands.hideRightSidebar.description',
+    icon: Sidebar,
+    group: 'navigation',
+    shortcut: '⌘+2',
+    keywords: ['tray', 'work', 'right', 'panel', 'hide'],
+
+    execute: () => {
+      useUIStore.getState().setRightSidebarVisible(false)
+    },
+
+    isAvailable: () => useUIStore.getState().rightSidebarVisible,
+  },
+
+  {
     id: 'open-preferences',
     labelKey: 'commands.openPreferences.label',
     descriptionKey: 'commands.openPreferences.description',

@@ -59,8 +59,8 @@ describe('Sidebar', () => {
       'button'
     )
     expect(buttons.map(b => b.textContent)).toEqual([...ITEMS])
-    // Home has nothing under it; the rest open
-    expect(navButton('Home')).not.toHaveAttribute('aria-expanded')
+    // Home opens to its Inbox and All activity; Settings has nothing under it
+    expect(navButton('Home')).toHaveAttribute('aria-expanded', 'false')
     expect(navButton('Automations')).toHaveAttribute('aria-expanded', 'false')
     expect(navButton('Settings')).not.toHaveAttribute('aria-expanded')
   })

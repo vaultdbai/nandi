@@ -18,7 +18,6 @@ import {
   Layers,
   List,
   RotateCcw,
-  Sparkles,
   Square,
 } from 'lucide-react'
 import {
@@ -56,9 +55,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AgentAvatar } from '@/components/agent-console/AgentAvatar'
-import { RunAnalysisPanel } from '@/components/agent-console/RunAnalysisPanel'
+import { RunAskBox, RunSummaryTab } from '@/components/agent-console/RunSummary'
 import {
-  RunAnalysisTab,
   RunApprovals,
   RunFiles,
   RunLogs,
@@ -78,7 +76,7 @@ import {
 import { useNow } from '@/components/agents/task-utils'
 import { AskedBlock } from '@/components/requests/AskedBlock'
 import { useRequest, useRequestForRun } from '@/hooks/useRequests'
-import { analysisErrorMessage } from '@/hooks/useRunAnalysis'
+import { analysisErrorMessage, useRunAnalysis } from '@/hooks/useRunAnalysis'
 import { useRunDetail } from '@/hooks/useSnapshots'
 import {
   cancelQueuedRun,
@@ -90,7 +88,6 @@ import { formatDuration } from '@/lib/format-time'
 import { RUN_STATUS_CLASSES } from '@/lib/run-status'
 import type { SourceRef } from '@/lib/bindings'
 import type { RunDetail } from '@/lib/tauri-bindings'
-import { cn } from '@/lib/utils'
 import {
   RUN_DETAIL_TABS,
   useNavigationStore,
@@ -432,9 +429,10 @@ function RunDetailLayout({
   const [tab, setTab] = useState<RunDetailTab>(
     () => initialTab ?? (active ? 'timeline' : 'overview')
   )
-  const [panelOpen, setPanelOpen] = useState(false)
   const [highlightEventId, setHighlightEventId] = useState<string | null>(null)
   const now = useNow(active)
+  // The summary is generated only once the Summary tab is opened
+  const analysis = useRunAnalysis(run.id, { enabled: tab === 'summary' })
 
   // Ticks while the run is going; unknown for one that never ended
   const end = run.endedAt ?? (active ? now : null)
@@ -490,16 +488,6 @@ function RunDetailLayout({
             {t(`runs.status.${run.status}`)}
           </Badge>
           <div className="ms-auto flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="lg:hidden"
-              aria-expanded={panelOpen}
-              onClick={() => setPanelOpen(open => !open)}
-            >
-              <Sparkles />
-              {t('runDetail.analysis.toggle')}
-            </Button>
             {active ? (
               <StopButton detail={detail} />
             ) : (
@@ -530,79 +518,61 @@ function RunDetailLayout({
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <Tabs
-          value={tab}
-          onValueChange={value => setTab(value as RunDetailTab)}
-          className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 lg:basis-[65%]"
-        >
-          <div className="shrink-0 overflow-x-auto border-b bg-card px-4">
-            <TabsList variant="line">
-              {RUN_DETAIL_TABS.map(value => (
-                <TabsTrigger key={value} value={value}>
-                  {t(`runDetail.tabs.${value}`)}
-                  {value === 'approvals' && approvals > 0 && (
-                    <span className="ms-1 rounded-full bg-warning/15 px-1.5 text-xs font-semibold text-warning tabular-nums">
-                      {approvals}
-                    </span>
-                  )}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
-          <ScrollArea className="min-h-0 flex-1">
-            <div className="p-4">
-              <TabsContent value="overview" className="flex flex-col gap-4">
-                <RunAsk runId={run.id} />
-                <RunPlanCard runId={run.id} />
-                {run.compactionSummary && (
-                  <CompactedContext summary={run.compactionSummary} />
+      <Tabs
+        value={tab}
+        onValueChange={value => setTab(value as RunDetailTab)}
+        className="flex min-h-0 flex-1 flex-col gap-0"
+      >
+        <div className="shrink-0 overflow-x-auto border-b bg-card px-4">
+          <TabsList variant="line">
+            {RUN_DETAIL_TABS.map(value => (
+              <TabsTrigger key={value} value={value}>
+                {t(`runDetail.tabs.${value}`)}
+                {value === 'approvals' && approvals > 0 && (
+                  <span className="ms-1 rounded-full bg-warning/15 px-1.5 text-xs font-semibold text-warning tabular-nums">
+                    {approvals}
+                  </span>
                 )}
-                <RunKeyResults
-                  runId={run.id}
-                  onViewFiles={() => setTab('files')}
-                />
-                <RunMetadata detail={detail} duration={duration} />
-              </TabsContent>
-              <TabsContent value="timeline">
-                <RunTimeline runId={run.id} />
-              </TabsContent>
-              <TabsContent value="outputs">
-                <RunOutputs detail={detail} />
-              </TabsContent>
-              <TabsContent value="files">
-                <RunFiles detail={detail} />
-              </TabsContent>
-              <TabsContent value="logs">
-                <RunLogs detail={detail} highlightEventId={highlightEventId} />
-              </TabsContent>
-              <TabsContent value="analysis">
-                <RunAnalysisTab
-                  runId={run.id}
-                  onOpenSource={openSource}
-                  onOpenPanel={() => setPanelOpen(true)}
-                />
-              </TabsContent>
-              <TabsContent value="approvals">
-                <RunApprovals detail={detail} />
-              </TabsContent>
-            </div>
-          </ScrollArea>
-        </Tabs>
-
-        <aside
-          id="run-analysis-panel"
-          aria-label={t('runDetail.analysis.title')}
-          className={cn(
-            'min-h-0 shrink-0 border-t max-lg:h-[60%] lg:flex lg:basis-[35%] lg:border-t-0 lg:border-s',
-            panelOpen ? 'flex flex-col' : 'hidden'
-          )}
-        >
-          <div className="min-h-0 w-full flex-1">
-            <RunAnalysisPanel runId={run.id} onOpenSource={openSource} />
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="p-4">
+            <TabsContent value="overview" className="flex flex-col gap-4">
+              <RunAsk runId={run.id} />
+              <RunPlanCard runId={run.id} />
+              {run.compactionSummary && (
+                <CompactedContext summary={run.compactionSummary} />
+              )}
+              <RunKeyResults
+                runId={run.id}
+                onViewFiles={() => setTab('files')}
+              />
+              <RunMetadata detail={detail} duration={duration} />
+            </TabsContent>
+            <TabsContent value="summary">
+              <RunSummaryTab analysis={analysis} onOpenSource={openSource} />
+            </TabsContent>
+            <TabsContent value="timeline">
+              <RunTimeline runId={run.id} />
+            </TabsContent>
+            <TabsContent value="outputs">
+              <RunOutputs detail={detail} />
+            </TabsContent>
+            <TabsContent value="files">
+              <RunFiles detail={detail} />
+            </TabsContent>
+            <TabsContent value="logs">
+              <RunLogs detail={detail} highlightEventId={highlightEventId} />
+            </TabsContent>
+            <TabsContent value="approvals">
+              <RunApprovals detail={detail} />
+            </TabsContent>
           </div>
-        </aside>
-      </div>
+        </ScrollArea>
+        <RunAskBox ask={analysis.ask} onAsk={() => setTab('summary')} />
+      </Tabs>
     </div>
   )
 }

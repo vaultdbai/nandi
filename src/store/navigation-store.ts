@@ -8,15 +8,17 @@ import type { SettingsSection } from '@/lib/settings-nav'
  * Everything the main pane can show. Navigation is plain state (no router):
  * a desktop app has no URLs to keep in sync.
  *
- * The sidebar has seven pages (`NAV_SECTIONS`); every other view is a
+ * The sidebar has eight pages (`NAV_SECTIONS`); every other view is a
  * detail page that belongs to one of them (`navSection`).
  */
 export type View =
-  // The seven sidebar pages
+  // The eight sidebar pages
   /** Inbox, Running, Recent; `welcome` greets the packs just installed */
   | { kind: 'home'; welcome?: { packIds: string[] } }
   /** Home › All activity: runs and delegations, `filters` kept for Back */
   | { kind: 'home-activity'; filters?: ActivityFilters }
+  /** Home › Inbox: everything waiting on you, each with its fix */
+  | { kind: 'inbox' }
   | { kind: 'agents' }
   | { kind: 'automations'; tab?: AutomationsTab }
   /**
@@ -93,11 +95,11 @@ export type View =
 
 export const RUN_DETAIL_TABS = [
   'overview',
+  'summary',
   'timeline',
   'outputs',
   'files',
   'logs',
-  'analysis',
   'approvals',
 ] as const
 export type RunDetailTab = (typeof RUN_DETAIL_TABS)[number]
@@ -119,7 +121,7 @@ export type CallersView = 'list' | 'graph'
 /** People's team filter: a team's roster, or managing teams */
 export const MANAGE_TEAMS = '__manage'
 
-/** The seven sidebar items, in order */
+/** The eight sidebar items, in order */
 export const NAV_SECTIONS = [
   'home',
   'studio',
@@ -138,6 +140,7 @@ export function navSection(view: View): NavSection | null {
   switch (view.kind) {
     case 'home':
     case 'home-activity':
+    case 'inbox':
     case 'request':
     case 'work-item':
     case 'delegation-thread':
@@ -314,6 +317,7 @@ export const useNavigationStore = create<NavigationState>()(
 const VIEW_KINDS: Record<View['kind'], true> = {
   home: true,
   'home-activity': true,
+  inbox: true,
   agents: true,
   automations: true,
   library: true,

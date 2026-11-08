@@ -184,7 +184,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | SH-05 | Title-bar bull (status at a glance)                                      | Shipped                                              | unit       | no          |                                        |
 | SH-06 | Account menu                                                             | Shipped                                              | unit       | no          |                                        |
 | SH-07 | Panes and panel toggles                                                  | Shipped                                              | unit       | no          | 2026-10-30 pass                        |
-| SH-08 | Sidebar: the seven pages                                                 | Shipped                                              | unit       | no          |                                        |
+| SH-08 | Sidebar: the eight pages                                                 | Shipped                                              | unit       | no          |                                        |
 | SH-09 | Sidebar: live children                                                   | Shipped                                              | unit       | no          | 2026-10-30 pass                        |
 | SH-10 | Sidebar: keyboard and remembered branches                                | Shipped                                              | unit       | no          |                                        |
 | SH-11 | Sidebar badges and dots                                                  | Shipped                                              | unit       | no          |                                        |
@@ -244,6 +244,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-30 | Appearance › Companion settings                                          | Duplicate of AI-17                                   | —          | no          |                                        |
 | ST-31 | Preferences persistence                                                  | Shipped                                              | api        | no          |                                        |
 | SH-35 | Home: connect your email to-do                                           | Shipped                                              | unit       | no          |                                        |
+| SH-36 | Work tray: Needs you, Working, Done                                      | Prototype                                            | unit       | no          |                                        |
 
 ### Agents, chat and runs
 
@@ -320,7 +321,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RN-05 | Files tab                                                               | Shipped            | api + manual  | no          |                                             |
 | RN-06 | Logs tab                                                                | Shipped            | unit          | no          |                                             |
 | RN-07 | Approvals tab                                                           | Shipped            | unit          | no          |                                             |
-| RN-08 | Ask about this run (analysis)                                           | Shipped            | api           | no          |                                             |
+| RN-08 | Run summary and questions (analysis)                                    | Shipped            | api           | no          |                                             |
 | RN-09 | Stop from Run Detail                                                    | Shipped            | unit          | no          |                                             |
 | RN-10 | Re-run                                                                  | Shipped            | unit          | no          |                                             |
 | RN-11 | Compaction lineage in Run Detail                                        | Shipped            | unit          | no          |                                             |

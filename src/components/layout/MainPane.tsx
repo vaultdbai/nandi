@@ -17,6 +17,7 @@ import { useNavigationStore, type View } from '@/store/navigation-store'
 import { AgentsListView } from '@/components/views/AgentsListView'
 import { AllActivityView } from '@/components/home/AllActivityView'
 import { HomeView } from '@/components/home/HomeView'
+import { InboxView } from '@/components/inbox/InboxView'
 import {
   AutomationsPage,
   LibraryPage,
@@ -52,6 +53,8 @@ function CurrentView({ view }: { view: View }) {
       return <HomeView welcome={view.welcome} />
     case 'home-activity':
       return <AllActivityView filters={view.filters} />
+    case 'inbox':
+      return <InboxView />
     case 'agents':
       return <AgentsListView />
     case 'automations':

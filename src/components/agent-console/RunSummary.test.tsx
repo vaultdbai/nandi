@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, within } from '@/test/test-utils'
-import { RunAnalysisPanel } from './RunAnalysisPanel'
+import { useRunAnalysis } from '@/hooks/useRunAnalysis'
+import type { SourceRef } from '@/lib/bindings'
+import { RunAskBox, RunSummaryTab } from './RunSummary'
 import { formatCitations } from './run-detail-model'
 
 const mocks = vi.hoisted(() => ({
@@ -19,7 +21,26 @@ describe('formatCitations', () => {
   })
 })
 
-describe('RunAnalysisPanel', () => {
+/** The run page's wiring: the Summary tab plus the ask box under it */
+function RunAnalysis({
+  runId,
+  onOpenSource,
+  onAsk = () => undefined,
+}: {
+  runId: string
+  onOpenSource?: (source: SourceRef) => void
+  onAsk?: () => void
+}) {
+  const analysis = useRunAnalysis(runId)
+  return (
+    <>
+      <RunSummaryTab analysis={analysis} onOpenSource={onOpenSource} />
+      <RunAskBox ask={analysis.ask} onAsk={onAsk} />
+    </>
+  )
+}
+
+describe('RunSummaryTab and RunAskBox', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.summarizeRun.mockResolvedValue({ status: 'ok', data: 'All fine.' })
@@ -39,11 +60,13 @@ describe('RunAnalysisPanel', () => {
         cached: true,
       },
     })
-    render(<RunAnalysisPanel runId="r1" onOpenSource={onOpenSource} />)
+    const onAsk = vi.fn()
+    render(<RunAnalysis runId="r1" onOpenSource={onOpenSource} onAsk={onAsk} />)
     expect(await screen.findByText('All fine.')).toBeInTheDocument()
 
     const box = screen.getByRole('textbox')
     await user.type(box, 'Any errors?{Enter}')
+    expect(onAsk).toHaveBeenCalledOnce()
     expect(await screen.findByText('Retry loop')).toBeInTheDocument()
     expect(
       screen.getByText('event:3', { selector: 'p code' })
@@ -64,7 +87,7 @@ describe('RunAnalysisPanel', () => {
       status: 'error',
       error: 'Rate limited',
     })
-    render(<RunAnalysisPanel runId="r1" />)
+    render(<RunAnalysis runId="r1" />)
     await user.type(screen.getByRole('textbox'), 'Why?')
     await user.click(screen.getByRole('button', { name: 'Send' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Rate limited')

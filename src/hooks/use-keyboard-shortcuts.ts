@@ -52,6 +52,11 @@ export function useKeyboardShortcuts(commandContext: CommandContext) {
             setLeftSidebarVisible(!leftSidebarVisible)
             break
           }
+          case '2': {
+            e.preventDefault()
+            useUIStore.getState().toggleRightSidebar()
+            break
+          }
           case 'w': {
             if (e.shiftKey || e.altKey) break
             e.preventDefault()

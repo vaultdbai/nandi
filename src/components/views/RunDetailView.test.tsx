@@ -179,7 +179,7 @@ describe('RunDetailView', () => {
     expect(screen.getByText(/#41 · agent:\/\/run/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy log' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('tab', { name: 'Analysis' }))
+    await user.click(screen.getByRole('tab', { name: 'Summary' }))
     expect(
       await within(screen.getByRole('tabpanel')).findByText(
         'It wrote a report.'
@@ -215,11 +215,22 @@ describe('RunDetailView', () => {
     )
   })
 
-  it('summarizes on open, then answers a question with sources', async () => {
+  it('summarizes only on the Summary tab', async () => {
     const user = userEvent.setup()
     render(<RunDetailView runId="run-1" />)
+    await screen.findByRole('heading', { name: /^Writer · Do the thing/ })
+    expect(mockClient.summarizeRun).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('tab', { name: 'Summary' }))
     expect(await screen.findByText('It wrote a report.')).toBeInTheDocument()
     expect(mockClient.summarizeRun).toHaveBeenCalledWith('run-1')
+  })
+
+  it('asks from any tab, opens Summary, and answers with sources', async () => {
+    const user = userEvent.setup()
+    render(<RunDetailView runId="run-1" />)
+    await screen.findByRole('heading', { name: /^Writer · Do the thing/ })
+    await user.click(screen.getByRole('tab', { name: 'Files' }))
 
     await user.type(
       screen.getByRole('textbox', { name: 'Ask a question about this run…' }),
@@ -227,6 +238,11 @@ describe('RunDetailView', () => {
     )
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
+    expect(screen.getByRole('tab', { name: 'Summary' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(await screen.findByText('It wrote a report.')).toBeInTheDocument()
     expect(mockClient.analyzeRun).toHaveBeenCalledWith(
       'run-1',
       'What did it write?'
@@ -253,7 +269,7 @@ describe('RunDetailView', () => {
       status: 'error',
       error: 'Add an API key in Settings to use run analysis',
     })
-    render(<RunDetailView runId="run-1" />)
+    render(<RunDetailView runId="run-1" tab="summary" />)
     expect(
       await screen.findByRole('button', { name: 'Open Settings' })
     ).toBeInTheDocument()

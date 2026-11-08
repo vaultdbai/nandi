@@ -1,6 +1,7 @@
 /**
- * "Ask about this run": a generated summary (on first open), then questions
- * answered from the run's own record, each with the sources it cites.
+ * Run analysis: the Summary tab (a generated summary, then questions answered
+ * from the run's own record, each with the sources it cites) and the ask box
+ * pinned under every tab of the run page.
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -11,21 +12,23 @@ import {
   KeyRound,
   MessageSquare,
   Send,
-  Sparkles,
   TriangleAlert,
 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
-import { analysisErrorMessage, useRunAnalysis } from '@/hooks/useRunAnalysis'
+import {
+  analysisErrorMessage,
+  type useRunAnalysis,
+} from '@/hooks/useRunAnalysis'
 import type { AnalysisResponse, SourceRef } from '@/lib/bindings'
 import { openSettings } from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
 import { MarkdownContent } from './MarkdownContent'
 import { formatCitations, NO_API_KEY_ERROR } from './run-detail-model'
+
+type RunAnalysis = ReturnType<typeof useRunAnalysis>
 
 const SOURCE_ICONS: Record<string, typeof Activity> = {
   event: Activity,
@@ -166,119 +169,119 @@ export function AnswerCard({
   )
 }
 
-export function RunAnalysisPanel({
-  runId,
+/** The Summary tab: the run's summary, then every answer asked so far */
+export function RunSummaryTab({
+  analysis,
   onOpenSource,
 }: {
-  runId: string
+  analysis: RunAnalysis
   /** A cited source was clicked (e.g. switch to the matching tab) */
   onOpenSource?: (source: SourceRef) => void
 }) {
   const { t } = useTranslation()
-  const { summary, answers, ask } = useRunAnalysis(runId)
+  const { summary, answers, ask } = analysis
+  return (
+    // Citation chips are long unbroken ids: let them wrap so the page keeps its width
+    <div className="flex flex-col gap-4 [overflow-wrap:anywhere]">
+      <section
+        aria-label={t('runDetail.analysis.summaryTitle')}
+        className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-4"
+      >
+        <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          {t('runDetail.analysis.summaryTitle')}
+        </h3>
+        {summary.isPending && summary.fetchStatus !== 'idle' ? (
+          <div
+            className="flex flex-col gap-2"
+            aria-busy="true"
+            aria-label={t('runDetail.analysis.summarizing')}
+          >
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-5/6" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
+        ) : summary.error ? (
+          <AnalysisError error={summary.error} />
+        ) : summary.data ? (
+          <div className="text-sm">
+            <MarkdownContent content={formatCitations(summary.data)} />
+          </div>
+        ) : null}
+      </section>
+
+      {answers.map(answer => (
+        <AnswerCard
+          key={answer.question}
+          answer={answer}
+          onOpenSource={onOpenSource}
+        />
+      ))}
+
+      {ask.isPending && (
+        <div className="flex flex-col gap-2">
+          <div className="self-end rounded-lg bg-primary/10 px-3 py-2 text-sm">
+            {ask.variables}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Spinner className="size-3" />
+            {t('runDetail.analysis.thinking')}
+          </div>
+        </div>
+      )}
+
+      {ask.error && !ask.isPending && <AnalysisError error={ask.error} />}
+    </div>
+  )
+}
+
+/** The ask box under every tab; asking opens the Summary tab for the answer */
+export function RunAskBox({
+  ask,
+  onAsk,
+}: {
+  ask: RunAnalysis['ask']
+  onAsk: () => void
+}) {
+  const { t } = useTranslation()
   const [question, setQuestion] = useState('')
 
   const submit = () => {
     const text = question.trim()
     if (!text || ask.isPending) return
+    onAsk()
     ask.mutate(text, { onSuccess: () => setQuestion('') })
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
-        <Sparkles className="size-4 text-primary" />
-        <h2 className="text-sm font-semibold">
-          {t('runDetail.analysis.title')}
-        </h2>
-        <Badge variant="secondary" className="ms-auto">
-          {t('runDetail.analysis.badge')}
-        </Badge>
-      </div>
-
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-4 p-3">
-          <section
-            aria-label={t('runDetail.analysis.summaryTitle')}
-            className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3"
-          >
-            <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              {t('runDetail.analysis.summaryTitle')}
-            </h3>
-            {summary.isPending && summary.fetchStatus !== 'idle' ? (
-              <div
-                className="flex flex-col gap-2"
-                aria-busy="true"
-                aria-label={t('runDetail.analysis.summarizing')}
-              >
-                <Skeleton className="h-3 w-full" />
-                <Skeleton className="h-3 w-5/6" />
-                <Skeleton className="h-3 w-2/3" />
-              </div>
-            ) : summary.error ? (
-              <AnalysisError error={summary.error} />
-            ) : summary.data ? (
-              <div className="text-sm">
-                <MarkdownContent content={formatCitations(summary.data)} />
-              </div>
-            ) : null}
-          </section>
-
-          {answers.map(answer => (
-            <AnswerCard
-              key={answer.question}
-              answer={answer}
-              onOpenSource={onOpenSource}
-            />
-          ))}
-
-          {ask.isPending && (
-            <div className="flex flex-col gap-2">
-              <div className="self-end rounded-lg bg-primary/10 px-3 py-2 text-sm">
-                {ask.variables}
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Spinner className="size-3" />
-                {t('runDetail.analysis.thinking')}
-              </div>
-            </div>
-          )}
-
-          {ask.error && !ask.isPending && <AnalysisError error={ask.error} />}
-        </div>
-      </ScrollArea>
-
-      <form
-        className="flex shrink-0 flex-col gap-2 border-t p-3"
-        onSubmit={event => {
-          event.preventDefault()
-          submit()
+    <form
+      className="flex shrink-0 items-end gap-2 border-t bg-card px-4 py-3"
+      onSubmit={event => {
+        event.preventDefault()
+        submit()
+      }}
+    >
+      <Textarea
+        value={question}
+        onChange={event => setQuestion(event.target.value)}
+        onKeyDown={event => {
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault()
+            submit()
+          }
         }}
+        placeholder={t('runDetail.analysis.placeholder')}
+        aria-label={t('runDetail.analysis.placeholder')}
+        rows={1}
+        className="max-h-32 min-h-9 flex-1 resize-none text-sm"
+      />
+      <Button
+        type="submit"
+        size="sm"
+        disabled={!question.trim() || ask.isPending}
       >
-        <Textarea
-          value={question}
-          onChange={event => setQuestion(event.target.value)}
-          onKeyDown={event => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
-              submit()
-            }
-          }}
-          placeholder={t('runDetail.analysis.placeholder')}
-          aria-label={t('runDetail.analysis.placeholder')}
-          rows={2}
-          className="min-h-14 resize-none text-sm"
-        />
-        <Button
-          type="submit"
-          size="sm"
-          className="self-end"
-          disabled={!question.trim() || ask.isPending}
-        >
-          <Send />
-          {t('runDetail.analysis.send')}
-        </Button>
-      </form>
-    </div>
+        <Send />
+        {t('runDetail.analysis.send')}
+      </Button>
+    </form>
   )
 }

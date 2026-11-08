@@ -15,7 +15,6 @@ import {
   FolderOpen,
   Info,
   ShieldCheck,
-  Sparkles,
   X,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -34,13 +33,11 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
-import { useRunAnalysis } from '@/hooks/useRunAnalysis'
 import { displayAgent } from '@/lib/agent-identity'
 import { client, isDesktop } from '@/lib/client'
 import { modelLabel } from '@/lib/models'
 import { openSettings } from '@/lib/settings-nav'
 import type { RunDetail, RunSummary } from '@/lib/tauri-bindings'
-import type { SourceRef } from '@/lib/bindings'
 import { decideApproval } from '@/lib/agent-actions'
 import { cn } from '@/lib/utils'
 import { useNavigationStore } from '@/store/navigation-store'
@@ -48,13 +45,11 @@ import { ApprovalRequestCard } from './ApprovalRequestCard'
 import { AttachmentChip } from './AttachmentChip'
 import { MarkdownContent } from './MarkdownContent'
 import { MessageList } from './MessageList'
-import { AnswerCard } from './RunAnalysisPanel'
 import { formatJson } from './format-json'
 import {
   filesTouched,
   finalOutput,
   formatBytes,
-  formatCitations,
   type FileOp,
 } from './run-detail-model'
 import {
@@ -467,67 +462,6 @@ function LogRow({
 
 // ---------------------------------------------------------------------------
 // Analysis
-
-export function RunAnalysisTab({
-  runId,
-  onOpenSource,
-  onOpenPanel,
-}: {
-  runId: string
-  onOpenSource?: (source: SourceRef) => void
-  /** Shows the "Ask about this run" panel (hidden on narrow widths) */
-  onOpenPanel?: () => void
-}) {
-  const { t } = useTranslation()
-  const { summary, answers } = useRunAnalysis(runId)
-  if (!summary.data && answers.length === 0) {
-    return (
-      <EmptyTab
-        icon={Sparkles}
-        title={t('runDetail.analysisTab.emptyTitle')}
-        description={t('runDetail.analysisTab.emptyDescription')}
-        action={
-          onOpenPanel && (
-            <Button
-              size="sm"
-              onClick={() => {
-                onOpenPanel()
-                document
-                  .getElementById('run-analysis-panel')
-                  ?.querySelector<HTMLElement>('textarea, input')
-                  ?.focus()
-              }}
-            >
-              <Sparkles />
-              {t('runDetail.analysisTab.openPanel')}
-            </Button>
-          )
-        }
-      />
-    )
-  }
-  return (
-    <div className="flex flex-col gap-4">
-      {summary.data && (
-        <section className="rounded-lg border p-4">
-          <h3 className="mb-2 text-sm font-semibold">
-            {t('runDetail.analysis.summaryTitle')}
-          </h3>
-          <div className="text-sm">
-            <MarkdownContent content={formatCitations(summary.data)} />
-          </div>
-        </section>
-      )}
-      {answers.map(answer => (
-        <AnswerCard
-          key={answer.question}
-          answer={answer}
-          onOpenSource={onOpenSource}
-        />
-      ))}
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Approvals
