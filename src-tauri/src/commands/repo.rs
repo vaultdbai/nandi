@@ -27,7 +27,11 @@ pub async fn repo_status(state: State<'_, AppState>) -> Result<RepoStatus, Strin
 
 // --- Agent editor + git (wave 1, Track B) ---------------------------------
 
-pub use crate::services::repo_service::{AgentDefinitionInput, GitStatus};
+pub use crate::services::repo_service::{
+    AgentDefinitionInput, AgentPlaybooks, GitStatus, PlaybookInput,
+};
+
+use crate::services::domain::playbook::Playbook;
 
 use crate::services::agents::AgentInfo;
 
@@ -65,6 +69,40 @@ pub async fn repo_reset_agent_instructions(
     agent_id: String,
 ) -> Result<bool, String> {
     repo_service::reset_agent_instructions(&state, &agent_id).await
+}
+
+/// The agent's playbooks (`skills/`), and whether they're read-only
+#[tauri::command]
+#[specta::specta]
+pub async fn repo_agent_playbooks(
+    state: State<'_, AppState>,
+    agent_id: String,
+) -> Result<AgentPlaybooks, String> {
+    repo_service::agent_playbooks(&state, &agent_id).await
+}
+
+/// Validates and writes one playbook. `previous`: its old name when
+/// renamed or edited, `None` for a new one
+#[tauri::command]
+#[specta::specta]
+pub async fn repo_save_agent_playbook(
+    state: State<'_, AppState>,
+    agent_id: String,
+    input: PlaybookInput,
+    previous: Option<String>,
+) -> Result<Playbook, String> {
+    repo_service::save_agent_playbook(&state, &agent_id, input, previous).await
+}
+
+/// Removes one playbook
+#[tauri::command]
+#[specta::specta]
+pub async fn repo_delete_agent_playbook(
+    state: State<'_, AppState>,
+    agent_id: String,
+    name: String,
+) -> Result<(), String> {
+    repo_service::delete_agent_playbook(&state, &agent_id, name).await
 }
 
 /// One entity as stored in its file. `kind`: `agent` | `workflow` |

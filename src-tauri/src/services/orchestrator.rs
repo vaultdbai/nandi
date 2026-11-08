@@ -73,6 +73,7 @@ use crate::services::history;
 use crate::services::intake;
 use crate::services::network;
 use crate::services::pilots::{self, tools::PilotToolset, PilotConsentNeeded};
+use crate::services::playbooks;
 use crate::services::repo_store::RepoStore;
 use crate::services::requests;
 use crate::services::runtimes::AgentRuntimes;
@@ -1425,6 +1426,16 @@ async fn llm_step(
                         tools.push(spec);
                     }
                 }
+                // Playbooks: the index in the prompt, bodies on demand
+                let playbooks = playbooks::load(&deps.store, &skill.id);
+                if !playbooks.is_empty() {
+                    system.push_str(&playbooks::prompt_section(&playbooks));
+                    for spec in playbooks::specs() {
+                        if !tools.iter().any(|t| t.name == spec.name) {
+                            tools.push(spec);
+                        }
+                    }
+                }
             }
             (skill.model.clone(), system, tools)
         }
@@ -2117,6 +2128,10 @@ async fn run_call(
             && crate::services::run_plan::tool::is_plan_tool(&call.tool) =>
         {
             crate::services::run_plan::tool::call(bus, ctx, &call.tool, &call.args).await
+        }
+        // Playbooks (read-only): on the host, from the agent's `skills/`
+        _ if ctx.agent_id != STUDIO_AGENT_ID && playbooks::is_playbook_tool(&call.tool) => {
+            playbooks::call(&deps.store, &ctx.agent_id, &call.tool, &call.args)
         }
         // Studio's read-only tools: answered on the host, whatever the engine
         _ if ctx.agent_id == STUDIO_AGENT_ID && studio::tools::is_studio_tool(&call.tool) => {
@@ -3378,6 +3393,64 @@ mod middleware_tests {
             .await
             .iter()
             .any(|m| m.content.starts_with(run_plan::FINISH_CHECK_LEAD)));
+        state.shutdown();
+    }
+
+    /// Playbooks: `skill_get` reads the agent's own `skills/` on the host,
+    /// and needs no plan
+    #[tokio::test]
+    async fn skill_get_answers_from_the_agents_playbooks() {
+        let (state, _sink) = setup(json!({
+            "agent": [
+                {
+                    "text": "Reading my playbook.",
+                    "toolCalls": [
+                        { "tool": "skill_get", "args": { "name": "pay-a-bill" }, "result": "" },
+                        { "tool": "skill_get", "args": { "name": "nope" }, "result": "" }
+                    ]
+                },
+                { "text": "Done." }
+            ]
+        }));
+        save_agent(&state, "writer", "");
+        let playbook = crate::services::domain::playbook::Playbook::new(
+            "pay-a-bill",
+            "Pay a bill online",
+            "A bill is due",
+            "1. Plan first.",
+        )
+        .unwrap();
+        state
+            .store()
+            .save_agent_playbook(
+                &AgentId::parse("writer").unwrap(),
+                &crate::services::repo_service::PlaybookInput {
+                    name: playbook.name().into(),
+                    description: playbook.description().into(),
+                    when: playbook.when().into(),
+                    body: playbook.body().into(),
+                },
+                None,
+            )
+            .unwrap();
+        start(&state, "writer", "r1").await;
+        execute_run(&deps(&state), &DelegationSlot::default(), "writer", "r1")
+            .await
+            .unwrap();
+        let calls = tool_calls_of(&messages_of(&state, "r1").await);
+        assert_eq!(calls.len(), 2);
+        assert!(!calls[0].is_error);
+        assert_eq!(
+            calls[0].result.as_deref(),
+            Some(
+                "# pay-a-bill
+Pay a bill online
+
+1. Plan first."
+            )
+        );
+        assert!(calls[1].is_error);
+        assert!(plan_of(&state, "r1").await.is_none());
         state.shutdown();
     }
 

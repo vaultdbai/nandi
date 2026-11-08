@@ -17,8 +17,14 @@ import { KEYED_PROVIDERS, modelLabel, providersWithKeys } from '@/lib/models'
 import type { AgentInfo } from '@/types/agent'
 
 /** The agent page's tabs */
-export type AgentTab = 'overview' | 'chat' | 'runs' | 'settings'
-export const AGENT_TABS: AgentTab[] = ['overview', 'chat', 'runs', 'settings']
+export type AgentTab = 'overview' | 'chat' | 'runs' | 'playbooks' | 'settings'
+export const AGENT_TABS: AgentTab[] = [
+  'overview',
+  'chat',
+  'runs',
+  'playbooks',
+  'settings',
+]
 
 /** Runtimes by their display name; unknown ones keep their ID */
 const RUNTIME_NAMES: Record<string, string> = {

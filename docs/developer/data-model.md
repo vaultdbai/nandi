@@ -17,6 +17,7 @@ On every start, `services::migration::bootstrap` opens `~/.nandi/repo`, or creat
 | Data                                                              | Where                                                 | In git | Rebuildable        |
 | ----------------------------------------------------------------- | ----------------------------------------------------- | ------ | ------------------ |
 | Agents (`skill.md`, `instructions.md`)                            | `~/.nandi/repo/.nandi/agents/<id>/`                   | ✅     | source             |
+| Agent playbooks                                                   | `~/.nandi/repo/.nandi/agents/<id>/skills/<name>.md`   | ✅     | source             |
 | Agent-scoped workflows                                            | `~/.nandi/repo/.nandi/agents/<id>/workflows/<w>.yaml` | ✅     | source             |
 | Global workflows                                                  | `~/.nandi/repo/.nandi/workflows/<w>.yaml`             | ✅     | source             |
 | Triggers                                                          | `~/.nandi/repo/.nandi/triggers/<t>.yaml`              | ✅     | source             |

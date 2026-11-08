@@ -73,6 +73,7 @@ pub mod palette;
 // Not every API has a caller yet
 #[allow(dead_code)]
 pub mod pilots;
+pub mod playbooks;
 // Policies applied to agents (enforced-policies wave 3)
 pub mod policies;
 pub mod preferences;

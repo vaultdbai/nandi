@@ -305,6 +305,13 @@ impl Repos {
                     bytes.extend(b"\0override\0");
                     bytes.extend(extra);
                 }
+                // Its playbooks: editing one updates the agent
+                for (name, path) in agent_repo::playbook_files(&dir.join(layout::PLAYBOOKS_DIR)) {
+                    if let Some(extra) = read(&path) {
+                        bytes.extend(format!("\0skills/{name}\0").as_bytes());
+                        bytes.extend(extra);
+                    }
+                }
                 (skill, bytes)
             }
             EntityKind::Workflow => {

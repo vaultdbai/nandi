@@ -264,6 +264,15 @@ export const webClient: NandiClient = {
     }),
   resetAgentInstructions: agentId =>
     request('DELETE', `/repo/agents/${id(agentId)}/instructions`),
+  agentPlaybooks: agentId =>
+    request('GET', `/repo/agents/${id(agentId)}/playbooks`),
+  saveAgentPlaybook: (agentId, input, previous) =>
+    request('POST', `/repo/agents/${id(agentId)}/playbooks`, {
+      input,
+      previous,
+    }),
+  deleteAgentPlaybook: (agentId, name) =>
+    request('DELETE', `/repo/agents/${id(agentId)}/playbooks/${id(name)}`),
   loadEntity: (kind, entityId) =>
     request('GET', `/repo/entities/${id(kind)}/${id(entityId)}`),
   repoStatus: () => request('GET', '/repo/status'),

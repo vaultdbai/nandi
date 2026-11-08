@@ -4,7 +4,7 @@ title: Build an agent
 when: Proposing or changing an agent.
 ---
 
-An agent is a folder in the user's repo: a `skill.md` (frontmatter, then the procedure in Markdown) and an optional `instructions.md` next to it.
+An agent is a folder in the user's repo: a `skill.md` (frontmatter, then the procedure in Markdown), an optional `instructions.md` next to it, and optional playbooks in `skills/<name>.md` (frontmatter `name`, `description`, `when`, then the steps; 900 words or fewer each). The run's prompt lists only each playbook's name, description and when; the agent reads one with `skill_get`. Use playbooks for distinct kinds of work an agent does, so skill.md stays short. The user edits them on the agent's Playbooks tab.
 
 ## Steps
 

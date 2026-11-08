@@ -199,6 +199,22 @@ The frontmatter keys you'll use most:
 
 Prefer putting long-lived standing instructions in an `instructions.md` next to `skill.md`: it's appended to the system prompt and keeps the frontmatter file short.
 
+**Playbooks.** An agent can have step-by-step guides for the kinds of work it does, in a `skills/` folder next to `skill.md`: one Markdown file per playbook, `skills/<name>.md`.
+
+```markdown
+---
+name: pay-a-bill
+description: Pay a bill on the biller's website, with you making the payment
+when: A bill is due, or you ask it to pay one
+---
+
+1. Plan the run first ...
+```
+
+- `name` is lowercase words joined by hyphens and must match the file name. `description` and `when` are one line each. The steps stay at 900 words or fewer. A playbook sets no `model`.
+- Every run lists only each playbook's name, description and when to use it. The agent reads a playbook's steps (`skill_get`) when a task calls for it, so an agent can know many playbooks and still start quickly.
+- Open an agent's **Playbooks** tab to read them, change one, add a new one or delete one. Saving checks the same rules. An installed agent's playbooks are read-only, like its `skill.md`.
+
 ### Or fork an installed agent
 
 Installed agents are read-only. Open one, click **Fork** in the banner, and give it a new ID and name. The copy is yours: fully editable, and no longer updated from the marketplace. Forking is how you customize anything you installed.
@@ -641,6 +657,8 @@ The **Chief of Staff** agent comes with Nandi (first under Agents) and works wit
 - **Answering for you:** answers questions about your work for others. Work someone assigns you waits for your approval in your Inbox.
 
 **Browsing websites.** Chief of Staff can browse for you in your chats: finding or checking something on a site, filling a form, downloading a statement. It uses the **Browser** pilot, so you watch every step in a Chrome or Edge window (install and start it in Library › Tools). It opens only the sites you allow: when it needs a new one, Nandi asks you first. It says what it will do before each change, waits for your approval to submit, upload or pay, and hands the window to you for sign-ins, CAPTCHAs, payments and passwords. It never browses when it reads your email or calendar on its own.
+
+**Playbooks.** Chief of Staff comes with playbooks for the work it does most: `web-task`, `pay-a-bill`, `sign-in-and-accounts`, `delegate-work` (do it itself, give it to an agent or a workflow, or ask a person), `build-a-workflow`, `email-triage`, `meeting-prep` and `occasions` (birthdays and anniversaries, with a message or post for you to approve). They're yours to change on its **Playbooks** tab. Nandi adds them once; a playbook you edit or delete stays that way.
 
 **Assigned work stays on your list.** Say "Assign Lena: send the evidence list, due Friday". Your Chief of Staff tells you it's assigned and moves on; you don't wait. Once Lena approves, her Inbox shows "Dev assigned you this" with the due date (or how overdue it is), a note field, **Done** and **Decline**. It stays there for days and across restarts. When she clicks **Done**, her note comes back to you, even if you were offline then. Ask "What am I waiting on?" to see what's open, what's due and what's done.
 

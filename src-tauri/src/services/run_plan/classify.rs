@@ -5,7 +5,7 @@
 //!
 //! | Call                                                   | Effect                   |
 //! | ------------------------------------------------------ | ------------------------ |
-//! | `plan_set`, `plan_update`, reads, mail, people, search  | none                     |
+//! | plan and playbook tools, reads, mail, people, search   | none                     |
 //! | browser reading or moving between pages                | none                     |
 //! | browser clicking, typing, files                         | changes                  |
 //! | browser submit, payment, secret, hand-over             | risky (the user's)       |
@@ -194,6 +194,13 @@ mod tests {
         let cases: Vec<(&str, Value, Option<Action>, Effect)> = vec![
             ("plan_set", none.clone(), None, Effect::None),
             ("plan_update", none.clone(), None, Effect::None),
+            ("skill_list", none.clone(), None, Effect::None),
+            (
+                "skill_get",
+                json!({ "name": "pay-a-bill" }),
+                None,
+                Effect::None,
+            ),
             ("read_file", json!({ "path": "a.md" }), None, Effect::None),
             ("list_dir", json!({ "path": "." }), None, Effect::None),
             (

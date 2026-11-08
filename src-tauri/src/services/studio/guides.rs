@@ -88,14 +88,48 @@ pub fn index_lines() -> String {
         .join("\n")
 }
 
+/// Names a guide (or a playbook) may put in backticks: built-in, Studio,
+/// delegation, plan and playbook tools, skill.md and policy keys, and the
+/// built-in connectors
+#[cfg(test)]
+pub(crate) fn known_names() -> std::collections::BTreeSet<String> {
+    use crate::services::domain::agent::SKILL_FRONTMATTER_KEYS;
+    let mut known: std::collections::BTreeSet<String> =
+        crate::services::tools::builtin::builtin_tools()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+    known.extend(super::tools::specs().into_iter().map(|s| s.name));
+    known.insert(crate::services::a2a::tool::NAME.to_string());
+    known.extend(
+        crate::services::run_plan::tool::specs()
+            .into_iter()
+            .map(|s| s.name),
+    );
+    known.extend(
+        crate::services::playbooks::specs()
+            .into_iter()
+            .map(|s| s.name),
+    );
+    known.extend(
+        SKILL_FRONTMATTER_KEYS
+            .iter()
+            .map(|(key, _)| key.to_string()),
+    );
+    known.extend(
+        crate::services::domain::policy::POLICY_KEYS
+            .iter()
+            .map(|key| key.to_string()),
+    );
+    known.extend(crate::services::connectors::builtin_ids());
+    known
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
-    use crate::services::domain::agent::SKILL_FRONTMATTER_KEYS;
-    use crate::services::studio::tools;
-    use crate::services::tools::builtin::builtin_tools;
 
     #[test]
     fn every_guide_parses_with_a_unique_id() {
@@ -123,25 +157,7 @@ mod tests {
     /// skill.md or policy key, or built-in connector
     #[test]
     fn guides_name_only_real_tools_and_keys() {
-        let mut known: BTreeSet<String> = builtin_tools().into_iter().map(|t| t.name).collect();
-        known.extend(tools::specs().into_iter().map(|s| s.name));
-        known.insert(crate::services::a2a::tool::NAME.to_string());
-        known.extend(
-            crate::services::run_plan::tool::specs()
-                .into_iter()
-                .map(|s| s.name),
-        );
-        known.extend(
-            SKILL_FRONTMATTER_KEYS
-                .iter()
-                .map(|(key, _)| key.to_string()),
-        );
-        known.extend(
-            crate::services::domain::policy::POLICY_KEYS
-                .iter()
-                .map(|key| key.to_string()),
-        );
-        known.extend(crate::services::connectors::builtin_ids());
+        let known = known_names();
         let snake =
             regex::Regex::new(r"`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)(?:\.[a-z_]+)?:?`").unwrap();
         for guide in all() {

@@ -157,6 +157,26 @@ A run plans how it does its part, step by step (task-x-run-plans-and-playbooks, 
 
 **UI.** `RunPlanCard` (`components/agent-console/`) renders a run's plan from `useRunPlan(runId)` (`getRunPlan`, cached forever and replaced by `run://plan_updated` in `lib/agent-sync.ts`). `MessageList` shows the run's last successful `plan_set` call as the card and hides `plan_update` calls (`hiddenPlanCalls` in `run-plan-model.ts`); Run Detail shows it on Overview. Thumbnails come from `getRunScreenshot` (a `data:` URL, only for `browser/<run>/` images).
 
+### Playbooks
+
+An agent's playbooks are skill files next to its `skill.md`: `skills/<name>.md`, each with frontmatter `name` (kebab-case, the file stem), `description` and `when` (one line each), then the steps in Markdown (task-x-run-plans-and-playbooks, step 2). They are gold copy: files written only through the agent repository.
+
+| Piece      | Where                                                                            | What it does                                                                                                                                                              |
+| ---------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Domain     | `services/domain/playbook.rs`                                                    | `Playbook::new` / `from_md` / `to_md`: required fields, name = file stem, body ≤ 900 words, no `model:` or other keys; `check_unique`; `prompt_index`                     |
+| Repository | `services/repos/agent_repo.rs`                                                   | `load_playbooks` (broken files come back as problems), `save_playbook` (new, edit or rename; a taken name is refused), `delete_playbook`; installed agents' are read-only |
+| Commands   | `repo_agent_playbooks`, `repo_save_agent_playbook`, `repo_delete_agent_playbook` | validate, write, then `commit(EntityKind::Agent, …)`; HTTP under `/api/repo/agents/{id}/playbooks`                                                                        |
+| Run time   | `services/playbooks.rs`                                                          | the index in the prompt ("Your playbooks": name, description, when) and `skill_list` / `skill_get`, answered on the host in `run_call`, read-only                         |
+| Built-ins  | `services/builtin_agents.rs`                                                     | the Chief of Staff's eight, from `resources/builtin-agents/chief-of-staff/skills/`, written once when the agent has no `skills/` folder                                   |
+
+- **Progressive loading.** Only the index goes into the prompt; a body costs tokens only when the agent calls `skill_get`. Offered with the plan tools: every run with tools except the email and calendar checks, and only when the agent has a valid playbook. Broken files are logged and left out of runs.
+- **Never a change.** `skill_list` and `skill_get` are reads for the run plan's classifier (no plan needed).
+- **Seeding.** A built-in agent's playbooks are written when its `skills/` folder is missing, so a playbook the user edits or deletes stays that way. Deleting the last one keeps the empty folder.
+- **Watching and fingerprints.** A change under `skills/` maps to its agent (`watcher.rs`), and the agent's fingerprint includes its playbooks, so editing one publishes `repo://agent-updated`.
+- **Installs.** A pack or published agent brings `skills/*.md` (no sub-folders, nothing else; `install.rs` `agent_file_allowed`).
+- **Tests.** The shipped playbooks parse, stay under 600 words and name only real tools (`builtin_agents.rs`, like the Studio guides' test, sharing `studio::guides::known_names`).
+- **UI.** The agent page's Playbooks tab (`AgentPlaybooksTab.tsx`, rules in `playbooks-model.ts`, data from `usePlaybooks`, keyed under `['agent-definition', id]` so file changes refresh it).
+
 ## Schema
 
 `conversations`, `messages` (+ `run_id`), `runs` (+ summed LLM usage: `input_tokens`, `output_tokens`, `cost_usd`, `model`; + source: `source_type`, `source_id`, `source_label`, `priority`, `queued_at`, `queue_position`), `agent_queue` (waiting runs and their input), `run_events` (every non-token event, for the Activity tab and run detail), `approvals` (+ `message_id`, `tool_call_id`), `workflows`, `workflow_runs`, `settings`, `agent_state`. JSON columns are `TEXT`: a column declared `JSON` gets NUMERIC affinity and would coerce values like `"123"`.

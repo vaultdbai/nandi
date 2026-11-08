@@ -57,6 +57,7 @@ import { TurnQueueStrip } from '@/components/agent-console/TurnQueue'
 import { AgentOverviewTab } from '@/components/agents/AgentOverviewTab'
 import { AgentRunsTab } from '@/components/agents/AgentRunsTab'
 import { AgentSettingsTab } from '@/components/agents/AgentSettingsTab'
+import { AgentPlaybooksTab } from '@/components/agents/AgentPlaybooksTab'
 import { AgentTaskStrip } from '@/components/agents/AgentTaskStrip'
 import { DeleteAgentDialog } from '@/components/agents/DeleteAgentDialog'
 import {
@@ -186,8 +187,8 @@ function AgentPage({
   const overviews = useAgentOverviews()
   const { data: defaultModel } = useDefaultModel()
   const [tab, setTab] = useState<AgentTab>(initialTab)
-  // The Settings tab reports unsaved changes; leaving then asks first
-  const [settingsDirty, setSettingsDirty] = useState(false)
+  // The Settings and Playbooks tabs report unsaved changes; leaving asks first
+  const [editsDirty, setEditsDirty] = useState(false)
   const [leaveTo, setLeaveTo] = useState<AgentTab | null>(null)
   // A new deep link (e.g. "Chat" from the menu) switches the tab
   const [lastInitial, setLastInitial] = useState(initialTab)
@@ -214,7 +215,7 @@ function AgentPage({
     .join(' · ')
 
   const changeTab = (next: AgentTab) => {
-    if (tab === 'settings' && next !== 'settings' && settingsDirty) {
+    if (next !== tab && editsDirty) {
       setLeaveTo(next)
       return
     }
@@ -338,7 +339,13 @@ function AgentPage({
           value="settings"
           className="min-h-0 flex-1 overflow-y-auto"
         >
-          <AgentSettingsTab agent={agent} onDirtyChange={setSettingsDirty} />
+          <AgentSettingsTab agent={agent} onDirtyChange={setEditsDirty} />
+        </TabsContent>
+        <TabsContent
+          value="playbooks"
+          className="min-h-0 flex-1 overflow-y-auto"
+        >
+          <AgentPlaybooksTab agent={agent} onDirtyChange={setEditsDirty} />
         </TabsContent>
       </Tabs>
 
@@ -361,7 +368,7 @@ function AgentPage({
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                setSettingsDirty(false)
+                setEditsDirty(false)
                 if (leaveTo) setTab(leaveTo)
                 setLeaveTo(null)
               }}

@@ -17,6 +17,7 @@ use crate::db::Db;
 use crate::services::agents::{describe_error, AgentInfo};
 use crate::services::domain::agent::split_frontmatter;
 use crate::services::domain::capability::{HostRule, NetworkPolicy};
+use crate::services::domain::playbook::Playbook;
 use crate::services::domain::repo::Severity;
 use crate::services::domain::{Agent, AgentId, ChangedBy, EntityKind, TriggerId, WorkflowId};
 use crate::services::events::{self, NandiEvent};
@@ -807,6 +808,56 @@ impl RepoStore {
         Ok(removed)
     }
 
+    /// Agent `id`'s playbooks, for its Playbooks tab
+    pub fn agent_playbooks(&self, id: &AgentId) -> Result<AgentPlaybooks, String> {
+        let place = self
+            .repos()
+            .agents
+            .locate(id.as_str())
+            .ok_or_else(|| format!("Agent '{id}' not found"))?;
+        let loaded = self.repos().agents.load_playbooks(id.as_str())?;
+        Ok(AgentPlaybooks {
+            read_only: place.origin.is_vendored(),
+            playbooks: loaded.entities,
+            problems: loaded
+                .problems
+                .into_iter()
+                .map(|problem| PlaybookProblem {
+                    file: problem
+                        .source_path
+                        .as_deref()
+                        .and_then(Path::file_name)
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    error: problem.error.to_string(),
+                })
+                .collect(),
+        })
+    }
+
+    /// Validates and writes one of agent `id`'s playbooks, then commits.
+    /// `previous`: the name it had (`None` for a new one).
+    pub fn save_agent_playbook(
+        &self,
+        id: &AgentId,
+        input: &PlaybookInput,
+        previous: Option<&str>,
+    ) -> Result<Playbook, String> {
+        let playbook = Playbook::new(&input.name, &input.description, &input.when, &input.body)
+            .map_err(|e| e.to_string())?;
+        self.repos()
+            .agents
+            .save_playbook(id.as_str(), &playbook, previous)?;
+        self.commit(EntityKind::Agent, id.as_str())?;
+        Ok(playbook)
+    }
+
+    /// Removes agent `id`'s playbook `name`, then commits
+    pub fn delete_agent_playbook(&self, id: &AgentId, name: &str) -> Result<(), String> {
+        self.repos().agents.delete_playbook(id.as_str(), name)?;
+        self.commit(EntityKind::Agent, id.as_str()).map(|_| ())
+    }
+
     /// Writes the editor's input to agent `id`'s files (creating the agent
     /// if it has no folder), then commits: the aggregate and projection
     /// update and `repo://agent-updated` (or `-created`) is published.
@@ -916,6 +967,72 @@ pub async fn reset_agent_instructions(state: &AppState, agent_id: &str) -> Resul
     tokio::task::spawn_blocking(move || store.reset_agent_instructions(&id))
         .await
         .map_err(|e| format!("Reset task failed: {e}"))?
+}
+
+/// An agent's playbooks: its `skills/` folder, and whether it's read-only
+/// (an installed agent's)
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentPlaybooks {
+    pub read_only: bool,
+    pub playbooks: Vec<Playbook>,
+    /// Files that don't load, and why
+    pub problems: Vec<PlaybookProblem>,
+}
+
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybookProblem {
+    /// The file name in `skills/`
+    pub file: String,
+    pub error: String,
+}
+
+/// A playbook as the Playbooks tab saves it
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybookInput {
+    pub name: String,
+    pub description: String,
+    pub when: String,
+    pub body: String,
+}
+
+fn parse_agent_id(agent_id: &str) -> Result<AgentId, String> {
+    AgentId::parse(agent_id).map_err(|_| format!("Invalid agent id '{agent_id}'"))
+}
+
+/// Agent `agent_id`'s playbooks (`RepoStore::agent_playbooks`)
+pub async fn agent_playbooks(state: &AppState, agent_id: &str) -> Result<AgentPlaybooks, String> {
+    let (id, store) = (parse_agent_id(agent_id)?, state.store().clone());
+    tokio::task::spawn_blocking(move || store.agent_playbooks(&id))
+        .await
+        .map_err(|e| format!("Load task failed: {e}"))?
+}
+
+/// Saves one playbook (`RepoStore::save_agent_playbook`)
+pub async fn save_agent_playbook(
+    state: &AppState,
+    agent_id: &str,
+    input: PlaybookInput,
+    previous: Option<String>,
+) -> Result<Playbook, String> {
+    let (id, store) = (parse_agent_id(agent_id)?, state.store().clone());
+    tokio::task::spawn_blocking(move || store.save_agent_playbook(&id, &input, previous.as_deref()))
+        .await
+        .map_err(|e| format!("Save task failed: {e}"))?
+}
+
+/// Removes one playbook (`RepoStore::delete_agent_playbook`)
+pub async fn delete_agent_playbook(
+    state: &AppState,
+    agent_id: &str,
+    name: String,
+) -> Result<(), String> {
+    let (id, store) = (parse_agent_id(agent_id)?, state.store().clone());
+    tokio::task::spawn_blocking(move || store.delete_agent_playbook(&id, &name))
+        .await
+        .map_err(|e| format!("Delete task failed: {e}"))?
 }
 
 pub async fn load_entity(state: &AppState, kind: &str, id: &str) -> Result<Value, String> {

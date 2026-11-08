@@ -3,12 +3,12 @@
 
 use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 
 use super::routes::ApiResult;
-use crate::services::repo_service::{self, AgentDefinitionInput};
+use crate::services::repo_service::{self, AgentDefinitionInput, PlaybookInput};
 use crate::services::AppState;
 
 pub fn api() -> Router<AppState> {
@@ -19,6 +19,16 @@ pub fn api() -> Router<AppState> {
         .route(
             "/repo/agents/{id}/instructions",
             post(save_instructions).delete(reset_instructions),
+        )
+        // GET returns `AgentPlaybooks`; POST body `{"input": PlaybookInput,
+        // "previous": "old-name" | null}` returns the saved `Playbook`
+        .route(
+            "/repo/agents/{id}/playbooks",
+            get(agent_playbooks).post(save_playbook),
+        )
+        .route(
+            "/repo/agents/{id}/playbooks/{name}",
+            delete(delete_playbook),
         )
         // Returns the entity as stored in its file
         .route("/repo/entities/{kind}/{id}", get(load_entity))
@@ -56,6 +66,34 @@ async fn reset_instructions(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     ApiResult(repo_service::reset_agent_instructions(&state, &id).await)
+}
+
+async fn agent_playbooks(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    ApiResult(repo_service::agent_playbooks(&state, &id).await)
+}
+
+#[derive(Deserialize)]
+struct SavePlaybookBody {
+    input: PlaybookInput,
+    previous: Option<String>,
+}
+
+async fn save_playbook(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<SavePlaybookBody>,
+) -> impl IntoResponse {
+    ApiResult(repo_service::save_agent_playbook(&state, &id, body.input, body.previous).await)
+}
+
+async fn delete_playbook(
+    State(state): State<AppState>,
+    Path((id, name)): Path<(String, String)>,
+) -> impl IntoResponse {
+    ApiResult(repo_service::delete_agent_playbook(&state, &id, name).await)
 }
 
 async fn load_entity(

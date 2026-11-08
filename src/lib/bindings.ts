@@ -193,6 +193,40 @@ async repoResetAgentInstructions(agentId: string) : Promise<Result<boolean, stri
 }
 },
 /**
+ * The agent's playbooks (`skills/`), and whether they're read-only
+ */
+async repoAgentPlaybooks(agentId: string) : Promise<Result<AgentPlaybooks, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("repo_agent_playbooks", { agentId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Validates and writes one playbook. `previous`: its old name when
+ * renamed or edited, `None` for a new one
+ */
+async repoSaveAgentPlaybook(agentId: string, input: PlaybookInput, previous: string | null) : Promise<Result<Playbook, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("repo_save_agent_playbook", { agentId, input, previous }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Removes one playbook
+ */
+async repoDeleteAgentPlaybook(agentId: string, name: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("repo_delete_agent_playbook", { agentId, name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * One entity as stored in its file. `kind`: `agent` | `workflow` |
  * `trigger` | `connector` | `settings`
  */
@@ -3672,11 +3706,11 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 
 /** user-defined types **/
 
@@ -3952,6 +3986,15 @@ allows?: string[];
  * keychain (never the value)
  */
 secrets?: PilotSecretStatus[] }
+/**
+ * An agent's playbooks: its `skills/` folder, and whether it's read-only
+ * (an installed agent's)
+ */
+export type AgentPlaybooks = { readOnly: boolean; playbooks: Playbook[]; 
+/**
+ * Files that don't load, and why
+ */
+problems: PlaybookProblem[] }
 /**
  * The policies over one agent, for its Permissions panel
  */
@@ -6364,6 +6407,19 @@ export type PlanStep = { kind: PlanStepKind;
  */
 target: string; description: string }
 export type PlanStepKind = "localAgent" | "capability" | "workflow" | "human" | "manual"
+/**
+ * One playbook, valid by construction
+ */
+export type Playbook = { name: string; description: string; when: string; body: string }
+/**
+ * A playbook as the Playbooks tab saves it
+ */
+export type PlaybookInput = { name: string; description: string; when: string; body: string }
+export type PlaybookProblem = { 
+/**
+ * The file name in `skills/`
+ */
+file: string; error: string }
 export type PolicyChange = { 
 /**
  * `tool shell`, `folder reports`, `host api.github.com`, ...

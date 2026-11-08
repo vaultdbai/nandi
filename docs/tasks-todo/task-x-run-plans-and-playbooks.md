@@ -41,11 +41,13 @@ Built 2026-11-08. Developer doc: `docs/developer/agent-runtime.md` › Run plans
 
 ## Step 2: Playbooks (skill files)
 
-- [ ] **`skills/` next to an agent's `skill.md`**: Markdown files with frontmatter `name`, `description`, `when`; body ≤900 words each. The domain validates them (unique names, word limit, no `model:`); the repository reads and writes them (gold copy).
-- [ ] **Progressive loading:** the prompt carries only the index (name, description, when); `skill_list` and `skill_get(name)` fetch bodies on demand, like Studio's guides.
-- [ ] **Built-in playbooks for the Chief of Staff**, seeded like its `skill.md` and editable: `web-task`, `pay-a-bill`, `sign-in-and-accounts`, `delegate-work` (do it myself, an agent, a workflow or a person, and how to hand over well), `build-a-workflow`, `email-triage`, `meeting-prep`, `occasions`.
-- [ ] Agent page: a Playbooks tab to read and edit them (Markdown editor as for skill.md).
-- [ ] Tests: validation, index in the prompt, `skill_get`, seeding, editing.
+Built 2026-11-08. Developer doc: `docs/developer/agent-runtime.md` › Playbooks; catalog AG-33. Decided while building: frontmatter keys are only `name`, `description`, `when` (others refused, `model:` with its own message); playbooks are offered with the plan tools (not in the email or calendar checks, not to an agent with no tools) and only when the agent has a valid one; broken files are left out of runs and shown on the tab; a built-in agent's playbooks are written once, when it has no `skills/` folder, so edits and deletions stay; the agent's fingerprint includes its playbooks; installs bring `skills/*.md`; Studio can't save playbooks yet (the user edits them on the tab).
+
+- [x] **`skills/` next to an agent's `skill.md`**: Markdown files with frontmatter `name`, `description`, `when`; body ≤900 words each. The domain validates them (unique names, word limit, no `model:`); the repository reads and writes them (gold copy). `domain/playbook.rs`, `AgentRepository::{load_playbooks, save_playbook, delete_playbook}`.
+- [x] **Progressive loading:** the prompt carries only the index (name, description, when); `skill_list` and `skill_get(name)` fetch bodies on demand, like Studio's guides. `services/playbooks.rs`, answered on the host in `run_call`; not changes for the run plan.
+- [x] **Built-in playbooks for the Chief of Staff**, seeded like its `skill.md` and editable: `web-task`, `pay-a-bill`, `sign-in-and-accounts`, `delegate-work` (do it myself, an agent, a workflow or a person, and how to hand over well), `build-a-workflow`, `email-triage`, `meeting-prep`, `occasions`. 390 to 600 words each; its `skill.md` points at them in one line (898 words).
+- [x] Agent page: a Playbooks tab to read and edit them (Markdown editor as for skill.md). List, editor with word count, new, delete; read-only for installed agents; commands `repo_agent_playbooks`, `repo_save_agent_playbook`, `repo_delete_agent_playbook` (and HTTP).
+- [x] Tests: validation, index in the prompt, `skill_get`, seeding, editing. Plus: shipped playbooks name only real tools (shares `studio::guides::known_names`), installs keep `skills/`, the tab's model and component.
 
 ## Step 3: Sites and accounts
 

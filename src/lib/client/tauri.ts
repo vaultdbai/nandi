@@ -139,6 +139,11 @@ export const tauriClient: NandiClient = {
     commands.repoSaveAgentInstructions(agentId, instructions),
   resetAgentInstructions: agentId =>
     commands.repoResetAgentInstructions(agentId),
+  agentPlaybooks: agentId => commands.repoAgentPlaybooks(agentId),
+  saveAgentPlaybook: (agentId, input, previous) =>
+    commands.repoSaveAgentPlaybook(agentId, input, previous),
+  deleteAgentPlaybook: (agentId, name) =>
+    commands.repoDeleteAgentPlaybook(agentId, name),
   loadEntity: (kind, id) => commands.repoLoadEntity(kind, id),
   repoStatus: () => commands.repoStatus(),
   gitStatus: () => commands.repoGitStatus(),

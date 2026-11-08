@@ -138,6 +138,8 @@ fn agent_file_allowed(relative: &str) -> bool {
         Some(("workflows", file)) => {
             !file.contains('/') && (file.ends_with(".yaml") || file.ends_with(".yml"))
         }
+        // Playbooks (`skills/<name>.md`)
+        Some(("skills", file)) => !file.contains('/') && file.ends_with(".md"),
         Some(_) => false,
     }
 }
@@ -1406,6 +1408,19 @@ description: Posts
 ---
 You post.
 ";
+
+    #[test]
+    fn an_agent_brings_its_playbooks_but_no_scripts() {
+        let files = pack(&[
+            ("skill.md", POSTER),
+            ("skills/post.md", "playbook"),
+            ("skills/deep/x.md", "nested"),
+            ("skills/run.sh", "script"),
+            ("scripts/x.sh", "script"),
+        ]);
+        let kept: Vec<String> = select_agent_files(files).into_keys().collect();
+        assert_eq!(kept, ["skill.md", "skills/post.md"]);
+    }
 
     #[test]
     fn a_pack_ships_policies_for_its_own_agents_only() {

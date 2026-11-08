@@ -21,6 +21,9 @@ import type {
   ToolBundle,
   ToolsStatus,
   AgentDefinitionInput,
+  AgentPlaybooks,
+  Playbook,
+  PlaybookInput,
   AgentDelegationSettings,
   AgentDetail,
   AgentInfo,
@@ -481,6 +484,21 @@ export interface NandiClient {
   ): Promise<Result<null, string>>
   /** Back to an installed agent's shipped instructions; whether it had the user's own */
   resetAgentInstructions(agentId: string): Promise<Result<boolean, string>>
+  /** The agent's playbooks (`skills/`), and whether they're read-only */
+  agentPlaybooks(agentId: string): Promise<Result<AgentPlaybooks, string>>
+  /**
+   * Validates and writes one playbook. `previous`: its old name when edited
+   * or renamed, `null` for a new one
+   */
+  saveAgentPlaybook(
+    agentId: string,
+    input: PlaybookInput,
+    previous: string | null
+  ): Promise<Result<Playbook, string>>
+  deleteAgentPlaybook(
+    agentId: string,
+    name: string
+  ): Promise<Result<null, string>>
   /** One entity as stored in its file (`agent`, `workflow`, `trigger`, …) */
   loadEntity(kind: string, id: string): Promise<Result<JsonValue, string>>
   /** The local agents repo (`~/.nandi/repo`): root, counts, problems */

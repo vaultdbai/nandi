@@ -10,6 +10,7 @@
 //! .nandi/connectors/<id>/connector.md                     (connector packages)
 //! .nandi/agents/<id>/skill.md
 //! .nandi/agents/<id>/instructions.md
+//! .nandi/agents/<id>/skills/<playbook>.md                (playbooks)
 //! .nandi/agents/<id>/workflows/<workflow>.yaml
 //! .nandi/workflows/<workflow>.yaml
 //! .nandi/triggers/<trigger>.yaml
@@ -32,6 +33,8 @@ use crate::services::domain::EntityKind;
 pub const META_DIR: &str = ".nandi";
 pub const SKILL_FILE: &str = "skill.md";
 pub const INSTRUCTIONS_FILE: &str = "instructions.md";
+/// Next to `skill.md`: the agent's playbooks, one `<name>.md` each
+pub const PLAYBOOKS_DIR: &str = "skills";
 /// Agent-maintained memory (wave final, Track C)
 #[allow(dead_code)]
 pub const MEMORY_FILE: &str = "memory.md";

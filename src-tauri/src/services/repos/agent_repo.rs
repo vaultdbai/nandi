@@ -6,16 +6,25 @@
 //! Their `instructions.md` is the user's to change all the same: an
 //! override in `.nandi/overrides/<id>/instructions.md` replaces the shipped
 //! one, and updates never touch it (`save_instructions`).
+//!
+//! An agent's playbooks are `skills/<name>.md` in its folder
+//! (`load_playbooks`, `save_playbook`, `delete_playbook`); an installed
+//! agent's are read-only like its skill.md.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::agent_locator::{self, AgentPlace};
-use super::fs_atomic::{file_times, move_to_trash, remove_if_exists, write_if_changed};
+use super::fs_atomic::{
+    file_times, move_to_trash, remove_if_exists, write_if_changed, TEMP_MARKER,
+};
 use super::git::GitIndex;
-use super::layout::{INSTRUCTIONS_FILE, MARKETPLACE_DIR, MEMORY_FILE, SKILL_FILE};
+use super::layout::{INSTRUCTIONS_FILE, MARKETPLACE_DIR, MEMORY_FILE, PLAYBOOKS_DIR, SKILL_FILE};
 use super::{read_text, Loaded, RepoError, RepoLayout, RepoResult, Repository};
+use crate::services::domain::playbook::{
+    check_unique, is_valid_name as is_valid_playbook_name, Playbook,
+};
 use crate::services::domain::repo::{Problem, Severity};
 use crate::services::domain::{Agent, AgentId, DomainError, EntityKind};
 
@@ -187,6 +196,106 @@ impl AgentRepository {
         Ok(removed)
     }
 
+    /// The agent's folder, or `NotFound`
+    fn place(&self, id: &str) -> RepoResult<AgentPlace> {
+        self.locate(id).ok_or_else(|| RepoError::NotFound {
+            kind: EntityKind::Agent,
+            id: id.to_string(),
+        })
+    }
+
+    /// Agent `id`'s `skills/` folder (an installed agent's ships with it)
+    pub fn playbooks_dir(&self, id: &str) -> RepoResult<PathBuf> {
+        Ok(self.place(id)?.dir.join(PLAYBOOKS_DIR))
+    }
+
+    /// Agent `id`'s playbooks (`skills/*.md`), by name, and why the broken
+    /// ones don't load. No folder: none.
+    pub fn load_playbooks(&self, id: &str) -> RepoResult<Loaded<Playbook>> {
+        let dir = self.playbooks_dir(id)?;
+        let mut loaded = Loaded::default();
+        for (stem, path) in playbook_files(&dir) {
+            let parsed = fs::read_to_string(&path)
+                .map_err(|e| RepoError::io(&path, e))
+                .and_then(|text| Ok(Playbook::from_md(&stem, &text)?));
+            match parsed {
+                Ok(playbook) => loaded.entities.push(playbook),
+                Err(e) => loaded.problems.push(Problem {
+                    kind: EntityKind::Agent,
+                    id: Some(id.to_string()),
+                    source_path: Some(path),
+                    error: match e {
+                        RepoError::Domain(error) => error,
+                        other => DomainError::Rule(other.to_string()),
+                    },
+                    severity: Severity::Error,
+                }),
+            }
+        }
+        Ok(loaded)
+    }
+
+    /// Writes `playbook` into agent `id`'s `skills/`. `previous` is the name
+    /// it had (`None`: a new one); when it differs, the playbook is renamed
+    /// and the old file goes. A name another playbook has is refused.
+    /// Installed agents' playbooks are read-only.
+    pub fn save_playbook(
+        &self,
+        id: &str,
+        playbook: &Playbook,
+        previous: Option<&str>,
+    ) -> RepoResult<PathBuf> {
+        self.ensure_writable(id)?;
+        let dir = self.playbooks_dir(id)?;
+        let path = dir.join(format!("{}.md", playbook.name()));
+        let previous = previous.map(str::trim);
+        let loaded = self.load_playbooks(id)?;
+        let mut all: Vec<Playbook> = loaded
+            .entities
+            .into_iter()
+            .filter(|p| Some(p.name()) != previous)
+            .collect();
+        all.push(playbook.clone());
+        check_unique(&all)?;
+        // A broken file under the new name is still someone's text
+        if previous != Some(playbook.name()) && path.exists() {
+            return Err(RepoError::Domain(DomainError::Rule(format!(
+                "A playbook named '{}' already exists: choose another name",
+                playbook.name()
+            ))));
+        }
+        fs::create_dir_all(&dir).map_err(|e| RepoError::io(&dir, e))?;
+        if write_if_changed(&path, playbook.to_md().as_bytes())
+            .map_err(|e| RepoError::io(&path, e))?
+        {
+            self.git.stage_add(&path);
+        }
+        if let Some(previous) = previous.filter(|name| *name != playbook.name()) {
+            self.delete_playbook(id, previous)?;
+        }
+        Ok(path)
+    }
+
+    /// Removes agent `id`'s playbook `name`. The empty `skills/` folder
+    /// stays, so a built-in agent's playbooks aren't seeded again.
+    pub fn delete_playbook(&self, id: &str, name: &str) -> RepoResult<()> {
+        self.ensure_writable(id)?;
+        let name = name.trim();
+        if !is_valid_playbook_name(name) {
+            return Err(RepoError::Domain(DomainError::Rule(format!(
+                "'{name}' isn't a playbook name"
+            ))));
+        }
+        let path = self.playbooks_dir(id)?.join(format!("{name}.md"));
+        if !remove_if_exists(&path).map_err(|e| RepoError::io(&path, e))? {
+            return Err(RepoError::Domain(DomainError::Rule(format!(
+                "Agent '{id}' has no playbook named '{name}'"
+            ))));
+        }
+        self.git.stage_remove(&path);
+        Ok(())
+    }
+
     fn read_place(&self, id: &AgentId, place: &AgentPlace) -> RepoResult<Agent> {
         let skill_path = place.dir.join(SKILL_FILE);
         let skill = read_text(&skill_path, EntityKind::Agent, id.as_str())?;
@@ -203,6 +312,25 @@ impl AgentRepository {
         }
         Ok(agent.with_timestamps(created, updated))
     }
+}
+
+/// `(stem, path)` of each `*.md` directly in `dir`, by name; none if it
+/// doesn't exist
+pub(super) fn playbook_files(dir: &Path) -> Vec<(String, PathBuf)> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<(String, PathBuf)> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .filter_map(|path| {
+            let stem = path.file_name()?.to_str()?.strip_suffix(".md")?.to_string();
+            (!stem.starts_with('.') && !stem.contains(TEMP_MARKER)).then_some((stem, path))
+        })
+        .collect();
+    files.sort();
+    files
 }
 
 impl Repository for AgentRepository {
@@ -505,5 +633,145 @@ mod tests {
         repos.agents.save(&agent).unwrap();
         assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), before);
         assert!(!repos.layout().instructions_path("a").exists());
+    }
+
+    fn playbook(name: &str, body: &str) -> Playbook {
+        Playbook::new(name, "Does a thing", "The user asks", body).unwrap()
+    }
+
+    #[test]
+    fn playbooks_are_written_read_renamed_and_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repos = repos(tmp.path());
+        repos
+            .agents
+            .create(&Agent::new(AgentDraft::named(id("a"), "A")).unwrap())
+            .unwrap();
+        assert!(repos
+            .agents
+            .load_playbooks("a")
+            .unwrap()
+            .entities
+            .is_empty());
+
+        let path = repos
+            .agents
+            .save_playbook("a", &playbook("web-task", "Plan."), None)
+            .unwrap();
+        assert!(path.ends_with(".nandi/agents/a/skills/web-task.md"));
+        repos
+            .agents
+            .save_playbook("a", &playbook("pay-a-bill", "Pay."), None)
+            .unwrap();
+        let names = |repos: &Repos| -> Vec<String> {
+            repos
+                .agents
+                .load_playbooks("a")
+                .unwrap()
+                .entities
+                .iter()
+                .map(|p| p.name().to_string())
+                .collect()
+        };
+        assert_eq!(names(&repos), ["pay-a-bill", "web-task"]);
+
+        // A new one can't take a name; an edit keeps it
+        let taken = repos
+            .agents
+            .save_playbook("a", &playbook("web-task", "Other."), None)
+            .unwrap_err();
+        assert!(taken.to_string().contains("web-task"), "{taken}");
+        repos
+            .agents
+            .save_playbook("a", &playbook("web-task", "Edited."), Some("web-task"))
+            .unwrap();
+        let loaded = repos.agents.load_playbooks("a").unwrap().entities;
+        assert_eq!(loaded[1].body(), "Edited.");
+
+        // Renaming moves the file, but never onto another playbook
+        assert!(repos
+            .agents
+            .save_playbook("a", &playbook("pay-a-bill", "x"), Some("web-task"))
+            .is_err());
+        repos
+            .agents
+            .save_playbook("a", &playbook("browse", "Edited."), Some("web-task"))
+            .unwrap();
+        assert_eq!(names(&repos), ["browse", "pay-a-bill"]);
+
+        repos.agents.delete_playbook("a", "browse").unwrap();
+        assert_eq!(names(&repos), ["pay-a-bill"]);
+        assert!(repos.agents.delete_playbook("a", "browse").is_err());
+        assert!(repos.agents.delete_playbook("a", "../skill").is_err());
+        assert!(repos.agents.load_playbooks("nope").is_err());
+    }
+
+    #[test]
+    fn a_broken_playbook_is_a_problem_not_a_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repos = repos(tmp.path());
+        repos
+            .agents
+            .create(&Agent::new(AgentDraft::named(id("a"), "A")).unwrap())
+            .unwrap();
+        let dir = repos.agents.playbooks_dir("a").unwrap();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("good.md"), playbook("good", "Do.").to_md()).unwrap();
+        fs::write(
+            dir.join("bad.md"),
+            "---
+name: bad
+description: d
+when: w
+model: claude:x
+---
+Do.",
+        )
+        .unwrap();
+        fs::write(dir.join("notes.txt"), "not a playbook").unwrap();
+        let loaded = repos.agents.load_playbooks("a").unwrap();
+        assert_eq!(loaded.entities.len(), 1);
+        assert_eq!(loaded.problems.len(), 1);
+        assert!(loaded.problems[0].error.to_string().contains("model"));
+        // Its name stays taken
+        assert!(repos
+            .agents
+            .save_playbook("a", &playbook("bad", "x"), None)
+            .is_err());
+    }
+
+    #[test]
+    fn an_installed_agents_playbooks_are_read_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repos = repos(tmp.path());
+        let dir = repos.layout().vendored_agent_dir("alice", "arxiv");
+        fs::create_dir_all(dir.join("skills")).unwrap();
+        fs::write(
+            dir.join("skill.md"),
+            "---
+name: ArXiv
+---
+Search.",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("skills/search.md"),
+            playbook("search", "Search.").to_md(),
+        )
+        .unwrap();
+        assert_eq!(
+            repos.agents.load_playbooks("arxiv").unwrap().entities.len(),
+            1
+        );
+        assert!(matches!(
+            repos
+                .agents
+                .save_playbook("arxiv", &playbook("x", "y"), None),
+            Err(RepoError::ReadOnly { .. })
+        ));
+        assert!(matches!(
+            repos.agents.delete_playbook("arxiv", "search"),
+            Err(RepoError::ReadOnly { .. })
+        ));
     }
 }

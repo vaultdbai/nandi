@@ -430,6 +430,38 @@ Shared preconditions used below:
 - **Needs relay:** no
 - **Status:** Shipped
 
+### AG-33 — Playbooks: skill files an agent reads on demand
+
+- **What:** An agent's step-by-step guides, `skills/<name>.md` next to its skill.md.
+  - Frontmatter `name` (kebab-case, the file name), `description` and `when` (one line each), then the steps (900 words or fewer). No `model:` or other keys.
+  - Every run with tools (not the email or calendar checks) gets a "Your playbooks" index (name, description, when) and two host tools: `skill_list` and `skill_get` (one body by name). Neither needs a run plan. Broken files are left out of runs.
+  - **Playbooks tab** on the agent page: the list (name, description, when), the open playbook in a Markdown editor with a word count, **New playbook**, **Save playbook** (checks the same rules: taken name, kebab-case, required fields, word limit), **Delete** (asks first). Leaving with unsaved changes asks first. Broken files show with their error.
+  - An installed agent's playbooks are read-only (no New, Save or Delete). Installs bring `skills/*.md`.
+  - Chief of Staff ships eight, added once when it has no `skills/` folder: `web-task`, `pay-a-bill`, `sign-in-and-accounts`, `delegate-work`, `build-a-workflow`, `email-triage`, `meeting-prep`, `occasions`. Edits and deletions stay.
+- **Where:** `src-tauri/src/services/domain/playbook.rs`, `services/repos/agent_repo.rs` (`load_playbooks`, `save_playbook`, `delete_playbook`), `services/repo_service.rs`, `commands/repo.rs`, `http/repo.rs`, `services/playbooks.rs`, `services/orchestrator.rs` (offer and `run_call`), `services/builtin_agents.rs`, `src-tauri/resources/builtin-agents/chief-of-staff/skills/`, `src/components/agents/AgentPlaybooksTab.tsx`, `playbooks-model.ts`, `src/hooks/usePlaybooks.ts`.
+- **Preconditions:** None (Chief of Staff is built in).
+- **Steps:**
+  1. Open Agents › Chief of Staff › Playbooks.
+  2. Open `pay-a-bill`, add a line, **Save playbook**.
+  3. **New playbook**: name `weekly-report`, when "Friday afternoon", what it covers, a few steps; save.
+  4. In Chief of Staff's chat: "Pay my Acme Energy bill".
+  5. Delete `weekly-report`.
+  6. Open an installed pack agent's Playbooks tab.
+- **Expected:**
+  - Step 1: eight playbooks, each with its description and when; the first is open.
+  - Step 2: "Playbook saved"; `skills/pay-a-bill.md` holds the change.
+  - Step 3: it appears in the list; a name like `Weekly Report` becomes `weekly-report`; a taken name or an empty field keeps Save disabled with the reason.
+  - Step 4: the agent reads `pay-a-bill` (`skill_get`) before it plans, and the plan follows it (sign-in and payment as hand-overs).
+  - Step 5: asks first, then it's gone from the list and the folder.
+  - Step 6: read-only notice; no New, Save or Delete.
+- **Edge / negative cases:**
+  - A file with `model:` or a name that isn't its file name shows as broken, and runs leave it out.
+  - A body over 900 words can't be saved.
+  - Deleting a built-in playbook and restarting doesn't bring it back.
+- **Automation:** Covered by: Rust tests in `domain/playbook.rs` (parse, name, required fields, 900 words, no `model:`, unique names, the index), `repos/agent_repo.rs` (`playbooks_are_written_read_renamed_and_removed`, `a_broken_playbook_is_a_problem_not_a_failure`, `an_installed_agents_playbooks_are_read_only`), `playbooks.rs` (`skill_list`, `skill_get`), `builtin_agents.rs` (`seeds_the_playbooks_once_and_keeps_the_users_changes`, `the_shipped_playbooks_parse_and_stay_short`, `the_shipped_playbooks_name_only_real_tools`), `orchestrator.rs` (`skill_get_answers_from_the_agents_playbooks`), `run_plan/classify.rs` (`effects_table`), `marketplace/install.rs` (`an_agent_brings_its_playbooks_but_no_scripts`), Vitest `playbooks-model.test.ts`, `AgentPlaybooksTab.test.tsx` | Layer: unit, integration | Gap: no check that a model actually follows a playbook.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ### AG-29 — Settings tab: Internet access (allowed sites)
 
 - **What:** "Internet access" with three choices: **No internet** ("This agent can't reach any website…"), **Only these sites** (each site in its own box to change, a remove button, "Add a site" with **Add** or Enter, and a hint about `*.example.com` and ports), and **Any site** (saves `*`, with "This agent can reach any website. Choose this only for agents you trust."). Bad sites say "Use a site name like api.example.com, *.example.com or localhost:8080."; a repeat says "That site's already in the list." A site whose rule is limited to some methods shows e.g. "GET only", and saving keeps that limit. Saved with the rest of the form (AG-15); Revert restores the list.

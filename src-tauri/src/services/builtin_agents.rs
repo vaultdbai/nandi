@@ -4,21 +4,40 @@
 //! (`.nandi/agents/<id>/`) whenever its folder is missing, so the user owns
 //! and edits it like one they made; Backup commits its history. It can't
 //! be deleted: features such as My notes and `ask-me` rely on it.
+//!
+//! Its playbooks (`skills/`) are written with the folder: once, when the
+//! agent has no `skills/` folder. Playbooks the user edits or removes stay
+//! as they left them.
 
 use std::path::{Path, PathBuf};
 
 use crate::services::repos::fs_atomic::write_if_changed;
-use crate::services::repos::layout::{INSTRUCTIONS_FILE, SKILL_FILE};
+use crate::services::repos::layout::{INSTRUCTIONS_FILE, PLAYBOOKS_DIR, SKILL_FILE};
 use crate::services::repos::RepoLayout;
 
 /// The agent that keeps My notes and answers for the user
 pub const CHIEF_OF_STAFF: &str = "chief-of-staff";
 
-/// An agent that ships with Nandi: its ID and the files written into a new
-/// folder
+/// An agent that ships with Nandi: its ID, the files written into a new
+/// folder, and its playbooks by name
 pub struct BuiltinAgent {
     pub id: &'static str,
     files: &'static [(&'static str, &'static str)],
+    playbooks: &'static [(&'static str, &'static str)],
+}
+
+/// A Chief of Staff playbook: `(name, contents)`
+macro_rules! chief_playbook {
+    ($name:literal) => {
+        (
+            $name,
+            include_str!(concat!(
+                "../../resources/builtin-agents/chief-of-staff/skills/",
+                $name,
+                ".md"
+            )),
+        )
+    };
 }
 
 /// Every built-in agent, in the order the sidebar lists them
@@ -34,6 +53,16 @@ pub const BUILTIN_AGENTS: &[BuiltinAgent] = &[BuiltinAgent {
             include_str!("../../resources/builtin-agents/chief-of-staff/instructions.md"),
         ),
     ],
+    playbooks: &[
+        chief_playbook!("web-task"),
+        chief_playbook!("pay-a-bill"),
+        chief_playbook!("sign-in-and-accounts"),
+        chief_playbook!("delegate-work"),
+        chief_playbook!("build-a-workflow"),
+        chief_playbook!("email-triage"),
+        chief_playbook!("meeting-prep"),
+        chief_playbook!("occasions"),
+    ],
 }];
 
 pub fn is_builtin(id: &str) -> bool {
@@ -45,23 +74,34 @@ pub fn position(id: &str) -> Option<usize> {
     BUILTIN_AGENTS.iter().position(|agent| agent.id == id)
 }
 
-/// Writes each built-in agent whose `skill.md` the repo lacks, and returns
-/// the files written. An existing folder is the user's and stays as it is.
+/// Writes each built-in agent whose `skill.md` the repo lacks, and its
+/// playbooks when it has no `skills/` folder, and returns the files
+/// written. Existing files are the user's and stay as they are.
 pub fn seed(layout: &RepoLayout) -> Result<Vec<PathBuf>, String> {
     let mut written = Vec::new();
     for agent in BUILTIN_AGENTS {
         let id = agent.id;
-        if layout.skill_path(id).is_file() {
+        let dir = layout.agent_dir(id);
+        if !layout.skill_path(id).is_file() {
+            for (name, content) in agent.files {
+                let path = dir.join(name);
+                if write_new(&path, content)? {
+                    written.push(path);
+                }
+            }
+            log::info!("Added the built-in agent '{id}'");
+        }
+        let skills = dir.join(PLAYBOOKS_DIR);
+        if agent.playbooks.is_empty() || skills.exists() {
             continue;
         }
-        let dir = layout.agent_dir(id);
-        for (name, content) in agent.files {
-            let path = dir.join(name);
+        for (name, content) in agent.playbooks {
+            let path = skills.join(format!("{name}.md"));
             if write_new(&path, content)? {
                 written.push(path);
             }
         }
-        log::info!("Added the built-in agent '{id}'");
+        log::info!("Added the playbooks of the built-in agent '{id}'");
     }
     Ok(written)
 }
@@ -180,7 +220,8 @@ mod tests {
     fn seeds_every_builtin_agent_once() {
         let (_tmp, layout) = layout();
         let written = seed(&layout).unwrap();
-        assert_eq!(written.len(), 2, "{written:?}");
+        let playbooks = builtin(CHIEF_OF_STAFF).playbooks.len();
+        assert_eq!(written.len(), 2 + playbooks, "{written:?}");
         assert!(layout.skill_path(CHIEF_OF_STAFF).is_file());
         assert!(layout.instructions_path(CHIEF_OF_STAFF).is_file());
         assert!(seed(&layout).unwrap().is_empty(), "nothing to add again");
@@ -210,11 +251,118 @@ mod tests {
         seed(&layout).unwrap();
         std::fs::write(layout.instructions_path(CHIEF_OF_STAFF), "# My role\nDev\n").unwrap();
         std::fs::remove_file(layout.skill_path(CHIEF_OF_STAFF)).unwrap();
-        assert_eq!(seed(&layout).unwrap().len(), 1);
+        assert_eq!(seed(&layout).unwrap().len(), 1, "the playbooks are there");
         assert_eq!(
             std::fs::read_to_string(layout.instructions_path(CHIEF_OF_STAFF)).unwrap(),
             "# My role\nDev\n"
         );
+    }
+
+    #[test]
+    fn seeds_the_playbooks_once_and_keeps_the_users_changes() {
+        let (_tmp, layout) = layout();
+        seed(&layout).unwrap();
+        let skills = layout.agent_dir(CHIEF_OF_STAFF).join(PLAYBOOKS_DIR);
+        let pay = skills.join("pay-a-bill.md");
+        std::fs::write(&pay, "my own").unwrap();
+        std::fs::remove_file(skills.join("occasions.md")).unwrap();
+        assert!(seed(&layout).unwrap().is_empty());
+        assert_eq!(std::fs::read_to_string(&pay).unwrap(), "my own");
+        assert!(
+            !skills.join("occasions.md").exists(),
+            "a removed one stays removed"
+        );
+        // An agent from before playbooks gets them once
+        std::fs::remove_dir_all(&skills).unwrap();
+        let written = seed(&layout).unwrap();
+        assert_eq!(written.len(), builtin(CHIEF_OF_STAFF).playbooks.len());
+        assert!(layout.skill_path(CHIEF_OF_STAFF).is_file());
+    }
+
+    fn shipped_playbooks() -> Vec<crate::services::domain::playbook::Playbook> {
+        BUILTIN_AGENTS
+            .iter()
+            .flat_map(|agent| agent.playbooks.iter())
+            .map(|(name, content)| {
+                crate::services::domain::playbook::Playbook::from_md(name, content)
+                    .unwrap_or_else(|e| panic!("{name}: {e}"))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_shipped_playbooks_parse_and_stay_short() {
+        let playbooks = shipped_playbooks();
+        assert_eq!(playbooks.len(), 8);
+        crate::services::domain::playbook::check_unique(&playbooks).unwrap();
+        for playbook in &playbooks {
+            // The domain caps them at 900; these aim for a short read
+            assert!(
+                playbook.words() <= 600,
+                "{}: {} words",
+                playbook.name(),
+                playbook.words()
+            );
+        }
+    }
+
+    /// A playbook only names tools that exist: a backticked snake_case name
+    /// is a known tool (a connector's or the browser's with its prefix) or
+    /// a skill.md key, like the Studio guides
+    #[test]
+    fn the_shipped_playbooks_name_only_real_tools() {
+        use crate::services::{a2a, email, requests, workspace};
+        let known = crate::services::studio::guides::known_names();
+        let browser_tools = [
+            "browser_navigate",
+            "browser_navigate_back",
+            "browser_snapshot",
+            "browser_click",
+            "browser_type",
+            "browser_fill_form",
+            "browser_select_option",
+            "browser_wait_for",
+            "browser_tabs",
+            "browser_take_screenshot",
+            "browser_close",
+            crate::services::pilots::handover::TOOL,
+        ];
+        // The arguments of the work and people tools (`message_id`, …)
+        let arguments: Vec<String> = requests::tool::offered(CHIEF_OF_STAFF)
+            .into_iter()
+            .chain(
+                [a2a::people::FIND_PEOPLE, a2a::people::MY_REQUESTS]
+                    .iter()
+                    .filter_map(|n| a2a::people::spec(n)),
+            )
+            .filter_map(|spec| spec.input_schema["properties"].as_object().cloned())
+            .flat_map(|properties| properties.keys().cloned().collect::<Vec<_>>())
+            .collect();
+        let is_known = |name: &str| {
+            known.contains(name)
+                || arguments.iter().any(|a| a == name)
+                || email::tool::is_mail_tool(name)
+                || workspace::tool::is_workspace_tool(name)
+                || requests::tool::is_work_tool(name)
+                || a2a::people::is_people_tool(name)
+                || name == a2a::clarification::ASK_REQUESTER_TOOL
+        };
+        let names =
+            regex::Regex::new(r"`([a-z][a-z0-9]*(?:__?[a-z0-9]+)+)(?:\.[a-z_]+)?:?`").unwrap();
+        for playbook in shipped_playbooks() {
+            for name in names
+                .captures_iter(playbook.body())
+                .map(|c| c[1].to_string())
+            {
+                let ok = match name.split_once("__") {
+                    Some(("pilot_browser", tool)) => browser_tools.contains(&tool),
+                    Some(("filesystem", tool)) => known.contains(tool),
+                    Some(_) => false,
+                    None => is_known(&name),
+                };
+                assert!(ok, "{} names unknown `{name}`", playbook.name());
+            }
+        }
     }
 
     /// The words of a skill.md body (after the frontmatter)

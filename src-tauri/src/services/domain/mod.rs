@@ -29,6 +29,7 @@ pub mod events;
 pub mod grant;
 pub mod ids;
 pub mod installed;
+pub mod playbook;
 pub mod policy;
 pub mod repo;
 pub mod settings;
@@ -149,6 +150,7 @@ mod tests {
             ("grant.rs", include_str!("grant.rs")),
             ("ids.rs", include_str!("ids.rs")),
             ("installed.rs", include_str!("installed.rs")),
+            ("playbook.rs", include_str!("playbook.rs")),
             ("repo.rs", include_str!("repo.rs")),
             ("settings.rs", include_str!("settings.rs")),
             ("trigger.rs", include_str!("trigger.rs")),
