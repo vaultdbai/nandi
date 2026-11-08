@@ -13,6 +13,7 @@ import {
 import { useRelay } from '@/hooks/useRelay'
 import { LibraryPageView } from '@/components/library/LibraryView'
 import { ConnectionView } from './ConnectionView'
+import { GroupsView } from './GroupsView'
 import { NetworkView } from './NetworkView'
 import { SharingView } from './SharingView'
 import { TriggersListView } from './TriggersListView'
@@ -99,7 +100,7 @@ export function LibraryPage({
 }
 
 /**
- * Network: People · Sharing · Connection, with the connection in words
+ * Network: People · Groups · Sharing · Connection, with the connection in words
  * (opens Connection) and "How networking works" on every tab. Without a
  * saved relay, Connection is where it starts.
  */
@@ -119,6 +120,7 @@ export function NetworkPage({
       label={t('nav.network')}
       tabs={[
         { id: 'people', label: t('network.tab.people') },
+        { id: 'groups', label: t('network.tab.groups') },
         { id: 'sharing', label: t('network.tab.sharing') },
         { id: 'connection', label: t('network.tab.connection') },
       ]}
@@ -132,6 +134,7 @@ export function NetworkPage({
       }
     >
       {tab === 'people' && <NetworkView team={view.team} />}
+      {tab === 'groups' && <GroupsView groupId={view.group} />}
       {tab === 'sharing' && (
         <SharingView
           tab={view.sharing ?? 'offer'}

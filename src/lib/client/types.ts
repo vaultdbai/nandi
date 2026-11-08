@@ -6,6 +6,12 @@
  */
 
 import type {
+  AccessLevel,
+  GroupInvite,
+  GroupRole,
+  GroupView,
+  GroupsOverview,
+  InviteRequest,
   AutoApproveRule,
   RelayTrust,
   RequestReturn,
@@ -1049,6 +1055,48 @@ export interface NandiClient {
   ): Promise<Result<MemberProfile, string>>
   /** Their key changed: pin the new one, so sending to them works again */
   acceptPeerKey(instanceId: string): Promise<Result<PeerKeyStatus, string>>
+
+  // Groups (protocol 7, `services::groups`)
+  /** Every group on the relay and the invites for me (`connected: false` without a relay) */
+  listGroups(): Promise<Result<GroupsOverview, string>>
+  getGroup(groupId: string): Promise<Result<GroupView, string>>
+  createGroup(
+    name: string,
+    description: string,
+    policy: string
+  ): Promise<Result<GroupView, string>>
+  updateGroup(
+    groupId: string,
+    name: string,
+    description: string
+  ): Promise<Result<GroupView, string>>
+  /** Signs the next version of the policy and sends it (admins) */
+  setGroupPolicy(
+    groupId: string,
+    policy: string
+  ): Promise<Result<GroupView, string>>
+  inviteToGroup(
+    groupId: string,
+    invite: InviteRequest
+  ): Promise<Result<GroupInvite, string>>
+  revokeGroupInvite(code: string): Promise<Result<null, string>>
+  joinGroup(code: string): Promise<Result<GroupView, string>>
+  leaveGroup(groupId: string): Promise<Result<null, string>>
+  removeGroupMember(
+    groupId: string,
+    instanceId: string
+  ): Promise<Result<GroupView, string>>
+  setGroupRole(
+    groupId: string,
+    instanceId: string,
+    role: GroupRole
+  ): Promise<Result<GroupView, string>>
+  getGroupAccess(groupId: string): Promise<Result<AccessLevel, string>>
+  /** My access level for a group (works offline) */
+  setGroupAccess(
+    groupId: string,
+    level: AccessLevel
+  ): Promise<Result<AccessLevel, string>>
   setTrustRelationship(
     instanceId: string,
     update: TrustUpdate

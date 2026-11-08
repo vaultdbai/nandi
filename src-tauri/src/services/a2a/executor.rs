@@ -53,6 +53,7 @@ use crate::db::{self, role};
 use crate::model::{RunStatus, RunSummary};
 use crate::services::capability::workflow_provider;
 use crate::services::chat;
+use crate::services::domain::group::Decision;
 use crate::services::domain::{Agent, AgentCard};
 use crate::services::events::{AgentTurnDone, NandiEvent, WireEvent};
 use crate::services::intake;
@@ -461,6 +462,28 @@ impl Executor {
                 Standing::Refused => return None,
             }
         };
+        // Groups I share with the requester (the gateway applies them to
+        // its own tasks): the strictest of their policies and my levels
+        let group = if screen_only {
+            None
+        } else {
+            self.deps
+                .groups
+                .as_ref()
+                .and_then(|rules| rules.decide(&task.requester.instance_id, &task.capability))
+        };
+        let group_say = match group.as_ref().map(|gate| &gate.decision) {
+            None => intake::GroupSay::None,
+            Some(Decision::Auto) => intake::GroupSay::Auto,
+            Some(Decision::Ask(why)) => intake::GroupSay::Ask(why),
+            Some(Decision::Refuse(why)) => {
+                return Some(Refusal::new(
+                    ReasonKind::NotAccepting,
+                    TaskStage::Admit,
+                    format!("Not accepted here. {why}"),
+                ))
+            }
+        };
         let requester = requester_name(task);
         let agent = task.target.rsplit('/').next().unwrap_or(&task.target);
         let target = format!("{agent} · {}", task.capability);
@@ -477,12 +500,18 @@ impl Executor {
             trusted,
             // The gateway holds for the owner itself (Inbox)
             screen_only,
+            group: group_say,
         };
         let deadline = self.deadline(task);
         let mut told = false;
         loop {
             match intake::gate_task(&self.deps.db, &self.deps.bus, &team_task) {
-                Ok(intake::Gate::Go) => return None,
+                Ok(intake::Gate::Go) => {
+                    if let (Some(rules), Some(gate)) = (self.deps.groups.as_ref(), group.as_ref()) {
+                        rules.went_ahead(gate, &task.requester.instance_id);
+                    }
+                    return None;
+                }
                 Ok(intake::Gate::Refuse(why)) => return Some(refuse(why)),
                 Ok(intake::Gate::Declined) => {
                     return Some(Refusal::new(

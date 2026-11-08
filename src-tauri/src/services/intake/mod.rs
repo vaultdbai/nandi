@@ -228,6 +228,21 @@ pub struct TeamTask<'a> {
     /// For the gateway: it holds requests for the owner itself (Inbox), so
     /// here it is only screened
     pub screen_only: bool,
+    /// What the groups I share with the requester say (`services::groups`)
+    pub group: GroupSay<'a>,
+}
+
+/// The groups' say on a teammate's task, once it isn't refused
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GroupSay<'a> {
+    /// No shared group: trust and auto-approve rules as usual
+    #[default]
+    None,
+    /// The groups' policies and my levels let it run (when screening is
+    /// clean), whatever the trust rules say
+    Auto,
+    /// It waits for me, whatever the trust and auto-approve rules say; why
+    Ask(&'a str),
 }
 
 /// What happens to a teammate's task now
@@ -265,7 +280,8 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
             screening.reasons.join("; ")
         )));
     }
-    if task.screen_only || (task.trusted && screening.verdict == Verdict::Clean) {
+    let by_group = task.group != GroupSay::None;
+    if task.screen_only || (!by_group && task.trusted && screening.verdict == Verdict::Clean) {
         return Ok(Gate::Go);
     }
     let origin = rules::Origin {
@@ -274,8 +290,18 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
         ..rules::Origin::default()
     };
     let all = rules::load(&conn).map_err(|e| e.to_string())?;
-    let rule =
-        rules::matching(&all, &origin, IntakeAction::Run, screening.verdict).map(rules::describe);
+    let rule = match task.group {
+        GroupSay::None => rules::matching(&all, &origin, IntakeAction::Run, screening.verdict)
+            .map(rules::describe),
+        GroupSay::Auto if screening.verdict == Verdict::Clean => {
+            Some("your groups' policies and your access level let it run".to_string())
+        }
+        GroupSay::Auto | GroupSay::Ask(_) => None,
+    };
+    let waits_because = match task.group {
+        GroupSay::Ask(why) => Some(why),
+        _ => None,
+    };
     let id = uuid::Uuid::new_v4().to_string();
     let mut item = QueuedWork {
         thread_id: thread::id_for(&id),
@@ -307,6 +333,10 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
         .map_err(|e| e.to_string())?;
         changed(bus);
         return Ok(Gate::Go);
+    }
+    if let Some(why) = waits_because {
+        thread::note(&conn, &item.thread_id, &format!("It waits for you: {why}."))
+            .map_err(|e| e.to_string())?;
     }
     changed(bus);
     Ok(Gate::Wait(item.id))
@@ -665,7 +695,60 @@ mod tests {
             instance_id: "inst-lena",
             trusted,
             screen_only: false,
+            group: GroupSay::None,
         }
+    }
+
+    #[tokio::test]
+    async fn a_group_that_asks_holds_even_a_trusted_teammate() {
+        let state = AppState::for_tests(Vec::new());
+        let mut task = team_task("Review PR 42 by Friday", true);
+        task.group =
+            GroupSay::Ask("Finance: the group's policy has the owner approve every request");
+        let Ok(Gate::Wait(id)) = gate_task(state.db(), state.bus(), &task) else {
+            panic!("it should wait");
+        };
+        let item = state
+            .db()
+            .call(move |conn| load(conn, &id))
+            .await
+            .unwrap()
+            .unwrap();
+        let thread_id = item.thread_id.clone();
+        let notes: Vec<String> = state
+            .db()
+            .call(move |conn| {
+                let mut stmt =
+                    conn.prepare("SELECT content FROM messages WHERE conversation_id = ?1")?;
+                let rows = stmt.query_map([thread_id], |row| row.get(0))?;
+                rows.collect()
+            })
+            .await
+            .unwrap();
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.contains("Finance: the group's policy")),
+            "{notes:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_group_that_lets_it_run_approves_a_clean_request_from_anyone() {
+        let state = AppState::for_tests(Vec::new());
+        let mut task = team_task("Review PR 42 by Friday", false);
+        task.group = GroupSay::Auto;
+        assert_eq!(gate_task(state.db(), state.bus(), &task), Ok(Gate::Go));
+        // Approved on the queue, so the trust check lets it past
+        assert!(is_approved_task(state.db(), "task-1"));
+        // Never a suspicious one
+        let mut task = team_task("Photos: https://bit.ly/3xyz", false);
+        task.task_id = "task-2";
+        task.group = GroupSay::Auto;
+        assert!(matches!(
+            gate_task(state.db(), state.bus(), &task),
+            Ok(Gate::Wait(_))
+        ));
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 # Teams, Network, Sharing, Delegation and Relay
 
-Scope: teams (git registries), local identity, sharing agents (team and relay), trust (policies, trusted peers, pause, block, trust requests), the Network page (People, Sharing, Connection), member profiles, task reassignment, agent-to-agent delegation and clarification, the relay (in-app client, `nandi relay`, `nandi-relay`), the git remote for `~/.nandi/repo`, the team-shared `.nandi/llm.yaml`, and the HTTP/WebSocket server with its web auth.
+Scope: teams (git registries), local identity, sharing agents (team and relay), trust (policies, trusted peers, pause, block, trust requests), the Network page (People, Groups, Sharing, Connection), groups and their signed policies, member profiles, task reassignment, agent-to-agent delegation and clarification, the relay (in-app client, `nandi relay`, `nandi-relay`), the git remote for `~/.nandi/repo`, the team-shared `.nandi/llm.yaml`, and the HTTP/WebSocket server with its web auth.
 
 Notes that apply to the whole section:
 
@@ -1304,6 +1304,114 @@ Notes that apply to the whole section:
   - The team inbox (holds, assignments) decides locally; answers go out when the relay is back.
 - **Automation:** Covered by: `relay/unavailable.rs` tests, `offline_suite.rs` (`with_no_relay_person_to_person_answers_not_connected`), `friendly-error.test.ts`, `NetworkView.test.tsx`, `MemberProfileView.test.tsx` | Layer: unit + api | Gap: no UI test for Sharing's line or the Call dialog.
 - **Needs relay:** no
+- **Status:** Shipped
+
+### GR-01 — Network › Groups lists the relay's groups
+
+- **What:** Network › Groups shows every group on the relay with its name, description and member count, my groups first with a **Member** or **Admin** badge. Nobody is in a group by default. Without a relay the tab shows "Connect to your company's relay", never an error.
+- **Where:** `src/components/views/GroupsView.tsx`, `NavPages.tsx` (`groups` tab), `useGroups.ts`; command `list_groups`, `GET /api/groups`; Rust `services/groups/mod.rs` (`Groups::overview`).
+- **Preconditions:** A relay with groups support (protocol 7) and two instances (RL-11).
+- **Steps:** 1. Disconnect and open Network › Groups. 2. Connect and open it again. 3. On the second instance, create a group.
+- **Expected:** Step 1: the calm connect state. Step 2: "No groups yet" or the list. Step 3: the first instance's list shows the new group (after `network://group_changed` or a refresh) without a badge, with "Ask a member for an invite".
+- **Edge / negative cases:** A relay on protocol 6 refuses registration (version mismatch, RL-27), so the tab shows the connect state.
+- **Automation:** Covered by: `groups::tests::without_a_relay_the_lists_are_empty_and_calls_say_so`, `groups-model.test.ts` | Layer: unit | Gap: no UI test for the list.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### GR-02 — Create a group with a signed policy
+
+- **What:** **Create group** asks for a name, a description and the policy, prefilled with a template whose comments explain each `requests:` field (`approval: always` by default). The creating Nandi picks the group ID (`g_` and 16 hex characters) and signs version 1 of the policy over it with this device's key. The creator is the first admin; their access level for the group starts at Ask first.
+- **Where:** `GroupsView.tsx` (`CreateDialog`); `create_group`, `POST /api/groups`; `Groups::create`, `domain::group::POLICY_TEMPLATE`, `GroupPolicyText::parse`.
+- **Preconditions:** Connected to a groups-capable relay.
+- **Steps:** 1. Create "Finance" with the template. 2. Open `~/.nandi/repo/.nandi/groups/`. 3. Try a policy with `approval: sometimes`.
+- **Expected:** Step 1: the group opens, "Verified, signed by {you}, version 1". Step 2: `<group-id>.md` (Nandi's frontmatter, then the policy text unchanged) and `access.yaml` with `<group-id>: ask-first`, both staged in git. Step 3: refused before anything reaches the relay, naming `requests`.
+- **Edge / negative cases:** An ID the relay already has (`group_invalid`) is retried once with a new one. An empty name is refused.
+- **Automation:** Covered by: `groups::tests::creating_signs_version_one_over_the_id_it_picks`, `relay::tests::on_the_real_relay_a_member_verifies_and_enforces_the_policy`, `domain::group::tests::*` | Layer: unit + api | Gap: no UI test of the dialog.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### GR-03 — Join with a code, invites for me
+
+- **What:** **Join with code** joins a group with an invite code. Invites addressed to me show at the top of Groups with **Accept** (joins with its code) and **Ignore** (hides it for this session). Joining keeps a copy of the group's policy and sets my access level to Ask first.
+- **Where:** `GroupsView.tsx` (`JoinDialog`, invites section); `join_group`, `POST /api/groups/join`; `Groups::join`.
+- **Preconditions:** A member made an invite (GR-05).
+- **Steps:** 1. Paste a code and Join. 2. Have a member invite you by name, then Accept. 3. Join with a used-up code.
+- **Expected:** 1–2: the group opens; its copy is in `.nandi/groups/`, and the author's key is pinned. 3: "That invite code isn't valid…".
+- **Edge / negative cases:** Joining a group you're already in uses nothing and opens it.
+- **Automation:** Covered by: `groups::tests::joining_keeps_a_verified_copy_and_leaving_drops_it`, `relay::tests::on_the_real_relay_a_member_verifies_and_enforces_the_policy`, `GroupsView.test.tsx` | Layer: unit | Gap: Ignore is not remembered across restarts.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### GR-04 — Group detail: members, roles, Leave
+
+- **What:** A group I'm in opens its detail: members with roles (admins first); admins can **Make admin** / **Make member** and **Remove** (asks first). The last admin can't be demoted. **Leave** (asks first) removes the group's copy and my access level.
+- **Where:** `GroupDetail.tsx` (`MembersCard`, Leave); `set_group_role`, `remove_group_member`, `leave_group` (`/api/groups/{id}/members/{instance}`, `/api/groups/{id}/leave`).
+- **Preconditions:** A group with two members.
+- **Steps:** 1. As admin, make the other member an admin, then a member again. 2. Remove them. 3. Leave as the last admin while another member remains.
+- **Expected:** 1–2 update the list for everyone (live, `network://group_changed`). 3: "A group needs an admin: make someone else an admin first".
+- **Edge / negative cases:** A removed member's Nandi drops its copy on the next `GroupChanged` or reconnect.
+- **Automation:** Covered by: `groups::tests::refreshing_drops_copies_of_groups_im_not_in`, `groups-model.test.ts` | Layer: unit | Gap: role changes untested against a real relay.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### GR-05 — Invites: a person or a code
+
+- **What:** Members invite someone they can see (one use) or make a code with a number of uses and days before it expires; the code is copied. Open invites are listed with Copy and **Revoke**.
+- **Where:** `GroupDetail.tsx` (`InvitesCard`); `invite_to_group`, `revoke_group_invite`.
+- **Preconditions:** A group you're in.
+- **Steps:** 1. Create a code for 3 uses, 7 days. 2. Revoke it. 3. Invite a person.
+- **Expected:** 1: "Invite code copied", listed with "Uses left: 3" and its expiry. 2: gone. 3: the person sees it under Invites for you.
+- **Edge / negative cases:** The relay limits open invites (50 per group) and uses (500).
+- **Automation:** Covered by: `relay::tests::on_the_real_relay_a_member_verifies_and_enforces_the_policy` (invite a person) | Layer: api | Gap: codes, revoke and expiry untested.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### GR-06 — The policy: verified or fail closed; admins edit it
+
+- **What:** The group's policy is shown read-only with "Verified, signed by {author}, version {N}", or, when its signature doesn't check out against the author's pinned key, "This group's policy couldn't be verified" (and work from that group is refused, GR-08). Admins **Edit policy** and **Sign and save**: the next version, signed by this device.
+- **Where:** `GroupDetail.tsx` (`PolicyCard`); `set_group_policy`, `PUT /api/groups/{id}/policy`; `Groups::set_policy`, `domain::group::verify`, `groups::enforce::Enforcer::verified`.
+- **Preconditions:** A group you administer.
+- **Steps:** 1. Edit the policy to `approval: per-member` and save. 2. Edit `.nandi/groups/<id>.md` by hand (change the text).
+- **Expected:** 1: version 2, verified, on every member's Nandi. 2: requests from that group's members are refused with "this group's policy couldn't be verified" until the next refresh rewrites the copy.
+- **Edge / negative cases:** Another admin saving at the same time (`group_policy_stale`): signed again over the next version once. A member whose key changed (RL-40) can't verify their policies until accepted.
+- **Automation:** Covered by: `groups::tests::a_policy_change_is_the_next_version_signed_by_me`, `groups::tests::a_forged_policy_shows_unverified`, `groups::enforce::tests::an_unverifiable_policy_fails_closed`, `domain::group::tests::a_signature_checks_out_only_for_its_group_version_and_text` | Layer: unit | Gap: none.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### GR-07 — My access level per group
+
+- **What:** In a group's detail, **My access level** offers Fully automated, Ask first, Questions only, Send me info and None, each with a line on what it means. The stricter of my level and the group's policy applies; when the policy holds back what I picked, a note says so. Works offline (it's my own file, `.nandi/groups/access.yaml`).
+- **Where:** `GroupDetail.tsx` (`AccessCard`); `get_group_access`, `set_group_access`; `domain::group::{AccessLevel, GroupAccess}`.
+- **Preconditions:** A group you're in.
+- **Steps:** 1. Pick Fully automated in a group whose policy is `approval: always`. 2. Pick Questions only.
+- **Expected:** 1: saved, with "The group's policy is stricter: requests still wait for your approval". 2: `access.yaml` says `questions-only`.
+- **Edge / negative cases:** A group missing from `access.yaml` counts as Ask first.
+- **Automation:** Covered by: `domain::group::tests::access_levels_default_to_ask_first_and_round_trip`, `repos::group_repo::tests::*`, `groups-model.test.ts` | Layer: unit | Gap: no UI test.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### GR-08 — Group policies on incoming work
+
+- **What:** A request from someone I share groups with follows, per group, the stricter of the group's `requests:` rules and my access level, and across groups the strictest. Refused requests tell the requester why ("Not accepted here. Finance: the owner takes only questions through this group"); held ones wait in my queue with the group's reason in the thread; Fully automated (when the policy allows) runs a clean request without asking. No shared group: unchanged.
+- **Where:** `services/groups/enforce.rs`, `a2a/executor.rs` (`intake`), `intake/mod.rs` (`GroupSay`), `gateway/router.rs` (`handle_gateway_task`).
+- **Preconditions:** Two instances in one group.
+- **Steps:** 1. Policy `approval: always`; ask the other person's agent something. 2. Policy `approval: per-member`, their level Fully automated; ask again. 3. Their level Questions only; assign them work. 4. `capabilities: { deny: [review-*] }`; ask for `review-pr`. 5. `daily_limit: 1`; ask twice.
+- **Expected:** 1: waits for their approval even if you're trusted. 2: runs at once. 3: refused with the reason. 4: refused. 5: the second is refused for the limit.
+- **Edge / negative cases:** `hours:` outside the window holds instead of running. `always_ask` words (`send`) hold a matching capability. A suspicious request always waits.
+- **Automation:** Covered by: `groups::enforce::tests::*`, `intake::tests::a_group_that_asks_holds_even_a_trusted_teammate`, `intake::tests::a_group_that_lets_it_run_approves_a_clean_request_from_anyone`, `domain::group::tests::*` | Layer: unit | Gap: the policy's `tools:`/`connectors:` blocks are not applied to the run itself yet; "Send me info" holds questions only (no separate information intake).
+- **Needs relay:** yes
+- **Status:** Partial (intake only, see Gap)
+
+### GR-09 — A relay that shows only people you share a group with
+
+- **What:** A relay started with `--visibility groups` tells Nandi so at registration. People then shows "This relay shows you the people you share a group with", Groups explains it, and a request to someone you share no group with is refused with "You don't share a group with them on this relay".
+- **Where:** `relay/client.rs` (`Registered.visibility` into `RelayStatus.visibility`, `no_shared_group`), `NetworkView.tsx`, `friendly-error.ts` (`noSharedGroup`), `NO_SHARED_GROUP` in `bindings.ts`.
+- **Preconditions:** A relay with `NANDI_RELAY_VISIBILITY=groups`.
+- **Steps:** 1. Open People. 2. Ask someone you share no group with.
+- **Expected:** 1: the note; only group-mates listed. 2: the refusal in plain words.
+- **Edge / negative cases:** A company relay (the default) shows no note and everyone.
+- **Automation:** Covered by: `relay::tests::group_calls_are_answered_by_request_id_and_fail_on_disconnect` (visibility) | Layer: unit | Gap: no test of the refusal against a real relay.
+- **Needs relay:** yes
 - **Status:** Shipped
 
 ## Gaps and planned (not testable yet)

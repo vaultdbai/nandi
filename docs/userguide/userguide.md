@@ -702,6 +702,28 @@ When someone who isn't trusted yet tries to send you work and your policy is **A
 - **Pause delegations**: your gateway turns their tasks away and you stop sending them work, until you switch it back.
 - **Block this member**: their tasks are rejected the moment they arrive and none of their agents are used. To block just one agent, use **Block** on it in **Network › Sharing › Capabilities**.
 
+### Groups
+
+**Network › Groups** lists every group on your relay: its name, what it's for and how many people are in it. Nobody is in a group until they join. Anyone can **Create group** (and is its first admin); to join one you need an invite: **Join with code** with a code a member gave you, or **Accept** an invite sent to you, shown at the top of the page.
+
+Every group has a **policy**: what members may have done for each other, and how (for example, every request waits for approval, only some capabilities, at most 20 requests a day, only during working hours). The new-group form starts from a template whose comments explain each line. An admin signs the policy with their device's key, and your Nandi checks that signature: a group shows "Verified, signed by Alice, version 3". If a policy's signature doesn't check out, the group shows "This group's policy couldn't be verified" and your Nandi refuses work from that group until a good version arrives.
+
+In a group you're in, pick **My access level**:
+
+| Level           | What members of the group may have your Nandi do                         |
+| --------------- | ------------------------------------------------------------------------ |
+| Fully automated | Run their requests without asking you, when the group's policy allows it |
+| Ask first       | Every request waits for your approval (the level you start with)         |
+| Questions only  | Ask you questions, answered from your notes; everything else is refused  |
+| Send me info    | Send you things to read; questions wait in your queue and nothing runs   |
+| None            | Nothing                                                                  |
+
+The stricter of your level and the group's policy applies: you can be stricter than the group, never looser. If you share several groups with someone, the strictest of them applies. People who share no group with you are handled as before, by your relay's trust rules.
+
+Admins can rename the group, change its policy (**Edit policy**, then **Sign and save**), make other admins and remove members; every member can invite someone they can see or create an invite code with a number of uses and an expiry, and anyone can **Leave**. Your copies of your groups' policies and your access levels are files in `~/.nandi/repo/.nandi/groups/`, backed up with the rest of your repo.
+
+**A relay that shows only your groups.** Some relays (a public one, rather than your company's) are set to show you only the people you share a group with. People then says so, and asking someone you share no group with answers "You don't share a group with them on this relay".
+
 ### Handing a task to a teammate
 
 If you're serving a task and are swamped, pass it on. In the agent's task strip, **Reassign** lists teammates who are online and serve the same capability; pick one. The task moves to them without the person who asked having to send it again: their delegation thread says "Reassigned to Bob by Alice" and links to the new attempt, and the result reaches them as usual. A task never goes back to someone who already had it.

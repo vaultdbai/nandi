@@ -4,6 +4,7 @@
  */
 import {
   ENVELOPE_TOO_LARGE,
+  NO_SHARED_GROUP,
   PEER_KEY_CHANGED,
   PEER_KEY_MISSING,
   RELAY_UNAVAILABLE,
@@ -16,6 +17,7 @@ export type ErrorKind =
   | 'peerKeyMissing'
   | 'sealRefused'
   | 'envelopeTooLarge'
+  | 'noSharedGroup'
   | 'offline'
   | 'timeout'
   | 'notFound'
@@ -91,6 +93,8 @@ export function errorKind(error: unknown): ErrorKind {
   const raw = rawError(error)
   const sealing = SEALING.find(([, code]) => raw.startsWith(code))
   if (sealing) return sealing[0]
+  // After "The relay refused it: " (`relay::client::no_shared_group`)
+  if (raw.includes(`${NO_SHARED_GROUP}:`)) return 'noSharedGroup'
   return PATTERNS.find(([, pattern]) => pattern.test(raw))?.[0] ?? 'other'
 }
 

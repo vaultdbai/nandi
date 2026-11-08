@@ -88,6 +88,8 @@ pub struct A2aDeps {
     pub timeout: Duration,
     /// How often an inbound task waiting for a slot looks again
     pub dequeue_interval: Duration,
+    /// Group policies over work from people I share a group with
+    pub groups: Option<crate::services::groups::enforce::GroupRules>,
 }
 
 impl A2aDeps {
@@ -127,6 +129,7 @@ impl A2aDeps {
             audit: AuditLog::default_location(),
             timeout: Duration::from_secs(timeout),
             dequeue_interval: Duration::from_secs(queue::DEQUEUE_INTERVAL_SECS),
+            groups: crate::services::groups::enforce::GroupRules::of(state).ok(),
         })
     }
 

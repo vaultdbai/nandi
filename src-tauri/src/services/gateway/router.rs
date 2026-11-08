@@ -34,6 +34,7 @@ use crate::services::a2a::clarification::{AskedQuestion, DelegatedTurn};
 use crate::services::a2a::task::{self, ReasonKind, Refusal, TaskStage};
 use crate::services::a2a::task_state::Change;
 use crate::services::a2a::{DelegationDirection, DelegationRequest, Task, TaskResult, TaskStatus};
+use crate::services::domain::group::Decision as GroupDecision;
 use crate::services::domain::AgentCard;
 use crate::services::events;
 use crate::services::llm_keys;
@@ -578,6 +579,32 @@ pub async fn handle_gateway_task(state: &AppState, task: Task) -> Result<TaskRes
         service.limiter(),
         started_at,
     );
+    // Groups I share with the caller: refused, or held for me, whatever
+    // NANDI.md says (work assigned to me always waits for my Done anyway)
+    let groups = remote_caller
+        .then(|| crate::services::groups::enforce::GroupRules::of(state).ok())
+        .flatten();
+    let group = groups.as_ref().and_then(|rules| {
+        rules.decide(
+            &caller_instance,
+            capability.as_deref().unwrap_or(GATEWAY_AGENT_ID),
+        )
+    });
+    let decision = match (&group.as_ref().map(|g| &g.decision), decision) {
+        (Some(GroupDecision::Refuse(why)), PolicyDecision::Allow { .. }) => {
+            PolicyDecision::Reject {
+                reason: format!("Not accepted here. {why}"),
+                kind: ReasonKind::NotAccepting,
+                limit: None,
+            }
+        }
+        (Some(GroupDecision::Ask(_)), PolicyDecision::Allow { .. }) if !lasting => {
+            PolicyDecision::Allow {
+                needs_approval: true,
+            }
+        }
+        (_, decision) => decision,
+    };
     match decision {
         PolicyDecision::Reject {
             reason,
@@ -630,6 +657,9 @@ pub async fn handle_gateway_task(state: &AppState, task: Task) -> Result<TaskRes
             }
         }
         PolicyDecision::Allow { .. } => {}
+    }
+    if let (Some(rules), Some(gate)) = (groups.as_ref(), group.as_ref()) {
+        rules.went_ahead(gate, &caller_instance);
     }
     // Not a turn: it takes no slot while it waits on the owner
     if lasting {

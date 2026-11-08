@@ -179,6 +179,14 @@ export function NetworkView({ team }: { team?: string }) {
         </Button>
       </div>
       {chosenTeam && <TeamStrip team={chosenTeam} />}
+      {connected && relay?.visibility === 'groups' && (
+        <p
+          className="border-b px-4 py-2 text-sm text-muted-foreground"
+          data-testid="network-groups-visibility"
+        >
+          {t('network.people.groupsVisibility')}
+        </p>
+      )}
       {connected && hidden && (
         <div className="border-b px-4 py-3">
           <Alert data-testid="network-not-reachable">

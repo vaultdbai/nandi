@@ -27,6 +27,7 @@ pub mod connector_package;
 pub mod error;
 pub mod events;
 pub mod grant;
+pub mod group;
 pub mod ids;
 pub mod installed;
 pub mod note_guard;
@@ -149,6 +150,7 @@ mod tests {
             ("error.rs", include_str!("error.rs")),
             ("events.rs", include_str!("events.rs")),
             ("grant.rs", include_str!("grant.rs")),
+            ("group.rs", include_str!("group.rs")),
             ("ids.rs", include_str!("ids.rs")),
             ("installed.rs", include_str!("installed.rs")),
             ("playbook.rs", include_str!("playbook.rs")),

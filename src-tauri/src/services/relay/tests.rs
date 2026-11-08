@@ -1155,3 +1155,231 @@ async fn a_relay_on_another_protocol_version_reads_as_not_connected() {
     let searched = client.find_people("x", 5).await.unwrap_err();
     assert!(RelayUnavailable::is(&searched), "{searched}");
 }
+
+/// A relay that registers everyone in `groups` visibility, answers every
+/// group call (pushing a `GroupChanged` first), and hangs up on `Leave`
+/// without answering
+async fn scripted_groups_relay() -> SocketAddr {
+    use nandi_protocol::{GroupChange, GroupOp, GroupOutcome, Visibility};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let Ok(mut socket) = tokio_tungstenite::accept_async(stream).await else {
+                    return;
+                };
+                while let Some(Ok(frame)) = socket.next().await {
+                    let Ok(text) = frame.to_text() else { continue };
+                    let replies = match RelayMessage::from_json(text) {
+                        Ok(RelayMessage::RegisterInstance { instance_id, .. }) => {
+                            vec![RelayMessage::Registered {
+                                instance_id,
+                                visibility: Visibility::Groups,
+                            }]
+                        }
+                        Ok(RelayMessage::GroupRequest {
+                            op: GroupOp::Leave { .. },
+                            ..
+                        }) => {
+                            return;
+                        }
+                        Ok(RelayMessage::GroupRequest { request_id, op }) => vec![
+                            RelayMessage::GroupChanged {
+                                group_id: "g_0000000000000001".into(),
+                                change: GroupChange::PolicyChanged { version: 2 },
+                            },
+                            RelayMessage::GroupReply {
+                                request_id,
+                                outcome: match op {
+                                    GroupOp::List => GroupOutcome::List {
+                                        groups: Vec::new(),
+                                        invites: Vec::new(),
+                                    },
+                                    _ => GroupOutcome::Refused {
+                                        code: "group_not_admin".into(),
+                                        message: "no".into(),
+                                    },
+                                },
+                            },
+                        ],
+                        _ => Vec::new(),
+                    };
+                    for reply in replies {
+                        let text = reply.to_json().unwrap();
+                        if socket.send(Message::Text(text.into())).await.is_err() {
+                            return;
+                        }
+                    }
+                }
+            });
+        }
+    });
+    addr
+}
+
+#[tokio::test]
+async fn group_calls_are_answered_by_request_id_and_fail_on_disconnect() {
+    use super::client_api::GroupSignal;
+    use nandi_protocol::{GroupOp, GroupOutcome};
+    let addr = scripted_groups_relay().await;
+    let client: Arc<dyn RelayClient> = Arc::new(WsRelayClient::new(None, "me"));
+    // Not connected yet: the typed "not connected"
+    let early = client.group_request(GroupOp::List).await.unwrap_err();
+    assert!(RelayUnavailable::is(&early), "{early}");
+    let signals = Arc::new(Mutex::new(Vec::new()));
+    let seen = signals.clone();
+    client
+        .on_groups(Box::new(move |signal| seen.lock().unwrap().push(signal)))
+        .await;
+    client
+        .connect(&format!("ws://{addr}/relay"), "me")
+        .await
+        .unwrap();
+    client.register(Vec::new()).await.unwrap();
+    assert_eq!(client.status().visibility, Some(RelayVisibility::Groups));
+
+    // Two calls at once each get their own answer
+    let (list, get) = tokio::join!(
+        client.group_request(GroupOp::List),
+        client.group_request(GroupOp::Get {
+            group_id: "g_0000000000000001".into()
+        })
+    );
+    assert!(matches!(list.unwrap(), GroupOutcome::List { .. }));
+    assert!(
+        matches!(get.unwrap(), GroupOutcome::Refused { code, .. } if code == "group_not_admin")
+    );
+    let signals_now = signals.lock().unwrap().clone();
+    assert_eq!(signals_now.first(), Some(&GroupSignal::Registered));
+    assert!(signals_now.iter().any(
+        |s| matches!(s, GroupSignal::Changed { group_id, .. } if group_id == "g_0000000000000001")
+    ));
+
+    // The relay hangs up mid-call: the waiter fails at once, not at the timeout
+    let started = std::time::Instant::now();
+    let left = client
+        .group_request(GroupOp::Leave {
+            group_id: "g_0000000000000001".into(),
+        })
+        .await
+        .unwrap_err();
+    assert!(left.contains("Disconnected"), "{left}");
+    assert!(started.elapsed() < Duration::from_secs(4));
+}
+
+/// Against the real relay (nandi-relay, protocol 7): a group made on one
+/// Nandi is joined from another, whose copy verifies against the
+/// creator's pinned key and holds their requests for approval
+#[tokio::test]
+async fn on_the_real_relay_a_member_verifies_and_enforces_the_policy() {
+    use crate::services::domain::group::{Decision, POLICY_TEMPLATE};
+    use crate::services::groups::{enforce, Groups, InviteRequest};
+    use crate::services::repos::{RepoLayout, Repos};
+    use nandi_seal::DeviceKeys;
+    let addr = serve(local(), SECRET.to_vec()).await.unwrap();
+    struct World {
+        _tmp: tempfile::TempDir,
+        repos: Repos,
+        db: crate::db::Db,
+    }
+    let world = || {
+        let tmp = tempfile::tempdir().unwrap();
+        let repos = Repos::new(RepoLayout::new(tmp.path(), tmp.path().join("trash")));
+        World {
+            _tmp: tmp,
+            repos,
+            db: crate::db::Db::in_memory(),
+        }
+    };
+    async fn nandi_on(
+        addr: std::net::SocketAddr,
+        world: &World,
+        me: &str,
+        keys: &DeviceKeys,
+    ) -> Groups {
+        let secret = keys.export_secret().to_string();
+        let source = secret.clone();
+        let client = WsRelayClient::with_options(
+            None,
+            me,
+            ClientOptions {
+                device_keys: Some(Arc::new(move || {
+                    DeviceKeys::import_secret(&source).map_err(|e| e.to_string())
+                })),
+                ..ClientOptions::default()
+            },
+        );
+        let token = issue_instance_token(SECRET, me);
+        client
+            .connect(&format!("ws://{addr}/relay?token={token}"), me)
+            .await
+            .unwrap();
+        client.register(Vec::new()).await.unwrap();
+        let public = keys.public_keys().clone();
+        Groups::new(
+            Some(Arc::new(client)),
+            world.repos.groups.clone(),
+            world.db.clone(),
+            me.to_string(),
+            Arc::new(move || DeviceKeys::import_secret(&secret).map_err(|e| e.to_string())),
+            Arc::new(move || Ok(public.clone())),
+            None,
+        )
+    }
+    let (alice_world, bob_world) = (world(), world());
+    let (alice_keys, bob_keys) = (
+        DeviceKeys::generate().unwrap(),
+        DeviceKeys::generate().unwrap(),
+    );
+    let alice = nandi_on(addr, &alice_world, "alice-1", &alice_keys).await;
+    let bob = nandi_on(addr, &bob_world, "bob-1", &bob_keys).await;
+
+    let created = alice
+        .create("Finance", "Month-end", POLICY_TEMPLATE)
+        .await
+        .unwrap();
+    assert!(created.policy.verified, "{:?}", created.policy.problem);
+    let id = created.group.summary.id.clone();
+    let overview = bob.overview().await.unwrap();
+    assert!(overview
+        .groups
+        .iter()
+        .any(|g| g.id == id && g.role.is_none()));
+
+    let invite = alice
+        .invite(
+            &id,
+            InviteRequest {
+                instance_id: Some("bob-1".into()),
+                max_uses: 1,
+                expires_at: None,
+            },
+        )
+        .await
+        .unwrap();
+    let joined = bob.join(&invite.code).await.unwrap();
+    assert!(joined.policy.verified, "{:?}", joined.policy.problem);
+    assert_eq!(joined.group.members.len(), 2);
+
+    // Bob's Nandi holds Alice's requests for his approval (approval: always)
+    let gate = enforce::Enforcer {
+        repo: &bob_world.repos.groups,
+        db: &bob_world.db,
+        me: "bob-1",
+        own_keys: Some(bob_keys.public_keys()),
+    }
+    .decide("alice-1", "review-pr", enforce::Moment::now())
+    .unwrap();
+    assert!(matches!(gate.decision, Decision::Ask(_)));
+
+    // A new version from Alice reaches Bob verified
+    let text = "---\nrequests:\n  approval: per-member\n---\n";
+    assert_eq!(alice.set_policy(&id, text).await.unwrap().policy.version, 2);
+    let seen = bob.get(&id).await.unwrap();
+    assert!(seen.policy.verified && seen.policy.version == 2);
+    assert_eq!(
+        bob_world.repos.groups.load(&id).unwrap().unwrap().text,
+        text
+    );
+}

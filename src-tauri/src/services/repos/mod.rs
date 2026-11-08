@@ -16,6 +16,7 @@ pub mod capability_repo;
 pub mod connector_repo;
 pub mod fs_atomic;
 pub mod git;
+pub mod group_repo;
 pub mod layout;
 // Wave CD: Studio policies
 pub mod policy_repo;
@@ -30,6 +31,7 @@ use std::sync::Arc;
 
 pub use agent_repo::AgentRepository;
 pub use connector_repo::ConnectorRepository;
+pub use group_repo::GroupRepository;
 pub use layout::RepoLayout;
 pub use policy_repo::PolicyRepository;
 pub use settings_repo::SettingsRepository;
@@ -195,6 +197,7 @@ pub struct Repos {
     pub connectors: ConnectorRepository,
     pub vendor: VendorRepository,
     pub policies: PolicyRepository,
+    pub groups: GroupRepository,
 }
 
 impl Repos {
@@ -208,7 +211,8 @@ impl Repos {
             settings: SettingsRepository::new(layout.clone(), git.clone()),
             connectors: ConnectorRepository::new(layout.clone(), git.clone()),
             vendor: VendorRepository::new(layout.clone(), git.clone()),
-            policies: PolicyRepository::new(layout.clone(), git),
+            policies: PolicyRepository::new(layout.clone(), git.clone()),
+            groups: GroupRepository::new(layout.clone(), git),
             layout,
         }
     }

@@ -48,6 +48,8 @@ pub mod egress;
 pub mod email;
 pub mod events;
 pub mod grants;
+// Protocol 7: groups, their signed policies, my access levels
+pub mod groups;
 // Wave final (Track D): the gateway agent (NANDI.md)
 #[allow(dead_code)]
 pub mod gateway;

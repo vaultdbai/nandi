@@ -15,6 +15,7 @@ use super::RelayStatus;
 use crate::services::a2a::{Task, TaskResult};
 use crate::services::domain::AgentCard;
 use crate::services::gateway::GatewayCard;
+use nandi_protocol::{GroupChange, GroupOp, GroupOutcome, PublicKeys};
 
 pub type Handler<T> = Box<dyn Fn(T) + Send + Sync>;
 
@@ -40,6 +41,19 @@ pub const REFUSED_BY_RELAY: &str = "The relay refused it: ";
 pub struct Submitted {
     /// Its provider is offline: it waits at the relay for them
     pub held: bool,
+}
+
+/// What the relay tells us about groups (protocol 7)
+#[derive(Debug, Clone, PartialEq)]
+pub enum GroupSignal {
+    /// We (re)registered: anything may have changed while we were away,
+    /// so list again
+    Registered,
+    /// A group we're in (or were invited to) changed
+    Changed {
+        group_id: String,
+        change: GroupChange,
+    },
 }
 
 /// One instance's connection to a relay.
@@ -227,6 +241,32 @@ pub trait RelayClient: Send + Sync {
         capability_id: &'a str,
     ) -> BoxFuture<'a, Result<Vec<InstancePresence>, String>> {
         let _ = capability_id;
+        Box::pin(async { Err("Not supported by this relay client".to_string()) })
+    }
+
+    // Groups (protocol 7)
+
+    /// One group call (`GroupRequest` → `GroupReply`), or an error after
+    /// 5s. Not connected: `RelayUnavailable`. A refusal is an `Ok`
+    /// (`GroupOutcome::Refused`) for the caller to explain.
+    fn group_request(&self, op: GroupOp) -> BoxFuture<'_, Result<GroupOutcome, String>> {
+        let _ = op;
+        Box::pin(async { Err("Not supported by this relay client".to_string()) })
+    }
+
+    /// Group news: after every registration, and every `GroupChanged`
+    fn on_groups(&self, handler: Handler<GroupSignal>) -> BoxFuture<'_, ()> {
+        let _ = handler;
+        Box::pin(async {})
+    }
+
+    /// `instance`'s keys: the pinned ones, else the relay's (pinned now).
+    /// `Err` while their key changed and the user hasn't accepted it.
+    fn public_keys_of<'a>(
+        &'a self,
+        instance: &'a str,
+    ) -> BoxFuture<'a, Result<PublicKeys, String>> {
+        let _ = instance;
         Box::pin(async { Err("Not supported by this relay client".to_string()) })
     }
 }

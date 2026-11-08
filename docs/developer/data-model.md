@@ -14,28 +14,31 @@ On every start, `services::migration::bootstrap` opens `~/.nandi/repo`, or creat
 
 ## What Lives Where
 
-| Data                                                              | Where                                                 | In git | Rebuildable        |
-| ----------------------------------------------------------------- | ----------------------------------------------------- | ------ | ------------------ |
-| Agents (`skill.md`, `instructions.md`)                            | `~/.nandi/repo/.nandi/agents/<id>/`                   | ✅     | source             |
-| Agent playbooks                                                   | `~/.nandi/repo/.nandi/agents/<id>/skills/<name>.md`   | ✅     | source             |
-| Agent-scoped workflows                                            | `~/.nandi/repo/.nandi/agents/<id>/workflows/<w>.yaml` | ✅     | source             |
-| Global workflows                                                  | `~/.nandi/repo/.nandi/workflows/<w>.yaml`             | ✅     | source             |
-| Triggers                                                          | `~/.nandi/repo/.nandi/triggers/<t>.yaml`              | ✅     | source             |
-| Portable settings (theme, language, default model, provider pins) | `~/.nandi/repo/.nandi/settings.yaml`                  | ✅     | source             |
-| Connector declarations                                            | `~/.nandi/repo/.nandi/connectors.yaml`                | ✅     | source             |
-| Repo format version, owner                                        | `~/.nandi/repo/.nandi/manifest.yaml`                  | ✅     | source             |
-| Marketplace installs (read-only until forked)                     | `~/.nandi/repo/.nandi/agents/marketplace/…`           | ✅     | source             |
-| What was installed from where                                     | `~/.nandi/repo/.nandi/installed.yaml`                 | ✅     | source             |
-| Registry index cache, fetch scratch repos                         | `~/.nandi/local/cache/`                               | ❌     | ✅ re-fetched      |
-| Projection (`agents`, `workflows`, `triggers`, …)                 | `~/.nandi/local/state.db`                             | ❌     | ✅ `nandi rebuild` |
-| Runs, messages, approvals, queue, fires, workflow runs            | `~/.nandi/local/state.db`                             | ❌     | ❌ runtime history |
-| Engine choice, canned script                                      | `state.db` → `local_settings`                         | ❌     | ❌ machine-local   |
-| First-run step reached (`onboarding.step`), per Nandi home        | `state.db` → `local_settings`                         | ❌     | ❌ machine-local   |
-| Dismissed hints (Get started, backup nudge)                       | webview `localStorage` (`lib/dismissals.ts`)          | ❌     | ❌ hint comes back |
-| Audit logs (llm, egress, triggers)                                | `~/.nandi/local/logs/`                                | ❌     | ❌                 |
-| Agent workdirs                                                    | `~/.nandi/local/work/<id>/`                           | ❌     | ephemeral          |
-| Secrets (LLM/AWS keys, trigger secrets, remote credential)        | OS keyring                                            | ❌     | ❌                 |
-| Deleted agents, replaced repos                                    | `~/.nandi/trash/`                                     | ❌     | —                  |
+| Data                                                                          | Where                                                 | In git | Rebuildable              |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------- | ------ | ------------------------ |
+| Agents (`skill.md`, `instructions.md`)                                        | `~/.nandi/repo/.nandi/agents/<id>/`                   | ✅     | source                   |
+| Agent playbooks                                                               | `~/.nandi/repo/.nandi/agents/<id>/skills/<name>.md`   | ✅     | source                   |
+| Agent-scoped workflows                                                        | `~/.nandi/repo/.nandi/agents/<id>/workflows/<w>.yaml` | ✅     | source                   |
+| Global workflows                                                              | `~/.nandi/repo/.nandi/workflows/<w>.yaml`             | ✅     | source                   |
+| Triggers                                                                      | `~/.nandi/repo/.nandi/triggers/<t>.yaml`              | ✅     | source                   |
+| Portable settings (theme, language, default model, provider pins)             | `~/.nandi/repo/.nandi/settings.yaml`                  | ✅     | source                   |
+| Connector declarations                                                        | `~/.nandi/repo/.nandi/connectors.yaml`                | ✅     | source                   |
+| Groups I'm in: each group's signed policy and members ([groups](./groups.md)) | `~/.nandi/repo/.nandi/groups/<group-id>.md`           | ✅     | refreshed from the relay |
+| My access level per group                                                     | `~/.nandi/repo/.nandi/groups/access.yaml`             | ✅     | source                   |
+| Repo format version, owner                                                    | `~/.nandi/repo/.nandi/manifest.yaml`                  | ✅     | source                   |
+| Marketplace installs (read-only until forked)                                 | `~/.nandi/repo/.nandi/agents/marketplace/…`           | ✅     | source                   |
+| What was installed from where                                                 | `~/.nandi/repo/.nandi/installed.yaml`                 | ✅     | source                   |
+| Registry index cache, fetch scratch repos                                     | `~/.nandi/local/cache/`                               | ❌     | ✅ re-fetched            |
+| Projection (`agents`, `workflows`, `triggers`, …)                             | `~/.nandi/local/state.db`                             | ❌     | ✅ `nandi rebuild`       |
+| Group requests that went ahead, per member and day                            | `state.db` → `group_requests`                         | ❌     | ❌ runtime history       |
+| Runs, messages, approvals, queue, fires, workflow runs                        | `~/.nandi/local/state.db`                             | ❌     | ❌ runtime history       |
+| Engine choice, canned script                                                  | `state.db` → `local_settings`                         | ❌     | ❌ machine-local         |
+| First-run step reached (`onboarding.step`), per Nandi home                    | `state.db` → `local_settings`                         | ❌     | ❌ machine-local         |
+| Dismissed hints (Get started, backup nudge)                                   | webview `localStorage` (`lib/dismissals.ts`)          | ❌     | ❌ hint comes back       |
+| Audit logs (llm, egress, triggers)                                            | `~/.nandi/local/logs/`                                | ❌     | ❌                       |
+| Agent workdirs                                                                | `~/.nandi/local/work/<id>/`                           | ❌     | ephemeral                |
+| Secrets (LLM/AWS keys, trigger secrets, remote credential)                    | OS keyring                                            | ❌     | ❌                       |
+| Deleted agents, replaced repos                                                | `~/.nandi/trash/`                                     | ❌     | —                        |
 
 The repo's `.gitignore` (written by the bootstrap) keeps `.nandi/local/`, `*.db*`, `*.log`, `work/`, and Nandi's atomic-write temp files out of commits.
 

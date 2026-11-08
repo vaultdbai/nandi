@@ -4,6 +4,7 @@
  */
 
 import type {
+  GroupsChanged,
   AgentApprovalRequest,
   AgentApprovalResolved,
   AgentMessageAdded,
@@ -157,6 +158,8 @@ interface NandiEventMap {
   'relay://seal_refused': RelaySealRefused
   /** The relay shows other keys for a member than the pinned ones */
   'network://member_key_changed': MemberKeyChanged
+  /** A group I'm in (or was invited to) changed; `groupId: null` after a reconnect */
+  'network://group_changed': GroupsChanged
   'team://changed': TeamChanged
   'delegation://task_started': DelegationTaskStarted
   'delegation://task_completed': DelegationTaskCompleted
@@ -309,6 +312,7 @@ export const CORE_EVENT_NAMES = [
   'relay://agent_offline',
   'relay://seal_refused',
   'network://member_key_changed',
+  'network://group_changed',
   'team://changed',
   'delegation://task_started',
   'delegation://task_completed',

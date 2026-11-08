@@ -4022,6 +4022,7 @@ dependencies = [
  "hyper-util",
  "log",
  "nandi-protocol",
+ "rand_core 0.6.4",
  "rusqlite",
  "rustls",
  "rustls-pki-types",

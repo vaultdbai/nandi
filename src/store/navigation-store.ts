@@ -32,13 +32,18 @@ export type View =
       capability?: string
       item?: string
     }
-  /** People (directory), Teams, Sharing (`sharing` picks its view), Connection */
+  /**
+   * People (directory), Teams, Groups (`group` opens one), Sharing
+   * (`sharing` picks its view), Connection
+   */
   | {
       kind: 'network'
       tab?: NetworkTab
       sharing?: SharingTab
       /** People filtered to one team's roster (or `MANAGE_TEAMS`) */
       team?: string
+      /** Groups: the group open (its ID) */
+      group?: string
       callers?: CallersView
     }
   /**
@@ -112,7 +117,7 @@ export type WorkflowTab = 'overview' | 'graph' | 'runs' | 'configuration'
 export type LibraryTab = 'installed' | 'browse' | 'shared'
 export type LibraryKindFilter =
   'all' | 'agents' | 'workflows' | 'tools' | 'packs'
-export type NetworkTab = 'people' | 'sharing' | 'connection'
+export type NetworkTab = 'people' | 'groups' | 'sharing' | 'connection'
 /** What you offer · Who may call you · Incoming requests · Shared · Capabilities */
 export type SharingTab =
   'offer' | 'callers' | 'incoming' | 'shared' | 'capabilities'

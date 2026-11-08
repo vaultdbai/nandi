@@ -4,10 +4,10 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::commands::{
         access, agents, analysis, ask, attachments, audit, aws_auth, bedrock, capabilities,
         capability, capability_registries, chat, companion, config, connectors, delegation,
-        delegation_clarification, docker, egress, email, gateway, harness_sessions, harnesses,
-        identity, images, live, llm_keys, manual_steps, marketplace, marketplace_search, mascot,
-        memory, network, notes, notifications, palette, pilots, policies, preferences, queue,
-        reassign, recovery, relay, relay_capabilities, remote, repo, requests, runs, shared,
+        delegation_clarification, docker, egress, email, gateway, groups, harness_sessions,
+        harnesses, identity, images, live, llm_keys, manual_steps, marketplace, marketplace_search,
+        mascot, memory, network, notes, notifications, palette, pilots, policies, preferences,
+        queue, reassign, recovery, relay, relay_capabilities, remote, repo, requests, runs, shared,
         snapshots, studio, tasks, teams, teams_roster, tools, triggers, work, workflow_builder,
         workflows, workspace,
     };
@@ -22,6 +22,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::services::email::EmailChanged;
     use crate::services::events::*;
     use crate::services::grants::GrantsChanged;
+    use crate::services::groups::GroupsChanged;
     use crate::services::live::LiveChange;
     use crate::services::marketplace::events::*;
     use crate::services::orchestrator::compaction::AgentRunCompacted;
@@ -339,6 +340,19 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             teams_roster::get_member_profile,
             teams_roster::get_member_by_instance,
             teams_roster::accept_peer_key,
+            groups::list_groups,
+            groups::get_group,
+            groups::create_group,
+            groups::update_group,
+            groups::set_group_policy,
+            groups::invite_to_group,
+            groups::revoke_group_invite,
+            groups::join_group,
+            groups::leave_group,
+            groups::remove_group_member,
+            groups::set_group_role,
+            groups::get_group_access,
+            groups::set_group_access,
             teams_roster::set_trust_relationship,
             teams_roster::get_relay_trust,
             teams_roster::set_relay_trust,
@@ -474,6 +488,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             RelayAgentOffline,
             RelaySealRefused,
             MemberKeyChanged,
+            GroupsChanged,
             TeamChanged,
             DelegationTaskStarted,
             DelegationTaskCompleted,
@@ -512,6 +527,9 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         )
         // The code a send's error starts with when the member's key changed
         // and the user hasn't accepted it (`services::network::peer_keys`)
+        // The code a refusal starts with when a groups relay keeps you
+        // from someone you share no group with
+        .constant("NO_SHARED_GROUP", nandi_protocol::NO_SHARED_GROUP)
         .constant(
             "PEER_KEY_CHANGED",
             crate::services::network::peer_keys::PEER_KEY_CHANGED,

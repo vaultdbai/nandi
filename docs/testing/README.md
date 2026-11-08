@@ -93,17 +93,17 @@ This catalog is only useful if it matches the code. Every change that adds, chan
 
 ID prefixes:
 
-| Prefix         | Area                                                                                  | File                                                               |
-| -------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `ON` `SH` `ST` | Onboarding, shell and navigation, settings                                            | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     |
-| `AG` `CH` `RN` | Agents, agent console, runs                                                           | [agents-chat-runs.md](./agents-chat-runs.md)                       |
-| `RT` `MD` `SB` | Runtimes and containers, models and keys, sandbox and egress                          | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         |
-| `WF` `TR` `RQ` | Workflows, triggers, requests / work / Inbox                                          | [workflows-triggers-requests.md](./workflows-triggers-requests.md) |
-| `LB` `CP` `AI` | Library and marketplace, capabilities / connectors / pilots, Studio / Ask / companion | [library-capabilities-studio.md](./library-capabilities-studio.md) |
-| `TM` `NW` `RL` | Teams and trust, network, relay / delegation / HTTP server                            | [teams-network-relay.md](./teams-network-relay.md)                 |
-| `PO`           | Policies (policy files and what an agent ends up with)                                | [policies.md](./policies.md)                                       |
-| `GW`           | Instance gateway agent                                                                | [gateway.md](./gateway.md)                                         |
-| `DT` `PL` `QA` | Data and gold copy, platform / CLI / release, quality gates                           | [data-platform-quality.md](./data-platform-quality.md)             |
+| Prefix              | Area                                                                                  | File                                                               |
+| ------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `ON` `SH` `ST`      | Onboarding, shell and navigation, settings                                            | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     |
+| `AG` `CH` `RN`      | Agents, agent console, runs                                                           | [agents-chat-runs.md](./agents-chat-runs.md)                       |
+| `RT` `MD` `SB`      | Runtimes and containers, models and keys, sandbox and egress                          | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         |
+| `WF` `TR` `RQ`      | Workflows, triggers, requests / work / Inbox                                          | [workflows-triggers-requests.md](./workflows-triggers-requests.md) |
+| `LB` `CP` `AI`      | Library and marketplace, capabilities / connectors / pilots, Studio / Ask / companion | [library-capabilities-studio.md](./library-capabilities-studio.md) |
+| `TM` `NW` `RL` `GR` | Teams and trust, network, groups, relay / delegation / HTTP server                    | [teams-network-relay.md](./teams-network-relay.md)                 |
+| `PO`                | Policies (policy files and what an agent ends up with)                                | [policies.md](./policies.md)                                       |
+| `GW`                | Instance gateway agent                                                                | [gateway.md](./gateway.md)                                         |
+| `DT` `PL` `QA`      | Data and gold copy, platform / CLI / release, quality gates                           | [data-platform-quality.md](./data-platform-quality.md)             |
 
 ## Docs that disagree with the code
 
@@ -121,38 +121,39 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-526 features to test: all 580 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+536 features to test: all 590 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
-| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 57       |
+| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 58       |
 | Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 77       |
 | Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
 | Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 87       |
 | Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 75       |
-| Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 72       |
+| Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 81       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
 | Data, platform and quality gates            | [data-platform-quality.md](./data-platform-quality.md)             | 60       |
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 507   |
-| Partial     | 16    |
+| Shipped     | 515   |
+| Partial     | 17    |
 | Removed     | 11    |
 | Known issue | 3     |
+| Prototype   | 1     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 280   |
+| `unit`                | 290   |
 | `api`                 | 185   |
 | `manual`              | 37    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 452   |
-| yes         | 74    |
+| no          | 454   |
+| yes         | 82    |
 
 ## Master index
 
@@ -197,6 +198,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | SH-18 | Recent results: rate and retry                                           | Shipped                                              | unit       | no          |                                        |
 | SH-19 | All activity                                                             | Shipped                                              | unit       | no          |                                        |
 | SH-20 | "No model connected" notice                                              | Shipped                                              | unit       | no          |                                        |
+| SH-36 | Work tray (Needs you · Working · Done)                                   | Prototype (branch `ui/work-tray`)                    | unit       | no          |                                        |
 | SH-21 | Command palette: open, search, open results                              | Shipped                                              | api        | no          |                                        |
 | SH-22 | Palette: empty state, recents, and "Ask Nandi"                           | Shipped                                              | unit       | no          |                                        |
 | SH-23 | Palette command mode (`>`) and local commands                            | Shipped                                              | unit       | no          |                                        |
@@ -244,7 +246,6 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-30 | Appearance › Companion settings                                          | Duplicate of AI-17                                   | —          | no          |                                        |
 | ST-31 | Preferences persistence                                                  | Shipped                                              | api        | no          |                                        |
 | SH-35 | Home: connect your email to-do                                           | Shipped                                              | unit       | no          |                                        |
-| SH-36 | Work tray: Needs you, Working, Done                                      | Prototype                                            | unit       | no          |                                        |
 
 ### Agents, chat and runs
 
@@ -685,6 +686,15 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RL-25 | Frontend served over HTTP                                                 | Shipped                                                                                   | ui-e2e          | no          |                 |
 | RL-26 | HTTP API as an automation surface                                         | Shipped                                                                                   | api             | no          |                 |
 | RL-36 | "Connect to your company's relay" (the typed not connected)               | Shipped                                                                                   | unit + api      | no          | 2026-11-01 pass |
+| GR-01 | Network › Groups lists the relay's groups                                 | Shipped                                                                                   | unit            | yes         |                 |
+| GR-02 | Create a group with a signed policy                                       | Shipped                                                                                   | unit + api      | yes         |                 |
+| GR-03 | Join with a code, invites for me                                          | Shipped                                                                                   | unit            | yes         |                 |
+| GR-04 | Group detail: members, roles, Leave                                       | Shipped                                                                                   | unit            | yes         |                 |
+| GR-05 | Invites: a person or a code                                               | Shipped                                                                                   | api             | yes         |                 |
+| GR-06 | The policy: verified or fail closed; admins edit it                       | Shipped                                                                                   | unit            | yes         |                 |
+| GR-07 | My access level per group                                                 | Shipped                                                                                   | unit            | no          |                 |
+| GR-08 | Group policies on incoming work                                           | Partial (intake only, see Gap)                                                            | unit            | yes         |                 |
+| GR-09 | A relay that shows only people you share a group with                     | Shipped                                                                                   | unit            | yes         |                 |
 
 ### Instance gateway
 
@@ -693,7 +703,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | GW-01 | NANDI.md created on first launch                                               | Shipped | unit            | no          |                 |
 | GW-02 | Manifest round-trip, external edits and live reload                            | Shipped | unit            | no          |                 |
 | GW-03 | Gateway config and manifest API                                                | Shipped | api             | no          |                 |
-| GW-04 | Gateway card at the relay: registration, heartbeat and withdrawal              | Shipped | api             | yes         |                 |
+| GW-04 | Gateway card at the relay: registration, heartbeat and withdrawal              | Shipped | unit + api      | yes         |                 |
 | GW-05 | Gateway status and Make reachable (API)                                        | Shipped | api             | yes         |                 |
 | GW-06 | Owner from NANDI.md on the local agent cards                                   | Shipped | api             | no          |                 |
 | GW-07 | Gateway admission policy for inbound requests (order and typed reasons)        | Shipped | unit            | yes         |                 |

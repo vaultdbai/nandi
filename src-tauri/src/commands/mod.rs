@@ -26,6 +26,7 @@ pub mod egress;
 pub mod email;
 pub mod events;
 pub mod gateway;
+pub mod groups;
 pub mod harness_sessions;
 pub mod harnesses;
 pub mod identity;

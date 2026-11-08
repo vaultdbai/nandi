@@ -16,6 +16,8 @@
 //! .nandi/triggers/<trigger>.yaml
 //! .nandi/capabilities/<id>.yaml                           (capability definitions)
 //! .nandi/policies/<id>.md                                 (policies)
+//! .nandi/groups/<group-id>.md                             (groups I'm in: signed policy copies)
+//! .nandi/groups/access.yaml                               (my access level per group)
 //! .nandi/installed.yaml                                   (marketplace installs)
 //! .nandi/agents/marketplace/<publisher>/<id>/…            (installed agents)
 //! .nandi/agents/marketplace/packs/<pack>/agents/<id>/…    (installed packs)
@@ -49,6 +51,8 @@ pub const INSTALLED_FILE: &str = "installed.yaml";
 pub const CAPABILITIES_DIR: &str = "capabilities";
 /// Under `.nandi/`: policies (wave CD)
 pub const POLICIES_DIR: &str = "policies";
+/// Under `.nandi/`: the groups this Nandi is in (protocol 7)
+pub const GROUPS_DIR: &str = "groups";
 /// Under the agents folder: vendored (read-only) marketplace installs. Not
 /// usable as an agent ID.
 pub const MARKETPLACE_DIR: &str = "marketplace";
@@ -159,6 +163,12 @@ impl RepoLayout {
 
     pub fn policy_path(&self, id: &str) -> PathBuf {
         self.policies_dir().join(format!("{id}.md"))
+    }
+
+    /// `.nandi/groups/`: one `<group-id>.md` per group this Nandi is in,
+    /// and `access.yaml`
+    pub fn groups_dir(&self) -> PathBuf {
+        self.meta_dir.join(GROUPS_DIR)
     }
 
     /// `.nandi/agents/marketplace/`

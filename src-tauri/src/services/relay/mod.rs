@@ -215,6 +215,30 @@ pub struct RelayStatus {
     pub instances_online: u32,
     pub last_connected_at: Option<Timestamp>,
     pub last_heartbeat_at: Option<Timestamp>,
+    /// Who sees whom on this relay, as it said when we last registered
+    /// (`groups`: only people we share a group with); `None` until then
+    #[serde(default)]
+    pub visibility: Option<RelayVisibility>,
+}
+
+/// Who sees whom on a relay (`nandi_protocol::Visibility`, named apart
+/// from the app's own sharing `Visibility` in the bindings)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum RelayVisibility {
+    /// Everyone enrolled sees everyone (a company's own relay)
+    Company,
+    /// Members see only people they share a group with (a public relay)
+    Groups,
+}
+
+impl From<nandi_protocol::Visibility> for RelayVisibility {
+    fn from(visibility: nandi_protocol::Visibility) -> Self {
+        match visibility {
+            nandi_protocol::Visibility::Company => Self::Company,
+            nandi_protocol::Visibility::Groups => Self::Groups,
+        }
+    }
 }
 
 /// One instance at the relay, from its `/instances` endpoint

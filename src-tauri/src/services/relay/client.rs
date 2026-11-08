@@ -78,7 +78,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
 
 use super::client_api::Submitted;
-use super::client_api::{Handler, PeopleSearch, RelayClient};
+use super::client_api::{GroupSignal, Handler, PeopleSearch, RelayClient};
 use super::protocol::{
     CapabilityPresence, DutyDelivery, DutyState, InstancePresence, MemberRecord, PeerDelivery,
     PeerMessage, RelayMessage, ResealRequest, RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted,
@@ -96,8 +96,14 @@ use crate::services::events::{self, EventBus};
 use crate::services::gateway::{registration, GatewayCard};
 use crate::services::network::peer_keys::PEER_KEY_CHANGED;
 use nandi_protocol::{self as wire, PROBE_PAYLOAD};
-use nandi_protocol::{PublicKeys, KEY_MISMATCH};
+use nandi_protocol::{GroupOp, GroupOutcome, PublicKeys, KEY_MISMATCH, NO_SHARED_GROUP};
 use nandi_seal::DeviceKeys;
+
+/// What a request to someone we share no group with (on a relay whose
+/// visibility is `groups`) answers, after `NO_SHARED_GROUP`
+pub fn no_shared_group() -> String {
+    format!("{NO_SHARED_GROUP}: You don't share a group with them on this relay")
+}
 
 /// How often the client heartbeats
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
@@ -139,6 +145,7 @@ struct Handlers {
     events: Vec<Arc<Handler<TaskEvent>>>,
     reseal: Vec<Arc<Handler<ResealRequest>>>,
     duty: Vec<Arc<Handler<DutyDelivery>>>,
+    groups: Vec<Arc<Handler<GroupSignal>>>,
 }
 
 #[derive(Default)]
@@ -197,6 +204,13 @@ struct Shared {
     waiting_presence: HashMap<String, Vec<oneshot::Sender<Vec<InstancePresence>>>>,
     /// Route queries by query ID
     waiting_routes: HashMap<String, oneshot::Sender<RoutePlan>>,
+    /// Group calls by request ID
+    waiting_groups: HashMap<String, oneshot::Sender<GroupOutcome>>,
+    /// Who sees whom, from the relay's last `Registered`
+    visibility: Option<super::RelayVisibility>,
+    /// The relay's `no_shared_group` errors, by message: the refusal that
+    /// follows each is told as [`no_shared_group`]
+    no_shared_group: HashSet<String>,
 }
 
 struct Inner {
@@ -319,6 +333,7 @@ impl Inner {
             instances_online: u32::try_from(instances.len()).unwrap_or(u32::MAX),
             last_connected_at: shared.last_connected_at,
             last_heartbeat_at: shared.last_heartbeat_at,
+            visibility: shared.visibility,
         }
     }
 
@@ -935,6 +950,7 @@ impl Inner {
             shared.waiting_people.clear();
             shared.waiting_presence.clear();
             shared.waiting_routes.clear();
+            shared.waiting_groups.clear();
             shared.waiting_keys.clear();
             for (_, waiter) in shared.waiting_acks.drain() {
                 let _ = waiter.send(Err("Disconnected from the relay".to_string()));
@@ -952,10 +968,11 @@ impl Inner {
             Err(e) => return log::warn!("Relay: {e}"),
         };
         match message {
-            RelayMessage::Registered { .. } => {
+            RelayMessage::Registered { visibility, .. } => {
                 let waiters = {
                     let mut shared = self.lock();
                     shared.registered = true;
+                    shared.visibility = Some(visibility.into());
                     // The relay takes a gateway card only from a registered
                     // instance: ours goes now
                     if let (Some(card), Some(outbound)) =
@@ -975,7 +992,21 @@ impl Inner {
                 for waiter in waiters {
                     let _ = waiter.send(Ok(()));
                 }
+                // The visibility may have changed
+                self.emit_status();
+                self.tell_groups(GroupSignal::Registered);
                 tokio::spawn(self.clone().refresh_presence());
+            }
+            RelayMessage::GroupReply {
+                request_id,
+                outcome,
+            } => {
+                if let Some(waiter) = self.lock().waiting_groups.remove(&request_id) {
+                    let _ = waiter.send(outcome);
+                }
+            }
+            RelayMessage::GroupChanged { group_id, change } => {
+                self.tell_groups(GroupSignal::Changed { group_id, change });
             }
             RelayMessage::CapabilityResult { capability, agents } => {
                 let waiters = self
@@ -1001,10 +1032,17 @@ impl Inner {
                         wire::TaskEvent::Accepted { task_id, held, .. } => {
                             Some((task_id.clone(), Ok(*held)))
                         }
-                        wire::TaskEvent::Refused { task_id, message } => Some((
-                            task_id.clone(),
-                            Err(format!("{}{message}", super::client_api::REFUSED_BY_RELAY)),
-                        )),
+                        wire::TaskEvent::Refused { task_id, message } => {
+                            let said = if self.lock().no_shared_group.remove(message) {
+                                no_shared_group()
+                            } else {
+                                message.clone()
+                            };
+                            Some((
+                                task_id.clone(),
+                                Err(format!("{}{said}", super::client_api::REFUSED_BY_RELAY)),
+                            ))
+                        }
                         _ => None,
                     };
                     if let Some((task_id, answer)) = answer {
@@ -1016,7 +1054,15 @@ impl Inner {
                 self.queue_inbound(Inbound { mail_id, item });
             }
             RelayMessage::ReassignResult { task_id, error } => {
-                if let Some(waiter) = self.lock().waiting_reassign.remove(&task_id) {
+                let mut shared = self.lock();
+                let error = error.map(|error| {
+                    if shared.no_shared_group.remove(&error) {
+                        no_shared_group()
+                    } else {
+                        error
+                    }
+                });
+                if let Some(waiter) = shared.waiting_reassign.remove(&task_id) {
                     let _ = waiter.send(match error {
                         Some(error) => Err(error),
                         None => Ok(()),
@@ -1038,6 +1084,11 @@ impl Inner {
             RelayMessage::Error { code, message } => {
                 log::warn!("Relay error ({code}): {message}");
                 let mut shared = self.lock();
+                if code == NO_SHARED_GROUP {
+                    // A refusal with these words follows
+                    shared.no_shared_group.insert(message);
+                    return;
+                }
                 if code == "unauthorized" || code == VERSION_MISMATCH || code == KEY_MISMATCH {
                     let refused = format!("The relay refused us: {message}");
                     for waiter in shared.waiting_registered.drain(..) {
@@ -1058,6 +1109,7 @@ impl Inner {
                     shared.waiting_directory.clear();
                     shared.waiting_people.clear();
                     shared.waiting_routes.clear();
+                    shared.waiting_groups.clear();
                     shared.waiting_keys.clear();
                     for (_, waiter) in shared.waiting_acks.drain() {
                         let _ = waiter.send(Err(message.clone()));
@@ -1115,6 +1167,40 @@ impl Inner {
                 }
             }
             other => log::debug!("Relay: ignoring {other:?}"),
+        }
+    }
+
+    /// Hands group news to every group handler
+    fn tell_groups(&self, signal: GroupSignal) {
+        for handler in self.handlers().groups.clone() {
+            handler(signal.clone());
+        }
+    }
+
+    /// One `GroupRequest`, waiting for its `GroupReply`
+    async fn group_call(&self, op: GroupOp) -> Result<GroupOutcome, String> {
+        self.until_registered().await?;
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let (tx, rx) = oneshot::channel();
+        self.lock().waiting_groups.insert(request_id.clone(), tx);
+        let sent = self.send(RelayMessage::GroupRequest {
+            request_id: request_id.clone(),
+            op,
+        });
+        if let Err(e) = sent {
+            self.lock().waiting_groups.remove(&request_id);
+            return Err(e);
+        }
+        match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
+            Ok(Ok(outcome)) => Ok(outcome),
+            Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+            Err(_) => {
+                self.lock().waiting_groups.remove(&request_id);
+                Err(format!(
+                    "The relay didn't answer within {}s",
+                    REQUEST_TIMEOUT.as_secs()
+                ))
+            }
         }
     }
 
@@ -1858,6 +1944,22 @@ impl RelayClient for WsRelayClient {
             }
         }
         .boxed()
+    }
+
+    fn group_request(&self, op: GroupOp) -> BoxFuture<'_, Result<GroupOutcome, String>> {
+        async move { self.inner.group_call(op).await }.boxed()
+    }
+
+    fn on_groups(&self, handler: Handler<GroupSignal>) -> BoxFuture<'_, ()> {
+        self.inner.handlers().groups.push(Arc::new(handler));
+        Box::pin(async {})
+    }
+
+    fn public_keys_of<'a>(
+        &'a self,
+        instance: &'a str,
+    ) -> BoxFuture<'a, Result<PublicKeys, String>> {
+        async move { self.inner.keys_for(instance).await }.boxed()
     }
 
     fn query_capability_presence<'a>(

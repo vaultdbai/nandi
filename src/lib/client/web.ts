@@ -636,6 +636,28 @@ export const webClient: NandiClient = {
     request('GET', `/members/by-instance/${id(instanceId)}`),
   acceptPeerKey: instanceId =>
     request('POST', `/members/${id(instanceId)}/key/accept`),
+  listGroups: () => request('GET', '/groups'),
+  getGroup: groupId => request('GET', `/groups/${id(groupId)}`),
+  createGroup: (name, description, policy) =>
+    request('POST', '/groups', { name, description, policy }),
+  updateGroup: (groupId, name, description) =>
+    request('PUT', `/groups/${id(groupId)}`, { name, description }),
+  setGroupPolicy: (groupId, policy) =>
+    request('PUT', `/groups/${id(groupId)}/policy`, { policy }),
+  inviteToGroup: (groupId, invite) =>
+    request('POST', `/groups/${id(groupId)}/invites`, invite),
+  revokeGroupInvite: code => request('DELETE', `/groups/invites/${id(code)}`),
+  joinGroup: code => request('POST', '/groups/join', { code }),
+  leaveGroup: groupId => request('POST', `/groups/${id(groupId)}/leave`),
+  removeGroupMember: (groupId, instanceId) =>
+    request('DELETE', `/groups/${id(groupId)}/members/${id(instanceId)}`),
+  setGroupRole: (groupId, instanceId, role) =>
+    request('PUT', `/groups/${id(groupId)}/members/${id(instanceId)}`, {
+      role,
+    }),
+  getGroupAccess: groupId => request('GET', `/groups/${id(groupId)}/access`),
+  setGroupAccess: (groupId, level) =>
+    request('PUT', `/groups/${id(groupId)}/access`, { level }),
   setTrustRelationship: (instanceId, update) =>
     request('PUT', `/members/${id(instanceId)}/trust`, update),
   getRelayTrust: () => request('GET', '/trust/relay'),

@@ -396,6 +396,23 @@ export const tauriClient: NandiClient = {
     commands.getMemberProfile(teamId, handle),
   getMemberByInstance: instanceId => commands.getMemberByInstance(instanceId),
   acceptPeerKey: instanceId => commands.acceptPeerKey(instanceId),
+  listGroups: () => commands.listGroups(),
+  getGroup: groupId => commands.getGroup(groupId),
+  createGroup: (name, description, policy) =>
+    commands.createGroup(name, description, policy),
+  updateGroup: (groupId, name, description) =>
+    commands.updateGroup(groupId, name, description),
+  setGroupPolicy: (groupId, policy) => commands.setGroupPolicy(groupId, policy),
+  inviteToGroup: (groupId, invite) => commands.inviteToGroup(groupId, invite),
+  revokeGroupInvite: code => commands.revokeGroupInvite(code),
+  joinGroup: code => commands.joinGroup(code),
+  leaveGroup: groupId => commands.leaveGroup(groupId),
+  removeGroupMember: (groupId, instanceId) =>
+    commands.removeGroupMember(groupId, instanceId),
+  setGroupRole: (groupId, instanceId, role) =>
+    commands.setGroupRole(groupId, instanceId, role),
+  getGroupAccess: groupId => commands.getGroupAccess(groupId),
+  setGroupAccess: (groupId, level) => commands.setGroupAccess(groupId, level),
   setTrustRelationship: (instanceId, update) =>
     commands.setTrustRelationship(instanceId, update),
   getRelayTrust: () => commands.getRelayTrust(),

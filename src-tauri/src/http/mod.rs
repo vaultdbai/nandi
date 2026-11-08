@@ -26,6 +26,7 @@ mod delegation;
 mod delegation_clarification;
 mod email;
 mod gateway;
+mod groups;
 mod harness_sessions;
 mod harnesses;
 mod identity;
@@ -116,6 +117,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(workspace::api())
                 .merge(access::api())
                 .merge(teams_roster::api())
+                .merge(groups::api())
                 // Wave A
                 .merge(capabilities::api())
                 .merge(tools::api())

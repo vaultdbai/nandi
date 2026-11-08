@@ -436,6 +436,16 @@ CREATE TABLE IF NOT EXISTS gateway_callers (
 );
 
 -- Gateway tasks per caller per month, `YYYY-MM`
+-- Requests from a group's members that went ahead, per day (group
+-- policies' `daily_limit` and `approval: first-time`, `services::groups`)
+CREATE TABLE IF NOT EXISTS group_requests (
+    group_id    TEXT NOT NULL,
+    instance_id TEXT NOT NULL,
+    day         TEXT NOT NULL,
+    count       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (group_id, instance_id, day)
+);
+
 CREATE TABLE IF NOT EXISTS gateway_usage (
     caller_instance TEXT NOT NULL,
     month           TEXT NOT NULL,

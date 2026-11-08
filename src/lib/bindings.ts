@@ -2751,6 +2751,126 @@ async acceptPeerKey(instanceId: string) : Promise<Result<PeerKeyStatus, string>>
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Every group on the relay and the invites for me (`connected: false`
+ * without a relay)
+ */
+async listGroups() : Promise<Result<GroupsOverview, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_groups") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * One group in full (members only)
+ */
+async getGroup(groupId: string) : Promise<Result<GroupView, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_group", { groupId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createGroup(name: string, description: string, policy: string) : Promise<Result<GroupView, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_group", { name, description, policy }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateGroup(groupId: string, name: string, description: string) : Promise<Result<GroupView, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_group", { groupId, name, description }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Signs the next version of the policy and sends it (admins)
+ */
+async setGroupPolicy(groupId: string, policy: string) : Promise<Result<GroupView, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_group_policy", { groupId, policy }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async inviteToGroup(groupId: string, invite: InviteRequest) : Promise<Result<GroupInvite, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("invite_to_group", { groupId, invite }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async revokeGroupInvite(code: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("revoke_group_invite", { code }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async joinGroup(code: string) : Promise<Result<GroupView, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("join_group", { code }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async leaveGroup(groupId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("leave_group", { groupId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async removeGroupMember(groupId: string, instanceId: string) : Promise<Result<GroupView, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_group_member", { groupId, instanceId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setGroupRole(groupId: string, instanceId: string, role: GroupRole) : Promise<Result<GroupView, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_group_role", { groupId, instanceId, role }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * My access level for a group ("Ask first" when I never picked one)
+ */
+async getGroupAccess(groupId: string) : Promise<Result<AccessLevel, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_group_access", { groupId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Picks my access level for a group (works offline)
+ */
+async setGroupAccess(groupId: string, level: AccessLevel) : Promise<Result<AccessLevel, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_group_access", { groupId, level }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async setTrustRelationship(instanceId: string, update: TrustUpdate) : Promise<Result<TrustRelationship, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_trust_relationship", { instanceId, update }) };
@@ -3621,6 +3741,7 @@ marketplaceProgress: MarketplaceProgress,
 marketplaceUninstalled: MarketplaceUninstalled,
 marketplaceUpdateApplied: MarketplaceUpdateApplied,
 marketplaceUpdateAvailable: MarketplaceUpdateAvailable,
+networkGroupChanged: GroupsChanged,
 networkMemberKeyChanged: MemberKeyChanged,
 pilotChanged: PilotChanged,
 pilotConsentNeeded: PilotConsentNeeded,
@@ -3691,6 +3812,7 @@ marketplaceProgress: "marketplace://progress",
 marketplaceUninstalled: "marketplace://uninstalled",
 marketplaceUpdateApplied: "marketplace://update_applied",
 marketplaceUpdateAvailable: "marketplace://update_available",
+networkGroupChanged: "network://group_changed",
 networkMemberKeyChanged: "network://member_key_changed",
 pilotChanged: "pilot://changed",
 pilotConsentNeeded: "pilot://consent_needed",
@@ -3730,11 +3852,12 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const NO_SHARED_GROUP = "no_shared_group" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 
 /** user-defined types **/
 
@@ -3756,6 +3879,31 @@ export type AccessChoice =
  * A grant in the repo's settings.yaml
  */
 "allowSaved" | "deny"
+/**
+ * What I let people do for me through one group
+ */
+export type AccessLevel = 
+/**
+ * Their requests run without asking me, when screening is clean and
+ * the group's policy allows it
+ */
+"fully-automated" | 
+/**
+ * Every request waits for my approval
+ */
+"ask-first" | 
+/**
+ * Only questions (`ask-me`), answered from my notes; nothing else
+ */
+"questions-only" | 
+/**
+ * Only information for my queue; nothing runs
+ */
+"send-me-info" | 
+/**
+ * Nothing
+ */
+"none"
 /**
  * What kind of data an account holds
  */
@@ -4180,6 +4328,22 @@ language: string | null }
  * An update that was applied.
  */
 export type AppliedUpdate = { kind: string; id: string; fromVersion: string; toVersion: string }
+/**
+ * When a group's members may have work done without asking
+ */
+export type Approval = 
+/**
+ * Every request waits for the owner
+ */
+"always" | 
+/**
+ * A member's first request waits; later ones follow the owner's level
+ */
+"first-time" | 
+/**
+ * Each owner's own access level decides
+ */
+"per-member"
 export type ApprovalDecision = "approved" | "rejected"
 export type ApprovalStatus = "pending" | "approved" | "rejected" | 
 /**
@@ -5627,6 +5791,96 @@ input: string | null;
  */
 output: string | null; error: string | null; critical: boolean; continueOnFailure: boolean }
 /**
+ * A group as its members see it
+ */
+export type GroupDetail = { summary: GroupSummary; members: GroupMember[]; policy: GroupPolicy; 
+/**
+ * Open invites
+ */
+invites: GroupInvite[] }
+/**
+ * An invite: a code for one person or for whoever has it
+ */
+export type GroupInvite = { code: string; groupId: string; 
+/**
+ * The group's name, for the person invited
+ */
+groupName: string; 
+/**
+ * Only this instance may use it; `None`: whoever has the code
+ */
+instanceId?: string | null; invitedBy: string; createdAt: number; 
+/**
+ * `None`: until revoked
+ */
+expiresAt?: number | null; 
+/**
+ * Joins left
+ */
+usesLeft: number }
+/**
+ * One member, as the group's members see them
+ */
+export type GroupMember = { instanceId: string; 
+/**
+ * From their gateway card; empty when they have none
+ */
+displayName?: string; role: GroupRole; joinedAt: number }
+/**
+ * A group's policy file, signed by the admin who wrote it
+ */
+export type GroupPolicy = { 
+/**
+ * 1 for the first; each change is the next
+ */
+version: number; 
+/**
+ * The file: Markdown with YAML frontmatter
+ */
+text: string; 
+/**
+ * The admin's instance ID
+ */
+author: string; 
+/**
+ * Ed25519 by the author's signing key over [`GroupPolicy::signed_bytes`]
+ */
+signature: string; updatedAt: number }
+export type GroupRole = "admin" | "member"
+/**
+ * A group as anyone on the relay sees it
+ */
+export type GroupSummary = { id: string; name: string; description: string; memberCount: number; createdAt: number; policyVersion: number; 
+/**
+ * The asker's role; `None`: not a member
+ */
+role?: GroupRole | null }
+/**
+ * One group as its member sees it here
+ */
+export type GroupView = { group: GroupDetail; policy: PolicyCheck; myRole: GroupRole | null; myAccess: AccessLevel; 
+/**
+ * This Nandi's instance ID
+ */
+me: string }
+/**
+ * `network://group_changed`: a group I'm in (or was invited to) changed,
+ * or (`group_id: None`) everything was listed again after connecting
+ */
+export type GroupsChanged = { groupId: string | null }
+/**
+ * Network › Groups: every group on the relay and the invites for me
+ */
+export type GroupsOverview = { 
+/**
+ * `false`: no relay (the screen asks to connect; the lists are empty)
+ */
+connected: boolean; visibility: RelayVisibility | null; groups: GroupSummary[]; invites: GroupInvite[]; 
+/**
+ * What a new group's policy starts from
+ */
+policyTemplate: string }
+/**
  * The person's answer to a hand-over
  */
 export type HandOverAnswer = { outcome: HandOverOutcome; 
@@ -5887,6 +6141,14 @@ requestIds: string[];
  * (`requests::recurrence`)
  */
 workflowProposals: WorkflowProposal[] }
+/**
+ * A new invite: for one person, or a code for whoever has it
+ */
+export type InviteRequest = { instanceId: string | null; maxUses: number; 
+/**
+ * Epoch ms; `None`: until revoked
+ */
+expiresAt: number | null }
 /**
  * What joining a relay came to. Everything but `Joined` leaves the
  * relay settings as they were.
@@ -6476,6 +6738,22 @@ detail: string | null;
  */
 by: string }
 /**
+ * Whether a group's policy is its own
+ */
+export type PolicyCheck = { verified: boolean; 
+/**
+ * Why not, when it isn't
+ */
+problem: string | null; version: number; author: string; 
+/**
+ * The author's name from the member list (empty: unknown)
+ */
+authorName: string; 
+/**
+ * The policy's `approval:` (`None`: the text doesn't read)
+ */
+approval: Approval | null }
+/**
  * One policy file as a picker lists it
  */
 export type PolicySummary = { id: string; 
@@ -6882,7 +7160,12 @@ builtInUrl?: string | null; agentsOnline: number;
 /**
  * Distinct instances among the agents online
  */
-instancesOnline: number; lastConnectedAt: number | null; lastHeartbeatAt: number | null }
+instancesOnline: number; lastConnectedAt: number | null; lastHeartbeatAt: number | null; 
+/**
+ * Who sees whom on this relay, as it said when we last registered
+ * (`groups`: only people we share a group with); `None` until then
+ */
+visibility?: RelayVisibility | null }
 /**
  * What the Connection view shows about relay trust
  */
@@ -6911,6 +7194,19 @@ export type RelayUrlSource =
  * This build's default relay (`NANDI_DEFAULT_RELAY_URL` at build time)
  */
 "builtIn"
+/**
+ * Who sees whom on a relay (`nandi_protocol::Visibility`, named apart
+ * from the app's own sharing `Visibility` in the bindings)
+ */
+export type RelayVisibility = 
+/**
+ * Everyone enrolled sees everyone (a company's own relay)
+ */
+"company" | 
+/**
+ * Members see only people they share a group with (a public relay)
+ */
+"groups"
 /**
  * What `config.json` keeps about the remote (`remote`). No secrets:
  * `has_credentials` only says one is in the keychain.

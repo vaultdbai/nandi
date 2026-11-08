@@ -14,6 +14,7 @@ use crate::services::connectors::{ConnectorChanged, ConnectorsChanged};
 use crate::services::email::EmailChanged;
 use crate::services::events::*;
 use crate::services::grants::GrantsChanged;
+use crate::services::groups::GroupsChanged;
 use crate::services::live::LiveChange;
 use crate::services::marketplace::events::*;
 use crate::services::orchestrator::compaction::AgentRunCompacted;
@@ -106,6 +107,7 @@ tauri_events!(
     RelayAgentOffline,
     RelaySealRefused,
     MemberKeyChanged,
+    GroupsChanged,
     TeamChanged,
     DelegationTaskStarted,
     DelegationTaskCompleted,

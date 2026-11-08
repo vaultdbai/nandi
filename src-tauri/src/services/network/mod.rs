@@ -48,6 +48,7 @@ pub(super) fn init(state: &AppState) {
     }
     if let Some(client) = relay::init(state) {
         state.workflows().use_relay(client.clone());
+        super::groups::watch(state, &client);
         state.set_relay_client(client);
     }
     if let Some(manager) = team::init(state) {
