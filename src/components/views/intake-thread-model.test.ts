@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { IntakeThread, QueuedWork, Request } from '@/lib/bindings'
-import { canMarkStepsDone, threadModel } from './intake-thread-model'
+import {
+  canMarkStepsDone,
+  threadModel,
+  workflowProposalFor,
+} from './intake-thread-model'
 
 const NOW = new Date('2026-11-07T12:00:00Z')
 
@@ -29,6 +33,7 @@ const thread = (items: QueuedWork[]): IntakeThread => ({
   source: 'email',
   items,
   requestIds: [],
+  workflowProposals: [],
 })
 
 describe('intake-thread-model', () => {
@@ -105,5 +110,17 @@ describe('intake-thread-model', () => {
     expect(
       canMarkStepsDone({ direction: 'incoming', capability: 'x' } as Request)
     ).toBe(false)
+  })
+
+  it('finds the workflow proposal for one of its Requests', () => {
+    const proposal = {
+      requestId: 'r-nov',
+      reason: 'sameWork' as const,
+      likeRequestId: 'r-oct',
+      likeTitle: 'Pay the power bill for October',
+    }
+    const withProposal = { ...thread([work()]), workflowProposals: [proposal] }
+    expect(workflowProposalFor(withProposal, 'r-nov')).toEqual(proposal)
+    expect(workflowProposalFor(withProposal, 'r-oct')).toBeNull()
   })
 })

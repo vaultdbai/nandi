@@ -22,6 +22,7 @@ use crate::services::builtin_agents::CHIEF_OF_STAFF;
 use crate::services::chat::SendMessageResult;
 use crate::services::orchestrator::RunSource;
 use crate::services::requests::local::{self, RequestSource};
+use crate::services::requests::recurrence::{self, WorkflowProposal};
 use crate::services::AppState;
 
 const PREFIX: &str = "intake:";
@@ -85,6 +86,9 @@ pub struct IntakeThread {
     pub items: Vec<QueuedWork>,
     /// The Requests (or teammates' tasks) it became
     pub request_ids: Vec<String>,
+    /// Its finished Requests that recur: each gets **Save as workflow**
+    /// (`requests::recurrence`)
+    pub workflow_proposals: Vec<WorkflowProposal>,
 }
 
 fn request_ids(items: &[QueuedWork]) -> Vec<String> {
@@ -107,11 +111,13 @@ fn request_ids(items: &[QueuedWork]) -> Vec<String> {
 pub fn load(conn: &Connection, thread_id: &str) -> Result<IntakeThread, String> {
     let items = for_thread(conn, thread_id).map_err(|e| e.to_string())?;
     let first = items.first().ok_or("That thread wasn't found")?;
+    let request_ids = request_ids(&items);
     Ok(IntakeThread {
         conversation_id: thread_id.to_string(),
         title: local::title_for(&first.text),
         source: first.source,
-        request_ids: request_ids(&items),
+        workflow_proposals: recurrence::for_ids(conn, &request_ids),
+        request_ids,
         items,
     })
 }

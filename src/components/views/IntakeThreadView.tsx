@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Sparkles } from 'lucide-react'
@@ -12,6 +12,7 @@ import {
   QueueRowView,
 } from '@/components/home/QueueRowView'
 import { RequestSteps } from '@/components/requests/RequestSteps'
+import { SaveAsWorkflowDialog } from '@/components/requests/SaveAsWorkflowDialog'
 import { localStepPosition } from '@/components/requests/request-model'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -32,10 +33,14 @@ import { decideApproval, sendIntakeMessage } from '@/lib/agent-actions'
 import { CHIEF_OF_STAFF_AGENT_ID, displayAgent } from '@/lib/agent-identity'
 import { loadConversation } from '@/lib/agent-sync'
 import { askContextForView, openEditInStudio } from '@/lib/ask'
-import type { Request } from '@/lib/bindings'
+import type { Request, WorkflowProposal } from '@/lib/bindings'
 import { useConversation } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
-import { canMarkStepsDone, threadModel } from './intake-thread-model'
+import {
+  canMarkStepsDone,
+  threadModel,
+  workflowProposalFor,
+} from './intake-thread-model'
 import { ViewHeader } from './ViewHeader'
 
 /**
@@ -125,7 +130,11 @@ export function IntakeThreadView({
             </ul>
           )}
           {thread.data.requestIds.map(requestId => (
-            <ThreadRequest key={requestId} requestId={requestId} />
+            <ThreadRequest
+              key={requestId}
+              requestId={requestId}
+              proposal={workflowProposalFor(thread.data, requestId)}
+            />
           ))}
         </div>
       )}
@@ -147,19 +156,35 @@ export function IntakeThreadView({
   )
 }
 
-/** A Request the thread became: its status and steps, "Mark done" included */
-function ThreadRequest({ requestId }: { requestId: string }) {
+/**
+ * A Request the thread became: its status and steps, "Mark done" included,
+ * and "Save as workflow" when the Chief of Staff proposes it
+ */
+function ThreadRequest({
+  requestId,
+  proposal,
+}: {
+  requestId: string
+  proposal: WorkflowProposal | null
+}) {
   const request = useRequest(requestId)
   // A Request that can't be read (e.g. a teammate's task gone) is left out
   if (!request.data) return null
-  return <RequestCard request={request.data} />
+  return <RequestCard request={request.data} proposal={proposal} />
 }
 
-function RequestCard({ request }: { request: Request }) {
+function RequestCard({
+  request,
+  proposal,
+}: {
+  request: Request
+  proposal: WorkflowProposal | null
+}) {
   const { t } = useTranslation()
   const now = useNow(request.endedAt === null)
   const completeStep = useCompleteRequestStep(request.id)
   const local = canMarkStepsDone(request)
+  const [saving, setSaving] = useState(false)
 
   return (
     <div
@@ -185,6 +210,24 @@ function RequestCard({ request }: { request: Request }) {
           {t('intakeThread.openRequest')}
         </Button>
       </div>
+      {proposal && (
+        <div
+          data-testid="intake-thread-workflow-proposal"
+          className="flex min-w-0 items-center gap-2 text-sm"
+        >
+          <span className="min-w-0 flex-1 text-muted-foreground">
+            {t('request.saveWorkflow.proposal', { title: proposal.likeTitle })}
+          </span>
+          <Button size="sm" onClick={() => setSaving(true)}>
+            {t('request.saveWorkflow.button')}
+          </Button>
+          <SaveAsWorkflowDialog
+            requestId={request.id}
+            open={saving}
+            onOpenChange={setSaving}
+          />
+        </div>
+      )}
       <RequestSteps
         request={request}
         now={now}

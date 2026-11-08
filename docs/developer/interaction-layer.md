@@ -267,9 +267,40 @@ Any block, or three warnings, blocks the item: it can only be dismissed.
 Warnings show with the item before the user approves it. Free-mail
 domains are never lookalikes.
 
-- **Never back to itself.** `tool::for_the_user` drops plan steps that
-  target the Chief of Staff. A plan with nothing left becomes one manual
-  step, "For you: …", so the work still shows as the user's to do.
+- **One step of its own** (`requests/self_step.rs`). A plan may give the
+  Chief of Staff one step it can do itself: a site in its browser, its
+  notes, mail triage. The planner's agent list says so on its line
+  (`context::describe`), and plans keep only the first such step
+  (`self_step::keep_one`, in `planner::plan` and `tool::for_the_user`;
+  `local::create_request` refuses a second, `self_step::check`). A plan
+  with nothing that fits becomes one manual step, "For you: …".
+- **Where that step runs.** Never the main chat: the item's thread
+  (`intake:<id>`) when the Request came through intake, else the
+  Request's own conversation `request:<id>`, owned by the Chief of Staff
+  (`self_step::conversation_for`). `local::start` submits it with
+  `RunSource::request_step` (source `request`, the Request's ID), so the
+  run is linked to the step and settles it like any agent step, and the
+  orchestrator adds the work plan to its prompt (`self_step::prompt`,
+  inside `<work-plan>`). News for the Request reaches that conversation
+  too. Intake approval saves the Request and links it to the item before
+  it starts (`local::create_request`, then `spawn_runner`), so the step
+  finds its thread.
+- **No loops.** Work tools called from a run doing that step (its source
+  is `request`, or the conversation is `request:<id>`) queue for the
+  user's approval like outside work (`self_step::must_queue`): a step
+  can't plan more steps for itself without a click.
+- **Recurring work becomes a workflow proposal** (`requests/recurrence.rs`,
+  pure rule in `recurrence::proposal`). A Request that ended `done`, has a
+  step someone other than the user does, and isn't already one workflow
+  recurs when an earlier `done` Request has the same title (ignoring case,
+  numbers, dates and month names) or the same steps (two or more). When it
+  finishes (`local::tick`), the Chief of Staff notes the proposal in its
+  intake thread; the thread page (`IntakeThread.workflow_proposals`) and
+  Home's finished row (`DigestItem.workflow_proposal`) show **Save as
+  workflow**. It opens the existing draft dialog
+  (`draft_workflow_from_request`): `workflow_yaml` cuts an agent step at
+  its run plan's hand-overs (`run_plan::store`), so signing in and paying
+  become manual steps. Nothing is saved until the user saves the file.
 - **Who started it** is the Request's `source`: `email`, `calendar` or
   `chiefOfStaff` (`tool::source_of` reads the run); the ask box and Studio
   stay `me`.

@@ -82,6 +82,9 @@ pub enum SourceType {
     Email,
     /// The calendar check (`services::workspace`)
     CalendarCheck,
+    /// A step of a local Request the Chief of Staff does itself
+    /// (`services::requests::self_step`); the source ID is the Request's
+    Request,
 }
 
 impl SourceType {
@@ -99,6 +102,7 @@ impl SourceType {
             SourceType::Event => "event",
             SourceType::Email => "email",
             SourceType::CalendarCheck => "calendar_check",
+            SourceType::Request => "request",
         }
     }
 
@@ -115,6 +119,7 @@ impl SourceType {
             "event" => SourceType::Event,
             "email" => SourceType::Email,
             "calendar_check" => SourceType::CalendarCheck,
+            "request" => SourceType::Request,
             _ => SourceType::User,
         }
     }

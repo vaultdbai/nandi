@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ArtifactRef, AskContext};
 use crate::model::{RunStatus, RunSummary};
+use crate::services::builtin_agents::CHIEF_OF_STAFF;
 use crate::services::AppState;
 
 /// Runs listed as recent outputs
@@ -466,6 +467,10 @@ pub fn describe_guides(question: &str) -> String {
 }
 
 /// The context as the system prompt section the model reads
+/// What the Chief of Staff does itself, on its line in the planner's list
+const CHIEF_OF_STAFF_STEP: &str = " Can do one step of a plan itself: a task on a website in its \
+browser (pay a bill, book, download), its notes, triage of the user's mail and calendar.";
+
 pub fn describe(context: &GatewayContext) -> String {
     let mut out = String::new();
     out.push_str(&format!(
@@ -544,7 +549,14 @@ pub fn describe(context: &GatewayContext) -> String {
         context
             .agents
             .iter()
-            .map(|a| format!("- `{}` ({}): {}", a.id, a.name, a.description))
+            .map(|a| {
+                let own = if a.id == CHIEF_OF_STAFF {
+                    CHIEF_OF_STAFF_STEP
+                } else {
+                    ""
+                };
+                format!("- `{}` ({}): {}{own}", a.id, a.name, a.description)
+            })
             .collect(),
     ));
     out.push_str(&list(

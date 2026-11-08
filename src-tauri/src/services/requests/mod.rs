@@ -12,6 +12,8 @@
 pub mod blocker;
 pub mod digest;
 pub mod local;
+pub mod recurrence;
+pub mod self_step;
 pub mod tool;
 
 use std::collections::HashMap;

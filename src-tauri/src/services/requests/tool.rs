@@ -10,15 +10,18 @@
 //! | `work_update` | `{request_id, news, source?, message_id?}` | adds news to work in progress                    |
 //!
 //! From mail, the calendar or any other outside source ([`from_outside`]),
-//! `work_start` and `work_update` don't act: the item is screened and
-//! queued for the user's approval (`services::intake`). In the user's own
-//! chat they act now. Work is a local Request (`requests::local`): it shows
+//! in an intake thread, or from a run doing a Chief of Staff step of a plan
+//! (`self_step`), `work_start` and `work_update` don't act: the item is
+//! screened and queued for the user's approval (`services::intake`). In the
+//! user's own chat they act now. A plan may give the Chief of Staff one
+//! step of its own (`self_step`). Work is a local Request (`requests::local`): it shows
 //! on Requests and in "Since you were away" (`requests::digest`). Each
 //! step's agent keeps its own approvals.
 
 use serde_json::{json, Value};
 
 use super::local::{self, RequestSource};
+use super::self_step;
 use super::StepStatus;
 use crate::engine::ToolOutcome;
 use crate::llm::ToolSpec;
@@ -67,7 +70,7 @@ goes to work_update, and nothing is queued twice.",
         ),
         START => (
             "Start a piece of work for the user: it is planned onto their agents, workflows or \
-teammates. From mail or the calendar it is screened and waits for the user's approval; in the \
+teammates, or one step you do yourself (it runs in the work's own thread, not this chat). From mail or the calendar it is screened and waits for the user's approval; in the \
 user's chat it runs now. Write `what` in your own words as a request that stands on its own \
 (what, for whom, by when, links). Put where you learned it in `source` \
 (e.g. \"Lena Park, 2026-11-03, 'Q3 evidence'\") and the email's id in `message_id`, so the email \
@@ -131,12 +134,11 @@ pub fn work_text(what: &str, source: &str) -> String {
     }
 }
 
-/// The plan, without steps that would hand the work back to the Chief of
-/// Staff; nothing left (or nothing fits) becomes one step for the user, so
-/// it still shows up as theirs to do. Pure, for tests.
-pub fn for_the_user(mut plan: ActionPlan, title: &str) -> ActionPlan {
-    plan.steps
-        .retain(|s| !(s.kind == PlanStepKind::LocalAgent && s.target == CHIEF_OF_STAFF));
+/// The plan with at most one Chief of Staff step (`self_step::keep_one`);
+/// nothing fitting becomes one step for the user, so it still shows up as
+/// theirs to do. Pure, for tests.
+pub fn for_the_user(plan: ActionPlan, title: &str) -> ActionPlan {
+    let mut plan = self_step::keep_one(plan);
     if plan.steps.is_empty() {
         let why = plan.rejection.take();
         plan = ActionPlan {
@@ -152,17 +154,18 @@ pub fn for_the_user(mut plan: ActionPlan, title: &str) -> ActionPlan {
     plan
 }
 
-/// Runs a work tool
-/// Runs a work tool. `thread`: the call came from an intake thread, so
-/// whatever it starts or adds is queued for approval too.
+/// Runs a work tool. `thread`: the call came from an intake thread;
+/// `in_self_step`: from a run doing a Chief of Staff step of a plan.
+/// Either way, whatever it starts or adds is queued for approval too.
 pub async fn call(
     state: &AppState,
     source: RequestSource,
     thread: Option<String>,
+    in_self_step: bool,
     tool: &str,
     args: &Value,
 ) -> ToolOutcome {
-    let queued = from_outside(source) || thread.is_some();
+    let queued = self_step::must_queue(source, thread.is_some(), in_self_step);
     match tool {
         OPEN => open(state).await,
         START => {
@@ -280,8 +283,8 @@ pub async fn start_now(
     Ok((id, plan))
 }
 
-/// Who would do `text`: the user's agents, workflows or teammates, never
-/// the Chief of Staff itself, else a step for the user
+/// Who would do `text`: the user's agents, workflows or teammates, the
+/// Chief of Staff itself for one step at most, else a step for the user
 pub async fn plan_for(state: &AppState, text: &str) -> Result<ActionPlan, String> {
     let service = state.ask().ok_or("Planning is unavailable right now")?;
     let context = ask::context::load(
@@ -361,17 +364,18 @@ mod tests {
     }
 
     #[test]
-    fn a_plan_never_hands_work_back_to_the_chief_of_staff() {
+    fn a_plan_keeps_one_chief_of_staff_step() {
         let plan = ActionPlan {
             steps: vec![
                 step(PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
                 step(PlanStepKind::LocalAgent, "social-manager"),
+                step(PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
             ],
             ..ActionPlan::default()
         };
         let plan = for_the_user(plan, "Post for Sam's birthday");
-        assert_eq!(plan.steps.len(), 1);
-        assert_eq!(plan.steps[0].target, "social-manager");
+        let targets: Vec<&str> = plan.steps.iter().map(|s| s.target.as_str()).collect();
+        assert_eq!(targets, vec![CHIEF_OF_STAFF, "social-manager"]);
     }
 
     #[test]

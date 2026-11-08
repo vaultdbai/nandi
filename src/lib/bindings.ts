@@ -3730,11 +3730,11 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 
 /** user-defined types **/
 
@@ -5248,7 +5248,12 @@ threadId: string | null;
  * The step waiting on the user (a manual step or a person), for
  * "Mark done" (`complete_request_step`)
  */
-waitingStep: WaitingStep | null }
+waitingStep: WaitingStep | null; 
+/**
+ * Finished work that recurs: the Chief of Staff offers **Save as
+ * workflow** (`recurrence`)
+ */
+workflowProposal: WorkflowProposal | null }
 export type DigestKind = 
 /**
  * Waiting on the user (shown until it's done)
@@ -5876,7 +5881,12 @@ items: QueuedWork[];
 /**
  * The Requests (or teammates' tasks) it became
  */
-requestIds: string[] }
+requestIds: string[]; 
+/**
+ * Its finished Requests that recur: each gets **Save as workflow**
+ * (`requests::recurrence`)
+ */
+workflowProposals: WorkflowProposal[] }
 /**
  * What joining a relay came to. Everything but `Joined` leaves the
  * relay settings as they were.
@@ -6733,6 +6743,18 @@ export type RecoveryError =
  */
 { type: "ParseError"; message: string }
 /**
+ * Why the work counts as recurring
+ */
+export type RecurrenceReason = 
+/**
+ * The same work (title) finished before
+ */
+"sameWork" | 
+/**
+ * The same plan succeeded before
+ */
+"samePlan"
+/**
  * What [`refresh_from_disk`] found
  */
 export type RefreshReport = { 
@@ -7486,7 +7508,12 @@ export type SourceType = "user" | "workflow" |
 /**
  * The calendar check (`services::workspace`)
  */
-"calendarCheck"
+"calendarCheck" | 
+/**
+ * A step of a local Request the Chief of Staff does itself
+ * (`services::requests::self_step`); the source ID is the Request's
+ */
+"request"
 export type SsoAccount = { accountId: string; accountName: string; email: string | null; roles: string[] }
 /**
  * An `aws sso login` in progress (the CLI opens the browser)
@@ -8158,6 +8185,14 @@ runId: string | null;
  * That run's status
  */
 runStatus: WorkflowRunStatus | null }
+/**
+ * The Chief of Staff's offer to save a finished Request as a workflow
+ */
+export type WorkflowProposal = { requestId: string; reason: RecurrenceReason; 
+/**
+ * The earlier finished Request it repeats
+ */
+likeRequestId: string; likeTitle: string }
 export type WorkflowRun = { id: string; workflowId: string; status: WorkflowRunStatus; startedAt: number; endedAt: number | null; steps: WorkflowStepRun[]; error: string | null; 
 /**
  * What started it (`None` for runs recorded before this was kept)

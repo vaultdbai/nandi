@@ -91,7 +91,7 @@ const ALL_STATUSES: [RunStatus; 6] = [
     RunStatus::Cancelled,
 ];
 
-const ALL_SOURCES: [SourceType; 12] = [
+const ALL_SOURCES: [SourceType; 13] = [
     SourceType::User,
     SourceType::Workflow,
     SourceType::Agent,
@@ -104,6 +104,7 @@ const ALL_SOURCES: [SourceType; 12] = [
     SourceType::Event,
     SourceType::Email,
     SourceType::CalendarCheck,
+    SourceType::Request,
 ];
 
 const TRIGGER_SOURCES: [SourceType; 8] = [

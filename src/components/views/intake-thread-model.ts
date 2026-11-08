@@ -1,5 +1,10 @@
 import { formatRelativeTime } from '@/lib/format-time'
-import type { IntakeStatus, IntakeThread, Request } from '@/lib/bindings'
+import type {
+  IntakeStatus,
+  IntakeThread,
+  Request,
+  WorkflowProposal,
+} from '@/lib/bindings'
 import {
   queueRow,
   SOURCE_KEYS,
@@ -54,4 +59,16 @@ export function threadModel(
  */
 export function canMarkStepsDone(request: Request): boolean {
   return request.direction === 'local' && request.capability === ''
+}
+
+/** The Chief of Staff's offer to save this Request as a workflow, if any */
+export function workflowProposalFor(
+  thread: IntakeThread,
+  requestId: string
+): WorkflowProposal | null {
+  return (
+    thread.workflowProposals.find(
+      proposal => proposal.requestId === requestId
+    ) ?? null
+  )
 }

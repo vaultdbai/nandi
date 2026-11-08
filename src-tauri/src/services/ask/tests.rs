@@ -671,6 +671,38 @@ async fn the_model_plan_is_kept_to_what_exists() {
     assert_eq!(plan.rejection.as_deref(), Some("No one does taxes"));
 }
 
+#[tokio::test]
+async fn the_planner_may_give_the_chief_of_staff_one_step() {
+    use crate::services::builtin_agents::CHIEF_OF_STAFF;
+
+    let mut context = context_for("home");
+    context.agents.push(AgentBrief {
+        id: CHIEF_OF_STAFF.into(),
+        name: "Chief of Staff".into(),
+        description: "Your representative.".into(),
+    });
+    // Its line says what it can do itself
+    let described = context::describe(&context);
+    assert!(
+        described.contains("Can do one step of a plan itself: a task on a website"),
+        "{described}"
+    );
+    let llm = FakeAskLlm::replying(&[r#"{"steps": [
+        {"kind": "localAgent", "target": "chief-of-staff", "description": "Pay the bill on acme-energy.com"},
+        {"kind": "localAgent", "target": "writer", "description": "Write the note"},
+        {"kind": "localAgent", "target": "chief-of-staff", "description": "File the receipt"}
+    ]}"#]);
+    let plan = planner::plan(llm.as_ref(), "Pay the Acme bill", &context).await;
+    assert_eq!(
+        plan_targets(&plan),
+        [
+            (PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
+            (PlanStepKind::LocalAgent, "writer"),
+        ]
+    );
+    assert!(llm.calls()[0].0.contains("Never more than one step for it"));
+}
+
 #[test]
 fn plans_warn_about_offline_providers_and_approval() {
     let mut context = context_for("home");

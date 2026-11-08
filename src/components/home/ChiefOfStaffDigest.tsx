@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { SaveAsWorkflowDialog } from '@/components/requests/SaveAsWorkflowDialog'
 import {
   useChiefOfStaffDigest,
   useCompleteWaitingStep,
@@ -32,7 +34,8 @@ import {
  * Home's "Since you were away": what the Chief of Staff started, updated
  * or finished on its own, and what waits on the user. "Got it" marks it
  * seen; needs-you rows stay until they are done. Rows open the item's
- * Chief of Staff thread, or the Request when there is none.
+ * Chief of Staff thread, or the Request when there is none. Finished work
+ * that recurs offers "Save as workflow": the user checks the draft first.
  */
 export function ChiefOfStaffDigest() {
   const { t, i18n } = useTranslation()
@@ -42,6 +45,8 @@ export function ChiefOfStaffDigest() {
   const completeStep = useCompleteWaitingStep()
   const decisions = useQueueDecisions('thread')
   const alwaysAllow = useAlwaysAllow()
+  // The Request whose workflow draft is open
+  const [saving, setSaving] = useState<string | null>(null)
   if (!digest.data) return null
   if (digest.data.items.length === 0 && digest.data.queue.length === 0) {
     return null
@@ -140,9 +145,19 @@ export function ChiefOfStaffDigest() {
             busy={completeStep.isPending}
             onOpen={() => open(rowView(row))}
             onMarkDone={() => markDone(row)}
+            onSaveWorkflow={() => setSaving(row.requestId)}
           />
         ))}
       </CardContent>
+      {saving && (
+        <SaveAsWorkflowDialog
+          requestId={saving}
+          open
+          onOpenChange={next => {
+            if (!next) setSaving(null)
+          }}
+        />
+      )}
       <ApproveSuspiciousDialog
         open={decisions.confirming !== null}
         onCancel={decisions.cancelConfirm}
@@ -162,11 +177,13 @@ function DigestRowButton({
   busy,
   onOpen,
   onMarkDone,
+  onSaveWorkflow,
 }: {
   row: DigestRow
   busy: boolean
   onOpen: () => void
   onMarkDone: () => void
+  onSaveWorkflow: () => void
 }) {
   const { t } = useTranslation()
   return (
@@ -195,7 +212,25 @@ function DigestRowButton({
             {row.text}
           </span>
         )}
+        {row.workflowProposal && (
+          <span className="truncate ps-2 text-xs text-muted-foreground">
+            {t('request.saveWorkflow.proposal', {
+              title: row.workflowProposal.likeTitle,
+            })}
+          </span>
+        )}
       </button>
+      {row.workflowProposal && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="me-2 shrink-0"
+          data-testid="home-cos-save-workflow"
+          onClick={onSaveWorkflow}
+        >
+          {t('request.saveWorkflow.button')}
+        </Button>
+      )}
       {row.waitingStep && (
         <Button
           size="sm"

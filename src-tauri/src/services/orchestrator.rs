@@ -138,6 +138,18 @@ impl RunSource {
         }
     }
 
+    /// A step of a local Request the Chief of Staff does itself
+    /// (`requests::self_step`): `request_id` is the Request's. Like a
+    /// normal workflow step, it waits behind the user's own messages.
+    pub fn request_step(request_id: &str, label: String) -> Self {
+        Self {
+            source_type: SourceType::Request,
+            source_id: Some(request_id.to_string()),
+            source_label: Some(label),
+            priority: PRIORITY_WORKFLOW_NORMAL,
+        }
+    }
+
     /// A task delegated by another agent (A2A, Track C): `requester` is its
     /// card ID.
     pub fn delegation(requester: &str, label: String) -> Self {
@@ -1323,6 +1335,21 @@ async fn llm_step(
                     system.push_str(&task);
                 }
             }
+            // A step of a work plan the Chief of Staff does itself: the plan
+            if ctx.agent_id == CHIEF_OF_STAFF {
+                if let Some(request_id) = request_step(deps, &ctx.run_id).await {
+                    let plan = deps
+                        .bus
+                        .db
+                        .call(move |conn| Ok(requests::self_step::prompt(conn, &request_id)))
+                        .await
+                        .ok()
+                        .flatten();
+                    if let Some(plan) = plan {
+                        system.push_str(&plan);
+                    }
+                }
+            }
             // Started by the email check: the notes and the read-only mail
             // tools only (the email is untrusted), and no container
             let data_run = data_run(deps, &ctx.run_id).await;
@@ -1709,6 +1736,20 @@ async fn data_run(deps: &RunDeps, run_id: &str) -> Option<SourceType> {
         .flatten()
         .map(|run| run.source_type)
         .filter(|source| matches!(source, SourceType::Email | SourceType::CalendarCheck))
+}
+
+/// The Request whose Chief of Staff step `run_id` does, if it does one
+/// (`RunSource::request_step`; a compacted run's child keeps its source)
+async fn request_step(deps: &RunDeps, run_id: &str) -> Option<String> {
+    let id = run_id.to_string();
+    deps.bus
+        .db
+        .call(move |conn| db::get_run(conn, &id))
+        .await
+        .ok()
+        .flatten()
+        .filter(|run| run.source_type == SourceType::Request)
+        .and_then(|run| run.source_id)
 }
 
 /// The tools a check-started run may call: that check's, the notes, and
@@ -2100,7 +2141,18 @@ async fn run_call(
                     };
                     let source =
                         thread_source.unwrap_or_else(|| requests::tool::source_of(data_run));
-                    requests::tool::call(&state, source, thread, &call.tool, &call.args).await
+                    // Doing a step of a plan: what it starts waits for the user
+                    let in_self_step = requests::self_step::is_conversation(&ctx.conversation_id)
+                        || request_step(deps, &ctx.run_id).await.is_some();
+                    requests::tool::call(
+                        &state,
+                        source,
+                        thread,
+                        in_self_step,
+                        &call.tool,
+                        &call.args,
+                    )
+                    .await
                 }
                 None => ToolOutcome {
                     result: format!("Tool '{}' is not available right now", call.tool),

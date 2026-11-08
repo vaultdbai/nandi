@@ -13,6 +13,7 @@ use serde_json::json;
 use specta::Type;
 
 use super::local::{self, LocalRequest, RequestSource, RequestUpdate};
+use super::recurrence::{self, WorkflowProposal};
 use super::RequestStatus;
 use crate::db;
 use crate::services::ask::PlanStepKind;
@@ -53,6 +54,9 @@ pub struct DigestItem {
     /// The step waiting on the user (a manual step or a person), for
     /// "Mark done" (`complete_request_step`)
     pub waiting_step: Option<WaitingStep>,
+    /// Finished work that recurs: the Chief of Staff offers **Save as
+    /// workflow** (`recurrence`)
+    pub workflow_proposal: Option<WorkflowProposal>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -111,6 +115,7 @@ pub fn build(requests: &[LocalRequest], updates: &[RequestUpdate], seen: i64) ->
         waiting_step: (kind == DigestKind::NeedsYou)
             .then(|| waiting_step(r))
             .flatten(),
+        workflow_proposal: None,
     };
     let mut items = Vec::new();
     let mut by_id = HashMap::new();
@@ -149,6 +154,11 @@ pub async fn get(state: &AppState) -> Result<ChiefOfStaffDigest, String> {
             let mut items = build(&requests, &updates, since);
             for item in &mut items {
                 item.thread_id = intake::thread::for_request(conn, &item.request_id)?;
+                if item.kind == DigestKind::Finished {
+                    if let Some(request) = requests.iter().find(|r| r.id == item.request_id) {
+                        item.workflow_proposal = recurrence::for_request(conn, request)?;
+                    }
+                }
             }
             Ok(ChiefOfStaffDigest {
                 since: seen.map(|at| at as f64),

@@ -23,6 +23,7 @@ function item(overrides: Partial<DigestItem> = {}): DigestItem {
     at: NOW.getTime() - 2 * 60 * 60 * 1000,
     threadId: null,
     waitingStep: null,
+    workflowProposal: null,
     ...overrides,
   }
 }
@@ -202,6 +203,25 @@ describe('digest-model', () => {
       threadId: 'intake:q1',
       waitingStep: { position: 1, label: 'Call the bank' },
     })
+  })
+
+  it('offers Save as workflow on finished work that recurs only', () => {
+    const proposal = {
+      requestId: 'r1',
+      reason: 'sameWork' as const,
+      likeRequestId: 'r0',
+      likeTitle: 'Pay the power bill for October',
+    }
+    const rows = digestRows(
+      digest([
+        item({ kind: 'finished', status: 'done', workflowProposal: proposal }),
+        item({ kind: 'started', workflowProposal: proposal }),
+      ]),
+      'en',
+      NOW
+    )
+    expect(rows[0]?.workflowProposal).toEqual(proposal)
+    expect(rows[1]?.workflowProposal).toBeNull()
   })
 
   it('lists the plan steps of a queued item', () => {

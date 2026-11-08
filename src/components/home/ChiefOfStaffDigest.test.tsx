@@ -21,6 +21,7 @@ function item(overrides: Partial<DigestItem> = {}): DigestItem {
     at: Date.now() - 5 * 60 * 1000,
     threadId: null,
     waitingStep: null,
+    workflowProposal: null,
     ...overrides,
   }
 }
@@ -102,6 +103,39 @@ describe('ChiefOfStaffDigest', () => {
       kind: 'request',
       requestId: 'r2',
     })
+  })
+
+  it('offers to save recurring finished work as a workflow, with the draft to check', async () => {
+    mocked.getChiefOfStaffDigest = vi.fn(async () =>
+      ok(
+        digest([
+          item({
+            kind: 'finished',
+            status: 'done',
+            title: 'Pay the power bill for November',
+            workflowProposal: {
+              requestId: 'r1',
+              reason: 'sameWork',
+              likeRequestId: 'r0',
+              likeTitle: 'Pay the power bill for October',
+            },
+          }),
+        ])
+      )
+    )
+    const draft = vi.fn(async () => ok('id: pay\nname: Pay\nsteps: []\n'))
+    const originalDraft = mocked.draftWorkflowFromRequest
+    mocked.draftWorkflowFromRequest = draft
+    render(<DigestCard />)
+    expect(
+      await screen.findByText(
+        'Done before as “Pay the power bill for October”. Save it as a workflow?'
+      )
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('home-cos-save-workflow'))
+    await vi.waitFor(() => expect(draft).toHaveBeenCalledWith('r1'))
+    expect(await screen.findByText('Save as a workflow')).toBeInTheDocument()
+    mocked.draftWorkflowFromRequest = originalDraft
   })
 
   it('uses the plain title when nothing was seen yet, and Got it marks seen', async () => {

@@ -8,6 +8,7 @@ import type {
   RequestSource,
   Verdict,
   WaitingStep,
+  WorkflowProposal,
 } from '@/lib/bindings'
 import type { View } from '@/store/navigation-store'
 import { senderDomain } from '@/components/settings/auto-approve/auto-approve-model'
@@ -30,6 +31,8 @@ export interface DigestRow {
   threadId: string | null
   /** The step waiting on the user: it gets "Mark done" */
   waitingStep: WaitingStep | null
+  /** Finished work that recurs: it gets "Save as workflow" */
+  workflowProposal: WorkflowProposal | null
 }
 
 export interface DigestSummaryPart {
@@ -109,6 +112,7 @@ export function digestRows(
     when: formatRelativeTime(item.at, locale, now),
     threadId: item.threadId,
     waitingStep: item.waitingStep,
+    workflowProposal: item.kind === 'finished' ? item.workflowProposal : null,
   }))
 }
 

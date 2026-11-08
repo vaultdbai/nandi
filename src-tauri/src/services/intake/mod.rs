@@ -521,6 +521,9 @@ async fn approve_as(state: &AppState, id: String, rule: Option<String>) -> Resul
     if item.screening.verdict == Verdict::Blocked {
         return Err("This item was blocked by screening; it can only be dismissed".to_string());
     }
+    // New work is saved first and started once it's linked to this item,
+    // so a Chief of Staff step finds the thread it runs in
+    let mut created = None;
     let request_id = match (item.action, item.request_id.clone()) {
         // The waiting task sees the approval and runs (`gate_task`)
         (IntakeAction::Run, Some(task_id)) => task_id,
@@ -528,16 +531,15 @@ async fn approve_as(state: &AppState, id: String, rule: Option<String>) -> Resul
             local::add_update(state, request_id.clone(), item.text.clone(), item.source).await?;
             request_id
         }
-        _ => match item.plan.clone() {
-            Some(plan) => {
-                local::start_request_from(state, plan, item.text.clone(), item.source).await?
-            }
-            None => {
-                crate::services::requests::tool::start_now(state, item.source, &item.text)
-                    .await?
-                    .0
-            }
-        },
+        _ => {
+            let plan = match item.plan.clone() {
+                Some(plan) => plan,
+                None => crate::services::requests::tool::plan_for(state, &item.text).await?,
+            };
+            let id = local::create_request(state, plan, item.text.clone(), item.source).await?;
+            created = Some(id.clone());
+            id
+        }
     };
     let done = match item.action {
         IntakeAction::Start => "it's started.",
@@ -557,6 +559,9 @@ async fn approve_as(state: &AppState, id: String, rule: Option<String>) -> Resul
             thread::note(conn, &item.thread_id, &note)
         })
         .await?;
+    if let Some(id) = created {
+        local::spawn_runner(state, id);
+    }
     changed(state.bus());
     Ok(request_id)
 }

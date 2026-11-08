@@ -8,7 +8,7 @@
 //! The bookkeeping ([`new_request`], [`ready_steps`], [`settle`],
 //! [`workflow_yaml`]) is pure; [`tick`] does the I/O.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -22,9 +22,11 @@ use crate::model::RunStatus;
 use crate::services::a2a::task::{self, TaskState};
 use crate::services::ask::{ActionPlan, PlanStepKind};
 use crate::services::events::{self, NandiEvent};
+use crate::services::run_plan::{self, RunPlanStep, RunStepKind};
 use crate::services::workflows::WorkflowRunStatus;
 use crate::services::AppState;
 
+use super::self_step;
 use super::{
     humanize, Blocker, BlockerKind, BlockerWho, Direction, Request, RequestStatus, RequestStep,
     StepKind, StepLink, StepStatus,
@@ -244,7 +246,7 @@ fn is_terminal(status: RequestStatus) -> bool {
 }
 
 /// A workflow ID from a title: letters, digits and hyphens
-fn workflow_id_for(title: &str) -> String {
+pub(crate) fn workflow_id_for(title: &str) -> String {
     let mut id = String::new();
     for c in title.chars() {
         if c.is_ascii_alphanumeric() {
@@ -267,24 +269,81 @@ fn quoted(text: &str) -> String {
     serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string())
 }
 
+/// Part of an agent step's run plan, for the workflow draft
+#[derive(Debug, PartialEq)]
+enum RunPart {
+    /// Steps the agent does, by title
+    Agent(Vec<String>),
+    /// A hand-over: the user's part
+    Handover(String),
+}
+
+/// A run plan cut at its hand-overs. Pure.
+fn run_parts(steps: &[RunPlanStep]) -> Vec<RunPart> {
+    let mut parts = Vec::new();
+    for step in steps {
+        if step.kind == RunStepKind::Handover {
+            parts.push(RunPart::Handover(step.title.clone()));
+            continue;
+        }
+        match parts.last_mut() {
+            Some(RunPart::Agent(titles)) => titles.push(step.title.clone()),
+            _ => parts.push(RunPart::Agent(vec![step.title.clone()])),
+        }
+    }
+    parts
+}
+
+fn agent_yaml(target: &str, input: &str) -> String {
+    format!("    agent: {target}\n    input: {}\n", quoted(input))
+}
+
+fn manual_yaml(instructions: &str) -> String {
+    format!(
+        "    step_type: manual\n    instructions: {}\n",
+        quoted(instructions)
+    )
+}
+
 /// A workflow drafted from a Request's plan (Save as workflow); its steps
-/// run in order, like the plan's. Agent steps stay agent steps, each given the step and the ask; delegating,
-/// running another workflow or asking someone become manual steps, which
-/// say what to do. The user confirms it and the domain validates it.
-pub fn workflow_yaml(request: &LocalRequest) -> String {
+/// run in order, like the plan's. Agent steps stay agent steps, each given
+/// the step and the ask; delegating, running another workflow or asking
+/// someone become manual steps, which say what to do. When an agent step's
+/// run plan (`run_plans`, by step position) handed something over (signing
+/// in, paying), the step is cut there: the agent's parts stay agent steps
+/// and each hand-over becomes a manual step for the user. The user confirms
+/// it and the domain validates it. Pure.
+pub fn workflow_yaml(request: &LocalRequest, run_plans: &HashMap<u32, Vec<RunPlanStep>>) -> String {
     let id = workflow_id_for(&request.title);
-    let mut out = format!("id: {id}\nname: {}\nsteps:\n", quoted(&request.title));
+    let mut body = Vec::new();
     for step in &request.steps {
-        let step_id = format!("step-{}", step.position + 1);
-        out.push_str(&format!("  - id: {step_id}\n"));
         match step.kind {
             PlanStepKind::LocalAgent => {
-                let input = format!("{}\n\nRequest: {}", step.label, request.ask_text);
-                out.push_str(&format!(
-                    "    agent: {}\n    input: {}\n",
-                    step.target,
-                    quoted(&input)
-                ));
+                let parts = run_plans
+                    .get(&step.position)
+                    .map(|steps| run_parts(steps))
+                    .unwrap_or_default();
+                if !parts.iter().any(|p| matches!(p, RunPart::Handover(_))) {
+                    let input = format!("{}\n\nRequest: {}", step.label, request.ask_text);
+                    body.push(agent_yaml(&step.target, &input));
+                    continue;
+                }
+                for part in parts {
+                    body.push(match part {
+                        RunPart::Agent(titles) => {
+                            let input = format!(
+                                "{}: {}\n\nRequest: {}",
+                                step.label,
+                                titles.join("; "),
+                                request.ask_text
+                            );
+                            agent_yaml(&step.target, &input)
+                        }
+                        RunPart::Handover(title) => {
+                            manual_yaml(&format!("Your part of \"{}\": {title}", step.label))
+                        }
+                    });
+                }
             }
             kind => {
                 let instructions = match kind {
@@ -297,12 +356,13 @@ pub fn workflow_yaml(request: &LocalRequest) -> String {
                     PlanStepKind::Human => format!("Ask {}: {}", step.target, step.label),
                     _ => step.label.clone(),
                 };
-                out.push_str(&format!(
-                    "    step_type: manual\n    instructions: {}\n",
-                    quoted(&instructions)
-                ));
+                body.push(manual_yaml(&instructions));
             }
         }
+    }
+    let mut out = format!("id: {id}\nname: {}\nsteps:\n", quoted(&request.title));
+    for (i, step) in body.iter().enumerate() {
+        out.push_str(&format!("  - id: step-{}\n{step}", i + 1));
     }
     out
 }
@@ -607,6 +667,13 @@ async fn observe(state: &AppState, step: &LocalStep) -> Option<(StepStatus, Opti
 async fn start(state: &AppState, request: &LocalRequest, step: &mut LocalStep, now: i64) {
     step.started_at = Some(now);
     let started = match step.kind {
+        // The Chief of Staff's own step: in the task's thread or the
+        // Request's conversation, never its main chat
+        PlanStepKind::LocalAgent if self_step::is_self_step(step.kind, &step.target) => {
+            self_step::start(state, request, step)
+                .await
+                .map(|run_id| step.run_id = Some(run_id))
+        }
         PlanStepKind::LocalAgent => crate::services::chat::send_message(
             state,
             step.target.clone(),
@@ -691,6 +758,10 @@ pub async fn tick(state: &AppState, id: &str) -> Result<bool, String> {
         let saved = request.clone();
         state.db().call(move |conn| save(conn, &saved)).await?;
         events::emit(state.bus(), &RequestUpdated { id: id.to_string() });
+        if request.status == RequestStatus::Done {
+            // Recurring work: the Chief of Staff offers to save it
+            super::recurrence::on_done(state, &request).await;
+        }
     }
     Ok(is_terminal(request.status))
 }
@@ -741,17 +812,31 @@ pub async fn start_request_from(
     text: String,
     source: RequestSource,
 ) -> Result<String, String> {
+    let id = create_request(state, plan, text, source).await?;
+    spawn_runner(state, id.clone());
+    Ok(id)
+}
+
+/// Saves a plan as a Request without starting it, so the caller can link
+/// it first (intake links its thread, where a Chief of Staff step runs);
+/// [`spawn_runner`] starts it. Returns its ID.
+pub async fn create_request(
+    state: &AppState,
+    plan: ActionPlan,
+    text: String,
+    source: RequestSource,
+) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("There's nothing to do: the ask is empty".to_string());
     }
     if plan.rejection.is_some() || plan.steps.is_empty() {
         return Err("This plan has no steps to carry out".to_string());
     }
+    self_step::check(&plan)?;
     let id = uuid::Uuid::new_v4().to_string();
     let request = new_request(&id, &text, &plan, source, db::now_ms());
     state.db().call(move |conn| save(conn, &request)).await?;
     events::emit(state.bus(), &RequestUpdated { id: id.clone() });
-    spawn_runner(state, id.clone());
     Ok(id)
 }
 
@@ -882,16 +967,21 @@ pub async fn add_update(
             && !told.contains(&step.target)
         {
             let text = format!("Update for \"{}\": {}", request.title, news.trim());
-            match crate::services::chat::send_message(
-                state,
-                step.target.clone(),
-                text,
-                Vec::new(),
-                None,
-            )
-            .await
-            {
-                Ok(_) => told.push(step.target.clone()),
+            let sent = if self_step::is_self_step(step.kind, &step.target) {
+                self_step::submit(state, &request, text).await.map(|_| ())
+            } else {
+                crate::services::chat::send_message(
+                    state,
+                    step.target.clone(),
+                    text,
+                    Vec::new(),
+                    None,
+                )
+                .await
+                .map(|_| ())
+            };
+            match sent {
+                Ok(()) => told.push(step.target.clone()),
                 Err(e) => log::warn!("Request {id}: couldn't tell {}: {e}", step.target),
             }
         }
@@ -959,15 +1049,59 @@ pub async fn rerun_request(state: &AppState, id: String) -> Result<String, Strin
     start_request_from(state, request.plan, request.ask_text, request.source).await
 }
 
-/// Save as workflow: a draft of the Request's plan as a workflow file
+/// The run a step's run went on in: its latest compaction child, if any
+fn latest_run(conn: &Connection, run_id: &str) -> rusqlite::Result<String> {
+    let mut id = run_id.to_string();
+    for _ in 0..8 {
+        let child: Option<String> = conn
+            .query_row(
+                "SELECT id FROM runs WHERE parent_run_id = ?1 ORDER BY started_at DESC LIMIT 1",
+                [&id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        match child {
+            Some(child) => id = child,
+            None => break,
+        }
+    }
+    Ok(id)
+}
+
+/// The run plans of the Request's agent steps, by step position
+pub fn run_plans(
+    conn: &Connection,
+    request: &LocalRequest,
+) -> rusqlite::Result<HashMap<u32, Vec<RunPlanStep>>> {
+    let mut plans = HashMap::new();
+    for step in &request.steps {
+        let Some(run_id) = &step.run_id else {
+            continue;
+        };
+        let run_id = latest_run(conn, run_id)?;
+        if let Some(plan) = run_plan::store::current(conn, &run_id)? {
+            plans.insert(step.position, plan.steps);
+        }
+    }
+    Ok(plans)
+}
+
+/// Save as workflow: a draft of the Request's plan as a workflow file, its
+/// runs' hand-overs as manual steps
 pub async fn draft_workflow_from_request(state: &AppState, id: String) -> Result<String, String> {
     let lookup = id.clone();
-    let request = state
+    let (request, plans) = state
         .db()
-        .call(move |conn| load(conn, &lookup))
+        .call(move |conn| {
+            let Some(request) = load(conn, &lookup)? else {
+                return Ok(None);
+            };
+            let plans = run_plans(conn, &request)?;
+            Ok(Some((request, plans)))
+        })
         .await?
         .ok_or_else(|| format!("Request {id} not found"))?;
-    Ok(workflow_yaml(&request))
+    Ok(workflow_yaml(&request, &plans))
 }
 
 /// Picks up every Request that was in progress when the app stopped
@@ -1240,12 +1374,67 @@ mod tests {
             RequestSource::Me,
             0,
         );
-        let yaml = workflow_yaml(&request);
+        let yaml = workflow_yaml(&request, &HashMap::new());
         let workflow = crate::services::domain::Workflow::from_yaml(&yaml)
             .unwrap_or_else(|e| panic!("{e}\n{yaml}"));
         assert_eq!(workflow.id().as_str(), "weekly-summarize-ai-news");
         assert!(yaml.contains("agent: researcher"));
         assert!(yaml.contains("step_type: manual"));
+    }
+
+    fn run_step(title: &str, kind: RunStepKind) -> RunPlanStep {
+        RunPlanStep {
+            title: title.to_string(),
+            kind,
+            evidence: run_plan::RunStepEvidence::None,
+            note: None,
+            status: run_plan::RunStepStatus::Done,
+            result: None,
+            files: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_run_plans_hand_overs_become_manual_steps_in_the_draft() {
+        let request = new_request(
+            "r1",
+            "Pay the Acme bill",
+            &plan(&[
+                (PlanStepKind::LocalAgent, "chief-of-staff"),
+                (PlanStepKind::LocalAgent, "writer"),
+            ]),
+            RequestSource::Email,
+            0,
+        );
+        let run_plan = vec![
+            run_step("Open acme-energy.com", RunStepKind::Navigate),
+            run_step("Sign in", RunStepKind::Handover),
+            run_step("Billing > Pay bill", RunStepKind::Navigate),
+            run_step("Enter the amount", RunStepKind::Fill),
+            run_step("Pay", RunStepKind::Handover),
+            run_step(
+                "Note the confirmation, close the browser",
+                RunStepKind::Cleanup,
+            ),
+        ];
+        let plans = HashMap::from([(0, run_plan)]);
+        let yaml = workflow_yaml(&request, &plans);
+        let workflow = crate::services::domain::Workflow::from_yaml(&yaml)
+            .unwrap_or_else(|e| panic!("{e}\n{yaml}"));
+        // agent, sign in, agent, pay, agent; then the writer's step as it was
+        let manual: Vec<bool> = workflow.steps().iter().map(|s| s.is_manual()).collect();
+        assert_eq!(manual, vec![false, true, false, true, false, false]);
+        assert!(yaml.contains("Your part of \\\"Do chief-of-staff\\\": Sign in"));
+        assert!(yaml.contains("Your part of \\\"Do chief-of-staff\\\": Pay"));
+        assert!(yaml.contains("Do chief-of-staff: Billing > Pay bill; Enter the amount"));
+        assert!(yaml.contains("  - id: step-6\n    agent: writer"));
+
+        // A run plan with no hand-over leaves the step whole
+        let plans = HashMap::from([(0, vec![run_step("Read it", RunStepKind::Read)])]);
+        assert_eq!(
+            workflow_yaml(&request, &plans),
+            workflow_yaml(&request, &HashMap::new())
+        );
     }
 
     #[test]
@@ -1457,5 +1646,293 @@ mod tests {
                 .as_deref(),
             Some("r-restart")
         );
+    }
+
+    // -- The Chief of Staff's own step ---------------------------------------
+
+    use crate::services::builtin_agents::{self, CHIEF_OF_STAFF};
+    use crate::services::intake;
+
+    /// The Chief of Staff exists, and every agent answers with its input
+    async fn chief_of_staff_answers(state: &AppState) {
+        builtin_agents::seed(state.store().layout()).unwrap();
+        state
+            .store()
+            .commit(crate::services::domain::EntityKind::Agent, CHIEF_OF_STAFF)
+            .unwrap();
+        state
+            .db()
+            .call(|conn| {
+                db::set_setting(conn, db::ENGINE_KEY, &json!("canned"))?;
+                db::set_setting(
+                    conn,
+                    crate::engine::CANNED_SCRIPT_KEY,
+                    &json!({ "agent": [{ "text": "Done: [{{input}}]" }], "studio": [], "tokenDelayMs": 0 }),
+                )
+            })
+            .await
+            .unwrap();
+    }
+
+    fn clean() -> intake::screen::Screening {
+        intake::screen::Screening {
+            verdict: intake::screen::Verdict::Clean,
+            reasons: Vec::new(),
+            links: Vec::new(),
+        }
+    }
+
+    async fn until_ended(state: &AppState, id: &str) -> LocalRequest {
+        for _ in 0..100 {
+            let request = stored(state, id).await;
+            if is_terminal(request.status) {
+                return request;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        panic!("Request {id} didn't end: {:?}", stored(state, id).await);
+    }
+
+    /// The run's conversation and source
+    async fn run_of(state: &AppState, run_id: &str) -> (String, crate::model::SourceType) {
+        let id = run_id.to_string();
+        state
+            .db()
+            .call(move |conn| {
+                conn.query_row(
+                    "SELECT conversation_id, source_type FROM runs WHERE id = ?1",
+                    [&id],
+                    |row| {
+                        let source: String = row.get(1)?;
+                        Ok((row.get(0)?, crate::model::SourceType::parse(&source)))
+                    },
+                )
+            })
+            .await
+            .unwrap()
+    }
+
+    async fn main_chat_messages(state: &AppState) -> i64 {
+        state
+            .db()
+            .call(|conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM messages WHERE conversation_id = ?1",
+                    [db::agent_conversation_id(CHIEF_OF_STAFF)],
+                    |row| row.get(0),
+                )
+            })
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_chief_of_staff_step_runs_in_the_task_thread_and_settles() {
+        let state = AppState::for_tests(Vec::new());
+        chief_of_staff_answers(&state).await;
+        // Queued from mail with a plan that gives the Chief of Staff a step
+        let item = intake::QueuedWork {
+            id: "q1".into(),
+            at: db::now_ms() as f64,
+            source: RequestSource::Email,
+            action: intake::IntakeAction::Start,
+            request_id: None,
+            request_title: None,
+            text: "Pay the Acme Energy bill for October".into(),
+            sender: None,
+            screening: clean(),
+            status: intake::IntakeStatus::Pending,
+            result_request_id: None,
+            thread_id: intake::thread::id_for("q1"),
+            plan: Some(plan(&[(PlanStepKind::LocalAgent, CHIEF_OF_STAFF)])),
+        };
+        let saved = item.clone();
+        state
+            .db()
+            .call(move |conn| {
+                intake::save(conn, &saved)?;
+                intake::thread::ensure(conn, &saved.thread_id, "Pay the Acme Energy bill")
+            })
+            .await
+            .unwrap();
+
+        let id = intake::approve(&state, "q1".into()).await.unwrap();
+        let request = until_ended(&state, &id).await;
+        assert_eq!(request.status, RequestStatus::Done, "{request:?}");
+        assert_eq!(request.steps[0].status, StepStatus::Done);
+        let run_id = request.steps[0].run_id.clone().expect("the step's run");
+        let (conversation, source) = run_of(&state, &run_id).await;
+        assert_eq!(conversation, item.thread_id);
+        assert_eq!(source, crate::model::SourceType::Request);
+        assert_eq!(main_chat_messages(&state).await, 0, "never its main chat");
+        state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn a_chief_of_staff_step_without_a_thread_gets_the_requests_own_conversation() {
+        let state = AppState::for_tests(Vec::new());
+        chief_of_staff_answers(&state).await;
+        let id = start_request(
+            &state,
+            plan(&[
+                (PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
+                (PlanStepKind::Manual, "check"),
+            ]),
+            "Download the October statement from acme-bank.com".into(),
+        )
+        .await
+        .unwrap();
+        for _ in 0..100 {
+            if stored(&state, &id).await.status == RequestStatus::Waiting {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let request = stored(&state, &id).await;
+        assert_eq!(request.steps[0].status, StepStatus::Done, "{request:?}");
+        assert_eq!(request.steps[1].status, StepStatus::Waiting);
+        let run_id = request.steps[0].run_id.clone().unwrap();
+        let (conversation, _) = run_of(&state, &run_id).await;
+        assert_eq!(conversation, self_step::conversation_id(&id));
+        let owner = state
+            .db()
+            .call(move |conn| db::conversation_agent(conn, &conversation))
+            .await
+            .unwrap();
+        assert_eq!(owner.as_deref(), Some(CHIEF_OF_STAFF));
+        assert_eq!(main_chat_messages(&state).await, 0);
+
+        // Two Chief of Staff steps in one plan are refused
+        let twice = plan(&[
+            (PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
+            (PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
+        ]);
+        assert!(start_request(&state, twice, "Twice".into()).await.is_err());
+        state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn work_a_chief_of_staff_step_starts_waits_for_the_user() {
+        let state = AppState::for_tests(Vec::new());
+        let before = state.db().call(|conn| open_ids(conn)).await.unwrap();
+        let outcome = super::super::tool::call(
+            &state,
+            RequestSource::ChiefOfStaff,
+            None,
+            true,
+            super::super::tool::START,
+            &json!({ "what": "Chief of Staff: pay the Globex bill on globex.com" }),
+        )
+        .await;
+        assert!(!outcome.is_error, "{}", outcome.result);
+        assert!(outcome.result.contains("\"queued\""), "{}", outcome.result);
+        let pending = state.db().call(|conn| intake::pending(conn)).await.unwrap();
+        assert_eq!(pending.len(), 1);
+        assert!(pending[0].text.contains("Globex"));
+        // Nothing started on its own
+        assert_eq!(
+            state.db().call(|conn| open_ids(conn)).await.unwrap(),
+            before
+        );
+        state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn recurring_work_is_proposed_as_a_workflow_in_its_thread_and_on_home() {
+        use crate::services::requests::digest;
+
+        let state = AppState::for_tests(Vec::new());
+        let bill = plan(&[(PlanStepKind::LocalAgent, CHIEF_OF_STAFF)]);
+        // Last month's, done
+        let mut earlier = new_request(
+            "r-oct",
+            "Pay the Acme Energy bill for October",
+            &bill,
+            RequestSource::Email,
+            db::now_ms() - 1000,
+        );
+        earlier.status = RequestStatus::Done;
+        earlier.ended_at = Some(earlier.created_at + 10);
+        // This month's, through intake, its step's run finished
+        let mut now = new_request(
+            "r-nov",
+            "Pay the Acme Energy bill for November",
+            &bill,
+            RequestSource::Email,
+            db::now_ms(),
+        );
+        now.steps[0].status = StepStatus::Running;
+        now.steps[0].run_id = Some("run-nov".into());
+        let thread = intake::thread::id_for("q-nov");
+        let item = intake::QueuedWork {
+            id: "q-nov".into(),
+            at: db::now_ms() as f64,
+            source: RequestSource::Email,
+            action: intake::IntakeAction::Start,
+            request_id: None,
+            request_title: None,
+            text: now.ask_text.clone(),
+            sender: None,
+            screening: clean(),
+            status: intake::IntakeStatus::Approved,
+            result_request_id: Some("r-nov".into()),
+            thread_id: thread.clone(),
+            plan: Some(bill.clone()),
+        };
+        let (a, b, t) = (earlier.clone(), now.clone(), thread.clone());
+        state
+            .db()
+            .call(move |conn| {
+                save(conn, &a)?;
+                save(conn, &b)?;
+                intake::save(conn, &item)?;
+                intake::thread::ensure(conn, &t, "Pay the Acme Energy bill")?;
+                conn.execute(
+                    "INSERT INTO runs (id, agent_id, conversation_id, status, input, started_at, source_type)
+                     VALUES ('run-nov', ?1, ?2, 'completed', 'x', ?3, 'request')",
+                    params![CHIEF_OF_STAFF, t, db::now_ms()],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        assert!(tick(&state, "r-nov").await.unwrap());
+        assert_eq!(stored(&state, "r-nov").await.status, RequestStatus::Done);
+
+        // A note in the thread, and the button on its card
+        let id = thread.clone();
+        let notes: Vec<String> = state
+            .db()
+            .call(move |conn| {
+                let mut stmt =
+                    conn.prepare("SELECT content FROM messages WHERE conversation_id = ?1")?;
+                let rows = stmt.query_map([id], |row| row.get::<_, String>(0))?;
+                rows.collect::<rusqlite::Result<Vec<String>>>()
+            })
+            .await
+            .unwrap();
+        assert!(
+            notes.iter().any(|n| n.contains("Save as workflow")),
+            "{notes:?}"
+        );
+        let loaded = intake::thread::get(&state, thread).await.unwrap();
+        assert_eq!(loaded.workflow_proposals.len(), 1);
+        assert_eq!(loaded.workflow_proposals[0].like_request_id, "r-oct");
+
+        // On Home with the finished work
+        let home = digest::get(&state).await.unwrap();
+        let finished = home
+            .items
+            .iter()
+            .find(|i| i.request_id == "r-nov")
+            .expect("the finished work");
+        assert!(finished.workflow_proposal.is_some());
+
+        // Its draft, for the user to check and save
+        let yaml = draft_workflow_from_request(&state, "r-nov".into())
+            .await
+            .unwrap();
+        assert!(yaml.contains("agent: chief-of-staff"));
     }
 }

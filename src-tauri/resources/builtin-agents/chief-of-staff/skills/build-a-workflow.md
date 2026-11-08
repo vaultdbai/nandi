@@ -14,13 +14,17 @@ A workflow is saved steps that run the same way every time, by hand or on a sche
 
 Don't propose for one-off work, work that needs judgement at every step, or something the user dismissed before (check `my-notes/suggestions.md`).
 
+## Nandi proposes finished work for you
+
+When a Request finishes well and the same work (or the same plan) finished well before, Nandi adds your proposal to the task's thread and to Home's "Since you were away", with a **Save as workflow** button. Don't repeat it in chat; answer questions about it. The draft turns the hand-overs of your run plan into manual steps for the user, and nothing is saved until the user checks the draft and saves it.
+
 ## How to propose
 
 1. Say it in one or two lines: what would repeat, when it would run, and what the user still does.
    "Paying the Acme bill went well twice. Save it as a workflow that runs on the 5th of each month? You'd still sign in and press Pay."
 2. Note the proposal once in `my-notes/suggestions.md` with the date. Never repeat a dismissed one.
 3. If the user agrees, point them to the right place:
-   - **From finished work:** open the Request on Work and press **Save as workflow**. It drafts a workflow from the Request's steps; the user checks the file and saves.
+   - **From finished work:** press **Save as workflow** on the proposal, or open the Request on Work and press it there. It drafts a workflow from the Request's steps; the user checks the file and saves.
    - **Something new:** ask Studio (Ask) to build it, in the user's words: what triggers it, the steps, who does each step.
 4. Add a schedule only if the user wants one. Studio sets up the trigger.
 

@@ -1185,6 +1185,32 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **Needs relay:** no
 - **Status:** Shipped
 
+### RQ-33 — Chief of Staff does a step of its own plans, and offers Save as workflow
+
+- **What:** A work plan can give Chief of Staff one step it does itself (a site in its browser, its notes, mail triage). The step runs in the item's thread when the work came through intake, else in the Request's own conversation, never in Chief of Staff's main chat; the step finishes when that turn ends and the plan goes on. Work Chief of Staff starts from that turn waits in **Waiting for your OK**. A plan never holds two Chief of Staff steps. When work finishes well and the same work (same title, ignoring dates and numbers) or the same multi-step plan finished well before, Chief of Staff notes a proposal in the thread, and **Save as workflow** shows on the Request card in the thread and on Home's finished row. It opens the workflow draft, where the run plan's hand-overs (sign in, pay) are manual steps; nothing is saved until **Save workflow**.
+- **Where:** `services/requests/self_step.rs`, `services/requests/recurrence.rs`, `local::workflow_yaml`, `IntakeThreadView.tsx`, `ChiefOfStaffDigest.tsx`, `SaveAsWorkflowDialog.tsx`, the playbooks `delegate-work` and `build-a-workflow`.
+- **Preconditions:** Email connected and a site Chief of Staff may browse (Browser pilot running). For the proposal: the same work done once before (for example last month's bill).
+- **Steps:**
+  1. Let an email ask for something Chief of Staff can do on a website (pay a bill on a test site). Open its thread from Home and read the plan.
+  2. Click **Approve**.
+  3. Watch the thread while the step runs; open Chief of Staff's main chat.
+  4. In the thread, ask Chief of Staff to start more work for itself.
+  5. Repeat steps 1 and 2 with the same kind of email (next month's bill) and let it finish.
+  6. Click **Save as workflow** on the Request card in the thread.
+  7. Open Home's **Since you were away**.
+- **Expected:**
+  - Step 1: the plan names Chief of Staff for the website step.
+  - Step 2: the step starts in this thread: its run plan card shows, sign-in and payment are handed over to you.
+  - Step 3: the main chat has nothing new; when the turn ends, the step shows done and the Request moves on or finishes.
+  - Step 4: a new item waits in **Waiting for your OK**; nothing starts.
+  - Step 5: the thread gets a note offering to save it as a workflow, naming the earlier work.
+  - Step 6: the draft opens; the sign-in and payment are manual steps, the rest are Chief of Staff steps. Cancel saves nothing; **Save workflow** saves and opens it.
+  - Step 7: the finished row has **Save as workflow** too.
+- **Edge / negative cases:** Work the user asks for in the ask box with a Chief of Staff step runs in the Request's own conversation. A plan with two Chief of Staff steps keeps the first and warns. Failed work, work that is only manual steps, and work that already ran a workflow are never proposed. Without a relay everything works.
+- **Automation:** Covered by: `services::requests::self_step`, `services::requests::recurrence` and `services::requests::local` tests (the step runs in the thread and settles, the loop guard queues, the draft cuts at hand-overs, the proposal shows), `ask::tests::the_planner_may_give_the_chief_of_staff_one_step`, `digest-model.test.ts`, `intake-thread-model.test.ts`, `ChiefOfStaffDigest.test.tsx` | Layer: unit + integration + manual | Gap: a live browser step is manual.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## Gaps and planned (not testable yet)
 
 - No way to delete a workflow in the UI or API; only by removing its YAML file (no `delete_workflow` command).
