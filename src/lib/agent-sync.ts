@@ -13,6 +13,7 @@ import { agentPoliciesQueryKeys } from '@/hooks/useAgentPolicies'
 import { auditQueryKeys } from '@/hooks/useAuditLog'
 import { memberQueryKeys } from '@/hooks/useNetwork'
 import { policiesQueryKeys } from '@/hooks/usePolicies'
+import { runPlanQueryKeys } from '@/hooks/useRunPlan'
 import { runsQueryKeys } from '@/hooks/useRuns'
 import { sharedQueryKeys } from '@/hooks/useSharedAgents'
 import i18n from '@/i18n/config'
@@ -284,6 +285,13 @@ export function handleNandiEvent(event: NandiEvent) {
       return
     case 'agent://queue_changed':
       applyQueueChanged(event.payload)
+      return
+    // A run's checklist card: the event carries the whole plan
+    case 'run://plan_updated':
+      queryClient.setQueryData(
+        runPlanQueryKeys.plan(event.payload.runId),
+        event.payload.plan
+      )
       return
     // Run Detail: a stopped turn, or a CLI runtime's own decision
     case 'agent://turn_aborted':

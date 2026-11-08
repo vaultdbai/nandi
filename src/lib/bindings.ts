@@ -389,6 +389,28 @@ async resolveRunFile(runId: string, path: string) : Promise<Result<string | null
 }
 },
 /**
+ * The run's plan (its checklist card), if it has one
+ */
+async getRunPlan(runId: string) : Promise<Result<RunPlan | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_run_plan", { runId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * One of the run's screenshots as a `data:` URL (a plan card thumbnail)
+ */
+async getRunScreenshot(runId: string, path: string) : Promise<Result<string | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_run_screenshot", { runId, path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Opens a file a run touched with its default app, or shows it in the
  * file manager (`reveal`)
  */
@@ -3554,6 +3576,7 @@ repoRebuildStarted: RepoRebuildStarted,
 repoValidationFailed: RepoValidationFailed,
 requestReturned: RequestReturned,
 requestUpdated: RequestUpdated,
+runPlanUpdated: RunPlanUpdated,
 studioArtifactLoaded: StudioArtifactLoaded,
 studioArtifactSaved: StudioArtifactSaved,
 studioEditPreviewed: StudioEditPreviewed,
@@ -3623,6 +3646,7 @@ repoRebuildStarted: "repo://rebuild_started",
 repoValidationFailed: "repo://validation_failed",
 requestReturned: "request://returned",
 requestUpdated: "request://updated",
+runPlanUpdated: "run://plan_updated",
 studioArtifactLoaded: "studio://artifact_loaded",
 studioArtifactSaved: "studio://artifact_saved",
 studioEditPreviewed: "studio://edit_previewed",
@@ -3648,11 +3672,11 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const SEAL_REFUSED = "seal_refused" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 
 /** user-defined types **/
 
@@ -7136,6 +7160,28 @@ export type RunPage = { rows: RunSummary[];
  * Matching runs across all pages
  */
 total: number }
+/**
+ * One run's plan, latest revision
+ */
+export type RunPlan = { runId: string; 
+/**
+ * 1 for the first `plan_set`; each later one adds a revision
+ */
+revision: number; steps: RunPlanStep[]; updatedAt: number }
+export type RunPlanStep = { title: string; kind: RunStepKind; evidence: RunStepEvidence; note: string | null; status: RunStepStatus; 
+/**
+ * A short result, set by `plan_update`
+ */
+result: string | null; 
+/**
+ * Evidence files, relative to the agent's work folder
+ * (`browser/<run>/<step>-<n>.png`)
+ */
+files: string[] }
+/**
+ * `run://plan_updated`: a run's plan was set or a step changed
+ */
+export type RunPlanUpdated = { agentId: string; conversationId: string; runId: string; plan: RunPlan }
 export type RunStats = { totalRuns: number; completed: number; failed: number; cancelled: number; totalTokensIn: number; totalTokensOut: number; totalCostUsd: number; avgDurationMs: number }
 export type RunStatus = 
 /**
@@ -7146,6 +7192,19 @@ export type RunStatus =
  * Ended by threshold compaction; a child run continues it
  */
 "compacted"
+/**
+ * What a step should leave behind
+ */
+export type RunStepEvidence = "screenshot" | "none"
+/**
+ * What a step does: decides which risky calls it covers
+ */
+export type RunStepKind = "navigate" | "read" | "fill" | "submit" | 
+/**
+ * The person does it (sign-in, payment, posting): never screenshotted
+ */
+"handover" | "approval" | "delegate" | "verify" | "cleanup" | "other"
+export type RunStepStatus = "pending" | "doing" | "done" | "skipped" | "failed"
 export type RunSummary = { id: string; agentId: string; conversationId: string; status: RunStatus; 
 /**
  * The user input that started the run

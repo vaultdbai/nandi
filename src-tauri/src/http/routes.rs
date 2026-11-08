@@ -84,6 +84,10 @@ pub fn api() -> Router<AppState> {
         .route("/runs/{id}", get(run_detail))
         // Body `{ path }`; returns the host path or null
         .route("/runs/{id}/file", post(run_file))
+        // Returns `RunPlan | null`
+        .route("/runs/{id}/plan", get(run_plan))
+        // Body `{ path }`; returns a `data:` URL or null
+        .route("/runs/{id}/screenshot", post(run_screenshot))
         .route("/runs", get(list_all_runs))
         .route("/runs/stats", get(run_stats))
         .route("/audit/{kind}", get(list_audit_log))
@@ -375,6 +379,19 @@ async fn run_file(
     Json(body): Json<RunFileBody>,
 ) -> impl IntoResponse {
     ApiResult(snapshots::run_file_path(&state, id, body.path).await)
+}
+
+async fn run_plan(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    ApiResult(snapshots::get_run_plan(&state, id).await)
+}
+
+/// One of the run's screenshots, for its plan card
+async fn run_screenshot(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<RunFileBody>,
+) -> impl IntoResponse {
+    ApiResult(snapshots::run_screenshot(&state, id, body.path).await)
 }
 
 // --- Runs + audit ----------------------------------------------------------

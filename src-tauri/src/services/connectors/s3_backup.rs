@@ -552,6 +552,13 @@ impl S3BackupConnector {
         for pattern in EXCLUDES {
             args.extend(["--exclude".to_string(), (*pattern).to_string()]);
         }
+        // Agents' screenshots stay on this computer (kept 30 days)
+        if let Some(pattern) = crate::utils::nandi_config::work_dir()
+            .ok()
+            .and_then(|work| crate::services::run_plan::screenshots::backup_exclude(&path, &work))
+        {
+            args.extend(["--exclude".to_string(), pattern]);
+        }
         let stdout = self
             .host
             .aws(CliCall {

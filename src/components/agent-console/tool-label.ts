@@ -18,6 +18,9 @@ const DETAIL: Record<string, string | null> = {
   post_review: 'url',
   web_search: 'query',
   web_read_page: 'url',
+  // The run plan
+  plan_set: null,
+  plan_update: null,
   // Studio's own tools
   nandi_list_runs: null,
   nandi_get_run: 'run_id',

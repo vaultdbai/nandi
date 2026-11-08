@@ -1136,7 +1136,17 @@ async fn the_delegation_tool_waits_for_approval() {
         json!([
             {
                 "text": "Let me ask a colleague.",
+                // A delegation needs a `delegate` step being done; its
+                // approval still applies on top (run plans)
                 "toolCalls": [{
+                    "tool": "plan_set",
+                    "args": {"steps": [{"title": "Ask for a summary", "kind": "delegate"}]},
+                    "result": "unused"
+                }, {
+                    "tool": "plan_update",
+                    "args": {"step": 1, "status": "doing"},
+                    "result": "unused"
+                }, {
                     "tool": "delegate_to_agent",
                     "args": {"capability": "summarize", "input": {"text": "hello"}},
                     "result": "unused"
@@ -1214,7 +1224,7 @@ async fn the_delegation_tool_waits_for_approval() {
         .unwrap();
     let tool_result = messages
         .iter()
-        .find(|m| m.role == db::role::TOOL_CALL)
+        .find(|m| m.role == db::role::TOOL_CALL && m.metadata["tool"] == "delegate_to_agent")
         .expect("a tool call message");
     assert!(
         tool_result.metadata.to_string().contains("hello") || tool_result.content.contains("hello"),

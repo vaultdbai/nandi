@@ -94,6 +94,7 @@ pub mod repos;
 // Wave 2B redesign (Track A)
 #[allow(dead_code)]
 pub mod run_analysis;
+pub mod run_plan;
 pub mod runs;
 pub mod runtimes;
 // v1: Requests and their Steps, projected from the task tables (task 3)
@@ -351,6 +352,8 @@ impl AppState {
                 log::error!("Failed to resume requests: {e}");
             }
         });
+        // Screenshots in runs' files are kept 30 days
+        run_plan::screenshots::start_cleanup(state.runtime());
         // The email check, every few minutes while a mailbox is connected
         email::start_scheduler(&state);
         workspace::start_scheduler(&state);

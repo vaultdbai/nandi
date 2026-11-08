@@ -141,7 +141,7 @@ Shared preconditions used below:
   - `runtime` (`native`, `claude-code`, `codex`, `gemini-cli`, `custom:<id>`) and `runtime_config` (`model`, `provider: bedrock`, `gateway: litellm`, `aws_profile`, `aws_region`, `fallback: native`, `max_turns`). Agents always run in a container; there is no placement key. `runtime: nandi` is invalid ("'nandi' is unknown: use native, claude-code, codex, gemini-cli, or custom:<id>").
   - `connectors` (with `folders` for the filesystem connector).
   - `tags` (list of labels, e.g. `[finance]`): policies aim at them with `applies_to: [tag:<label>]` (PO-04); trimmed, empty ones dropped.
-  - Turn policy keys from unknown frontmatter: `max_turns` (default 50), `max_cost_usd` (default 5.0), `middlewares` (default `[verify_on_stop, compaction]`; `[]` disables both; `read_only` adds plan mode), `compaction` (`trigger_tokens`, `preserve_recent_percent` 30, `iterative_merge` true), `memory_disabled` (default false).
+  - Turn policy keys from unknown frontmatter: `max_turns` (default 50), `max_cost_usd` (default 5.0), `middlewares` (default `[verify_on_stop, compaction, plan_first, finish_check]`; `[]` disables them; `read_only` adds plan mode), `compaction` (`trigger_tokens`, `preserve_recent_percent` 30, `iterative_merge` true), `memory_disabled` (default false).
   - Body = system prompt; `instructions.md` is appended. Unknown keys are kept on save.
 - **Where:** `src-tauri/src/services/domain/agent.rs` (`Frontmatter`, `SKILL_FRONTMATTER_KEYS`, `RuntimeConfig`), `src-tauri/src/services/orchestrator/middleware.rs` (`TurnPolicy::from_extra`), `src-tauri/src/services/agent_memory.rs` (`MEMORY_DISABLED_KEY`), `src-tauri/src/services/a2a/clarification.rs` (`POLICY_KEY`).
 - **Preconditions:** None.
@@ -395,6 +395,38 @@ Shared preconditions used below:
   - A mail or calendar check run has no `pilot_browser__*` tools.
   - A dev home that seeded the old Browser agent still has its folder; delete `.nandi/agents/browser` by hand.
 - **Automation:** Covered by: `builtin_agents.rs` (`the_chief_of_staff_browses_with_the_visible_browser`, `the_shipped_skills_parse_and_stay_short`), `orchestrator.rs` (`a_check_started_run_never_gets_pilot_tools`) | Layer: unit | Gap: no automated run with the real browser pilot.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### AG-32 — Run plans: plan first, live checklist, finish check
+
+- **What:** Every agent plans a run that changes something, step by step, and finishes it.
+  - Two host tools for every agent (not in email or calendar check runs, and not when the agent has no tools): `plan_set` (steps with title, kind `navigate | read | fill | submit | handover | approval | delegate | verify | cleanup | other`, `evidence: screenshot | none`, note) and `plan_update` (one step's status `pending | doing | done | skipped | failed`, result, evidence files). One step is `doing` at a time. A later `plan_set` replaces the plan and keeps the old one as a revision. Plans are run data (`run_plans`), never files.
+  - **Plan first:** the first call that changes something (browser clicking, typing, submitting; `work_start`, `work_update`, `delegate_to_agent`; writing files outside the notes) is refused with "make a plan first (`plan_set`)" while the run has no plan. Reads, notes and the plan tools never are. Shell commands aren't classified.
+  - **Risky steps are the user's:** a browser submit, payment, secret or hand-over runs only while the `doing` step is `submit`, `handover` or `approval`; `work_start` and `delegate_to_agent` only while it is `delegate` or `approval`. The refusal says which kind to plan. Existing approvals still apply on top.
+  - **Finish check:** once per run, a run that ends with open steps, a `screenshot` step without evidence, or its browser still open gets one continuation asking it to finish, close the browser and report each step.
+  - **Safety net:** when a run ends, Nandi closes that agent's browser pages (the profile stays).
+  - **Screenshots:** saved as `browser/<run>/<step>-<n>.png` in the agent's files and linked to the `doing` step; refused during a `handover` step; removed after 30 days; never in an S3 backup.
+  - **Live checklist:** a card with each step, its status, its result and screenshot thumbnails (click opens the file on the desktop), in the chat, the intake thread and Run Detail › Overview, updated by `run://plan_updated`. `plan_update` calls are hidden; a refused plan call shows as a tool card.
+  - skill.md `middlewares:` without `plan_first` / `finish_check` turns them off (they are on by default).
+- **Where:** `src-tauri/src/services/run_plan/` (`mod.rs` model, `classify.rs` what changes something, `store.rs`, `tool.rs`, `screenshots.rs`), `services/orchestrator/run_plan.rs` (the two middlewares), `services/orchestrator.rs` (`run_call`, `plan_check`, `screenshot_call`), `services/pilots/browser.rs` (`close_pages`, `has_open_pages`), `services/events.rs` (`turn_done`), `src/components/agent-console/RunPlanCard.tsx`, `run-plan-model.ts`, `src/hooks/useRunPlan.ts`.
+- **Preconditions:** An agent with tools (Chief of Staff with the Browser pilot started for the browser cases).
+- **Steps:**
+  1. Ask Chief of Staff to open example.com and take a screenshot of the home page.
+  2. Watch the chat while it works.
+  3. Open the run in Run Detail.
+  4. Ask an agent to write a file without planning (a custom agent whose instructions say "never plan").
+- **Expected:**
+  - Step 1–2: it sets a plan first; a "Plan" card shows each step, the one being done highlighted, and a thumbnail under the screenshot step. The browser closes at the end, and the last message reports each step.
+  - Step 3: the same card is on the Overview tab.
+  - Step 4: the write is refused with "make a plan first"; the agent plans and the write runs.
+- **Edge / negative cases:**
+  - A payment click while a `navigate` step is doing is refused, naming `submit`, `handover` or `approval`.
+  - A screenshot during a `handover` step is refused.
+  - Ending with a step still pending: one continuation, never two.
+  - Email and calendar check runs have no plan tools and are never refused for lack of a plan.
+  - A screenshot older than 30 days shows "Screenshot removed".
+- **Automation:** Covered by: Rust tests in `run_plan/` (`plan_update_moves_one_step_at_a_time`, `effects_table`, `risky_calls_need_a_covering_doing_step`, `a_handover_step_refuses_screenshots`, `old_screenshots_go_and_recent_ones_stay`, `backups_leave_browser_files_out`, `a_later_plan_set_is_kept_as_a_revision`), `orchestrator.rs` (`a_change_before_a_plan_is_blocked_and_runs_once_planned`, `a_risky_call_needs_a_doing_step_that_covers_it`, `the_finish_check_fires_once_per_run`, `an_open_browser_gets_the_finish_check_and_is_closed_at_run_end`, `screenshots_are_named_per_step_linked_and_refused_during_a_handover`, `a_check_started_run_has_no_plan_tools`), Vitest `run-plan-model.test.ts`, `RunPlanCard.test.tsx` | Layer: unit, integration | Gap: no automated run with the real browser pilot.
 - **Needs relay:** no
 - **Status:** Shipped
 

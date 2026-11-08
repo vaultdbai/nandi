@@ -67,6 +67,7 @@ import {
 } from '@/components/agent-console/RunDetailTabs'
 import { MarkdownContent } from '@/components/agent-console/MarkdownContent'
 import { RunKeyResults } from '@/components/agent-console/RunKeyResults'
+import { RunPlanCard } from '@/components/agent-console/RunPlanCard'
 import { RunTimeline } from '@/components/agent-console/RunTimeline'
 import { isActive } from '@/components/agent-console/run-detail-model'
 import {
@@ -553,6 +554,7 @@ function RunDetailLayout({
             <div className="p-4">
               <TabsContent value="overview" className="flex flex-col gap-4">
                 <RunAsk runId={run.id} />
+                <RunPlanCard runId={run.id} />
                 {run.compactionSummary && (
                   <CompactedContext summary={run.compactionSummary} />
                 )}

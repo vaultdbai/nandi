@@ -127,6 +127,11 @@ mod tests {
         known.extend(tools::specs().into_iter().map(|s| s.name));
         known.insert(crate::services::a2a::tool::NAME.to_string());
         known.extend(
+            crate::services::run_plan::tool::specs()
+                .into_iter()
+                .map(|s| s.name),
+        );
+        known.extend(
             SKILL_FRONTMATTER_KEYS
                 .iter()
                 .map(|(key, _)| key.to_string()),

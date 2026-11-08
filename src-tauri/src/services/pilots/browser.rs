@@ -78,6 +78,22 @@ pub fn is_browser(pilot_id: &str) -> bool {
     pilot_id == BROWSER || pilot_id == HEADLESS
 }
 
+/// Playwright's screenshot tool (named per run step by the orchestrator)
+pub const SCREENSHOT_TOOL: &str = "browser_take_screenshot";
+/// Playwright's tools that only look (its read-only hint), for deciding
+/// outside a running browser what a call does
+const READ_TOOLS: &[&str] = &[
+    "browser_snapshot",
+    SCREENSHOT_TOOL,
+    "browser_console_messages",
+    "browser_network_requests",
+    "browser_wait_for",
+];
+
+pub fn is_read_tool(tool: &str) -> bool {
+    READ_TOOLS.contains(&tool)
+}
+
 /// The egress proxy's name for `agent`'s `pilot` browser
 pub fn identity(pilot: &str, agent: &str) -> String {
     format!("{pilot}:{agent}")
@@ -132,6 +148,53 @@ static PAGES: LazyLock<std::sync::Mutex<HashMap<(String, String), String>>> =
 pub(super) fn remember_page(agent: &str, pilot: &str, url: &str) {
     if let Ok(mut pages) = PAGES.lock() {
         pages.insert((agent.to_string(), pilot.to_string()), url.to_string());
+    }
+}
+
+/// `(agent, pilot)` browsers with pages open: set by any call but
+/// `browser_close`, cleared by it (the run plan's finish check and the
+/// close at run end)
+static OPEN_PAGES: LazyLock<std::sync::Mutex<std::collections::HashSet<(String, String)>>> =
+    LazyLock::new(Default::default);
+
+pub(crate) fn set_pages_open(agent: &str, pilot: &str, open: bool) {
+    let mut pages = OPEN_PAGES.lock().unwrap_or_else(|e| e.into_inner());
+    let key = (agent.to_string(), pilot.to_string());
+    if open {
+        pages.insert(key);
+    } else {
+        pages.remove(&key);
+    }
+}
+
+/// Whether one of `agent`'s browsers still has pages open
+pub fn has_open_pages(agent: &str) -> bool {
+    OPEN_PAGES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .any(|(a, _)| a == agent)
+}
+
+/// Closes `agent`'s browser pages (a run of its ended). The profile stays,
+/// and so does the browser's server, ready for the next run.
+pub async fn close_pages(agent: &str) {
+    let open: Vec<String> = OPEN_PAGES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .filter(|(a, _)| a == agent)
+        .map(|(_, pilot)| pilot.clone())
+        .collect();
+    for pilot in open {
+        set_pages_open(agent, &pilot, false);
+        let mut pool = POOL.lock().await;
+        if let Some(instance) = pool.get_mut(&(agent.to_string(), pilot.clone())) {
+            match run_tool(instance, "browser_close", &json!({})).await {
+                Ok(_) => log::info!("Closed the {pilot} pages of '{agent}': its run ended"),
+                Err(e) => log::warn!("Couldn't close the {pilot} pages of '{agent}': {e}"),
+            }
+        }
     }
 }
 
@@ -692,6 +755,7 @@ pub async fn stop_all(pilot: &str) {
             if let Ok(mut pages) = PAGES.lock() {
                 pages.remove(&key);
             }
+            set_pages_open(&key.0, &key.1, false);
             if let Ok(host) = host() {
                 host.proxy_tokens.revoke(&identity(pilot, &key.0));
             }
@@ -856,6 +920,7 @@ pub async fn call(
         }
     }
     let (mut content, is_error) = run_tool(instance, tool, &args).await?;
+    set_pages_open(agent_id, pilot, tool != "browser_close");
     if let Some(url) = refusal::page_url(&content) {
         remember_page(agent_id, pilot, &url);
     }

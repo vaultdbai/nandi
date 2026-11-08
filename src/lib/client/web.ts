@@ -137,6 +137,9 @@ export const webClient: NandiClient = {
   getRunDetail: runId => request('GET', `/runs/${id(runId)}`),
   resolveRunFile: (runId, path) =>
     request('POST', `/runs/${id(runId)}/file`, { path }),
+  getRunPlan: runId => request('GET', `/runs/${id(runId)}/plan`),
+  getRunScreenshot: (runId, path) =>
+    request('POST', `/runs/${id(runId)}/screenshot`, { path }),
   // It would open on the host, not in this browser
   openRunFile: () => Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
   getWorkflows: () => request('GET', '/workflows'),

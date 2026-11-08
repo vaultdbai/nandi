@@ -33,6 +33,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     };
     use crate::services::repo_service::{RepoRebuildCompleted, RepoRebuildStarted};
     use crate::services::requests::local::RequestUpdated;
+    use crate::services::run_plan::RunPlanUpdated;
     use crate::services::studio::{StudioArtifactLoaded, StudioArtifactSaved, StudioEditPreviewed};
     use crate::services::team::TeamChanged;
     use crate::services::triggers::{
@@ -88,6 +89,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             snapshots::get_dashboard_snapshot,
             snapshots::get_run_detail,
             snapshots::resolve_run_file,
+            snapshots::get_run_plan,
+            snapshots::get_run_screenshot,
             snapshots::open_run_file,
             snapshots::get_workflows,
             snapshots::get_studio_conversations,
@@ -493,6 +496,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             RequestUpdated,
             // Live UI
             LiveChange,
+            // Run plans
+            RunPlanUpdated,
         ])
         // The code a person-to-person command's error starts with when no
         // relay is connected (`services::relay::unavailable`)

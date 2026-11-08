@@ -397,7 +397,8 @@ async fn a_hand_over_waits_for_the_person_and_takes_their_answer() {
     state.store().load().unwrap();
     let poster = Agent::from_skill_md(
         AgentId::parse("poster").unwrap(),
-        "---\nname: Poster\npilots: [browser]\n---\nYou post.\n",
+        // Without the run plan's rules: this is about the hand-over itself
+        "---\nname: Poster\npilots: [browser]\nmiddlewares: [verify_on_stop]\n---\nYou post.\n",
     )
     .unwrap();
     state.store().repos().agents.save(&poster).unwrap();

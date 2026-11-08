@@ -110,6 +110,7 @@ import type {
   RunDetail,
   RunFilters,
   RunPage,
+  RunPlan,
   RunStats,
   RunSummary,
   SavedTrigger,
@@ -302,6 +303,16 @@ export interface NandiClient {
   getRunDetail(runId: string): Promise<Result<RunDetail, string>>
   /** The host path of a file the run touched, `null` if it isn't there */
   resolveRunFile(
+    runId: string,
+    path: string
+  ): Promise<Result<string | null, string>>
+  /** The run's step-by-step plan, `null` when it has none */
+  getRunPlan(runId: string): Promise<Result<RunPlan | null, string>>
+  /**
+   * One of the run's screenshots (`browser/<run>/…`) as a `data:` URL, for
+   * its plan card; `null` once it's gone
+   */
+  getRunScreenshot(
     runId: string,
     path: string
   ): Promise<Result<string | null, string>>

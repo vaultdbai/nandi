@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import type { AgentInfo, UiMessage } from '@/types/agent'
 import { ChatMessageItem } from './ChatMessageItem'
 import { WorkingRow } from './WorkingDots'
+import { hiddenPlanCalls } from './run-plan-model'
 import { showsWorking, turnStartedAt } from './working'
 
 interface MessageListProps {
@@ -43,6 +44,8 @@ export function MessageList({
   const dots = showsWorking(messages, working)
   const scrollKey = `${messages.length}:${lastMessage?.kind === 'agent' ? lastMessage.content.length : 0}:${dots}`
   const hasFocusTarget = messages.some(m => m.id === focusMessageId)
+  // One checklist card per run stands for its plan tool calls
+  const hiddenPlan = hiddenPlanCalls(messages)
 
   useEffect(() => {
     if (hasFocusTarget) {
@@ -62,6 +65,7 @@ export function MessageList({
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-6 select-text">
         {messages
           .filter(m => m.kind !== 'agent' || m.content.length > 0)
+          .filter(m => !hiddenPlan.has(m.id))
           .map(message => {
             const focused = message.id === focusMessageId
             return (

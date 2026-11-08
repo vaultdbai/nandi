@@ -253,6 +253,61 @@ pub async fn run_file_path(
         .map(|file| file.to_string_lossy().into_owned()))
 }
 
+/// The run's plan, if it has one (its checklist card)
+pub async fn get_run_plan(
+    state: &AppState,
+    run_id: String,
+) -> Result<Option<crate::services::run_plan::RunPlan>, String> {
+    state
+        .db()
+        .call(move |conn| crate::services::run_plan::store::current(conn, &run_id))
+        .await
+}
+
+/// Screenshots shown as thumbnails are at most this big
+const MAX_SCREENSHOT_BYTES: u64 = 8 * 1024 * 1024;
+
+/// One of the run's screenshots (`browser/<run>/…`) as a `data:` URL, for
+/// its plan card; `None` once it's gone (removed after 30 days)
+pub async fn run_screenshot(
+    state: &AppState,
+    run_id: String,
+    path: String,
+) -> Result<Option<String>, String> {
+    use base64::Engine;
+    if !crate::services::run_plan::screenshots::is_run_screenshot(&run_id, &path) {
+        return Err(format!("'{path}' isn't one of this run's screenshots"));
+    }
+    let id = run_id.clone();
+    let run = state
+        .db()
+        .call(move |conn| db::get_run(conn, &id))
+        .await?
+        .ok_or_else(|| format!("Run {run_id} not found"))?;
+    let workdir = crate::utils::nandi_config::work_dir()?.join(&run.agent_id);
+    let Some(file) = workdir_file(&workdir, &path) else {
+        return Ok(None);
+    };
+    tokio::task::spawn_blocking(move || {
+        let Ok(meta) = std::fs::metadata(&file) else {
+            return Ok(None);
+        };
+        if !meta.is_file() || meta.len() > MAX_SCREENSHOT_BYTES {
+            return Ok(None);
+        }
+        let bytes = std::fs::read(&file).map_err(|e| format!("Couldn't read {path}: {e}"))?;
+        let mime = if path.to_ascii_lowercase().ends_with(".png") {
+            "image/png"
+        } else {
+            "image/jpeg"
+        };
+        let data = base64::engine::general_purpose::STANDARD.encode(bytes);
+        Ok(Some(format!("data:{mime};base64,{data}")))
+    })
+    .await
+    .map_err(|e| format!("Reading the screenshot failed: {e}"))?
+}
+
 pub async fn get_run_detail(state: &AppState, run_id: String) -> Result<RunDetail, String> {
     let db = state.db();
     let id = run_id.clone();

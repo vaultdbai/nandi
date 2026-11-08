@@ -955,7 +955,7 @@ impl EventBus {
         status: RunStatus,
         error: Option<String>,
     ) -> Result<(), String> {
-        let run_id = ctx.run_id.clone();
+        let (run_id, agent_id) = (ctx.run_id.clone(), ctx.agent_id.clone());
         let ctx = ctx.clone();
         self.commit(move |conn, outbox| {
             for approval in db::pending_approvals_for_run(conn, &ctx.run_id)? {
@@ -1082,6 +1082,9 @@ impl EventBus {
         .await?;
         // Sites a person allowed once in this run end with it
         crate::services::pilots::sites::end_run(&run_id);
+        // So do its browser pages (the profile stays): the run plan's
+        // safety net when the agent didn't close them
+        crate::services::pilots::browser::close_pages(&agent_id).await;
         Ok(())
     }
 

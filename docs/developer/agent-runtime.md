@@ -100,13 +100,13 @@ loop:
   post_turn × N, in reverse ─▶ continue_with? append it and loop : (text-only? completed)
 ```
 
-**Pipeline order** (`register_default_middlewares`): `turn_limit`, `cost_cap`, `token_cap` (always), `memory` (unless `memory_disabled`), `compaction` and `verify_on_stop` (when enabled), `read_only` (when declared). Studio, and agent IDs with no definition, keep only the three built-in limits, since the others work on an agent folder.
+**Pipeline order** (`register_default_middlewares`): `turn_limit`, `cost_cap`, `token_cap` (always), `memory` (unless `memory_disabled`), `compaction`, `finish_check` and `verify_on_stop` (when enabled), `plan_first` (when enabled), `read_only` (when declared). See [Run plans](#run-plans). Studio, and agent IDs with no definition, keep only the three built-in limits, since the others work on an agent folder.
 
 **skill.md keys** (unknown frontmatter, read from `Agent::extra()`; an invalid value logs a warning and takes its default):
 
 | Key               | Default                                                                        | Notes                                                       |
 | ----------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| `middlewares`     | not declared: `verify_on_stop`, `compaction`                                   | `[]` disables both; `[read_only]` is plan mode              |
+| `middlewares`     | not declared: `verify_on_stop`, `compaction`, `plan_first`, `finish_check`     | `[]` disables them; `[read_only]` is plan mode              |
 | `max_turns`       | 50                                                                             | Steps per run (a positive integer)                          |
 | `max_cost_usd`    | 5.0                                                                            | Stops once the run's summed `cost_usd` passes it            |
 | `compaction`      | `{ trigger_tokens: null, preserve_recent_percent: 30, iterative_merge: true }` | Each key falls back on its own; `null`: window minus buffer |
@@ -127,6 +127,35 @@ loop:
 **Limits.** `turn_limit` aborts before step `max_turns` (a run takes at most `max_turns` steps; this replaced the old fixed 25-step cap), `cost_cap` once the cost is over `max_cost_usd`, and `token_cap` once the estimate is over the context window (a hard stop; compaction normally starts a child run well before).
 
 **Compaction seam.** A `pre_turn` that replaces `ctx.run_id` (compaction's child run) makes the child task return `RunEnd::ContinuedIn(new_id)`. The orchestrator moves its current turn to the child run (so the queue keeps waiting and Approve/Cancel target the child) and starts executing it. The middleware must persist the child run as `running` and end the parent itself (e.g. as `compacted`).
+
+### Run plans
+
+A run plans how it does its part, step by step (task-x-run-plans-and-playbooks, step 1). The work plan (a Request's steps) says who does what; the run plan says how one run gets there.
+
+| Piece                  | Where                               | What it does                                                                                                                      |
+| ---------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Model                  | `services/run_plan/mod.rs`          | `RunPlan`, `RunPlanStep`; parses `plan_set`, applies `plan_update` (one `doing` step at a time), open steps, missing evidence     |
+| What changes something | `services/run_plan/classify.rs`     | `effect(tool, args, browser_action)` → none, changes, or risky; `check_call` says why a call may not run. One table test          |
+| Store                  | `services/run_plan/store.rs`        | `run_plans(run_id, revision, steps, updated_at)`; `plan_set` adds a revision; a compacted run's child carries the plan on         |
+| Tools                  | `services/run_plan/tool.rs`         | `plan_set`, `plan_update`, answered on the host in `run_call`; emits `run://plan_updated` with the whole plan                     |
+| Middlewares            | `services/orchestrator/run_plan.rs` | `plan_first` (`blocks_call`) and `finish_check` (`post_turn`), on by default like `verify_on_stop`                                |
+| Screenshots            | `services/run_plan/screenshots.rs`  | `browser/<run>/<step>-<n>.png`, linked to the `doing` step; removed after 30 days (startup, then daily); excluded from S3 backups |
+| Browser                | `services/pilots/browser.rs`        | `has_open_pages`, `close_pages`; `EventBus::turn_done` closes the agent's pages when a run ends (the profile stays)               |
+
+**Per-call rules.** `TurnMiddleware::blocks_call(&CallCheck)` gets the call's effect, whether it is the browser's screenshot, and the run's plan (read per call, so a `plan_set` earlier in the same step counts). `run_call` checks it right after `allows_tool` and before access grants and approvals, so a refused call is never offered for approval. The model reads the reason in the call's error result.
+
+| Effect  | Calls                                                                                                    | Rule                                                                     |
+| ------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| none    | reads, `mail_*`, `work_open`, people tools, `tool_search`, shell, notes and memory writes, browser reads | never refused (a screenshot is refused while a `handover` step is doing) |
+| changes | browser clicking and typing, uploads; `work_update`; file writes outside `my-notes/`, `notes/`, `memory` | needs a plan                                                             |
+| risky   | browser submit, pay, secret, hand-over                                                                   | needs a `doing` step of kind `submit`, `handover` or `approval`          |
+| risky   | `work_start`, `delegate_to_agent`                                                                        | needs a `doing` step of kind `delegate` or `approval`                    |
+
+**Finish check.** When a step would end the run with open steps, a done `screenshot` step without files, or the agent's browser still open, `continue_with` asks it to finish, close the browser and report each step. It fires once per run: `refresh_turn` sets `finish_check_fired` when a user-role message starting with `FINISH_CHECK_LEAD` is in the run, so it holds across an approval's suspension. It is registered before `verify_on_stop`, so its `post_turn` runs after it and joins the two continuations.
+
+**Not applied:** Studio, agents without a definition, runs the email or calendar check started (`execute_run` drops both middlewares; `data_run_allows` leaves the plan tools out), and agents with no tools (no plan tools offered).
+
+**UI.** `RunPlanCard` (`components/agent-console/`) renders a run's plan from `useRunPlan(runId)` (`getRunPlan`, cached forever and replaced by `run://plan_updated` in `lib/agent-sync.ts`). `MessageList` shows the run's last successful `plan_set` call as the card and hides `plan_update` calls (`hiddenPlanCalls` in `run-plan-model.ts`); Run Detail shows it on Overview. Thumbnails come from `getRunScreenshot` (a `data:` URL, only for `browser/<run>/` images).
 
 ## Schema
 

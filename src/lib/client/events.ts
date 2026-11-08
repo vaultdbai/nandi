@@ -71,6 +71,7 @@ import type {
   PendingManualStep,
   ManualStepCompleted,
   RepoLlmConfigStatus,
+  RunPlanUpdated,
 } from '@/lib/bindings'
 
 interface NandiEventMap {
@@ -108,6 +109,8 @@ interface NandiEventMap {
   'repo://validation_failed': RepoValidationFailed
   /** A file the app shows changed on disk, and who changed it */
   'live://changed': LiveChange
+  /** A run's plan was set or one of its steps changed */
+  'run://plan_updated': RunPlanUpdated
   'pilot://changed': PilotChanged
   /** One line of a pilot's install output, while it installs */
   'pilot://install_output': {

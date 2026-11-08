@@ -332,7 +332,7 @@ Recent releases add a few behaviours you control from `skill.md`:
 ```yaml
 max_turns: 50 # stop the run after this many steps (default 50)
 max_cost_usd: 5.0 # stop once the run has cost this much (default $5)
-middlewares: [verify_on_stop, compaction] # the default; [] turns both off
+middlewares: [verify_on_stop, compaction, plan_first, finish_check] # the default; [] turns them off
 memory_disabled: false # true: no memory.md for this agent
 ```
 

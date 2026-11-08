@@ -868,6 +868,18 @@ CREATE TABLE IF NOT EXISTS intake_queue (
 CREATE INDEX IF NOT EXISTS idx_intake_queue_status ON intake_queue(status, at);
 CREATE INDEX IF NOT EXISTS idx_intake_queue_thread ON intake_queue(thread_id);
 CREATE INDEX IF NOT EXISTS idx_request_steps_task ON request_steps(task_id);
+
+-- A run's plan, step by step (`services::run_plan`): run data, never the
+-- gold copy. Each `plan_set` adds a revision; `plan_update` changes the
+-- latest one.
+CREATE TABLE IF NOT EXISTS run_plans (
+    run_id     TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    revision   INTEGER NOT NULL,
+    -- `RunPlanStep[]` JSON
+    steps      TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (run_id, revision)
+);
 "#;
 
 pub type DbConn = PooledConnection<SqliteConnectionManager>;

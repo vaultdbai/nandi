@@ -7,6 +7,8 @@ import { AgentAvatar } from './AgentAvatar'
 import { ApprovalRequestCard } from './ApprovalRequestCard'
 import { AttachmentChip } from './AttachmentChip'
 import { MarkdownContent } from './MarkdownContent'
+import { RunPlanCard } from './RunPlanCard'
+import { isPlanCard } from './run-plan-model'
 import { ToolCallCard } from './ToolCallCard'
 
 interface ChatMessageItemProps {
@@ -94,7 +96,12 @@ function MessageBody({
     case 'agent':
       return <MarkdownContent content={message.content} />
     case 'toolCall':
-      return <ToolCallCard message={message} />
+      // The run's plan: a live checklist instead of the call's record
+      return isPlanCard(message) && message.runId !== null ? (
+        <RunPlanCard runId={message.runId} />
+      ) : (
+        <ToolCallCard message={message} />
+      )
     case 'approval':
       return <ApprovalRequestCard message={message} onDecide={onDecide} />
     case 'error':

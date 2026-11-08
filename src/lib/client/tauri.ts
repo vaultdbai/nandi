@@ -49,6 +49,8 @@ export const tauriClient: NandiClient = {
   getDashboardSnapshot: dayStart => commands.getDashboardSnapshot(dayStart),
   getRunDetail: runId => commands.getRunDetail(runId),
   resolveRunFile: (runId, path) => commands.resolveRunFile(runId, path),
+  getRunPlan: runId => commands.getRunPlan(runId),
+  getRunScreenshot: (runId, path) => commands.getRunScreenshot(runId, path),
   openRunFile: (runId, path, reveal) =>
     commands.openRunFile(runId, path, reveal),
   getWorkflows: () => commands.getWorkflows(),

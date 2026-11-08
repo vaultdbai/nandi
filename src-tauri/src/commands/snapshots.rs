@@ -49,6 +49,27 @@ pub async fn get_run_detail(
     snapshots::get_run_detail(&state, run_id).await
 }
 
+/// The run's plan (its checklist card), if it has one
+#[tauri::command]
+#[specta::specta]
+pub async fn get_run_plan(
+    state: State<'_, AppState>,
+    run_id: String,
+) -> Result<Option<crate::services::run_plan::RunPlan>, String> {
+    snapshots::get_run_plan(&state, run_id).await
+}
+
+/// One of the run's screenshots as a `data:` URL (a plan card thumbnail)
+#[tauri::command]
+#[specta::specta]
+pub async fn get_run_screenshot(
+    state: State<'_, AppState>,
+    run_id: String,
+    path: String,
+) -> Result<Option<String>, String> {
+    snapshots::run_screenshot(&state, run_id, path).await
+}
+
 /// The host path of a file a run touched, if it exists
 #[tauri::command]
 #[specta::specta]

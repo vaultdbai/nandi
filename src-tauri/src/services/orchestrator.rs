@@ -38,6 +38,7 @@ pub mod compaction;
 pub mod middleware;
 // Wave B
 #[allow(dead_code)]
+pub mod run_plan;
 pub mod runtime_router;
 #[allow(dead_code)]
 pub mod tool_search;
@@ -78,7 +79,7 @@ use crate::services::runtimes::AgentRuntimes;
 use crate::services::secrets::Secrets;
 use crate::services::studio;
 use middleware::{
-    AgentTurnAborted, ExitReason, MiddlewareDecision, ToolResultSummary, TurnContext,
+    AgentTurnAborted, CallCheck, ExitReason, MiddlewareDecision, ToolResultSummary, TurnContext,
     TurnMiddleware, TurnPolicy, TurnResult,
 };
 
@@ -734,7 +735,13 @@ async fn execute_run(
     // Harness runs are attributed by the router; this one runs natively
     crate::services::harness::evidence::attribute_run(&deps.bus.db, run_id, "native", None, None)
         .await?;
-    let (policy, pipeline) = run_pipeline(deps, agent_id);
+    let (policy, mut pipeline) = run_pipeline(deps, agent_id);
+    // The email and calendar checks' runs have no plan tools: their work
+    // goes through the intake, and their notes writes need no plan
+    if data_run(deps, run_id).await.is_some() {
+        pipeline
+            .retain(|m| ![middleware::PLAN_FIRST, middleware::FINISH_CHECK].contains(&m.name()));
+    }
     let model = (agent_id != STUDIO_AGENT_ID)
         .then(|| deps.store.skill(agent_id).ok().map(|skill| skill.model))
         .flatten()
@@ -1071,6 +1078,9 @@ fn refresh_turn(
             step_of.insert(call.id, meta.step);
         }
     }
+    turn.finish_check_fired = messages
+        .iter()
+        .any(|m| m.role == role::USER && m.content.starts_with(run_plan::FINISH_CHECK_LEAD));
     turn.last_tool_results.clear();
     turn.files_touched.clear();
     for message in messages.iter().filter(|m| m.role == role::TOOL_CALL) {
@@ -1408,6 +1418,14 @@ async fn llm_step(
             let mut tools = tool_search::step_tools(&ctx.run_id, tools);
             // After deferral: never hidden behind `tool_search`
             offer_ask_requester(slots, &ctx.run_id, &ctx.agent_id, &mut tools).await;
+            // The run plan's tools, for every run with tools but the checks'
+            if data_run.is_none() && !tools.is_empty() {
+                for spec in crate::services::run_plan::tool::specs() {
+                    if !tools.iter().any(|t| t.name == spec.name) {
+                        tools.push(spec);
+                    }
+                }
+            }
             (skill.model.clone(), system, tools)
         }
     };
@@ -1934,6 +1952,27 @@ async fn run_call(
         return Ok(true);
     }
 
+    // The run plan's rules: plan first, risky steps are the user's, no
+    // screenshots while the person has the browser
+    let check = plan_check(deps, ctx, call).await;
+    let check_view = CallCheck {
+        tool: &call.tool,
+        effect: check.effect,
+        screenshot: check.screenshot,
+        plan: check.plan.as_ref(),
+    };
+    if let Some((_, why)) = middleware::blocking_call(pipeline, &check_view) {
+        if existing.is_none() {
+            bus.tool_call(ctx, call).await?;
+        }
+        let outcome = ToolOutcome {
+            result: why,
+            is_error: true,
+        };
+        bus.tool_result(ctx, call, &outcome).await?;
+        return Ok(true);
+    }
+
     // A connector the agent hasn't been granted: the person chooses first
     // (`services::access`); grants are read on every call
     let mut allowed_connectors: Option<Vec<String>> = None;
@@ -1992,6 +2031,12 @@ async fn run_call(
     } else {
         data_run(deps, &ctx.run_id).await
     };
+    // Screenshots go into the run's files, named for the current step
+    let screenshot = check
+        .screenshot
+        .then(|| screenshot_call(ctx, call, check.plan.as_ref()))
+        .flatten();
+    let call = screenshot.as_ref().map_or(call, |(call, _)| call);
     let outcome = match engine {
         // A check-started run: nothing but the notes and that check's
         // tools, even if a model names another one
@@ -2067,6 +2112,12 @@ async fn run_call(
         }
         // Deferred loading (Track E): answered here, never in a container
         _ if call.tool == tool_search::TOOL_SEARCH_NAME => tool_search::call(bus, ctx, &call.args),
+        // The run plan: on the host, for every agent
+        _ if ctx.agent_id != STUDIO_AGENT_ID
+            && crate::services::run_plan::tool::is_plan_tool(&call.tool) =>
+        {
+            crate::services::run_plan::tool::call(bus, ctx, &call.tool, &call.args).await
+        }
         // Studio's read-only tools: answered on the host, whatever the engine
         _ if ctx.agent_id == STUDIO_AGENT_ID && studio::tools::is_studio_tool(&call.tool) => {
             match app_state(deps) {
@@ -2111,7 +2162,77 @@ async fn run_call(
         Engine::Llm => execute_tool(deps, ctx, call).await?,
     };
     bus.tool_result(ctx, call, &outcome).await?;
+    if let (Some((_, file)), false) = (&screenshot, outcome.is_error) {
+        crate::services::run_plan::tool::link_screenshot(bus, ctx, file).await;
+    }
     Ok(true)
+}
+
+/// What the run plan's rules look at for one call
+struct PlanCheck {
+    effect: crate::services::run_plan::classify::Effect,
+    screenshot: bool,
+    plan: Option<crate::services::run_plan::RunPlan>,
+}
+
+/// Classifies `call` and reads the run's plan (Studio has neither)
+async fn plan_check(deps: &RunDeps, ctx: &RunContext, call: &PlannedCall) -> PlanCheck {
+    use crate::services::run_plan::classify::{self, Effect};
+    if ctx.agent_id == STUDIO_AGENT_ID {
+        return PlanCheck {
+            effect: Effect::None,
+            screenshot: false,
+            plan: None,
+        };
+    }
+    let browser_tool = pilots::tools::parse_tool_name(&call.tool)
+        .filter(|(pilot, _)| pilots::browser::is_browser(pilot));
+    let action = browser_tool.map(|(pilot, tool)| {
+        let secret_names: Vec<String> = deps
+            .store
+            .agent(&ctx.agent_id)
+            .ok()
+            .and_then(|agent| {
+                agent
+                    .capabilities()
+                    .pilot_options(pilot)
+                    .map(|o| o.secrets.keys().cloned().collect())
+            })
+            .unwrap_or_default();
+        pilots::browser::action(
+            tool,
+            &call.args,
+            pilots::browser::is_read_tool(tool),
+            &secret_names,
+        )
+    });
+    PlanCheck {
+        effect: classify::effect(&call.tool, &call.args, action),
+        screenshot: browser_tool.is_some_and(|(_, tool)| tool == pilots::browser::SCREENSHOT_TOOL),
+        plan: crate::services::run_plan::tool::current(&deps.bus, &ctx.run_id).await,
+    }
+}
+
+/// `call` (the browser's screenshot) saving to `browser/<run>/<step>-<n>.png`
+/// in the agent's work folder, with that name
+fn screenshot_call(
+    ctx: &RunContext,
+    call: &PlannedCall,
+    plan: Option<&crate::services::run_plan::RunPlan>,
+) -> Option<(PlannedCall, String)> {
+    use crate::services::run_plan::screenshots;
+    let workdir = crate::utils::nandi_config::work_dir()
+        .ok()?
+        .join(&ctx.agent_id);
+    let step = plan.and_then(|p| p.current()).map_or(0, |(n, _)| n);
+    let name = screenshots::next_name(&workdir, &ctx.run_id, step);
+    let mut call = call.clone();
+    if !call.args.is_object() {
+        call.args = serde_json::json!({});
+    }
+    call.args["filename"] = serde_json::Value::from(name.clone());
+    call.args["type"] = serde_json::Value::from("png");
+    Some((call, name))
 }
 
 /// Executes a model-requested tool in the agent's container.
@@ -3172,6 +3293,302 @@ mod middleware_tests {
         state.shutdown();
     }
 
+    fn tool_calls_of(messages: &[MessageRow]) -> Vec<ToolCallMeta> {
+        messages
+            .iter()
+            .filter(|m| m.role == role::TOOL_CALL)
+            .map(|m| serde_json::from_value(m.metadata.clone()).unwrap())
+            .collect()
+    }
+
+    async fn plan_of(state: &AppState, run_id: &str) -> Option<crate::services::run_plan::RunPlan> {
+        crate::services::run_plan::tool::current(state.bus(), run_id).await
+    }
+
+    /// Plan first, end to end: the real pipeline, the canned engine
+    #[tokio::test]
+    async fn a_change_before_a_plan_is_blocked_and_runs_once_planned() {
+        let (state, sink) = setup(json!({
+            "agent": [
+                {
+                    "text": "Reading, then writing.",
+                    "toolCalls": [
+                        { "tool": "read_file", "args": { "path": "a.md" }, "result": "hello" },
+                        { "tool": "write_file", "args": { "path": "a.md", "content": "bye" }, "result": "ok" }
+                    ]
+                },
+                {
+                    "text": "Planning.",
+                    "toolCalls": [
+                        { "tool": "plan_set", "args": { "steps": [{ "title": "Rewrite a.md", "kind": "fill" }] }, "result": "" },
+                        { "tool": "plan_update", "args": { "step": 1, "status": "doing" }, "result": "" },
+                        { "tool": "write_file", "args": { "path": "a.md", "content": "bye" }, "result": "ok" },
+                        { "tool": "plan_update", "args": { "step": 1, "status": "done", "result": "Rewritten" }, "result": "" }
+                    ]
+                },
+                { "text": "Done: a.md is rewritten." }
+            ]
+        }));
+        save_agent(
+            &state,
+            "writer",
+            "middlewares: [plan_first, finish_check]\n",
+        );
+        start(&state, "writer", "r1").await;
+        execute_run(&deps(&state), &DelegationSlot::default(), "writer", "r1")
+            .await
+            .unwrap();
+        assert_eq!(run_of(&state, "r1").await.status, RunStatus::Completed);
+
+        let calls = tool_calls_of(&messages_of(&state, "r1").await);
+        let tools: Vec<_> = calls.iter().map(|c| c.tool.as_str()).collect();
+        assert_eq!(
+            tools,
+            [
+                "read_file",
+                "write_file",
+                "plan_set",
+                "plan_update",
+                "write_file",
+                "plan_update"
+            ]
+        );
+        assert!(!calls[0].is_error, "reads never need a plan");
+        assert!(calls[1].is_error);
+        assert!(calls[1]
+            .result
+            .as_deref()
+            .unwrap()
+            .contains("make a plan first (`plan_set`)"));
+        assert!(calls[2]
+            .result
+            .as_deref()
+            .unwrap()
+            .starts_with("Run plan (revision 1)"));
+        assert_eq!(calls[4].result.as_deref(), Some("ok"));
+        let plan = plan_of(&state, "r1").await.unwrap();
+        assert_eq!(
+            plan.steps[0].status,
+            crate::services::run_plan::RunStepStatus::Done
+        );
+        assert_eq!(plan.steps[0].result.as_deref(), Some("Rewritten"));
+        assert!(sink.names().contains(&"run://plan_updated"));
+        // Everything was done: the finish check had nothing to ask
+        assert!(!messages_of(&state, "r1")
+            .await
+            .iter()
+            .any(|m| m.content.starts_with(run_plan::FINISH_CHECK_LEAD)));
+        state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn a_risky_call_needs_a_doing_step_that_covers_it() {
+        let delegate = json!({ "target": "lena", "input": { "text": "Please review" } });
+        let (state, _) = setup(json!({
+            "agent": [
+                {
+                    "text": "Planning.",
+                    "toolCalls": [
+                        { "tool": "plan_set", "args": { "steps": [
+                            { "title": "Read the brief", "kind": "read" },
+                            { "title": "Ask Lena", "kind": "delegate" }
+                        ] }, "result": "" },
+                        { "tool": "plan_update", "args": { "step": 1, "status": "doing" }, "result": "" },
+                        { "tool": "delegate_to_agent", "args": delegate.clone(), "result": "sent" },
+                        { "tool": "plan_update", "args": { "step": 1, "status": "done" }, "result": "" },
+                        { "tool": "plan_update", "args": { "step": 2, "status": "doing" }, "result": "" },
+                        { "tool": "delegate_to_agent", "args": delegate, "result": "sent" },
+                        { "tool": "plan_update", "args": { "step": 2, "status": "done" }, "result": "" }
+                    ]
+                },
+                { "text": "Asked Lena." }
+            ]
+        }));
+        save_agent(&state, "asker", "middlewares: [plan_first]\n");
+        start(&state, "asker", "r1").await;
+        execute_run(&deps(&state), &DelegationSlot::default(), "asker", "r1")
+            .await
+            .unwrap();
+        let calls = tool_calls_of(&messages_of(&state, "r1").await);
+        let delegations: Vec<String> = calls
+            .iter()
+            .filter(|c| c.tool == "delegate_to_agent")
+            .map(|c| c.result.clone().unwrap_or_default())
+            .collect();
+        assert_eq!(delegations.len(), 2);
+        assert!(
+            delegations[0].contains("starts work or delegates it"),
+            "{}",
+            delegations[0]
+        );
+        assert!(delegations[0].contains("(1, Read the brief) is a `read` step"));
+        assert!(delegations[0].contains("`delegate` or `approval`"));
+        assert!(!delegations[1].starts_with("Blocked"), "{}", delegations[1]);
+        state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn the_finish_check_fires_once_per_run() {
+        let (state, _) = setup(json!({
+            "agent": [
+                {
+                    "text": "Planning.",
+                    "toolCalls": [
+                        { "tool": "plan_set", "args": { "steps": [
+                            { "title": "Open the site", "kind": "navigate", "evidence": "screenshot" },
+                            { "title": "Close the browser", "kind": "cleanup" }
+                        ] }, "result": "" },
+                        { "tool": "plan_update", "args": { "step": 1, "status": "done" }, "result": "" }
+                    ]
+                },
+                { "text": "All done." },
+                { "text": "Really done." },
+                { "text": "Never reached." }
+            ]
+        }));
+        save_agent(&state, "browser-user", "");
+        start(&state, "browser-user", "r1").await;
+        execute_run(
+            &deps(&state),
+            &DelegationSlot::default(),
+            "browser-user",
+            "r1",
+        )
+        .await
+        .unwrap();
+        assert_eq!(run_of(&state, "r1").await.status, RunStatus::Completed);
+        let messages = messages_of(&state, "r1").await;
+        let checks: Vec<_> = messages
+            .iter()
+            .filter(|m| m.role == role::USER && m.content.starts_with(run_plan::FINISH_CHECK_LEAD))
+            .collect();
+        assert_eq!(checks.len(), 1, "fires once");
+        assert!(
+            checks[0].content.contains("Step 2 is still open"),
+            "{}",
+            checks[0].content
+        );
+        assert!(checks[0].content.contains("Step 1 needs a screenshot"));
+        let replies: Vec<_> = messages
+            .iter()
+            .filter(|m| m.role == role::ASSISTANT)
+            .map(|m| m.content.as_str())
+            .collect();
+        assert_eq!(replies, ["Planning.", "All done.", "Really done."]);
+        // A run resumed later sees it fired (it's in the run's messages)
+        let mut turn = turn("browser-user", "r1");
+        refresh_turn(&mut turn, &run_of(&state, "r1").await, &messages, 3);
+        assert!(turn.finish_check_fired);
+        state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn an_open_browser_gets_the_finish_check_and_is_closed_at_run_end() {
+        let (state, _) =
+            setup(json!({ "agent": [{ "text": "Found it." }, { "text": "Closed." }] }));
+        save_agent(&state, "surfer", "");
+        start(&state, "surfer", "r1").await;
+        pilots::browser::set_pages_open("surfer", "browser", true);
+        execute_run(&deps(&state), &DelegationSlot::default(), "surfer", "r1")
+            .await
+            .unwrap();
+        let messages = messages_of(&state, "r1").await;
+        let check = messages
+            .iter()
+            .find(|m| m.content.starts_with(run_plan::FINISH_CHECK_LEAD))
+            .expect("the finish check fired");
+        assert!(
+            check.content.contains("close it (`browser_close`)"),
+            "{}",
+            check.content
+        );
+        // Nandi closed the pages when the run ended
+        assert_eq!(run_of(&state, "r1").await.status, RunStatus::Completed);
+        assert!(!pilots::browser::has_open_pages("surfer"));
+        state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn screenshots_are_named_per_step_linked_and_refused_during_a_handover() {
+        let agent = "plan-shot-tester";
+        let shot = |name: &str| {
+            json!({
+                "tool": "pilot_browser__browser_take_screenshot",
+                "args": { "filename": name, "type": "png" },
+                "result": "Took the screenshot"
+            })
+        };
+        let (state, _) = setup(json!({
+            "agent": [
+                {
+                    "text": "Planning.",
+                    "toolCalls": [
+                        { "tool": "plan_set", "args": { "steps": [
+                            { "title": "Open the site", "kind": "navigate", "evidence": "screenshot" },
+                            { "title": "Sign in", "kind": "handover" }
+                        ] }, "result": "" },
+                        { "tool": "plan_update", "args": { "step": 1, "status": "doing" }, "result": "" },
+                        shot("browser/r-shot/1-1.png"),
+                        { "tool": "plan_update", "args": { "step": 1, "status": "done" }, "result": "" },
+                        { "tool": "plan_update", "args": { "step": 2, "status": "doing" }, "result": "" },
+                        shot("browser/r-shot/2-1.png"),
+                        { "tool": "plan_update", "args": { "step": 2, "status": "done" }, "result": "" }
+                    ]
+                },
+                { "text": "Signed in." }
+            ]
+        }));
+        save_agent(&state, agent, "middlewares: [plan_first]\n");
+        start(&state, agent, "r-shot").await;
+        execute_run(&deps(&state), &DelegationSlot::default(), agent, "r-shot")
+            .await
+            .unwrap();
+        let calls = tool_calls_of(&messages_of(&state, "r-shot").await);
+        let shots: Vec<_> = calls
+            .iter()
+            .filter(|c| c.tool.ends_with("browser_take_screenshot"))
+            .collect();
+        assert_eq!(shots.len(), 2);
+        assert_eq!(shots[0].args["filename"], "browser/r-shot/1-1.png");
+        assert!(!shots[0].is_error, "{:?}", shots[0].result);
+        assert!(shots[1].is_error);
+        assert!(shots[1]
+            .result
+            .as_deref()
+            .unwrap()
+            .contains("no screenshots during a handover"));
+        let plan = plan_of(&state, "r-shot").await.unwrap();
+        assert_eq!(plan.steps[0].files, ["browser/r-shot/1-1.png"]);
+        assert!(plan.steps[1].files.is_empty());
+        if let Ok(work) = crate::utils::nandi_config::work_dir() {
+            let _ = std::fs::remove_dir_all(work.join(agent));
+        }
+        state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn the_default_pipeline_has_the_run_plan_middlewares() {
+        let state = AppState::for_tests(vec![]);
+        save_agent(&state, "helper", "");
+        save_agent(&state, "opted-out", "middlewares: [verify_on_stop]\n");
+        let deps = deps(&state);
+        let names = |agent: &str| -> Vec<&'static str> {
+            run_pipeline(&deps, agent)
+                .1
+                .iter()
+                .map(|m| m.name())
+                .collect()
+        };
+        let helper = names("helper");
+        let at = |name| helper.iter().position(|n| *n == name).unwrap();
+        assert!(at(middleware::FINISH_CHECK) < at(middleware::VERIFY_ON_STOP));
+        assert!(helper.contains(&middleware::PLAN_FIRST));
+        let opted_out = names("opted-out");
+        assert!(!opted_out.contains(&middleware::PLAN_FIRST));
+        assert!(!opted_out.contains(&middleware::FINISH_CHECK));
+        state.shutdown();
+    }
+
     #[tokio::test]
     async fn the_default_pipeline_leaves_a_run_unchanged() {
         let (state, sink) = setup(two_steps());
@@ -3472,6 +3889,16 @@ mod data_run_tests {
             let name = pilots::tools::tool_name("browser", tool);
             for source in [SourceType::Email, SourceType::CalendarCheck] {
                 assert!(!data_run_allows(source, &name), "{source:?} {name}");
+            }
+        }
+    }
+
+    /// Their work goes through the intake: no run plan there
+    #[test]
+    fn a_check_started_run_has_no_plan_tools() {
+        for tool in crate::services::run_plan::tool::specs() {
+            for source in [SourceType::Email, SourceType::CalendarCheck] {
+                assert!(!data_run_allows(source, &tool.name), "{source:?}");
             }
         }
     }

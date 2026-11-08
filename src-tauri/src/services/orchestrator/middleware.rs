@@ -17,10 +17,12 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use super::compaction::{CompactionMiddleware, CompactionPolicy};
+use super::run_plan::{FinishCheckMiddleware, PlanFirstMiddleware};
 use super::verify_on_stop::VerifyOnStopMiddleware;
 use super::RunDeps;
 use crate::services::agent_memory::MemoryMiddleware;
 use crate::services::events::NandiEvent;
+use crate::services::run_plan::{classify::Effect, RunPlan};
 
 pub type MiddlewareError = String;
 
@@ -33,6 +35,9 @@ pub const DEFAULT_MAX_COST_USD: f64 = 5.0;
 pub const VERIFY_ON_STOP: &str = "verify_on_stop";
 pub const COMPACTION: &str = "compaction";
 pub const READ_ONLY: &str = "read_only";
+/// The run plan's rules (`run_plan.rs`)
+pub const PLAN_FIRST: &str = "plan_first";
+pub const FINISH_CHECK: &str = "finish_check";
 
 /// What a `pre_turn` lets happen next
 #[derive(Debug, Clone, PartialEq)]
@@ -75,6 +80,9 @@ pub struct TurnContext {
     pub system_extras: Vec<String>,
     /// Set by verify-on-stop once it has fired this run
     pub verify_fired: bool,
+    /// The finish check's continuation is in the run already (rebuilt from
+    /// its messages, so it holds across a suspension)
+    pub finish_check_fired: bool,
     pub policy: TurnPolicy,
 }
 
@@ -127,13 +135,28 @@ pub trait TurnMiddleware: Send + Sync {
     fn allows_tool(&self, _tool: &str) -> bool {
         true
     }
+
+    /// The run plan's rules: why this call may not run now, if it may not
+    fn blocks_call(&self, _call: &CallCheck<'_>) -> Option<String> {
+        None
+    }
+}
+
+/// One tool call about to run, with what it does and the run's plan
+#[derive(Debug, Clone, Copy)]
+pub struct CallCheck<'a> {
+    pub tool: &'a str,
+    pub effect: Effect,
+    /// The browser's screenshot tool
+    pub screenshot: bool,
+    pub plan: Option<&'a RunPlan>,
 }
 
 /// The turn policy declared in skill.md (unknown frontmatter keys, read
 /// from `Agent::extra`):
 ///
 /// ```yaml
-/// middlewares: [verify_on_stop, compaction]   # [] disables both
+/// middlewares: [verify_on_stop, compaction, plan_first, finish_check]   # [] disables them
 /// max_turns: 50
 /// max_cost_usd: 5.0
 /// compaction: { trigger_tokens: null, preserve_recent_percent: 30, iterative_merge: true }
@@ -142,7 +165,8 @@ pub trait TurnMiddleware: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnPolicy {
-    /// `None`: not declared (the defaults: verify_on_stop and compaction)
+    /// `None`: not declared (the defaults: verify_on_stop, compaction,
+    /// plan_first and finish_check)
     pub middlewares: Option<Vec<String>>,
     pub max_turns: u32,
     pub max_cost_usd: f64,
@@ -199,7 +223,7 @@ impl TurnPolicy {
     pub fn enables(&self, name: &str) -> bool {
         match &self.middlewares {
             Some(list) => list.iter().any(|m| m == name),
-            None => name == VERIFY_ON_STOP || name == COMPACTION,
+            None => DEFAULT_MIDDLEWARES.contains(&name),
         }
     }
 }
@@ -212,7 +236,7 @@ fn invalid(key: &str, value: &serde_yaml::Value, default: impl std::fmt::Debug) 
 /// declared" (the defaults)
 fn parse_middlewares(value: &serde_yaml::Value) -> Option<Vec<String>> {
     let Some(items) = value.as_sequence() else {
-        invalid("middlewares", value, "verify_on_stop, compaction");
+        invalid("middlewares", value, DEFAULT_MIDDLEWARES.join(", "));
         return None;
     };
     let mut names = Vec::with_capacity(items.len());
@@ -267,7 +291,16 @@ fn parse_compaction(value: &serde_yaml::Value) -> CompactionPolicy {
 }
 
 /// The names skill.md `middlewares:` may list
-pub const OPTIONAL_MIDDLEWARES: [&str; 3] = [VERIFY_ON_STOP, COMPACTION, READ_ONLY];
+pub const OPTIONAL_MIDDLEWARES: [&str; 5] = [
+    VERIFY_ON_STOP,
+    COMPACTION,
+    READ_ONLY,
+    PLAN_FIRST,
+    FINISH_CHECK,
+];
+
+/// The optional middlewares an agent gets when skill.md doesn't declare any
+pub const DEFAULT_MIDDLEWARES: [&str; 4] = [VERIFY_ON_STOP, COMPACTION, PLAN_FIRST, FINISH_CHECK];
 
 /// The middlewares that hold for every run, Studio included: limits that
 /// need no agent definition
@@ -408,6 +441,16 @@ pub fn blocked_tool_result(middleware: &str, tool: &str) -> String {
     } else {
         format!("Blocked by the '{middleware}' middleware: '{tool}' was not run.")
     }
+}
+
+/// The first middleware whose run plan rules block `call`, and why
+pub fn blocking_call(
+    pipeline: &[Box<dyn TurnMiddleware>],
+    call: &CallCheck<'_>,
+) -> Option<(&'static str, String)> {
+    pipeline
+        .iter()
+        .find_map(|m| m.blocks_call(call).map(|why| (m.name(), why)))
 }
 
 /// The first middleware that blocks `tool`, if any
@@ -581,8 +624,10 @@ impl TurnMiddleware for ReadOnlyMiddleware {
 }
 
 /// The pipeline for one run, in `pre_turn` order: the built-in limits, then
-/// memory (Track C), compaction and verify-on-stop (Track D) when enabled,
-/// then plan mode when declared.
+/// memory (Track C), compaction, the finish check and verify-on-stop
+/// (Track D) when enabled, plan first when enabled, then plan mode when
+/// declared. The finish check comes before verify-on-stop so its
+/// `post_turn` runs after it and joins their continuations.
 pub fn register_default_middlewares(
     deps: &RunDeps,
     policy: &TurnPolicy,
@@ -605,8 +650,14 @@ pub fn register_default_middlewares(
             policy.compaction.clone(),
         )));
     }
+    if policy.enables(FINISH_CHECK) {
+        list.push(Box::new(FinishCheckMiddleware::new(deps.clone())));
+    }
     if policy.enables(VERIFY_ON_STOP) {
         list.push(Box::new(VerifyOnStopMiddleware::new(deps.clone())));
+    }
+    if policy.enables(PLAN_FIRST) {
+        list.push(Box::new(PlanFirstMiddleware::default()));
     }
     if policy.enables(READ_ONLY) {
         list.push(Box::new(ReadOnlyMiddleware::default()));
@@ -631,6 +682,7 @@ mod tests {
         );
         let policy = TurnPolicy::default();
         assert!(policy.enables(VERIFY_ON_STOP) && policy.enables(COMPACTION));
+        assert!(policy.enables(PLAN_FIRST) && policy.enables(FINISH_CHECK));
         assert!(!policy.enables(READ_ONLY));
     }
 

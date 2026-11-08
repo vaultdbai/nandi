@@ -25,6 +25,7 @@ use crate::services::relay::{
 };
 use crate::services::repo_service::{RepoRebuildCompleted, RepoRebuildStarted};
 use crate::services::requests::local::RequestUpdated;
+use crate::services::run_plan::RunPlanUpdated;
 use crate::services::studio::{StudioArtifactLoaded, StudioArtifactSaved, StudioEditPreviewed};
 use crate::services::team::TeamChanged;
 use crate::services::triggers::{TriggerError, TriggerFired, TriggerRateLimited, TriggersChanged};
@@ -132,6 +133,8 @@ tauri_events!(
     RequestUpdated,
     // Live UI
     LiveChange,
+    // Run plans
+    RunPlanUpdated,
 );
 
 #[cfg(test)]
