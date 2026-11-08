@@ -244,7 +244,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-30 | Appearance › Companion settings                                          | Duplicate of AI-17                                   | —          | no          |                                        |
 | ST-31 | Preferences persistence                                                  | Shipped                                              | api        | no          |                                        |
 | SH-35 | Home: connect your email to-do                                           | Shipped                                              | unit       | no          |                                        |
-| SH-36 | Work tray: Needs you, Working, Done                                      | Prototype                                            | unit       | no          |                                        |
+| SH-36 | Work tray: Needs you, Working, Done                                      | Shipped                                              | unit       | no          |                                        |
 
 ### Agents, chat and runs
 

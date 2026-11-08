@@ -1,6 +1,6 @@
-# UI review: reachability and clicks (work tray prototype)
+# UI review: reachability and clicks (work tray)
 
-Branch `ui/work-tray`. A prototype to try and keep or drop. Nothing here is merged.
+Shipped on `main` (859c7b7, 2026-11-08). The follow-ups under "Next" are still open.
 
 ## What the review found
 
@@ -15,7 +15,7 @@ Branch `ui/work-tray`. A prototype to try and keep or drop. Nothing here is merg
 | 7   | Panel visibility resets on every launch.                                                                                                                                      | `ui-store.ts`                                               |
 | 8   | Comments and the test catalog said "seven pages"; there are eight since Notes.                                                                                                | `navigation-store.ts`, `Sidebar.tsx`, `docs/testing/` SH-08 |
 
-## What the branch changes
+## What shipped
 
 - **Work tray** on the right of every page (`src/components/tray/`). Three groups in small type with coloured dots: Needs you (amber), Working (blue, pulsing), Done (green; red when failed; grey when cancelled; quieter text). Each group has a count and **All**. A tool approval has ✓ and ✗ in the row. Rows open their page. Data is Home's own feed (`useHomeFeed`), so the tray and Home can't disagree.
 - **Toggle:** title-bar button on the right, the tray's own close button, Ctrl+2, View › Toggle Work Tray, and palette commands. This reverses SH-07's "no right panel" decision.
@@ -29,7 +29,7 @@ Branch `ui/work-tray`. A prototype to try and keep or drop. Nothing here is merg
 - A right pane is resizable and hideable with the same pattern as the left one, and needs no new layout rules.
 - One place for the three states reads in a single glance; two trays split the "Needs you" and "Done" story.
 
-## Next, if we keep it
+## Next
 
 1. Slim Home now that the tray carries Running and Recent: keep Ask, the digest, the email to-do and the Inbox; drop Running, Recent and the tiles.
 2. Remember both panes' visibility in preferences.

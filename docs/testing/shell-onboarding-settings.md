@@ -641,7 +641,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - No relay: the tray works the same; person-to-person rows just never appear.
 - **Automation:** Covered by: `src/components/tray/tray-model.test.ts` | Layer: unit | Gap: no render test of the tray yet.
 - **Needs relay:** no
-- **Status:** Prototype (branch `ui/work-tray`)
+- **Status:** Shipped
 
 ## 1.5 Command palette, commands and shortcuts
 
