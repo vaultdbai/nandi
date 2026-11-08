@@ -38,8 +38,15 @@ impl Batch<'_> {
             .join(" and ");
         let count = self.headers.len();
         let mut out = String::new();
+        // Older mail is never called new: the tray shows this first line
+        let what = if self.backfill {
+            "Older mail"
+        } else {
+            "Email check"
+        };
+        let new = if self.backfill { "" } else { "new " };
         out.push_str(&format!(
-            "Email check: {count} new email{} for {who} (the user; \"me\" in these emails).\n",
+            "{what}: {count} {new}email{} for {who} (the user; \"me\" in these emails).\n",
             if count == 1 { "" } else { "s" }
         ));
         if self.backfill {
@@ -123,6 +130,7 @@ mod tests {
             date: "2026-11-03T14:02:00Z".into(),
             preview: preview.into(),
             bulk: false,
+            unread: false,
             at: 0,
         }
         .tidy()

@@ -48,7 +48,7 @@ export function StepEmail({ onNext }: StepEmailProps) {
       : DEFAULT_INTERVAL_MINUTES
   const interval = intervalEdit ?? savedInterval
   const [backfillEdit, setBackfillEdit] = useState<BackfillRange | null>(null)
-  const backfill = backfillEdit ?? status.data?.backfillRange ?? 'everything'
+  const backfill = backfillEdit ?? status.data?.backfillRange ?? 'threeMonths'
 
   const toggle = (provider: MailProvider, on: boolean) =>
     setChosen(current =>

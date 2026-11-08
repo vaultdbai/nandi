@@ -241,6 +241,29 @@ async fn one_chief_of_staff_run_per_calendar_check_then_only_changes() {
 }
 
 #[tokio::test]
+async fn a_feed_that_starts_over_sends_only_what_changed() {
+    let mock = mock().await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, AccountKind::OutlookCalendar).await;
+    connected(&state, AccountKind::GoogleCalendar).await;
+    assert_eq!(check_calendars(&state).await.found, 3);
+
+    // The weekly window move (or a feed with no token) reads it all again
+    for kind in [AccountKind::OutlookCalendar, AccountKind::GoogleCalendar] {
+        save_setting(&state, kind.cursor_key(), Value::Null)
+            .await
+            .unwrap();
+    }
+    assert_eq!(check_calendars(&state).await, CheckOutcome::default());
+    assert_eq!(recorder.0.lock().unwrap().len(), 1, "no run for old events");
+    // ...and the feeds carry on from new cursors
+    for kind in [AccountKind::OutlookCalendar, AccountKind::GoogleCalendar] {
+        assert!(!load_cursor(&state, kind).await.is_null());
+    }
+    state.shutdown();
+}
+
+#[tokio::test]
 async fn the_tools_read_events_free_busy_and_file_text() {
     let mock = mock().await;
     let (state, _) = state_with(&mock).await;

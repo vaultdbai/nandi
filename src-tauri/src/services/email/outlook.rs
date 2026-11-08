@@ -17,7 +17,7 @@ use super::text::Address;
 
 /// Only these fields are read
 const SELECT: &str = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,\
-conversationId,bodyPreview,inferenceClassification";
+conversationId,bodyPreview,inferenceClassification,isRead";
 const FOLDERS: [(&str, Folder); 2] = [("inbox", Folder::Inbox), ("sentitems", Folder::Sent)];
 /// Pages per folder per check, at most
 const MAX_PAGES: usize = 40;
@@ -429,6 +429,8 @@ fn header(item: &Value, folder: Folder) -> Option<Header> {
             date: date.to_string(),
             preview: str_of(item, "bodyPreview").to_string(),
             bulk: str_of(item, "inferenceClassification").eq_ignore_ascii_case("other"),
+            unread: folder != Folder::Sent
+                && item.get("isRead").and_then(Value::as_bool) == Some(false),
             at: unix_of(date),
         }
         .tidy(),

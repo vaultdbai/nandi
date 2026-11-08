@@ -46,9 +46,9 @@ pub struct EmailSettings {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum BackfillRange {
+    #[default]
     ThreeMonths,
     Year,
-    #[default]
     Everything,
     Off,
 }
@@ -157,6 +157,9 @@ pub fn validate(interval_minutes: u32, watch: &[String]) -> Result<Vec<String>, 
 pub struct CheckState {
     #[serde(default)]
     pub last_checked_at: Option<Timestamp>,
+    /// Unix seconds: mail up to here has been handed over
+    #[serde(default)]
+    pub caught_up_to: Option<i64>,
     /// Emails handed to the Chief of Staff by the last check
     #[serde(default)]
     pub last_found: u32,

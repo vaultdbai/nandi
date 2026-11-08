@@ -67,6 +67,9 @@ use settings::{CheckState, EmailAccount};
 
 /// The first read (and a restart after an expired cursor) goes back this far
 pub const READ_WINDOW_DAYS: i64 = 14;
+/// How far before the last hand-over a check looks again, for mail that
+/// arrived while that check was running
+const CATCH_UP_SLACK_SECS: i64 = 60 * 60;
 /// How often the scheduler looks whether a check is due
 const TICK: Duration = Duration::from_secs(20);
 /// The first check after launch catches up from the cursor
@@ -759,7 +762,8 @@ async fn run_check(
     accounts: &[EmailAccount],
 ) -> CheckOutcome {
     let setup = state.email().setup();
-    let window_start = db::now_ms() / 1000 - READ_WINDOW_DAYS * 24 * 60 * 60;
+    let started = db::now_ms() / 1000;
+    let window_start = started - READ_WINDOW_DAYS * 24 * 60 * 60;
     let me: Vec<Identity> = settings
         .accounts
         .iter()
@@ -774,6 +778,8 @@ async fn run_check(
     let mut headers = Vec::new();
     let mut cursors = Vec::new();
     let mut first_read = false;
+    // Mailboxes read for the first time, and the oldest mail each listed
+    let mut first_reads = Vec::new();
     let mut checked = Vec::new();
     for account in accounts {
         let provider = account.provider;
@@ -782,14 +788,23 @@ async fn run_check(
         let mailbox = Mailbox::new(provider, &setup, state.secrets());
         match mailbox.changes(&cursor, window_start).await {
             Ok(changes) => {
+                if cursor.is_null() {
+                    let oldest = changes.headers.iter().map(|h| h.at).min();
+                    first_reads.push((provider, oldest.unwrap_or(window_start)));
+                }
                 let mut found = changes.headers;
+                // An expired cursor sends the provider back to the window:
+                // mail already handed over is never read again
+                if changes.restarted && !cursor.is_null() {
+                    found.retain(|h| !handed_over_before(h.at, check.caught_up_to));
+                }
                 // Cheap signals first, then the per-message header lookup
                 // for what's left (Outlook only)
                 found.retain(|h| filter.keep(h));
                 found.truncate(batch::MAX_BATCH * 2);
                 mailbox.mark_bulk(&mut found).await;
                 found.retain(|h| filter.keep(h));
-                first_read |= changes.restarted;
+                first_read |= cursor.is_null();
                 headers.extend(found);
                 cursors.push((provider, changes.cursor));
                 check.needs_sign_in = false;
@@ -810,6 +825,8 @@ async fn run_check(
     }
 
     headers.sort_by_key(|h| std::cmp::Reverse(h.at));
+    // Mail older than this was left out of the batch
+    let cut_at = headers.get(batch::MAX_BATCH).map(|h| h.at);
     let omitted = headers.len().saturating_sub(batch::MAX_BATCH);
     headers.truncate(batch::MAX_BATCH);
     let mut outcome = CheckOutcome {
@@ -855,6 +872,14 @@ async fn run_check(
                 log::warn!("Couldn't save the {} cursor: {e}", provider.name());
             }
         }
+        // The background read of older mail picks up where the first read
+        // stopped: no email twice, none skipped
+        for (provider, oldest) in first_reads {
+            backfill::begin(state, provider, backfill_start(oldest, cut_at)).await;
+        }
+        for (_, check) in checked.iter_mut().filter(|(_, c)| c.error.is_none()) {
+            check.caught_up_to = Some(started);
+        }
     }
     for (provider, mut check) in checked {
         if check.error.is_none() {
@@ -874,6 +899,18 @@ async fn run_check(
         }
     }
     outcome
+}
+
+/// Whether mail from `at` went to the Chief of Staff by the hand-over at
+/// `caught_up_to` (with slack for mail that arrived during that check)
+fn handed_over_before(at: i64, caught_up_to: Option<i64>) -> bool {
+    caught_up_to.is_some_and(|up_to| at < up_to - CATCH_UP_SLACK_SECS)
+}
+
+/// Where the background read of older mail starts after a first read: the
+/// oldest mail it listed, or just past the newest mail the batch left out
+fn backfill_start(oldest_listed: i64, cut_at: Option<i64>) -> i64 {
+    cut_at.map_or(oldest_listed, |cut| oldest_listed.max(cut + 1))
 }
 
 /// Checks every `interval` minutes while any mailbox is connected; the

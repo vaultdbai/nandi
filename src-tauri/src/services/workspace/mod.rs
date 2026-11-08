@@ -15,12 +15,14 @@
 //! connector in skill.md, asking first)
 //! ```
 //!
-//! Nothing is kept but the cursors and the notes the Chief of Staff writes.
+//! Nothing is kept but the cursors, fingerprints of the events already sent
+//! (`seen`) and the notes the Chief of Staff writes.
 
 pub mod accounts;
 pub mod batch;
 pub mod calendar;
 pub mod files;
+mod seen;
 pub mod tool;
 
 #[cfg(test)]
@@ -175,6 +177,10 @@ struct CheckState {
 
 fn state_key(kind: AccountKind) -> String {
     format!("workspace.{}.state", kind.id())
+}
+
+fn seen_key(kind: AccountKind) -> String {
+    format!("workspace.{}.seen", kind.id())
 }
 
 // ---------------------------------------------------------------------------
@@ -496,6 +502,7 @@ async fn connect(state: &AppState, kind: AccountKind) -> Result<(), String> {
     })?;
     if !same {
         save_setting(state, kind.cursor_key(), Value::Null).await?;
+        save_setting(state, seen_key(kind), Value::Null).await?;
     }
     save_setting(state, state_key(kind), Value::Null).await?;
     // Connecting is the person's say-so for the Chief of Staff (saved, like
@@ -520,11 +527,12 @@ async fn connect(state: &AppState, kind: AccountKind) -> Result<(), String> {
     Ok(())
 }
 
-/// Signs out: the keyring entry, the cursor, the account and its grants
+/// Signs out: the keyring entry, the cursor, the events seen, the account
+/// and its grants
 pub async fn disconnect(state: &AppState, kind: AccountKind) -> Result<WorkspaceStatus, String> {
     state.workspace().flows.cancel(&kind.token_entry());
     oauth::forget(&kind.token_entry(), state.secrets())?;
-    for key in [kind.cursor_key(), state_key(kind)] {
+    for key in [kind.cursor_key(), state_key(kind), seen_key(kind)] {
         state
             .db()
             .call(move |conn| db::delete_setting(conn, &key))
@@ -604,12 +612,14 @@ pub async fn check_calendars(state: &AppState) -> CheckOutcome {
     let now_secs = db::now_ms() / 1000;
     let mut events = Vec::new();
     let mut cursors = Vec::new();
+    let mut seens = Vec::new();
     let mut checked = Vec::new();
     let mut first_read = false;
     for account in &accounts {
         let kind = account.kind;
         let mut check: CheckState = load_setting(state, state_key(kind)).await;
         let cursor = load_cursor(state, kind).await;
+        let mut seen: seen::Seen = load_setting(state, seen_key(kind)).await;
         let api = service.api(kind, state.secrets());
         let base = service.base(kind);
         let calendar = calendar::Calendar {
@@ -619,10 +629,26 @@ pub async fn check_calendars(state: &AppState) -> CheckOutcome {
         };
         match calendar.changes(&cursor, now_secs).await {
             Ok(changes) => {
-                first_read |= changes.restarted;
-                let found = changes.events.len();
-                events.extend(changes.events);
-                cursors.push((kind, changes.cursor));
+                // Only the very first read is one; a feed starting over later
+                // sends only what changed since the last hand-over
+                first_read |= changes.restarted && seen.is_empty();
+                let fresh: Vec<_> = changes
+                    .events
+                    .iter()
+                    .filter(|e| !seen.knows(e))
+                    .cloned()
+                    .collect();
+                seen.record(&changes.events, changes.restarted);
+                let found = fresh.len();
+                events.extend(fresh);
+                // A feed that ended without a token keeps the last cursor
+                let next = if changes.cursor.is_null() {
+                    cursor
+                } else {
+                    changes.cursor
+                };
+                cursors.push((kind, next));
+                seens.push((kind, seen));
                 check.needs_sign_in = false;
                 check.error = None;
                 check.last_found = u32::try_from(found).unwrap_or(u32::MAX);
@@ -670,6 +696,12 @@ pub async fn check_calendars(state: &AppState) -> CheckOutcome {
         for (kind, cursor) in cursors {
             if let Err(e) = save_setting(state, kind.cursor_key(), cursor).await {
                 log::warn!("Couldn't save the {} cursor: {e}", kind.name());
+            }
+        }
+        for (kind, seen) in seens {
+            let value = serde_json::to_value(&seen).unwrap_or_default();
+            if let Err(e) = save_setting(state, seen_key(kind), value).await {
+                log::warn!("Couldn't save the {} events seen: {e}", kind.name());
             }
         }
     }

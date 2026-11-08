@@ -6,7 +6,7 @@
 //! | Outlook  | `GET /me/calendarView?startDateTime&endDateTime`    | `GET /me/calendarView/delta` over the window, then its deltaLink   | 410: restart   |
 //! | Google   | `GET calendars/primary/events?timeMin&timeMax`      | `GET calendars/primary/events?timeMin` for nextSyncToken, then `syncToken` | 410: restart |
 //!
-//! Only `GET` (`email::api`). Nothing is kept but the cursor; events live
+//! Only `GET` (`email::api`). Nothing is kept but the cursor (and `seen`); events live
 //! for one check or one tool call.
 
 use serde::{Deserialize, Serialize};

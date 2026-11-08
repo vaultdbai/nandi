@@ -370,7 +370,7 @@ async fn an_expired_delta_link_reads_the_window_again() {
     .unwrap();
     let outcome = check_all(&state).await;
     assert_eq!(outcome.found, 1, "Lena again, from the window");
-    assert!(recorder.runs()[0].1.contains("first read"));
+    assert!(!recorder.runs()[0].1.contains("first read"));
     let cursor: Value = load_setting(&state, MailProvider::Outlook.cursor_key()).await;
     assert!(cursor["inbox"].as_str().unwrap().ends_with("inbox-1"));
     state.shutdown();
@@ -719,7 +719,10 @@ async fn gmail_history_too_old_reads_the_window_again() {
     .await
     .unwrap();
     assert_eq!(check_all(&state).await.found, 1);
-    assert!(recorder.runs()[0].1.contains("first read"));
+    assert!(
+        !recorder.runs()[0].1.contains("first read"),
+        "only a new cursor is"
+    );
     let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
     assert_eq!(cursor, json!({"historyId": "100"}));
     state.shutdown();
@@ -1013,6 +1016,16 @@ async fn older_mail_is_read_oldest_ward_one_batch_a_pass_and_resumes() {
     let mock = mock(outlook_with_old_mail).await;
     let (state, recorder) = state_with(&mock).await;
     connected(&state, MailProvider::Outlook).await;
+    set_settings(
+        &state,
+        EmailSettingsInput {
+            interval_minutes: 30,
+            watch: Vec::new(),
+            backfill: BackfillRange::Everything,
+        },
+    )
+    .await
+    .unwrap();
     // Not before the first read
     assert_eq!(backfill::pass(&state).await, None);
     check_all(&state).await;
@@ -1024,6 +1037,8 @@ async fn older_mail_is_read_oldest_ward_one_batch_a_pass_and_resumes() {
         let runs = recorder.runs();
         let text = &runs.last().unwrap().1;
         assert!(text.contains("older mail (backfill)"), "{text}");
+        assert!(text.starts_with("Older mail: 1 email for"), "{text}");
+        assert!(!text.contains("new email"), "older mail is never new");
         assert!(text.contains("never as a to-do"));
         assert!(text.contains(&format!("Old item {id}")));
         // Its own position, saved: a restart carries on from here
@@ -1051,6 +1066,88 @@ async fn older_mail_is_read_oldest_ward_one_batch_a_pass_and_resumes() {
         .iter()
         .all(|(method, _)| method == "GET"));
     state.shutdown();
+}
+
+#[tokio::test]
+async fn older_mail_starts_where_the_first_read_stopped() {
+    let mock = mock(outlook_with_old_mail).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    check_all(&state).await;
+    // Not 14 days back: the oldest mail the first read listed (hours ago)
+    let before = backfill_of(&state).await.before.unwrap();
+    assert!(before > unix_now() - 2 * 86_400, "{before}");
+    state.shutdown();
+}
+
+/// `outlook_with_old_mail`, but older reads return only a message on the
+/// `lt` boundary itself, as a provider that rounds would
+fn outlook_boundary_only(req: &Req) -> (u16, Value) {
+    let filter = req.query.get("$filter").cloned().unwrap_or_default();
+    match after_marker(&filter, "receivedDateTime lt ") {
+        Some(before) if req.path == "/graph/me/mailFolders/inbox/messages" => {
+            let mut message = graph_message("edge", "Ana", "On the edge", "focused", 0);
+            message["receivedDateTime"] = json!(before);
+            (200, json!({ "value": [message] }))
+        }
+        _ => outlook_with_old_mail(req),
+    }
+}
+
+#[tokio::test]
+async fn older_mail_never_hands_over_the_boundary_email_again() {
+    let mock = mock(outlook_boundary_only).await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    check_all(&state).await;
+    let runs = recorder.runs().len();
+    let before = backfill_of(&state).await.before.unwrap();
+    assert_eq!(backfill::pass(&state).await, None);
+    assert_eq!(recorder.runs().len(), runs, "no run for the boundary email");
+    assert_eq!(backfill_of(&state).await.before, Some(before - 1));
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn an_expired_cursor_after_a_hand_over_sends_no_old_mail() {
+    let mock = mock(outlook_api).await;
+    let (state, recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    assert_eq!(check_all(&state).await.found, 2, "Lena and the sent reply");
+    let graph = format!("{}/graph", mock.base.lock().unwrap());
+    save_setting(
+        &state,
+        MailProvider::Outlook.cursor_key(),
+        json!({
+            "inbox": format!("{graph}/me/mailFolders/inbox/messages/delta?$deltatoken=expired"),
+            "sentitems": format!("{graph}/me/mailFolders/sentitems/messages/delta?$deltatoken=sent-1"),
+        }),
+    )
+    .await
+    .unwrap();
+    // Pretend the hand-over was long ago enough for Lena to be before it
+    let mut check = check_state(&state, MailProvider::Outlook).await;
+    check.caught_up_to = Some(unix_now() + 2 * CATCH_UP_SLACK_SECS);
+    save_check_state(&state, MailProvider::Outlook, &check)
+        .await
+        .unwrap();
+    assert_eq!(check_all(&state).await.found, 0, "Lena was handed over");
+    assert_eq!(recorder.runs().len(), 1);
+    state.shutdown();
+}
+
+#[test]
+fn hand_over_and_backfill_boundaries() {
+    assert!(!handed_over_before(100, None));
+    assert!(handed_over_before(100, Some(100 + CATCH_UP_SLACK_SECS + 1)));
+    assert!(!handed_over_before(100, Some(100 + CATCH_UP_SLACK_SECS)));
+    assert_eq!(backfill_start(50, None), 50);
+    assert_eq!(
+        backfill_start(50, Some(80)),
+        81,
+        "just past what was left out"
+    );
+    assert_eq!(backfill_start(50, Some(10)), 50);
 }
 
 #[tokio::test]

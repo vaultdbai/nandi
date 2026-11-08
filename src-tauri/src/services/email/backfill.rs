@@ -1,9 +1,11 @@
 //! The background read of older mail, so My notes is built from the whole
 //! history, not only the first 14 days.
 //!
-//! - It starts where the first read stopped (14 days back) and walks
-//!   older, newest first: Inbox and Sent, the same filters, one batch of
-//!   at most [`BATCH`] emails per pass, every [`BACKFILL_EVERY`].
+//! - It starts where the first read stopped and walks older, newest
+//!   first: Inbox and Sent, one batch of at most [`BATCH`] emails per pass,
+//!   every [`BACKFILL_EVERY`]. It only builds the profile, so it reads less
+//!   than new mail does ([`MailFilter::keep_older`]): nothing the user never
+//!   opened, no system updates, no phishing.
 //! - Its position is its own (`local_settings` `email.<provider>.backfill`:
 //!   the oldest time reached); it never touches the change cursor.
 //! - A pass runs only when no email check and no other Chief of Staff run
@@ -144,6 +146,16 @@ fn unix_now() -> i64 {
     db::now_ms() / 1000
 }
 
+/// Sets where the background read starts: the oldest point the first read
+/// covered (its list is capped, and a batch can leave the oldest out)
+pub(super) async fn begin(state: &AppState, provider: MailProvider, before: i64) {
+    let mut backfill = load(state, provider).await;
+    if backfill.before.is_none() {
+        backfill.before = Some(before);
+        save(state, provider, &backfill).await;
+    }
+}
+
 /// Where a mailbox's background read starts: where it got to, else where
 /// the first read stopped
 fn start_of(backfill: &BackfillState, now: i64) -> i64 {
@@ -244,18 +256,30 @@ pub async fn pass(state: &AppState) -> Option<String> {
                 return None;
             }
         };
+        // Strictly older than where it got to: a provider that rounds the
+        // boundary would hand the same email over every pass
+        let listed = headers.len();
+        headers.retain(|h| h.at < before);
         let Some(oldest) = headers.iter().map(|h| h.at).min() else {
+            if listed > 0 {
+                // Only the boundary came back: step past it
+                backfill.before = Some(before - 1);
+                save(state, provider, &backfill).await;
+                return None;
+            }
             log::info!("Read all older {} mail", provider.name());
             backfill.done = true;
             save(state, provider, &backfill).await;
             emit_changed(state);
             continue;
         };
-        headers.retain(|h| filter.keep(h));
+        // Only what tells who the user is: not what they never opened,
+        // machines' updates or phishing
+        headers.retain(|h| filter.keep_older(h));
         mailbox.mark_bulk(&mut headers).await;
-        headers.retain(|h| filter.keep(h));
+        headers.retain(|h| filter.keep_older(h));
         if headers.is_empty() {
-            // Only newsletters in this stretch: move on without a run
+            // Nothing worth reading in this stretch: move on without a run
             backfill.before = Some(oldest);
             save(state, provider, &backfill).await;
             emit_changed(state);

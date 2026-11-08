@@ -42,6 +42,9 @@ pub struct Header {
     /// Newsletters and notifications, by the provider's signals
     #[serde(skip)]
     pub bulk: bool,
+    /// Never opened by the user (never true for sent mail)
+    #[serde(skip)]
+    pub unread: bool,
     /// Unix seconds, for ordering
     #[serde(skip)]
     pub at: i64,

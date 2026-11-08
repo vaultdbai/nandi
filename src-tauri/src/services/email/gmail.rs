@@ -390,6 +390,7 @@ fn header(message: &Value) -> Option<Header> {
             bulk: folder != Folder::Sent
                 && (labels.iter().any(|l| BULK_LABELS.contains(l))
                     || is_bulk_by_headers(pairs.iter().copied())),
+            unread: folder != Folder::Sent && labels.contains(&"UNREAD"),
             at,
         }
         .tidy(),
