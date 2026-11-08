@@ -43,7 +43,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Child;
 
 use super::mcp::PilotTool;
-use super::{handover, refusal, PilotDefinition};
+use super::{handover, refusal, sites, PilotDefinition};
 use crate::llm::ToolSpec;
 use crate::runtime::ProxyTokens;
 use crate::services::domain::capability::PilotOptions;
@@ -704,7 +704,7 @@ pub async fn tools(agent: &Agent, pilot: &str) -> Result<Vec<PilotTool>, String>
         .tools
         .iter()
         .map(|t| PilotTool {
-            spec: t.spec.clone(),
+            spec: with_reason(t.spec.clone()),
             read_only: t.read_only,
         })
         .collect();
@@ -716,6 +716,39 @@ pub async fn tools(agent: &Agent, pilot: &str) -> Result<Vec<PilotTool>, String>
         });
     }
     Ok(tools)
+}
+
+/// The page `tool` opens: `browser_navigate`, or a new tab with a URL
+pub fn url_of(tool: &str, args: &Value) -> Option<String> {
+    match tool {
+        "browser_navigate" => args["url"].as_str().map(str::to_string),
+        "browser_tabs" if args["action"].as_str() == Some("new") => {
+            args["url"].as_str().map(str::to_string)
+        }
+        _ => None,
+    }
+}
+
+/// `spec` with Nandi's optional `reason` argument, for a tool that opens a
+/// page: a person asked to allow the site reads it
+fn with_reason(mut spec: ToolSpec) -> ToolSpec {
+    if !matches!(spec.name.as_str(), "browser_navigate" | "browser_tabs") {
+        return spec;
+    }
+    if let Some(properties) = spec
+        .input_schema
+        .get_mut("properties")
+        .and_then(Value::as_object_mut)
+    {
+        properties.insert(
+            sites::REASON_ARG.to_string(),
+            json!({
+                "type": "string",
+                "description": "Why the task needs this page, in a few words. If the site isn't one this agent may open yet, the person reads it when Nandi asks them to allow the site."
+            }),
+        );
+    }
+    spec
 }
 
 /// Whether `url` may be opened: http(s) to an allowed site (and the blank
@@ -760,15 +793,14 @@ pub async fn call(
     let agent_id = agent.id().as_str();
     let skill = host.store.skill(agent_id)?;
     let mut args = args.clone();
-    let url = match tool {
-        "browser_navigate" => args["url"].as_str().map(str::to_string),
-        "browser_tabs" if args["action"].as_str() == Some("new") => {
-            args["url"].as_str().map(str::to_string)
-        }
-        _ => None,
-    };
-    if let Some(url) = url {
-        if let Err(refused) = allowed_url(&skill.capabilities, &url) {
+    // Nandi's own argument (`sites::REASON_ARG`), not Playwright's
+    if let Some(map) = args.as_object_mut() {
+        map.remove(sites::REASON_ARG);
+    }
+    if let Some(url) = url_of(tool, &args) {
+        // The agent's sites, plus any a person allowed once in this run
+        let allowed = sites::with_run_sites(agent_id, skill.capabilities.clone());
+        if let Err(refused) = allowed_url(&allowed, &url) {
             return Ok((refused, true));
         }
     }

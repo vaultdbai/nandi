@@ -202,7 +202,11 @@ fn outlook_api(req: &Req) -> (u16, Value) {
     match p {
         "/graph/me" => (
             200,
-            json!({"displayName": "Dev Chechi", "mail": "Dev@Company.com"}),
+            json!({"displayName": "Dev Chechi", "mail": "Dev@Company.com", "jobTitle": "Platform lead", "department": "Platform engineering"}),
+        ),
+        "/graph/me/manager" => (
+            200,
+            json!({"displayName": "Priya Rao", "mail": "priya@company.com", "jobTitle": "VP Engineering"}),
         ),
         "/graph/me/mailFolders/inbox/messages/delta" => {
             match req.query.get("$deltatoken").map(String::as_str) {
@@ -300,6 +304,9 @@ async fn outlook_pages_to_the_delta_link_and_resumes_from_it() {
     assert!(outlook.connected && outlook.available);
     assert_eq!(outlook.account_email.as_deref(), Some("dev@company.com"));
     assert_eq!(outlook.account_name.as_deref(), Some("Dev Chechi"));
+    let profile = outlook.account_profile.as_ref().unwrap();
+    assert_eq!(profile.title.as_deref(), Some("Platform lead"));
+    assert_eq!(profile.manager.as_ref().unwrap().name, "Priya Rao");
     assert_eq!(outlook.state, EmailAccountState::Ready);
     assert_eq!(granted(&state, CHIEF_OF_STAFF).len(), 1);
 
@@ -1142,4 +1149,33 @@ async fn older_mail_is_estimated_before_it_starts() {
         .await
         .is_empty());
     state.shutdown();
+}
+
+#[test]
+fn dmarc_passes_only_from_the_users_provider_for_the_from_domain() {
+    use super::mail::{authentication_results, dmarc_verified};
+    let gmail = "mx.google.com; dkim=pass header.i=@chase.com; spf=pass smtp.mailfrom=chase.com; \
+                 dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=chase.com";
+    let outlook = "spf=pass (sender IP is 1.2.3.4) smtp.mailfrom=alerts.chase.com; dkim=pass \
+                   header.d=chase.com;dmarc=pass action=none header.from=alerts.chase.com;compauth=pass";
+    assert!(dmarc_verified(&[gmail], "alerts@chase.com"));
+    assert!(dmarc_verified(&[outlook], "no-reply@alerts.chase.com"));
+    // Another domain, a failure, or a pass that came inside the mail (not first)
+    assert!(!dmarc_verified(&[gmail], "alerts@evil.io"));
+    assert!(!dmarc_verified(
+        &["mx.google.com; dmarc=fail header.from=chase.com"],
+        "alerts@chase.com"
+    ));
+    assert!(!dmarc_verified(
+        &["mx.google.com; dmarc=none header.from=evil.io", gmail],
+        "alerts@chase.com"
+    ));
+    assert!(!dmarc_verified(&[], "alerts@chase.com"));
+
+    let headers = [
+        ("Received", "from x"),
+        ("authentication-results", gmail),
+        ("Subject", "Statement"),
+    ];
+    assert_eq!(authentication_results(headers), vec![gmail]);
 }

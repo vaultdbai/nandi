@@ -18,6 +18,7 @@ import { SettingsSectionFrame } from './SettingsFrame'
 import { AccountSection } from './sections/AccountSection'
 import { BackupSection } from './sections/BackupSection'
 import { CloudCredentialsSection } from './sections/CloudCredentialsSection'
+import { AutoApproveSection } from './sections/AutoApproveSection'
 import { ConnectorAccessSection } from './sections/ConnectorAccessSection'
 import { EmailSection } from './sections/EmailSection'
 import { InternetAccessSection } from './sections/InternetAccessSection'
@@ -106,6 +107,7 @@ export function SettingsView({
           {section === 'email' && <EmailSection />}
           {section === 'workspace' && <WorkspaceSection />}
           {section === 'access' && <ConnectorAccessSection />}
+          {section === 'autoApprove' && <AutoApproveSection />}
           {section === 'cloud' && <CloudCredentialsSection />}
           {section === 'internet' && (
             <InternetAccessSection agentId={view.agentId} />

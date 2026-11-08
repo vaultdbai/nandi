@@ -76,6 +76,7 @@ const mailbox = (provider: 'outlook' | 'gmail') => ({
   connected: false,
   accountName: null,
   accountEmail: null,
+  accountProfile: null,
   state: 'notConnected' as const,
   error: null,
   lastCheckedAt: null,
@@ -103,22 +104,44 @@ const mocks = () =>
 
 type User = ReturnType<typeof userEvent.setup>
 
+/** Setup opens on the mailbox: leave it unconnected */
+async function skipEmail(user: User) {
+  await screen.findByText('Connect your email')
+  await user.click(await screen.findByRole('button', { name: 'Skip for now' }))
+  await screen.findByText('What should we call you?')
+}
+
 async function fillName(user: User) {
+  await skipEmail(user)
   await user.type(await screen.findByLabelText('Your name'), 'Ada Lovelace')
   await user.click(screen.getByRole('button', { name: 'Continue' }))
   await screen.findByText('Connect a model')
 }
 
-async function toEmail(user: User) {
+async function toNetwork(user: User) {
   await fillName(user)
   await user.click(await screen.findByRole('button', { name: 'Continue' }))
-  await screen.findByText('Connect your email (optional)')
+  await screen.findByText('Work with other people? (optional)')
 }
 
-async function toNetwork(user: User) {
-  await toEmail(user)
-  await user.click(await screen.findByRole('button', { name: 'Skip for now' }))
-  await screen.findByText('Work with other people? (optional)')
+/** An Outlook mailbox that is already signed in */
+const outlookConnected = {
+  ...emailStatus,
+  providers: [
+    {
+      ...mailbox('outlook'),
+      connected: true,
+      accountName: 'Ada Lovelace',
+      accountEmail: 'ada.lovelace@company.com',
+      accountProfile: {
+        title: 'Analyst',
+        department: 'Finance',
+        manager: { name: 'Priya Rao', email: null, title: 'VP Finance' },
+      },
+      state: 'ready' as const,
+    },
+    mailbox('gmail'),
+  ],
 }
 
 async function toPacks(user: User) {
@@ -163,6 +186,7 @@ describe('OnboardingView', () => {
     it('derives the handle from the name and hides it behind Customize', async () => {
       const user = userEvent.setup()
       render(<OnboardingView />)
+      await skipEmail(user)
 
       await user.type(await screen.findByLabelText('Your name'), 'Ada Lovelace')
       expect(screen.getByTestId('handle-preview')).toHaveTextContent(
@@ -195,13 +219,19 @@ describe('OnboardingView', () => {
         setUserSlug: track('handle'),
       })
       render(<OnboardingView />)
+      await skipEmail(user)
+      // Leaving the email step recorded the step; nothing else was written
+      expect(order).toEqual(['step'])
+      order.length = 0
 
       await screen.findByLabelText('Your name')
       await user.click(screen.getByRole('button', { name: 'Continue' }))
       expect(screen.getByText('Enter your name.')).toBeInTheDocument()
       expect(order).toEqual([])
 
-      await fillName(user)
+      await user.type(screen.getByLabelText('Your name'), 'Ada Lovelace')
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      await screen.findByText('Connect a model')
       expect(order).toEqual(['step', 'name', 'handle'])
       expect(mocks().setOnboardingStep).toHaveBeenCalledWith('model')
       expect(mocks().setDisplayName).toHaveBeenCalledWith('Ada Lovelace')
@@ -226,9 +256,6 @@ describe('OnboardingView', () => {
           // Saving the name tells the app the identity changed, and the
           // reload lands before the next write
           emitMockEvent('identity://changed', null)
-          await waitFor(() =>
-            expect(screen.queryByLabelText('Your name')).toBeNull()
-          )
           return { status: 'ok', data: null }
         }),
       })
@@ -244,6 +271,7 @@ describe('OnboardingView', () => {
       const user = userEvent.setup()
       Object.assign(commands, { setUserSlug: fail('slug taken') })
       render(<OnboardingView />)
+      await skipEmail(user)
 
       await user.type(await screen.findByLabelText('Your name'), 'Ada')
       await user.click(screen.getByRole('button', { name: 'Continue' }))
@@ -256,13 +284,72 @@ describe('OnboardingView', () => {
       expect(screen.queryByText('Connect a model')).toBeNull()
     })
 
-    it('shows five steps', async () => {
+    it('shows five steps, Email first', async () => {
       render(<OnboardingView />)
       const steps = await screen.findByRole('list', { name: 'Setup steps' })
-      expect(steps).toHaveTextContent(/Name.*Model.*Email.*Network.*Agents/)
+      expect(steps).toHaveTextContent(/Email.*Name.*Model.*Network.*Agents/)
       expect(steps.querySelector('[aria-current="step"]')).toHaveTextContent(
-        'Name'
+        'Email'
       )
+    })
+
+    it('says who the user is from the connected mailbox, and Change edits it', async () => {
+      const user = userEvent.setup()
+      Object.assign(commands, {
+        getEmailStatus: ok(outlookConnected),
+        setEmailSettings: ok(outlookConnected),
+      })
+      render(<OnboardingView />)
+
+      await screen.findByText('Connect your email')
+      await user.click(await screen.findByRole('button', { name: 'Continue' }))
+      expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('name')
+      await screen.findByText('Is this you?')
+      expect(screen.getByTestId('known-identity')).toHaveTextContent(
+        "You're Ada Lovelace (ada.lovelace@company.com)"
+      )
+      expect(screen.getByTestId('known-profile')).toHaveTextContent(
+        'Analyst · Finance · reports to Priya Rao (VP Finance)'
+      )
+      expect(screen.getByTestId('handle-preview')).toHaveTextContent(
+        '@ada-lovelace'
+      )
+      expect(screen.queryByLabelText('Your name')).toBeNull()
+
+      await user.click(screen.getByRole('button', { name: 'Change' }))
+      const field = screen.getByLabelText('Your name')
+      expect(field).toHaveValue('Ada Lovelace')
+      await user.clear(field)
+      await user.type(field, 'Ada King')
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      await screen.findByText('Connect a model')
+      expect(mocks().setDisplayName).toHaveBeenCalledWith('Ada King')
+      // The handle from the address stays unless the user changes it
+      expect(mocks().setUserSlug).toHaveBeenCalledWith('ada-lovelace')
+    })
+
+    it('saves the mailbox identity with one click', async () => {
+      const user = userEvent.setup()
+      Object.assign(commands, {
+        getEmailStatus: ok(outlookConnected),
+        setEmailSettings: ok(outlookConnected),
+      })
+      render(<OnboardingView />)
+
+      await user.click(await screen.findByRole('button', { name: 'Continue' }))
+      await screen.findByText('Is this you?')
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      await screen.findByText('Connect a model')
+      expect(mocks().setDisplayName).toHaveBeenCalledWith('Ada Lovelace')
+      expect(mocks().setUserSlug).toHaveBeenCalledWith('ada-lovelace')
+    })
+
+    it('asks for the name when the email step is skipped', async () => {
+      const user = userEvent.setup()
+      render(<OnboardingView />)
+      await skipEmail(user)
+      expect(screen.getByLabelText('Your name')).toHaveValue('')
+      expect(screen.queryByText('Is this you?')).toBeNull()
     })
   })
 
@@ -289,9 +376,9 @@ describe('OnboardingView', () => {
         'claude:claude-sonnet-5'
       )
       expect(
-        await screen.findByText('Connect your email (optional)')
+        await screen.findByText('Work with other people? (optional)')
       ).toBeInTheDocument()
-      expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('email')
+      expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('network')
     })
 
     it('tests a typed key before storing it', async () => {
@@ -384,29 +471,31 @@ describe('OnboardingView', () => {
       await user.click(screen.getByRole('button', { name: 'Skip for now' }))
       await user.click(screen.getByRole('button', { name: 'Skip anyway' }))
       expect(
-        await screen.findByText('Connect your email (optional)')
+        await screen.findByText('Work with other people? (optional)')
       ).toBeInTheDocument()
     })
   })
 
   describe('email', () => {
-    it('offers both mailboxes, checks every 30 minutes, and can be skipped', async () => {
+    it('opens setup with both mailboxes, checks every 30 minutes, and can be skipped', async () => {
       const user = userEvent.setup()
       render(<OnboardingView />)
-      await toEmail(user)
+      await screen.findByText('Connect your email')
       expect(screen.getByLabelText('Outlook')).toBeEnabled()
       expect(screen.getByLabelText('Gmail')).toBeEnabled()
       expect(screen.getByLabelText('30 minutes')).toBeChecked()
+      // The first step has no Back
+      expect(screen.queryByRole('button', { name: 'Back' })).toBeNull()
       await user.click(screen.getByRole('button', { name: 'Skip for now' }))
       expect(
-        await screen.findByText('Work with other people? (optional)')
+        await screen.findByText('What should we call you?')
       ).toBeInTheDocument()
       expect(mocks().setEmailSettings).toHaveBeenCalledWith({
         intervalMinutes: 30,
         watch: [],
         backfill: 'everything',
       })
-      expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('network')
+      expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('name')
     })
   })
 

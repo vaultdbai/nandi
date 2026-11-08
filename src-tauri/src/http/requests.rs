@@ -48,6 +48,22 @@ pub fn api() -> Router<AppState> {
             "/chief-of-staff/threads/{id}/messages",
             post(intake_message),
         )
+        // Returns the auto-approve rules; PUT a list to replace them
+        .route(
+            "/chief-of-staff/auto-approve",
+            get(auto_approve_rules).put(set_auto_approve_rules),
+        )
+}
+
+async fn auto_approve_rules(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(crate::services::intake::get_rules(&state).await)
+}
+
+async fn set_auto_approve_rules(
+    State(state): State<AppState>,
+    Json(rules): Json<Vec<crate::services::intake::rules::AutoApproveRule>>,
+) -> impl IntoResponse {
+    ApiResult(crate::services::intake::set_rules(&state, rules).await)
 }
 
 async fn intake_thread(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {

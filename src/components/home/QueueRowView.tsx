@@ -24,6 +24,7 @@ export function QueueRowView({
   onApprove,
   onDismiss,
   onOpen,
+  onAlwaysAllow,
   clamp = true,
 }: {
   row: QueueRow
@@ -31,6 +32,8 @@ export function QueueRowView({
   onApprove: () => void
   onDismiss: () => void
   onOpen?: () => void
+  /** "Always allow mail from <domain>": shown when the row has a domain */
+  onAlwaysAllow?: () => void
   /** Cut the text to two lines (Home); the thread page shows it whole */
   clamp?: boolean
 }) {
@@ -106,6 +109,19 @@ export function QueueRowView({
         </p>
       )}
       <div className="flex items-center justify-end gap-2">
+        {onAlwaysAllow && row.alwaysAllowDomain && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="me-auto"
+            disabled={busy}
+            onClick={onAlwaysAllow}
+          >
+            {t('autoApprove.shortcut.action', {
+              domain: row.alwaysAllowDomain,
+            })}
+          </Button>
+        )}
         {row.canApprove ? (
           <Button size="sm" disabled={busy} onClick={onApprove}>
             {t('home.chiefOfStaffDigest.queue.approve')}
@@ -156,6 +172,47 @@ export function ApproveSuspiciousDialog({
           </AlertDialogCancel>
           <AlertDialogAction onClick={onApprove}>
             {t('home.chiefOfStaffDigest.queue.confirm.action')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+/** "Always allow mail from <domain>?": says what the rule does and does not let through */
+export function AlwaysAllowDialog({
+  domain,
+  onCancel,
+  onConfirm,
+}: {
+  /** The domain being asked about; `null` keeps the dialog closed */
+  domain: string | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <AlertDialog
+      open={domain !== null}
+      onOpenChange={next => {
+        if (!next) onCancel()
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {t('autoApprove.shortcut.title', { domain })}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {t('autoApprove.shortcut.description', { domain })}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>
+            {t('autoApprove.shortcut.cancel')}
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>
+            {t('autoApprove.shortcut.confirm')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

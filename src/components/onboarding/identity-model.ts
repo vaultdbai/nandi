@@ -4,7 +4,12 @@
  * validation (`services/auth/mod.rs`), so the forms can say what's wrong
  * before saving.
  */
-import type { IdentityStatus, RelayUrlSource } from '@/lib/bindings'
+import type {
+  EmailProviderStatus,
+  IdentityStatus,
+  MailProvider,
+  RelayUrlSource,
+} from '@/lib/bindings'
 
 export const NAME_MAX_LENGTH = 64
 export const SLUG_MAX_LENGTH = 32
@@ -184,11 +189,14 @@ export function publishesGateway(draft: RelayDraft): boolean {
   return draft.choice !== 'skip' && draft.reachable === true
 }
 
-/** Onboarding's steps, in order (the step indicator and resume use it) */
+/**
+ * Onboarding's steps, in order (the step indicator and resume use it).
+ * Email comes first: a connected mailbox fills in the name step.
+ */
 export const ONBOARDING_STEPS = [
+  'email',
   'name',
   'model',
-  'email',
   'network',
   'packs',
 ] as const
@@ -204,11 +212,77 @@ export function needsOnboarding(status: IdentityStatus): boolean {
 }
 
 /**
- * The step to open: always Name until a name is saved, then the step
- * recorded, Model when none past Name is
+ * The step to open. Before a name is saved: Name once Email was left
+ * (the step recorded is `name`), else Email, which a connected mailbox
+ * and a skip both pass. After: the step recorded, Model when none past
+ * Name is.
  */
 export function resumeStep(status: IdentityStatus): OnboardingStepKey {
-  if (!status.onboarded) return 'name'
   const step = status.onboardingStep
-  return !step || step === 'name' || step === 'done' ? 'model' : step
+  if (!status.onboarded) return step === 'name' ? 'name' : 'email'
+  return !step || step === 'email' || step === 'name' || step === 'done'
+    ? 'model'
+    : step
+}
+
+/** Who the connected mailbox says the user is */
+export interface MailboxIdentity {
+  provider: MailProvider
+  name: string
+  email: string
+  /** Outlook only: from the directory, each when it has one */
+  title: string | null
+  department: string | null
+  /** "Priya Rao" or "Priya Rao (VP Engineering)" */
+  manager: string | null
+}
+
+/**
+ * The first connected mailbox that names its owner (Outlook is listed
+ * first), or `null`: setup then asks, as it does without a mailbox.
+ */
+export function mailboxIdentity(
+  providers: readonly EmailProviderStatus[]
+): MailboxIdentity | null {
+  for (const status of providers) {
+    const name = status.accountName?.trim() ?? ''
+    const email = status.accountEmail?.trim() ?? ''
+    if (!status.connected || !name || !email) continue
+    const profile = status.accountProfile
+    const manager = profile?.manager
+    return {
+      provider: status.provider,
+      name,
+      email,
+      title: profile?.title ?? null,
+      department: profile?.department ?? null,
+      manager: manager
+        ? manager.title
+          ? `${manager.name} (${manager.title})`
+          : manager.name
+        : null,
+    }
+  }
+  return null
+}
+
+/**
+ * The name step's draft from a mailbox: its name, and the handle from the
+ * address's local part (`dev.chechi@…` is `dev-chechi`). A local part that
+ * makes no valid handle falls back to one from the name.
+ */
+export function draftFromMailbox(identity: MailboxIdentity): {
+  name: string
+  slug: string
+  slugEdited: boolean
+} {
+  const local = slugify(identity.email.split('@')[0] ?? '')
+  if (validateSlug(local) === null) {
+    return { name: identity.name, slug: local, slugEdited: true }
+  }
+  return {
+    name: identity.name,
+    slug: slugify(identity.name),
+    slugEdited: false,
+  }
 }

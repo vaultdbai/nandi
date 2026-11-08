@@ -472,6 +472,9 @@ export const webClient: NandiClient = {
     request('POST', `/chief-of-staff/queue/${id(queueId)}/approve`),
   dismissQueuedWork: queueId =>
     request('POST', `/chief-of-staff/queue/${id(queueId)}/dismiss`),
+  getAutoApproveRules: () => request('GET', '/chief-of-staff/auto-approve'),
+  setAutoApproveRules: rules =>
+    request('PUT', '/chief-of-staff/auto-approve', rules),
   getIntakeThread: conversationId =>
     request('GET', `/chief-of-staff/threads/${id(conversationId)}`),
   sendIntakeMessage: (conversationId, text, clientMessageId) =>
@@ -550,8 +553,11 @@ export const webClient: NandiClient = {
     }),
   revokeConnectorAccess: grant =>
     request('POST', '/connector-grants/revoke', grant),
-  answerAccessRequest: (approvalId, choice) =>
-    request('POST', `/access-requests/${id(approvalId)}`, { choice }),
+  answerAccessRequest: (approvalId, choice, subdomains = false) =>
+    request('POST', `/access-requests/${id(approvalId)}`, {
+      choice,
+      subdomains,
+    }),
   listRegistryConnectors: refresh =>
     request('GET', `/registry-connectors?refresh=${refresh}`),
   getConnectorConsent: (registryUrl, connectorId) =>

@@ -237,7 +237,15 @@ impl<'a> Gmail<'a> {
             .await?;
         let header = header(&message).ok_or(MailError::NotFound)?;
         let body = body_text(message.get("payload").unwrap_or(&Value::Null));
-        Ok(Message::new(header, &body))
+        let headers = message
+            .get("payload")
+            .and_then(|p| p.get("headers"))
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|h| (str_of(h, "name"), str_of(h, "value")));
+        let results = super::mail::authentication_results(headers);
+        Ok(Message::new(header, &body).with_authentication(&results))
     }
 
     pub async fn thread(&self, thread_id: &str, limit: u32) -> Result<Vec<Header>, MailError> {

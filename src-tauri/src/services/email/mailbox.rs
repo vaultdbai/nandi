@@ -7,6 +7,7 @@ use super::api::{MailApi, MailError};
 use super::gmail::Gmail;
 use super::mail::{Changes, Header, Identity, Message};
 use super::outlook::Outlook;
+use super::profile::Profile;
 use super::provider::{MailProvider, ProviderSetup};
 use crate::services::secrets::Secrets;
 
@@ -45,6 +46,14 @@ impl Mailbox {
         match self.provider() {
             MailProvider::Outlook => self.outlook().identity().await,
             MailProvider::Gmail => self.gmail().identity().await,
+        }
+    }
+
+    /// Title, department and manager (Outlook only; best effort)
+    pub async fn profile(&self) -> Profile {
+        match self.provider() {
+            MailProvider::Outlook => self.outlook().profile().await,
+            MailProvider::Gmail => Profile::default(),
         }
     }
 

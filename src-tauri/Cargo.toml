@@ -69,6 +69,8 @@ tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors"] }
 # Agent runtime: LLM providers, MCP client to container tool servers, keychain
 reqwest = { version = "0.13", features = ["json", "form", "stream"] }
+# A browser pilot's site request shows an international name decoded (`pilots::sites`)
+idna = "1.1"
 rmcp = { version = "3.5", default-features = false, features = ["client", "transport-streamable-http-client-reqwest", "transport-child-process"] }
 # OS keychain (used directly so services don't need a Tauri AppHandle)
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }

@@ -1158,6 +1158,33 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **Needs relay:** no
 - **Status:** Shipped
 
+### RQ-32 — Auto-approve rules
+
+- **What:** Rules let some screened items through without a click. Settings › Auto-approve lists the rules (a domain such as `chase.com`, an email address, or a teammate), each with its actions as checkboxes (mail: start work, add news; teammate: run their requests), and **Add rule**. Screening still runs first: only a clean item passes, a suspicious one waits, a blocked one is refused. A mail rule only matches mail whose sender passed the sender check (DMARC), and a domain covers its subdomains. An item a rule approves is noted in its thread ("Approved automatically (mail from chase.com)") and shows in "Since you were away". On a queued clean email item, **Always allow mail from <domain>** adds a domain rule with the item's action, after a confirm. The form explains a missing action, a bad address or domain and a full list (100) before saving; the core's answer shows as a toast. Teammate rules need the relay; mail rules don't.
+- **Where:** `AutoApproveSection.tsx`, `auto-approve-model.ts`, `useAutoApproveRules.ts`, `QueueRowView.tsx` (`AlwaysAllowDialog`), `services/intake/rules.rs`, `dmarc_verified` in `services/email/mail.rs`, `get_auto_approve_rules`, `set_auto_approve_rules`, `GET`/`PUT /api/chief-of-staff/auto-approve`.
+- **Preconditions:** Email connected, and a test sender whose mail passes DMARC (a second domain to send from as well). Teammate rules: a relay with a teammate.
+- **Steps:**
+  1. Open Settings › Auto-approve. Read the explanation and the empty state.
+  2. Pick **Email domain**, type the test sender's domain, keep both actions and click **Add rule**.
+  3. Let a verified mail that asks for something arrive from that domain.
+  4. Let a mail that asks for something arrive from another domain.
+  5. Let a suspicious mail (a link to a download, "run this file") arrive from the rule's domain.
+  6. Open Home and the thread of the item from step 3.
+  7. On the item from step 4, click **Always allow mail from <domain>** and confirm.
+  8. Remove both rules (the trash button).
+- **Expected:**
+  - Step 1: the page says screening comes first and a forged sender never passes; with no rules it suggests "your bank's domain, e.g. chase.com".
+  - Step 2: the rule shows "Mail from <domain>" with both actions ticked. Typing `chase` or `https://chase.com` shows an error and **Add rule** stays off; clearing both actions shows "Pick at least one action".
+  - Step 3: the work starts at once, with no queue item. Its thread says "Approved automatically (mail from <domain>)" and Home's "Since you were away" lists it.
+  - Step 4: it waits in "Waiting for your OK".
+  - Step 5: it still waits, with its warnings; nothing starts.
+  - Step 7: the confirm says it only applies to verified mail; after **Always allow** a toast says mail from the domain is approved automatically and the rule is in Settings.
+  - Step 8: the rules go; the next mail from either domain waits again.
+- **Edge / negative cases:** A mail whose sender failed DMARC (a forged `From:`) never matches an email rule, even from the rule's domain. A subdomain (`alerts.chase.com`) matches a `chase.com` rule. A blocked item is refused whatever the rules say. The teammate option without a relay shows "Connect to your relay", and the other two kinds work. A teammate's queued item has no **Always allow** button (the queue doesn't carry their instance ID): add the rule in Settings.
+- **Automation:** Covered by: `auto-approve-model.test.ts`, `digest-model.test.ts`, `intake::rules` tests, `email::tests` (DMARC) | Layer: unit + manual | Gap: the Settings form and the shortcut against live mail are manual.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## Gaps and planned (not testable yet)
 
 - No way to delete a workflow in the UI or API; only by removing its YAML file (no `delete_workflow` command).

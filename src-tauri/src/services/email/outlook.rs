@@ -12,6 +12,7 @@ use serde_json::Value;
 use super::api::{MailApi, MailError};
 use super::filter::is_bulk_by_headers;
 use super::mail::{rfc3339_of, str_of, unix_of, Changes, Folder, Header, Identity, Message};
+use super::profile::Profile;
 use super::text::Address;
 
 /// Only these fields are read
@@ -85,6 +86,40 @@ impl<'a> Outlook<'a> {
         }
         let name = Some(str_of(&me, "displayName").trim().to_string()).filter(|n| !n.is_empty());
         Ok(Identity { name, email })
+    }
+
+    /// Job title, department and manager (`/me`, `/me/manager`, inside
+    /// `User.Read`). A failed read leaves that part empty.
+    pub async fn profile(&self) -> Profile {
+        let me = self
+            .api
+            .get(
+                &self.url(&["me"], &[("$select", "jobTitle,department")]),
+                &[],
+            )
+            .await
+            .map(|me| Profile::from_me(&me))
+            .unwrap_or_else(|e| {
+                log::debug!("Outlook title and department unavailable: {e}");
+                Profile::default()
+            });
+        let manager = self
+            .api
+            .get(
+                &self.url(
+                    &["me", "manager"],
+                    &[("$select", "displayName,mail,userPrincipalName,jobTitle")],
+                ),
+                &[],
+            )
+            .await;
+        match manager {
+            Ok(manager) => me.with_manager(&manager),
+            Err(e) => {
+                log::debug!("Outlook manager unavailable: {e}");
+                me
+            }
+        }
     }
 
     /// Mail added to Inbox and Sent Items since `cursor` (or since `since`
@@ -185,7 +220,7 @@ impl<'a> Outlook<'a> {
             .get(
                 &self.url(
                     &["me", "messages", id],
-                    &[("$select", &format!("{SELECT},body"))],
+                    &[("$select", &format!("{SELECT},body,internetMessageHeaders"))],
                 ),
                 &[("Prefer", "outlook.body-content-type=\"text\"")],
             )
@@ -195,7 +230,14 @@ impl<'a> Outlook<'a> {
             .get("body")
             .map(|b| str_of(b, "content"))
             .unwrap_or_default();
-        Ok(Message::new(header, body))
+        let headers = item
+            .get("internetMessageHeaders")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|h| (str_of(h, "name"), str_of(h, "value")));
+        let results = super::mail::authentication_results(headers);
+        Ok(Message::new(header, body).with_authentication(&results))
     }
 
     pub async fn thread(

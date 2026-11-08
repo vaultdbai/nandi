@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { IdentityStatus } from '@/lib/bindings'
+import type { EmailProviderStatus, IdentityStatus } from '@/lib/bindings'
 import {
   branchFor,
   DEFAULT_RELAY_DRAFT,
+  draftFromMailbox,
+  mailboxIdentity,
   isRelayUrl,
   isUnencryptedRemoteRelay,
   needsOnboarding,
@@ -196,11 +198,97 @@ describe('onboarding resume', () => {
   })
 
   it('resumes at the step reached, but never past an unsaved name', () => {
-    expect(resumeStep(status(false, 'packs'))).toBe('name')
+    // Email is first; Name once the email step was left
+    expect(resumeStep(status(false, null))).toBe('email')
+    expect(resumeStep(status(false, 'packs'))).toBe('email')
+    expect(resumeStep(status(false, 'name'))).toBe('name')
     expect(resumeStep(status(true, null))).toBe('model')
+    expect(resumeStep(status(true, 'email'))).toBe('model')
     expect(resumeStep(status(true, 'name'))).toBe('model')
     expect(resumeStep(status(true, 'model'))).toBe('model')
     expect(resumeStep(status(true, 'network'))).toBe('network')
     expect(resumeStep(status(true, 'packs'))).toBe('packs')
+  })
+})
+
+describe('mailbox identity', () => {
+  const provider = (
+    overrides: Partial<EmailProviderStatus> = {}
+  ): EmailProviderStatus => ({
+    provider: 'outlook',
+    available: true,
+    connected: true,
+    accountName: 'Dev Chechi',
+    accountEmail: 'dev.chechi@company.com',
+    accountProfile: null,
+    state: 'ready',
+    error: null,
+    lastCheckedAt: null,
+    lastFound: 0,
+    lastRunId: null,
+    backfill: { phase: 'off', backTo: null, read: 0 },
+    ...overrides,
+  })
+
+  it('is the first connected mailbox that names its owner', () => {
+    expect(mailboxIdentity([])).toBeNull()
+    expect(mailboxIdentity([provider({ connected: false })])).toBeNull()
+    expect(mailboxIdentity([provider({ accountName: null })])).toBeNull()
+    expect(
+      mailboxIdentity([
+        provider({ accountName: '  ' }),
+        provider({ provider: 'gmail', accountName: 'Dev G' }),
+      ])
+    ).toMatchObject({ provider: 'gmail', name: 'Dev G' })
+  })
+
+  it('carries title, department and manager when the directory gave them', () => {
+    expect(
+      mailboxIdentity([
+        provider({
+          accountProfile: {
+            title: 'Platform lead',
+            department: 'Engineering',
+            manager: { name: 'Priya Rao', email: null, title: 'VP' },
+          },
+        }),
+      ])
+    ).toEqual({
+      provider: 'outlook',
+      name: 'Dev Chechi',
+      email: 'dev.chechi@company.com',
+      title: 'Platform lead',
+      department: 'Engineering',
+      manager: 'Priya Rao (VP)',
+    })
+    expect(mailboxIdentity([provider()])).toMatchObject({
+      title: null,
+      department: null,
+      manager: null,
+    })
+    expect(
+      mailboxIdentity([
+        provider({
+          accountProfile: {
+            title: null,
+            department: null,
+            manager: { name: 'Sam', email: null, title: null },
+          },
+        }),
+      ])?.manager
+    ).toBe('Sam')
+  })
+
+  it('makes the handle from the address, and falls back to the name', () => {
+    const identity = mailboxIdentity([provider()])
+    if (!identity) throw new Error('expected a mailbox identity')
+    expect(draftFromMailbox(identity)).toEqual({
+      name: 'Dev Chechi',
+      slug: 'dev-chechi',
+      slugEdited: true,
+    })
+    expect(draftFromMailbox({ ...identity, email: '+++@company.com' })).toEqual(
+      { name: 'Dev Chechi', slug: 'dev-chechi', slugEdited: false }
+    )
   })
 })

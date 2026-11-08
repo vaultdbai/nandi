@@ -6,6 +6,7 @@
  */
 
 import type {
+  AutoApproveRule,
   RelayTrust,
   RequestReturn,
   ActionPlan,
@@ -806,6 +807,10 @@ export interface NandiClient {
   approveQueuedWork(id: string): Promise<Result<string, string>>
   /** Drops a queued item without acting on it */
   dismissQueuedWork(id: string): Promise<Result<null, string>>
+  /** The rules that let clean items through without a click */
+  getAutoApproveRules(): Promise<Result<AutoApproveRule[], string>>
+  /** Replaces the list; the core checks each rule and answers with why not */
+  setAutoApproveRules(rules: AutoApproveRule[]): Promise<Result<null, string>>
   /** One intake item's Chief of Staff thread: its items and Requests */
   getIntakeThread(conversationId: string): Promise<Result<IntakeThread, string>>
   /** A message to the Chief of Staff in an intake thread (a turn) */
@@ -916,10 +921,14 @@ export interface NandiClient {
     scope: GrantScope
   ): Promise<Result<null, string>>
   revokeConnectorAccess(grant: GrantInfo): Promise<Result<null, string>>
-  /** Answers a `connector_access` approval */
+  /**
+   * Answers a `connector_access` approval. `subdomains`: a site request's
+   * grant covers the site's subdomains too
+   */
   answerAccessRequest(
     approvalId: string,
-    choice: AccessChoice
+    choice: AccessChoice,
+    subdomains?: boolean
   ): Promise<Result<null, string>>
   /** Connectors listed in the configured registries */
   listRegistryConnectors(

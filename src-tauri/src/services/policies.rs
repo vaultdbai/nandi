@@ -59,6 +59,33 @@ fn evaluate(agent: &Agent, skill: &SkillConfig, policies: &PolicySet) -> Result<
     Ok(effective)
 }
 
+/// Whether the policies over agent `id` leave it every one of `hosts`
+/// whole, so a person may be asked to allow them (a site its browser wants,
+/// `pilots::sites`). A policy's network ceiling is never asked past.
+pub fn admits_hosts(store: &RepoStore, id: &str, hosts: &[String]) -> bool {
+    let (Ok((agent, skill)), Ok(policies)) = (store.declared_skill(id), store.policies()) else {
+        return false;
+    };
+    let wanted: Vec<domain_caps::HostRule> = hosts
+        .iter()
+        .map(|host| domain_caps::HostRule {
+            host: host.clone(),
+            methods: Vec::new(),
+        })
+        .collect();
+    let mut request = request(&agent, &skill);
+    request.network = wanted.clone();
+    let tags = agent.tags();
+    let subject = Subject {
+        agent: &skill.id,
+        tags: &tags,
+        workflow: None,
+    };
+    policies
+        .effective(&request, &subject)
+        .is_ok_and(|effective| effective.network == wanted)
+}
+
 /// The policies over one agent, for its Permissions panel
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]

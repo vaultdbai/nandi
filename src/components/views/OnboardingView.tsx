@@ -15,6 +15,8 @@ import { Step3Network } from '@/components/onboarding/Step3_Network'
 import { StepEmail } from '@/components/onboarding/StepEmail'
 import {
   DEFAULT_RELAY_DRAFT,
+  draftFromMailbox,
+  mailboxIdentity,
   needsOnboarding,
   ONBOARDING_STEPS,
   publishesGateway,
@@ -24,6 +26,7 @@ import {
   type OnboardingStepKey,
   type RelayDraft,
 } from '@/components/onboarding/identity-model'
+import { useEmailStatus } from '@/hooks/useEmail'
 import { gatewayQueryKeys } from '@/hooks/useGateway'
 import { identityQueryKeys, useIdentity } from '@/hooks/useIdentity'
 import { relayQueryKeys } from '@/hooks/useRelay'
@@ -45,12 +48,14 @@ export interface OnboardingViewProps {
 }
 
 /**
- * First launch: name (1), model (2), email (3, optional), network (4,
- * optional), starter packs (5), then the Dashboard. Finishing starts the
- * first email check at once, so the Chief of Staff has notes to work
- * from before the first interval passes. Each step saves its own setting as it's left,
- * and the step reached is remembered on this Nandi home, so quitting midway
- * resumes there. The name is saved on step 1 because installing packs
+ * First launch: email (1, skippable), name (2), model (3), network (4,
+ * optional), starter packs (5), then the Dashboard. A connected mailbox
+ * fills in the name step ("You're Dev Chechi · Change"); skipping it
+ * leaves the name step to ask. Finishing starts the first email check at
+ * once, so the Chief of Staff has notes to work from before the first
+ * interval passes. Each step saves its own setting as it's left, and the
+ * step reached is remembered on this Nandi home, so quitting midway
+ * resumes there. The name is saved on step 2 because installing packs
  * writes agents into the repo. A relay that's already configured
  * (`NANDI_RELAY_URL` or `config.json`) is preselected and kept.
  */
@@ -60,11 +65,15 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
   const identity = useIdentity()
   // `null` until the user moves: where the saved state says to start
   const [stepEdit, setStep] = useState<OnboardingStepKey | null>(null)
-  const [name, setName] = useState<IdentityDraft>({
-    name: '',
-    slug: '',
-    slugEdited: false,
-  })
+  const emailStatus = useEmailStatus()
+  const mailbox = mailboxIdentity(emailStatus.data?.providers ?? [])
+  // `null` until the user edits: what the mailbox says, else nothing
+  const [nameEdit, setNameEdit] = useState<IdentityDraft | null>(null)
+  const name: IdentityDraft =
+    nameEdit ??
+    (mailbox
+      ? draftFromMailbox(mailbox)
+      : { name: '', slug: '', slugEdited: false })
   const relayStatus = useQuery({
     queryKey: relayQueryKeys.status,
     queryFn: async () => unwrapResult(await client.getRelayStatus()),
@@ -83,7 +92,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
   const published = useRef(false)
   const left = useRef(false)
 
-  const resumedAt = identity.data ? resumeStep(identity.data) : 'name'
+  const resumedAt = identity.data ? resumeStep(identity.data) : 'email'
   const step = stepEdit ?? resumedAt
 
   const leave = (packIds: string[]) => {
@@ -186,7 +195,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
   }
 
   // Coming back to an unfinished setup: the rest can be skipped
-  const resumed = stepEdit === null && resumedAt !== 'name'
+  const resumed = stepEdit === null && resumedAt !== 'email'
 
   return (
     <div className="flex h-full w-full justify-center overflow-y-auto bg-background p-6">
@@ -206,24 +215,20 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
         <StepIndicator current={step} />
 
         <section className="rounded-lg border p-6">
+          {step === 'email' && <StepEmail onNext={() => advance('name')} />}
           {step === 'name' && (
             <Step1Name
               value={name}
-              onChange={setName}
+              onChange={setNameEdit}
               saving={savingName}
+              mailbox={mailbox}
               onNext={() => void saveName()}
             />
           )}
           {step === 'model' && (
             <Step2Model
-              onNext={() => advance('email')}
-              onBack={() => setStep('name')}
-            />
-          )}
-          {step === 'email' && (
-            <StepEmail
               onNext={() => advance('network')}
-              onBack={() => setStep('model')}
+              onBack={() => setStep('name')}
             />
           )}
           {step === 'network' && (
@@ -234,7 +239,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
                 if (publishesGateway(relay)) void publishGateway()
                 advance('packs')
               }}
-              onBack={() => setStep('email')}
+              onBack={() => setStep('model')}
               configuredUrl={configuredRelayUrl}
               configuredSource={relayStatus.data?.relayUrlSource ?? null}
               builtInUrl={builtInRelayUrl}

@@ -955,6 +955,7 @@ impl EventBus {
         status: RunStatus,
         error: Option<String>,
     ) -> Result<(), String> {
+        let run_id = ctx.run_id.clone();
         let ctx = ctx.clone();
         self.commit(move |conn, outbox| {
             for approval in db::pending_approvals_for_run(conn, &ctx.run_id)? {
@@ -1078,7 +1079,10 @@ impl EventBus {
             outbox.activity(activity(&ctx, action, &subject));
             outbox.queue_changed(conn, &ctx.agent_id)
         })
-        .await
+        .await?;
+        // Sites a person allowed once in this run end with it
+        crate::services::pilots::sites::end_run(&run_id);
+        Ok(())
     }
 
     /// Re-announces pending approvals (e.g. after a restart). Idempotent.

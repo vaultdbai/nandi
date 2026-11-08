@@ -473,6 +473,7 @@ impl Executor {
             requester: &requester,
             target: &target,
             text: &text,
+            instance_id: &task.requester.instance_id,
             trusted,
             // The gateway holds for the owner itself (Inbox)
             screen_only,

@@ -7,6 +7,7 @@ import { isWorking } from '@/components/agent-console/working'
 import { AskBox } from '@/components/ask/AskBox'
 import { useNow } from '@/components/agents/task-utils'
 import {
+  AlwaysAllowDialog,
   ApproveSuspiciousDialog,
   QueueRowView,
 } from '@/components/home/QueueRowView'
@@ -22,6 +23,7 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { useAlwaysAllow } from '@/hooks/useAutoApproveRules'
 import { errorMessage } from '@/hooks/useDelegation'
 import { useIntakeThread } from '@/hooks/useIntakeThread'
 import { useQueueDecisions } from '@/hooks/useQueueDecisions'
@@ -51,6 +53,7 @@ export function IntakeThreadView({
   const { t, i18n } = useTranslation()
   const thread = useIntakeThread(conversationId)
   const decisions = useQueueDecisions('request')
+  const alwaysAllow = useAlwaysAllow()
 
   if (thread.isPending) {
     return (
@@ -99,9 +102,10 @@ export function IntakeThreadView({
               key={row.id}
               row={row}
               clamp={false}
-              busy={decisions.busy}
+              busy={decisions.busy || alwaysAllow.busy}
               onApprove={() => decisions.requestApprove(row)}
               onDismiss={() => decisions.dismiss(row)}
+              onAlwaysAllow={() => alwaysAllow.ask(row)}
             />
           ))}
           {model.decided.length > 0 && (
@@ -133,6 +137,11 @@ export function IntakeThreadView({
         open={decisions.confirming !== null}
         onCancel={decisions.cancelConfirm}
         onApprove={decisions.approveConfirmed}
+      />
+      <AlwaysAllowDialog
+        domain={alwaysAllow.asking?.alwaysAllowDomain ?? null}
+        onCancel={alwaysAllow.cancel}
+        onConfirm={alwaysAllow.confirm}
       />
     </section>
   )

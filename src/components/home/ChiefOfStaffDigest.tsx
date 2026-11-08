@@ -9,6 +9,7 @@ import {
   useCompleteWaitingStep,
   useMarkDigestSeen,
 } from '@/hooks/useChiefOfStaffDigest'
+import { useAlwaysAllow } from '@/hooks/useAutoApproveRules'
 import { errorMessage } from '@/hooks/useDelegation'
 import { useQueueDecisions } from '@/hooks/useQueueDecisions'
 import { useViewOpener } from '@/hooks/useViewOpener'
@@ -21,7 +22,11 @@ import {
   rowView,
   type DigestRow,
 } from './digest-model'
-import { ApproveSuspiciousDialog, QueueRowView } from './QueueRowView'
+import {
+  AlwaysAllowDialog,
+  ApproveSuspiciousDialog,
+  QueueRowView,
+} from './QueueRowView'
 
 /**
  * Home's "Since you were away": what the Chief of Staff started, updated
@@ -36,6 +41,7 @@ export function ChiefOfStaffDigest() {
   const markSeen = useMarkDigestSeen()
   const completeStep = useCompleteWaitingStep()
   const decisions = useQueueDecisions('thread')
+  const alwaysAllow = useAlwaysAllow()
   if (!digest.data) return null
   if (digest.data.items.length === 0 && digest.data.queue.length === 0) {
     return null
@@ -115,9 +121,10 @@ export function ChiefOfStaffDigest() {
               <QueueRowView
                 key={row.id}
                 row={row}
-                busy={decisions.busy}
+                busy={decisions.busy || alwaysAllow.busy}
                 onApprove={() => decisions.requestApprove(row)}
                 onDismiss={() => decisions.dismiss(row)}
+                onAlwaysAllow={() => alwaysAllow.ask(row)}
                 onOpen={() =>
                   open({ kind: 'intake-thread', conversationId: row.threadId })
                 }
@@ -140,6 +147,11 @@ export function ChiefOfStaffDigest() {
         open={decisions.confirming !== null}
         onCancel={decisions.cancelConfirm}
         onApprove={decisions.approveConfirmed}
+      />
+      <AlwaysAllowDialog
+        domain={alwaysAllow.asking?.alwaysAllowDomain ?? null}
+        onCancel={alwaysAllow.cancel}
+        onConfirm={alwaysAllow.confirm}
       />
     </Card>
   )

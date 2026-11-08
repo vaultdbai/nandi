@@ -6,6 +6,8 @@
 
 mod audit;
 mod bindings;
+#[cfg(test)]
+mod browser_sites_suite;
 mod cli;
 mod cli_mascot;
 mod commands;

@@ -54,7 +54,7 @@ The first-party key lives at `~/.nandi/keys/publisher.key` on the machine that s
 
 ## Content
 
-First-party content lives in its own public repos, not in this one. The one exception is Chief of Staff, which ships inside the app (`services/builtin_agents.rs`) as an ordinary local agent; see `docs/developer/a2a-delegation.md`. The app only knows the registry URL (`DEFAULT_REGISTRY`) and reads its `index.json` from `HEAD`, so new releases reach users without an app update.
+First-party content lives in its own public repos, not in this one. The exceptions are the built-in agents Chief of Staff and Browser, which ship inside the app (`services/builtin_agents.rs`) as ordinary local agents; see `docs/developer/a2a-delegation.md`. The app only knows the registry URL (`DEFAULT_REGISTRY`) and reads its `index.json` from `HEAD`, so new releases reach users without an app update.
 
 | Repo                                                                                  | Contents                                                                 |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |

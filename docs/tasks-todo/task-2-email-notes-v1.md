@@ -9,6 +9,7 @@
 ## Decisions
 
 - [x] **Read-only in v1** (owner, 2026-10-30). Nandi reads mail and writes notes. Nothing is sent, moved, deleted or marked read. Sending comes later, with its own scope and its own approval.
+- [x] **Read and draft, never send** (owner, 2026-11-07, replaces read-only). Nandi may create drafts in the user's mailbox (`Mail.ReadWrite` on Outlook, `gmail.compose` on Gmail), each after the user's approval. It never sends, moves, deletes or marks mail read. The owner adds the two permissions in the Entra and Google Cloud consoles; `gmail.compose` is a restricted scope, so a public Gmail release needs Google's verification and a CASA assessment.
 - [x] **Our own connector, not an MCP server.** Tokens stay on the host in the keyring and never go into a container. The agent calls the connector's tools from its container as it does for other connectors.
 - [x] **Notes, not copies.** Nandi keeps no copy of the mail. All it stores is the change cursor (a delta link or a `historyId`) and the notes the Chief of Staff writes.
 - [x] **How often to check:** every 30 minutes by default (owner, 2026-11-05; asked at setup, 5 minutes to 2 hours), with all new mail sent to the Chief of Staff in one batch per check. Not one run per email (model cost).
@@ -46,7 +47,7 @@ On first run, fill in the name, email and slug from what's already on hand. Show
      - macOS: `id -F`
      - Linux: the GECOS field from `getent passwd`
   3. `git config user.name` / `user.email`.
-- [ ] **Slug:** made from the email's local part (`dev.chechi@…` → `dev-chechi`), through the existing `slugify` and `validate_slug`.
+- [x] **Slug:** made from the email's local part (`dev.chechi@…` → `dev-chechi`), through the existing `slugify` and `validate_slug`.
 - [ ] **More than one Nandi for the same person** (two laptops, a test build): if the slug is already taken by another instance, add `-1`, `-2`… (`dev-chechi-1`). Check two places:
   - the relay's member list: same email, different `instance_id`
   - the remote: branch `<prefix>/<slug>` pushed by another instance
@@ -54,8 +55,17 @@ On first run, fill in the name, email and slug from what's already on hand. Show
   The display name stays the same.
 
 - [ ] **Employee directory:** with `User.ReadBasic.All`, the Chief of Staff can turn senders into people (name, title, department, manager) when it writes notes, and the personal agent can find who owns what. Read it live when needed. Never copy it into a registry or the repo (`personal-agent-vision`).
-- [ ] Settings › Identity shows where each value came from, and each value can still be edited.
-- [ ] Wire this into onboarding (`OnboardingView`, `identity-model.ts`) and `services::auth`. Mail sign-in can be the first onboarding step, so one sign-in sets up both identity and email.
+- [ ] Settings › Identity shows where each value came from, and each value can still be edited. Partly done 2026-11-07: every value is editable, and Settings › Account notes when the name came from the mailbox. Title, department and manager have no Settings home yet; the machine and git sources are not built.
+- [ ] Wire this into onboarding (`OnboardingView`, `identity-model.ts`) and `services::auth`.
+- [x] **Email first** (owner, 2026-11-07). Setup opens with "Connect your email" (Outlook, Gmail), before the name step:
+  - **Connected:** everything defaults from it: name, email, slug, title, department and manager (`/me`, `/me/manager`), time zone and working hours (Outlook mailbox settings), and the signature's phone and title where the provider gives it. The name step becomes "You're Dev Chechi (dev@company.com) · Change". The Chief of Staff's My role starts filled in, and the email check's first read (section 4) builds the notes from there.
+  - **Skipped:** the flow falls back to what's already on hand (the machine, then git, then asking), as today. Home's email to-do stays until a mailbox is connected.
+  - The mailbox step that is now setup step 3 merges into this one (which mailboxes, how often), so there's one sign-in, not two.
+  - Every defaulted value shows where it came from and stays editable (Settings › Identity).
+  - [ ] Time zone and working hours (Outlook mailbox settings): needs the new `MailboxSettings.Read` scope, so it waits for its own change.
+  - Scopes: `/me` and `/me/manager` work with `User.Read`; time zone and working hours need `MailboxSettings.Read` (new, user consent). Gmail gives the name and email from the ID token; time zone from Calendar settings once the calendar is connected.
+
+Built 2026-11-07 (email first): setup now opens with one "Connect your email" step (which mailboxes, how often, one sign-in) before the name step. Connected, the name step reads "You're <name> (<email>) · Change", with the handle from the address's local part, and Outlook's title, department and manager (`email/profile.rs`, best effort, `User.Read` only) go into the Chief of Staff's My role ("Name and title" and "Team and manager"). Skipped, the name step asks as before. Not built: time zone and working hours (new scope), the machine and git fallbacks, the slug-collision `-1`/`-2` rule, the employee directory, a Settings home for title, department and manager.
 
 ## 4. Email trigger for the Chief of Staff
 

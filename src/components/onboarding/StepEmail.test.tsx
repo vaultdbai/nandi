@@ -18,6 +18,7 @@ function provider(
     connected: false,
     accountName: null,
     accountEmail: null,
+    accountProfile: null,
     state: 'notConnected',
     error: null,
     lastCheckedAt: null,
@@ -53,7 +54,7 @@ describe('StepEmail', () => {
       ok(status([provider(), provider({ provider: 'gmail' })]))
     )
     const user = userEvent.setup()
-    render(<StepEmail onNext={vi.fn()} onBack={vi.fn()} />)
+    render(<StepEmail onNext={vi.fn()} />)
     await user.click(await screen.findByLabelText('Outlook'))
     await user.click(screen.getByLabelText('Gmail'))
     expect(
@@ -78,7 +79,7 @@ describe('StepEmail', () => {
     mocked.setEmailSettings = save
     const onNext = vi.fn()
     const user = userEvent.setup()
-    render(<StepEmail onNext={onNext} onBack={vi.fn()} />)
+    render(<StepEmail onNext={onNext} />)
     expect(await screen.findByLabelText('30 minutes')).toBeChecked()
     expect(screen.getByLabelText('2 hours')).toBeInTheDocument()
     await user.click(screen.getByLabelText('15 minutes'))
@@ -104,7 +105,7 @@ describe('StepEmail', () => {
         ])
       )
     )
-    render(<StepEmail onNext={vi.fn()} onBack={vi.fn()} />)
+    render(<StepEmail onNext={vi.fn()} />)
     const gmail = (await screen.findByText('Gmail')).closest(
       '[data-provider]'
     ) as HTMLElement

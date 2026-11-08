@@ -23,17 +23,17 @@ import type {
 
 export interface StepEmailProps {
   onNext: () => void
-  onBack: () => void
 }
 
 /**
- * Onboarding step 3 (optional): which mailboxes the Chief of Staff reads
- * (Outlook, Gmail or both, each connected in turn) and how often it
- * checks (30 minutes unless the user picks another). Skipping leaves a
- * to-do on Home. A provider this build can't connect says so and doesn't
- * block.
+ * Onboarding step 1 (skippable): connect the work mailbox. One sign-in
+ * covers which mailboxes the Chief of Staff reads (Outlook, Gmail or both,
+ * each connected in turn), how often it checks (30 minutes unless the user
+ * picks another) and who the user is: the name step that follows starts
+ * from the mailbox. Skipping leaves a to-do on Home and the name step
+ * asks. A provider this build can't connect says so and doesn't block.
  */
-export function StepEmail({ onNext, onBack }: StepEmailProps) {
+export function StepEmail({ onNext }: StepEmailProps) {
   const { t } = useTranslation()
   const status = useEmailStatus()
   const action = useEmailAction()
@@ -133,10 +133,7 @@ export function StepEmail({ onNext, onBack }: StepEmailProps) {
         idPrefix="onboarding-email"
       />
 
-      <div className="flex justify-between gap-2">
-        <Button variant="ghost" onClick={onBack}>
-          {t('onboarding.back')}
-        </Button>
+      <div className="flex justify-end gap-2">
         <Button disabled={action.isPending} onClick={next}>
           {action.isPending && <Spinner />}
           {connected.length === 0

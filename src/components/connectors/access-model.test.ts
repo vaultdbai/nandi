@@ -6,6 +6,7 @@ import {
   agentLabel,
   decidedKey,
   parseAccessRequest,
+  rawSiteHost,
 } from './access-model'
 
 const ARGS = {
@@ -30,6 +31,7 @@ describe('parseAccessRequest', () => {
       askEveryTime: false,
       choice: null,
       decidedBy: null,
+      site: null,
     })
   })
 
@@ -131,5 +133,66 @@ describe('approvalSummary for connector_access', () => {
 describe('agentLabel', () => {
   it('turns an id into a name', () => {
     expect(agentLabel('pr-reviewer')).toBe('PR Reviewer')
+  })
+})
+
+const SITE_ARGS = {
+  agent: 'browser',
+  family: 'site',
+  connectors: [],
+  access: 'read',
+  tool: 'pilot_browser__browser_navigate',
+  details: [],
+  askEveryTime: false,
+  site: {
+    host: 'xn--bcher-kva.example',
+    display: 'bücher.example',
+    pilot: 'browser',
+    reason: ' Find the hours ',
+    canSave: true,
+  },
+}
+
+describe('a site request', () => {
+  it('reads the site, and refuses a site request without one', () => {
+    expect(parseAccessRequest(SITE_ARGS)?.site).toEqual({
+      host: 'xn--bcher-kva.example',
+      display: 'bücher.example',
+      pilot: 'browser',
+      reason: 'Find the hours',
+      canSave: true,
+      subdomains: false,
+    })
+    expect(parseAccessRequest({ ...SITE_ARGS, site: null })).toBeNull()
+    expect(parseAccessRequest({ ...SITE_ARGS, site: { host: '' } })).toBeNull()
+  })
+
+  it('names the site as people read it, and the raw host when it differs', () => {
+    const request = parseAccessRequest(SITE_ARGS)
+    if (!request?.site) throw new Error('parse')
+    expect(accessSentence(request, 'Browser')).toEqual({
+      key: 'site',
+      values: { agent: 'Browser', names: 'bücher.example' },
+    })
+    expect(rawSiteHost(request.site)).toBe('xn--bcher-kva.example')
+    expect(
+      rawSiteHost({ ...request.site, display: request.site.host })
+    ).toBeNull()
+  })
+
+  it('offers once or always, and always only when the agent can change', () => {
+    const request = parseAccessRequest(SITE_ARGS)
+    if (!request?.site) throw new Error('parse')
+    expect(accessChoices(request)).toEqual(['allowOnce', 'allowSaved', 'deny'])
+    expect(
+      accessChoices({ ...request, site: { ...request.site, canSave: false } })
+    ).toEqual(['allowOnce', 'deny'])
+  })
+
+  it('is summed up in the Inbox by the site', () => {
+    expect(approvalSummary('connector_access', SITE_ARGS)).toEqual({
+      key: 'siteAccess',
+      values: { agent: 'Browser', site: 'bücher.example' },
+    })
   })
 })

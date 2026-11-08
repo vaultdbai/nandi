@@ -85,29 +85,29 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### ON-02 — Onboarding steps, step indicator and resume
 
-- **What:** First-run setup has five steps: Name, Model, Email (optional), Network, Agents (starter packs). A numbered indicator shows done steps with a check. The step reached is saved per Nandi home, so quitting midway resumes there. A resumed setup offers "Skip the rest of setup".
+- **What:** First-run setup has five steps: Email (skippable), Name, Model, Network, Agents (starter packs). A numbered indicator shows done steps with a check. The step reached is saved per Nandi home, so quitting midway resumes there. A resumed setup offers "Skip the rest of setup".
 - **Where:** `src/components/views/OnboardingView.tsx` (`StepIndicator`), `identity-model.ts` (`ONBOARDING_STEPS`, `resumeStep`), `set_onboarding_step` (`PUT /api/identity/onboarding-step`, body `{"step":"model"}`). Stored in `local_settings` key `onboarding.step` in `~/.nandi/local/state.db`.
 - **Preconditions:** A home that is not onboarded.
 - **Steps:**
-  1. Complete step 1 and go to step 2.
+  1. Complete the Email and Name steps and go to Model.
   2. Quit and relaunch.
   3. Click "Skip the rest of setup".
 - **Expected:**
   - (1) `onboarding.step = "model"` is stored before the name is written.
-  - (2) Setup opens on Model, with Name marked done.
+  - (2) Setup opens on Model, with Email and Name marked done. Quitting before a name is saved opens on Email (or on Name once Email was left).
   - (3) The step becomes `done` and the app opens on Home.
 - **Edge / negative cases:**
   - A failed step save is only logged ("Onboarding: saving the step failed"). Setup continues.
   - `PUT /api/identity/onboarding-step` without `step` returns 400 "Body needs a \"step\"".
   - An unknown stored value counts as unset.
-- **Automation:** Covered by: `src/components/views/OnboardingView.test.tsx` ('shows five steps', 'opens where an interrupted setup stopped', 'renders nothing on a home that finished setup'), `identity-model.test.ts`, Rust `onboarding_step_is_remembered_per_home` | Layer: api + unit | Gap: none significant.
+- **Automation:** Covered by: `src/components/views/OnboardingView.test.tsx` ('shows five steps, Email first', 'opens where an interrupted setup stopped', 'renders nothing on a home that finished setup'), `identity-model.test.ts`, Rust `onboarding_step_is_remembered_per_home` | Layer: api + unit | Gap: none significant.
 - **Needs relay:** no
 - **Status:** Shipped
 
-### ON-03 — Step 1: your name and handle
+### ON-03 — Step 2: your name and handle
 
-- **What:** The user enters a display name (1–64 characters). A handle is derived from it and previewed as "Your handle: @slug". "Customize" reveals the handle field, which takes 2–32 characters: lowercase letters, digits and hyphens, starting and ending with a letter or digit. Errors show after the field is left or Continue is pressed. If the name derives no valid handle (emoji only, for example), the handle field opens.
-- **Where:** `src/components/onboarding/Step1_Name.tsx`, `identity-model.ts` (`slugify`, `validateName`, `validateSlug`).
+- **What:** With no mailbox connected, the user enters a display name (1–64 characters). A handle is derived from it and previewed as "Your handle: @slug". "Customize" reveals the handle field, which takes 2–32 characters: lowercase letters, digits and hyphens, starting and ending with a letter or digit. Errors show after the field is left or Continue is pressed. If the name derives no valid handle (emoji only, for example), the handle field opens. **With a mailbox connected in step 1** the step reads "You're Ada Lovelace (ada.lovelace@company.com) · Change" instead of asking: the name and address come from the mailbox, the handle from the address's local part (`ada-lovelace`), and an Outlook mailbox also shows title, department and manager (for example "Analyst · Finance · reports to Priya Rao (VP Finance)"). Continue saves them. Change opens the usual fields, filled in, to edit any of them.
+- **Where:** `src/components/onboarding/Step1_Name.tsx`, `identity-model.ts` (`slugify`, `validateName`, `validateSlug`, `mailboxIdentity`, `draftFromMailbox`).
 - **Preconditions:** None.
 - **Steps:**
   1. Type "Ada Lovelace" and check the preview.
@@ -124,7 +124,9 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - Accented names: "Zoë" gives "zoe".
   - A name in non-Latin script only: the handle field is required.
   - RTL: the handle field stays LTR.
-- **Automation:** Covered by: `OnboardingView.test.tsx` ('derives the handle…', 'validates, then saves…'), `identity-model.test.ts` | Layer: unit | Gap: none.
+  - A mailbox with no name (or one that isn't connected) falls back to the form above. A local part that makes no valid handle (`+++@…`) takes the handle from the name.
+  - Settings › Account then notes "Name and handle came from your Outlook mailbox." while the name is unchanged.
+- **Automation:** Covered by: `OnboardingView.test.tsx` ('derives the handle…', 'validates, then saves…', 'says who the user is from the connected mailbox…', 'saves the mailbox identity with one click', 'asks for the name when the email step is skipped'), `identity-model.test.ts` (`mailbox identity`) | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -149,7 +151,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
-### ON-05 — Step 2: use a key already on this computer
+### ON-05 — Step 3: use a key already on this computer
 
 - **What:** If the keychain already holds a provider key (from another home on this computer), the step says "Found a key for <provider> on this computer." and offers one-click "Use <provider> (<model>)". That sets the default model and moves on.
 - **Where:** `src/components/onboarding/Step2_Model.tsx`, `useLlmKeyStatus`, `set_default_model` (`PUT /api/default-model`).
@@ -165,7 +167,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
-### ON-06 — Step 2: enter and test a provider key
+### ON-06 — Step 3: enter and test a provider key
 
 - **What:** The user chooses a provider (Anthropic, OpenAI, DeepSeek) and pastes a key. The key is tested first and stored only if it works. When the provider can't be reached (offline), it can be saved untested. A "get a key" link opens the provider's key page. Keys never come back to the webview.
 - **Where:** `src/components/models/ProviderKeyForm.tsx`, `KeyTestResult.tsx`; `test_llm_key` (`POST /api/llm-keys/{provider}/test`), `set_llm_api_key` (`PUT /api/llm-keys/{provider}`); keychain entries `nandi.llm.anthropic`, `nandi.llm.openai`, `nandi.llm.deepseek`.
@@ -183,7 +185,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
-### ON-07 — Step 2: Ollama and Amazon Bedrock options
+### ON-07 — Step 3: Ollama and Amazon Bedrock options
 
 - **What:** The Ollama choice detects a local Ollama. It says "Ollama isn't running…" or "…has no models yet", with "Check again". Otherwise it offers its models and "Use Ollama". Amazon Bedrock is listed with the hint "Works with the Claude Code runtime. Set it up after setup, in Settings › Models & runtimes."
 - **Where:** `Step2_Model.tsx` (Ollama option), `detect_ollama` (`GET /api/ollama`).
@@ -198,7 +200,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
-### ON-08 — Step 2: free tokens notice and skipping without a model
+### ON-08 — Step 3: free tokens notice and skipping without a model
 
 - **What:** With no key, if the build ships the trial, the step says "You can start now: Nandi comes with 100,000 free tokens on <model>". Otherwise it says "Nandi will use <model>" when some model is usable. "Skip for now" asks a second time ("Without a model, agents can't run…", with Go back and Skip anyway).
 - **Where:** `Step2_Model.tsx`, `get_default_model` (`GET /api/default-model`), `services/llm_trial.rs`.
@@ -291,15 +293,15 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
-### ON-15 — Step 3: connect your email (optional)
+### ON-15 — Step 1: connect your email (skippable)
 
-- **What:** Setup step 3 (Name → Model → **Email** → Network → Agents) asks which mailboxes Chief of Staff reads: a checkbox each for **Outlook** and **Gmail**, both allowed. Ticking one shows **Connect <name>**, which opens the browser sign-in; each mailbox shows its own progress and then "Connected as …". The step repeats what Nandi reads and never does. **How often should Chief of Staff check?** offers 5, 15, 30 minutes, 1 hour and 2 hours, with **30 minutes** chosen. A provider without a client ID in this build shows "Not available in this build" and can't be ticked. The button reads **Skip for now** until a mailbox is connected, then **Continue**; both save the interval.
+- **What:** Setup opens on step 1 (**Email** → Name → Model → Network → Agents), titled "Connect your email". One sign-in covers which mailboxes Chief of Staff reads: a checkbox each for **Outlook** and **Gmail**, both allowed. Ticking one shows **Connect <name>**, which opens the browser sign-in; each mailbox shows its own progress and then "Connected as …". The step repeats what Nandi reads and never does. **How often should Chief of Staff check?** offers 5, 15, 30 minutes, 1 hour and 2 hours, with **30 minutes** chosen. A provider without a client ID in this build shows "Not available in this build" and can't be ticked. The button reads **Skip for now** until a mailbox is connected, then **Continue**; both save the interval.
 - **Where:** `src/components/onboarding/StepEmail.tsx`, `components/email/ConnectMailbox.tsx`, `EmailReads.tsx`, `EmailSignInStatus.tsx`, `components/views/OnboardingView.tsx`, `onboarding/identity-model.ts` (`ONBOARDING_STEPS`); `OnboardingStep::Email` (`services/auth/mod.rs`); `set_email_settings`.
 - **Preconditions:** A fresh `NANDI_HOME`; a build with `NANDI_MICROSOFT_CLIENT_ID` (and the Google ID and secret for Gmail).
-- **Steps:** 1. Finish steps 1 and 2. 2. Tick Outlook and Gmail. 3. **Connect Outlook**, sign in; **Connect Gmail**, sign in. 4. Pick 15 minutes. 5. **Continue**, finish setup. 6. Repeat on another fresh home and choose **Skip for now**.
-- **Expected:** Both cards say "Connected as …"; Settings › Email shows both, checking every 15 minutes. Right after setup, one "Email: N new emails" run starts for the Chief of Staff (not one interval later), and its My role "Name and title" line holds the account name and address. Quitting on this step resumes on it. Skipping goes on with the interval saved and leaves the Home to-do (SH-35).
-- **Edge / negative cases:** Sign-in problems explain themselves as in CP-03 (admin approval link, declined, network). Back returns to the model step. A mailbox connected earlier shows as connected and its box can't be unticked.
-- **Automation:** Covered by: `StepEmail.test.tsx` (both mailboxes, default 30 and skip, unavailable provider), `email-model.test.ts`, `OnboardingView.test.tsx`, `builtin_agents.rs` (`the_mailbox_owner_goes_into_my_role`) | Layer: unit | Gap: a live sign-in during setup (manual).
+- **Steps:** 1. Start setup on a fresh home. 2. Tick Outlook and Gmail. 3. **Connect Outlook**, sign in; **Connect Gmail**, sign in. 4. Pick 15 minutes. 5. **Continue**: the Name step reads "You're <name> (<address>) · Change" (ON-03). Finish setup. 6. Repeat on another fresh home and choose **Skip for now**: the Name step asks.
+- **Expected:** Both cards say "Connected as …"; Settings › Email shows both, checking every 15 minutes. Right after setup, one "Email: N new emails" run starts for the Chief of Staff (not one interval later), and its My role holds who the user is: the "Name and title" line gets the name, the Outlook job title and the address, and the "Team and manager" line the department and manager (only the template placeholders are replaced; a line the user wrote is kept). Quitting on this step resumes on it. Skipping goes on with the interval saved and leaves the Home to-do (SH-35).
+- **Edge / negative cases:** Sign-in problems explain themselves as in CP-03 (admin approval link, declined, network). There is no Back (it is the first step). The title, department and manager come from Graph `/me` and `/me/manager` (`User.Read`); if either call fails they stay empty and sign-in still succeeds. Gmail gives name and address only. A mailbox connected earlier shows as connected and its box can't be unticked.
+- **Automation:** Covered by: `StepEmail.test.tsx` (both mailboxes, default 30 and skip, unavailable provider), `email-model.test.ts`, `OnboardingView.test.tsx`, `builtin_agents.rs` (`the_mailbox_owner_goes_into_my_role`), `email/profile.rs` tests, `email/tests.rs` (`outlook_pages_to_the_delta_link_and_resumes_from_it`: profile read at connect) | Layer: unit | Gap: a live sign-in during setup (manual); time zone and working hours need `MailboxSettings.Read` and are not read yet.
 - **Needs relay:** no
 - **Status:** Shipped (live test pending)
 

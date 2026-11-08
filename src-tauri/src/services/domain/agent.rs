@@ -706,6 +706,16 @@ impl Agent {
         Ok(())
     }
 
+    /// Lets the agent reach `hosts` (`network.allow`), as when a person
+    /// always allows a site its browser asked for. `false`: it could already
+    pub fn allow_sites(&mut self, hosts: &[String]) -> DomainResult<bool> {
+        let added = self.capabilities.allow_hosts(hosts)?;
+        if added {
+            self.updated_at = SystemTime::now();
+        }
+        Ok(added)
+    }
+
     pub fn set_model(&mut self, model: Option<ModelRef>) {
         self.model = model;
         self.updated_at = SystemTime::now();
@@ -1190,6 +1200,48 @@ max_delegation_concurrent: 0
         // A Markdown heading underline isn't a conflict
         let heading = "---\nname: A\n---\nRules\n=======\nBe brief.\n";
         assert!(Agent::from_skill_md(id("a"), heading).is_ok());
+    }
+
+    #[test]
+    fn allowing_sites_adds_them_to_network_allow_once() {
+        let id = AgentId::parse("browser").unwrap();
+        let mut agent = Agent::from_skill_md(
+            id.clone(),
+            "---
+name: Browser
+network:
+  allow:
+    - host: example.com
+---
+Body
+",
+        )
+        .unwrap();
+        assert!(agent
+            .allow_sites(&["Shop.Example.org".into(), "*.shop.example.org".into()])
+            .unwrap());
+        let hosts: Vec<&str> = agent
+            .capabilities()
+            .network()
+            .allow
+            .iter()
+            .map(|r| r.host.as_str())
+            .collect();
+        assert_eq!(
+            hosts,
+            ["example.com", "shop.example.org", "*.shop.example.org"]
+        );
+        assert!(
+            !agent.allow_sites(&["example.com".into()]).unwrap(),
+            "already there"
+        );
+        // Written back, and read again the same
+        let again = Agent::from_skill_md(id, &agent.to_skill_md()).unwrap();
+        assert_eq!(
+            again.capabilities().network(),
+            agent.capabilities().network()
+        );
+        assert!(agent.allow_sites(&["a.*.com".into()]).is_err());
     }
 
     #[test]

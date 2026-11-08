@@ -11,6 +11,12 @@
 //!        Don't allow           ─▶ the call fails; not asked again in this run
 //! ```
 //!
+//! A browser pilot opening a site outside the agent's allowed sites asks
+//! the same way (family `site`, [`SiteAccess`]): Allow once lets the
+//! browser and the egress proxy reach it until the run ends
+//! (`pilots::sites`), Always allow writes it into the agent's skill.md
+//! (`network.allow`), Don't allow fails the call.
+//!
 //! Grants are read on every call, so a removed grant stops the next call,
 //! even mid-run. The request is an ordinary approval row (it survives
 //! restarts, appears in the run, the Inbox and the companion, and expires
@@ -21,12 +27,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use specta::Type;
 
-use crate::db;
+use crate::db::{self, ApprovalRow};
 use crate::model::ApprovalStatus;
 use crate::services::agents::SkillConfig;
 use crate::services::domain::grant::{ConnectorGrant, GrantAccess, GrantScope};
 use crate::services::domain::policy::connector_rule_matches;
 use crate::services::grants::{self, GrantInfo, GrantsChanged};
+use crate::services::pilots::sites;
+use crate::services::repos::agent_locator::{self, Origin};
+use crate::services::repos::Repository;
 use crate::services::{connectors, email, events, AppState};
 
 /// The synthetic tool of an access request's approval
@@ -41,6 +50,8 @@ pub enum AccessFamily {
     Files,
     /// An installed connector (an MCP server)
     Connector,
+    /// A website a browser pilot wants to open ([`SiteAccess`])
+    Site,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -84,6 +95,31 @@ pub struct AccessRequest {
     pub choice: Option<AccessChoice>,
     #[serde(default)]
     pub decided_by: Option<String>,
+    /// For family `site`: the site (no connectors)
+    #[serde(default)]
+    pub site: Option<SiteAccess>,
+}
+
+/// A website a browser pilot asked to open
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteAccess {
+    /// As the browser sends it (punycode for an international name)
+    pub host: String,
+    /// As people read it (decoded)
+    pub display: String,
+    /// The pilot that asked (`browser`, `browser-headless`)
+    pub pilot: String,
+    /// Why the agent wants the page, in its words
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// Whether Always allow can save it: the agent is the user's own, not
+    /// a read-only pack agent
+    #[serde(default)]
+    pub can_save: bool,
+    /// Set once the person chose: the grant covers its subdomains too
+    #[serde(default)]
+    pub subdomains: bool,
 }
 
 /// What one call needs
@@ -100,7 +136,7 @@ pub enum Decision {
     /// Run it, with these connectors (for mail: the mailboxes to read)
     Allowed(Vec<String>),
     /// Pause and ask
-    Ask(AccessRequest),
+    Ask(Box<AccessRequest>),
     /// Refused: the model reads why
     Refused(String),
 }
@@ -214,6 +250,9 @@ pub async fn decide(
     tool: &str,
     args: &Value,
 ) -> Option<Decision> {
+    if let Some(decision) = site_decision(state, skill, agent, run_id, tool, args).await {
+        return Some(decision);
+    }
     let need = need(state, tool, args)?;
     if need.connectors.is_empty() {
         return Some(Decision::Refused(format!(
@@ -268,7 +307,7 @@ pub async fn decide(
         }
     }
     if !pending.is_empty() {
-        return Some(Decision::Ask(AccessRequest {
+        return Some(Decision::Ask(Box::new(AccessRequest {
             agent: agent.to_string(),
             family: need.family,
             connectors: pending,
@@ -278,7 +317,8 @@ pub async fn decide(
             ask_every_time: every_time,
             choice: None,
             decided_by: None,
-        }));
+            site: None,
+        })));
     }
     if usable.is_empty() {
         for connector in &need.connectors {
@@ -312,6 +352,7 @@ pub async fn answer(
     state: &AppState,
     approval_id: &str,
     choice: AccessChoice,
+    subdomains: bool,
     who: String,
 ) -> Result<(), String> {
     let id = approval_id.to_string();
@@ -326,6 +367,18 @@ pub async fn answer(
     }
     let mut request: AccessRequest = serde_json::from_value(approval.args.clone())
         .map_err(|e| format!("This access request can't be read: {e}"))?;
+    if let Some(site) = request.site.take() {
+        let site = answer_site(
+            state,
+            &request.agent,
+            &approval.run_id,
+            site,
+            choice,
+            subdomains,
+        )?;
+        request.site = Some(site);
+        return resolve(state, &approval, request, choice, who).await;
+    }
     let scope = match choice {
         AccessChoice::AllowLocal => Some(GrantScope::Local),
         AccessChoice::AllowSaved => Some(GrantScope::Saved),
@@ -378,6 +431,18 @@ pub async fn answer(
     if changed {
         events::emit(state.bus(), &GrantsChanged {});
     }
+    resolve(state, &approval, request, choice, who).await
+}
+
+/// Writes the choice into the request and resolves its approval, so the
+/// run goes on
+async fn resolve(
+    state: &AppState,
+    approval: &ApprovalRow,
+    mut request: AccessRequest,
+    choice: AccessChoice,
+    who: String,
+) -> Result<(), String> {
     request.choice = Some(choice);
     request.decided_by = Some(who);
     let args = serde_json::to_value(&request).map_err(|e| e.to_string())?;
@@ -391,7 +456,162 @@ pub async fn answer(
     } else {
         crate::model::ApprovalDecision::Approved
     };
-    crate::services::chat::approve_action(state, None, approval_id.to_string(), decision).await
+    crate::services::chat::approve_action(state, None, approval.id.clone(), decision).await
+}
+
+/// What the person's choice on a site request does: Allow once lets the
+/// browser and the proxy reach it for `run_id`, Always allow writes it into
+/// the agent's skill.md. Returns the site as decided.
+fn answer_site(
+    state: &AppState,
+    agent: &str,
+    run_id: &str,
+    site: SiteAccess,
+    choice: AccessChoice,
+    subdomains: bool,
+) -> Result<SiteAccess, String> {
+    let hosts = sites::grant_hosts(&site.host, subdomains);
+    match choice {
+        AccessChoice::AllowOnce => sites::allow_for_run(agent, run_id, &hosts),
+        AccessChoice::AllowSaved if site.can_save => save_sites(state, agent, &hosts)?,
+        AccessChoice::AllowSaved => {
+            return Err(format!(
+                "This agent came with a pack, so its sites can't be changed here: allow {} once, or don't allow it",
+                site.display
+            ))
+        }
+        AccessChoice::AllowLocal => {
+            return Err("A site is allowed once or always for this agent".to_string())
+        }
+        AccessChoice::Deny => {}
+    }
+    log::info!(
+        "Site {} for agent '{agent}' in run {run_id}: {choice:?} (subdomains: {subdomains})",
+        site.host
+    );
+    Ok(SiteAccess { subdomains, ..site })
+}
+
+/// Adds `hosts` to agent `id`'s allowed sites, through its repository
+/// (skill.md is the gold copy)
+fn save_sites(state: &AppState, id: &str, hosts: &[String]) -> Result<(), String> {
+    let store = state.store();
+    let mut agent = store.agent(id)?;
+    if agent.allow_sites(hosts).map_err(|e| e.to_string())? {
+        store
+            .repos()
+            .agents
+            .save(&agent)
+            .map_err(|e| e.to_string())?;
+        store.commit(crate::services::domain::EntityKind::Agent, id)?;
+    }
+    Ok(())
+}
+
+/// What the person said earlier in this run about a site
+enum SiteEarlier {
+    /// Allowed once: the hosts that grant covers
+    Once(Vec<String>),
+    /// Not allowed, or the request expired
+    Refused,
+    Unasked,
+}
+
+async fn site_earlier(state: &AppState, run_id: &str, host: &str) -> SiteEarlier {
+    let run = run_id.to_string();
+    let rows = state
+        .db()
+        .call(move |conn| db::run_approvals_for_tool(conn, &run, ACCESS_TOOL))
+        .await
+        .unwrap_or_default();
+    let mut refused = false;
+    for row in rows {
+        let Ok(request) = serde_json::from_value::<AccessRequest>(row.args.clone()) else {
+            continue;
+        };
+        let Some(site) = request.site else {
+            continue;
+        };
+        let hosts = sites::grant_hosts(&site.host, site.subdomains);
+        if !sites::covers(&hosts, host) {
+            continue;
+        }
+        match (row.status, request.choice) {
+            (ApprovalStatus::Approved, Some(AccessChoice::AllowOnce)) => {
+                return SiteEarlier::Once(hosts)
+            }
+            (ApprovalStatus::Rejected | ApprovalStatus::Expired, _) => refused = true,
+            _ => {}
+        }
+    }
+    if refused {
+        SiteEarlier::Refused
+    } else {
+        SiteEarlier::Unasked
+    }
+}
+
+/// A browser pilot call that opens a page outside the agent's allowed
+/// sites: ask the person, or say what they said earlier in this run.
+/// `None`: not such a call, already allowed, or a site Nandi never asks
+/// about (an address, a local name, past a policy's ceiling), which the
+/// browser refuses as before.
+async fn site_decision(
+    state: &AppState,
+    skill: Option<&SkillConfig>,
+    agent: &str,
+    run_id: &str,
+    tool: &str,
+    args: &Value,
+) -> Option<Decision> {
+    let (pilot, url) = sites::requested_page(tool, args)?;
+    let site = sites::askable(&url)?;
+    let caps = &skill?.capabilities;
+    if caps.allows_tunnel(&site.host, 443) || caps.allows_request(&site.host, None, "GET") {
+        return None;
+    }
+    match site_earlier(state, run_id, &site.host).await {
+        SiteEarlier::Once(hosts) => {
+            // Again after a restart, or for the next page on the site
+            sites::allow_for_run(agent, run_id, &hosts);
+            return None;
+        }
+        SiteEarlier::Refused => {
+            return Some(Decision::Refused(format!(
+                "{} isn't allowed: the person didn't let this agent open it. Don't open it again in this task; say what you needed it for.",
+                site.display
+            )))
+        }
+        SiteEarlier::Unasked => {}
+    }
+    if !crate::services::policies::admits_hosts(
+        state.store(),
+        agent,
+        std::slice::from_ref(&site.host),
+    ) {
+        return None;
+    }
+    let can_save = agent_locator::locate(state.store().layout(), agent)
+        .is_none_or(|place| place.origin == Origin::Local);
+    Some(Decision::Ask(Box::new(AccessRequest {
+        agent: agent.to_string(),
+        family: AccessFamily::Site,
+        connectors: Vec::new(),
+        access: GrantAccess::Read,
+        tool: tool.to_string(),
+        details: Vec::new(),
+        ask_every_time: false,
+        choice: None,
+        decided_by: None,
+        site: Some(SiteAccess {
+            host: site.host,
+            display: site.display,
+            pilot,
+            reason: sites::reason_of(args),
+            can_save,
+            subdomains: false,
+        }),
+    })))
 }
 
 /// Gives a grant up front (an agent's Connectors panel, Settings)

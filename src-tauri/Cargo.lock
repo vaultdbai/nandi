@@ -3944,6 +3944,7 @@ dependencies = [
  "glob",
  "hyper",
  "hyper-util",
+ "idna",
  "keyring",
  "log",
  "nandi-protocol",

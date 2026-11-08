@@ -119,6 +119,8 @@ The built-in **Chief of Staff** agent (`services/builtin_agents.rs`, files in `s
 
 A person's Chief of Staff therefore answers questions for them, and work assigned to them waits for their approval.
 
+The second built-in, **Browser** (`builtin_agents::BROWSER`, files in `src-tauri/resources/builtin-agents/browser/`), does website work for the Chief of Staff. It accepts delegation and serves `browse` (find, read or check something on a site) and `web-task` (do something on a site), so `work_start` plans onto it and `delegate_to_agent` reaches it by capability. It uses the visible `browser` pilot with `allow: [interact]`: submitting, secrets, uploads and paying wait for approval, and sign-ins, CAPTCHAs and payments go through `browser_hand_over`. It ships with no allowed sites; the user adds each one to its Internet access. Its behaviour is in its `skill.md` (900 words or fewer). `BUILTIN_AGENTS` is the table of built-ins and their files: `seed` writes each one whose `skill.md` is missing, `is_builtin` makes it undeletable, and `position` lists the built-ins first, in table order.
+
 ### Assignments last (`a2a/assignment.rs`, `gateway/assignments.rs`)
 
 `assign-me` is the one capability whose tasks outlive the call (`assignment::is_lasting`):

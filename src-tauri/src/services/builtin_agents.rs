@@ -14,42 +14,60 @@ use crate::services::repos::RepoLayout;
 /// The agent that keeps My notes and answers for the user
 pub const CHIEF_OF_STAFF: &str = "chief-of-staff";
 
-/// Every built-in agent's ID, in the order the sidebar lists them
-pub const BUILTIN_AGENTS: &[&str] = &[CHIEF_OF_STAFF];
+/// The agent that does website work in a browser the user watches
+pub const BROWSER: &str = "browser";
 
-/// A built-in agent's files, as written into a new folder
-const CHIEF_OF_STAFF_FILES: &[(&str, &str)] = &[
-    (
-        SKILL_FILE,
-        include_str!("../../resources/builtin-agents/chief-of-staff/skill.md"),
-    ),
-    (
-        INSTRUCTIONS_FILE,
-        include_str!("../../resources/builtin-agents/chief-of-staff/instructions.md"),
-    ),
+/// An agent that ships with Nandi: its ID and the files written into a new
+/// folder
+pub struct BuiltinAgent {
+    pub id: &'static str,
+    files: &'static [(&'static str, &'static str)],
+}
+
+/// Every built-in agent, in the order the sidebar lists them
+pub const BUILTIN_AGENTS: &[BuiltinAgent] = &[
+    BuiltinAgent {
+        id: CHIEF_OF_STAFF,
+        files: &[
+            (
+                SKILL_FILE,
+                include_str!("../../resources/builtin-agents/chief-of-staff/skill.md"),
+            ),
+            (
+                INSTRUCTIONS_FILE,
+                include_str!("../../resources/builtin-agents/chief-of-staff/instructions.md"),
+            ),
+        ],
+    },
+    BuiltinAgent {
+        id: BROWSER,
+        files: &[(
+            SKILL_FILE,
+            include_str!("../../resources/builtin-agents/browser/skill.md"),
+        )],
+    },
 ];
 
 pub fn is_builtin(id: &str) -> bool {
-    BUILTIN_AGENTS.contains(&id)
+    position(id).is_some()
 }
 
-fn files_of(id: &str) -> &'static [(&'static str, &'static str)] {
-    match id {
-        CHIEF_OF_STAFF => CHIEF_OF_STAFF_FILES,
-        _ => &[],
-    }
+/// Where a built-in agent comes in [`BUILTIN_AGENTS`], for listing them first
+pub fn position(id: &str) -> Option<usize> {
+    BUILTIN_AGENTS.iter().position(|agent| agent.id == id)
 }
 
 /// Writes each built-in agent whose `skill.md` the repo lacks, and returns
 /// the files written. An existing folder is the user's and stays as it is.
 pub fn seed(layout: &RepoLayout) -> Result<Vec<PathBuf>, String> {
     let mut written = Vec::new();
-    for id in BUILTIN_AGENTS {
+    for agent in BUILTIN_AGENTS {
+        let id = agent.id;
         if layout.skill_path(id).is_file() {
             continue;
         }
         let dir = layout.agent_dir(id);
-        for (name, content) in files_of(id) {
+        for (name, content) in agent.files {
             let path = dir.join(name);
             if write_new(&path, content)? {
                 written.push(path);
@@ -152,14 +170,41 @@ mod tests {
         (tmp, layout)
     }
 
+    fn builtin(id: &str) -> &'static BuiltinAgent {
+        &BUILTIN_AGENTS[position(id).unwrap()]
+    }
+
+    /// A built-in agent's shipped file
+    fn file(agent: &BuiltinAgent, name: &str) -> &'static str {
+        agent
+            .files
+            .iter()
+            .find(|(file, _)| *file == name)
+            .map(|(_, content)| *content)
+            .unwrap()
+    }
+
+    fn shipped(id: &str) -> Agent {
+        Agent::from_skill_md(AgentId::parse(id).unwrap(), file(builtin(id), SKILL_FILE)).unwrap()
+    }
+
     #[test]
-    fn seeds_chief_of_staff_once() {
+    fn seeds_every_builtin_agent_once() {
         let (_tmp, layout) = layout();
         let written = seed(&layout).unwrap();
-        assert_eq!(written.len(), 2);
+        assert_eq!(written.len(), 3, "{written:?}");
         assert!(layout.skill_path(CHIEF_OF_STAFF).is_file());
         assert!(layout.instructions_path(CHIEF_OF_STAFF).is_file());
+        assert!(layout.skill_path(BROWSER).is_file());
         assert!(seed(&layout).unwrap().is_empty(), "nothing to add again");
+    }
+
+    #[test]
+    fn the_chief_of_staff_is_listed_first() {
+        assert_eq!(position(CHIEF_OF_STAFF), Some(0));
+        assert_eq!(position(BROWSER), Some(1));
+        assert!(is_builtin(BROWSER));
+        assert!(!is_builtin("writer"));
     }
 
     #[test]
@@ -186,16 +231,48 @@ mod tests {
         );
     }
 
+    /// The words of a skill.md body (after the frontmatter)
+    fn body_words(skill_md: &str) -> usize {
+        let (_, body) = crate::services::domain::agent::split_frontmatter(skill_md).unwrap();
+        body.split_whitespace().count()
+    }
+
     #[test]
-    fn the_shipped_skill_parses() {
-        let id = AgentId::parse(CHIEF_OF_STAFF).unwrap();
-        let agent = Agent::from_skill_md(id, CHIEF_OF_STAFF_FILES[0].1).unwrap();
-        assert_eq!(agent.name(), "Chief of Staff");
+    fn the_shipped_skills_parse_and_stay_short() {
+        assert_eq!(shipped(CHIEF_OF_STAFF).name(), "Chief of Staff");
+        assert_eq!(shipped(BROWSER).name(), "Browser");
+        for agent in BUILTIN_AGENTS {
+            let words = body_words(file(agent, SKILL_FILE));
+            assert!(words <= 900, "{}: {words} words", agent.id);
+            assert!(
+                shipped(agent.id).model().is_none(),
+                "{} sets no model",
+                agent.id
+            );
+        }
+    }
+
+    #[test]
+    fn browser_uses_the_visible_browser_and_takes_delegation() {
+        let agent = shipped(BROWSER);
+        let caps = agent.capabilities();
+        let pilots: Vec<String> = caps
+            .pilots()
+            .iter()
+            .map(|p| p.as_str().to_string())
+            .collect();
+        assert_eq!(pilots, ["browser"], "the visible browser, never headless");
+        // Clicking and typing run; submitting, secrets, uploads and paying ask
+        assert_eq!(caps.pilot_options("browser").unwrap().allow, ["interact"]);
+        assert!(caps.accepts_delegation());
+        let serves: Vec<&str> = caps.serves().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(serves, ["browse", "web-task"]);
+        assert!(caps.network().allow.is_empty(), "the user allows each site");
     }
 
     #[test]
     fn the_mailbox_owner_goes_into_my_role() {
-        let template = CHIEF_OF_STAFF_FILES[1].1;
+        let template = file(builtin(CHIEF_OF_STAFF), INSTRUCTIONS_FILE);
         let filled =
             with_mailbox_identity(template, Some("Dev Chechi"), "dev@company.com").unwrap();
         assert!(filled.contains("- **Name and title:** Dev Chechi, dev@company.com\n"));

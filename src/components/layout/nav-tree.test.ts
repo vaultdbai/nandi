@@ -105,17 +105,23 @@ describe('buildNavTree', () => {
     expect(list.at(-1)?.id).toBe('agents:all')
   })
 
-  it('keeps Chief of Staff on top, idle or not, past the limit', () => {
+  it('keeps the built-in agents on top, idle or not, past the limit', () => {
     const chief = { ...agent('chief-of-staff'), builtin: true }
+    const browser = { ...agent('browser'), builtin: true }
     const agents = [
+      chief,
+      browser,
       agent('amy', 'running'),
       ...Array.from({ length: LIST_LIMIT }, (_, i) => agent(`x${i}`)),
-      chief,
     ]
     const list =
       findNode(buildNavTree(input({ agents })), 'agents')?.children ?? []
-    expect(ids(list.slice(0, 2))).toEqual(['agent:chief-of-staff', 'agent:amy'])
-    expect(list).toHaveLength(LIST_LIMIT + 2)
+    expect(ids(list.slice(0, 3))).toEqual([
+      'agent:chief-of-staff',
+      'agent:browser',
+      'agent:amy',
+    ])
+    expect(list).toHaveLength(LIST_LIMIT + 3)
     expect(list.at(-1)?.id).toBe('agents:all')
   })
 

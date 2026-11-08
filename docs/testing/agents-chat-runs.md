@@ -369,7 +369,35 @@ Shared preconditions used below:
 - **Edge / negative cases:**
   - Installing a pack that still contains `chief-of-staff` is refused ("you already have chief-of-staff"); dev-pack must drop it (0.5.0).
   - Deleting `.nandi/agents/chief-of-staff/skill.md` by hand: the next start restores it.
-- **Automation:** Covered by: `builtin_agents.rs` (`seeds_chief_of_staff_once`, `keeps_the_users_edits`, `restores_a_removed_skill_but_keeps_the_role`, `the_shipped_skill_parses`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`), `nav-tree.test.ts` ('keeps Chief of Staff on top…'), `agent-page-model.test.ts` ('puts a built-in agent first…') | Layer: unit | Gap: no test of the hidden Delete or the `delete_agent` refusal.
+- **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `keeps_the_users_edits`, `restores_a_removed_skill_but_keeps_the_role`, `the_shipped_skills_parse_and_stay_short`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_builtin_agents_first_in_their_own_order`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`), `nav-tree.test.ts` ('keeps the built-in agents on top…'), `agent-page-model.test.ts` ('puts a built-in agent first…') | Layer: unit | Gap: no test of the hidden Delete.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### AG-31 — Browser comes with Nandi
+
+- **What:** A second built-in agent, **Browser** (`browser`), does website work for the Chief of Staff in a browser the user watches.
+  - It's seeded, edited, listed and protected like Chief of Staff (AG-30): written on start if its `skill.md` is missing, Delete hidden and refused, listed second under Agents and on the All agents page.
+  - It accepts delegation and serves `browse` and `web-task`. Chief of Staff hands it website work through `work_start` or `delegate_to_agent`.
+  - It uses the visible **Browser** pilot (never headless) with `allow: [interact]`: clicking and typing run, submitting, secrets, uploads and paying wait for approval. Sign-ins, CAPTCHAs, payments and passwords go to the user with the pilot's hand-over.
+  - It ships with no allowed sites. A site outside its Internet access is refused, and it says which site to add.
+  - Its behaviour is in its `skill.md` (900 words or fewer), with no `model:`.
+- **Where:** `src-tauri/resources/builtin-agents/browser/skill.md`, `services/builtin_agents.rs` (`BROWSER`, `BUILTIN_AGENTS`, `position`), `services/agents.rs` (listing order), `resources/builtin-agents/chief-of-staff/skill.md` ("Website work"), `agent-page-model.ts` (`sortAgents`).
+- **Preconditions:** A new Nandi home. The Browser pilot installed and started in Library › Tools, with Chrome or Edge on the computer.
+- **Steps:**
+  1. Start Nandi. Open Agents.
+  2. Open Browser › Settings › Internet access and add `example.com`.
+  3. Ask Chief of Staff: "Check what example.com says on its home page."
+  4. Approve the delegation and allow the pilot for Browser when asked.
+  5. Ask Chief of Staff for something on a site not in Browser's Internet access.
+- **Expected:**
+  - Step 1: Chief of Staff first, Browser second; neither has Delete.
+  - Step 3–4: a Chrome or Edge window opens on example.com; Browser reports what it found with the link and a screenshot; Chief of Staff relays it.
+  - Step 5: Browser says the site is refused and which site to add; it doesn't try another address.
+- **Edge / negative cases:**
+  - A form submit waits for approval; a sign-in page is handed over, never typed.
+  - Deleting `.nandi/agents/browser/skill.md` by hand: the next start restores it.
+  - Installing a pack that contains an agent `browser` is refused, as for Chief of Staff.
+- **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `the_chief_of_staff_is_listed_first`, `the_shipped_skills_parse_and_stay_short`, `browser_uses_the_visible_browser_and_takes_delegation`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_builtin_agents_first_in_their_own_order`), `a2a/tests.rs` (`the_chief_of_staff_hands_website_work_to_the_builtin_browser`), `nav-tree.test.ts`, `agent-page-model.test.ts` ('keeps the built-in agents in the order they come') | Layer: unit + integration | Gap: no automated run with the real browser pilot.
 - **Needs relay:** no
 - **Status:** Shipped
 

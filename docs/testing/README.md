@@ -121,15 +121,15 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-519 features to test: all 573 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+521 features to test: all 575 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
 | App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 57       |
-| Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 72       |
+| Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 73       |
 | Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
-| Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 85       |
+| Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 86       |
 | Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 75       |
 | Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 72       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
@@ -137,21 +137,21 @@ These turned up while building the catalog. In each case the catalog follows the
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 500   |
+| Shipped     | 502   |
 | Partial     | 16    |
 | Removed     | 11    |
 | Known issue | 3     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 273   |
+| `unit`                | 275   |
 | `api`                 | 185   |
 | `manual`              | 37    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 445   |
+| no          | 447   |
 | yes         | 74    |
 
 ## Master index
@@ -167,17 +167,17 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | SH-02 | Single instance                                                          | Shipped                                              | manual     | no          |                                        |
 | SH-03 | Window size and position remembered; closing hides the window            | Shipped                                              | manual     | no          |                                        |
 | ON-02 | Onboarding steps, step indicator and resume                              | Shipped                                              | api + unit | no          | 2026-11-01 pass                        |
-| ON-03 | Step 1: your name and handle                                             | Shipped                                              | unit       | no          |                                        |
+| ON-03 | Step 2: your name and handle                                             | Shipped                                              | unit       | no          |                                        |
 | ON-04 | Saving the identity (NANDI.md)                                           | Shipped                                              | api        | no          |                                        |
-| ON-05 | Step 2: use a key already on this computer                               | Shipped                                              | unit       | no          |                                        |
-| ON-06 | Step 2: enter and test a provider key                                    | Shipped                                              | api        | no          |                                        |
-| ON-07 | Step 2: Ollama and Amazon Bedrock options                                | Shipped                                              | unit       | no          |                                        |
-| ON-08 | Step 2: free tokens notice and skipping without a model                  | Shipped                                              | unit       | no          |                                        |
+| ON-05 | Step 3: use a key already on this computer                               | Shipped                                              | unit       | no          |                                        |
+| ON-06 | Step 3: enter and test a provider key                                    | Shipped                                              | api        | no          |                                        |
+| ON-07 | Step 3: Ollama and Amazon Bedrock options                                | Shipped                                              | unit       | no          |                                        |
+| ON-08 | Step 3: free tokens notice and skipping without a model                  | Shipped                                              | unit       | no          |                                        |
 | ON-09 | Step 4: join a network (optional)                                        | Shipped                                              | unit       | yes         | 2026-11-01 pass after fix              |
 | ON-10 | Step 4: "Let others send requests to my Nandi"                           | Shipped                                              | unit       | yes         |                                        |
 | ON-11 | Step 5: starter packs                                                    | Shipped                                              | unit       | no          | 2026-11-01 pass                        |
 | ON-12 | Finishing setup and the welcome strip                                    | Shipped                                              | unit       | no          |                                        |
-| ON-15 | Step 3: connect your email (optional)                                    | Shipped (live test pending)                          | unit       | no          |                                        |
+| ON-15 | Step 1: connect your email (skippable)                                   | Shipped (live test pending)                          | unit       | no          |                                        |
 | ON-13 | Starter packs page (after setup)                                         | Duplicate of LB-20                                   | —          | no          |                                        |
 | ON-14 | Upgrades from pre-identity installs                                      | Removed (2026-10-22, no legacy support)              | —          | no          |                                        |
 | SH-04 | Title bar and window controls                                            | Shipped                                              | ui-e2e     | no          |                                        |
@@ -247,82 +247,83 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 
 ### Agents, chat and runs
 
-| ID    | Feature                                                                 | Status             | Layer         | Needs relay | Last verified                               |
-| ----- | ----------------------------------------------------------------------- | ------------------ | ------------- | ----------- | ------------------------------------------- |
-| AG-01 | Agents list page                                                        | Shipped            | api           | no          |                                             |
-| AG-02 | Agents list search and filters                                          | Shipped            | ui-e2e        | no          |                                             |
-| AG-03 | Agent problem line and fixes                                            | Shipped            | unit          | no          |                                             |
-| AG-04 | Agent row menu                                                          | Shipped            | unit          | no          |                                             |
-| AG-05 | New agent dialog (template)                                             | Shipped            | api           | no          |                                             |
-| AG-06 | New agent: describe it in Ask                                           | Shipped            | ui-e2e        | no          |                                             |
-| AG-07 | Agent created or changed by editing files                               | Shipped            | api           | no          |                                             |
-| AG-08 | skill.md format: keys the app honors                                    | Shipped            | unit          | no          |                                             |
-| AG-09 | Agent status                                                            | Shipped            | api           | no          |                                             |
-| AG-10 | Agent page shell and header                                             | Shipped            | ui-e2e        | no          |                                             |
-| AG-11 | Pending-approval banner on the agent page                               | Shipped            | ui-e2e        | no          |                                             |
-| AG-12 | Overview tab: health card                                               | Shipped            | unit + api    | no          |                                             |
-| AG-13 | Overview tab: waiting, recent work, queue, about                        | Shipped            | ui-e2e        | no          |                                             |
-| AG-14 | Runs tab                                                                | Shipped            | api + ui-e2e  | no          |                                             |
-| AG-15 | Settings tab: General, save, revert and leave guard                     | Shipped            | ui-e2e        | no          |                                             |
-| AG-16 | Settings tab: Model and runtime                                         | Shipped            | unit + ui-e2e | no          |                                             |
-| AG-27 | Settings tab: Your rules (kept across updates)                          | Shipped            | unit + manual | no          | 2026-10-30 pass (saved, kept after restart) |
-| AG-28 | My notes: the notes Chief of Staff keeps                                | Shipped            | unit + ui     | no          | 2026-11-01 pass after fix                   |
-| AG-30 | Chief of Staff comes with Nandi                                         | Shipped            | unit          | no          | 2026-11-01 pass                             |
-| AG-29 | Settings tab: Internet access (allowed sites)                           | Shipped            | unit          | no          |                                             |
-| AG-17 | Settings tab: Permissions panel                                         | Shipped            | unit          | no          |                                             |
-| AG-18 | Settings tab: Connectors and shared folders                             | Shipped            | unit          | no          |                                             |
-| AG-19 | Settings tab: Sharing (delegation settings)                             | Shipped            | unit          | no          |                                             |
-| AG-20 | Settings tab: Clarification policy                                      | Shipped            | unit          | no          |                                             |
-| AG-21 | Settings tab: Advanced (container resources)                            | Shipped            | unit + manual | no          |                                             |
-| AG-22 | Agent memory panel                                                      | Shipped            | unit + api    | no          |                                             |
-| AG-23 | Delete an agent                                                         | Shipped            | api           | no          |                                             |
-| AG-24 | Container start, stop, restart                                          | Duplicate of RT-04 | —             | no          |                                             |
-| AG-25 | Installed (marketplace) agents: read-only banner, fork and consent gate | Shipped            | api           | no          |                                             |
-| AG-26 | `verify --agent` CLI check                                              | Duplicate of RT-24 | —             | no          |                                             |
-| CH-01 | Send a message to an agent                                              | Shipped            | api           | no          |                                             |
-| CH-02 | Composer Chat / Ask toggle                                              | Shipped            | ui-e2e        | no          |                                             |
-| CH-03 | Attachments                                                             | Shipped            | manual        | no          |                                             |
-| CH-04 | Message list                                                            | Shipped            | ui-e2e        | no          |                                             |
-| CH-05 | Safe markdown rendering of agent output                                 | Shipped            | unit          | no          |                                             |
-| CH-06 | Streaming and the model loop                                            | Shipped            | api + manual  | no          |                                             |
-| CH-07 | Tool call card                                                          | Shipped            | unit + ui-e2e | no          |                                             |
-| CH-08 | Approval request card and decisions                                     | Shipped            | api           | no          |                                             |
-| CH-09 | Approval expiry                                                         | Shipped            | api           | no          |                                             |
-| CH-10 | Restart behavior for runs and approvals                                 | Shipped            | api           | no          |                                             |
-| CH-11 | One turn per agent and the queue strip                                  | Shipped            | api           | no          |                                             |
-| CH-12 | Queue panel: reorder and remove                                         | Shipped            | api           | no          |                                             |
-| CH-13 | Stop the current turn                                                   | Shipped            | api           | no          |                                             |
-| CH-14 | Text-only fallback warning                                              | Shipped            | api           | no          |                                             |
-| CH-15 | Turn limits (max_turns, max_cost_usd, context cap)                      | Shipped            | api           | no          |                                             |
-| CH-16 | Plan mode (read_only)                                                   | Shipped            | api           | no          |                                             |
-| CH-17 | Verify on stop                                                          | Shipped            | unit          | no          |                                             |
-| CH-18 | Compaction of long runs                                                 | Shipped            | api           | no          |                                             |
-| CH-19 | Deferred tool loading (tool_search)                                     | Shipped            | unit          | no          |                                             |
-| CH-20 | Automatic agent memory                                                  | Shipped            | unit + manual | no          |                                             |
-| CH-21 | CLI-runtime agents in chat (Claude Code, Codex, Gemini CLI)             | Shipped            | manual        | no          |                                             |
-| CH-22 | Delegation task strip (requester)                                       | Shipped            | api           | no          |                                             |
-| CH-23 | Provider state panel and reassign                                       | Shipped            | manual        | yes         |                                             |
-| CH-24 | Clarification and escalation cards                                      | Shipped            | api           | no          |                                             |
-| CH-25 | Pilot consent prompt                                                    | Shipped            | unit          | no          |                                             |
-| CH-26 | Trust graph                                                             | Shipped            | unit          | no          |                                             |
-| CH-27 | Live sync: snapshots and agent events                                   | Shipped            | unit + api    | no          |                                             |
-| CH-28 | Working indicator while the agent answers                               | Shipped            | unit          | no          |                                             |
-| CH-29 | Select and copy chat text                                               | Shipped            | unit          | no          |                                             |
-| RN-01 | Run Detail page and header                                              | Shipped            | unit + ui-e2e | no          |                                             |
-| RN-02 | Overview tab: key results                                               | Shipped            | unit          | no          |                                             |
-| RN-03 | Timeline tab                                                            | Shipped            | unit          | no          |                                             |
-| RN-04 | Outputs tab                                                             | Shipped            | unit          | no          |                                             |
-| RN-05 | Files tab                                                               | Shipped            | api + manual  | no          |                                             |
-| RN-06 | Logs tab                                                                | Shipped            | unit          | no          |                                             |
-| RN-07 | Approvals tab                                                           | Shipped            | unit          | no          |                                             |
-| RN-08 | Ask about this run (analysis)                                           | Shipped            | api           | no          |                                             |
-| RN-09 | Stop from Run Detail                                                    | Shipped            | unit          | no          |                                             |
-| RN-10 | Re-run                                                                  | Shipped            | unit          | no          |                                             |
-| RN-11 | Compaction lineage in Run Detail                                        | Shipped            | unit          | no          |                                             |
-| RN-12 | "Part of" Request link                                                  | Shipped            | unit          | no          |                                             |
-| RN-13 | Usage tokens and cost recording                                         | Shipped            | api + manual  | no          |                                             |
-| RN-14 | Global runs query API                                                   | Shipped            | api           | no          |                                             |
-| RN-15 | Audit log viewer                                                        | Shipped            | unit + api    | no          |                                             |
+| ID    | Feature                                                                 | Status             | Layer              | Needs relay | Last verified                               |
+| ----- | ----------------------------------------------------------------------- | ------------------ | ------------------ | ----------- | ------------------------------------------- |
+| AG-01 | Agents list page                                                        | Shipped            | api                | no          |                                             |
+| AG-02 | Agents list search and filters                                          | Shipped            | ui-e2e             | no          |                                             |
+| AG-03 | Agent problem line and fixes                                            | Shipped            | unit               | no          |                                             |
+| AG-04 | Agent row menu                                                          | Shipped            | unit               | no          |                                             |
+| AG-05 | New agent dialog (template)                                             | Shipped            | api                | no          |                                             |
+| AG-06 | New agent: describe it in Ask                                           | Shipped            | ui-e2e             | no          |                                             |
+| AG-07 | Agent created or changed by editing files                               | Shipped            | api                | no          |                                             |
+| AG-08 | skill.md format: keys the app honors                                    | Shipped            | unit               | no          |                                             |
+| AG-09 | Agent status                                                            | Shipped            | api                | no          |                                             |
+| AG-10 | Agent page shell and header                                             | Shipped            | ui-e2e             | no          |                                             |
+| AG-11 | Pending-approval banner on the agent page                               | Shipped            | ui-e2e             | no          |                                             |
+| AG-12 | Overview tab: health card                                               | Shipped            | unit + api         | no          |                                             |
+| AG-13 | Overview tab: waiting, recent work, queue, about                        | Shipped            | ui-e2e             | no          |                                             |
+| AG-14 | Runs tab                                                                | Shipped            | api + ui-e2e       | no          |                                             |
+| AG-15 | Settings tab: General, save, revert and leave guard                     | Shipped            | ui-e2e             | no          |                                             |
+| AG-16 | Settings tab: Model and runtime                                         | Shipped            | unit + ui-e2e      | no          |                                             |
+| AG-27 | Settings tab: Your rules (kept across updates)                          | Shipped            | unit + manual      | no          | 2026-10-30 pass (saved, kept after restart) |
+| AG-28 | My notes: the notes Chief of Staff keeps                                | Shipped            | unit + ui          | no          | 2026-11-01 pass after fix                   |
+| AG-30 | Chief of Staff comes with Nandi                                         | Shipped            | unit               | no          | 2026-11-01 pass                             |
+| AG-31 | Browser comes with Nandi                                                | Shipped            | unit + integration | no          |                                             |
+| AG-29 | Settings tab: Internet access (allowed sites)                           | Shipped            | unit               | no          |                                             |
+| AG-17 | Settings tab: Permissions panel                                         | Shipped            | unit               | no          |                                             |
+| AG-18 | Settings tab: Connectors and shared folders                             | Shipped            | unit               | no          |                                             |
+| AG-19 | Settings tab: Sharing (delegation settings)                             | Shipped            | unit               | no          |                                             |
+| AG-20 | Settings tab: Clarification policy                                      | Shipped            | unit               | no          |                                             |
+| AG-21 | Settings tab: Advanced (container resources)                            | Shipped            | unit + manual      | no          |                                             |
+| AG-22 | Agent memory panel                                                      | Shipped            | unit + api         | no          |                                             |
+| AG-23 | Delete an agent                                                         | Shipped            | api                | no          |                                             |
+| AG-24 | Container start, stop, restart                                          | Duplicate of RT-04 | —                  | no          |                                             |
+| AG-25 | Installed (marketplace) agents: read-only banner, fork and consent gate | Shipped            | api                | no          |                                             |
+| AG-26 | `verify --agent` CLI check                                              | Duplicate of RT-24 | —                  | no          |                                             |
+| CH-01 | Send a message to an agent                                              | Shipped            | api                | no          |                                             |
+| CH-02 | Composer Chat / Ask toggle                                              | Shipped            | ui-e2e             | no          |                                             |
+| CH-03 | Attachments                                                             | Shipped            | manual             | no          |                                             |
+| CH-04 | Message list                                                            | Shipped            | ui-e2e             | no          |                                             |
+| CH-05 | Safe markdown rendering of agent output                                 | Shipped            | unit               | no          |                                             |
+| CH-06 | Streaming and the model loop                                            | Shipped            | api + manual       | no          |                                             |
+| CH-07 | Tool call card                                                          | Shipped            | unit + ui-e2e      | no          |                                             |
+| CH-08 | Approval request card and decisions                                     | Shipped            | api                | no          |                                             |
+| CH-09 | Approval expiry                                                         | Shipped            | api                | no          |                                             |
+| CH-10 | Restart behavior for runs and approvals                                 | Shipped            | api                | no          |                                             |
+| CH-11 | One turn per agent and the queue strip                                  | Shipped            | api                | no          |                                             |
+| CH-12 | Queue panel: reorder and remove                                         | Shipped            | api                | no          |                                             |
+| CH-13 | Stop the current turn                                                   | Shipped            | api                | no          |                                             |
+| CH-14 | Text-only fallback warning                                              | Shipped            | api                | no          |                                             |
+| CH-15 | Turn limits (max_turns, max_cost_usd, context cap)                      | Shipped            | api                | no          |                                             |
+| CH-16 | Plan mode (read_only)                                                   | Shipped            | api                | no          |                                             |
+| CH-17 | Verify on stop                                                          | Shipped            | unit               | no          |                                             |
+| CH-18 | Compaction of long runs                                                 | Shipped            | api                | no          |                                             |
+| CH-19 | Deferred tool loading (tool_search)                                     | Shipped            | unit               | no          |                                             |
+| CH-20 | Automatic agent memory                                                  | Shipped            | unit + manual      | no          |                                             |
+| CH-21 | CLI-runtime agents in chat (Claude Code, Codex, Gemini CLI)             | Shipped            | manual             | no          |                                             |
+| CH-22 | Delegation task strip (requester)                                       | Shipped            | api                | no          |                                             |
+| CH-23 | Provider state panel and reassign                                       | Shipped            | manual             | yes         |                                             |
+| CH-24 | Clarification and escalation cards                                      | Shipped            | api                | no          |                                             |
+| CH-25 | Pilot consent prompt                                                    | Shipped            | unit               | no          |                                             |
+| CH-26 | Trust graph                                                             | Shipped            | unit               | no          |                                             |
+| CH-27 | Live sync: snapshots and agent events                                   | Shipped            | unit + api         | no          |                                             |
+| CH-28 | Working indicator while the agent answers                               | Shipped            | unit               | no          |                                             |
+| CH-29 | Select and copy chat text                                               | Shipped            | unit               | no          |                                             |
+| RN-01 | Run Detail page and header                                              | Shipped            | unit + ui-e2e      | no          |                                             |
+| RN-02 | Overview tab: key results                                               | Shipped            | unit               | no          |                                             |
+| RN-03 | Timeline tab                                                            | Shipped            | unit               | no          |                                             |
+| RN-04 | Outputs tab                                                             | Shipped            | unit               | no          |                                             |
+| RN-05 | Files tab                                                               | Shipped            | api + manual       | no          |                                             |
+| RN-06 | Logs tab                                                                | Shipped            | unit               | no          |                                             |
+| RN-07 | Approvals tab                                                           | Shipped            | unit               | no          |                                             |
+| RN-08 | Ask about this run (analysis)                                           | Shipped            | api                | no          |                                             |
+| RN-09 | Stop from Run Detail                                                    | Shipped            | unit               | no          |                                             |
+| RN-10 | Re-run                                                                  | Shipped            | unit               | no          |                                             |
+| RN-11 | Compaction lineage in Run Detail                                        | Shipped            | unit               | no          |                                             |
+| RN-12 | "Part of" Request link                                                  | Shipped            | unit               | no          |                                             |
+| RN-13 | Usage tokens and cost recording                                         | Shipped            | api + manual       | no          |                                             |
+| RN-14 | Global runs query API                                                   | Shipped            | api                | no          |                                             |
+| RN-15 | Audit log viewer                                                        | Shipped            | unit + api         | no          |                                             |
 
 ### Runtimes, models and sandbox
 
@@ -510,6 +511,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RQ-29 | Chief of Staff acts on what arrives and shows Since you were away                | Shipped                                                                                    | unit + manual               | no          |                 |
 | RQ-30 | Teammates' requests take the same intake                                         | Shipped                                                                                    | unit + integration + manual | yes         |                 |
 | RQ-31 | Each intake item has a Chief of Staff thread                                     | Shipped                                                                                    | unit + manual               | no          |                 |
+| RQ-32 | Auto-approve rules                                                               | Shipped                                                                                    | unit + manual               | no          |                 |
 | RQ-27 | What was asked, word for word                                                    | Shipped                                                                                    | unit + manual               | no          | 2026-10-30 pass |
 
 ### Library, capabilities, Studio and companion

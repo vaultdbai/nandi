@@ -1,6 +1,7 @@
 /**
- * A `connector_access` approval in plain words: who wants what, which
- * answers it offers, and what was chosen. Pure: the access card, the Inbox
+ * A `connector_access` approval in plain words: who wants what (a
+ * connector, or a site a browser pilot wants to open), which answers it
+ * offers, and what was chosen. Pure: the access card, the Inbox
  * summary and their tests read from these (`services/access.rs`
  * `AccessRequest` is the args' shape).
  */
@@ -10,11 +11,26 @@ import type { AccessChoice, GrantAccess } from '@/lib/bindings'
 /** The approval tool a call without a grant asks through */
 export const ACCESS_TOOL = 'connector_access'
 
-export type AccessFamily = 'email' | 'calendar' | 'files' | 'connector'
+export type AccessFamily = 'email' | 'calendar' | 'files' | 'connector' | 'site'
 
 export interface AccessConnector {
   id: string
   name: string
+}
+
+/** A website a browser pilot asked to open (`SiteAccess` in Rust) */
+export interface SiteAccess {
+  /** As the browser sends it (punycode for an international name) */
+  host: string
+  /** As people read it (decoded) */
+  display: string
+  pilot: string
+  /** Why the agent wants the page, in its words */
+  reason: string | null
+  /** Always allow can write it into the agent (not a pack's agent) */
+  canSave: boolean
+  /** As decided: the grant covers its subdomains too */
+  subdomains: boolean
 }
 
 /** The args of a `connector_access` approval */
@@ -28,6 +44,8 @@ export interface AccessRequest {
   askEveryTime: boolean
   choice: AccessChoice | null
   decidedBy: string | null
+  /** For family `site` */
+  site: SiteAccess | null
 }
 
 const FAMILIES: readonly AccessFamily[] = [
@@ -35,6 +53,7 @@ const FAMILIES: readonly AccessFamily[] = [
   'calendar',
   'files',
   'connector',
+  'site',
 ]
 const CHOICES: readonly AccessChoice[] = [
   'allowOnce',
@@ -45,6 +64,21 @@ const CHOICES: readonly AccessChoice[] = [
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function parseSite(value: unknown): SiteAccess | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+  const host = text(raw.host)
+  if (!host) return null
+  return {
+    host,
+    display: text(raw.display) || host,
+    pilot: text(raw.pilot),
+    reason: text(raw.reason) || null,
+    canSave: raw.canSave === true,
+    subdomains: raw.subdomains === true,
+  }
 }
 
 /** The args as an access request, or null when they aren't one */
@@ -63,6 +97,8 @@ export function parseAccessRequest(args: unknown): AccessRequest | null {
       })
     : []
   const choice = CHOICES.find(c => c === raw.choice) ?? null
+  const site = parseSite(raw.site)
+  if (family === 'site' && !site) return null
   return {
     agent: text(raw.agent),
     family,
@@ -75,6 +111,7 @@ export function parseAccessRequest(args: unknown): AccessRequest | null {
     askEveryTime: raw.askEveryTime === true,
     choice,
     decidedBy: text(raw.decidedBy) || null,
+    site,
   }
 }
 
@@ -89,6 +126,7 @@ export interface AccessSentence {
     | 'filesWrite'
     | 'connectorRead'
     | 'connectorWrite'
+    | 'site'
   values: { agent: string; names: string }
 }
 
@@ -97,9 +135,15 @@ export function accessSentence(
   request: AccessRequest,
   agentName: string
 ): AccessSentence {
+  if (request.site) {
+    return {
+      key: 'site',
+      values: { agent: agentName, names: request.site.display },
+    }
+  }
   const access = request.access === 'write' ? 'Write' : 'Read'
   return {
-    key: `${request.family}${access}`,
+    key: `${request.family}${access}` as AccessSentence['key'],
     values: {
       agent: agentName,
       names: request.connectors.map(c => c.name).join(', '),
@@ -107,8 +151,16 @@ export function accessSentence(
   }
 }
 
-/** The answers offered: a policy that asks every time allows only once */
+/**
+ * The answers offered: a policy that asks every time allows only once; a
+ * site is allowed once or always (when the agent's file can be changed)
+ */
 export function accessChoices(request: AccessRequest): AccessChoice[] {
+  if (request.site) {
+    return request.site.canSave
+      ? ['allowOnce', 'allowSaved', 'deny']
+      : ['allowOnce', 'deny']
+  }
   return request.askEveryTime
     ? ['allowOnce', 'deny']
     : ['allowOnce', 'allowSaved', 'allowLocal', 'deny']
@@ -131,6 +183,11 @@ export function decidedKey(
   if (request.choice) return request.choice
   if (status === 'expired') return 'expired'
   return status === 'approved' ? 'allowed' : 'deny'
+}
+
+/** The raw host when people read it differently (an international name) */
+export function rawSiteHost(site: SiteAccess): string | null {
+  return site.host === site.display ? null : site.host
 }
 
 /** `pr-reviewer` → "PR Reviewer" (short words are acronyms) */

@@ -105,8 +105,9 @@ export function agentProblem(input: {
 }
 
 /**
- * Built-in agents (Chief of Staff) first, then waiting for me, then
- * problems, then the latest run, then by name
+ * Built-in agents first, in the order they come (Chief of Staff, then
+ * Browser), then waiting for me, then problems, then the latest run, then
+ * by name
  */
 export function sortAgents<
   T extends {
@@ -118,11 +119,12 @@ export function sortAgents<
 >(rows: T[]): T[] {
   const rank = (row: T) =>
     row.builtin ? 0 : row.problem?.kind === 'waiting' ? 1 : row.problem ? 2 : 3
-  return [...rows].sort(
-    (a, b) =>
-      rank(a) - rank(b) ||
-      (b.lastRunAt ?? 0) - (a.lastRunAt ?? 0) ||
-      a.name.localeCompare(b.name)
+  return [...rows].sort((a, b) =>
+    a.builtin && b.builtin
+      ? 0
+      : rank(a) - rank(b) ||
+        (b.lastRunAt ?? 0) - (a.lastRunAt ?? 0) ||
+        a.name.localeCompare(b.name)
   )
 }
 

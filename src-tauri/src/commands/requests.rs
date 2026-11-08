@@ -8,6 +8,7 @@ pub use crate::services::requests::Request;
 use crate::services::ask::ActionPlan;
 use crate::services::chat::SendMessageResult;
 use crate::services::intake;
+use crate::services::intake::rules::AutoApproveRule;
 use crate::services::intake::thread::IntakeThread;
 use crate::services::requests::{self, digest, local};
 use crate::services::AppState;
@@ -94,6 +95,25 @@ pub async fn send_intake_message(
     client_message_id: Option<String>,
 ) -> Result<SendMessageResult, String> {
     intake::thread::send(&state, conversation_id, text, client_message_id).await
+}
+
+/// What may skip the approval queue (`intake::rules`)
+#[tauri::command]
+#[specta::specta]
+pub async fn get_auto_approve_rules(
+    state: State<'_, AppState>,
+) -> Result<Vec<AutoApproveRule>, String> {
+    intake::get_rules(&state).await
+}
+
+/// Replaces the auto-approve rules (checked first)
+#[tauri::command]
+#[specta::specta]
+pub async fn set_auto_approve_rules(
+    state: State<'_, AppState>,
+    rules: Vec<AutoApproveRule>,
+) -> Result<(), String> {
+    intake::set_rules(&state, rules).await
 }
 
 /// Drops work that arrived from outside without doing it

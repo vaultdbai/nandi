@@ -29,6 +29,7 @@ export interface ApprovalSummary {
     | 'ecsRedeploy'
     | 'connector'
     | 'connectorAccess'
+    | 'siteAccess'
     | 'handOver'
     | 'other'
   values: Record<string, string>
@@ -128,6 +129,15 @@ export function approvalSummary(tool: string, args: Args): ApprovalSummary {
     case ACCESS_TOOL: {
       const request = parseAccessRequest(args)
       if (!request) break
+      if (request.site) {
+        return {
+          key: 'siteAccess',
+          values: {
+            agent: agentLabel(request.agent),
+            site: request.site.display,
+          },
+        }
+      }
       return {
         key: 'connectorAccess',
         values: {

@@ -20,8 +20,10 @@ import {
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { PROVIDER_NAMES } from '@/components/settings/email/email-model'
 import {
   branchFor,
+  mailboxIdentity,
   NAME_MAX_LENGTH,
   SLUG_MAX_LENGTH,
   validateName,
@@ -29,6 +31,7 @@ import {
 } from '@/components/onboarding/identity-model'
 import type { IdentityStatus } from '@/lib/bindings'
 import { errorMessage } from '@/hooks/useDelegation'
+import { useEmailStatus } from '@/hooks/useEmail'
 import {
   useIdentity,
   useSetDisplayName,
@@ -74,6 +77,7 @@ function IdentityForm({ identity }: { identity: IdentityStatus }) {
   const saveName = useSetDisplayName()
   const saveSlug = useSetUserSlug()
   const remote = useRemoteStatus()
+  const mailbox = mailboxIdentity(useEmailStatus().data?.providers ?? [])
   const backedUp = remote.data?.configured === true
   const [confirmHandle, setConfirmHandle] = useState(false)
   const nameError = validateName(name)
@@ -161,6 +165,13 @@ function IdentityForm({ identity }: { identity: IdentityStatus }) {
           )}
         </Field>
       </div>
+      {mailbox && mailbox.name === identity.displayName && (
+        <p className="text-xs text-muted-foreground" data-testid="name-source">
+          {t('settings.account.fromMailbox', {
+            provider: PROVIDER_NAMES[mailbox.provider],
+          })}
+        </p>
+      )}
       {slugChanged && identity.userSlug && (
         <p className="text-xs text-muted-foreground">
           {t('remote.identity.slugChangeNote')}

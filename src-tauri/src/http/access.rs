@@ -58,6 +58,8 @@ async fn revoke(State(state): State<AppState>, Json(grant): Json<GrantInfo>) -> 
 #[derive(Deserialize)]
 struct AnswerBody {
     choice: AccessChoice,
+    #[serde(default)]
+    subdomains: bool,
 }
 
 async fn answer(
@@ -66,5 +68,5 @@ async fn answer(
     Json(body): Json<AnswerBody>,
 ) -> ApiResult<()> {
     let who = crate::services::chat::decider(&state);
-    ApiResult(access::answer(&state, &approval_id, body.choice, who).await)
+    ApiResult(access::answer(&state, &approval_id, body.choice, body.subdomains, who).await)
 }

@@ -40,6 +40,83 @@ function card(
   )
 }
 
+const SITE_ARGS = {
+  agent: 'browser',
+  family: 'site',
+  connectors: [],
+  access: 'read',
+  tool: 'pilot_browser__browser_navigate',
+  details: [],
+  askEveryTime: false,
+  site: {
+    host: 'xn--bcher-kva.example',
+    display: 'bücher.example',
+    pilot: 'browser',
+    reason: 'Find the opening hours',
+    canSave: true,
+    subdomains: false,
+  },
+}
+
+describe('AccessRequestCard for a site', () => {
+  afterEach(() => {
+    mocked.answerAccessRequest = original
+  })
+
+  it('names the agent, the site decoded and raw, and why', () => {
+    render(card(SITE_ARGS))
+    expect(
+      screen.getByText('Chief of Staff wants to open bücher.example')
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('access-site-raw')).toHaveTextContent(
+      'Address: xn--bcher-kva.example'
+    )
+    expect(screen.getByText('Why: Find the opening hours')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Saved (backed up)')).not.toBeInTheDocument()
+  })
+
+  it('allows once, the host only by default', async () => {
+    const answer = vi.fn().mockResolvedValue({ status: 'ok', data: null })
+    mocked.answerAccessRequest = answer
+    render(card(SITE_ARGS))
+    expect(
+      screen.getByLabelText('Include its subdomains (like www.bücher.example)')
+    ).not.toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: 'Allow once' }))
+    await waitFor(() =>
+      expect(answer).toHaveBeenCalledWith('call-1#access', 'allowOnce', false)
+    )
+  })
+
+  it('always allows for the agent, with its subdomains when ticked', async () => {
+    const answer = vi.fn().mockResolvedValue({ status: 'ok', data: null })
+    mocked.answerAccessRequest = answer
+    render(card(SITE_ARGS))
+    await userEvent.click(
+      screen.getByLabelText('Include its subdomains (like www.bücher.example)')
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Always allow for Chief of Staff' })
+    )
+    await waitFor(() =>
+      expect(answer).toHaveBeenCalledWith('call-1#access', 'allowSaved', true)
+    )
+    expect(
+      await screen.findByText('Always allowed for this agent')
+    ).toBeInTheDocument()
+  })
+
+  it("offers only once for an agent whose file can't change", () => {
+    render(card({ ...SITE_ARGS, site: { ...SITE_ARGS.site, canSave: false } }))
+    expect(
+      screen.queryByRole('button', { name: /Always allow/ })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Allow once' })
+    ).toBeInTheDocument()
+  })
+})
+
 describe('AccessRequestCard', () => {
   afterEach(() => {
     mocked.answerAccessRequest = original
@@ -62,7 +139,7 @@ describe('AccessRequestCard', () => {
       screen.getByRole('button', { name: 'Allow for this agent' })
     )
     await waitFor(() =>
-      expect(answer).toHaveBeenCalledWith('call-1#access', 'allowSaved')
+      expect(answer).toHaveBeenCalledWith('call-1#access', 'allowSaved', false)
     )
     expect(
       await screen.findByText('Allowed for this agent (saved)')
@@ -78,7 +155,7 @@ describe('AccessRequestCard', () => {
       screen.getByRole('button', { name: 'Allow for this agent' })
     )
     await waitFor(() =>
-      expect(answer).toHaveBeenCalledWith('call-1#access', 'allowLocal')
+      expect(answer).toHaveBeenCalledWith('call-1#access', 'allowLocal', false)
     )
   })
 
@@ -92,7 +169,7 @@ describe('AccessRequestCard', () => {
     expect(screen.getByText(/A policy asks every time/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: "Don't allow" }))
     await waitFor(() =>
-      expect(answer).toHaveBeenCalledWith('call-1#access', 'deny')
+      expect(answer).toHaveBeenCalledWith('call-1#access', 'deny', false)
     )
   })
 

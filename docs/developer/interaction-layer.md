@@ -212,6 +212,26 @@ task past the `ask` trust check (`intake::is_approved_task` in `admit` and
 cancel or the task's deadline takes it off the queue (`drop_task`). The
 queue item survives a restart: the resumed task finds its decision.
 
+**Auto-approve rules** let some items past the click. The user's rules are
+the local setting `intake.autoApprove` (`AutoApproveRule`: an ID, a
+`RuleMatch` and the `IntakeAction`s it allows), read and replaced with
+`get_auto_approve_rules` / `set_auto_approve_rules`
+(`GET`/`PUT /api/chief-of-staff/auto-approve`). The core validates the whole
+list on save (`services/intake/rules.rs`): at least one action per rule, a
+valid address, a bare domain like `chase.com`, a teammate picked, at most 100. Rules run after screening, never instead of it: only a clean item
+can match; suspicious items still queue and blocked ones are still refused.
+An `emailAddress` or `emailDomain` rule matches only mail whose sender
+passed DMARC (`dmarc_verified`, from `Authentication-Results` in
+`services/email/mail.rs`), so a forged `From:` never matches; a domain also
+covers its subdomains. A `teammate` rule matches the signed instance ID and
+applies to `run`. An item a rule approves is noted in its thread
+("Approved automatically (mail from chase.com)") and shows in "Since you
+were away". The UI is Settings › Auto-approve (`AutoApproveSection.tsx`,
+logic in `auto-approve-model.ts`), plus "Always allow mail from <domain>"
+on a clean queued email item (`QueueRow.alwaysAllowDomain`,
+`useAlwaysAllow`). A teammate's queued item has no such shortcut: the
+queue doesn't carry their instance ID.
+
 **Each item has a Chief of Staff thread** (`intake/thread.rs`). A
 conversation `intake:<item id>` owned by the Chief of Staff, so it runs
 with its skill, notes, grants and permissions, is made when the item is

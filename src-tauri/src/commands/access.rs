@@ -41,14 +41,16 @@ pub async fn revoke_connector_access(
     access::revoke(&state, grant, who).await
 }
 
-/// The person's answer to a paused run's access request
+/// The person's answer to a paused run's access request. `subdomains`: a
+/// site request's grant covers the site's subdomains too
 #[tauri::command]
 #[specta::specta]
 pub async fn answer_access_request(
     state: State<'_, AppState>,
     approval_id: String,
     choice: AccessChoice,
+    subdomains: bool,
 ) -> Result<(), String> {
     let who = crate::services::chat::decider(&state);
-    access::answer(&state, &approval_id, choice, who).await
+    access::answer(&state, &approval_id, choice, subdomains, who).await
 }

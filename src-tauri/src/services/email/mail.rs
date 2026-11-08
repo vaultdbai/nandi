@@ -64,6 +64,11 @@ pub struct Message {
     pub body: String,
     /// The body was longer than [`BODY_CHARS`]
     pub truncated: bool,
+    /// The sender passed DMARC for the From domain, by the receiving
+    /// provider's `Authentication-Results` ([`dmarc_verified`]). Only
+    /// verified mail can match an auto-approve rule (`intake::rules`).
+    #[serde(skip)]
+    pub verified_sender: bool,
 }
 
 impl Message {
@@ -73,8 +78,51 @@ impl Message {
             header: header.tidy(),
             body,
             truncated,
+            verified_sender: false,
         }
     }
+
+    /// Sets [`Message::verified_sender`] from the message's
+    /// `Authentication-Results` headers
+    pub fn with_authentication(mut self, results: &[&str]) -> Self {
+        self.verified_sender = self
+            .header
+            .from
+            .as_ref()
+            .is_some_and(|from| dmarc_verified(results, &from.email));
+        self
+    }
+}
+
+/// The `Authentication-Results` values among a message's headers, in order
+pub fn authentication_results<'a>(
+    headers: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Vec<&'a str> {
+    headers
+        .into_iter()
+        .filter(|(name, _)| name.eq_ignore_ascii_case("Authentication-Results"))
+        .map(|(_, value)| value)
+        .collect()
+}
+
+/// The receiving provider says DMARC passed for the From domain: the first
+/// `Authentication-Results` header (the one the user's provider added; ones
+/// further down came with the mail and prove nothing) has `dmarc=pass` with
+/// `header.from=<that domain>`. Pure.
+pub fn dmarc_verified(results: &[&str], from: &str) -> bool {
+    let Some(domain) = from.rsplit_once('@').map(|(_, d)| d.trim().to_lowercase()) else {
+        return false;
+    };
+    let Some(first) = results.first() else {
+        return false;
+    };
+    first.to_lowercase().split(';').any(|clause| {
+        let words: Vec<&str> = clause.split_whitespace().collect();
+        words.first() == Some(&"dmarc=pass")
+            && words
+                .iter()
+                .any(|w| w.trim_end_matches(',') == format!("header.from={domain}"))
+    })
 }
 
 /// What changed in a mailbox since its cursor

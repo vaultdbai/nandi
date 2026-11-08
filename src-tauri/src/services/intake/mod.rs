@@ -18,6 +18,7 @@
 //! Work the user asks for themselves (their own chat, the ask box, Studio)
 //! doesn't come through here.
 
+pub mod rules;
 pub mod screen;
 pub mod thread;
 
@@ -220,6 +221,8 @@ pub struct TeamTask<'a> {
     /// Which agent and capability (`Writer · review-pr`)
     pub target: &'a str,
     pub text: &'a str,
+    /// The requester's Nandi (signed), for auto-approve rules
+    pub instance_id: &'a str,
     /// Trusted for this capability (trust policy or a trusted peer)
     pub trusted: bool,
     /// For the gateway: it holds requests for the owner itself (Inbox), so
@@ -265,8 +268,16 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
     if task.screen_only || (task.trusted && screening.verdict == Verdict::Clean) {
         return Ok(Gate::Go);
     }
+    let origin = rules::Origin {
+        source: RequestSource::Teammate,
+        instance_id: Some(task.instance_id),
+        ..rules::Origin::default()
+    };
+    let all = rules::load(&conn).map_err(|e| e.to_string())?;
+    let rule =
+        rules::matching(&all, &origin, IntakeAction::Run, screening.verdict).map(rules::describe);
     let id = uuid::Uuid::new_v4().to_string();
-    let item = QueuedWork {
+    let mut item = QueuedWork {
         thread_id: thread::id_for(&id),
         id,
         at: db::now_ms() as f64,
@@ -282,6 +293,21 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
         plan: None,
     };
     queue(&conn, &item).map_err(|e| e.to_string())?;
+    // An auto-approve rule for this teammate: approved now, and the task
+    // passes the trust check as if the user had clicked (`is_approved_task`)
+    if let Some(rule) = rule {
+        item.status = IntakeStatus::Approved;
+        item.result_request_id = item.request_id.clone();
+        save(&conn, &item).map_err(|e| e.to_string())?;
+        thread::note(
+            &conn,
+            &item.thread_id,
+            &format!("Approved automatically ({rule}): it's running."),
+        )
+        .map_err(|e| e.to_string())?;
+        changed(bus);
+        return Ok(Gate::Go);
+    }
     changed(bus);
     Ok(Gate::Wait(item.id))
 }
@@ -394,6 +420,24 @@ pub async fn propose(state: &AppState, proposal: Proposal) -> Result<QueuedWork,
     let saved = item.clone();
     state.db().call(move |conn| queue(conn, &saved)).await?;
     changed(state.bus());
+    // An auto-approve rule may let a clean item through (`rules`)
+    let origin = rules::Origin {
+        source: item.source,
+        sender_email: from.map(|a| a.email.as_str()),
+        mail_verified: message.as_ref().is_some_and(|m| m.verified_sender),
+        instance_id: None,
+    };
+    let all = state.db().call(|conn| rules::load(conn)).await?;
+    if let Some(rule) = rules::matching(&all, &origin, item.action, item.screening.verdict) {
+        let rule = rules::describe(rule);
+        approve_as(state, item.id.clone(), Some(rule)).await?;
+        let id = item.id.clone();
+        return state
+            .db()
+            .call(move |conn| load(conn, &id))
+            .await?
+            .ok_or_else(|| "The item went missing".to_string());
+    }
     Ok(item)
 }
 
@@ -455,9 +499,24 @@ async fn decide(state: &AppState, id: &str) -> Result<QueuedWork, String> {
     Ok(item)
 }
 
+pub async fn get_rules(state: &AppState) -> Result<Vec<rules::AutoApproveRule>, String> {
+    state.db().call(|conn| rules::load(conn)).await
+}
+
+pub async fn set_rules(state: &AppState, list: Vec<rules::AutoApproveRule>) -> Result<(), String> {
+    rules::validate(&list)?;
+    state.db().call(move |conn| rules::save(conn, &list)).await
+}
+
 /// The user approves: the work starts, or the news reaches the work.
 /// Returns the Request's ID.
 pub async fn approve(state: &AppState, id: String) -> Result<String, String> {
+    approve_as(state, id, None).await
+}
+
+/// Approves an item, by the user (`rule: None`) or by one of their
+/// auto-approve rules (named in the thread)
+async fn approve_as(state: &AppState, id: String, rule: Option<String>) -> Result<String, String> {
     let mut item = decide(state, &id).await?;
     if item.screening.verdict == Verdict::Blocked {
         return Err("This item was blocked by screening; it can only be dismissed".to_string());
@@ -480,10 +539,14 @@ pub async fn approve(state: &AppState, id: String) -> Result<String, String> {
             }
         },
     };
-    let note = match item.action {
-        IntakeAction::Start => "Approved: it's started.",
-        IntakeAction::Update => "Approved: the news reached the work.",
-        IntakeAction::Run => "Approved: it's running.",
+    let done = match item.action {
+        IntakeAction::Start => "it's started.",
+        IntakeAction::Update => "the news reached the work.",
+        IntakeAction::Run => "it's running.",
+    };
+    let note = match rule {
+        Some(rule) => format!("Approved automatically ({rule}): {done}"),
+        None => format!("Approved: {done}"),
     };
     item.status = IntakeStatus::Approved;
     item.result_request_id = Some(request_id.clone());
@@ -491,7 +554,7 @@ pub async fn approve(state: &AppState, id: String) -> Result<String, String> {
         .db()
         .call(move |conn| {
             save(conn, &item)?;
-            thread::note(conn, &item.thread_id, note)
+            thread::note(conn, &item.thread_id, &note)
         })
         .await?;
     changed(state.bus());
@@ -594,6 +657,7 @@ mod tests {
             requester: "Lena Park",
             target: "Writer · review-pr",
             text,
+            instance_id: "inst-lena",
             trusted,
             screen_only: false,
         }
@@ -757,6 +821,90 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    fn teammate_rule(instance_id: &str) -> rules::AutoApproveRule {
+        rules::AutoApproveRule {
+            id: "r1".to_string(),
+            matcher: rules::RuleMatch::Teammate {
+                instance_id: instance_id.to_string(),
+                name: "Lena Park".to_string(),
+            },
+            actions: vec![IntakeAction::Run],
+        }
+    }
+
+    #[tokio::test]
+    async fn a_teammate_rule_lets_their_clean_request_through_and_notes_it() {
+        let state = AppState::for_tests(Vec::new());
+        set_rules(&state, vec![teammate_rule("inst-lena")])
+            .await
+            .unwrap();
+        let task = team_task("Review PR 42 by Friday", false);
+        assert_eq!(gate_task(state.db(), state.bus(), &task), Ok(Gate::Go));
+        // It passes the trust check like a click would, and the thread says why
+        assert!(is_approved_task(state.db(), "task-1"));
+        let item = state
+            .db()
+            .call(|conn| for_task(conn, "task-1"))
+            .await
+            .unwrap()
+            .unwrap();
+        let notes = thread_notes(&state, &item.thread_id).await;
+        assert!(notes
+            .last()
+            .unwrap()
+            .starts_with("Approved automatically (requests from Lena Park)"));
+        assert!(state
+            .db()
+            .call(|conn| pending(conn))
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_rule_never_lets_a_suspicious_request_through() {
+        let state = AppState::for_tests(Vec::new());
+        set_rules(&state, vec![teammate_rule("inst-lena")])
+            .await
+            .unwrap();
+        let task = team_task("Photos: https://bit.ly/3xyz", false);
+        assert!(matches!(
+            gate_task(state.db(), state.bus(), &task),
+            Ok(Gate::Wait(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_domain_rule_needs_verified_mail() {
+        let state = AppState::for_tests(Vec::new());
+        set_rules(
+            &state,
+            vec![rules::AutoApproveRule {
+                id: "r2".to_string(),
+                matcher: rules::RuleMatch::EmailDomain {
+                    domain: "acme-energy.com".to_string(),
+                },
+                actions: vec![IntakeAction::Start],
+            }],
+        )
+        .await
+        .unwrap();
+        // No email to verify (no message id): it waits
+        let item = propose(
+            &state,
+            Proposal {
+                source: RequestSource::Email,
+                text: "Pay the power bill of $84 by Friday".into(),
+                ..Proposal::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(item.status, IntakeStatus::Pending);
+        // Bad rules aren't saved
+        assert!(set_rules(&state, vec![teammate_rule("")]).await.is_err());
     }
 
     #[tokio::test]

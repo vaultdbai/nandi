@@ -1994,11 +1994,12 @@ async revokeConnectorAccess(grant: GrantInfo) : Promise<Result<null, string>> {
 }
 },
 /**
- * The person's answer to a paused run's access request
+ * The person's answer to a paused run's access request. `subdomains`: a
+ * site request's grant covers the site's subdomains too
  */
-async answerAccessRequest(approvalId: string, choice: AccessChoice) : Promise<Result<null, string>> {
+async answerAccessRequest(approvalId: string, choice: AccessChoice, subdomains: boolean) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("answer_access_request", { approvalId, choice }) };
+    return { status: "ok", data: await TAURI_INVOKE("answer_access_request", { approvalId, choice, subdomains }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2329,6 +2330,28 @@ async getIntakeThread(conversationId: string) : Promise<Result<IntakeThread, str
 async sendIntakeMessage(conversationId: string, text: string, clientMessageId: string | null) : Promise<Result<SendMessageResult, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("send_intake_message", { conversationId, text, clientMessageId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * What may skip the approval queue (`intake::rules`)
+ */
+async getAutoApproveRules() : Promise<Result<AutoApproveRule[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_auto_approve_rules") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Replaces the auto-approve rules (checked first)
+ */
+async setAutoApproveRules(rules: AutoApproveRule[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_auto_approve_rules", { rules }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -3625,11 +3648,11 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 
 /** user-defined types **/
 
@@ -4237,6 +4260,11 @@ env: string[]; scopes: string[];
  * What the key or account is called ("Linear API key")
  */
 label: string | null }
+export type AutoApproveRule = { id: string; match: RuleMatch; 
+/**
+ * What passes: `start`, `update`, `run`
+ */
+actions: IntakeAction[] }
 /**
  * Someone's availability: busy or away until a time, and who covers for
  * them meanwhile.
@@ -5208,7 +5236,11 @@ export type EmailProviderStatus = { provider: MailProvider;
 /**
  * This build has the provider's client ID
  */
-available: boolean; connected: boolean; accountName: string | null; accountEmail: string | null; state: EmailAccountState; error: string | null; lastCheckedAt: number | null; 
+available: boolean; connected: boolean; accountName: string | null; accountEmail: string | null; 
+/**
+ * Title, department and manager the mailbox gave (Outlook)
+ */
+accountProfile: Profile | null; state: EmailAccountState; error: string | null; lastCheckedAt: number | null; 
 /**
  * Emails the last check handed to the Chief of Staff
  */
@@ -5896,6 +5928,10 @@ export type MailProvider =
  */
 "outlook" | "gmail"
 /**
+ * The mailbox owner's manager
+ */
+export type Manager = { name: string; email: string | null; title: string | null }
+/**
  * What an agent (or a pack's agents together) will be able to use.
  */
 export type ManifestCapabilities = { tools: string[]; 
@@ -6329,6 +6365,10 @@ name: string;
  * Whether it parses; a broken one still opens, to be fixed
  */
 valid: boolean }
+/**
+ * Title, department and manager, each only when the directory has it
+ */
+export type Profile = { title?: string | null; department?: string | null; manager?: Manager | null }
 export type ProjectionStats = { agents: number; workflows: number; triggers: number; connectors: number; 
 /**
  * Files that couldn't be loaded and were left out
@@ -7049,6 +7089,15 @@ preferredProviders: string[]; excludedProviders: string[];
  * Hard requirement, on top of `required_tools`
  */
 requireTools: string[] }
+export type RuleMatch = 
+/**
+ * A teammate's Nandi; `name` is for showing it
+ */
+{ kind: "teammate"; instanceId: string; name: string } | { kind: "emailAddress"; address: string } | 
+/**
+ * The domain and its subdomains (`chase.com` matches `alerts.chase.com`)
+ */
+{ kind: "emailDomain"; domain: string }
 export type RunDetail = { run: RunSummary; agentName: string; messages: ChatMessage[]; events: RunEventRecord[] }
 /**
  * A raw persisted event, for the Activity (debug) tab.

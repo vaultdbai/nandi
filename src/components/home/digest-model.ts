@@ -10,6 +10,7 @@ import type {
   WaitingStep,
 } from '@/lib/bindings'
 import type { View } from '@/store/navigation-store'
+import { senderDomain } from '@/components/settings/auto-approve/auto-approve-model'
 
 /** Header order of the summary line */
 const KINDS: DigestKind[] = ['needsYou', 'started', 'updated', 'finished']
@@ -61,6 +62,12 @@ export interface QueueRow {
   threadId: string
   /** What the plan has someone do, in order (`start` items) */
   planSteps: string[]
+  /**
+   * The sender's domain, for "Always allow mail from <domain>": only a clean
+   * email item that starts or updates work has one. (A teammate's item has
+   * none: the queue doesn't carry their instance ID.)
+   */
+  alwaysAllowDomain: string | null
 }
 
 /** "Since you were away", or the plain title when there is no last look */
@@ -136,6 +143,12 @@ export function queueRow(
     needsConfirm: work.screening.verdict === 'suspicious',
     threadId: work.threadId,
     planSteps: work.plan?.steps.map(step => step.description) ?? [],
+    alwaysAllowDomain:
+      work.source === 'email' &&
+      work.action !== 'run' &&
+      work.screening.verdict === 'clean'
+        ? senderDomain(work.sender)
+        : null,
   }
 }
 

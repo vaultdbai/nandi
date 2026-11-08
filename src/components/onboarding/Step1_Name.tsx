@@ -11,7 +11,9 @@ import {
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
+import { PROVIDER_NAMES } from '@/components/settings/email/email-model'
 import {
+  type MailboxIdentity,
   NAME_MAX_LENGTH,
   SLUG_MAX_LENGTH,
   slugify,
@@ -34,14 +36,28 @@ export interface Step1NameProps {
   onNext: () => void
   /** The name is being saved */
   saving?: boolean
+  /**
+   * The connected mailbox's owner: the step then says who the user is
+   * (with Change) instead of asking
+   */
+  mailbox?: MailboxIdentity | null
 }
 
 /**
- * Onboarding step 1: display name. The handle is derived from it and only
- * shown as a field under Customize (or when it's invalid).
+ * Onboarding step 2: display name. The handle is derived from it and only
+ * shown as a field under Customize (or when it's invalid). With a mailbox
+ * connected, both come from it and the step reads "You're Dev Chechi
+ * (dev@company.com) · Change".
  */
-export function Step1Name({ value, onChange, onNext, saving }: Step1NameProps) {
+export function Step1Name({
+  value,
+  onChange,
+  onNext,
+  saving,
+  mailbox,
+}: Step1NameProps) {
   const { t } = useTranslation()
+  const [changing, setChanging] = useState(false)
   // Errors show once the user has tried to continue or left the field
   const [touched, setTouched] = useState({ name: false, slug: false })
   const [customizing, setCustomizing] = useState(false)
@@ -66,6 +82,64 @@ export function Step1Name({ value, onChange, onNext, saving }: Step1NameProps) {
     setTouched({ name: true, slug: true })
     if (nameError || slugError) return
     onNext()
+  }
+
+  if (mailbox && !changing && !nameError && !slugError) {
+    const details = [
+      mailbox.title,
+      mailbox.department,
+      mailbox.manager
+        ? t('onboarding.name.known.reportsTo', { manager: mailbox.manager })
+        : null,
+    ].filter(Boolean)
+    return (
+      <form onSubmit={submit} noValidate className="flex flex-col gap-6">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">
+            {t('onboarding.name.known.title')}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {t('onboarding.name.known.description', {
+              provider: PROVIDER_NAMES[mailbox.provider],
+            })}
+          </p>
+        </div>
+        <div className="space-y-1 text-sm" data-testid="known-identity">
+          <p>
+            {t('onboarding.name.known.youAre', {
+              name: value.name.trim(),
+              email: mailbox.email,
+            })}{' '}
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0"
+              onClick={() => setChanging(true)}
+            >
+              {t('onboarding.name.known.change')}
+            </Button>
+          </p>
+          {details.length > 0 && (
+            <p className="text-muted-foreground" data-testid="known-profile">
+              {details.join(' · ')}
+            </p>
+          )}
+          <p className="text-muted-foreground" data-testid="handle-preview">
+            {t('onboarding.name.handlePreview')}{' '}
+            <span dir="ltr" className="font-medium text-foreground">
+              @{value.slug}
+            </span>
+          </p>
+        </div>
+        <div className="flex justify-end">
+          <Button type="submit" disabled={saving}>
+            {saving && <Spinner />}
+            {t('onboarding.continue')}
+          </Button>
+        </div>
+      </form>
+    )
   }
 
   return (

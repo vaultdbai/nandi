@@ -466,9 +466,12 @@ pub fn start_server(state: &AppState) {
                 if let Some(id) = crate::services::connectors::connector_of_identity(agent_id) {
                     return connector_capabilities(&store, id);
                 }
-                // A browser pilot (`browser:<agent>`): that agent's own sites
+                // A browser pilot (`browser:<agent>`): that agent's own sites,
+                // plus any a person allowed once in its current run
                 if let Some(agent) = crate::services::pilots::browser::agent_of_identity(agent_id) {
-                    return store.skill(agent).map(|s| s.capabilities);
+                    return store.skill(agent).map(|s| {
+                        crate::services::pilots::sites::with_run_sites(agent, s.capabilities)
+                    });
                 }
                 store
                     .skill(agent_id)

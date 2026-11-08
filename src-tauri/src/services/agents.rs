@@ -328,7 +328,13 @@ impl RepoStore {
                     });
                 }
             }
-            agents.sort_by_key(|agent| agent.name.to_lowercase());
+            agents.sort_by_key(|agent| {
+                let builtin = agent
+                    .builtin
+                    .then(|| builtin_agents::position(&agent.id))
+                    .flatten();
+                (builtin.unwrap_or(usize::MAX), agent.name.to_lowercase())
+            });
             agents
         })
     }
@@ -673,6 +679,27 @@ mod tests {
     }
 
     #[test]
+    fn lists_builtin_agents_first_in_their_own_order() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = store(tmp.path());
+        write_skill(&store, "alpha", "---\nname: Alpha\n---\n");
+        builtin_agents::seed(store.layout()).unwrap();
+
+        let agents = store.list_agents();
+
+        let ids: Vec<_> = agents.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                builtin_agents::CHIEF_OF_STAFF,
+                builtin_agents::BROWSER,
+                "alpha"
+            ]
+        );
+        assert!(agents[0].builtin && agents[1].builtin && !agents[2].builtin);
+    }
+
+    #[test]
     fn marks_invalid_skills_and_ids_as_error() {
         let tmp = tempfile::tempdir().unwrap();
         let store = store(tmp.path());
@@ -922,6 +949,22 @@ Body"#;
         assert!(!state.store().layout().skill_path("writer").exists());
         assert!(recorder.names().contains(&"repo://agent-deleted"));
         assert!(state.store().agent("writer").is_err());
+        state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn builtin_agents_cannot_be_deleted() {
+        let state = AppState::for_tests(vec![]);
+        builtin_agents::seed(state.store().layout()).unwrap();
+        for agent in builtin_agents::BUILTIN_AGENTS {
+            state
+                .store()
+                .commit(crate::services::domain::EntityKind::Agent, agent.id)
+                .unwrap();
+            let error = delete_agent(&state, agent.id).await.unwrap_err();
+            assert!(error.contains("comes with Nandi"), "{error}");
+            assert!(state.store().layout().skill_path(agent.id).is_file());
+        }
         state.shutdown();
     }
 

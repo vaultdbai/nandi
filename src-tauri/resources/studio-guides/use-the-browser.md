@@ -8,7 +8,7 @@ Agents use a real browser through the **browser pilots**: Browser (a window the 
 
 ## Only allowed sites open
 
-The browser opens only the sites in the agent's Internet access (`network: allow:`), narrowed by policies. Every other site is refused, and the agent should say so instead of looking for a way around it. Add every site the task needs, including the ones the page loads from (a CDN, a sign-in host); `*.example.com` covers subdomains.
+The browser opens the sites in the agent's Internet access (`network: allow:`), narrowed by policies. For another site, Nandi asks the user (Allow once, Always allow, Don't allow), showing the `reason` the agent gives when it opens the page. IP addresses, local names, other ports and sites a policy rules out are refused without asking; the agent should say so instead of looking for a way around it. Add every site the task needs, including the ones the page loads from (a CDN, a sign-in host); `*.example.com` covers subdomains.
 
 ## What waits for the user
 

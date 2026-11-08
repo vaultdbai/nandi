@@ -283,6 +283,30 @@ impl CapabilitySet {
         &self.network
     }
 
+    /// Adds `hosts` to `network.allow` (any method). `false`: each was
+    /// there already
+    pub fn allow_hosts(&mut self, hosts: &[String]) -> DomainResult<bool> {
+        let mut network = self.network.clone();
+        for host in hosts {
+            let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
+            if !network
+                .allow
+                .iter()
+                .any(|rule| rule.host == host && rule.methods.is_empty())
+            {
+                network.allow.push(HostRule {
+                    host,
+                    methods: Vec::new(),
+                });
+            }
+        }
+        if network == self.network {
+            return Ok(false);
+        }
+        self.network = network.normalized()?;
+        Ok(true)
+    }
+
     pub fn aws(&self) -> Option<&AwsPolicy> {
         self.aws.as_ref()
     }

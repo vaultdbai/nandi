@@ -22,6 +22,7 @@ function status(
     connected: false,
     accountName: null,
     accountEmail: null,
+    accountProfile: null,
     state: 'notConnected',
     error: null,
     lastCheckedAt: null,

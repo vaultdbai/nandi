@@ -13,6 +13,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use super::profile::Profile;
 use super::provider::MailProvider;
 use crate::model::Timestamp;
 
@@ -111,6 +112,9 @@ pub struct EmailAccount {
     pub email: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Title, department and manager, when the mailbox gave them
+    #[serde(default, skip_serializing_if = "Profile::is_empty")]
+    pub profile: Profile,
     #[serde(default)]
     pub paused: bool,
 }

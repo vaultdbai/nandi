@@ -61,7 +61,29 @@ The run that triggered the prompt goes ahead without the pilot. The agent's next
 | `secrets`                                                                     | The agent types a secret's name; Playwright MCP types the value and replaces it with `<secret>NAME</secret>` in every reply. Values come from the keychain.                                                                                                        |
 | `imageResponses: omit`, `codegen: none`                                       | The model reads the accessibility tree, not images, and no generated code.                                                                                                                                                                                         |
 
-Before a navigation, Nandi checks the URL against the same rules and refuses with "<host> isn't one of this agent's allowed sites" (`allowed_url`), so the agent can say why. Playwright's own `allowedOrigins` isn't used: its docs say it isn't a security boundary, and it has no `*.domain` patterns, so it would disagree with the network rules.
+Before a navigation, Nandi checks the URL against the same rules and refuses with "<host> isn't one of this agent's allowed sites" (`allowed_url`), so the agent can say why.
+
+**A site outside the rules asks the person first** (`pilots/sites.rs`, through `services::access`, family `site`). `browser_navigate` and `browser_tabs` (`new`) to such a host pause the run with an ordinary access request, the same approval as a connector without a grant (see `docs/developer/connector-hub.md` › A call without a grant):
+
+```text
+navigate(url) ─▶ access_gate ─▶ decide ─▶ site_decision
+  host allowed (network.allow)                       ─▶ runs
+  not askable (IP, localhost, *.local, *.internal, a port, not http(s)) ─▶ refused by allowed_url, as before
+  a policy's network ceiling leaves it out (`policies::admits_hosts`)  ─▶ refused, as before
+  allowed once earlier in this run                    ─▶ runs (sites::allow_for_run again)
+  refused or expired earlier in this run              ─▶ refused, not asked again
+  else ─▶ `connector_access` approval, args.site = {host, display, pilot, reason, canSave}
+answer_access_request(choice, subdomains)
+  allowOnce  ─▶ sites::allow_for_run(agent, run): the browser's check and the egress proxy
+                (`browser:<agent>` identity) add the host until the run ends (`EventBus::turn_done` ─▶ sites::end_run)
+  allowSaved ─▶ Agent::allow_sites ─▶ agents repository save + commit (skill.md `network.allow`); only for the user's own agents (`canSave`)
+  deny       ─▶ the call fails: "<site> isn't allowed: the person didn't let this agent open it…"
+```
+
+- `host` is what the browser sends (punycode); `display` is the decoded name the card shows next to it.
+- A grant covers the host only. `subdomains: true` adds `*.host` too; the card's checkbox is off by default.
+- Navigation tools get an optional `reason` argument (`with_reason`); Nandi strips it before Playwright sees the call and shows it on the card.
+- Pages a site loads from other hosts aren't asked about: the proxy refuses them, as before. Ask for those hosts in the agent's Internet access. Playwright's own `allowedOrigins` isn't used: its docs say it isn't a security boundary, and it has no `*.domain` patterns, so it would disagree with the network rules.
 
 **Approvals are decided per call** (`browser::action`, `needs_approval`). Playwright asks for each element's human-readable description so a client can decide on permission; that, the tool and its arguments give the kind:
 

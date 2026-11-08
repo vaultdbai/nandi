@@ -36,6 +36,7 @@ pub mod install;
 mod mcp;
 pub mod refusal;
 pub mod runtime;
+pub mod sites;
 pub mod store;
 pub mod tools;
 

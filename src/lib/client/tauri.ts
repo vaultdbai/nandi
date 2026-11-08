@@ -297,6 +297,8 @@ export const tauriClient: NandiClient = {
   markChiefOfStaffDigestSeen: () => commands.markChiefOfStaffDigestSeen(),
   approveQueuedWork: queueId => commands.approveQueuedWork(queueId),
   dismissQueuedWork: queueId => commands.dismissQueuedWork(queueId),
+  getAutoApproveRules: () => commands.getAutoApproveRules(),
+  setAutoApproveRules: rules => commands.setAutoApproveRules(rules),
   getIntakeThread: conversationId => commands.getIntakeThread(conversationId),
   sendIntakeMessage: (conversationId, text, clientMessageId) =>
     commands.sendIntakeMessage(conversationId, text, clientMessageId),
@@ -343,8 +345,8 @@ export const tauriClient: NandiClient = {
   grantConnectorAccess: (agentId, connectorId, access, scope) =>
     commands.grantConnectorAccess(agentId, connectorId, access, scope),
   revokeConnectorAccess: grant => commands.revokeConnectorAccess(grant),
-  answerAccessRequest: (approvalId, choice) =>
-    commands.answerAccessRequest(approvalId, choice),
+  answerAccessRequest: (approvalId, choice, subdomains = false) =>
+    commands.answerAccessRequest(approvalId, choice, subdomains),
   listRegistryConnectors: refresh => commands.listRegistryConnectors(refresh),
   getConnectorConsent: (registryUrl, connectorId) =>
     commands.getConnectorConsent(registryUrl, connectorId),

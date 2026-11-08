@@ -28,6 +28,7 @@ mod gmail;
 mod mail;
 mod mailbox;
 mod outlook;
+pub mod profile;
 pub mod provider;
 pub mod settings;
 pub(crate) mod text;
@@ -61,6 +62,7 @@ use crate::utils::nandi_config::{self, NandiConfig};
 use api::MailError;
 use mail::Identity;
 use mailbox::Mailbox;
+use profile::Profile;
 use settings::{CheckState, EmailAccount};
 
 /// The first read (and a restart after an expired cursor) goes back this far
@@ -95,6 +97,8 @@ pub struct EmailProviderStatus {
     pub connected: bool,
     pub account_name: Option<String>,
     pub account_email: Option<String>,
+    /// Title, department and manager the mailbox gave (Outlook)
+    pub account_profile: Option<Profile>,
     pub state: EmailAccountState,
     pub error: Option<String>,
     pub last_checked_at: Option<Timestamp>,
@@ -459,6 +463,7 @@ pub async fn status(state: &AppState) -> EmailStatus {
             connected,
             account_name: account.and_then(|a| a.name.clone()),
             account_email: account.map(|a| a.email.clone()),
+            account_profile: account.map(|a| a.profile.clone()).filter(|p| !p.is_empty()),
             state: state_now,
             error: if connected { check.error } else { None },
             last_checked_at: check.last_checked_at,
@@ -561,6 +566,10 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
     let same_mailbox = email_settings(state)
         .account(provider)
         .is_some_and(|a| a.email == identity.email);
+    // Title, department and manager: best effort, empty on a miss
+    let profile = Mailbox::new(provider, &setup, state.secrets())
+        .profile()
+        .await;
     update_config(state, |config| {
         let email = config.email.get_or_insert_with(EmailSettings::default);
         email.accounts.retain(|a| a.provider != provider);
@@ -568,6 +577,7 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
             provider,
             email: identity.email.clone(),
             name: identity.name.clone(),
+            profile: profile.clone(),
             paused: false,
         });
     })?;
@@ -596,9 +606,11 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
     }
     // Who "me" is, in every Chief of Staff run (editable in My role)
     let store = state.store().clone();
-    let (name, address) = (identity.name.clone(), identity.email.clone());
+    let address = identity.email.clone();
+    let name = profile.name_and_title(identity.name.as_deref());
     match tokio::task::spawn_blocking(move || {
         crate::services::builtin_agents::note_identity(&store, name.as_deref(), &address)
+            .and_then(|_| profile::note_profile(&store, &profile))
     })
     .await
     {

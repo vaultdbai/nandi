@@ -34,6 +34,7 @@ describe('SettingsView', () => {
       'Email',
       'Calendar & files',
       'Connector access',
+      'Auto-approve',
       'Cloud credentials',
       'Internet access',
       'Backup',
