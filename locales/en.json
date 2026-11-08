@@ -269,6 +269,8 @@
   "approval.rejectConfirm.description": "The agent won't do it. It carries on without it, or stops if it can't.",
   "approval.rejectConfirm.keep": "Keep waiting",
   "approval.summary.handOver": "Your turn on {{site}}: {{summary}}",
+  "approval.summary.pilotSetup": "Set up the {{pilot}} pilot: install it on this computer so the agent can use it. {{reason}}",
+  "approval.install": "Install",
   "handOver.label": "Your turn: review and post",
   "handOver.labelFrom": "{{agent}} · Your turn: review and post",
   "handOver.untitled": "A page is ready for you",

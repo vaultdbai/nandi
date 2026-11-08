@@ -43,6 +43,18 @@ describe('approvalSummary', () => {
       { site: 'x.com', summary: 'Launch post' },
     ],
     [
+      'pilot_browser__setup',
+      { reason: 'Check the order' },
+      'pilotSetup',
+      { pilot: 'Browser', reason: 'Check the order' },
+    ],
+    [
+      'pilot_browser-headless__setup',
+      {},
+      'pilotSetup',
+      { pilot: 'Browser (headless)', reason: '' },
+    ],
+    [
       'github__create_issue',
       {},
       'connector',

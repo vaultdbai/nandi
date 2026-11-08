@@ -216,7 +216,9 @@ function ToolApprovalCard({
             onClick={() => void decide('approved')}
           >
             <Check />
-            {t('approval.approve')}
+            {summary.key === 'pilotSetup'
+              ? t('approval.install')
+              : t('approval.approve')}
           </Button>
         </div>
       )}

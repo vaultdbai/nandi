@@ -164,12 +164,12 @@ describe('sortAgents', () => {
   it('keeps the built-in agents in the order they come', () => {
     const rows = [
       { name: 'Chief of Staff', builtin: true, problem: null, lastRunAt: 1 },
-      { name: 'Browser', builtin: true, problem: null, lastRunAt: 9 },
+      { name: 'Guide', builtin: true, problem: null, lastRunAt: 9 },
       { name: 'Amy', problem: null, lastRunAt: 5 },
     ]
     expect(sortAgents(rows).map(r => r.name)).toEqual([
       'Chief of Staff',
-      'Browser',
+      'Guide',
       'Amy',
     ])
   })

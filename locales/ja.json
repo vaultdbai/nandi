@@ -269,6 +269,8 @@
   "approval.rejectConfirm.description": "エージェントはこれを実行しません。なしで続けるか、続けられなければ停止します。",
   "approval.rejectConfirm.keep": "待ち続ける",
   "approval.summary.handOver": "{{site}} であなたの番です: {{summary}}",
+  "approval.summary.pilotSetup": "{{pilot}} パイロットをセットアップ: エージェントが使えるようにこのコンピューターにインストールします。{{reason}}",
+  "approval.install": "インストール",
   "handOver.label": "あなたの番です: 確認して投稿",
   "handOver.labelFrom": "{{agent}} · あなたの番です: 確認して投稿",
   "handOver.untitled": "ページの準備ができました",

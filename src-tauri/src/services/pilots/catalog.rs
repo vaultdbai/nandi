@@ -70,6 +70,12 @@ pub fn for_platform(platform: &str) -> Vec<PilotDefinition> {
         .collect()
 }
 
+/// How to find `id` already installed on this computer, when the catalog
+/// knows ([`super::detect`])
+pub fn probe(id: &str) -> Option<super::detect::Probe> {
+    super::browser::probe(id)
+}
+
 /// A pilot available on this OS.
 pub fn find(id: &str) -> Result<PilotDefinition, String> {
     find_in(all(), id, current_platform())

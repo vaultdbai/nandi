@@ -102,7 +102,7 @@ function chatNodes(chats: readonly StudioConversationSummary[]): NavNode[] {
 }
 
 /**
- * The built-in agents (Chief of Staff, Browser) on top, always shown; then every
+ * The built-in agents (Chief of Staff) on top, always shown; then every
  * other agent, busiest first; past the limit, All agents
  */
 function agentNodes(agents: readonly AgentInfo[]): NavNode[] {

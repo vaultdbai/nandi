@@ -31,6 +31,7 @@ export interface ApprovalSummary {
     | 'connectorAccess'
     | 'siteAccess'
     | 'handOver'
+    | 'pilotSetup'
     | 'other'
   values: Record<string, string>
 }
@@ -69,6 +70,18 @@ export function handOverDraft(args: Args): {
     summary: field(args, 'summary') ?? '',
     draft: typeof draft === 'string' ? draft : '',
   }
+}
+
+/**
+ * A declared browser that isn't installed offers `pilot_<id>__setup`
+ * (`pilots::tools::SETUP_TOOL`): approving it installs the browser
+ */
+const PILOT_SETUP_TOOL = /^pilot_(browser|browser-headless)__setup$/
+
+/** The pilot's catalog name (product names, not translated) */
+const PILOT_NAMES: Record<string, string> = {
+  browser: 'Browser',
+  'browser-headless': 'Browser (headless)',
 }
 
 /** Studio saving a definition (`studio::save::SAVE_ARTIFACT`) */
@@ -151,6 +164,13 @@ export function approvalSummary(tool: string, args: Args): ApprovalSummary {
         key: 'handOver',
         values: { site: value('site'), summary: value('summary') },
       }
+  }
+  const setup = PILOT_SETUP_TOOL.exec(tool)?.[1]
+  if (setup) {
+    return {
+      key: 'pilotSetup',
+      values: { pilot: PILOT_NAMES[setup] ?? setup, reason: value('reason') },
+    }
   }
   // The connector actions the demo agents ask for, in their own words
   switch (tool) {

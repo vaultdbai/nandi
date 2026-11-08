@@ -3458,3 +3458,21 @@ mod prompt_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod data_run_tests {
+    use super::*;
+
+    /// The email and calendar checks are fed untrusted text: they never
+    /// get the Chief of Staff's browser, which only its chats may use
+    /// (`agent_pilot_tools` is merged on the chat branch alone).
+    #[test]
+    fn a_check_started_run_never_gets_pilot_tools() {
+        for tool in ["navigate", "click", "browser_hand_over"] {
+            let name = pilots::tools::tool_name("browser", tool);
+            for source in [SourceType::Email, SourceType::CalendarCheck] {
+                assert!(!data_run_allows(source, &name), "{source:?} {name}");
+            }
+        }
+    }
+}

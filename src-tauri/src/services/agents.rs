@@ -688,15 +688,8 @@ mod tests {
         let agents = store.list_agents();
 
         let ids: Vec<_> = agents.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            [
-                builtin_agents::CHIEF_OF_STAFF,
-                builtin_agents::BROWSER,
-                "alpha"
-            ]
-        );
-        assert!(agents[0].builtin && agents[1].builtin && !agents[2].builtin);
+        assert_eq!(ids, [builtin_agents::CHIEF_OF_STAFF, "alpha"]);
+        assert!(agents[0].builtin && !agents[1].builtin);
     }
 
     #[test]

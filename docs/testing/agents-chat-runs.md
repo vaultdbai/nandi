@@ -373,31 +373,28 @@ Shared preconditions used below:
 - **Needs relay:** no
 - **Status:** Shipped
 
-### AG-31 — Browser comes with Nandi
+### AG-31 — Chief of Staff browses websites
 
-- **What:** A second built-in agent, **Browser** (`browser`), does website work for the Chief of Staff in a browser the user watches.
-  - It's seeded, edited, listed and protected like Chief of Staff (AG-30): written on start if its `skill.md` is missing, Delete hidden and refused, listed second under Agents and on the All agents page.
-  - It accepts delegation and serves `browse` and `web-task`. Chief of Staff hands it website work through `work_start` or `delegate_to_agent`.
-  - It uses the visible **Browser** pilot (never headless) with `allow: [interact]`: clicking and typing run, submitting, secrets, uploads and paying wait for approval. Sign-ins, CAPTCHAs, payments and passwords go to the user with the pilot's hand-over.
-  - It ships with no allowed sites. A site outside its Internet access is refused, and it says which site to add.
-  - Its behaviour is in its `skill.md` (900 words or fewer), with no `model:`.
-- **Where:** `src-tauri/resources/builtin-agents/browser/skill.md`, `services/builtin_agents.rs` (`BROWSER`, `BUILTIN_AGENTS`, `position`), `services/agents.rs` (listing order), `resources/builtin-agents/chief-of-staff/skill.md` ("Website work"), `agent-page-model.ts` (`sortAgents`).
+- **What:** The Chief of Staff browses websites itself, in a browser the user watches. There is no separate Browser agent.
+  - Its `skill.md` declares the visible **Browser** pilot (never headless) with `allow: [interact]`: clicking and typing run, submitting, secrets, uploads and paying wait for approval. Sign-ins, CAPTCHAs, payments and passwords go to the user with the pilot's hand-over.
+  - It ships with no allowed sites. A new site shows the "allow this site?" card with its reason, and it waits.
+  - Only the user's chats and intake threads get the browser. The email and calendar check runs never do.
+  - Its behaviour is in its `skill.md` ("Website work", body 900 words or fewer).
+- **Where:** `resources/builtin-agents/chief-of-staff/skill.md` ("Website work", `pilots`), `services/orchestrator.rs` (`data_run_allows`, `agent_pilot_tools`).
 - **Preconditions:** A new Nandi home. The Browser pilot installed and started in Library › Tools, with Chrome or Edge on the computer.
 - **Steps:**
-  1. Start Nandi. Open Agents.
-  2. Open Browser › Settings › Internet access and add `example.com`.
-  3. Ask Chief of Staff: "Check what example.com says on its home page."
-  4. Approve the delegation and allow the pilot for Browser when asked.
-  5. Ask Chief of Staff for something on a site not in Browser's Internet access.
+  1. Ask Chief of Staff: "Check what example.com says on its home page."
+  2. Allow the site when the card asks, and allow the pilot when asked.
+  3. Ask it to fill in a sign-in form on a site.
 - **Expected:**
-  - Step 1: Chief of Staff first, Browser second; neither has Delete.
-  - Step 3–4: a Chrome or Edge window opens on example.com; Browser reports what it found with the link and a screenshot; Chief of Staff relays it.
-  - Step 5: Browser says the site is refused and which site to add; it doesn't try another address.
+  - Step 1–2: a Chrome or Edge window opens on example.com; Chief of Staff reports what it found with the link.
+  - Step 3: it hands over to you and never types a password.
 - **Edge / negative cases:**
-  - A form submit waits for approval; a sign-in page is handed over, never typed.
-  - Deleting `.nandi/agents/browser/skill.md` by hand: the next start restores it.
-  - Installing a pack that contains an agent `browser` is refused, as for Chief of Staff.
-- **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `the_chief_of_staff_is_listed_first`, `the_shipped_skills_parse_and_stay_short`, `browser_uses_the_visible_browser_and_takes_delegation`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_builtin_agents_first_in_their_own_order`), `a2a/tests.rs` (`the_chief_of_staff_hands_website_work_to_the_builtin_browser`), `nav-tree.test.ts`, `agent-page-model.test.ts` ('keeps the built-in agents in the order they come') | Layer: unit + integration | Gap: no automated run with the real browser pilot.
+  - A form submit waits for approval.
+  - Don't allow: it says what it needed the site for and what is left undone.
+  - A mail or calendar check run has no `pilot_browser__*` tools.
+  - A dev home that seeded the old Browser agent still has its folder; delete `.nandi/agents/browser` by hand.
+- **Automation:** Covered by: `builtin_agents.rs` (`the_chief_of_staff_browses_with_the_visible_browser`, `the_shipped_skills_parse_and_stay_short`), `orchestrator.rs` (`a_check_started_run_never_gets_pilot_tools`) | Layer: unit | Gap: no automated run with the real browser pilot.
 - **Needs relay:** no
 - **Status:** Shipped
 

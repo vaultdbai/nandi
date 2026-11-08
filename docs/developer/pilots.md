@@ -7,11 +7,23 @@ Pilots are host-side MCP servers that let an agent control the OS: apps, files, 
 An agent gets a pilot's tools only when all of these hold (`tools::access`):
 
 1. Its skill.md `pilots:` block lists the pilot.
-2. The pilot is installed and was started by this app session.
+2. The pilot is installed, and was started by this app session. A browser pilot needs no Start: the agent's first use turns it on (see below).
 3. The user granted the agent **every** capability the pilot exposes.
-4. Its last health check passed. Checks run every 30s with a 2s timeout.
+4. Its last health check passed. Checks run every 30s with a 2s timeout. A browser has no shared server to check: a failed start is a warning for that step.
 
-Nothing installs or starts on its own. Grants are per agent and per pilot.
+Nothing installs on its own. Grants are per agent and per pilot.
+
+**Installed some other way counts.** The `installed` flag is set when Nandi runs the install. Before saying "not installed", `detect.rs` looks for the pilot where its install would put it: `npm ls -g --json` for `@playwright/mcp` at the pinned version (`browser`), `docker image inspect` for the pinned image (`browser-headless`). Each catalog entry's probe is `catalog::probe`. A find is recorded as installed, logged ("Found pilot ... already installed") and announced. Looking is read-only, and a miss is remembered for 60s so a run's steps don't each run npm. `pilot_status`, `start_pilot` and every run step look.
+
+| ✅ Do                                            | ❌ Don't                                       |
+| ------------------------------------------------ | ---------------------------------------------- |
+| Check `pilots::installed` (flag, then the probe) | Trust only the `installed` row                 |
+| Install only on the user's click or approval     | Install when the probe misses                  |
+| Offer declared pilot tools directly every step   | Leave them to `tool_search` (deferred loading) |
+
+**Pilot tools are never deferred.** `tool_search::is_core` keeps every `pilot_*` tool in the step's list. Playwright MCP alone has 20-odd tools: deferred, the agent saw only its file tools and didn't know to search for the browser.
+
+**A browser that isn't installed offers one tool**, `pilot_<id>__setup` (`tools::SETUP_TOOL`), next to the `agent://warning`. The agent calls it when the task needs the browser. The person sees one approval card ("Set up the Browser pilot", button **Install**; `approval.summary.pilotSetup`). Approving runs the install (`tools::setup`), and the browser's tools come on the next step. Declining fails the call, and the tool's description tells the agent not to ask again. The agent never has to tell the person to go to Library › Tools.
 
 ## The host is the only MCP client
 
@@ -47,7 +59,7 @@ The run that triggered the prompt goes ahead without the pilot. The agent's next
 - **`browser`**: a window on this computer, so the user can watch. `npx -y @playwright/mcp@0.0.83` drives the system Chrome (else Edge). Install runs `npm install -g` so the first start doesn't wait for a download.
   - It's the one exception to "agents run only in the container" (owner, 2026-10-30). The agent's own code still runs in its container. Only the browser it drives runs on the host, and it goes through the same egress proxy, allowed-sites check and per-call approvals as `browser-headless`. When watching isn't needed, prefer `browser-headless`.
 
-**One browser per agent**, started on the agent's first use and kept running (`POOL`, keyed by agent and pilot). Start in the Library checks the prerequisites (Docker and the image, or npx and Chrome or Edge) and turns the pilot on; Stop shuts every agent's browser. Changed settings (the agent's options or secrets) restart that agent's browser. Both talk to Nandi over stdio (`connectors::LineTransport`), not a port.
+**One browser per agent**, started on the agent's first use and kept running (`POOL`, keyed by agent and pilot). The first step of an agent with the pilot granted turns it on (`pilots::turn_on_browser`: checks the prerequisites, Docker and the image or npx and Chrome or Edge), so Start in the Library is optional. Stop shuts every agent's browser; the next agent that uses it opens one again. The status of a browser comes from its rows for this session, not the registry (it has no process of its own there). Changed settings (the agent's options or secrets) restart that agent's browser. Both talk to Nandi over stdio (`connectors::LineTransport`), not a port.
 
 **Only the agent's sites load.** Everything is Playwright MCP's own config file, written per start and deleted once the server has read it:
 

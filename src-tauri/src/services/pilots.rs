@@ -12,6 +12,8 @@
 //!   Nothing is installed or started until the user asks (never automatic).
 //! - [`install`]: runs a pilot's `install_command`, streaming its output as
 //!   `pilot://install_output`.
+//! - [`detect`]: finds a pilot already installed some other way (npm global,
+//!   Docker image) and records it as installed. Read-only.
 //! - [`runtime`]: spawns `start_command` and health-checks
 //!   `GET http://127.0.0.1:<port>/health` (2s timeout) every 30s. A failed
 //!   check marks the pilot unhealthy and its tools stop being offered.
@@ -31,6 +33,7 @@
 pub mod audit;
 pub mod browser;
 pub mod catalog;
+pub mod detect;
 pub mod handover;
 pub mod install;
 mod mcp;
@@ -272,12 +275,7 @@ pub(crate) async fn install_definition(
 pub async fn start_pilot(state: &AppState, id: &str) -> Result<u32, String> {
     let registry = registry(state)?.clone();
     let pilot = catalog::find(id)?;
-    let pilot_id = pilot.id.clone();
-    let persisted = state
-        .db()
-        .call(move |conn| store::load(conn, &pilot_id))
-        .await?;
-    if !persisted.installed {
+    if !installed(state.bus(), &detect::SystemProbe, &pilot).await? {
         return Err(format!("Install {} first", pilot.name));
     }
     start_definition(state.bus(), &registry, &pilot).await
@@ -288,19 +286,8 @@ pub(crate) async fn start_definition(
     registry: &Arc<PilotRegistry>,
     pilot: &PilotDefinition,
 ) -> Result<u32, String> {
-    // A browser runs one server per agent, on its first use: starting it
-    // here checks it can, and lets agents use it
     if browser::is_browser(&pilot.id) {
-        browser::prerequisites(pilot).await?;
-        let id = pilot.id.clone();
-        bus.db
-            .call(move |conn| {
-                store::save_running(conn, &id, None, 0)?;
-                store::save_healthy(conn, &id, true)
-            })
-            .await?;
-        announce(bus, &pilot.id).await;
-        log::info!("Pilot '{}' is on", pilot.id);
+        turn_on_browser(bus, pilot).await?;
         return Ok(0);
     }
     if registry.is_running(&pilot.id) && !registry.has_exited(&pilot.id) {
@@ -347,6 +334,38 @@ pub(crate) async fn start_definition(
     Ok(pid.unwrap_or(0))
 }
 
+/// A browser runs one server per agent, started on that agent's first use
+/// ([`tools::for_agent`] turns it on too): turning it on checks it can run
+/// here (Node.js and Chrome or Edge, or Docker and the image) and lets
+/// agents use it.
+pub(crate) async fn turn_on_browser(bus: &EventBus, pilot: &PilotDefinition) -> Result<(), String> {
+    browser::prerequisites(pilot).await?;
+    let id = pilot.id.clone();
+    bus.db
+        .call(move |conn| {
+            store::save_running(conn, &id, None, 0)?;
+            store::save_healthy(conn, &id, true)
+        })
+        .await?;
+    announce(bus, &pilot.id).await;
+    log::info!("Pilot '{}' is on", pilot.id);
+    Ok(())
+}
+
+/// Whether `pilot` is installed: through Nandi, or found on this computer
+/// ([`detect`]); a find is recorded and announced.
+pub(crate) async fn installed(
+    bus: &EventBus,
+    probe: &impl detect::InstallProbe,
+    pilot: &PilotDefinition,
+) -> Result<bool, String> {
+    let found = detect::installed(&bus.db, probe, pilot).await?;
+    if found == detect::Found::Detected {
+        announce(bus, &pilot.id).await;
+    }
+    Ok(found.yes())
+}
+
 pub async fn stop_pilot(state: &AppState, id: &str) -> Result<(), String> {
     let registry = registry(state)?.clone();
     let pilot = catalog::find(id)?;
@@ -375,6 +394,8 @@ pub(crate) async fn stop_definition(
 
 pub async fn pilot_status(state: &AppState, id: &str) -> Result<PilotStatus, String> {
     let pilot = catalog::find(id)?;
+    // Installed some other way counts too (read-only look)
+    installed(state.bus(), &detect::SystemProbe, &pilot).await?;
     status_of(state.db(), state.pilots().map(Arc::as_ref), &pilot.id).await
 }
 
@@ -386,7 +407,9 @@ pub(crate) async fn status_of(
     let pilot_id = id.to_string();
     let persisted = db.call(move |conn| store::load(conn, &pilot_id)).await?;
     let mut status = persisted.status();
-    if let Some(registry) = registry {
+    // A browser has no process of its own in the registry (one per agent):
+    // its rows, from this session, say whether it's on
+    if let Some(registry) = registry.filter(|_| !browser::is_browser(id)) {
         // The registry, not a row from an earlier session, says what runs
         status.running = registry.is_running(id);
         status.healthy &= status.running;

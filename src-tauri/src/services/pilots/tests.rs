@@ -215,6 +215,75 @@ fn reads_the_skill_md_pilot_block() {
 }
 
 #[tokio::test]
+async fn a_browser_not_installed_offers_one_setup_tool() {
+    use super::detect::tests::FakeProbe;
+    let (bus, sink) = bus();
+    let shopper = agent("shopper", "browser");
+
+    let set = tools::for_agent_with(&bus, &shopper, &FakeProbe(None)).await;
+    let names: Vec<&str> = set.tools.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["pilot_browser__setup"]);
+    assert!(set.requires_approval("pilot_browser__setup", &json!({})));
+    assert!(
+        set.warnings[0].contains("isn't installed"),
+        "{:?}",
+        set.warnings
+    );
+    assert!(set.consent_needed.is_empty());
+    assert!(!status_of(&bus.db, None, "browser").await.unwrap().installed);
+
+    // Found on this computer (installed by hand): recorded and announced,
+    // and the next thing missing is the user's consent
+    let set = tools::for_agent_with(&bus, &shopper, &FakeProbe(Some("npm global"))).await;
+    assert!(set.tools.is_empty());
+    let pilot = catalog::find("browser").unwrap();
+    assert_eq!(
+        set.consent_needed,
+        [("browser".to_string(), pilot.capabilities.clone())]
+    );
+    assert!(status_of(&bus.db, None, "browser").await.unwrap().installed);
+    assert!(changes(&sink)
+        .iter()
+        .any(|c| c["pilotId"] == "browser" && c["status"]["installed"] == true));
+}
+
+#[tokio::test]
+async fn an_approved_setup_installs_once() {
+    use super::detect::tests::FakeProbe;
+    let (bus, _sink) = bus();
+    let pilot = PilotDefinition {
+        id: "browser-setup-test".into(),
+        install_command: "echo installed".into(),
+        ..definition("browser")
+    };
+    let (text, is_error) = tools::setup(&bus, &FakeProbe(None), &pilot).await.unwrap();
+    assert!(!is_error && text.starts_with("Installed Browser"), "{text}");
+    assert!(
+        status_of(&bus.db, None, "browser-setup-test")
+            .await
+            .unwrap()
+            .installed
+    );
+    // Already there: nothing runs again
+    let broken = PilotDefinition {
+        install_command: "exit 7".into(),
+        ..pilot
+    };
+    let (text, is_error) = tools::setup(&bus, &FakeProbe(None), &broken).await.unwrap();
+    assert!(!is_error && text.contains("is installed"), "{text}");
+
+    // A failed install is the agent's to report, not a loop
+    let failing = PilotDefinition {
+        id: "browser-setup-fails".into(),
+        ..broken
+    };
+    let (text, is_error) = tools::setup(&bus, &FakeProbe(None), &failing)
+        .await
+        .unwrap();
+    assert!(is_error && text.contains("code 7"), "{text}");
+}
+
+#[tokio::test]
 async fn pilot_tools_route_through_approval_and_consent() {
     // opendesk's port, so the catalog definition points at the fake
     let (server, calls) = fake_pilot(17899).await;

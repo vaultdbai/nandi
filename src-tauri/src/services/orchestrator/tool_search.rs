@@ -160,13 +160,21 @@ your next step."
     }
 }
 
-/// Splits `tools` into the core set (the `CORE_TOOLS` present, then
+/// Whether `name` is always offered, never behind `tool_search`: the core
+/// tools, and the tools of the pilots the agent declares and may use. A
+/// browser alone has twenty-odd tools: deferred, the agent saw only its
+/// file tools and didn't know to search for the browser
+pub fn is_core(name: &str) -> bool {
+    CORE_TOOLS.contains(&name) || crate::services::pilots::tools::is_pilot_tool(name)
+}
+
+/// Splits `tools` into the core set (the [`is_core`] tools present, then
 /// `tool_search`) and the deferred rest, each in its original order.
 pub fn split_core(tools: Vec<ToolDef>) -> (Vec<ToolDef>, Vec<ToolDef>) {
     let (mut core, deferred): (Vec<_>, Vec<_>) = tools
         .into_iter()
         .filter(|tool| tool.name != TOOL_SEARCH_NAME)
-        .partition(|tool| CORE_TOOLS.contains(&tool.name.as_str()));
+        .partition(|tool| is_core(&tool.name));
     core.push(tool_search_spec());
     (core, deferred)
 }
@@ -409,6 +417,27 @@ mod tests {
         let spec = tool_search_spec();
         assert_eq!(spec.input_schema["properties"]["query"]["type"], "string");
         assert_eq!(spec.input_schema["properties"]["limit"]["type"], "integer");
+    }
+
+    #[test]
+    fn pilot_tools_are_never_deferred() {
+        let mut tools = many(20);
+        tools.push(tool("pilot_browser__browser_navigate", "Open a page"));
+        tools.push(tool("pilot_browser__browser_hand_over", "Hand over"));
+        let offered = step_tools("run-pilot", tools);
+        let offered: Vec<_> = offered.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(
+            offered,
+            [
+                "shell",
+                "read_file",
+                "write_file",
+                "list_dir",
+                "pilot_browser__browser_navigate",
+                "pilot_browser__browser_hand_over",
+                TOOL_SEARCH_NAME
+            ]
+        );
     }
 
     #[test]

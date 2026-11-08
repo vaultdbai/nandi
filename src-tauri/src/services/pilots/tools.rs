@@ -2,10 +2,18 @@
 //!
 //! An agent reaches a pilot only when all of these hold:
 //! 1. its skill.md `pilots:` block lists the pilot's ID (e.g. `opendesk`);
-//! 2. the pilot is installed and running in this app session;
+//! 2. the pilot is installed (through Nandi, or found on this computer:
+//!    [`super::detect`]) and running in this app session. A browser is
+//!    turned on by the agent's first use: it runs one server per agent;
 //! 3. the user granted the agent every capability the pilot exposes
 //!    (the Pilots consent dialog; stored per agent);
-//! 4. its last health check passed.
+//! 4. its last health check passed (a browser has no shared server to
+//!    check: a failed start is a warning for that step only).
+//!
+//! A declared browser that isn't installed offers one tool instead,
+//! `pilot_<id>__setup` ([`SETUP_TOOL`]): the agent calls it, the person
+//! sees one approval card ("Set up the Browser pilot", Install), and
+//! approving runs the install; the browser's tools come on the next step.
 //!
 //! The host's orchestrator is the MCP client, so a grant for one pilot
 //! never makes another reachable. Pilot tools reach the model as
@@ -31,6 +39,9 @@ use crate::services::events::EventBus;
 
 pub const PREFIX: &str = "pilot_";
 const SEPARATOR: &str = "__";
+/// The tool a declared browser that isn't installed offers in place of its
+/// own: approving it installs the browser
+pub const SETUP_TOOL: &str = "setup";
 
 /// The model-facing name of a pilot's tool.
 pub fn tool_name(pilot_id: &str, tool: &str) -> String {
@@ -104,7 +115,9 @@ pub fn access(
     if !state.installed {
         return Access::NotInstalled;
     }
-    if !state.is_live() {
+    // A browser starts on the agent's first use (`for_agent` turns it on)
+    let first_use = browser::is_browser(&pilot.id);
+    if !state.is_live() && !first_use {
         return Access::NotRunning;
     }
     let missing: Vec<String> = pilot
@@ -116,7 +129,7 @@ pub fn access(
     if !missing.is_empty() {
         return Access::NeedsConsent(missing);
     }
-    if !state.healthy {
+    if !state.healthy && !first_use {
         return Access::Unhealthy;
     }
     Access::Allowed
@@ -128,11 +141,75 @@ async fn check(
     declared: &[String],
     pilot: &PilotDefinition,
 ) -> Result<Access, String> {
+    Ok(check_state(db, agent_id, declared, pilot).await?.0)
+}
+
+/// [`access`], with the state it read
+async fn check_state(
+    db: &Db,
+    agent_id: &str,
+    declared: &[String],
+    pilot: &PilotDefinition,
+) -> Result<(Access, PersistedPilot), String> {
     let (agent, id) = (agent_id.to_string(), pilot.id.clone());
     let (state, granted) = db
         .call(move |conn| Ok((store::load(conn, &id)?, store::granted(conn, &agent, &id)?)))
         .await?;
-    Ok(access(declared, pilot, &state, &granted))
+    Ok((access(declared, pilot, &state, &granted), state))
+}
+
+/// The tool a declared browser that isn't installed offers ([`SETUP_TOOL`])
+pub fn setup_spec(pilot: &PilotDefinition) -> ToolSpec {
+    ToolSpec {
+        name: tool_name(&pilot.id, SETUP_TOOL),
+        description: format!(
+            "[{name}] {name} isn't installed on this computer yet, so its tools aren't offered. When the task needs the browser, call this once: the person sees one card to install it, and the browser's tools are yours from your next step. If they decline, don't ask again: say what is left undone.",
+            name = pilot.name
+        ),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Why the task needs the browser, in a few words"
+                }
+            }
+        }),
+    }
+}
+
+/// Runs an approved [`SETUP_TOOL`] call: installs `pilot` (the person's
+/// approval is their request) unless it's there already
+pub(crate) async fn setup(
+    bus: &EventBus,
+    probe: &impl super::detect::InstallProbe,
+    pilot: &PilotDefinition,
+) -> Result<(String, bool), String> {
+    if super::installed(bus, probe, pilot).await? {
+        return Ok((
+            format!(
+                "{} is installed. Its tools are offered from your next step.",
+                pilot.name
+            ),
+            false,
+        ));
+    }
+    match super::install_definition(bus, pilot).await {
+        Ok(()) => Ok((
+            format!(
+                "Installed {}. Its tools are offered from your next step.",
+                pilot.name
+            ),
+            false,
+        )),
+        Err(e) => Ok((
+            format!(
+                "Installing {} failed: {e}. Tell the person; they can install it in Library › Tools.",
+                pilot.name
+            ),
+            true,
+        )),
+    }
 }
 
 /// The pilot tools offered to the model this step, and why any declared
@@ -202,6 +279,15 @@ impl PilotToolset {
 /// Lists the tools of every pilot `agent` may use. A pilot whose server
 /// doesn't answer is marked unhealthy and skipped.
 pub async fn for_agent(bus: &EventBus, agent: &Agent) -> PilotToolset {
+    for_agent_with(bus, agent, &super::detect::SystemProbe).await
+}
+
+/// [`for_agent`], looking for installs with `probe`
+pub(crate) async fn for_agent_with(
+    bus: &EventBus,
+    agent: &Agent,
+    probe: &impl super::detect::InstallProbe,
+) -> PilotToolset {
     let declared = declared(agent);
     let mut set = PilotToolset {
         agent: agent.id().as_str().to_string(),
@@ -215,9 +301,30 @@ pub async fn for_agent(bus: &EventBus, agent: &Agent) -> PilotToolset {
                 continue;
             }
         };
-        match check(&bus.db, agent.id().as_str(), &declared, &pilot).await {
-            Ok(Access::Allowed) => {}
-            Ok(denied) => {
+        let is_browser = browser::is_browser(&pilot.id);
+        let mut checked = check_state(&bus.db, agent.id().as_str(), &declared, &pilot).await;
+        // Installed some other way: found, recorded, and checked again
+        if matches!(checked, Ok((Access::NotInstalled, _)))
+            && matches!(super::installed(bus, probe, &pilot).await, Ok(true))
+        {
+            checked = check_state(&bus.db, agent.id().as_str(), &declared, &pilot).await;
+        }
+        match checked {
+            // A browser not on yet (or since stopped): this use turns it on
+            Ok((Access::Allowed, state)) if is_browser && !state.is_routable() => {
+                if let Err(e) = super::turn_on_browser(bus, &pilot).await {
+                    set.warnings.push(format!("{}: {e}", pilot.name));
+                    continue;
+                }
+            }
+            Ok((Access::Allowed, _)) => {}
+            // Not installed: one tool that asks the person to install it
+            Ok((Access::NotInstalled, _)) if is_browser => {
+                set.warnings.push(Access::NotInstalled.reason(&pilot));
+                set.tools.push(setup_spec(&pilot));
+                continue;
+            }
+            Ok((denied, _)) => {
                 set.warnings.push(denied.reason(&pilot));
                 if let Access::NeedsConsent(missing) = denied {
                     set.consent_needed.push((pilot.id.clone(), missing));
@@ -376,6 +483,15 @@ async fn run(
 ) -> Result<(String, bool), (String, &'static str)> {
     let pilot = catalog::find(pilot_id).map_err(|e| (e, "denied"))?;
     let declared = declared(agent);
+    // Approved setup: the person asked for the install
+    if tool == SETUP_TOOL && browser::is_browser(&pilot.id) {
+        if !declared.contains(&pilot.id) {
+            return Err((Access::NotDeclared.reason(&pilot), "denied"));
+        }
+        return setup(bus, &super::detect::SystemProbe, &pilot)
+            .await
+            .map_err(|e| (e, "error"));
+    }
     match check(&bus.db, agent.id().as_str(), &declared, &pilot).await {
         Ok(Access::Allowed) => {}
         Ok(denied) => return Err((denied.reason(&pilot), "denied")),
@@ -481,6 +597,51 @@ mod tests {
             access(&declared, &pilot(), &live(false), &all),
             Access::Unhealthy
         );
+    }
+
+    #[test]
+    fn a_browser_starts_on_first_use_not_from_the_library() {
+        let browser = catalog::find("browser").unwrap();
+        let declared = vec!["browser".to_string()];
+        let all = browser.capabilities.clone();
+        // Installed, never started (or started in an earlier session, or
+        // stopped): usable, the first use turns it on
+        let installed = PersistedPilot {
+            installed: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            access(&declared, &browser, &installed, &all),
+            Access::Allowed
+        );
+        let stale = PersistedPilot {
+            installed: true,
+            running: true,
+            healthy: false,
+            session: Some("an earlier session".into()),
+            ..Default::default()
+        };
+        assert_eq!(access(&declared, &browser, &stale, &all), Access::Allowed);
+        // Still installed and granted first
+        assert_eq!(
+            access(&declared, &browser, &PersistedPilot::default(), &all),
+            Access::NotInstalled
+        );
+        assert_eq!(
+            access(&declared, &browser, &installed, &[]),
+            Access::NeedsConsent(all)
+        );
+    }
+
+    #[test]
+    fn the_setup_tool_is_the_browser_s_and_asks() {
+        let browser = catalog::find("browser").unwrap();
+        let spec = setup_spec(&browser);
+        assert_eq!(spec.name, "pilot_browser__setup");
+        assert_eq!(parse_tool_name(&spec.name), Some(("browser", SETUP_TOOL)));
+        assert!(spec.description.starts_with("[Browser]"));
+        // Unknown to the set's browsers: it needs approval (the card)
+        assert!(PilotToolset::default().requires_approval(&spec.name, &serde_json::json!({})));
     }
 
     #[test]

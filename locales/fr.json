@@ -269,6 +269,8 @@
   "approval.rejectConfirm.description": "L’agent ne le fera pas. Il continue sans, ou s’arrête s’il ne peut pas.",
   "approval.rejectConfirm.keep": "Continuer d’attendre",
   "approval.summary.handOver": "À vous sur {{site}} : {{summary}}",
+  "approval.summary.pilotSetup": "Configurer le pilote {{pilot}} : l’installer sur cet ordinateur pour que l’agent puisse l’utiliser. {{reason}}",
+  "approval.install": "Installer",
   "handOver.label": "À vous : relisez et publiez",
   "handOver.labelFrom": "{{agent}} · À vous : relisez et publiez",
   "handOver.untitled": "Une page est prête pour vous",

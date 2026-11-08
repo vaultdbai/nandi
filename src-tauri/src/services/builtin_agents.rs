@@ -14,9 +14,6 @@ use crate::services::repos::RepoLayout;
 /// The agent that keeps My notes and answers for the user
 pub const CHIEF_OF_STAFF: &str = "chief-of-staff";
 
-/// The agent that does website work in a browser the user watches
-pub const BROWSER: &str = "browser";
-
 /// An agent that ships with Nandi: its ID and the files written into a new
 /// folder
 pub struct BuiltinAgent {
@@ -25,28 +22,19 @@ pub struct BuiltinAgent {
 }
 
 /// Every built-in agent, in the order the sidebar lists them
-pub const BUILTIN_AGENTS: &[BuiltinAgent] = &[
-    BuiltinAgent {
-        id: CHIEF_OF_STAFF,
-        files: &[
-            (
-                SKILL_FILE,
-                include_str!("../../resources/builtin-agents/chief-of-staff/skill.md"),
-            ),
-            (
-                INSTRUCTIONS_FILE,
-                include_str!("../../resources/builtin-agents/chief-of-staff/instructions.md"),
-            ),
-        ],
-    },
-    BuiltinAgent {
-        id: BROWSER,
-        files: &[(
+pub const BUILTIN_AGENTS: &[BuiltinAgent] = &[BuiltinAgent {
+    id: CHIEF_OF_STAFF,
+    files: &[
+        (
             SKILL_FILE,
-            include_str!("../../resources/builtin-agents/browser/skill.md"),
-        )],
-    },
-];
+            include_str!("../../resources/builtin-agents/chief-of-staff/skill.md"),
+        ),
+        (
+            INSTRUCTIONS_FILE,
+            include_str!("../../resources/builtin-agents/chief-of-staff/instructions.md"),
+        ),
+    ],
+}];
 
 pub fn is_builtin(id: &str) -> bool {
     position(id).is_some()
@@ -192,18 +180,16 @@ mod tests {
     fn seeds_every_builtin_agent_once() {
         let (_tmp, layout) = layout();
         let written = seed(&layout).unwrap();
-        assert_eq!(written.len(), 3, "{written:?}");
+        assert_eq!(written.len(), 2, "{written:?}");
         assert!(layout.skill_path(CHIEF_OF_STAFF).is_file());
         assert!(layout.instructions_path(CHIEF_OF_STAFF).is_file());
-        assert!(layout.skill_path(BROWSER).is_file());
         assert!(seed(&layout).unwrap().is_empty(), "nothing to add again");
     }
 
     #[test]
     fn the_chief_of_staff_is_listed_first() {
         assert_eq!(position(CHIEF_OF_STAFF), Some(0));
-        assert_eq!(position(BROWSER), Some(1));
-        assert!(is_builtin(BROWSER));
+        assert!(is_builtin(CHIEF_OF_STAFF));
         assert!(!is_builtin("writer"));
     }
 
@@ -240,7 +226,6 @@ mod tests {
     #[test]
     fn the_shipped_skills_parse_and_stay_short() {
         assert_eq!(shipped(CHIEF_OF_STAFF).name(), "Chief of Staff");
-        assert_eq!(shipped(BROWSER).name(), "Browser");
         for agent in BUILTIN_AGENTS {
             let words = body_words(file(agent, SKILL_FILE));
             assert!(words <= 900, "{}: {words} words", agent.id);
@@ -253,8 +238,8 @@ mod tests {
     }
 
     #[test]
-    fn browser_uses_the_visible_browser_and_takes_delegation() {
-        let agent = shipped(BROWSER);
+    fn the_chief_of_staff_browses_with_the_visible_browser() {
+        let agent = shipped(CHIEF_OF_STAFF);
         let caps = agent.capabilities();
         let pilots: Vec<String> = caps
             .pilots()
@@ -264,9 +249,6 @@ mod tests {
         assert_eq!(pilots, ["browser"], "the visible browser, never headless");
         // Clicking and typing run; submitting, secrets, uploads and paying ask
         assert_eq!(caps.pilot_options("browser").unwrap().allow, ["interact"]);
-        assert!(caps.accepts_delegation());
-        let serves: Vec<&str> = caps.serves().iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(serves, ["browse", "web-task"]);
         assert!(caps.network().allow.is_empty(), "the user allows each site");
     }
 

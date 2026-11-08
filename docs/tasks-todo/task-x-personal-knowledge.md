@@ -10,13 +10,13 @@ Related: `task-x-run-knowledge.md` (lessons from runs, sharing levels) and `task
 
 Different knowledge needs a different lookup:
 
-| Knowledge                         | Shape                                   | Lookup                                                 |
-| --------------------------------- | --------------------------------------- | ------------------------------------------------------ |
-| About Nandi                       | Small, ships with the app               | Already done: guide index plus fetch by ID             |
-| User notes (Chief of Staff notes) | Markdown files, hundreds to thousands   | Keyword search, then read the whole note               |
-| History (runs, requests, chats)   | Structured, already in SQLite           | Ordinary queries by time, agent, status and person     |
-| Lessons from runs                 | Short records with error signatures     | Exact match first, then keyword search                 |
-| Photos                            | Images                                  | Image embeddings and face grouping (see section 3)     |
+| Knowledge                         | Shape                                 | Lookup                                             |
+| --------------------------------- | ------------------------------------- | -------------------------------------------------- |
+| About Nandi                       | Small, ships with the app             | Already done: guide index plus fetch by ID         |
+| User notes (Chief of Staff notes) | Markdown files, hundreds to thousands | Keyword search, then read the whole note           |
+| History (runs, requests, chats)   | Structured, already in SQLite         | Ordinary queries by time, agent, status and person |
+| Lessons from runs                 | Short records with error signatures   | Exact match first, then keyword search             |
+| Photos                            | Images                                | Image embeddings and face grouping (see section 3) |
 
 Most questions depend on dates, names, IDs and error codes, where vector search is weak. At one person's or one company's size, SQLite full-text search (FTS5) answers in milliseconds, so a separate vector database doesn't make anything faster.
 

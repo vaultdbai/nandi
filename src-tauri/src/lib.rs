@@ -7,6 +7,8 @@
 mod audit;
 mod bindings;
 #[cfg(test)]
+mod browser_launch_check;
+#[cfg(test)]
 mod browser_sites_suite;
 mod cli;
 mod cli_mascot;

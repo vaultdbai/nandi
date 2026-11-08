@@ -1128,38 +1128,6 @@ async fn local_delegation_works_without_a_relay() {
 }
 
 #[tokio::test]
-async fn the_chief_of_staff_hands_website_work_to_the_builtin_browser() {
-    use crate::services::builtin_agents::{self, BROWSER, CHIEF_OF_STAFF};
-    let state = AppState::for_tests(vec![]);
-    echo_agents(&state).await;
-    builtin_agents::seed(state.store().layout()).unwrap();
-    for agent in builtin_agents::BUILTIN_AGENTS {
-        state.store().commit(EntityKind::Agent, agent.id).unwrap();
-    }
-    let delegator = state.a2a_delegator().unwrap().clone();
-    for capability in ["browse", "web-task"] {
-        let result = delegator
-            .delegate_request(DelegationRequest {
-                requester_agent: Some(CHIEF_OF_STAFF.into()),
-                capability: capability.into(),
-                input: json!({"text": "Check the parcel's status"}),
-                target: Some(format!("{}/{BROWSER}", instance(&state))),
-                ..Default::default()
-            })
-            .await
-            .unwrap();
-        assert_eq!(result.status, TaskStatus::Completed, "{:?}", result.error);
-        assert!(result.requester_agent.ends_with("/chief-of-staff"));
-        assert!(result.output.as_str().unwrap().contains("parcel's status"));
-    }
-    // Scored by capability alone, Browser is the one that serves it here
-    let providers = list_available_providers(&state, "web-task").await.unwrap();
-    assert_eq!(providers.len(), 1);
-    assert!(providers[0].id.ends_with("/browser"), "{}", providers[0].id);
-    state.shutdown();
-}
-
-#[tokio::test]
 async fn the_delegation_tool_waits_for_approval() {
     let recorder = Arc::new(RecordingSink::default());
     let state = AppState::for_tests(vec![recorder.clone()]);

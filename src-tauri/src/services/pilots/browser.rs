@@ -42,6 +42,7 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Child;
 
+use super::detect::Probe;
 use super::mcp::PilotTool;
 use super::{handover, refusal, sites, PilotDefinition};
 use crate::llm::ToolSpec;
@@ -57,6 +58,9 @@ pub const BROWSER: &str = "browser";
 pub const HEADLESS: &str = "browser-headless";
 /// Playwright MCP, as npm and Microsoft's registry name it (same release)
 pub const PACKAGE: &str = "@playwright/mcp@0.0.83";
+/// [`PACKAGE`]'s name and pinned version, as `npm ls` reports them
+const PACKAGE_NAME: &str = "@playwright/mcp";
+const PACKAGE_VERSION: &str = "0.0.83";
 pub const IMAGE: &str = "mcr.microsoft.com/playwright/mcp:v0.0.83";
 
 /// Tools that run arbitrary code (in the page, or in the MCP server
@@ -940,6 +944,18 @@ fn outcome(result: &Value) -> (String, bool) {
     (content, is_error)
 }
 
+/// Where each browser's install puts it ([`super::detect`])
+pub fn probe(pilot_id: &str) -> Option<Probe> {
+    match pilot_id {
+        BROWSER => Some(Probe::NpmGlobal {
+            package: PACKAGE_NAME,
+            version: PACKAGE_VERSION,
+        }),
+        HEADLESS => Some(Probe::DockerImage(IMAGE)),
+        _ => None,
+    }
+}
+
 /// What the catalog lists: both browsers, any OS, one capability
 pub fn definitions() -> Vec<PilotDefinition> {
     let definition = |id: &str, name: &str, install: String, description: &str| PilotDefinition {
@@ -1178,6 +1194,21 @@ mod tests {
         assert!(joined.contains("source=/b,target=/config,readonly"));
         assert!(joined.ends_with(&format!("{IMAGE} --config {CONTAINER_CONFIG}")));
         assert!(!joined.contains("tok"), "no token on the command line");
+    }
+
+    #[test]
+    fn the_probes_look_for_the_pinned_install() {
+        assert_eq!(PACKAGE, format!("{PACKAGE_NAME}@{PACKAGE_VERSION}"));
+        assert!(IMAGE.ends_with(&format!(":v{PACKAGE_VERSION}")));
+        assert_eq!(
+            probe(BROWSER),
+            Some(Probe::NpmGlobal {
+                package: "@playwright/mcp",
+                version: "0.0.83"
+            })
+        );
+        assert_eq!(probe(HEADLESS), Some(Probe::DockerImage(IMAGE)));
+        assert_eq!(probe("opendesk"), None);
     }
 
     #[test]

@@ -269,6 +269,8 @@
   "approval.rejectConfirm.description": "لن ينفذها الوكيل. سيكمل بدونها، أو يتوقف إن تعذّر ذلك.",
   "approval.rejectConfirm.keep": "مواصلة الانتظار",
   "approval.summary.handOver": "دورك على {{site}}: {{summary}}",
+  "approval.summary.pilotSetup": "إعداد الطيار {{pilot}}: ثبّته على هذا الكمبيوتر ليستخدمه الوكيل. {{reason}}",
+  "approval.install": "تثبيت",
   "handOver.label": "دورك: راجع وانشر",
   "handOver.labelFrom": "{{agent}} · دورك: راجع وانشر",
   "handOver.untitled": "صفحة جاهزة لك",
