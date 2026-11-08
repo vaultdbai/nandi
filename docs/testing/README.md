@@ -121,12 +121,12 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-523 features to test: all 577 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+524 features to test: all 578 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
 | App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 57       |
-| Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 75       |
+| Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 76       |
 | Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
 | Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 86       |
@@ -137,21 +137,21 @@ These turned up while building the catalog. In each case the catalog follows the
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 504   |
+| Shipped     | 505   |
 | Partial     | 16    |
 | Removed     | 11    |
 | Known issue | 3     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 277   |
+| `unit`                | 278   |
 | `api`                 | 185   |
 | `manual`              | 37    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 449   |
+| no          | 450   |
 | yes         | 74    |
 
 ## Master index
@@ -271,6 +271,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | AG-31 | Chief of Staff browses websites                                         | Shipped            | unit          | no          |                                             |
 | AG-32 | Run plans: plan first, live checklist, finish check                     | Shipped            | unit          | no          |                                             |
 | AG-33 | Playbooks: skill files an agent reads on demand                         | Shipped            | unit          | no          |                                             |
+| AG-34 | Sites and accounts: site secrets, site profiles, sign out everywhere    | Shipped            | unit          | no          |                                             |
 | AG-29 | Settings tab: Internet access (allowed sites)                           | Shipped            | unit          | no          |                                             |
 | AG-17 | Settings tab: Permissions panel                                         | Shipped            | unit          | no          |                                             |
 | AG-18 | Settings tab: Connectors and shared folders                             | Shipped            | unit          | no          |                                             |

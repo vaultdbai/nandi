@@ -179,6 +179,10 @@ impl FilesystemConnector {
                             .get("content")
                             .and_then(Value::as_str)
                             .ok_or("Missing string argument 'content'")?;
+                        // The user's notes never keep card numbers or passwords
+                        if root.id == crate::services::notes::NOTES_FOLDER_ID {
+                            crate::services::domain::note_guard::check(content)?;
+                        }
                         root.write_file(relative, content)
                     }
                 }
@@ -533,6 +537,57 @@ mod tests {
         // Naming no folders gets nothing
         let none = fs.call_tool("list_dir", &json!({})).await;
         assert!(none.unwrap_err().contains("No folders"));
+    }
+
+    /// Site profiles go in `my-notes/private/sites/`; card numbers and
+    /// passwords never go into the notes, though other folders aren't checked
+    #[tokio::test]
+    async fn the_notes_keep_site_profiles_but_never_cards_or_passwords() {
+        let (notes, other) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let fs = FilesystemConnector::new(
+            &[
+                folder("my-notes", notes.path(), Access::Write),
+                folder("other", other.path(), Access::Write),
+            ],
+            &[],
+        )
+        .unwrap();
+        let mine = options("{folders: [my-notes, other]}");
+        let write = |path: &'static str, content: &'static str| {
+            let (fs, mine) = (&fs, &mine);
+            async move {
+                fs.call_tool_for(
+                    "write_file",
+                    &json!({"path": path, "content": content}),
+                    Some(mine),
+                )
+                .await
+            }
+        };
+        let profile = "# acme.com\n\n- Customer number 55-1234\n- Secret name: ACME_PASSWORD\n";
+        write("my-notes/private/sites/acme.com.md", profile)
+            .await
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(notes.path().join("private/sites/acme.com.md")).unwrap(),
+            profile
+        );
+        for refused in [
+            "Card 4242 4242 4242 4242",
+            "- password: hunter2",
+            "CVV: 123",
+        ] {
+            let error = write("my-notes/private/sites/acme.com.md", refused)
+                .await
+                .unwrap_err();
+            assert!(error.starts_with("Not written"), "{refused}: {error}");
+        }
+        assert_eq!(
+            std::fs::read_to_string(notes.path().join("private/sites/acme.com.md")).unwrap(),
+            profile,
+            "a refused write leaves the file as it was"
+        );
+        write("other/data.txt", "4242424242424242").await.unwrap();
     }
 
     #[tokio::test]

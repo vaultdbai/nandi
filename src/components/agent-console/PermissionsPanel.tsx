@@ -6,12 +6,34 @@
  * Capabilities come from the agent's definition (`loadEntity`): the agent
  * snapshot doesn't carry them. Grants are machine-local consent, read with
  * `agentPilotPermissions`.
+ *
+ * A browser pilot also shows the agent's sites and accounts: the secrets it
+ * types (set or remove a value, add a new one for an agent made here; the
+ * values go to the keychain and are never shown) and Sign out everywhere,
+ * which clears its profile.
  */
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { toast } from 'sonner'
-import { Globe, MonitorSmartphone, Pencil, Wrench } from 'lucide-react'
+import {
+  Globe,
+  LogOut,
+  MonitorSmartphone,
+  Pencil,
+  Plus,
+  Wrench,
+} from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -19,7 +41,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { useAgentDefinition, usePilotDefinitions } from '@/hooks/useAgentEditor'
 import {
+  useAddPilotSecret,
   useAgentPilotPermissions,
+  useClearBrowserProfile,
   useSetPilotGrant,
   useSetPilotSecret,
 } from '@/hooks/usePilots'
@@ -27,6 +51,7 @@ import { Input } from '@/components/ui/input'
 import { useState } from 'react'
 import { RUNTIME_TOOLS } from '@/lib/marketplace-capabilities'
 import { openAgentInStudio } from '@/lib/ask'
+import { normalizeSecretName, secretNameProblem } from './site-secrets-model'
 
 type Level = 'allowed' | 'ask' | 'denied'
 
@@ -149,13 +174,19 @@ export function PermissionsPanel({ agentId }: { agentId: string }) {
           )}
         </Section>
 
-        <PilotsSection agentId={agentId} />
+        <PilotsSection agentId={agentId} readOnly={agent.readOnly} />
       </div>
     </ScrollArea>
   )
 }
 
-function PilotsSection({ agentId }: { agentId: string }) {
+function PilotsSection({
+  agentId,
+  readOnly,
+}: {
+  agentId: string
+  readOnly: boolean
+}) {
   const { t } = useTranslation()
   const pilots = usePilotDefinitions()
   const permissions = useAgentPilotPermissions(agentId)
@@ -242,6 +273,11 @@ function PilotsSection({ agentId }: { agentId: string }) {
               <LevelBadge level="allowed" />
             </Row>
           ),
+          permission.browser && (
+            <Note key={`${permission.pilotId}/sites`}>
+              {t('editor.permissions.sitesHint', { name })}
+            </Note>
+          ),
           ...(permission.secrets ?? []).map(secret => (
             <PilotSecretRow
               key={`${permission.pilotId}/secret/${secret.name}`}
@@ -251,6 +287,23 @@ function PilotsSection({ agentId }: { agentId: string }) {
               isSet={secret.isSet}
             />
           )),
+          permission.browser && !readOnly && (
+            <AddSiteSecretRow
+              key={`${permission.pilotId}/add-secret`}
+              agentId={agentId}
+              pilotId={permission.pilotId}
+              existing={(permission.secrets ?? []).map(s => s.name)}
+            />
+          ),
+          permission.browser && (
+            <SignOutRow
+              key={`${permission.pilotId}/sign-out`}
+              agentId={agentId}
+              pilotId={permission.pilotId}
+              pilotName={name}
+              hasProfile={permission.hasProfile ?? false}
+            />
+          ),
         ]
       })}
     </Section>
@@ -333,6 +386,154 @@ function PilotSecretRow({
           </Button>
         )}
       </form>
+    </Row>
+  )
+}
+
+/** A new secret for the agent's browser: the name into skill.md, the value
+ * into the keychain (cleared from the form once saved) */
+function AddSiteSecretRow({
+  agentId,
+  pilotId,
+  existing,
+}: {
+  agentId: string
+  pilotId: string
+  existing: string[]
+}) {
+  const { t } = useTranslation()
+  const add = useAddPilotSecret(agentId)
+  const [name, setName] = useState('')
+  const [value, setValue] = useState('')
+  const problem = name ? secretNameProblem(name, existing) : null
+  const submit = () =>
+    add.mutate(
+      { pilotId, name, value },
+      {
+        onSuccess: () => {
+          setName('')
+          setValue('')
+          toast.success(t('editor.permissions.secretAdded', { name }))
+        },
+        onError: error =>
+          toast.error(t('editor.permissions.secretFailed'), {
+            description: String(error instanceof Error ? error.message : error),
+          }),
+      }
+    )
+  return (
+    <li className="flex flex-col gap-1 px-3 py-2.5">
+      <form
+        className="flex flex-wrap items-center gap-1"
+        onSubmit={event => {
+          event.preventDefault()
+          if (!secretNameProblem(name, existing) && value) submit()
+        }}
+      >
+        <Input
+          dir="ltr"
+          autoComplete="off"
+          aria-label={t('editor.permissions.newSecretName')}
+          className="h-8 w-44 font-mono text-xs"
+          placeholder="ACME_PASSWORD"
+          value={name}
+          onChange={event => setName(normalizeSecretName(event.target.value))}
+        />
+        <Input
+          type="password"
+          autoComplete="new-password"
+          aria-label={t('editor.permissions.newSecretValue')}
+          className="h-8 w-36"
+          value={value}
+          onChange={event => setValue(event.target.value)}
+        />
+        <Button
+          size="sm"
+          type="submit"
+          variant="outline"
+          disabled={!name || !!problem || !value || add.isPending}
+        >
+          <Plus />
+          {t('editor.permissions.addSecret')}
+        </Button>
+      </form>
+      {problem && (
+        <p role="alert" className="text-xs text-destructive">
+          {t(`editor.permissions.secretName.${problem}`)}
+        </p>
+      )}
+    </li>
+  )
+}
+
+/** Sign out everywhere: stops the agent's browser and clears its profile */
+function SignOutRow({
+  agentId,
+  pilotId,
+  pilotName,
+  hasProfile,
+}: {
+  agentId: string
+  pilotId: string
+  pilotName: string
+  hasProfile: boolean
+}) {
+  const { t } = useTranslation()
+  const clear = useClearBrowserProfile(agentId)
+  const [confirming, setConfirming] = useState(false)
+  return (
+    <Row
+      title={t('editor.permissions.signOutTitle')}
+      subtitle={t(
+        hasProfile
+          ? 'editor.permissions.signOutHasProfile'
+          : 'editor.permissions.signOutNoProfile'
+      )}
+    >
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!hasProfile || clear.isPending}
+        onClick={() => setConfirming(true)}
+      >
+        <LogOut />
+        {t('editor.permissions.signOut')}
+      </Button>
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('editor.permissions.signOutConfirmTitle', {
+                name: pilotName,
+              })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('editor.permissions.signOutConfirmDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t('editor.permissions.signOutCancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                clear.mutate(pilotId, {
+                  onSuccess: () =>
+                    toast.success(t('editor.permissions.signedOut')),
+                  onError: error =>
+                    toast.error(t('editor.permissions.signOutFailed'), {
+                      description: String(
+                        error instanceof Error ? error.message : error
+                      ),
+                    }),
+                })
+              }
+            >
+              {t('editor.permissions.signOut')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Row>
   )
 }

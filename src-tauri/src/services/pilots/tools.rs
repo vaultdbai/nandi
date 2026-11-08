@@ -33,6 +33,7 @@ use super::{catalog, runtime, PilotDefinition};
 use crate::db::Db;
 use crate::engine::ToolOutcome;
 use crate::llm::ToolSpec;
+use crate::services::domain::capability::PilotOptions;
 use crate::services::domain::policy::Refusal;
 use crate::services::domain::Agent;
 use crate::services::events::EventBus;
@@ -238,7 +239,7 @@ pub struct PilotToolset {
 /// What a browser call may do without asking, for one agent
 #[derive(Debug, Clone, Default)]
 struct BrowserRules {
-    options: Option<crate::services::domain::capability::PilotOptions>,
+    options: Option<PilotOptions>,
     secret_names: Vec<String>,
 }
 
@@ -357,25 +358,7 @@ pub(crate) async fn for_agent_with(
             .capabilities()
             .pilot_options(&pilot.id)
             .filter(|_| browser::is_browser(&pilot.id))
-            .map(|options| {
-                let mut note = String::new();
-                if !options.values.is_empty() {
-                    let values: Vec<String> = options
-                        .values
-                        .iter()
-                        .map(|(k, v)| format!("{k}: {v}"))
-                        .collect();
-                    note.push_str(&format!(" Values to fill in: {}.", values.join("; ")));
-                }
-                if !options.secrets.is_empty() {
-                    let names: Vec<&str> = options.secrets.keys().map(String::as_str).collect();
-                    note.push_str(&format!(
-                        " Secrets: type the name ({}) as the text and the browser fills in the value; you never see it.",
-                        names.join(", ")
-                    ));
-                }
-                note
-            })
+            .map(fill_note)
             .unwrap_or_default();
         if !fill_note.is_empty() && listed.is_ok() {
             set.prompt_notes
@@ -516,6 +499,29 @@ async fn run(
     let result = session.call(tool, args).await;
     session.close().await;
     result.map_err(|e| (e, "error"))
+}
+
+/// What a browser may type, for the prompt and its typing tools: the
+/// plain values, and the secrets by name only (their values stay in the
+/// keychain and the browser)
+pub(crate) fn fill_note(options: &PilotOptions) -> String {
+    let mut note = String::new();
+    if !options.values.is_empty() {
+        let values: Vec<String> = options
+            .values
+            .iter()
+            .map(|(k, v)| format!("{k}: {v}"))
+            .collect();
+        note.push_str(&format!(" Values to fill in: {}.", values.join("; ")));
+    }
+    if !options.secrets.is_empty() {
+        let names: Vec<&str> = options.secrets.keys().map(String::as_str).collect();
+        note.push_str(&format!(
+            " Secrets: type the name ({}) as the text and the browser fills in the value; you never see it.",
+            names.join(", ")
+        ));
+    }
+    note
 }
 
 #[cfg(test)]
@@ -666,7 +672,7 @@ mod tests {
         set.browsers.insert(
             browser::HEADLESS.into(),
             BrowserRules {
-                options: Some(crate::services::domain::capability::PilotOptions {
+                options: Some(PilotOptions {
                     allow: vec!["interact".into()],
                     ..Default::default()
                 }),
@@ -678,7 +684,7 @@ mod tests {
         assert!(set.requires_approval(&click, &submit));
 
         // A hand-over always waits for the person, whatever skill.md allows
-        let everything = crate::services::domain::capability::PilotOptions {
+        let everything = PilotOptions {
             allow: crate::services::domain::capability::PILOT_ALLOWS
                 .iter()
                 .map(|s| s.to_string())

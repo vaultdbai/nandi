@@ -32,6 +32,16 @@ pub fn api() -> Router<AppState> {
             "/agents/{agent_id}/pilots/{pilot_id}/secret",
             axum::routing::put(set_secret),
         )
+        // Body `{ name, value }`: a new site secret (skill.md + keychain)
+        .route(
+            "/agents/{agent_id}/pilots/{pilot_id}/secrets",
+            post(add_secret),
+        )
+        // "Sign out everywhere"; returns whether there was a profile
+        .route(
+            "/agents/{agent_id}/pilots/{pilot_id}/profile",
+            axum::routing::delete(clear_profile),
+        )
 }
 
 async fn list() -> impl IntoResponse {
@@ -67,6 +77,21 @@ async fn set_secret(
     Json(body): Json<SecretBody>,
 ) -> impl IntoResponse {
     ApiResult(pilots::set_pilot_secret(&state, &agent_id, &pilot_id, &body.name, &body.value).await)
+}
+
+async fn add_secret(
+    State(state): State<AppState>,
+    Path((agent_id, pilot_id)): Path<(String, String)>,
+    Json(body): Json<SecretBody>,
+) -> impl IntoResponse {
+    ApiResult(pilots::add_pilot_secret(&state, &agent_id, &pilot_id, &body.name, &body.value).await)
+}
+
+async fn clear_profile(
+    State(state): State<AppState>,
+    Path((agent_id, pilot_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    ApiResult(pilots::clear_browser_profile(&state, &agent_id, &pilot_id).await)
 }
 
 async fn permissions(

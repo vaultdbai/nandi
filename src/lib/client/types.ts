@@ -533,6 +533,18 @@ export interface NandiClient {
     name: string,
     value: string
   ): Promise<Result<null, string>>
+  /** Adds a site secret: its name into skill.md, its value into the keychain */
+  addPilotSecret(
+    agentId: string,
+    pilotId: string,
+    name: string,
+    value: string
+  ): Promise<Result<null, string>>
+  /** Sign out everywhere: clears the agent's browser profile (false: none) */
+  clearBrowserProfile(
+    agentId: string,
+    pilotId: string
+  ): Promise<Result<boolean, string>>
   /** The pilots the agent declares, and what the user granted each */
   agentPilotPermissions(
     agentId: string

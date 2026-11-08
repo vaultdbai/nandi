@@ -157,6 +157,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             pilots::revoke_pilot_capability,
             pilots::agent_pilot_permissions,
             pilots::set_pilot_secret,
+            pilots::add_pilot_secret,
+            pilots::clear_browser_profile,
             policies::agent_policies,
             policies::list_policies,
             runs::list_all_runs,

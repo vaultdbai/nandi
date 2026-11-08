@@ -1008,6 +1008,30 @@ async setPilotSecret(agentId: string, pilotId: string, name: string, value: stri
 }
 },
 /**
+ * Adds a site secret to the agent's browser: the name into skill.md, the
+ * value into the keychain
+ */
+async addPilotSecret(agentId: string, pilotId: string, name: string, value: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_pilot_secret", { agentId, pilotId, name, value }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * "Sign out everywhere": clears the agent's browser profile. `false`: it
+ * had none
+ */
+async clearBrowserProfile(agentId: string, pilotId: string) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("clear_browser_profile", { agentId, pilotId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * The policies over an agent and what each changed, or why it can't run
  */
 async agentPolicies(agentId: string) : Promise<Result<AgentPolicies, string>> {
@@ -3706,8 +3730,8 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
@@ -3985,7 +4009,15 @@ allows?: string[];
  * The secrets skill.md names for it, and whether each is in the
  * keychain (never the value)
  */
-secrets?: PilotSecretStatus[] }
+secrets?: PilotSecretStatus[]; 
+/**
+ * A browser pilot: it takes site secrets and keeps a profile
+ */
+browser?: boolean; 
+/**
+ * Its browser has a profile, so sites may remember the agent
+ */
+hasProfile?: boolean }
 /**
  * An agent's playbooks: its `skills/` folder, and whether it's read-only
  * (an installed agent's)

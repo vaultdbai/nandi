@@ -141,7 +141,6 @@ export function useAgentPilotPermissions(agentId: string) {
   })
 }
 
-/** Grants or revokes one capability of a pilot for an agent */
 /** Saves (or, empty, removes) a secret the agent's browser types */
 export function useSetPilotSecret(agentId: string) {
   const queryClient = useQueryClient()
@@ -163,6 +162,41 @@ export function useSetPilotSecret(agentId: string) {
   })
 }
 
+/** Adds a site secret to the agent's browser (skill.md + keychain) */
+export function useAddPilotSecret(agentId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      pilotId,
+      name,
+      value,
+    }: {
+      pilotId: string
+      name: string
+      value: string
+    }) =>
+      unwrapResult(await client.addPilotSecret(agentId, pilotId, name, value)),
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: pilotQueryKeys.permissions(agentId),
+      }),
+  })
+}
+
+/** Sign out everywhere: clears the agent's browser profile */
+export function useClearBrowserProfile(agentId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (pilotId: string) =>
+      unwrapResult(await client.clearBrowserProfile(agentId, pilotId)),
+    onSettled: () =>
+      queryClient.invalidateQueries({
+        queryKey: pilotQueryKeys.permissions(agentId),
+      }),
+  })
+}
+
+/** Grants or revokes one capability of a pilot for an agent */
 export function useSetPilotGrant(agentId: string) {
   const queryClient = useQueryClient()
   return useMutation({

@@ -502,6 +502,12 @@ pub struct AgentPilotPermission {
     /// keychain (never the value)
     #[serde(default)]
     pub secrets: Vec<PilotSecretStatus>,
+    /// A browser pilot: it takes site secrets and keeps a profile
+    #[serde(default)]
+    pub browser: bool,
+    /// Its browser has a profile, so sites may remember the agent
+    #[serde(default)]
+    pub has_profile: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -545,9 +551,12 @@ pub async fn agent_pilot_permissions(
                     .collect()
             })
             .unwrap_or_default();
+        let browser = browser::is_browser(&pilot_id);
         permissions.push(AgentPilotPermission {
             allows: options.map(|o| o.allow.clone()).unwrap_or_default(),
             secrets,
+            browser,
+            has_profile: browser && browser::has_profile(agent_id, &pilot_id),
             pilot_id,
             available: pilot.is_some(),
             capabilities: pilot.map(|p| p.capabilities).unwrap_or_default(),
@@ -584,6 +593,72 @@ pub async fn set_pilot_secret(
     }
     log::info!("Pilot secret '{name}' for {agent_id}/{pilot_id} updated");
     Ok(())
+}
+
+/// Adds a site secret to `agent_id`'s `pilot_id` browser: its name goes
+/// into skill.md (`secrets: {NAME: nandi.pilot.<agent>.<name>}`, through
+/// the repository) and its value into the keychain. Only for agents made
+/// on this computer: a pack's agent names its secrets itself.
+pub async fn add_pilot_secret(
+    state: &AppState,
+    agent_id: &str,
+    pilot_id: &str,
+    name: &str,
+    value: &str,
+) -> Result<(), String> {
+    use crate::services::domain::EntityKind;
+    use crate::services::repos::agent_locator::{self, Origin};
+    use crate::services::repos::Repository;
+
+    validate_agent_id(agent_id)?;
+    if !browser::is_browser(pilot_id) {
+        return Err(format!(
+            "{pilot_id} doesn't type secrets: only a browser does"
+        ));
+    }
+    if value.is_empty() {
+        return Err("Give the secret a value".to_string());
+    }
+    let store = state.store();
+    let local = agent_locator::locate(store.layout(), agent_id)
+        .is_none_or(|place| place.origin == Origin::Local);
+    if !local {
+        return Err(
+            "This agent came with a pack: it names its own secrets, and you can set their values"
+                .to_string(),
+        );
+    }
+    let mut agent = store.agent(agent_id)?;
+    let name = name.trim();
+    let entry = agent
+        .add_pilot_secret(pilot_id, name)
+        .map_err(|e| e.to_string())?;
+    store
+        .repos()
+        .agents
+        .save(&agent)
+        .map_err(|e| e.to_string())?;
+    store.commit(EntityKind::Agent, agent_id)?;
+    state.secrets().set(entry.as_str(), value)?;
+    log::info!("Site secret '{name}' added for {agent_id}/{pilot_id}");
+    Ok(())
+}
+
+/// "Sign out everywhere": stops `agent_id`'s `pilot_id` browser and clears
+/// its profile, so no site remembers the agent. `false`: it had none
+pub async fn clear_browser_profile(
+    state: &AppState,
+    agent_id: &str,
+    pilot_id: &str,
+) -> Result<bool, String> {
+    validate_agent_id(agent_id)?;
+    if state.store().agent_info(agent_id).is_none() {
+        return Err(format!("Agent '{agent_id}' not found"));
+    }
+    if !browser::is_browser(pilot_id) {
+        return Err(format!("{pilot_id} has no browser profile"));
+    }
+    browser::sign_out(agent_id, pilot_id).await
 }
 
 /// Emits `pilot://changed` with the persisted status.

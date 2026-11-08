@@ -559,6 +559,15 @@ impl S3BackupConnector {
         {
             args.extend(["--exclude".to_string(), pattern]);
         }
+        // Browsers' profiles (sign-ins, cookies) never leave this computer
+        if let Some(pattern) = crate::utils::nandi_config::local_dir()
+            .ok()
+            .and_then(|local| {
+                crate::services::pilots::browser::profile_backup_exclude(&path, &local)
+            })
+        {
+            args.extend(["--exclude".to_string(), pattern]);
+        }
         let stdout = self
             .host
             .aws(CliCall {

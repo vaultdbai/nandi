@@ -134,6 +134,8 @@ struct Instance {
     /// The settings it started with (no token), to restart on change
     fingerprint: String,
     tools: Vec<PilotTool>,
+    /// The secrets it types, by name, to mask in its replies (memory only)
+    secrets: HashMap<String, String>,
 }
 
 /// `(agent, pilot)` → its browser
@@ -486,13 +488,27 @@ fn read_secrets(
     Ok(out)
 }
 
+/// The folder under `~/.nandi/local` that holds the browsers' own files
+const BROWSER_DIR: &str = "browser";
+/// Each browser's persistent profile, in its `(agent, pilot)` folder
+const PROFILE_DIR: &str = "profile";
+
+/// `agent`'s `pilot` browser folder under `local` (`~/.nandi/local`): never
+/// under the repo, which is the gold copy
+fn browser_base(local: &Path, agent: &str, pilot: &str) -> PathBuf {
+    local.join(BROWSER_DIR).join(agent).join(pilot)
+}
+
+/// Where `agent`'s `pilot` browser keeps its sign-ins and cookies
+fn profile_dir(local: &Path, agent: &str, pilot: &str) -> PathBuf {
+    browser_base(local, agent, pilot).join(PROFILE_DIR)
+}
+
 fn dirs(agent: &str, pilot: &str) -> Result<(PathBuf, PathBuf, PathBuf), String> {
     use crate::utils::nandi_config;
-    let base = nandi_config::local_dir()?
-        .join("browser")
-        .join(agent)
-        .join(pilot);
-    let profile = base.join("profile");
+    let local = nandi_config::local_dir()?;
+    let base = browser_base(&local, agent, pilot);
+    let profile = profile_dir(&local, agent, pilot);
     let workdir = nandi_config::work_dir()?.join(agent);
     for dir in [&base, &profile, &workdir.join("browser")] {
         std::fs::create_dir_all(dir)
@@ -592,6 +608,7 @@ async fn ensure<'a>(
                 child,
                 fingerprint,
                 tools,
+                secrets,
             },
         );
     }
@@ -748,19 +765,113 @@ async fn shutdown(instance: Instance) {
 
 /// Stops every agent's `pilot` browser (Library › Stop)
 pub async fn stop_all(pilot: &str) {
-    let mut pool = POOL.lock().await;
-    let keys: Vec<_> = pool.keys().filter(|(_, p)| p == pilot).cloned().collect();
-    for key in keys {
-        if let Some(instance) = pool.remove(&key) {
-            if let Ok(mut pages) = PAGES.lock() {
-                pages.remove(&key);
-            }
-            set_pages_open(&key.0, &key.1, false);
-            if let Ok(host) = host() {
-                host.proxy_tokens.revoke(&identity(pilot, &key.0));
-            }
-            shutdown(instance).await;
+    let agents: Vec<String> = POOL
+        .lock()
+        .await
+        .keys()
+        .filter(|(_, p)| p == pilot)
+        .map(|(agent, _)| agent.clone())
+        .collect();
+    for agent in agents {
+        stop(&agent, pilot).await;
+    }
+}
+
+/// Stops `agent`'s `pilot` browser, if it runs
+async fn stop(agent: &str, pilot: &str) {
+    let key = (agent.to_string(), pilot.to_string());
+    let instance = POOL.lock().await.remove(&key);
+    if let Ok(mut pages) = PAGES.lock() {
+        pages.remove(&key);
+    }
+    set_pages_open(agent, pilot, false);
+    if let Some(instance) = instance {
+        if let Ok(host) = host() {
+            host.proxy_tokens.revoke(&identity(pilot, agent));
         }
+        shutdown(instance).await;
+    }
+}
+
+/// Whether `agent`'s `pilot` browser has a profile (sites may remember it)
+pub fn has_profile(agent: &str, pilot: &str) -> bool {
+    crate::utils::nandi_config::local_dir()
+        .map(|local| profile_dir(&local, agent, pilot))
+        .is_ok_and(|profile| profile.read_dir().is_ok_and(|mut d| d.next().is_some()))
+}
+
+/// "Sign out everywhere": stops `agent`'s `pilot` browser and deletes its
+/// profile, so no site remembers it. `false`: there was none
+pub async fn sign_out(agent: &str, pilot: &str) -> Result<bool, String> {
+    stop(agent, pilot).await;
+    clear_profile(&crate::utils::nandi_config::local_dir()?, agent, pilot).await
+}
+
+/// Deletes `agent`'s `pilot` profile under `local`, nothing else
+async fn clear_profile(local: &Path, agent: &str, pilot: &str) -> Result<bool, String> {
+    let profile = profile_dir(local, agent, pilot);
+    if !profile.exists() {
+        return Ok(false);
+    }
+    // The browser lets go of its files a moment after it stops
+    let mut last = None;
+    for _ in 0..10 {
+        match std::fs::remove_dir_all(&profile) {
+            Ok(()) => {
+                log::info!("Signed '{agent}' out everywhere: cleared its {pilot} profile");
+                return Ok(true);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+            Err(e) => last = Some(e),
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    Err(format!(
+        "Couldn't clear the browser profile: {}",
+        last.map(|e| e.to_string()).unwrap_or_default()
+    ))
+}
+
+/// `content` with every secret value replaced by its name
+fn mask_secrets(content: String, secrets: &HashMap<String, String>) -> String {
+    secrets
+        .iter()
+        .filter(|(_, value)| !value.is_empty())
+        .fold(content, |content, (name, value)| {
+            content.replace(value.as_str(), &format!("[{name}]"))
+        })
+}
+
+/// The `aws s3 sync --exclude` pattern that keeps the browsers' profiles
+/// out of a backup of `folder`, when `local` (`~/.nandi/local`) is in it
+/// or it is inside a browser's folder
+pub fn profile_backup_exclude(folder: &Path, local: &Path) -> Option<String> {
+    let browsers = local.join(BROWSER_DIR);
+    let joined = |path: &Path| -> String {
+        path.components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join("/")
+    };
+    if let Ok(inside) = browsers.strip_prefix(folder) {
+        let prefix = joined(inside);
+        return Some(if prefix.is_empty() {
+            format!("*/*/{PROFILE_DIR}/*")
+        } else {
+            format!("{prefix}/*/*/{PROFILE_DIR}/*")
+        });
+    }
+    let inside: Vec<String> = folder
+        .strip_prefix(&browsers)
+        .ok()?
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    match inside.as_slice() {
+        [_agent] => Some(format!("*/{PROFILE_DIR}/*")),
+        [_agent, _pilot] => Some(format!("{PROFILE_DIR}/*")),
+        [_agent, _pilot, profile, ..] if profile == PROFILE_DIR => Some("*".to_string()),
+        _ => None,
     }
 }
 
@@ -919,7 +1030,9 @@ pub async fn call(
             ));
         }
     }
-    let (mut content, is_error) = run_tool(instance, tool, &args).await?;
+    let (content, is_error) = run_tool(instance, tool, &args).await?;
+    // Playwright hides the values it typed; this is the second lock
+    let mut content = mask_secrets(content, &instance.secrets);
     set_pages_open(agent_id, pilot, tool != "browser_close");
     if let Some(url) = refusal::page_url(&content) {
         remember_page(agent_id, pilot, &url);
@@ -1282,5 +1395,82 @@ mod tests {
         assert_eq!(ids, [BROWSER, HEADLESS]);
         assert!(definitions()[1].install_command.contains(IMAGE));
         assert!(definitions()[0].install_command.contains(PACKAGE));
+    }
+
+    #[test]
+    fn profiles_live_under_local_never_the_repo() {
+        let home = Path::new("/home/u/.nandi");
+        let profile = profile_dir(&home.join("local"), "cos", BROWSER);
+        assert_eq!(
+            profile,
+            Path::new("/home/u/.nandi/local/browser/cos/browser/profile")
+        );
+        assert!(!profile.starts_with(home.join("repo")));
+    }
+
+    #[tokio::test]
+    async fn signing_out_clears_only_that_profile() {
+        let local = tempfile::tempdir().unwrap();
+        let mine = profile_dir(local.path(), "cos", BROWSER);
+        let other = profile_dir(local.path(), "shopper", BROWSER);
+        for dir in [&mine, &other] {
+            std::fs::create_dir_all(dir.join("Default")).unwrap();
+            std::fs::write(dir.join("Default/Cookies"), "c").unwrap();
+        }
+        assert!(clear_profile(local.path(), "cos", BROWSER).await.unwrap());
+        assert!(!mine.exists());
+        assert!(browser_base(local.path(), "cos", BROWSER).exists());
+        assert!(other.join("Default/Cookies").exists(), "others stay");
+        assert!(
+            !clear_profile(local.path(), "cos", BROWSER).await.unwrap(),
+            "nothing left to clear"
+        );
+    }
+
+    #[test]
+    fn secret_values_never_reach_a_reply() {
+        let secrets = HashMap::from([
+            ("SITE_PASSWORD".to_string(), "hunter2-xyz".to_string()),
+            ("EMPTY".to_string(), String::new()),
+        ]);
+        let reply = "- textbox \"Password\" [value=hunter2-xyz]
+Typed hunter2-xyz"
+            .to_string();
+        let masked = mask_secrets(reply, &secrets);
+        assert!(!masked.contains("hunter2-xyz"), "{masked}");
+        assert!(masked.contains("[value=[SITE_PASSWORD]]"));
+        assert_eq!(mask_secrets("plain".into(), &secrets), "plain");
+    }
+
+    #[test]
+    fn backups_leave_out_every_browser_profile() {
+        let local = Path::new("/h/.nandi/local");
+        let exclude = |folder: &str| profile_backup_exclude(Path::new(folder), local);
+        assert_eq!(
+            exclude("/h/.nandi").as_deref(),
+            Some("local/browser/*/*/profile/*")
+        );
+        assert_eq!(
+            exclude("/h/.nandi/local").as_deref(),
+            Some("browser/*/*/profile/*")
+        );
+        assert_eq!(
+            exclude("/h/.nandi/local/browser").as_deref(),
+            Some("*/*/profile/*")
+        );
+        assert_eq!(
+            exclude("/h/.nandi/local/browser/cos").as_deref(),
+            Some("*/profile/*")
+        );
+        assert_eq!(
+            exclude("/h/.nandi/local/browser/cos/browser").as_deref(),
+            Some("profile/*")
+        );
+        assert_eq!(
+            exclude("/h/.nandi/local/browser/cos/browser/profile/Default").as_deref(),
+            Some("*")
+        );
+        assert_eq!(exclude("/h/Documents"), None);
+        assert_eq!(exclude("/h/.nandi/repo"), None);
     }
 }

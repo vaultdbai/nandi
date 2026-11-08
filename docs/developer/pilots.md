@@ -136,3 +136,20 @@ pilots:
 ```
 
 The values and secret names go into the system prompt ("What your browser may type", `PilotToolset::prompt_notes`) and the descriptions of the typing tools and `browser_navigate`. On the tools alone the model treated them as documentation and asked the user for values it had. The secret's value is saved from the agent's Permissions tab (`set_pilot_secret`, write-only); the agent never sees it. Unknown keys, an unknown `allow` word or a secret name that isn't `CAPITALS_AND_DIGITS` are errors in skill.md. Saving the agent from its Settings tab keeps a pilot's mapping.
+
+### Sites and accounts
+
+The agent's Permissions tab shows, under each browser pilot (`AgentPilotPermission.browser`), the agent's sites and accounts:
+
+| What                 | How                                                                                                                                                                                                                                                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Each secret's status | `secrets: [{name, isSet}]`, read from the keychain. Never the value.                                                                                                                                                                                                                                                            |
+| Set, replace, remove | `set_pilot_secret` (empty removes). Write-only.                                                                                                                                                                                                                                                                                 |
+| Add a secret         | `add_pilot_secret`: `Agent::add_pilot_secret` writes `secrets: {NAME: nandi.pilot.<agent>.<name>}` (`capability::pilot_secret_ref`, `_` becomes `-`) through the agent repository and commits, then the value goes into the keychain. Agents made on this computer only (the Chief of Staff too); a pack's agent names its own. |
+| Sign out everywhere  | `clear_browser_profile`: `browser::sign_out` stops that agent's browser (token revoked, pages forgotten) and deletes `~/.nandi/local/browser/<agent>/<pilot>/profile`, nothing else. `hasProfile` says whether there is one.                                                                                                    |
+
+Values never reach the model, a log, an event or the frontend: the prompt lists names only (`tools::fill_note`), Playwright MCP hides typed values in its replies and Nandi masks them again (`browser::mask_secrets`, the values held in memory with the running browser). `pilots::tests::a_site_secret_s_value_stays_in_the_keychain` checks the file, the Permissions view, events, the prompt note and every log line.
+
+Profiles live under `~/.nandi/local`, never the repo, and the S3 backup leaves them out (`browser::profile_backup_exclude`, next to the screenshots' exclude).
+
+Non-secret details of a site go in the agent's notes, `my-notes/private/sites/<site>.md` (the Chief of Staff's `sign-in-and-accounts` playbook). The filesystem connector refuses a write into `my-notes` that holds a Luhn-valid 13 to 19 digit run or a `password:` style line (`domain::note_guard`); a capitalised secret name (`Password: ACME_PASSWORD`) is fine.

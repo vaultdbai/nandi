@@ -716,6 +716,24 @@ impl Agent {
         Ok(added)
     }
 
+    /// Lets the agent's `pilot` type a new secret by `name` (a site secret
+    /// the user adds), stored under its keychain entry
+    /// ([`super::capability::pilot_secret_ref`]), which is returned
+    pub fn add_pilot_secret(
+        &mut self,
+        pilot: &str,
+        name: &str,
+    ) -> DomainResult<super::settings::SecretRef> {
+        let entry = super::capability::pilot_secret_ref(self.id.as_str(), name)?;
+        if self
+            .capabilities
+            .declare_pilot_secret(pilot, name, entry.clone())?
+        {
+            self.updated_at = SystemTime::now();
+        }
+        Ok(entry)
+    }
+
     pub fn set_model(&mut self, model: Option<ModelRef>) {
         self.model = model;
         self.updated_at = SystemTime::now();
@@ -1242,6 +1260,38 @@ Body
             agent.capabilities().network()
         );
         assert!(agent.allow_sites(&["a.*.com".into()]).is_err());
+    }
+
+    #[test]
+    fn a_site_secret_added_by_the_user_round_trips_by_name() {
+        let id = AgentId::parse("shopper").unwrap();
+        let mut agent = Agent::from_skill_md(
+            id.clone(),
+            "---
+name: Shopper
+pilots:
+  - id: browser
+    allow: [interact]
+---
+Buy things.
+",
+        )
+        .unwrap();
+        let entry = agent.add_pilot_secret("browser", "ACME_PASSWORD").unwrap();
+        assert_eq!(entry.as_str(), "nandi.pilot.shopper.acme-password");
+        // The same again changes nothing; the file keeps the name and entry
+        assert_eq!(
+            agent.add_pilot_secret("browser", "ACME_PASSWORD").unwrap(),
+            entry
+        );
+        let again = Agent::from_skill_md(id, &agent.to_skill_md()).unwrap();
+        let options = again.capabilities().pilot_options("browser").unwrap();
+        assert_eq!(options.secrets["ACME_PASSWORD"], entry);
+        assert!(options.allows("interact"), "the rest is kept");
+
+        // Names are typed in capitals; only a listed pilot takes one
+        assert!(agent.add_pilot_secret("browser", "acme").is_err());
+        assert!(agent.add_pilot_secret("browser-headless", "X").is_err());
     }
 
     #[test]

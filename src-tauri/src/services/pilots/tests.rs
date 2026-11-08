@@ -513,3 +513,152 @@ async fn a_hand_over_waits_for_the_person_and_takes_their_answer() {
     assert_eq!(skipped.status, crate::model::ApprovalStatus::Rejected);
     state.shutdown();
 }
+
+/// Notices any log line that contains `needle` (the test logger is global:
+/// it's installed once, and other tests' lines pass through it too)
+struct LeakLogger {
+    needle: &'static str,
+    seen: std::sync::atomic::AtomicBool,
+}
+
+impl log::Log for LeakLogger {
+    fn enabled(&self, _: &log::Metadata) -> bool {
+        true
+    }
+    fn log(&self, record: &log::Record) {
+        if record.args().to_string().contains(self.needle) {
+            self.seen.store(true, Ordering::SeqCst);
+        }
+    }
+    fn flush(&self) {}
+}
+
+/// A site secret the user adds: its name goes into skill.md and its value
+/// into the keychain, and nowhere else: not a file, the Permissions view,
+/// an event, the prompt, or a log line
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_site_secret_s_value_stays_in_the_keychain() {
+    use crate::services::domain::EntityKind;
+    use crate::services::events::EventSink;
+    use crate::services::repos::Repository;
+
+    const VALUE: &str = "s3cr3t-value-7731";
+    static LOGGER: LeakLogger = LeakLogger {
+        needle: VALUE,
+        seen: std::sync::atomic::AtomicBool::new(false),
+    };
+    let watching = log::set_logger(&LOGGER).is_ok();
+    if watching {
+        log::set_max_level(log::LevelFilter::Trace);
+    }
+
+    let sink = Arc::new(RecordingSink::default());
+    let state = crate::services::AppState::for_tests(vec![sink.clone() as Arc<dyn EventSink>]);
+    let layout = state.store().layout().clone();
+    std::fs::create_dir_all(&layout.root).unwrap();
+    git2::Repository::init(&layout.root).unwrap();
+    state.store().load().unwrap();
+    let shopper = Agent::from_skill_md(
+        AgentId::parse("shopper").unwrap(),
+        "---
+name: Shopper
+pilots:
+  - id: browser
+    allow: [interact]
+---
+Shop.
+",
+    )
+    .unwrap();
+    state.store().repos().agents.save(&shopper).unwrap();
+    state.store().commit(EntityKind::Agent, "shopper").unwrap();
+
+    add_pilot_secret(&state, "shopper", "browser", "ACME_PASSWORD", VALUE)
+        .await
+        .unwrap();
+
+    // skill.md names it; the keychain has the value under that entry
+    let skill = std::fs::read_to_string(layout.skill_path("shopper")).unwrap();
+    assert!(
+        skill.contains("ACME_PASSWORD: nandi.pilot.shopper.acme-password"),
+        "{skill}"
+    );
+    assert!(
+        skill.contains("interact"),
+        "the rest of the pilot entry stays"
+    );
+    assert_eq!(
+        state
+            .secrets()
+            .get("nandi.pilot.shopper.acme-password")
+            .unwrap()
+            .as_deref(),
+        Some(VALUE)
+    );
+    // Set, by name only
+    let permissions = agent_pilot_permissions(&state, "shopper").await.unwrap();
+    assert_eq!(
+        permissions[0].secrets,
+        [PilotSecretStatus {
+            name: "ACME_PASSWORD".into(),
+            is_set: true
+        }]
+    );
+    assert!(permissions[0].browser);
+    // Replaced, then removed, through the name
+    set_pilot_secret(&state, "shopper", "browser", "ACME_PASSWORD", "other-7731")
+        .await
+        .unwrap();
+    set_pilot_secret(&state, "shopper", "browser", "ACME_PASSWORD", "")
+        .await
+        .unwrap();
+    assert!(!agent_pilot_permissions(&state, "shopper").await.unwrap()[0].secrets[0].is_set);
+    add_pilot_secret(&state, "shopper", "browser", "ACME_PASSWORD", VALUE)
+        .await
+        .unwrap();
+
+    // What the model is told: the name, never the value
+    let agent = state.store().agent("shopper").unwrap();
+    let note = tools::fill_note(agent.capabilities().pilot_options("browser").unwrap());
+    assert!(
+        note.contains("ACME_PASSWORD") && !note.contains(VALUE),
+        "{note}"
+    );
+    // Nor in the Permissions view, an event, a file, or the logs
+    let view = serde_json::to_string(&permissions).unwrap();
+    assert!(!view.contains(VALUE));
+    let events = serde_json::to_string(&*sink.0.lock().unwrap()).unwrap();
+    assert!(!events.contains(VALUE));
+    let mut dirs = vec![layout.root.clone()];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if let Ok(text) = std::fs::read_to_string(&path) {
+                assert!(!text.contains(VALUE), "{}", path.display());
+            }
+        }
+    }
+    if watching {
+        assert!(
+            !LOGGER.seen.load(Ordering::SeqCst),
+            "a log line had the value"
+        );
+    }
+
+    // Unknown pilots, empty values and lower-case names are refused
+    for (pilot, name, value) in [
+        ("opendesk", "X", VALUE),
+        ("browser", "X", ""),
+        ("browser", "acme", VALUE),
+        ("browser-headless", "X", VALUE),
+    ] {
+        assert!(
+            add_pilot_secret(&state, "shopper", pilot, name, value)
+                .await
+                .is_err(),
+            "{pilot} {name}"
+        );
+    }
+}

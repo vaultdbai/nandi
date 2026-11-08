@@ -26,6 +26,10 @@ pilots:
 - `values` are plain values the agent may type (it reads them).
 - `secrets` are keychain entries: the agent types the name and the browser fills in the value. The user saves the value on the agent's Permissions tab. Never put a password in skill.md.
 
+## Sites and accounts
+
+The agent's browser keeps its own profile, so sites remember its sign-ins between runs. On the agent's Permissions tab, under each browser, the user sets or removes each secret's value, adds a new secret (for an agent made on this computer, Nandi writes the `secrets:` entry, `nandi.pilot.<agent>.<name>`), and presses Sign out everywhere to clear the profile. Profiles are never backed up. Non-secret details of a site (customer number, menu path, which secret name to use) belong in the agent's notes, like `my-notes/private/sites/<site>.md`; Nandi refuses a note with a card number or a `password:` line.
+
 ## Every run plans first
 
 Before a run changes anything (clicking, typing, submitting, starting work, writing files outside its notes), the agent sets a step-by-step plan with `plan_set` and keeps it current with `plan_update`. The plan shows as a live checklist in the chat and in Run Detail. Submitting, paying, typing a secret and handing over run only while the step being done is a `submit`, `handover` or `approval` step; starting work or delegating needs a `delegate` or `approval` step. Approvals still apply. Before the run ends, every step is done or skipped, screenshots are in the log and the browser is closed; Nandi closes leftover pages when a run ends. Screenshots are saved per step with the run's files, kept 30 days and never backed up, and never taken during a hand-over.

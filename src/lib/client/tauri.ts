@@ -162,6 +162,10 @@ export const tauriClient: NandiClient = {
   agentPilotPermissions: agentId => commands.agentPilotPermissions(agentId),
   setPilotSecret: (agentId, pilotId, name, value) =>
     commands.setPilotSecret(agentId, pilotId, name, value),
+  addPilotSecret: (agentId, pilotId, name, value) =>
+    commands.addPilotSecret(agentId, pilotId, name, value),
+  clearBrowserProfile: (agentId, pilotId) =>
+    commands.clearBrowserProfile(agentId, pilotId),
   agentPolicies: agentId => commands.agentPolicies(agentId),
   listPolicies: () => commands.listPolicies(),
 

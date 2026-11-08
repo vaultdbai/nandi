@@ -62,6 +62,17 @@ pub struct PilotOptions {
     pub secrets: std::collections::BTreeMap<String, super::settings::SecretRef>,
 }
 
+/// The keychain entry for a site secret the user adds to `agent`:
+/// `nandi.pilot.<agent>.<name>`, the name in lowercase with `-` for `_`
+/// (`SITE_PASSWORD` → `nandi.pilot.shopper.site-password`)
+pub fn pilot_secret_ref(agent: &str, name: &str) -> DomainResult<super::settings::SecretRef> {
+    super::settings::SecretRef::parse(format!(
+        "nandi.pilot.{}.{}",
+        agent.to_ascii_lowercase(),
+        name.to_ascii_lowercase().replace('_', "-")
+    ))
+}
+
 /// What `PilotOptions::allow` may list: clicking and typing, submitting a
 /// form, typing a secret, uploading or downloading a file, paying
 pub const PILOT_ALLOWS: &[&str] = &["interact", "submit", "secrets", "upload", "pay"];
@@ -277,6 +288,32 @@ impl CapabilitySet {
             self.pilot_options.insert(pilot, options);
         }
         Ok(self)
+    }
+
+    /// Names a secret `pilot` may type (`secrets: {NAME: entry}`), as when
+    /// the user adds a site secret. The pilot must be listed. `false`: it
+    /// was there already with this entry
+    pub fn declare_pilot_secret(
+        &mut self,
+        pilot: &str,
+        name: &str,
+        entry: super::settings::SecretRef,
+    ) -> DomainResult<bool> {
+        if !self.pilots.iter().any(|p| p.as_str() == pilot) {
+            return Err(DomainError::invalid(
+                "capabilities",
+                "pilots",
+                format!("the agent doesn't list the pilot '{pilot}'"),
+            ));
+        }
+        let mut options = self.pilot_options.get(pilot).cloned().unwrap_or_default();
+        if options.secrets.get(name) == Some(&entry) {
+            return Ok(false);
+        }
+        options.secrets.insert(name.to_string(), entry);
+        let options = options.validated(pilot)?;
+        self.pilot_options.insert(pilot.to_string(), options);
+        Ok(true)
     }
 
     pub fn network(&self) -> &NetworkPolicy {

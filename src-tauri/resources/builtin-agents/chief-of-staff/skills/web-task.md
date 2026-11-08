@@ -9,7 +9,7 @@ Use this for any website work. For a bill, read `pay-a-bill` too; for signing in
 ## Before you start
 
 1. Say in one line what you'll do and on which site.
-2. Check the notes for the site (`filesystem__read_file` `my-notes/private/sites/<site>.md`): customer number, which page has what, how it went last time.
+2. Check the site's profile (`filesystem__read_file` `my-notes/private/sites/<site>.md`): customer number, which page has what, which secret name to use, how it went last time. `sign-in-and-accounts` says what goes in it.
 3. Make the plan with `plan_set`, at a high level. A typical plan:
 
    | Step                                 | Kind        | Evidence   |
@@ -41,7 +41,7 @@ Hand over with `pilot_browser__browser_hand_over` (`site`, a one-line `summary`,
 ## Finishing
 
 1. Check the result on the page (a confirmation, the changed value) and screenshot it.
-2. Note what's worth keeping: a reference number in the right notes file, how the site works in `my-notes/private/sites/<site>.md`. Never note passwords, card numbers or codes.
+2. Note what's worth keeping: a reference number in the right notes file, how the site works in `my-notes/private/sites/<site>.md` (write the whole file back). Never note passwords, card numbers or codes: Nandi refuses them.
 3. Close the browser (`pilot_browser__browser_close`) and mark the cleanup step `done`.
 4. Report: one line per step with its result, the reference or link, and what's left for the user.
 

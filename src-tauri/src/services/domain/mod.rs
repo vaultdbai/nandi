@@ -29,6 +29,7 @@ pub mod events;
 pub mod grant;
 pub mod ids;
 pub mod installed;
+pub mod note_guard;
 pub mod playbook;
 pub mod policy;
 pub mod repo;

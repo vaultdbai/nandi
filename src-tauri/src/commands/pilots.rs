@@ -73,6 +73,32 @@ pub async fn set_pilot_secret(
     pilots::set_pilot_secret(&state, &agent_id, &pilot_id, &name, &value).await
 }
 
+/// Adds a site secret to the agent's browser: the name into skill.md, the
+/// value into the keychain
+#[tauri::command]
+#[specta::specta]
+pub async fn add_pilot_secret(
+    state: State<'_, AppState>,
+    agent_id: String,
+    pilot_id: String,
+    name: String,
+    value: String,
+) -> Result<(), String> {
+    pilots::add_pilot_secret(&state, &agent_id, &pilot_id, &name, &value).await
+}
+
+/// "Sign out everywhere": clears the agent's browser profile. `false`: it
+/// had none
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_browser_profile(
+    state: State<'_, AppState>,
+    agent_id: String,
+    pilot_id: String,
+) -> Result<bool, String> {
+    pilots::clear_browser_profile(&state, &agent_id, &pilot_id).await
+}
+
 /// The pilots the agent's skill.md declares, and what the user granted each
 #[tauri::command]
 #[specta::specta]

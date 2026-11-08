@@ -462,6 +462,36 @@ Shared preconditions used below:
 - **Needs relay:** no
 - **Status:** Shipped
 
+### AG-34 — Sites and accounts: site secrets, site profiles, sign out everywhere
+
+- **What:** What an agent's browser knows about the user's sites, managed on the agent's **Permissions** tab, under each browser pilot.
+  - Each secret the browser types, with **Secret saved** or **Not set** (never the value). Type a value and **Save** to set or replace it, **Clear** to remove it.
+  - **Add secret** (agents made on this computer, Chief of Staff too): a name (typed in capitals, `ACME_PASSWORD`) and a value. The name goes into skill.md (`secrets: {ACME_PASSWORD: nandi.pilot.<agent>.acme-password}`), the value into the keychain. A taken or badly formed name keeps Add disabled with the reason. Pack agents show no Add; their values can still be set.
+  - **Sign out everywhere** asks first, then stops that agent's browser and deletes its profile (cookies, sign-ins). Disabled with "No sign-ins saved" when there is none. Secrets stay.
+  - Browser profiles are never backed up (S3 Backup leaves out `local/browser/*/*/profile`) and live under `~/.nandi/local`, not the repo.
+  - Site profiles: Chief of Staff keeps non-secret details in `my-notes/private/sites/<site>.md` (its `sign-in-and-accounts` and `web-task` playbooks). A note with a card number (a Luhn-valid 13 to 19 digit run) or a `password:` line is refused with a message saying what to keep instead.
+- **Where:** `src/components/agent-console/PermissionsPanel.tsx`, `site-secrets-model.ts`, `src/hooks/usePilots.ts`; `src-tauri/src/services/pilots.rs` (`add_pilot_secret`, `set_pilot_secret`, `clear_browser_profile`), `services/pilots/browser.rs` (`sign_out`, `mask_secrets`, `profile_backup_exclude`), `services/domain/capability.rs` (`pilot_secret_ref`), `services/domain/note_guard.rs`, `services/connectors/filesystem.rs`, `services/connectors/s3_backup.rs`.
+- **Preconditions:** The Browser pilot installed; Chief of Staff allowed to use it.
+- **Steps:**
+  1. Open Agents › Chief of Staff › Permissions. Under Browser, add `ACME_PASSWORD` with a value.
+  2. Open the agent's skill.md (Settings or Studio).
+  3. Ask Chief of Staff to open a site that remembers a sign-in, then press **Sign out everywhere** and confirm.
+  4. Ask Chief of Staff: "Note my Acme card 4242 4242 4242 4242 in the acme.com profile".
+  5. Open an installed pack agent with a browser pilot.
+- **Expected:**
+  - Step 1: "Secret ACME_PASSWORD added"; the row shows **Secret saved**; the form is empty again.
+  - Step 2: `secrets: { ACME_PASSWORD: nandi.pilot.chief-of-staff.acme-password }` under the browser; no value anywhere.
+  - Step 3: "Signed out everywhere"; the next run's browser starts signed out; the button is disabled.
+  - Step 4: the write is refused ("looks like a card number"); the agent says it won't keep it.
+  - Step 5: secret values can be set; no **Add secret**.
+- **Edge / negative cases:**
+  - A name starting with a digit, or one already listed, can't be added.
+  - A value is never shown again, in the panel, the chat, Run Detail or the logs.
+  - `Secret name: ACME_PASSWORD` in a site profile is written.
+- **Automation:** Covered by: Rust `pilots::tests::a_site_secret_s_value_stays_in_the_keychain` (skill.md, keychain, Permissions view, events, prompt note, log lines), `domain/agent.rs` (`a_site_secret_added_by_the_user_round_trips_by_name`), `domain/note_guard.rs`, `connectors/filesystem.rs` (`the_notes_keep_site_profiles_but_never_cards_or_passwords`), `pilots/browser.rs` (`signing_out_clears_only_that_profile`, `secret_values_never_reach_a_reply`, `backups_leave_out_every_browser_profile`, `profiles_live_under_local_never_the_repo`), Vitest `site-secrets-model.test.ts`, `PermissionsPanel.test.tsx` | Layer: unit, integration | Gap: no end-to-end run against a real site.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ### AG-29 — Settings tab: Internet access (allowed sites)
 
 - **What:** "Internet access" with three choices: **No internet** ("This agent can't reach any website…"), **Only these sites** (each site in its own box to change, a remove button, "Add a site" with **Add** or Enter, and a hint about `*.example.com` and ports), and **Any site** (saves `*`, with "This agent can reach any website. Choose this only for agents you trust."). Bad sites say "Use a site name like api.example.com, *.example.com or localhost:8080."; a repeat says "That site's already in the list." A site whose rule is limited to some methods shows e.g. "GET only", and saving keeps that limit. Saved with the rest of the form (AG-15); Revert restores the list.

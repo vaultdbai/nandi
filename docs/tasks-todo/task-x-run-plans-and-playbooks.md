@@ -51,10 +51,12 @@ Built 2026-11-08. Developer doc: `docs/developer/agent-runtime.md` › Playbooks
 
 ## Step 3: Sites and accounts
 
-- [ ] **Site secrets in Settings** (per agent, per site): add, edit, remove secrets in the keyring under the names the browser pilot types (`services/pilots/browser.rs` `read_secrets`); the model never sees values.
-- [ ] **Site profiles in notes:** `my-notes/private/sites/<site>.md` for non-secret details a site needs (customer number, billing address, how the site works, which secret name to use). The `sign-in-and-accounts` playbook says how to keep them. Passwords, card numbers, CVVs and one-time codes are never written anywhere: always handed over.
-- [ ] **Profile care:** per agent and pilot, "Sign out everywhere" (clear the persistent profile) in the agent's settings; profiles excluded from backups.
-- [ ] Tests: secret names round-trip, values never in prompts or logs, clear profile.
+Built 2026-11-08. Developer doc: `docs/developer/pilots.md` › Sites and accounts; catalog AG-34. Decided while building: it lives on the agent's Permissions tab under each browser pilot (where secret values were already set), not in app Settings; a new secret's keychain entry is `nandi.pilot.<agent>.<name>` (lowercase, `_` → `-`), shared by both browsers of the agent; only agents made on this computer (the Chief of Staff too) can add names, pack agents only set values; a secret's name can't be removed from the tab (edit skill.md), only its value; the notes guard applies to every agent writing into `my-notes` through the filesystem connector, not to the user's own edits on My notes; a capitalised secret name (`Password: ACME_PASSWORD`) passes it; Nandi masks secret values in browser replies too, on top of Playwright's own masking.
+
+- [x] **Site secrets in Settings** (per agent, per site): add, edit, remove secrets in the keyring under the names the browser pilot types (`services/pilots/browser.rs` `read_secrets`); the model never sees values. `add_pilot_secret` (skill.md through the repository, then the keychain), `set_pilot_secret`, `clear_browser_profile`, commands and HTTP; `PermissionsPanel` with `site-secrets-model.ts`.
+- [x] **Site profiles in notes:** `my-notes/private/sites/<site>.md` for non-secret details a site needs (customer number, billing address, how the site works, which secret name to use). The `sign-in-and-accounts` playbook says how to keep them, and `web-task` points at it. Passwords, card numbers, CVVs and one-time codes are never written anywhere: always handed over. `domain/note_guard.rs` refuses Luhn-valid 13 to 19 digit runs and `password:` style lines in `my-notes` writes.
+- [x] **Profile care:** per agent and pilot, "Sign out everywhere" (clear the persistent profile) in the agent's settings; profiles excluded from backups. `browser::sign_out` stops that browser and deletes only its profile, after a confirm; `browser::profile_backup_exclude` in the S3 backup.
+- [x] Tests: secret names round-trip, values never in prompts or logs, clear profile.
 
 ## Step 4: The Chief of Staff in its own plans, and workflows
 

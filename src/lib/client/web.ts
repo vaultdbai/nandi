@@ -300,6 +300,13 @@ export const webClient: NandiClient = {
       name,
       value,
     }),
+  addPilotSecret: (agentId, pilotId, name, value) =>
+    request('POST', `/agents/${id(agentId)}/pilots/${id(pilotId)}/secrets`, {
+      name,
+      value,
+    }),
+  clearBrowserProfile: (agentId, pilotId) =>
+    request('DELETE', `/agents/${id(agentId)}/pilots/${id(pilotId)}/profile`),
   agentPolicies: agentId => request('GET', `/agents/${id(agentId)}/policies`),
   listPolicies: () => request('GET', '/policies'),
 
