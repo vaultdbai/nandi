@@ -29,6 +29,7 @@ import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { GatewayChat } from '@/components/gateway/GatewayChat'
 import { useAgents } from '@/hooks/useAgents'
@@ -40,6 +41,7 @@ import { client } from '@/lib/client'
 import { unwrapResult } from '@/lib/tauri-bindings'
 import { useNavigationStore } from '@/store/navigation-store'
 import { useStudioStore } from '@/store/studio-store'
+import { AvailabilityEditor } from './AvailabilityEditor'
 import { Term } from './NetworkHelp'
 import {
   applyOffer,
@@ -87,6 +89,7 @@ export function OfferView() {
   const offer = buildOffer(served, manifest.data.policy)
   return (
     <div className="flex flex-col gap-6" data-testid="offer">
+      <AvailabilityEditor manifest={manifest.data} />
       {editing ? (
         <OfferEditor
           manifest={manifest.data}
@@ -167,6 +170,12 @@ function OfferSummary({
         <h3 className="text-xs font-medium text-muted-foreground">
           {t('network.offer.responsibilities')}
         </h3>
+        {manifest.responsibilities.length > 0 &&
+          !manifest.relay.shareResponsibilities && (
+            <p className="text-xs text-muted-foreground">
+              {t('network.offer.responsibilitiesPrivate')}
+            </p>
+          )}
         {manifest.responsibilities.length > 0 ? (
           <ul className="flex flex-wrap gap-1.5">
             {manifest.responsibilities.map(item => (
@@ -288,6 +297,9 @@ function OfferEditor({
   const [responsibilities, setResponsibilities] = useState(
     manifest.responsibilities.join('\n')
   )
+  const [shareResponsibilities, setShareResponsibilities] = useState(
+    manifest.relay.shareResponsibilities
+  )
   const [max, setMax] = useState(manifest.policy.maxConcurrent)
   const [rate, setRate] = useState(manifest.policy.rateLimitPerHour)
   const [choices, setChoices] = useState<Record<string, OfferColumn>>(() =>
@@ -302,6 +314,7 @@ function OfferEditor({
         description,
         body,
         responsibilities: parseResponsibilities(responsibilities),
+        relay: { ...manifest.relay, shareResponsibilities },
         policy: {
           ...applyOffer(manifest.policy, choices),
           maxConcurrent: max,
@@ -372,6 +385,16 @@ function OfferEditor({
         <p className="text-xs text-muted-foreground">
           {t('network.offer.responsibilitiesHint')}
         </p>
+        <div className="flex items-center gap-2">
+          <Switch
+            id="offer-share-responsibilities"
+            checked={shareResponsibilities}
+            onCheckedChange={setShareResponsibilities}
+          />
+          <Label htmlFor="offer-share-responsibilities">
+            {t('network.offer.shareResponsibilities')}
+          </Label>
+        </div>
       </div>
       {offer.length > 0 && (
         <ul className="grid gap-2 rounded-md border p-3">

@@ -12,7 +12,7 @@ use std::time::Duration;
 use rusqlite::{params, Connection};
 
 use super::policy::is_exposed;
-use super::{GatewayCard, GatewayManifest, GATEWAY_AGENT_ID, GATEWAY_VERSION};
+use super::{GatewayCard, GatewayManifest, GatewayPolicy, GATEWAY_AGENT_ID, GATEWAY_VERSION};
 use crate::services::a2a::task::TaskState;
 use crate::services::domain::agent_card::OwnerRef;
 use crate::services::domain::capability::ServesCapability;
@@ -40,6 +40,46 @@ pub fn exposed_capabilities<'a>(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
+}
+
+/// `cards` with only the capabilities within `expose` / `hide`; a card
+/// left serving nothing is dropped
+pub fn exposed_cards(cards: Vec<AgentCard>, policy: &GatewayPolicy) -> Vec<AgentCard> {
+    cards
+        .into_iter()
+        .filter_map(|mut card| {
+            card.capabilities.retain(|c| is_exposed(policy, &c.name));
+            (!card.capabilities.is_empty()).then_some(card)
+        })
+        .collect()
+}
+
+/// The agent cards the relay may list: none while sharing is off
+/// (`relay.enabled`), otherwise the exposed ones. Presence follows them,
+/// so a hidden agent is neither listed nor offered.
+pub fn shared_agent_cards(cards: Vec<AgentCard>, manifest: &GatewayManifest) -> Vec<AgentCard> {
+    if !manifest.relay.enabled {
+        return Vec::new();
+    }
+    exposed_cards(cards, &manifest.policy)
+}
+
+/// The card that tells the relay sharing is off: who this is and nothing
+/// more. The relay takes the member out of the directory on it; an older
+/// relay keeps it, so it carries no profile.
+pub fn withdrawn_card(card: GatewayCard) -> GatewayCard {
+    GatewayCard {
+        accepts_delegation: false,
+        description: String::new(),
+        capabilities: Vec::new(),
+        current_load: 0,
+        agent_count: 0,
+        body: None,
+        responsibilities: Vec::new(),
+        direct_delegation: Some(false),
+        availability: Default::default(),
+        ..card
+    }
 }
 
 /// Who the card names: the manifest's owner, the user slug standing in
@@ -105,10 +145,13 @@ pub fn build_card(
             .relay
             .discoverable
             .then(|| super::manifest::public_body(&manifest.body)),
-        // Not gated by `discoverable` (see `GatewayCard::responsibilities`)
-        responsibilities: super::manifest::normalize_responsibilities(
-            manifest.responsibilities.clone(),
-        ),
+        // Not gated by `discoverable` (see `GatewayCard::responsibilities`),
+        // only by its own switch
+        responsibilities: if manifest.relay.share_responsibilities {
+            super::manifest::normalize_responsibilities(manifest.responsibilities.clone())
+        } else {
+            Vec::new()
+        },
         direct_delegation: Some(local_cards.iter().any(|card| card.accepts_delegation)),
         availability: manifest.availability.clone(),
     }
@@ -268,6 +311,64 @@ mod tests {
             Some(super::super::manifest::public_body(&manifest.body).as_str())
         );
         assert!(!card.body.unwrap().contains("<!--"));
+    }
+
+    #[test]
+    fn agents_are_shared_only_while_sharing_is_on_and_as_exposed() {
+        let agents = vec![
+            agent("papers", &["find-papers", "summarize"]),
+            agent("writer", &["write"]),
+        ];
+        let mut manifest = manifest();
+        assert!(
+            shared_agent_cards(agents.clone(), &manifest).is_empty(),
+            "sharing is off by default"
+        );
+        manifest.relay.enabled = true;
+        assert_eq!(shared_agent_cards(agents.clone(), &manifest).len(), 2);
+        // A hidden capability leaves the card; an agent left with nothing goes
+        manifest.policy.hide = vec!["write".into(), "SUMMARIZE".into()];
+        let shared = shared_agent_cards(agents.clone(), &manifest);
+        assert_eq!(shared.len(), 1);
+        assert_eq!(shared[0].capabilities.len(), 1);
+        assert_eq!(shared[0].capabilities[0].name, "find-papers");
+        manifest.policy.hide.clear();
+        manifest.policy.expose = vec!["write".into()];
+        let shared = shared_agent_cards(agents, &manifest);
+        assert_eq!(shared.len(), 1);
+        assert_eq!(shared[0].capabilities[0].name, "write");
+    }
+
+    #[test]
+    fn the_withdrawn_card_says_who_and_nothing_more() {
+        let mut manifest = manifest();
+        manifest.relay.enabled = true;
+        manifest.relay.discoverable = true;
+        manifest.responsibilities = vec!["Risk".into()];
+        manifest.availability.status = nandi_protocol::AvailabilityStatus::Away;
+        let card = build_card(&manifest, "me", "", &[agent("papers", &["summarize"])], 1);
+        let withdrawn = withdrawn_card(card.clone());
+        assert!(!withdrawn.accepts_delegation);
+        assert_eq!(withdrawn.instance_id, "me");
+        assert_eq!(withdrawn.display_name, card.display_name);
+        assert_eq!(withdrawn.owner, card.owner);
+        assert!(withdrawn.description.is_empty());
+        assert!(withdrawn.capabilities.is_empty());
+        assert!(withdrawn.body.is_none());
+        assert!(withdrawn.responsibilities.is_empty());
+        assert_eq!(withdrawn.agent_count, 0);
+        assert_eq!(withdrawn.availability, Default::default());
+    }
+
+    #[test]
+    fn responsibilities_stay_off_the_card_when_not_shared() {
+        let mut manifest = manifest();
+        manifest.relay.enabled = true;
+        manifest.responsibilities = vec!["Risk".into()];
+        assert!(manifest.relay.share_responsibilities, "shared by default");
+        manifest.relay.share_responsibilities = false;
+        let card = build_card(&manifest, "me", "", &[], 0);
+        assert!(card.responsibilities.is_empty());
     }
 
     #[test]

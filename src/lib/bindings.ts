@@ -3730,11 +3730,11 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
 
 /** user-defined types **/
 
@@ -6803,7 +6803,11 @@ enabled: boolean;
 /**
  * Listed in other members' network directory
  */
-discoverable: boolean }
+discoverable: boolean; 
+/**
+ * Put `responsibilities` on the card, so people can find you by them
+ */
+shareResponsibilities: boolean }
 export type RelayConnectionState = 
 /**
  * No relay configured, or disconnected on purpose

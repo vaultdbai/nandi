@@ -37,3 +37,45 @@ export function formatUntil(until: number, language: string): string {
     ...(midnight ? {} : { hour: 'numeric', minute: '2-digit' }),
   }).format(at)
 }
+
+/** What the owner picks in the availability editor */
+export interface AvailabilityChoice {
+  status: 'available' | 'busy' | 'away'
+  /** The day it ends (local midnight); `undefined`: until they change it */
+  until: Date | undefined
+  /** The instance ID of who covers; `''`: nobody */
+  delegateTo: string
+}
+
+/** The editor's starting point: what holds now, a lapsed one as available */
+export function choiceFrom(
+  availability: Availability | undefined,
+  now: number = Date.now()
+): AvailabilityChoice {
+  const current = currentAvailability(availability, now)
+  if (!current) return { status: 'available', until: undefined, delegateTo: '' }
+  return {
+    status: current.status,
+    until: current.until === null ? undefined : new Date(current.until),
+    delegateTo: current.delegateTo ?? '',
+  }
+}
+
+/** What NANDI.md stores: available carries no end and nobody covering */
+export function availabilityOf(choice: AvailabilityChoice): Availability {
+  if (choice.status === 'available') {
+    return { status: 'available', until: null, delegateTo: null }
+  }
+  const until = choice.until
+    ? new Date(
+        choice.until.getFullYear(),
+        choice.until.getMonth(),
+        choice.until.getDate()
+      ).getTime()
+    : null
+  return {
+    status: choice.status,
+    until,
+    delegateTo: choice.delegateTo || null,
+  }
+}

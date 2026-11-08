@@ -18,7 +18,7 @@ export const manifestFixture = (
   userSlug: 'ada',
   responsibilities: [],
   availability: { status: 'available', until: null, delegateTo: null },
-  relay: { enabled: true, discoverable: true },
+  relay: { enabled: true, discoverable: true, shareResponsibilities: true },
   policy: {
     maxConcurrent: 3,
     rateLimitPerHour: 30,

@@ -80,23 +80,29 @@ Notes that apply to the whole section:
   - `agentCount`, `currentLoad` (tasks this instance is Working on as provider), `maxConcurrent`, the owner (with the user slug standing in for a missing handle) and `federationEnabled`.
   - `directDelegation`: whether any local agent takes tasks addressed to it directly.
   - The NANDI.md body, with `<!-- … -->` comments removed, only when `relay.discoverable` is on.
-  - `responsibilities`: NANDI.md's `responsibilities:` list, whether or not `relay.discoverable` is on. They are short statements the owner wrote to be found by topic ("who is responsible for SOX audit?"); the body stays private. Cards from older Nandis have none (`#[serde(default)]`), so `gatewayVersion` stays 1.
+  - `responsibilities`: NANDI.md's `responsibilities:` list, whether or not `relay.discoverable` is on, unless `relay.share_responsibilities` is false (the switch "Show my responsibilities on my card" under What you offer; on by default, and on for older files without it). They are short statements the owner wrote to be found by topic ("who is responsible for SOX audit?"); the body stays private. Cards from older Nandis have none (`#[serde(default)]`), so `gatewayVersion` stays 1.
 
-  A route card `<instance>/gateway` serving `gateway` lets the relay route tasks to the gateway, and makes a gateway-only instance count as online. Turning `relay.enabled` off withdraws the card by re-sending it with `acceptsDelegation: false`.
+  A route card `<instance>/gateway` serving `gateway` lets the relay route tasks to the gateway, and makes a gateway-only instance count as online.
 
-- **Where:** Code: `registration.rs` (`build_card`, `exposed_capabilities`, `route_card`, `card_owner`, `current_load`, `HEARTBEAT_INTERVAL`), `mod.rs` (`sync`, `card`).
+  The agent cards registered at the relay follow the same switches (`registration::shared_agent_cards`): none while `relay.enabled` is off, and only the capabilities within `expose` / `hide`, so a hidden agent is not listed. Capability presence follows the agent cards. A change to `relay.enabled`, `expose` or `hide` re-registers them (`GatewayService::share_agents`).
+
+  Turning `relay.enabled` off withdraws the card: the gateway sends `registration::withdrawn_card` (the name and owner only, `acceptsDelegation: false`), and the relay removes the member from its directory and people search until they share again. The first sync after start-up withdraws too, so a card left from before (sharing turned off while Nandi was closed) is removed.
+
+- **Where:** Code: `registration.rs` (`build_card`, `exposed_capabilities`, `shared_agent_cards`, `withdrawn_card`, `route_card`, `card_owner`, `current_load`, `HEARTBEAT_INTERVAL`), `mod.rs` (`sync`, `share_agents`, `card`), `relay/mod.rs` (`local_cards_from`); nandi-relay `server.rs` (`RegisterGateway`), `directory.rs` (`withdraw`).
 - **Preconditions:** A relay is connected (RL-01). Local agents have `serves:`.
-- **Steps:** 1. `PUT /api/gateway/config` with relay enabled and discoverable on. 2. `curl http://<relay>:8787/instances`. 3. Add a capability to `hide` and save. 4. Turn discoverable off. 5. Turn relay enabled off.
+- **Steps:** 1. `PUT /api/gateway/config` with relay enabled and discoverable on. 2. `curl http://<relay>:8787/instances`. 3. Add a capability to `hide` and save. 4. Turn discoverable off. 5. Turn off "Show my responsibilities on my card". 6. Turn relay enabled off. 7. Quit Nandi, set `relay.enabled: true` then back to `false` by hand while another Nandi watches People, and start it again.
 - **Expected:**
   - After step 1, the instance shows a gateway card with sorted, distinct capabilities, and from a second instance `GET /api/network/snapshot` shows the member with the body text.
-  - After step 3, the hidden capability disappears from the card within a few seconds.
+  - After step 3, the hidden capability disappears from the card and from the agent cards within a few seconds; an agent serving only hidden capabilities is no longer listed.
   - After step 4, the card has no body, but still carries `responsibilities`.
-  - After step 5, the card has `acceptsDelegation: false`, and remote tasks to `<instance>/gateway` are no longer routed.
+  - After step 5, the card has no `responsibilities`, and people search no longer finds the member by them.
+  - After step 6, the member disappears from the other instance's People and from `find_people`, its agents are no longer registered, and remote tasks to `<instance>/gateway` are no longer routed.
+  - After step 7, the member stays out of the directory after start-up.
 - **Edge / negative cases:**
   - With no relay URL, the card's `endpoint` is empty, and the card is sent on connect.
   - A capability matches `expose` and `hide` case-insensitively.
   - When an agent's capability is hidden, that agent is not counted in `agentCount`.
-- **Automation:** Covered by: `registration.rs` (`the_card_offers_the_union_of_local_capabilities`, `counts_working_tasks_as_load`, `responsibilities_are_on_the_card_even_when_not_discoverable`); `relay/tests.rs` (`tasks_reach_a_gateway_only_instance`), nandi-relay `tests/relay.rs` (`the_relay_routes_to_a_registered_gateway_without_a_route_card`) | Layer: api (relay plus two instances) | Gap: no test for the withdrawal when `relay.enabled` goes off.
+- **Automation:** Covered by: `registration.rs` (`the_card_offers_the_union_of_local_capabilities`, `counts_working_tasks_as_load`, `responsibilities_are_on_the_card_even_when_not_discoverable`, `agents_are_shared_only_while_sharing_is_on_and_as_exposed`, `the_withdrawn_card_says_who_and_nothing_more`, `responsibilities_stay_off_the_card_when_not_shared`), `manifest.rs` (`responsibilities_are_shared_unless_turned_off`); `relay/tests.rs` (`tasks_reach_a_gateway_only_instance`), nandi-relay `tests/relay.rs` (`the_relay_routes_to_a_registered_gateway_without_a_route_card`), `tests/directory.rs` (`turning_sharing_off_leaves_the_directory_and_people_search`) | Layer: unit + api (relay) | Gap: the start-up withdrawal (step 7) and the agent re-registration on a sharing change are checked live only.
 - **Needs relay:** yes
 - **Status:** Shipped
 

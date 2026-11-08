@@ -388,7 +388,8 @@ Notes that apply to the whole section:
   - Copy ID puts the instance ID on the clipboard (toast `network.copied`).
   - A refresh error shows `network.refreshFailed`.
 - **Edge / negative cases:**
-  - A member whose gateway has `relay.enabled` on but `discoverable` off still appears (the relay lists every member's card); their card just has no `body`. Their responsibilities are still searchable.
+  - A member whose gateway has `relay.enabled` on but `discoverable` off still appears (the relay lists every member's card); their card just has no `body`. Their responsibilities are still searchable, unless they turned off "Show my responsibilities on my card".
+  - A member who turns `relay.enabled` off leaves the directory (GW-04) and comes back when they share again.
   - A member who closed their laptop stays listed, "Seen {time}". A member the operator revoked (RL-30) disappears on the next refresh.
   - A member who never turned `relay.enabled` on has no gateway card and does not appear.
   - With no matches, the grid shows `network.noMatches`.
@@ -537,7 +538,7 @@ Notes that apply to the whole section:
 
 ### NW-14 — Availability: busy or away until, and who covers
 
-- **What:** A person sets whether they're around in their NANDI.md frontmatter (the gold copy):
+- **What:** A person sets whether they're around under Network › Sharing › What you offer › Availability (Available, Busy or Away; until which day; who covers, from the people on the relay), or by hand in their NANDI.md frontmatter (the gold copy):
 
   ```yaml
   availability:
@@ -548,12 +549,12 @@ Notes that apply to the whole section:
 
   It goes out on their gateway card. People cards and the member profile show it small and calm: "Away until Tue, Nov 10 · Bob covers" (the name from the directory, else the ID; "You cover" when it's this Nandi, which isn't in its own directory). Once `until` passes it shows nothing. `find_people` results carry it too (RL-27).
 
-- **Where:** `services/gateway/manifest.rs` (`AvailabilityYaml`, `parse_until`), `gateway/registration.rs` (card), `src/components/network/MemberAvailability.tsx`, `availability-model.ts`, `MemberCardCompact.tsx`, `MemberProfileView.tsx`.
+- **Where:** `services/gateway/manifest.rs` (`AvailabilityYaml`, `parse_until`), `gateway/registration.rs` (card), `src/components/network/AvailabilityEditor.tsx`, `MemberAvailability.tsx`, `availability-model.ts` (`choiceFrom`, `availabilityOf`), `MemberCardCompact.tsx`, `MemberProfileView.tsx`.
 - **Preconditions:** Two Nandis on one relay.
-- **Steps:** 1. On B, add the block above to NANDI.md (with A's device ID as `delegate_to`). 2. On A, open People, then B's profile. 3. On B, set `until` to a minute from now and wait. 4. On B, write `status: vacation`.
-- **Expected:** Step 2 shows "Away until … · A covers" on the card and the profile. After step 3's time it disappears. Step 4 makes NANDI.md invalid with the message naming `vacation` (the gateway keeps its last good card).
+- **Steps:** 1. On B, add the block above to NANDI.md (with A's device ID as `delegate_to`). 2. On A, open People, then B's profile. 3. On B, set `until` to a minute from now and wait. 4. On B, write `status: vacation`. 5. On B, fix the file, then in What you offer › Availability choose Away, pick tomorrow, choose A under Who covers, and Save availability. 6. Choose Available and save.
+- **Expected:** Step 2 shows "Away until … · A covers" on the card and the profile. After step 3's time it disappears. Step 4 makes NANDI.md invalid with the message naming `vacation` (the gateway keeps its last good card). Step 5 shows "Availability saved", writes `status: away`, tomorrow's date and A's ID to NANDI.md, and A sees "Away until … · You cover". Step 6 removes the block's `until` and `delegate_to`, and A sees nothing.
 - **Edge / negative cases:** `status: available` drops `until` and `delegate_to`; an unreadable `until` or a `delegate_to` with spaces or `/` is an error that says what to fix; an unknown key under `availability:` is an error.
-- **Automation:** Covered by: `gateway/manifest.rs` (`availability_is_read_checked_and_written_back`), `availability-model.test.ts`, `NetworkView.test.tsx` (`says "You cover" when this Nandi covers (it is not in the list)`, `says when someone is away and who covers`), spec `directory.rs` (`availability_ends_at_its_until`) | Layer: unit + ui-e2e | Gap: none.
+- **Automation:** Covered by: `gateway/manifest.rs` (`availability_is_read_checked_and_written_back`), `availability-model.test.ts` (including `choiceFrom and availabilityOf`), `NetworkView.test.tsx` (`says "You cover" when this Nandi covers (it is not in the list)`, `says when someone is away and who covers`), spec `directory.rs` (`availability_ends_at_its_until`) | Layer: unit + ui-e2e | Gap: none.
 - **Needs relay:** yes
 - **Status:** Shipped
 

@@ -33,7 +33,8 @@ description: "My Nandi agents."
 owner:
   display_name: "{{owner}}"
 # What you're responsible for, in a few words each (e.g. [Risk, SOX audit,
-# billing system]). Published on your gateway card so people can find you.
+# billing system]). Published on your gateway card so people can find you,
+# unless relay.share_responsibilities is false.
 responsibilities: []
 # Whether you're around, shown on your profile. For example:
 # availability:
@@ -43,6 +44,7 @@ responsibilities: []
 relay:
   enabled: false
   discoverable: false
+  share_responsibilities: true
 policy:
   max_concurrent: 3
   rate_limit_per_hour: 30
@@ -448,11 +450,23 @@ fn format_until(ms: f64) -> String {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct RelayYaml {
     enabled: bool,
     discoverable: bool,
+    share_responsibilities: bool,
+}
+
+impl Default for RelayYaml {
+    fn default() -> Self {
+        let relay = RelayConfig::default();
+        Self {
+            enabled: relay.enabled,
+            discoverable: relay.discoverable,
+            share_responsibilities: relay.share_responsibilities,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -566,6 +580,7 @@ impl Frontmatter {
             relay: RelayConfig {
                 enabled: self.relay.enabled,
                 discoverable: self.relay.discoverable,
+                share_responsibilities: self.relay.share_responsibilities,
             },
             policy: GatewayPolicy {
                 max_concurrent: self.policy.max_concurrent,
@@ -616,6 +631,7 @@ impl Frontmatter {
             relay: RelayYaml {
                 enabled: manifest.relay.enabled,
                 discoverable: manifest.relay.discoverable,
+                share_responsibilities: manifest.relay.share_responsibilities,
             },
             policy: PolicyYaml {
                 max_concurrent: manifest.policy.max_concurrent,
@@ -800,6 +816,33 @@ Body
         assert_eq!(again, manifest);
         // Stable: writing it again changes nothing
         assert_eq!(serialize(&again, Some(&written)).unwrap(), written);
+    }
+
+    #[test]
+    fn responsibilities_are_shared_unless_turned_off() {
+        // Older NANDI.md files have no switch: shared, as before
+        let old = parse(
+            "---
+name: X
+relay:
+  enabled: true
+---
+Body
+",
+        )
+        .unwrap();
+        assert!(old.relay.share_responsibilities);
+        assert!(
+            parse(&render_default("Ada"))
+                .unwrap()
+                .relay
+                .share_responsibilities
+        );
+        let mut manifest = old;
+        manifest.relay.share_responsibilities = false;
+        let written = serialize(&manifest, None).unwrap();
+        assert!(written.contains("share_responsibilities: false"));
+        assert!(!parse(&written).unwrap().relay.share_responsibilities);
     }
 
     #[test]

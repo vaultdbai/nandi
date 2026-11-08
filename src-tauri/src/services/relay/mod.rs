@@ -75,6 +75,7 @@ use super::domain::agent_card::card_from_agent;
 use super::domain::AgentCard;
 use super::domain::{ChangedBy, DomainEvent, EntityKind, Problem};
 use super::events::NandiEvent;
+use super::gateway::manifest as gateway_manifest;
 use super::gateway::registration;
 use super::network;
 use super::repo_store::{EventPublisher, RepoStore};
@@ -589,7 +590,8 @@ async fn connect_and_register(state: &AppState, client: &dyn RelayClient, url: &
 }
 
 /// The cards this instance offers at the relay: local agents that accept
-/// delegation.
+/// delegation, as far as NANDI.md shares them
+/// ([`registration::shared_agent_cards`]).
 pub fn local_cards(state: &AppState, instance_id: &str, relay_url: &str) -> Vec<AgentCard> {
     local_cards_from(
         state.capability_index(),
@@ -600,6 +602,26 @@ pub fn local_cards(state: &AppState, instance_id: &str, relay_url: &str) -> Vec<
 }
 
 pub(crate) fn local_cards_from(
+    index: Option<&Arc<std::sync::RwLock<CapabilityIndex>>>,
+    store: &RepoStore,
+    instance_id: &str,
+    relay_url: &str,
+) -> Vec<AgentCard> {
+    // No NANDI.md or an unreadable one shares nothing
+    let manifest = gateway_manifest::load(&store.repos().layout().root)
+        .unwrap_or_else(|e| {
+            log::warn!("Sharing no agents: {e}");
+            None
+        })
+        .unwrap_or_default();
+    registration::shared_agent_cards(
+        delegable_cards(index, store, instance_id, relay_url),
+        &manifest,
+    )
+}
+
+/// Every local agent card that accepts delegation, shared or not
+fn delegable_cards(
     index: Option<&Arc<std::sync::RwLock<CapabilityIndex>>>,
     store: &RepoStore,
     instance_id: &str,

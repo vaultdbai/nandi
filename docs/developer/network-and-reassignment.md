@@ -51,7 +51,10 @@ them. The answer becomes the known members (`merge_directory`, persisted in
 | `network://membership_changed` | the member count grew                                   |
 
 Every card the relay holds is listed, discoverable or not: `relay.discoverable`
-only decides whether the card carries the NANDI.md `body`.
+only decides whether the card carries the NANDI.md `body`. A member who turns
+`relay.enabled` off sends `registration::withdrawn_card`, and the relay drops
+their card, so they leave the directory and people search until they share
+again. Their agent cards go too (`registration::shared_agent_cards`).
 
 ### Their key changed
 
@@ -120,7 +123,9 @@ responsibilities: [Risk, SOX audit, SOC 1, billing system, support escalations]
   `offer-model.ts` (`parseResponsibilities`).
 - `registration::build_card` copies them to `GatewayCard.responsibilities`
   on every card, **independent of `relay.discoverable`**: they are short
-  public statements the owner wrote to be found by, unlike the body.
+  public statements the owner wrote to be found by, unlike the body. Only
+  `relay.share_responsibilities: false` keeps them off (the switch under
+  What you offer; on by default).
 - The field is `#[serde(default)]`. The relay stores the latest card as JSON
   in its `members` table.
 - Readers: the relay's people search (`FindPeople`), `network::known_members`

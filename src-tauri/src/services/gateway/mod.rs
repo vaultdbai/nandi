@@ -102,13 +102,25 @@ pub struct GatewayConfig {
     pub routing: RoutingConfig,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RelayConfig {
     /// Register the gateway card with the relay
     pub enabled: bool,
     /// Listed in other members' network directory
     pub discoverable: bool,
+    /// Put `responsibilities` on the card, so people can find you by them
+    pub share_responsibilities: bool,
+}
+
+impl Default for RelayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            discoverable: false,
+            share_responsibilities: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -323,9 +335,12 @@ struct Runtime {
     modified: Option<SystemTime>,
     /// The relay took the last card
     registered: bool,
-    /// The relay holds a card that accepts delegation (withdrawn when
-    /// `relay.enabled` goes off)
-    advertised: bool,
+    /// The relay was sent the withdrawn card since sharing went off. False
+    /// at start, so a card left from before (sharing turned off while Nandi
+    /// was closed) is withdrawn too.
+    withdrawn: bool,
+    /// The agent cards last registered for sharing, as (card, capabilities)
+    shared_agents: Option<Vec<(String, Vec<String>)>>,
     last_heartbeat_at: Option<Timestamp>,
     /// Trusted peers' cards (federation on)
     peers: Vec<GatewayCard>,
@@ -490,6 +505,40 @@ impl GatewayService {
         }
     }
 
+    /// Re-registers the agent cards when what NANDI.md shares of them
+    /// changed: sharing turned on or off, or `expose` / `hide` edited
+    async fn share_agents(&self, relay: &dyn RelayClient) {
+        let status = relay.status();
+        let Some(url) = status.relay_url.filter(|_| status.connected) else {
+            // Not connected: the cards go out on connect
+            return;
+        };
+        let cards = crate::services::relay::local_cards_from(
+            self.deps.index.as_ref(),
+            &self.deps.store,
+            &status.instance_id,
+            &url,
+        );
+        let shared: Vec<(String, Vec<String>)> = cards
+            .iter()
+            .map(|card| {
+                let served = card.capabilities.iter().map(|c| c.name.clone()).collect();
+                (card.id.clone(), served)
+            })
+            .collect();
+        {
+            let mut runtime = self.lock();
+            if runtime.shared_agents.as_ref() == Some(&shared) {
+                return;
+            }
+            runtime.shared_agents = Some(shared);
+        }
+        if let Err(e) = relay.register(cards).await {
+            log::warn!("Sharing changed, but re-registering the agents failed: {e}");
+            self.lock().shared_agents = None;
+        }
+    }
+
     fn changed_on_disk(&self) -> bool {
         let modified = manifest::modified(&self.deps.root);
         let mut runtime = self.lock();
@@ -557,15 +606,7 @@ impl GatewayService {
     /// What the router may pick from: local agents (only their exposed
     /// capabilities), local workflows, and (federation on) trusted peers
     pub async fn catalog(&self, manifest: &GatewayManifest, include_remote: bool) -> LocalCatalog {
-        let agents = self
-            .local_cards()
-            .into_iter()
-            .filter_map(|mut card| {
-                card.capabilities
-                    .retain(|c| policy::is_exposed(&manifest.policy, &c.name));
-                (!card.capabilities.is_empty()).then_some(card)
-            })
-            .collect();
+        let agents = registration::exposed_cards(self.local_cards(), &manifest.policy);
         let workflows = self.deps.store.read(|repo| {
             repo.workflows()
                 .map(|workflow| {
@@ -734,16 +775,19 @@ impl GatewayService {
         let Some(relay) = self.deps.relay.clone() else {
             return;
         };
-        let advertised = self.lock().advertised;
-        if !manifest.relay.enabled && !advertised {
+        self.share_agents(relay.as_ref()).await;
+        if !manifest.relay.enabled && self.lock().withdrawn {
             self.lock().registered = false;
             return;
         }
-        let card = self.card(&manifest).await;
+        let mut card = self.card(&manifest).await;
         let accepting = card.accepts_delegation;
+        if !accepting {
+            card = registration::withdrawn_card(card);
+        }
         let sent = relay.register_gateway(card).await;
         let mut runtime = self.lock();
-        runtime.advertised = accepting;
+        runtime.withdrawn = !accepting;
         runtime.registered = accepting && sent.is_ok();
         if sent.is_ok() {
             runtime.last_heartbeat_at = Some(now_ms() as f64);

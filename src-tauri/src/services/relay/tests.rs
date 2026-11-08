@@ -874,6 +874,7 @@ async fn agents_turned_on_while_connected_reach_the_relay() {
         .await
         .unwrap();
     assert!(eventually(async || get_relay_status(&state).await.unwrap().connected).await);
+    share(&state, true);
 
     // An agent starts accepting delegation after the connect
     let agent = Agent::from_skill_md(
@@ -891,6 +892,49 @@ async fn agents_turned_on_while_connected_reach_the_relay() {
         .await,
         "the peer never saw the agent"
     );
+    state.shutdown();
+}
+
+/// Writes NANDI.md with sharing (`relay.enabled`) on or off
+fn share(state: &AppState, enabled: bool) {
+    use crate::services::gateway::manifest;
+    let root = state.store().repos().layout().root.clone();
+    let mut nandi = manifest::parse(&manifest::render_default("Ada")).unwrap();
+    nandi.relay.enabled = enabled;
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join(manifest::MANIFEST_FILE),
+        manifest::serialize(&nandi, None).unwrap(),
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn agents_stay_off_the_relay_while_sharing_is_off() {
+    use crate::services::domain::{Agent, AgentId, EntityKind};
+    use crate::services::repos::Repository;
+    let addr = serve_open(local()).await.unwrap();
+    let peer = registered(addr, "peer", Vec::new()).await;
+    let state = AppState::for_tests(vec![]);
+    set_relay_url(&state, &format!("ws://{addr}/relay"))
+        .await
+        .unwrap();
+    assert!(eventually(async || get_relay_status(&state).await.unwrap().connected).await);
+    share(&state, false);
+
+    let agent = Agent::from_skill_md(
+        AgentId::parse("papers").unwrap(),
+        "---\nname: Papers\nserves: [{name: find-papers}]\naccepts_delegation: true\n---\nHi.\n",
+    )
+    .unwrap();
+    state.store().repos().agents.save(&agent).unwrap();
+    state.store().commit(EntityKind::Agent, "papers").unwrap();
+    // Past the re-registration delay: still nothing listed
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    assert!(peer
+        .query_capability("find-papers")
+        .await
+        .is_ok_and(|cards| cards.is_empty()));
     state.shutdown();
 }
 
