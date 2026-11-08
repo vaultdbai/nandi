@@ -723,18 +723,20 @@ Notes that apply to the whole section:
 - **What:**
   - Instances heartbeat every 30 s, and the relay evicts an instance after 90 s of silence.
   - Registration carries providers and tools (`relay::presence::publish`), and `UpdatePresence` sends changes.
+  - Presence never says more than the cards (`only_shown`): a provider is sent only for a capability the gateway card exposes (`relay.enabled`, `expose`, `hide`) or an agent card serves. A capability whose definition is `private` (the default) is never sent. The tools sent are only the published providers' tools, not every enabled tool.
   - Cards that name another instance are dropped.
   - Turning on `accepts_delegation` re-registers the cards within about 500 ms.
   - `query_capability_presence` lists who serves a capability (`*` for all).
 - **Where:** `services/relay/presence.rs`, `client.rs`, nandi-relay `src/server.rs`, `commands/relay_capabilities.rs` (`query_capability_presence`).
 - **Preconditions:** A relay and two instances.
-- **Steps:** 1. Suspend instance B for more than 90 s. 2. Check `/instances`. 3. On A, turn on an agent's `accepts_delegation` and watch the relay.
+- **Steps:** 1. Suspend instance B for more than 90 s. 2. Check `/instances`. 3. On A, turn on an agent's `accepts_delegation` and watch the relay. 4. On A, give a capability `visibility: private` and turn `relay.enabled` off; on B, run `query_capability_presence "*"`.
 - **Expected:**
   - B is evicted (`reason=heartbeat_timeout`) and re-registers when it resumes.
   - The relay log shows `~ re-registered … agents=N+1` without a restart.
+  - (4) B sees only A's delegating agents' non-private capabilities and those agents' tools; nothing of A's private capability, workflows or other tools.
 - **Edge / negative cases:**
   - Queries sent before registration wait for it.
-- **Automation:** Covered by: `relay/tests.rs` (`silent_instances_are_evicted`, `cards_of_other_instances_are_dropped`, `agents_turned_on_while_connected_reach_the_relay`, `queries_sent_before_registration_wait_for_it`), `relay/presence.rs` (`registration_carries_presence_and_updates_replace_it`, `groups_local_providers_by_capability`) | Layer: api | Gap: none.
+- **Automation:** Covered by: `relay/tests.rs` (`silent_instances_are_evicted`, `cards_of_other_instances_are_dropped`, `agents_turned_on_while_connected_reach_the_relay`, `queries_sent_before_registration_wait_for_it`), `relay/presence.rs` (`registration_carries_presence_and_updates_replace_it`, `groups_local_providers_by_capability`, `nothing_is_published_that_no_card_shows`, `an_agent_card_publishes_only_its_own_capabilities_and_tools`, `the_gateway_publishes_every_provider_of_what_it_exposes`) | Layer: api | Gap: none.
 - **Needs relay:** yes
 - **Status:** Shipped
 

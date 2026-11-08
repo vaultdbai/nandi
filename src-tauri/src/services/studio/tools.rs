@@ -1,5 +1,6 @@
-//! Studio's tools: what it looks at before it answers about this Nandi, the
-//! guides on how to do things (`guides`), and the check it runs on every
+//! Studio's tools: what it looks at before it answers about this Nandi (and
+//! the user's own notes), the guides on how to do things (`guides`), and the
+//! check it runs on every
 //! file it proposes. Offered only to the Studio agent; they run on the
 //! host, read existing services, change nothing, and never need approval.
 //! The exceptions are `nandi_start_request` (`start`), which starts a
@@ -16,7 +17,7 @@ use crate::llm::ToolSpec;
 use crate::model::{RunSummary, STUDIO_AGENT_ID};
 use crate::services::ask::ArtifactRef;
 use crate::services::llm_keys::{self, KeyedProvider};
-use crate::services::{network, snapshots, AppState};
+use crate::services::{network, notes, snapshots, AppState};
 
 use super::prompt::{CompanionFacts, PromptFacts};
 use super::validate::{self, ValidationFacts};
@@ -38,6 +39,8 @@ pub const NETWORK_SNAPSHOT: &str = "nandi_network_snapshot";
 pub const CHECK_ARTIFACT: &str = "nandi_check_artifact";
 pub const LIST_GUIDES: &str = "nandi_list_guides";
 pub const GET_GUIDE: &str = "nandi_get_guide";
+pub const LIST_NOTES: &str = "nandi_list_notes";
+pub const READ_NOTE: &str = "nandi_read_note";
 pub use super::save::SAVE_ARTIFACT;
 pub use super::start::START_REQUEST;
 
@@ -190,6 +193,18 @@ pub fn specs() -> Vec<ToolSpec> {
                 }
             }),
             &["kind"],
+        ),
+        spec(
+            LIST_NOTES,
+            "The user's own notes (My notes): each note's name, title, size and when it changed. Read-only.",
+            json!({}),
+            &[],
+        ),
+        spec(
+            READ_NOTE,
+            "One of the user's notes in full, by the name nandi_list_notes gives (`deadlines.md`, `runbooks/etl.md`). Read-only.",
+            json!({"name": {"type": "string"}}),
+            &["name"],
         ),
         spec(
             START_REQUEST,
@@ -498,6 +513,17 @@ pub async fn call(state: &AppState, name: &str, args: &Value) -> ToolOutcome {
             Some(id) => match super::guides::get(id) {
                 Some(guide) => ok(json!({ "id": guide.id, "title": guide.title, "body": guide.body })),
                 None => error(format!("No guide '{id}'. Call {LIST_GUIDES} for the IDs.")),
+            },
+        },
+        LIST_NOTES => match notes::list_existing(state).await {
+            Ok(list) => ok(json!({ "count": list.len(), "notes": list })),
+            Err(e) => error(e),
+        },
+        READ_NOTE => match arg(args, "name") {
+            None => error("name is required"),
+            Some(name) => match notes::read_existing(state, name.to_string()).await {
+                Ok(content) => ok(json!({ "name": name, "content": content })),
+                Err(e) => error(format!("{e}. Call {LIST_NOTES} for the names.")),
             },
         },
         START_REQUEST => super::start::call(state, args).await,

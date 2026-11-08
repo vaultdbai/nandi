@@ -683,3 +683,61 @@ mod chat_starts_work {
         state.shutdown();
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ask_reads_the_users_notes_and_nothing_outside_them() {
+    use crate::services::connectors::{self, folders};
+    use crate::services::notes::NOTES_FOLDER_ID;
+
+    let state = AppState::for_tests(vec![]);
+    let tmp = tempfile::tempdir().unwrap();
+    let notes = tmp.path().join("notes");
+    std::fs::create_dir_all(notes.join("runbooks")).unwrap();
+    std::fs::write(
+        notes.join("deadlines.md"),
+        "# Deadlines\n\nQ4 report: Dec 1\n",
+    )
+    .unwrap();
+    std::fs::write(notes.join("runbooks/etl.md"), "# ETL\n").unwrap();
+    std::fs::write(tmp.path().join("secret.md"), "outside").unwrap();
+    connectors::share_folder(
+        &state,
+        folders::SharedFolder {
+            id: NOTES_FOLDER_ID.into(),
+            path: notes.to_string_lossy().to_string(),
+            access: folders::Access::Read,
+        },
+    )
+    .await
+    .unwrap();
+
+    let call = |name: &'static str, args: serde_json::Value| {
+        let state = state.clone();
+        async move { super::tools::call(&state, name, &args).await }
+    };
+
+    let listed = call(super::tools::LIST_NOTES, serde_json::json!({})).await;
+    assert!(!listed.is_error, "{}", listed.result);
+    let listed: serde_json::Value = serde_json::from_str(&listed.result).unwrap();
+    assert_eq!(listed["count"], 2);
+    assert_eq!(listed["notes"][0]["name"], "deadlines.md");
+    assert_eq!(listed["notes"][0]["title"], "Deadlines");
+    assert_eq!(listed["notes"][1]["name"], "runbooks/etl.md");
+
+    let read = call(
+        super::tools::READ_NOTE,
+        serde_json::json!({ "name": "deadlines.md" }),
+    )
+    .await;
+    assert!(!read.is_error, "{}", read.result);
+    assert!(read.result.contains("Q4 report: Dec 1"));
+
+    for name in ["../secret.md", "missing.md"] {
+        let refused = call(super::tools::READ_NOTE, serde_json::json!({ "name": name })).await;
+        assert!(refused.is_error, "{name}: {}", refused.result);
+        assert!(!refused.result.contains("outside"));
+    }
+    let unnamed = call(super::tools::READ_NOTE, serde_json::json!({})).await;
+    assert!(unnamed.is_error);
+    state.shutdown();
+}

@@ -291,6 +291,30 @@ pub async fn folder(state: &AppState) -> Result<(NotesFolder, bool), String> {
     Ok((folder, true))
 }
 
+/// The notes folder when it already exists, for readers that must change
+/// nothing (Ask's `nandi_list_notes`): never creates or shares it
+pub fn existing_folder(state: &AppState) -> Option<NotesFolder> {
+    let root = match connectors::shared_folder(state, NOTES_FOLDER_ID) {
+        Some(shared) => connectors::expand_home(&shared.path),
+        None => managed_dir().ok()?,
+    };
+    root.is_dir().then(|| NotesFolder::new(root))
+}
+
+/// Every note, read-only, or none when there's no folder yet
+pub async fn list_existing(state: &AppState) -> Result<Vec<NoteFile>, String> {
+    match existing_folder(state) {
+        Some(folder) => blocking(move || folder.list()).await,
+        None => Ok(Vec::new()),
+    }
+}
+
+/// One note, read-only
+pub async fn read_existing(state: &AppState, name: String) -> Result<String, String> {
+    let folder = existing_folder(state).ok_or_else(|| format!("There's no note '{name}'"))?;
+    blocking(move || folder.read(&name)).await
+}
+
 /// Lets agents update the notes (without asking each time), or makes the
 /// share read-only again
 pub async fn set_agents_can_write(state: &AppState, allow: bool) -> Result<MyNotes, String> {

@@ -39,6 +39,8 @@ const DETAIL: Record<string, string | null> = {
   nandi_check_artifact: null,
   nandi_list_guides: null,
   nandi_get_guide: 'id',
+  nandi_list_notes: null,
+  nandi_read_note: 'name',
   nandi_start_request: null,
   nandi_save_artifact: null,
 }

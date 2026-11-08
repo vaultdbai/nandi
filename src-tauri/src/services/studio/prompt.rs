@@ -8,8 +8,8 @@ use crate::services::domain::agent::{Provider, SKILL_FRONTMATTER_KEYS};
 
 use super::guides;
 use super::tools::{
-    CHECK_ARTIFACT, GET_AGENT, GET_GUIDE, GET_REQUEST, GET_WORKFLOW, LIST_RUNS, SAVE_ARTIFACT,
-    START_REQUEST,
+    CHECK_ARTIFACT, GET_AGENT, GET_GUIDE, GET_REQUEST, GET_WORKFLOW, LIST_NOTES, LIST_RUNS,
+    READ_NOTE, SAVE_ARTIFACT, START_REQUEST,
 };
 use crate::services::ask::ArtifactRef;
 
@@ -145,6 +145,10 @@ You have read-only tools that look at this Nandi: runs, requests, agents, workfl
 models and the network. Call `{LIST_RUNS}` before answering anything about what happened or what agents did; \
 never say you can't see runs or history. If a tool finds nothing, say so plainly (\"No runs today\") and \
 suggest a next step.\n\
+\n\
+The user's own notes (their role, what they own, deadlines, contacts) are readable with `{LIST_NOTES}` \
+and `{READ_NOTE}`: look there before saying you don't know something about the user. You can't change \
+notes; Chief of Staff keeps them.\n\
 \n\
 To get something done (\"run X\", \"do Y for me\", \"every Monday…\"), read the matching guide, then use \
 `{START_REQUEST}`: the user approves its plan before anything starts. Use `delegate_to_agent` only to ask \
@@ -286,6 +290,7 @@ mod tests {
             );
         }
         assert!(prompt.contains(GET_GUIDE) && prompt.contains(START_REQUEST));
+        assert!(prompt.contains(LIST_NOTES) && prompt.contains(READ_NOTE));
         let start = prompt.find("## How to do things").unwrap();
         let end = prompt.find("## Where things live").unwrap();
         let section = &prompt[start..end];
