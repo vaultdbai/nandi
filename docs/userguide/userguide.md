@@ -214,6 +214,7 @@ when: A bill is due, or you ask it to pay one
 - `name` is lowercase words joined by hyphens and must match the file name. `description` and `when` are one line each. The steps stay at 900 words or fewer. A playbook sets no `model`.
 - Every run lists only each playbook's name, description and when to use it. The agent reads a playbook's steps (`skill_get`) when a task calls for it, so an agent can know many playbooks and still start quickly.
 - Open an agent's **Playbooks** tab to read them, change one, add a new one or delete one. Saving checks the same rules. An installed agent's playbooks are read-only, like its `skill.md`.
+- **"Remember how I do this."** Tell an agent you made (Chief of Staff too) how you want something done, for example "remember: I pay bills from Chase, never the card". It drafts a playbook and asks you first: the card shows its name, what it covers, when it's used and the steps (**Show the steps**). A change to a playbook it already has says "replaces the current one" and shows what changes (**Show the changes**). **Approve** saves it to `skills/`; **Reject** saves nothing. Installed agents can't do this.
 
 ### Or fork an installed agent
 
@@ -665,6 +666,8 @@ The **Chief of Staff** agent comes with Nandi (first under Agents) and works wit
 **Save as workflow, offered.** When work finishes well and the same work finished well before (last month's bill, last week's report), Chief of Staff offers to save it as a workflow: a note in the task's thread and **Save as workflow** on the work there and in **Since you were away**. It opens the draft for you to check; your parts (signing in, paying) are manual steps in it. Nothing is saved until you click **Save workflow**.
 
 **Playbooks.** Chief of Staff comes with playbooks for the work it does most: `web-task`, `pay-a-bill`, `sign-in-and-accounts`, `delegate-work` (do it itself, give it to an agent or a workflow, or ask a person), `build-a-workflow`, `email-triage`, `meeting-prep` and `occasions` (birthdays and anniversaries, with a message or post for you to approve). They're yours to change on its **Playbooks** tab. Nandi adds them once; a playbook you edit or delete stays that way.
+
+**Playbooks from repeated work.** When Chief of Staff does the same kind of work itself a second time, it adds one line to `suggestions.md` in your notes: `- [ ] Add a playbook "pay-acme" (from 2 similar tasks)`. Tick it (on My notes) or say yes, and it drafts the playbook for you to approve, as above. It never repeats a suggestion you dismissed.
 
 **Assigned work stays on your list.** Say "Assign Lena: send the evidence list, due Friday". Your Chief of Staff tells you it's assigned and moves on; you don't wait. Once Lena approves, her Inbox shows "Dev assigned you this" with the due date (or how overdue it is), a note field, **Done** and **Decline**. It stays there for days and across restarts. When she clicks **Done**, her note comes back to you, even if you were offline then. Ask "What am I waiting on?" to see what's open, what's due and what's done.
 

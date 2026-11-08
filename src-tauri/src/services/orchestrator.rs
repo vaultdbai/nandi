@@ -1007,6 +1007,9 @@ async fn drive_run(
         if agent_id == STUDIO_AGENT_ID {
             studio::start::gate(app_state(deps).as_ref(), &mut meta.planned_calls).await;
             studio::save::gate(&mut meta.planned_calls);
+        } else {
+            // A proposed playbook always waits for the user
+            playbooks::gate(&deps.store, agent_id, &mut meta.planned_calls);
         }
         let planned = meta.planned_calls.clone();
         bus.finish_step(&ctx, &message_id, meta).await?;
@@ -1453,14 +1456,22 @@ async fn llm_step(
                         tools.push(spec);
                     }
                 }
-                // Playbooks: the index in the prompt, bodies on demand
+                // Playbooks: the index in the prompt, bodies on demand, and
+                // proposing one for the user to approve (agents made here)
                 let playbooks = playbooks::load(&deps.store, &skill.id);
-                if !playbooks.is_empty() {
-                    system.push_str(&playbooks::prompt_section(&playbooks));
-                    for spec in playbooks::specs() {
-                        if !tools.iter().any(|t| t.name == spec.name) {
-                            tools.push(spec);
-                        }
+                let can_propose = playbooks::can_propose(&deps.store, &skill.id);
+                system.push_str(&playbooks::prompt_section(&playbooks, can_propose));
+                let mut offered = if playbooks.is_empty() {
+                    Vec::new()
+                } else {
+                    playbooks::specs()
+                };
+                if can_propose {
+                    offered.push(playbooks::propose_spec());
+                }
+                for spec in offered {
+                    if !tools.iter().any(|t| t.name == spec.name) {
+                        tools.push(spec);
                     }
                 }
             }
@@ -2048,6 +2059,31 @@ async fn run_call(
         }
     }
 
+    // A proposed playbook is checked before the user is asked: the domain
+    // rules, an agent made here, never in a check-started run
+    if playbooks::is_propose(&call.tool) {
+        let refused =
+            if ctx.agent_id == STUDIO_AGENT_ID || data_run(deps, &ctx.run_id).await.is_some() {
+                Some(format!(
+                    "Tool '{}' is not available in this turn",
+                    call.tool
+                ))
+            } else {
+                playbooks::check(&deps.store, &ctx.agent_id, &call.args).err()
+            };
+        if let Some(reason) = refused {
+            if existing.is_none() {
+                bus.tool_call(ctx, call).await?;
+            }
+            let outcome = ToolOutcome {
+                result: reason,
+                is_error: true,
+            };
+            bus.tool_result(ctx, call, &outcome).await?;
+            return Ok(true);
+        }
+    }
+
     // `tool_search` (Track E) only reads the tool list, and `ask_requester`
     // (Track C) is decided on the requester's side: never gated
     if call.requires_approval
@@ -2180,6 +2216,10 @@ async fn run_call(
             && crate::services::run_plan::tool::is_plan_tool(&call.tool) =>
         {
             crate::services::run_plan::tool::call(bus, ctx, &call.tool, &call.args).await
+        }
+        // A proposed playbook the user approved: written on the host
+        _ if ctx.agent_id != STUDIO_AGENT_ID && playbooks::is_propose(&call.tool) => {
+            playbooks::apply(&deps.store, &ctx.agent_id, &call.args)
         }
         // Playbooks (read-only): on the host, from the agent's `skills/`
         _ if ctx.agent_id != STUDIO_AGENT_ID && playbooks::is_playbook_tool(&call.tool) => {
@@ -3503,6 +3543,168 @@ Pay a bill online
         );
         assert!(calls[1].is_error);
         assert!(plan_of(&state, "r1").await.is_none());
+        state.shutdown();
+    }
+
+    /// "Remember how I do this": a `skill_propose` call
+    fn propose_script(name: &str) -> Value {
+        json!({
+            "agent": [
+                {
+                    "text": "I'll remember that.",
+                    "toolCalls": [{
+                        "tool": "skill_propose",
+                        "args": {
+                            "name": name,
+                            "description": "Pay the household bills",
+                            "when": "A bill is due",
+                            "body": "1. Pay from Chase, never the card.",
+                            "reason": "You told me how you pay bills",
+                            "current": { "body": "made up" }
+                        },
+                        "result": "canned"
+                    }]
+                },
+                { "text": "Saved once you approve." }
+            ]
+        })
+    }
+
+    async fn proposal_approval(state: &AppState, run_id: &str) -> ApprovalRow {
+        let id = run_id.to_string();
+        let pending = state
+            .bus()
+            .db
+            .call(move |c| db::pending_approvals_for_run(c, &id))
+            .await
+            .unwrap();
+        assert_eq!(pending.len(), 1, "one card");
+        pending.into_iter().next().unwrap()
+    }
+
+    fn playbook_file(state: &AppState, agent: &str, name: &str) -> std::path::PathBuf {
+        state
+            .store()
+            .repos()
+            .agents
+            .playbooks_dir(agent)
+            .unwrap()
+            .join(format!("{name}.md"))
+    }
+
+    /// A proposed playbook needs no run plan, waits for the user, and is
+    /// written (and committed) only once approved
+    #[tokio::test]
+    async fn a_proposed_playbook_is_written_once_approved() {
+        let (state, sink) = setup(propose_script("pay-bills"));
+        save_agent(&state, "writer", "");
+        let ctx = start(&state, "writer", "r1").await;
+        execute_run(&deps(&state), &DelegationSlot::default(), "writer", "r1")
+            .await
+            .unwrap();
+        assert_eq!(
+            run_of(&state, "r1").await.status,
+            RunStatus::AwaitingApproval
+        );
+        assert!(sink.names().contains(&"agent://approval_request"));
+        let approval = proposal_approval(&state, "r1").await;
+        assert_eq!(approval.tool, "skill_propose");
+        // A new name replaces nothing, whatever the model claimed
+        assert!(approval.args.get("current").is_none());
+        assert!(!playbook_file(&state, "writer", "pay-bills").exists());
+
+        state
+            .bus()
+            .approval_closed(&ctx, approval, ApprovalStatus::Approved)
+            .await
+            .unwrap();
+        execute_run(&deps(&state), &DelegationSlot::default(), "writer", "r1")
+            .await
+            .unwrap();
+        let calls = tool_calls_of(&messages_of(&state, "r1").await);
+        assert_eq!(calls.len(), 1);
+        assert!(!calls[0].is_error, "{:?}", calls[0].result);
+        let written =
+            std::fs::read_to_string(playbook_file(&state, "writer", "pay-bills")).unwrap();
+        assert!(written.contains("never the card"));
+        let listed = state
+            .store()
+            .agent_playbooks(&AgentId::parse("writer").unwrap())
+            .unwrap();
+        assert_eq!(listed.playbooks.len(), 1);
+        assert!(plan_of(&state, "r1").await.is_none(), "no plan needed");
+        state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn a_rejected_proposal_writes_nothing() {
+        let (state, _) = setup(propose_script("pay-bills"));
+        save_agent(&state, "writer", "");
+        let ctx = start(&state, "writer", "r1").await;
+        execute_run(&deps(&state), &DelegationSlot::default(), "writer", "r1")
+            .await
+            .unwrap();
+        let approval = proposal_approval(&state, "r1").await;
+        state
+            .bus()
+            .approval_closed(&ctx, approval, ApprovalStatus::Rejected)
+            .await
+            .unwrap();
+        execute_run(&deps(&state), &DelegationSlot::default(), "writer", "r1")
+            .await
+            .unwrap();
+        assert!(!playbook_file(&state, "writer", "pay-bills").exists());
+        state.shutdown();
+    }
+
+    /// Changing a playbook: the card carries the current one, from the file
+    #[tokio::test]
+    async fn a_proposal_for_an_existing_name_shows_what_it_replaces() {
+        let (state, _) = setup(propose_script("pay-bills"));
+        save_agent(&state, "writer", "");
+        state
+            .store()
+            .save_agent_playbook(
+                &AgentId::parse("writer").unwrap(),
+                &crate::services::repo_service::PlaybookInput {
+                    name: "pay-bills".into(),
+                    description: "Pay bills".into(),
+                    when: "A bill is due".into(),
+                    body: "1. Pay by card.".into(),
+                },
+                None,
+            )
+            .unwrap();
+        start(&state, "writer", "r1").await;
+        execute_run(&deps(&state), &DelegationSlot::default(), "writer", "r1")
+            .await
+            .unwrap();
+        let approval = proposal_approval(&state, "r1").await;
+        assert_eq!(approval.args["current"]["body"], "1. Pay by card.");
+        state.shutdown();
+    }
+
+    /// Checked before the user is asked: a broken proposal is the model's
+    /// to fix, and a check-started run never proposes
+    #[tokio::test]
+    async fn a_proposal_that_breaks_the_rules_never_reaches_the_user() {
+        let (state, sink) = setup(propose_script("Pay Bills"));
+        save_agent(&state, "writer", "");
+        start(&state, "writer", "r1").await;
+        execute_run(&deps(&state), &DelegationSlot::default(), "writer", "r1")
+            .await
+            .unwrap();
+        assert!(!sink.names().contains(&"agent://approval_request"));
+        let calls = tool_calls_of(&messages_of(&state, "r1").await);
+        assert!(calls[0].is_error);
+        assert!(calls[0].result.as_deref().unwrap().contains("kebab-case"));
+        assert_eq!(run_of(&state, "r1").await.status, RunStatus::Completed);
+        for source in [SourceType::Email, SourceType::CalendarCheck] {
+            assert!(!data_run_allows(
+                source,
+                crate::services::playbooks::PROPOSE
+            ));
+        }
         state.shutdown();
     }
 

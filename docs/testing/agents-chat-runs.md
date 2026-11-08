@@ -492,6 +492,41 @@ Shared preconditions used below:
 - **Needs relay:** no
 - **Status:** Shipped
 
+### AG-35 — "Remember how I do this": an agent proposes a playbook
+
+- **What:** An agent drafts a playbook from what the user tells it, or from work it repeats, and saves it only after the user approves.
+  - Agents made on this computer (Chief of Staff too) get the host tool `skill_propose` (name, description, when, body, reason) in every run with tools except the email and calendar checks, even with no playbooks yet. Installed pack agents don't, and a call from one is refused.
+  - The proposal is checked first (kebab-case name, one-line description and when, 900 words, a reason). A broken one never reaches the user: the agent reads why.
+  - The approval card: "Save a new playbook: <name>", why, what it covers, when, and **Show the steps**. For a name it already has: "Change the playbook <name> (replaces the current one)", the old description or when struck through ("Was: …"), and **Show the changes** (a line diff). **Approve** writes `skills/<name>.md` and commits; **Reject** writes nothing.
+  - It needs no run plan (not a change for the classifier).
+  - From repeated work: when Chief of Staff does a step itself and did the same work itself before, it adds `- [ ] Add a playbook "<name>" (from <n> similar tasks)` to `my-notes/suggestions.md` once (never a dismissed one) and proposes the playbook when the user ticks it or says yes.
+- **Where:** `src-tauri/src/services/playbooks.rs` (`propose_spec`, `gate`, `check`, `apply`, `prompt_section`), `services/orchestrator.rs` (offer, gate, `run_call`), `services/run_plan/classify.rs`, `services/requests/recurrence.rs` (`playbook_hint`), `services/requests/self_step.rs` (`prompt`), `resources/builtin-agents/chief-of-staff/skill.md`, `skills/build-a-workflow.md`, `src/components/agent-console/ApprovalRequestCard.tsx`, `PlaybookProposalPreview.tsx`, `playbook-proposal-model.ts`, `src/components/inbox/approval-model.ts`.
+- **Preconditions:** None (Chief of Staff is built in).
+- **Steps:**
+  1. In Chief of Staff's chat: "Remember: I pay bills from Chase, never the card."
+  2. Press **Show the steps**, then **Approve**.
+  3. Say: "Also remember to save the receipt in my notes." Open **Show the changes**, then **Reject**.
+  4. Open Agents › Chief of Staff › Playbooks.
+  5. Finish the same kind of work twice with a step Chief of Staff does itself (for example "Pay the Acme bill" two months running), then open My notes › `suggestions.md`.
+  6. Tick the line, and tell Chief of Staff.
+  7. Open an installed pack agent's chat and ask it to remember something.
+- **Expected:**
+  - Step 1: an approval card "Save a new playbook: pay-bills" (or similar) with why, what it covers and when; no file yet; no run plan asked for.
+  - Step 2: the steps say Chase, never the card; after Approve the agent says it's saved.
+  - Step 3: "Change the playbook … (replaces the current one)"; added lines marked +, removed ones -. After Reject the playbook is unchanged.
+  - Step 4: the new playbook is listed, with the approved text.
+  - Step 5: one line `- [ ] Add a playbook "…" (from 2 similar tasks)`, added once.
+  - Step 6: a playbook approval card as in step 1.
+  - Step 7: no card; the agent says its playbooks are read-only.
+- **Edge / negative cases:**
+  - A proposed name like `Pay Bills`, an empty body or a body over 900 words never shows a card.
+  - A broken `skills/<name>.md` is never overwritten by a proposal.
+  - An email or calendar check never proposes a playbook.
+  - Dismissing the suggestion line: it's never added again.
+- **Automation:** Covered by: Rust `playbooks.rs` (`a_proposal_is_checked_by_the_domain_rules`, `the_card_sees_what_a_proposal_replaces_from_the_files`, `the_prompt_says_how_to_propose_when_the_agent_can`, `every_proposal_waits_for_the_user`, `an_approved_proposal_is_written_and_committed`, `a_broken_file_of_that_name_is_never_overwritten`, `an_installed_agent_cant_propose`), `orchestrator.rs` (`a_proposed_playbook_is_written_once_approved`, `a_rejected_proposal_writes_nothing`, `a_proposal_for_an_existing_name_shows_what_it_replaces`, `a_proposal_that_breaks_the_rules_never_reaches_the_user`), `run_plan/classify.rs` (`effects_table`), `requests/recurrence.rs` (`work_the_chief_of_staff_repeats_itself_hints_a_playbook`), `builtin_agents.rs` (shipped playbooks name only real tools), Vitest `playbook-proposal-model.test.ts`, `PlaybookProposalPreview.test.tsx`, `approval-model.test.ts` | Layer: unit, integration | Gap: no check that a model writes the suggestion line only once, or proposes when asked.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ### AG-29 — Settings tab: Internet access (allowed sites)
 
 - **What:** "Internet access" with three choices: **No internet** ("This agent can't reach any website…"), **Only these sites** (each site in its own box to change, a remove button, "Add a site" with **Add** or Enter, and a hint about `*.example.com` and ports), and **Any site** (saves `*`, with "This agent can reach any website. Choose this only for agents you trust."). Bad sites say "Use a site name like api.example.com, *.example.com or localhost:8080."; a repeat says "That site's already in the list." A site whose rule is limited to some methods shows e.g. "GET only", and saving keeps that limit. Saved with the rest of the form (AG-15); Revert restores the list.

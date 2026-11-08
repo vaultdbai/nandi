@@ -111,6 +111,7 @@ pub(crate) fn known_names() -> std::collections::BTreeSet<String> {
             .into_iter()
             .map(|s| s.name),
     );
+    known.insert(crate::services::playbooks::PROPOSE.to_string());
     known.extend(
         SKILL_FRONTMATTER_KEYS
             .iter()

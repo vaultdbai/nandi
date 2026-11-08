@@ -1,7 +1,7 @@
 # Task: Run plans, playbooks and site accounts
 
 **From:** owner, 2026-11-08. "The Chief of Staff should always prepare a plan for the work it gets, step by step (launch the website, log in, go to my account, pay, confirm), take it to its conclusion including closing the browser, and take screenshots for the logs at important places. It will acquire many capabilities, so give it many skill files; it must plan at a high level, know how to delegate, and build workflows that get work done."
-**Status:** in progress, built step by step (owner: "do it one by one overnight").
+**Status:** done for steps 1 to 5 (built step by step overnight, 2026-11-08). Open: where a playbook came from (built-in, the user, or proposed and approved) isn't shown on the Playbooks tab yet.
 **Builds on:** Requests (the work plan: who does each step), the intake (queue, threads, auto-approve), the browser pilot (`services/pilots/browser.rs`: persistent per-agent profile, keyring secrets typed by name, screenshots, `browser_close`, `browser_hand_over`), orchestrator middlewares (`services/orchestrator/middleware.rs` plan mode, `verify_on_stop.rs`), Studio guides (`services/studio/guides.rs`: an index in the prompt, bodies fetched on demand).
 
 ## Decisions (taken overnight on the owner's behalf, as proposed; change any)
@@ -68,5 +68,9 @@ Built 2026-11-08. Developer doc: `docs/developer/interaction-layer.md` › The C
 
 ## Step 5: The user's own playbooks
 
-- [ ] The user adds playbooks (Playbooks tab, or "remember how I do this" in chat, which drafts one for approval).
-- [ ] The Chief of Staff proposes a playbook once from repeated work, in `suggestions.md`; accepted ones are written to `skills/`.
+Built 2026-11-08. Developer doc: `docs/developer/agent-runtime.md` › Playbooks; catalog AG-35. Decided while building: the host tool is `skill_propose(name, description, when, body, reason)`, offered with the plan tools to every agent made on this computer (not installed ones), even with no playbooks yet; it is checked by the domain rules before the card shows (a broken proposal goes back to the agent, never to the user), always waits for approval (`playbooks::gate`, both engines), and is written through `save_agent_playbook` (repository, then commit) only once approved; the card shows the playbook it replaces from the files (`current`, never the model's) with a line diff; the run-plan classifier treats it as `Effect::None`, not a risky step that needs an `approval` step: the card is already the user's decision and it writes only the agent's own guides, so a chat "remember: …" needs no plan; the repeated-work signal is step 4's recurrence rule, limited to Requests with a Chief of Staff self-step that repeat earlier `done` ones it also did itself, and arrives as a hint in the self-step's prompt (`recurrence::playbook_hint`); the rest is prose (`skill.md` one line, 898 words; `build-a-workflow` › Or a playbook, 599 words); where a playbook came from is not shown (frontmatter allows only name, description, when, and commits carry no author).
+
+- [x] The user adds playbooks (Playbooks tab, or "remember how I do this" in chat, which drafts one for approval). `playbooks::{propose_spec, gate, check, apply, prompt_section}`, `run_call` (check before the card, apply after approval), `PlaybookProposalPreview` on `ApprovalRequestCard`.
+- [x] The Chief of Staff proposes a playbook once from repeated work, in `suggestions.md`; accepted ones are written to `skills/`. `recurrence::playbook_hint` in `self_step::prompt`; `skill.md` and `build-a-workflow` say: one line, never a dismissed one, `skill_propose` when the user ticks it or says yes.
+- [x] Tests: proposal validation, approval writes and commits, reject writes nothing, installed agents refused, not in check runs, the classifier rule, the prompt hint, the card model and component.
+- [ ] Show on the Playbooks tab where a playbook came from (built-in, the user, or proposed by the agent and approved). Needs a place the domain allows (a commit author or a projection), not a frontmatter key.

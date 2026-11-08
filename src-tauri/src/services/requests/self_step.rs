@@ -153,7 +153,11 @@ pub fn prompt(conn: &Connection, request_id: &str) -> Option<String> {
     super::local::load(conn, request_id)
         .ok()
         .flatten()
-        .map(|request| prompt_for(&request))
+        .map(|request| {
+            // Work it did itself before: propose a playbook once
+            let hint = super::recurrence::playbook_hint_for(conn, &request).unwrap_or_default();
+            format!("{}{hint}", prompt_for(&request))
+        })
 }
 
 /// Where the Request's Chief of Staff step runs: its intake thread, else

@@ -15,6 +15,12 @@
 //!
 //! The proposal shows on the Request in its intake thread (a note there,
 //! and the button on its card) and on Home's "Since you were away".
+//!
+//! The same signal proposes a **playbook** (step 5): when the Chief of
+//! Staff does a step itself and did the same work itself before, its step's
+//! prompt carries [`playbook_hint`]. Its skill.md and `build-a-workflow`
+//! playbook say the rest: one line in `suggestions.md`, never repeated, and
+//! `skill_propose` only once the user says yes.
 
 use std::collections::HashSet;
 
@@ -152,6 +158,53 @@ runs the same steps next time? Press **Save as workflow** on it: you check the d
 anything is saved, and your parts (signing in, paying) stay steps for you.",
         proposal.like_title
     )
+}
+
+/// Whether two Requests are the same work: the title (see [`work_key`])
+/// or the same steps, two or more. Pure.
+fn same_work(a: &LocalRequest, b: &LocalRequest) -> bool {
+    let work = work_key(&a.title);
+    let plan = plan_key(a);
+    (!work.is_empty() && work_key(&b.title) == work) || (plan.len() >= 2 && plan_key(b) == plan)
+}
+
+fn has_self_step(request: &LocalRequest) -> bool {
+    request
+        .steps
+        .iter()
+        .any(|s| super::self_step::is_self_step(s.kind, &s.target))
+}
+
+/// The self-step prompt's hint to propose a playbook, when `request` has a
+/// step the Chief of Staff does itself and earlier `done` Requests (newest
+/// first) were the same work, done by it too. Pure.
+pub fn playbook_hint(request: &LocalRequest, earlier: &[LocalRequest]) -> Option<String> {
+    if !has_self_step(request) {
+        return None;
+    }
+    let like: Vec<&LocalRequest> = earlier
+        .iter()
+        .filter(|e| e.id != request.id && e.created_at < request.created_at)
+        .filter(|e| e.status == RequestStatus::Done && has_self_step(e))
+        .filter(|e| same_work(request, e))
+        .collect();
+    let first = like.first()?;
+    let count = like.len() + 1;
+    Some(format!(
+        "
+
+You did this kind of work yourself before (\"{}\"; {count} similar tasks with this one). Once your step is done, if none of your playbooks covers it and `my-notes/suggestions.md` doesn't have it yet (open, done or dismissed), add one line there: `- [ ] Add a playbook \"<name>\" (from {count} similar tasks)`. Draft it with `skill_propose` only when the user ticks it or says yes.
+",
+        first.title
+    ))
+}
+
+/// [`playbook_hint`] for a stored Request
+pub fn playbook_hint_for(conn: &Connection, request: &LocalRequest) -> Option<String> {
+    if !has_self_step(request) {
+        return None;
+    }
+    playbook_hint(request, &earlier_done(conn, request).ok()?)
 }
 
 /// Requests that ended `done` before `request` started, newest first
@@ -297,6 +350,35 @@ mod tests {
             20,
         );
         assert_eq!(proposal(&other, &[one]), None);
+    }
+
+    #[test]
+    fn work_the_chief_of_staff_repeats_itself_hints_a_playbook() {
+        let a = done("r1", "Pay the Acme bill for October", BILL, 10);
+        let b = done("r2", "Pay the Acme bill for November", BILL, 20);
+        let mut now = done("r3", "Pay the Acme bill for December", BILL, 30);
+        now.status = RequestStatus::Running;
+        let hint = playbook_hint(&now, &[b.clone(), a.clone()]).unwrap();
+        assert!(hint.contains("\"Pay the Acme bill for November\""));
+        assert!(hint.contains("(from 3 similar tasks)"));
+        assert!(hint.contains("`- [ ] Add a playbook"));
+        assert!(hint.contains("`skill_propose`") && hint.contains("dismissed"));
+        // The first time: nothing to go on
+        assert_eq!(playbook_hint(&now, &[]), None);
+        // Work it didn't do itself, now or before
+        let agent = &[(PlanStepKind::LocalAgent, "writer")];
+        let theirs = done("r4", "Pay the Acme bill", agent, 40);
+        assert_eq!(playbook_hint(&theirs, std::slice::from_ref(&a)), None);
+        let mine = done("r5", "Pay the Acme bill", BILL, 50);
+        assert_eq!(playbook_hint(&mine, &[theirs]), None);
+        // Different work, or failed before
+        assert_eq!(
+            playbook_hint(&now, &[done("r6", "Book a dentist", BILL, 5)]),
+            None
+        );
+        let mut failed = a;
+        failed.status = RequestStatus::Failed;
+        assert_eq!(playbook_hint(&now, &[failed]), None);
     }
 
     #[test]

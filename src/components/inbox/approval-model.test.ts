@@ -83,6 +83,17 @@ describe('approvalSummary', () => {
     expect(approvalSummary(tool, args)).toEqual({ key, values })
   })
 
+  it('says whether a proposed playbook is new or replaces one', () => {
+    const args = { name: 'pay-bills', body: '1. Pay.' }
+    expect(approvalSummary('skill_propose', args)).toEqual({
+      key: 'proposePlaybook',
+      values: { name: 'pay-bills' },
+    })
+    expect(
+      approvalSummary('skill_propose', { ...args, current: { body: 'x' } })
+    ).toEqual({ key: 'updatePlaybook', values: { name: 'pay-bills' } })
+  })
+
   it('keeps the sentence to one short line', () => {
     const summary = approvalSummary('shell', {
       cmd: `echo\n${'x'.repeat(300)}`,

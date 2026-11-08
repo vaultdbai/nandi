@@ -40,6 +40,8 @@ import {
 import { AccessRequestCard } from '@/components/connectors/AccessRequestCard'
 import { formatJson } from './format-json'
 import { HandOverCard } from './HandOverCard'
+import { parsePlaybookProposal } from './playbook-proposal-model'
+import { PlaybookProposalPreview } from './PlaybookProposalPreview'
 
 type ApprovalRequestMessage = Extract<ChatMessage, { kind: 'approval' }>
 
@@ -127,6 +129,8 @@ function ToolApprovalCard({
   }
   // Studio starting a Request: the steps it would take
   const plan = approvalPlan(message.tool, message.args)
+  // An agent proposing a playbook: the playbook, and what it replaces
+  const playbook = parsePlaybookProposal(message.tool, message.args)
   const clock = approvalClock(now, message.createdAt, message.expiresAt)
 
   // The status changes when Rust's approval_resolved event arrives; until
@@ -182,6 +186,12 @@ function ToolApprovalCard({
       {plan && (
         <section aria-label={t('approval.plan')}>
           <ActionPlanPreview plan={plan} />
+        </section>
+      )}
+
+      {playbook && (
+        <section aria-label={t('approval.playbook.label')}>
+          <PlaybookProposalPreview proposal={playbook} />
         </section>
       )}
 

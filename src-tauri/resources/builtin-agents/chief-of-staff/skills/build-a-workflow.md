@@ -28,6 +28,14 @@ When a Request finishes well and the same work (or the same plan) finished well 
    - **Something new:** ask Studio (Ask) to build it, in the user's words: what triggers it, the steps, who does each step.
 4. Add a schedule only if the user wants one. Studio sets up the trigger.
 
+## Or a playbook
+
+When you did the same work yourself twice and it needs judgement at each step (a workflow would not fit), propose a playbook instead: your own steps for that work, read next time with `skill_get`. Nandi tells you in the step's prompt when it sees that.
+
+1. Check your playbooks (`skill_list`) and `my-notes/suggestions.md`. If one covers it, or the line is there (open, done or dismissed), stop.
+2. Add one line: `- [ ] Add a playbook "<name>" (from <n> similar tasks)`. Say so in one line.
+3. When the user ticks it or says yes, draft it with `skill_propose`: the steps you took, the user's preferences, their parts as hand-overs. They approve before it's saved.
+
 ## What makes a good workflow
 
 - Each step has one owner: an agent, a person, or the user.

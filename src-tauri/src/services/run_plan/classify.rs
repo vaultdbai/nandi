@@ -6,6 +6,7 @@
 //! | Call                                                   | Effect                   |
 //! | ------------------------------------------------------ | ------------------------ |
 //! | plan and playbook tools, reads, mail, people, search   | none                     |
+//! | `skill_propose` (it always asks the user itself)       | none                     |
 //! | browser reading or moving between pages                | none                     |
 //! | browser clicking, typing, files                         | changes                  |
 //! | browser submit, payment, secret, hand-over             | risky (the user's)       |
@@ -115,6 +116,10 @@ pub fn effect(tool: &str, args: &Value, browser: Option<Action>) -> Effect {
             return Effect::Risky(Risk::Delegate)
         }
         crate::services::requests::tool::UPDATE => return Effect::Changes,
+        // Proposing a playbook: the approval card is the user's decision,
+        // and it writes only the agent's own guides, so "remember how I do
+        // this" needs no plan and no approval step in one
+        crate::services::playbooks::PROPOSE => return Effect::None,
         _ => {}
     }
     if !FILE_CHANGE_TOOLS.contains(&base_tool_name(tool)) {
@@ -198,6 +203,12 @@ mod tests {
             (
                 "skill_get",
                 json!({ "name": "pay-a-bill" }),
+                None,
+                Effect::None,
+            ),
+            (
+                "skill_propose",
+                json!({ "name": "pay-bills", "body": "1. Pay from Chase." }),
                 None,
                 Effect::None,
             ),

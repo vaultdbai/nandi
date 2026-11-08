@@ -9,6 +9,10 @@ import {
   agentLabel,
   parseAccessRequest,
 } from '@/components/connectors/access-model'
+import {
+  parsePlaybookProposal,
+  PROPOSE_PLAYBOOK_TOOL,
+} from '@/components/agent-console/playbook-proposal-model'
 
 type Args = unknown
 
@@ -32,6 +36,8 @@ export interface ApprovalSummary {
     | 'siteAccess'
     | 'handOver'
     | 'pilotSetup'
+    | 'proposePlaybook'
+    | 'updatePlaybook'
     | 'other'
   values: Record<string, string>
 }
@@ -174,6 +180,13 @@ export function approvalSummary(tool: string, args: Args): ApprovalSummary {
   }
   // The connector actions the demo agents ask for, in their own words
   switch (tool) {
+    case PROPOSE_PLAYBOOK_TOOL:
+      return {
+        key: parsePlaybookProposal(tool, args)?.current
+          ? 'updatePlaybook'
+          : 'proposePlaybook',
+        values: { name: value('name') },
+      }
     case 'github__post_review':
       return { key: 'postReview', values: { url: value('url') } }
     case 'aws__batch_restart':
