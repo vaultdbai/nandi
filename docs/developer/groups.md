@@ -100,6 +100,13 @@ A copy that doesn't read at all is skipped and logged (its members are unknown);
 
 `Registered { visibility }` is kept in the client and exposed as `RelayStatus.visibility` (`company` | `groups`, `None` before registering). With `groups`, People shows a note. The relay answers a submission to someone outside my groups with an `Error` `no_shared_group` and the task's `refused` event; the client remembers the error's message and turns that refusal into `no_shared_group: You don't share a group with them on this relay` (after `REFUSED_BY_RELAY`), which `friendly-error.ts` maps to `errors.noSharedGroup` (`NO_SHARED_GROUP` is exported to `bindings.ts`).
 
+## Owner decisions (2026-11-08)
+
+- Outside a group's `hours:`, a request **waits** for approval; it isn't refused.
+- Joining a group at **Fully automated** counts as trusting its members: their clean requests skip the per-agent "Ask" trust rule.
+- Group copies in `.nandi/groups/` are part of the gold copy: staged and committed with the rest of the repo, and backed up with it.
+- Run-level group policy and a real "Send me info" intake come **later** (the two gaps below).
+
 ## Gaps
 
 - **Run-level policy.** A group policy's `tools:`, `connectors:`, `network:` blocks are validated but not applied to the run a group request starts: policies narrow per agent (`services::policies`), and runs carry no record of which request or group started them (the same reason `workflow:` targets match nothing). Enforcement is at intake.
