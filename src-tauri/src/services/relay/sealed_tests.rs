@@ -37,6 +37,20 @@ const SECRET: &[u8] = b"sealed-secret";
 /// In everything a task carries; must never be readable on the way
 const MARKER: &str = "PLAINTEXT-MARKER-a91f04";
 
+/// `file`'s bytes. On Windows the running relay's SQLite locks can refuse
+/// a read for a moment (os error 33), so a locked read is tried again.
+fn read_unlocked(file: &Path) -> Vec<u8> {
+    for _ in 0..50 {
+        match std::fs::read(file) {
+            Err(e) if e.raw_os_error() == Some(33) => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            read => return read.unwrap(),
+        }
+    }
+    std::fs::read(file).unwrap()
+}
+
 /// A WebSocket tap in front of a relay: it keeps every text frame either
 /// way
 struct Tap {
@@ -383,7 +397,7 @@ async fn a_task_its_questions_and_its_result_cross_the_relay_sealed() {
     }
     // Nor is it in the relay's database or WAL
     for file in walk(tmp.path()) {
-        let bytes = std::fs::read(&file).unwrap();
+        let bytes = read_unlocked(&file);
         assert!(
             !bytes.windows(MARKER.len()).any(|w| w == MARKER.as_bytes()),
             "{} holds the marker",
