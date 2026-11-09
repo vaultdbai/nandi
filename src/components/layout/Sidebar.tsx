@@ -23,6 +23,7 @@ import {
   navSection,
   useNavigationStore,
   type NavSection,
+  type View,
 } from '@/store/navigation-store'
 import { useNavTreeStore } from '@/store/nav-tree-store'
 import {
@@ -229,7 +230,7 @@ function NavItem({
           aria-current={current ? 'page' : undefined}
           aria-expanded={branch ? open : undefined}
           aria-label={
-            node.badge === undefined
+            node.badge === undefined || node.badgeView
               ? undefined
               : t('nav.withBadge', { label, count: node.badge })
           }
@@ -257,7 +258,7 @@ function NavItem({
             />
           )}
           <span className="min-w-0 flex-1 truncate">{label}</span>
-          {node.badge !== undefined && (
+          {node.badge !== undefined && !node.badgeView && (
             <span
               aria-hidden
               className="rounded-full bg-warning px-1.5 text-xs font-semibold text-black/80 tabular-nums"
@@ -277,6 +278,16 @@ function NavItem({
           )}
           {node.id === 'network' && <NetworkDot />}
         </button>
+        {node.badge !== undefined && node.badgeView && (
+          <BadgeButton
+            count={node.badge}
+            view={node.badgeView}
+            label={t('nav.withBadge', {
+              label: t('nav.tree.inbox'),
+              count: node.badge,
+            })}
+          />
+        )}
       </div>
       {open && (
         <ul className="mt-0.5 flex flex-col gap-0.5">
@@ -294,6 +305,29 @@ function NavItem({
         </ul>
       )}
     </li>
+  )
+}
+
+/** A count that opens its own page (Home's: the Inbox) */
+function BadgeButton({
+  count,
+  view,
+  label,
+}: {
+  count: number
+  view: View
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={() => useNavigationStore.getState().navigate(view)}
+      className="me-2 rounded-full bg-warning px-1.5 text-xs font-semibold text-black/80 tabular-nums outline-none hover:brightness-95 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+    >
+      {count}
+    </button>
   )
 }
 

@@ -7,12 +7,7 @@
 import type { WorkItem, WorkState } from '@/lib/bindings'
 import { workItemView } from '@/lib/work'
 import type { View } from '@/store/navigation-store'
-import {
-  startOfDay,
-  type ActivityFilters,
-  type ActivityRow,
-  type ActivityStatus,
-} from './activity-model'
+import type { ActivityRow, ActivityStatus } from './activity-model'
 
 /** Recent covers this long */
 export const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000
@@ -179,50 +174,4 @@ export function buildHomeFeed(input: {
 /** A running row that hasn't moved in a while */
 export function isStale(row: HomeRow, now: number): boolean {
   return !ENDED.has(row.status) && now - row.updatedAt > STALE_AFTER_MS
-}
-
-export interface HomeTile {
-  id: 'runsToday' | 'failed' | 'waiting'
-  value: number
-  /** Where the tile goes: All activity, filtered */
-  filters: ActivityFilters | null
-}
-
-/**
- * At most three tiles, and none until there's something to count (a
- * fresh install shows Get started, never zeros)
- */
-export function homeTiles(input: {
-  activity: ActivityRow[]
-  work: WorkItem[]
-  waiting: number
-  now: number
-}): HomeTile[] {
-  const { activity, work, waiting, now } = input
-  const today = startOfDay(now)
-  const runsToday = activity.filter(
-    row => row.direction === 'local' && row.startedAt >= today
-  ).length
-  const failed =
-    activity.filter(
-      row =>
-        row.status === 'failed' &&
-        (row.endedAt ?? row.startedAt) >= now - RECENT_WINDOW_MS
-    ).length +
-    work.filter(
-      item =>
-        item.state === 'failed' &&
-        item.kind !== 'task' &&
-        item.updatedAt >= now - RECENT_WINDOW_MS
-    ).length
-  if (runsToday + failed + waiting === 0) return []
-  return [
-    { id: 'runsToday', value: runsToday, filters: { range: 'today' } },
-    {
-      id: 'failed',
-      value: failed,
-      filters: { range: 'today', status: 'failed' },
-    },
-    { id: 'waiting', value: waiting, filters: null },
-  ]
 }

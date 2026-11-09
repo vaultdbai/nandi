@@ -227,10 +227,9 @@ describe('AppShell', () => {
       })
       await renderShell()
 
-      const recent = await screen.findByRole('region', { name: 'Recent' })
-      await user.click(
-        await within(recent).findByRole('button', { name: /Weekly summary/ })
-      )
+      // Finished work is in the work tray, on every page
+      const done = screen.getByTestId('tray-done')
+      await user.click(await within(done).findByText('Weekly summary'))
 
       expect(
         await screen.findByRole('heading', {

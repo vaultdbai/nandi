@@ -326,14 +326,14 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - Linux: a toolbar under the native decorations.
   - Browser: the Linux layout.
 
-  The bar is a drag region. Its left side has a sidebar toggle. The center has the bull and "Nandi". The right side has the Update button, the account menu, Settings and the right-panel toggle.
+  The bar is a drag region. Its left side has a sidebar toggle. The center has the bull and "Nandi". The right side has the Update button, the account menu and the work tray toggle. Settings is in the sidebar and on Cmd/Ctrl+, (no title-bar gear).
 
 - **Where:** `src/components/titlebar/TitleBar.tsx`, `TitleBarContent.tsx`, `WindowsWindowControls.tsx`, `MacOSWindowControls.tsx`, `LinuxTitleBar.tsx`, `src/lib/commands/window-commands.ts`; decorations in `src-tauri/tauri.{windows,macos,linux}.conf.json`; `src/hooks/useSquareCornersEffect.ts` (square corners when fullscreen).
 - **Preconditions:** A desktop build.
 - **Steps:**
   1. On Windows, click Minimize, Maximize, Restore and Close.
   2. Drag the window by the bar.
-  3. Click the Settings gear.
+  3. Press Ctrl+,.
 - **Expected:**
   - (1) The window acts on each click. Close hides the window (SH-03).
   - (2) The window moves.
@@ -389,9 +389,9 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - The current view: at least 35%.
   - The work tray (SH-36): default 18%, 14–28%.
 
-  Cmd/Ctrl+1, the title-bar button and View › Toggle Left Sidebar show or hide the sidebar. Cmd/Ctrl+2, the title-bar button on the right, the tray's own close button and View › Toggle Work Tray show or hide the tray. Visibility is session-only (it resets on relaunch).
+  Cmd/Ctrl+1, the title-bar button and View › Toggle Left Sidebar show or hide the sidebar. Cmd/Ctrl+2, the title-bar button on the right, the tray's own close button and View › Toggle Work Tray show or hide the tray. Both are saved in this machine's preferences (`preferences.json`: `sidebarVisible`, `workTrayVisible`), never in the repo. Until the user shows or hides the tray, it follows the window: hidden below 1000px wide, shown above.
 
-- **Where:** `src/components/layout/AppShell.tsx`, `LeftSideBar.tsx`, `MainPane.tsx`, `src/components/tray/WorkTray.tsx`, `src/store/ui-store.ts`.
+- **Where:** `src/components/layout/AppShell.tsx`, `layout-model.ts` (`paneLayout`, `NARROW_WINDOW_PX`), `LeftSideBar.tsx`, `MainPane.tsx`, `src/components/tray/WorkTray.tsx`, `src/store/ui-store.ts`, `src/hooks/use-pane-preferences.ts`, `src/services/preferences.ts` (`savePaneLayout`); `AppPreferences` in `src-tauri/src/types.rs`.
 - **Preconditions:** None.
 - **Steps:**
   1. Press Ctrl+1 twice.
@@ -399,14 +399,16 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   3. Drag the handles between the panes.
 - **Expected:** (1) The sidebar hides, then shows. (2) The tray hides, then shows. (3) The pane widths change within their limits.
 - **Edge / negative cases:**
-  - Relaunch: both side panes are visible again (not persisted).
-- **Automation:** Covered by: `src/store/ui-store.test.ts`, `src/components/layout/AppShell.test.tsx` | Layer: unit | Gap: resizing is manual.
+  - Relaunch: each pane is as the user left it.
+  - A narrow window (under 1000px) on first launch: the tray starts hidden; widening shows it until the user picks.
+  - Saving fails: the panes still toggle; no toast.
+- **Automation:** Covered by: `src/store/ui-store.test.ts`, `src/components/layout/AppShell.test.tsx`, `layout-model.test.ts`, `src/hooks/use-pane-preferences.test.tsx`, `services/preferences.rs` (`theme_and_language_live_in_settings_yaml`) | Layer: unit | Gap: resizing is manual.
 - **Needs relay:** no
 - **Status:** Shipped
 
 ### SH-08 — Sidebar: the eight pages
 
-- **What:** The sidebar is a tree with eight top items: Home, Ask, Notes, Agents, Automations, Library, Network, Settings. Home has two children: Inbox (with the same count as Home) and All activity. Each opens its page. The current page is highlighted, and a parent stays bold while a child is open. Views without their own node (a run, a request, a member profile) light their page.
+- **What:** The sidebar is a tree with eight top items: Home, Ask, Notes, Agents, Automations, Library, Network, Settings. Home has two children: Inbox (with the same count as Home) and All activity. Home's count is its own button and opens the Inbox page; the rest of the row opens Home. Each opens its page. The current page is highlighted, and a parent stays bold while a child is open. Views without their own node (a run, a request, a member profile) light their page.
 - **Where:** `src/components/layout/Sidebar.tsx`, `nav-tree.ts` (`buildNavTree`, `activePath`), `src/store/navigation-store.ts` (`NAV_SECTIONS`, `SECTION_VIEWS`, `navSection`).
 - **Preconditions:** None.
 - **Steps:**
@@ -531,27 +533,23 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **What:** Home is one scrolling page with:
   - "Ask Nandi…": typed text is sent to Ask, and empty text opens Ask.
   - A network line: "Connected · n people online", or "Not connected." with "Join a network".
-  - Up to three tiles: "Runs today", "Failed in 24 h", "Waiting on you". Each opens All activity filtered (waiting opens the Inbox).
+  - The email to-do and the Chief of Staff's digest.
   - The Inbox.
-  - Running: step n of m, elapsed time, a stale flag after 10 minutes without updates.
-  - Recent: the last 24 h, up to 8, with an "All activity" button.
+  - Recent changes.
 
-  When nothing waits or runs, it says "Nothing needs you. Nothing is running."
+  Running and finished work are in the work tray (SH-36) on every page, and All activity is in the sidebar. When nothing waits, it says "Nothing needs you."
 
-- **Where:** `src/components/home/HomeView.tsx`, `HomeRows.tsx`, `home-model.ts` (`buildHomeFeed`, `homeTiles`, `RECENT_WINDOW_MS`, `MAX_RECENT`, `STALE_AFTER_MS`), `src/hooks/useHome.ts`, `src/components/inbox/Inbox.tsx`.
+- **Where:** `src/components/home/HomeView.tsx`, `HomeRows.tsx`, `home-model.ts` (`buildHomeFeed`, `RECENT_WINDOW_MS`, `MAX_RECENT`, `STALE_AFTER_MS`), `src/hooks/useHome.ts`, `src/components/inbox/Inbox.tsx`.
 - **Preconditions:** Some runs, delegations or approvals.
 - **Steps:**
   1. Type "summarize today" in Ask Nandi and press Enter.
   2. Start a long workflow.
-  3. Click the "Failed in 24 h" tile.
 - **Expected:**
   - (1) Ask opens with the message sent.
-  - (2) The workflow is listed under Running with its step.
-  - (3) All activity, filtered to today and failed.
+  - (2) Home doesn't list it; the work tray shows it under Working.
 - **Edge / negative cases:**
-  - No activity: no tiles (never zeros).
   - An approval decided elsewhere disappears on the next event.
-  - A step waiting for approval is in the Inbox, not under Running.
+  - A step waiting for approval is in the Inbox, not under Working.
 - **Automation:** Covered by: `src/components/home/Home.test.tsx`, `home-model.test.ts`, `activity-model.test.ts`, `AppShell.test.tsx` ("Home's Ask Nandi sends the text to Studio") | Layer: unit | Gap: the Inbox decisions belong to the inbox/approvals area.
 - **Needs relay:** no
 - **Status:** Shipped
@@ -566,11 +564,11 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   2. Click each card's button.
   3. Hide Get started.
 - **Expected:**
-  - (1) Three cards and no tiles.
+  - (1) Three cards.
   - (2) Starter packs, Ask and Network › Connection open.
   - (3) It stays hidden after a relaunch.
 - **Edge / negative cases:** Cleared localStorage brings it back.
-- **Automation:** Covered by: `Home.test.tsx` ('shows Get started only, with no zero tiles', 'sends each Get started card to its page', 'offers to connect a model…'), `dashboard-model.test.ts`, `src/lib/dismissals.test.ts`, `AppShell.test.tsx` | Layer: unit | Gap: none.
+- **Automation:** Covered by: `Home.test.tsx` ('shows Get started only', 'sends each Get started card to its page', 'offers to connect a model…'), `dashboard-model.test.ts`, `src/lib/dismissals.test.ts`, `AppShell.test.tsx` | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -639,7 +637,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Edge / negative cases:**
   - An empty group says so in one muted line ("Nothing running").
   - No relay: the tray works the same; person-to-person rows just never appear.
-- **Automation:** Covered by: `src/components/tray/tray-model.test.ts` | Layer: unit | Gap: no render test of the tray yet.
+- **Automation:** Covered by: `src/components/tray/tray-model.test.ts`, `WorkTray.test.tsx` (empty groups, ✓ and ✗ decide, rows and All open, the close button), `AppShell.test.tsx` | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 

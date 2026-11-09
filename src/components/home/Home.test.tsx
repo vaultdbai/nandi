@@ -17,7 +17,9 @@ import {
 import { emitMockEvent } from '@/test/mock-events'
 import { useAgentStore } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
+import { useHomeFeed } from '@/hooks/useHome'
 import { AllActivityView } from './AllActivityView'
+import { RecentRow, RunningRow } from './HomeRows'
 import { HomeView } from './HomeView'
 
 const ok = (data: unknown) => vi.fn().mockResolvedValue({ status: 'ok', data })
@@ -75,6 +77,33 @@ const approval = {
   expiresAt: NOW + 12 * MIN,
 }
 
+/** Running and Recent rows from Home's feed, as the companion shows them */
+function FeedRows() {
+  const feed = useHomeFeed()
+  return (
+    <>
+      <section aria-label="Running">
+        <ul>
+          {feed.running.map(row => (
+            <li key={row.id}>
+              <RunningRow row={row} now={feed.now} />
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section aria-label="Recent">
+        <ul>
+          {feed.recent.map(row => (
+            <li key={row.id}>
+              <RecentRow row={row} />
+            </li>
+          ))}
+        </ul>
+      </section>
+    </>
+  )
+}
+
 /** Something has happened: the full Home, not Get started */
 const busy = () =>
   useAgentStore.setState({
@@ -109,13 +138,12 @@ beforeEach(() => {
 })
 
 describe('Home, first run', () => {
-  it('shows Get started only, with no zero tiles', async () => {
+  it('shows Get started only', async () => {
     render(<HomeView />)
     expect(await screen.findByText('Get started')).toBeInTheDocument()
     expect(screen.getByTestId('get-started-packs')).toBeInTheDocument()
     expect(screen.getByTestId('get-started-studio')).toBeInTheDocument()
     expect(screen.getByTestId('get-started-network')).toBeInTheDocument()
-    expect(screen.queryByTestId(/home-tile-/)).toBeNull()
     expect(screen.queryByText(/Recent/)).toBeNull()
     expect(screen.queryByText(/New Agent/)).toBeNull()
   })
@@ -197,21 +225,14 @@ describe('Home, first run', () => {
 describe('Home, with activity', () => {
   beforeEach(busy)
 
-  it('says when nothing needs you, and links to All activity', async () => {
-    const user = userEvent.setup()
+  it('says when nothing needs you', async () => {
     render(<HomeView />)
-    expect(
-      await screen.findByText('Nothing needs you. Nothing is running.')
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Nothing needs you.')).toBeInTheDocument()
     // No relay: one line, never "Relay unavailable"
     expect(screen.getByTestId('home-network')).toHaveTextContent(
       'Not connected.'
     )
     expect(screen.queryByText(/unavailable/i)).toBeNull()
-    await user.click(screen.getByRole('button', { name: /All activity/ }))
-    expect(useNavigationStore.getState().current).toEqual({
-      kind: 'home-activity',
-    })
   })
 
   it('names held work and questions from other people in plain words', async () => {
@@ -276,8 +297,16 @@ describe('Home, with activity', () => {
       listWork: ok([item({})]),
       getRelayStatus: ok(relay(true)),
     })
-    render(<HomeView />)
-    const running = await screen.findByRole('region', { name: 'Running · 1' })
+    render(
+      <>
+        <HomeView />
+        <FeedRows />
+      </>
+    )
+    // Running work is in the tray (and the companion), not on Home
+    expect(screen.queryByText(/Running ·/)).toBeNull()
+    const running = await screen.findByRole('region', { name: 'Running' })
+    await within(running).findByText('Daily digest')
     expect(running).toHaveTextContent('Daily digest')
     expect(running).toHaveTextContent('step 2 of 4')
     expect(await screen.findByTestId('home-network')).toHaveTextContent(
@@ -317,7 +346,7 @@ describe('Home, with activity', () => {
         total: 1,
       }),
     })
-    render(<HomeView />)
+    render(<FeedRows />)
     const recent = await screen.findByRole('region', { name: 'Recent' })
     await within(recent).findByText('Draft the weekly email')
     expect(recent).toHaveTextContent('To Priya')
@@ -338,7 +367,7 @@ describe('Home, with activity', () => {
       listWork: ok([item({ state: 'failed', updatedAt: NOW - MIN })]),
       runWorkflow: ok('run-2'),
     })
-    render(<HomeView />)
+    render(<FeedRows />)
     const recent = await screen.findByRole('region', { name: 'Recent' })
     await user.click(
       await within(recent).findByRole('button', { name: 'Retry' })
@@ -351,31 +380,6 @@ describe('Home, with activity', () => {
     await waitFor(() =>
       expect(mocks().runWorkflow).toHaveBeenCalledWith('digest')
     )
-  })
-
-  it('shows at most three tiles, linked to filtered activity', async () => {
-    const user = userEvent.setup()
-    Object.assign(commands, {
-      listAllRuns: ok({
-        rows: [
-          run('a', 'writer', {
-            status: 'failed',
-            startedAt: NOW - MIN,
-            endedAt: NOW,
-          }),
-        ],
-        total: 1,
-      }),
-    })
-    render(<HomeView />)
-    const failed = await screen.findByTestId('home-tile-failed')
-    expect(failed).toHaveTextContent('1')
-    expect(screen.getAllByTestId(/home-tile-/)).toHaveLength(3)
-    await user.click(failed)
-    expect(useNavigationStore.getState().current).toEqual({
-      kind: 'home-activity',
-      filters: { range: 'today', status: 'failed' },
-    })
   })
 })
 
