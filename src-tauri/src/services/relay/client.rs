@@ -416,6 +416,10 @@ impl Inner {
         }
         match self.query_keys(instance).await? {
             Some(keys) => self.learn(instance, &keys),
+            // A groups relay hides the keys of people we share no group with
+            None if self.lock().visibility == Some(super::RelayVisibility::Groups) => {
+                Err(no_shared_group())
+            }
             None => Err(sealing::missing(instance)),
         }
     }

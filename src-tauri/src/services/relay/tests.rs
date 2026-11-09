@@ -1383,3 +1383,36 @@ async fn on_the_real_relay_a_member_verifies_and_enforces_the_policy() {
         text
     );
 }
+
+#[tokio::test]
+async fn on_a_groups_relay_someone_outside_our_groups_is_named_as_such() {
+    use nandi_protocol::{Visibility, NO_SHARED_GROUP};
+    use nandi_seal::DeviceKeys;
+    let config = RelayServerConfig::new(SECRET.to_vec()).with_visibility(Visibility::Groups);
+    let addr = serve_with(local(), config).await.unwrap();
+    let connect = |me: &'static str| async move {
+        let keys = DeviceKeys::generate().unwrap().export_secret().to_string();
+        let client = WsRelayClient::with_options(
+            None,
+            me,
+            ClientOptions {
+                device_keys: Some(Arc::new(move || {
+                    DeviceKeys::import_secret(&keys).map_err(|e| e.to_string())
+                })),
+                ..ClientOptions::default()
+            },
+        );
+        let token = issue_instance_token(SECRET, me);
+        client
+            .connect(&format!("ws://{addr}/relay?token={token}"), me)
+            .await
+            .unwrap();
+        client.register(Vec::new()).await.unwrap();
+        client
+    };
+    let alice = connect("alice-1").await;
+    let _bob = connect("bob-1").await;
+    // Bob published keys, but the relay hides them from Alice: not "update Nandi"
+    let err = alice.public_keys_of("bob-1").await.unwrap_err();
+    assert!(err.starts_with(NO_SHARED_GROUP), "{err}");
+}
