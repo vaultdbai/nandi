@@ -1243,6 +1243,6 @@ Shared preconditions used below:
 - User guide §5 "Editing an agent" mentions **Sync now** in the account menu and "Start, stop and restart a container agent from the page's ⋯ menu"; the latter is shipped, the former belongs to the repo/account section.
 - No status filter for **Compacted** or **Queued** runs on the agent Runs tab (server accepts them).
 - No component tests for `AgentsListView.tsx`, `AgentView.tsx`, `AgentSettingsTab.tsx`, `NewAgentDialog.tsx`, `DeleteAgentDialog.tsx`, `ApprovalRequestCard.tsx`, `ToolCallCard.tsx`, `MarkdownContent.tsx`, `ProviderStatePanel.tsx`, `ReassignMenu.tsx`.
-- Per-agent Docker workloads (custom images built from a Dockerfile, ports, env, volumes, health checks, job mode): planned in `docs/tasks-todo/task-3-agent-docker-runtimes.md`, not implemented.
+- Per-agent Docker workloads (custom images built from a Dockerfile, ports, env, volumes, health checks, job mode): planned in `docs/tasks-todo/task-6-agent-docker-runtimes.md`, not implemented.
 - Policies: runs use them (PO-13) and the agent page shows them (PO-11). Approval decisions and policy refusals are in `decisions.log` (PO-14). Still open: `workflow:` targets (see [policies.md](./policies.md) "Gaps and planned"). Raw API keys in harness containers wait for model access through the gateway (`docs/tasks-todo/task-x-enforced-policies.md`, Wave 3).
 - Tool-search loaded tools and open clarification rounds are kept in memory only; a restart drops them (documented limitation in `tool_search.rs` and `a2a/clarification.rs`).
