@@ -11,6 +11,7 @@
 //! `services::intake::thread`), with the same decision tools.
 
 pub mod audit;
+pub mod decisions;
 pub mod item;
 pub mod thread;
 pub mod tool;

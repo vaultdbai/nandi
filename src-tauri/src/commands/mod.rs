@@ -19,6 +19,7 @@ pub mod chat;
 pub mod companion;
 pub mod config;
 pub mod connectors;
+pub mod decisions;
 pub mod delegation;
 pub mod delegation_clarification;
 pub mod docker;

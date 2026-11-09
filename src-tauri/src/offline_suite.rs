@@ -48,6 +48,7 @@ const SCREEN_ROUTES: &[&str] = &[
     "companion/snapshot",
     "config/llm",
     "connectors",
+    "decisions/months",
     "default-model",
     "delegation/history",
     "delegation/pending-clarifications",

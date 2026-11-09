@@ -21,6 +21,7 @@ mod companion;
 // Wave EF
 mod config;
 mod connectors;
+mod decisions;
 mod delegation;
 // Wave final
 mod delegation_clarification;
@@ -82,6 +83,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
             "/api",
             routes::api()
                 .merge(marketplace::api())
+                .merge(decisions::api())
                 .merge(mascot::api())
                 .merge(triggers::api())
                 .merge(repo::api())

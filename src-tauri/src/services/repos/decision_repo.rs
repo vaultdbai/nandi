@@ -10,7 +10,9 @@ use std::sync::{Arc, Mutex};
 use super::fs_atomic::write_if_changed;
 use super::git::GitIndex;
 use super::{RepoError, RepoLayout, RepoResult};
-use crate::services::domain::decision::{is_month, month_header, DecisionEntry};
+use crate::services::domain::decision::{
+    is_month, month_header, parse_month, DecisionEntry, DecisionRecord,
+};
 use crate::services::domain::DomainError;
 
 /// One append at a time (read, add, write), across every repository clone
@@ -63,7 +65,6 @@ impl DecisionRepository {
     }
 
     /// One month's file as written; `None` when nothing was decided then
-    #[cfg(test)]
     pub fn read(&self, month: &str) -> RepoResult<Option<String>> {
         let path = self.path(month)?;
         match std::fs::read_to_string(&path) {
@@ -71,6 +72,40 @@ impl DecisionRepository {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(RepoError::io(&path, e)),
         }
+    }
+
+    /// The months that have a file (`2026-11`), newest first. Other files
+    /// in the folder are left alone.
+    pub fn months(&self) -> RepoResult<Vec<String>> {
+        let dir = self.dir();
+        let read = match std::fs::read_dir(&dir) {
+            Ok(read) => read,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(RepoError::io(&dir, e)),
+        };
+        let mut months: Vec<String> = read
+            .filter_map(Result::ok)
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                let month = name.strip_suffix(".md")?;
+                is_month(month).then(|| month.to_string())
+            })
+            .collect();
+        months.sort_by(|a, b| b.cmp(a));
+        Ok(months)
+    }
+
+    /// One month's decisions, oldest first as written; an entry a hand
+    /// edit left unreadable is skipped and logged
+    pub fn entries(&self, month: &str) -> RepoResult<Vec<DecisionRecord>> {
+        let Some(text) = self.read(month)? else {
+            return Ok(Vec::new());
+        };
+        let parsed = parse_month(&text);
+        for heading in &parsed.skipped {
+            log::warn!("Skipped an unreadable entry in decisions/{month}.md: '{heading}'");
+        }
+        Ok(parsed.entries)
     }
 }
 
@@ -128,5 +163,31 @@ mod tests {
             .get_path(std::path::Path::new(".nandi/decisions/2026-11.md"), 0)
             .is_some());
         assert!(decisions.read("../x").is_err());
+
+        assert_eq!(decisions.months().unwrap(), ["2026-12", "2026-11"]);
+        let read = decisions.entries("2026-11").unwrap();
+        let decided: Vec<_> = read.iter().map(|r| r.decision.as_str()).collect();
+        assert_eq!(decided, ["approved", "refused"]);
+        assert_eq!(read[0].at, 1_794_148_325_000);
+        assert!(decisions.entries("2027-01").unwrap().is_empty());
+    }
+
+    #[test]
+    fn months_skip_other_files_and_an_empty_repo_has_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        git2::Repository::init(tmp.path()).unwrap();
+        let repos = Repos::new(RepoLayout::new(tmp.path(), tmp.path().join("trash")));
+        let decisions = &repos.decisions;
+        assert!(decisions.months().unwrap().is_empty());
+        std::fs::create_dir_all(decisions.dir()).unwrap();
+        std::fs::write(decisions.dir().join("notes.md"), "hi").unwrap();
+        std::fs::write(decisions.dir().join("2026-10.txt"), "hi").unwrap();
+        std::fs::write(
+            decisions.dir().join("2026-10.md"),
+            "# Decisions, 2026-10\n\n## broken\n\nno fields\n",
+        )
+        .unwrap();
+        assert_eq!(decisions.months().unwrap(), ["2026-10"]);
+        assert!(decisions.entries("2026-10").unwrap().is_empty());
     }
 }
