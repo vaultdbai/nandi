@@ -47,7 +47,7 @@ Agents often answer with a file: a report PDF, a CSV, a chart, a draft document.
 
 ## 5. Attach to drafts
 
-- [ ] Drafts of email replies (created in the user's mailbox, never sent by Nandi) can carry safe files from the run or the user's folders. Needs `Mail.ReadWrite` on Outlook and `gmail.compose` on Gmail: new scopes, user consent, under the owner's "read and draft, never send" decision (2026-11-07, `task-2-email-notes-v1.md`).
+- [ ] Drafts of email replies (created in the user's mailbox, never sent by Nandi) can carry safe files from the run or the user's folders. Needs `Mail.ReadWrite` on Outlook and `gmail.compose` on Gmail: new scopes, user consent, under the owner's "read and draft, never send" decision (2026-11-07, `task-5-email-notes-v1.md`).
 - [ ] The draft opens in the user's mail app for them to review and send.
 
 ## 6. Attach in the ask box and chats
