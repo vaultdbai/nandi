@@ -179,7 +179,8 @@ pub async fn get_agent_snapshot(
     })
 }
 
-/// A Studio conversation's messages and active run.
+/// A Studio conversation's messages and active run, or a Chief of Staff
+/// thread's (an Inbox item's or a queued item's Ask chat).
 pub async fn get_conversation(
     state: &AppState,
     conversation_id: String,
@@ -189,11 +190,23 @@ pub async fn get_conversation(
     let owner = db
         .call(move |conn| db::conversation_agent(conn, &id))
         .await?;
-    if owner.as_deref() != Some(STUDIO_AGENT_ID) {
+    if !readable(owner.as_deref(), &conversation_id) {
         return Err("That conversation was not found".to_string());
     }
     db.call(move |conn| conversation_snapshot(conn, &conversation_id))
         .await
+}
+
+/// Whether `get_conversation` serves this conversation: Studio's, or a
+/// Chief of Staff thread
+fn readable(owner: Option<&str>, conversation_id: &str) -> bool {
+    match owner {
+        Some(STUDIO_AGENT_ID) => true,
+        Some(crate::services::builtin_agents::CHIEF_OF_STAFF) => {
+            crate::services::inbox::thread::is_thread(conversation_id)
+        }
+        _ => false,
+    }
 }
 
 pub async fn get_studio_conversations(
@@ -554,6 +567,24 @@ fn build_dashboard(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn studio_and_chief_of_staff_threads_are_readable_other_chats_are_not() {
+        use crate::services::builtin_agents::CHIEF_OF_STAFF;
+        assert!(super::readable(Some(STUDIO_AGENT_ID), "c1"));
+        assert!(super::readable(
+            Some(CHIEF_OF_STAFF),
+            "inbox:gatewayHold:t1"
+        ));
+        assert!(super::readable(Some(CHIEF_OF_STAFF), "intake:q1"));
+        assert!(
+            !super::readable(Some(CHIEF_OF_STAFF), "c1"),
+            "its own chats stay its own"
+        );
+        assert!(!super::readable(Some("papers"), "inbox:gatewayHold:t1"));
+        assert!(!super::readable(None, "c1"));
+    }
+
     use super::*;
     use crate::db::tests::start_run;
     use crate::services::agents::AgentStatus;
