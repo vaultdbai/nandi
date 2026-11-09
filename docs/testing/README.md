@@ -198,7 +198,6 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | SH-18 | Recent results: rate and retry                                           | Shipped                                              | unit       | no          |                                        |
 | SH-19 | All activity                                                             | Shipped                                              | unit       | no          |                                        |
 | SH-20 | "No model connected" notice                                              | Shipped                                              | unit       | no          |                                        |
-| SH-36 | Work tray (Needs you · Working · Done)                                   | Prototype (branch `ui/work-tray`)                    | unit       | no          |                                        |
 | SH-21 | Command palette: open, search, open results                              | Shipped                                              | api        | no          |                                        |
 | SH-22 | Palette: empty state, recents, and "Ask Nandi"                           | Shipped                                              | unit       | no          |                                        |
 | SH-23 | Palette command mode (`>`) and local commands                            | Shipped                                              | unit       | no          |                                        |
