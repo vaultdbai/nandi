@@ -135,10 +135,14 @@ mod tests {
             theme: "dark".into(),
             palette: Some("aurora".into()),
             language: Some("fr".into()),
+            sidebar_visible: None,
+            work_tray_visible: Some(false),
         };
         save_preferences(&state, preferences.clone()).await.unwrap();
 
         let yaml = std::fs::read_to_string(state.store().layout().settings_path()).unwrap();
+        // The panes are this machine's, never the repo's
+        assert!(!yaml.contains("tray") && !yaml.contains("Tray"), "{yaml}");
         assert!(
             yaml.contains("theme: dark")
                 && yaml.contains("palette: aurora")
@@ -150,6 +154,10 @@ mod tests {
         assert_eq!(
             (loaded.theme.as_str(), loaded.language.as_deref()),
             ("dark", Some("fr"))
+        );
+        assert_eq!(
+            (loaded.sidebar_visible, loaded.work_tray_visible),
+            (None, Some(false))
         );
 
         // An edit to settings.yaml (e.g. pulled from another machine) wins

@@ -227,10 +227,16 @@ describe('Sidebar', () => {
         },
       ],
     })
+    const user = userEvent.setup()
     render(<Sidebar />)
-    expect(
-      await screen.findByRole('button', { name: 'Home, 2 waiting' })
-    ).toBeInTheDocument()
+    // Home's count is its own button: it opens the Inbox page
+    const badges = await screen.findAllByRole('button', {
+      name: 'Inbox, 2 waiting',
+    })
+    const badge = badges[0] as HTMLElement
+    expect(badge).toHaveTextContent('2')
+    await user.click(badge)
+    expect(useNavigationStore.getState().current).toEqual({ kind: 'inbox' })
   })
 
   it('shows the connection as a dot on Network', async () => {

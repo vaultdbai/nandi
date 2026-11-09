@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { client } from '@/lib/client'
@@ -34,6 +39,28 @@ export function usePreferences() {
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 10, // 10 minutes
   })
+}
+
+/**
+ * Saves which panes show, quietly (no toast: a click on a pane toggle is not
+ * a settings change). On failure the panes still work; the next launch just
+ * starts from the saved layout.
+ */
+export async function savePaneLayout(
+  queryClient: QueryClient,
+  layout: Pick<AppPreferences, 'sidebarVisible' | 'workTrayVisible'>
+) {
+  const current = queryClient.getQueryData<AppPreferences>(
+    preferencesQueryKeys.preferences()
+  )
+  if (!current) return
+  const next = { ...current, ...layout }
+  const result = await client.savePreferences(next)
+  if (result.status === 'error') {
+    logger.warn('Failed to save the pane layout', { error: result.error })
+    return
+  }
+  queryClient.setQueryData(preferencesQueryKeys.preferences(), next)
 }
 
 export function useSavePreferences() {

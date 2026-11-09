@@ -1,6 +1,6 @@
 /**
  * Home's data, shared with the companion (task 16): runs and delegations as
- * activity rows, and Running / Recent / tiles built from them and the work
+ * activity rows, and Running / Recent built from them and the work
  * items. Live through the sources' own events (runs: `agent://*`,
  * delegations: `task://*`, work: `work://*`).
  */
@@ -10,11 +10,7 @@ import {
   activityRows,
   type ActivityRow,
 } from '@/components/home/activity-model'
-import {
-  buildHomeFeed,
-  homeTiles,
-  RECENT_WINDOW_MS,
-} from '@/components/home/home-model'
+import { buildHomeFeed, RECENT_WINDOW_MS } from '@/components/home/home-model'
 import { useAgents } from '@/hooks/useAgents'
 import { useDelegation } from '@/hooks/useDelegation'
 import { useInbox } from '@/hooks/useInbox'
@@ -62,12 +58,6 @@ export function useHomeFeed() {
   })
   return {
     ...feed,
-    tiles: homeTiles({
-      activity: activity.rows,
-      work: work.data ?? [],
-      waiting: inbox.count,
-      now,
-    }),
     inbox,
     now,
     isPending: work.isPending || activity.isPending,

@@ -4,7 +4,6 @@ import { run } from '@/test/fixtures'
 import { activityRows, delegationRow } from './activity-model'
 import {
   buildHomeFeed,
-  homeTiles,
   isStale,
   MAX_RECENT,
   STALE_AFTER_MS,
@@ -151,39 +150,5 @@ describe('buildHomeFeed', () => {
     const row = workRow(item({ updatedAt: NOW - STALE_AFTER_MS - 1 }))
     expect(isStale(row, NOW)).toBe(true)
     expect(isStale(workRow(item({})), NOW)).toBe(false)
-  })
-})
-
-describe('homeTiles', () => {
-  it('shows no tiles until there is something to count', () => {
-    expect(homeTiles({ activity: [], work: [], waiting: 0, now: NOW })).toEqual(
-      []
-    )
-  })
-
-  it('shows three tiles, each linked to filtered activity', () => {
-    const tiles = homeTiles({
-      activity: activityRows(
-        [
-          run('a', 'writer', { status: 'completed', startedAt: NOW - MIN }),
-          run('b', 'writer', {
-            status: 'failed',
-            startedAt: NOW - MIN,
-            endedAt: NOW,
-          }),
-        ],
-        [],
-        names
-      ),
-      work: [item({ state: 'failed', updatedAt: NOW })],
-      waiting: 2,
-      now: NOW,
-    })
-    expect(tiles.map(t => [t.id, t.value])).toEqual([
-      ['runsToday', 2],
-      ['failed', 2],
-      ['waiting', 2],
-    ])
-    expect(tiles[1]?.filters).toEqual({ range: 'today', status: 'failed' })
   })
 })

@@ -4,6 +4,7 @@ import {
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
 import { WorkTray } from '@/components/tray/WorkTray'
+import { usePanePreferences } from '@/hooks/use-pane-preferences'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui-store'
 import { LeftSideBar } from './LeftSideBar'
@@ -24,6 +25,7 @@ const LAYOUT = {
 export function AppShell() {
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const rightSidebarVisible = useUIStore(state => state.rightSidebarVisible)
+  usePanePreferences()
 
   return (
     <ResizablePanelGroup direction="horizontal">

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowRight, CircleCheck, Network, Sparkles } from 'lucide-react'
+import { CircleCheck, Network, Sparkles } from 'lucide-react'
 import {
   BackupNudge,
   GetStarted,
@@ -11,29 +11,25 @@ import { Inbox } from '@/components/inbox/Inbox'
 import { LlmKeyNotice } from '@/components/layout/LlmKeyNotice'
 import { RecentChanges } from '@/components/live/RecentChanges'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHomeFeed } from '@/hooks/useHome'
 import { useRelay } from '@/hooks/useRelay'
 import { sendToStudio } from '@/lib/agent-actions'
-import { cn } from '@/lib/utils'
 import { useDashboard } from '@/store/agent-store'
 import { useNavigationStore, type View } from '@/store/navigation-store'
 import { ViewHeader } from '@/components/views/ViewHeader'
 import { ChiefOfStaffDigest } from './ChiefOfStaffDigest'
 import { EmailTodo } from './EmailTodo'
-import { RecentRow, RunningRow } from './HomeRows'
-import type { HomeTile } from './home-model'
 
 const navigate = (view: View) => useNavigationStore.getState().navigate(view)
 
 /**
- * Home: does anything need me, and is everything else moving? Ask Nandi,
- * then Inbox (fix it here), Running (step n of m), Recent (result, rate,
- * retry), with All activity one click down. A fresh install shows what to
- * do first instead of empty sections; quiet sections collapse to one line.
+ * Home: does anything need me? Ask Nandi, the Chief of Staff's digest and
+ * email to-do, then the Inbox (fix it here). Running and finished work live
+ * in the work tray on every page, and All activity in the sidebar. A fresh
+ * install shows what to do first instead of empty sections.
  */
 export function HomeView({
   welcome,
@@ -55,7 +51,6 @@ export function HomeView({
     waitingOnYou === 0 &&
     home.running.length === 0 &&
     home.recent.length === 0
-  const quiet = inboxItems === 0 && home.running.length === 0
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -77,67 +72,14 @@ export function HomeView({
           ) : (
             <>
               <NetworkLine />
-              {home.tiles.length > 0 && <Tiles tiles={home.tiles} />}
-              {inboxItems > 0 && (
-                <div id="home-inbox">
-                  <Inbox />
-                </div>
-              )}
-              {quiet ? (
+              {inboxItems > 0 ? (
+                <Inbox />
+              ) : (
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">
                   <CircleCheck aria-hidden className="size-4 text-success" />
                   {t('home.quiet')}
                 </p>
-              ) : (
-                home.running.length > 0 && (
-                  <Section
-                    title={t('home.running.title', {
-                      count: home.running.length,
-                    })}
-                  >
-                    {home.running.map(row => (
-                      <li key={row.id}>
-                        <RunningRow row={row} now={home.now} />
-                      </li>
-                    ))}
-                  </Section>
-                )
               )}
-              <Section
-                title={t('home.recent.title')}
-                action={
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => navigate({ kind: 'home-activity' })}
-                  >
-                    {t('home.allActivity')}
-                    <ArrowRight className="rtl:rotate-180" />
-                  </Button>
-                }
-              >
-                {home.recent.length === 0 ? (
-                  <li className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm text-muted-foreground">
-                    {t('home.recent.empty')}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7"
-                      onClick={() =>
-                        navigate({ kind: 'studio', conversationId: null })
-                      }
-                    >
-                      {t('home.askLabel')}
-                    </Button>
-                  </li>
-                ) : (
-                  home.recent.map(row => (
-                    <li key={row.id}>
-                      <RecentRow row={row} />
-                    </li>
-                  ))
-                )}
-              </Section>
               <RecentChanges />
             </>
           )}
@@ -216,68 +158,6 @@ function NetworkLine() {
         {t('home.network.join')}
       </Button>
     </p>
-  )
-}
-
-/** At most three, each opening All activity filtered (Waiting: the Inbox) */
-function Tiles({ tiles }: { tiles: HomeTile[] }) {
-  const { t } = useTranslation()
-  return (
-    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      {tiles.map(tile => (
-        <li key={tile.id}>
-          <Card className="p-0">
-            <button
-              type="button"
-              data-testid={`home-tile-${tile.id}`}
-              onClick={() =>
-                tile.filters
-                  ? navigate({ kind: 'home-activity', filters: tile.filters })
-                  : document
-                      .getElementById('home-inbox')
-                      ?.scrollIntoView({ behavior: 'smooth' })
-              }
-              className="flex w-full flex-col items-start gap-0.5 rounded-xl px-4 py-3 text-start hover:bg-accent/40"
-            >
-              <span className="text-xs font-medium text-muted-foreground">
-                {t(`home.tile.${tile.id}`)}
-              </span>
-              <span
-                className={cn(
-                  'text-2xl font-semibold tabular-nums',
-                  tile.id === 'failed' && tile.value > 0 && 'text-destructive',
-                  tile.id === 'waiting' && tile.value > 0 && 'text-warning'
-                )}
-              >
-                {tile.value}
-              </span>
-            </button>
-          </Card>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function Section({
-  title,
-  action,
-  children,
-}: {
-  title: string
-  action?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <section aria-label={title} className="flex flex-col gap-1">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          {title}
-        </h2>
-        {action}
-      </div>
-      <ul className="flex flex-col divide-y rounded-lg border">{children}</ul>
-    </section>
   )
 }
 

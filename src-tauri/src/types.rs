@@ -22,6 +22,7 @@ pub static FILENAME_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 /// Application preferences that persist to disk.
 /// Only contains settings that should be saved between sessions.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
 pub struct AppPreferences {
     pub theme: String,
     /// Colour palette ID (e.g. "nandi", "aurora"). If None, uses the default
@@ -30,6 +31,13 @@ pub struct AppPreferences {
     /// User's preferred language (e.g., "en", "es", "de")
     /// If None, uses system locale detection
     pub language: Option<String>,
+    /// The navigation pane is shown (this machine only); None: shown
+    #[serde(default)]
+    pub sidebar_visible: Option<bool>,
+    /// The work tray is shown (this machine only); None: the user hasn't
+    /// picked, so it follows the window width
+    #[serde(default)]
+    pub work_tray_visible: Option<bool>,
 }
 
 impl Default for AppPreferences {
@@ -38,6 +46,8 @@ impl Default for AppPreferences {
             theme: "system".to_string(),
             palette: None,
             language: None, // None means use system locale
+            sidebar_visible: None,
+            work_tray_visible: None,
         }
     }
 }

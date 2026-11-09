@@ -1,6 +1,6 @@
 # UI review: reachability and clicks (work tray)
 
-Shipped on `main` (859c7b7, 2026-11-08). The follow-ups under "Next" are still open.
+Shipped on `main` (859c7b7, 2026-11-08), follow-ups done the same day.
 
 ## What the review found
 
@@ -29,11 +29,11 @@ Shipped on `main` (859c7b7, 2026-11-08). The follow-ups under "Next" are still o
 - A right pane is resizable and hideable with the same pattern as the left one, and needs no new layout rules.
 - One place for the three states reads in a single glance; two trays split the "Needs you" and "Done" story.
 
-## Next
+## Follow-ups (done 2026-11-08)
 
-1. Slim Home now that the tray carries Running and Recent: keep Ask, the digest, the email to-do and the Inbox; drop Running, Recent and the tiles.
-2. Remember both panes' visibility in preferences.
-3. Make the "Waiting" tile and the Home badge open the Inbox page.
-4. Drop the title-bar Settings gear (the sidebar has Settings).
-5. A render test for `WorkTray` (empty groups, ✓ decides, All links).
-6. Hide the tray on narrow windows (below ~1000px) by default.
+1. Home is slim: Ask, the digest, the email to-do, the Inbox and Recent changes. Running, Recent and the tiles are gone (the tray and the companion have them).
+2. Both panes' visibility is saved in this machine's preferences (`sidebarVisible`, `workTrayVisible`).
+3. The tiles are gone; Home's sidebar count is its own button and opens the Inbox page.
+4. The title-bar Settings gear is gone (the sidebar and Ctrl+, have Settings).
+5. `WorkTray.test.tsx`: empty groups, ✓ and ✗ decide, rows and All open, the close button.
+6. Until the user shows or hides the tray, it is hidden below 1000px wide.

@@ -3730,11 +3730,11 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 
 /** user-defined types **/
 
@@ -4175,7 +4175,16 @@ palette?: string | null;
  * User's preferred language (e.g., "en", "es", "de")
  * If None, uses system locale detection
  */
-language: string | null }
+language: string | null; 
+/**
+ * The navigation pane is shown (this machine only); None: shown
+ */
+sidebarVisible?: boolean | null; 
+/**
+ * The work tray is shown (this machine only); None: the user hasn't
+ * picked, so it follows the window width
+ */
+workTrayVisible?: boolean | null }
 /**
  * An update that was applied.
  */

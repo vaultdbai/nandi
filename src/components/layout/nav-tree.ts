@@ -40,6 +40,8 @@ export interface NavNode {
   view?: View
   /** A count on the right (Home and its Inbox) */
   badge?: number
+  /** Where the count itself goes when clicked (Home's: the Inbox page) */
+  badgeView?: View
   dot?: NavDot
   /** "All chats": quieter than the list */
   subtle?: boolean
@@ -174,6 +176,7 @@ export function buildNavTree(input: NavTreeInput): NavNode[] {
     view: SECTION_VIEWS[section],
     badge:
       section === 'home' && input.inboxCount > 0 ? input.inboxCount : undefined,
+    badgeView: section === 'home' ? { kind: 'inbox' } : undefined,
     dot:
       section === 'settings' && Object.values(input.attention).some(Boolean)
         ? 'attention'

@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/store/ui-store'
-import { executeCommand, useCommandContext } from '@/lib/commands'
 import { UpdateButton } from './UpdateButton'
 import { UserMenu } from './UserMenu'
 import {
@@ -9,7 +8,6 @@ import {
   PanelLeftClose,
   PanelRight,
   PanelRightClose,
-  Settings,
 } from 'lucide-react'
 import { NandiBull } from '@/assets/brand/NandiBull'
 import { useMascotName, useNandiState } from '@/hooks/useMascot'
@@ -47,12 +45,12 @@ export function TitleBarLeftActions() {
 }
 
 /**
- * Right-side toolbar actions (updates, account, settings, the work tray).
+ * Right-side toolbar actions (updates, account, the work tray). Settings is
+ * in the sidebar and on Ctrl+,.
  * Place this before window controls on Windows, or at the end on macOS/Linux.
  */
 export function TitleBarRightActions() {
   const { t } = useTranslation()
-  const commandContext = useCommandContext()
   const rightSidebarVisible = useUIStore(state => state.rightSidebarVisible)
   const toggleRightSidebar = useUIStore(state => state.toggleRightSidebar)
   const rightLabel = t(
@@ -61,28 +59,11 @@ export function TitleBarRightActions() {
       : 'titlebar.showRightSidebar'
   )
 
-  const handleOpenPreferences = async () => {
-    const result = await executeCommand('open-preferences', commandContext)
-    if (!result.success && result.error) {
-      commandContext.showToast(result.error, 'error')
-    }
-  }
-
   return (
     <div className="flex items-center gap-1">
       <UpdateButton />
       <UserMenu />
 
-      <Button
-        onClick={handleOpenPreferences}
-        variant="ghost"
-        size="icon"
-        className="size-7 text-foreground/70 hover:text-foreground"
-        title={t('titlebar.settings')}
-        aria-label={t('titlebar.settings')}
-      >
-        <Settings className="size-3.5" />
-      </Button>
       <Button
         onClick={toggleRightSidebar}
         variant="ghost"
