@@ -672,13 +672,14 @@ pub async fn dismiss_work(state: &AppState, id: String) -> Result<(), WorkError>
         return Err("Nothing to dismiss".to_string());
     }
     let now = crate::db::now_ms();
+    let key = format!("{DISMISSED_PREFIX}{id}");
     state
         .db()
         .call(move |conn| {
             conn.execute(
                 "INSERT INTO work_preferences (key, value) VALUES (?1, ?2)
                  ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                rusqlite::params![format!("{DISMISSED_PREFIX}{id}"), now.to_string()],
+                rusqlite::params![key, now.to_string()],
             )?;
             // Keep the table small
             conn.execute(
@@ -688,7 +689,12 @@ pub async fn dismiss_work(state: &AppState, id: String) -> Result<(), WorkError>
             )?;
             Ok(())
         })
-        .await
+        .await?;
+    crate::services::inbox::audit::record(
+        state,
+        crate::services::inbox::audit::Decided::new("failed", id, "dismissed"),
+    );
+    Ok(())
 }
 
 /// IDs of dismissed failures

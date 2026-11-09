@@ -263,7 +263,7 @@ pub async fn on_done(state: &AppState, request: &LocalRequest) {
             let Some(proposal) = for_request(conn, &request)? else {
                 return Ok(false);
             };
-            intake::thread::note(conn, &thread, &note(&proposal, &request.title))?;
+            crate::services::inbox::thread::note(conn, &thread, &note(&proposal, &request.title))?;
             Ok(true)
         })
         .await;

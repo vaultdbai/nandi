@@ -282,6 +282,18 @@ pub async fn respond_trust_request(
             }
         }
     }
+    crate::services::inbox::audit::record(
+        state,
+        crate::services::inbox::audit::Decided::new(
+            "trustRequest",
+            instance_id,
+            match (answer, block) {
+                (TrustAnswer::Trust, _) => "trusted",
+                (TrustAnswer::Deny, false) => "not now",
+                (TrustAnswer::Deny, true) => "blocked",
+            },
+        ),
+    );
     emit(
         state.bus(),
         &TrustRequestReceived {

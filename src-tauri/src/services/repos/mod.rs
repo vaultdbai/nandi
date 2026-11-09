@@ -14,6 +14,7 @@ pub mod agent_repo;
 #[allow(dead_code)]
 pub mod capability_repo;
 pub mod connector_repo;
+pub mod decision_repo;
 pub mod fs_atomic;
 pub mod git;
 pub mod group_repo;
@@ -31,6 +32,7 @@ use std::sync::Arc;
 
 pub use agent_repo::AgentRepository;
 pub use connector_repo::ConnectorRepository;
+pub use decision_repo::DecisionRepository;
 pub use group_repo::GroupRepository;
 pub use layout::RepoLayout;
 pub use policy_repo::PolicyRepository;
@@ -198,6 +200,7 @@ pub struct Repos {
     pub vendor: VendorRepository,
     pub policies: PolicyRepository,
     pub groups: GroupRepository,
+    pub decisions: DecisionRepository,
 }
 
 impl Repos {
@@ -212,7 +215,8 @@ impl Repos {
             connectors: ConnectorRepository::new(layout.clone(), git.clone()),
             vendor: VendorRepository::new(layout.clone(), git.clone()),
             policies: PolicyRepository::new(layout.clone(), git.clone()),
-            groups: GroupRepository::new(layout.clone(), git),
+            groups: GroupRepository::new(layout.clone(), git.clone()),
+            decisions: DecisionRepository::new(layout.clone(), git),
             layout,
         }
     }

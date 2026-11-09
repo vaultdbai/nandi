@@ -26,7 +26,7 @@ pub async fn dismiss_request_return(
     state: State<'_, AppState>,
     task_id: String,
 ) -> Result<(), String> {
-    a2a::returns::dismiss(state.db(), task_id).await
+    a2a::returns::dismiss_request_return(&state, task_id).await
 }
 
 /// Local and remote agents serving `capability`

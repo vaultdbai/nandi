@@ -7,6 +7,7 @@ pub use crate::services::requests::Request;
 
 use crate::services::ask::ActionPlan;
 use crate::services::chat::SendMessageResult;
+use crate::services::inbox::thread::InboxThread;
 use crate::services::intake;
 use crate::services::intake::rules::AutoApproveRule;
 use crate::services::intake::thread::IntakeThread;
@@ -94,7 +95,31 @@ pub async fn send_intake_message(
     text: String,
     client_message_id: Option<String>,
 ) -> Result<SendMessageResult, String> {
-    intake::thread::send(&state, conversation_id, text, client_message_id).await
+    crate::services::inbox::thread::send(&state, conversation_id, text, client_message_id).await
+}
+
+/// An Inbox item's Ask chat (`inbox:<kind>:<id>`, or an intake item's
+/// `intake:<id>`): made the first time it's opened. Its messages come from
+/// `get_conversation`.
+#[tauri::command]
+#[specta::specta]
+pub async fn open_inbox_thread(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> Result<InboxThread, String> {
+    crate::services::inbox::thread::open(&state, conversation_id).await
+}
+
+/// The user's message in an Inbox item's chat: a Chief of Staff turn there
+#[tauri::command]
+#[specta::specta]
+pub async fn send_inbox_message(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    text: String,
+    client_message_id: Option<String>,
+) -> Result<SendMessageResult, String> {
+    crate::services::inbox::thread::send(&state, conversation_id, text, client_message_id).await
 }
 
 /// What may skip the approval queue (`intake::rules`)

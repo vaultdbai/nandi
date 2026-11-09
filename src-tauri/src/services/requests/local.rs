@@ -1751,7 +1751,11 @@ mod tests {
             .db()
             .call(move |conn| {
                 intake::save(conn, &saved)?;
-                intake::thread::ensure(conn, &saved.thread_id, "Pay the Acme Energy bill")
+                crate::services::inbox::thread::ensure(
+                    conn,
+                    &saved.thread_id,
+                    "Pay the Acme Energy bill",
+                )
             })
             .await
             .unwrap();
@@ -1886,7 +1890,7 @@ mod tests {
                 save(conn, &a)?;
                 save(conn, &b)?;
                 intake::save(conn, &item)?;
-                intake::thread::ensure(conn, &t, "Pay the Acme Energy bill")?;
+                crate::services::inbox::thread::ensure(conn, &t, "Pay the Acme Energy bill")?;
                 conn.execute(
                     "INSERT INTO runs (id, agent_id, conversation_id, status, input, started_at, source_type)
                      VALUES ('run-nov', ?1, ?2, 'completed', 'x', ?3, 'request')",

@@ -261,10 +261,20 @@ pub async fn complete_manual_step(
     step_id: &str,
     completion: ManualStepCompletion,
 ) -> Result<(), String> {
+    let note = completion.output.clone();
     let output = output_of(run_id, step_id, completion).await?;
     state
         .workflows()
         .complete_manual_step(run_id, step_id, output)
-        .await
-        .map(|_| ())
+        .await?;
+    crate::services::inbox::audit::record(
+        state,
+        crate::services::inbox::audit::Decided::new(
+            "manualStep",
+            format!("{run_id}/{step_id}"),
+            "done",
+        )
+        .note(note.as_deref()),
+    );
+    Ok(())
 }

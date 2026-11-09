@@ -209,6 +209,20 @@ pub async fn approve_action(
         .db()
         .call(move |conn| db::set_approval_decider(conn, &id, &who))
         .await?;
+    let decided = resolve(state, &approval, approval_id, decision).await;
+    if decided.is_ok() {
+        record_decision(state, &approval, decision);
+    }
+    decided
+}
+
+/// Sends a decided approval where its call waits
+async fn resolve(
+    state: &AppState,
+    approval: &db::ApprovalRow,
+    approval_id: String,
+    decision: ApprovalDecision,
+) -> Result<(), String> {
     // An escalated clarification question (wave final, Track C) names no
     // run: the clarification service resolves it, not the orchestrator
     if approval.tool == a2a::escalation::ESCALATION_TOOL {
@@ -216,11 +230,11 @@ pub async fn approve_action(
     }
     // A harness run waits on the call itself; the orchestrator would
     // restart the run natively
-    if harness_approvals::is_harness(&approval) {
+    if harness_approvals::is_harness(approval) {
         if harness_approvals::decide(&approval_id, decision) {
             return Ok(());
         }
-        harness_approvals::close_stale(state, &approval).await?;
+        harness_approvals::close_stale(state, approval).await?;
         return Err("This run stopped while it waited, so it was cancelled".to_string());
     }
     state
@@ -233,6 +247,38 @@ pub async fn approve_action(
             },
         )
         .await
+}
+
+/// The decisions file (`inbox::audit`). An Inbox chat's own decision call
+/// isn't one: the decision it makes is recorded where it's made.
+fn record_decision(state: &AppState, approval: &db::ApprovalRow, decision: ApprovalDecision) {
+    if crate::services::inbox::tool::is_decision_tool(&approval.tool) {
+        return;
+    }
+    let approved = decision == ApprovalDecision::Approved;
+    let (kind, word) = if approval.tool == a2a::escalation::ESCALATION_TOOL {
+        (
+            "clarification",
+            if approved { "allowed" } else { "refused" },
+        )
+    } else {
+        ("approval", if approved { "approved" } else { "refused" })
+    };
+    // An access request names the choice (once, on this computer, saved)
+    let choice = approval
+        .args
+        .get("choice")
+        .and_then(serde_json::Value::as_str)
+        .map(|choice| format!("{word} ({choice})"));
+    crate::services::inbox::audit::record(
+        state,
+        crate::services::inbox::audit::Decided::new(
+            kind,
+            &approval.id,
+            choice.unwrap_or_else(|| word.to_string()),
+        )
+        .subject(format!("{}: {}", approval.agent_id, approval.tool)),
+    );
 }
 
 /// Answers a hand-over (`pilots::handover`): Done and Changed it approve
@@ -272,7 +318,9 @@ pub(crate) fn decider(state: &AppState) -> String {
         .unwrap_or_else(|| "you".to_string())
 }
 
-/// Every pending tool approval, oldest first (the Inbox's approvals)
+/// Every pending tool approval, oldest first (the Inbox's approvals). An
+/// Inbox chat's decision waiting for its confirm shows in that chat, not as
+/// an item of its own.
 pub async fn list_pending_approvals(
     state: &AppState,
 ) -> Result<Vec<crate::model::PendingApproval>, String> {
@@ -283,7 +331,10 @@ pub async fn list_pending_approvals(
         .map(|approvals| {
             approvals
                 .into_iter()
-                .filter(|a| a.tool != a2a::escalation::ESCALATION_TOOL)
+                .filter(|a| {
+                    a.tool != a2a::escalation::ESCALATION_TOOL
+                        && !crate::services::inbox::tool::is_decision_tool(&a.tool)
+                })
                 .collect()
         })
 }

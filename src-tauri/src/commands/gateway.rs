@@ -24,15 +24,17 @@ pub async fn list_gateway_holds(
     gateway::list_gateway_holds(&state).await
 }
 
-/// Approve (routing goes on) or decline (it's rejected) a held request
+/// Approve (routing goes on) or decline (it's rejected) a held request;
+/// `note` goes back to the requester (a refusal's reason, a condition)
 #[tauri::command]
 #[specta::specta]
 pub async fn decide_gateway_hold(
     state: State<'_, AppState>,
     task_id: String,
     approve: bool,
+    note: Option<String>,
 ) -> Result<gateway::holds::GatewayHold, String> {
-    gateway::decide_gateway_hold(&state, task_id, approve).await
+    gateway::decide_gateway_hold(&state, task_id, approve, note).await
 }
 
 /// Work assigned to the owner that's still open, soonest due first (the

@@ -70,6 +70,7 @@ use crate::services::events::{
     self, AgentMessageAdded, AgentWarning, EventBus, NandiEvent, RunContext,
 };
 use crate::services::history;
+use crate::services::inbox;
 use crate::services::intake;
 use crate::services::network;
 use crate::services::pilots::{self, tools::PilotToolset, PilotConsentNeeded};
@@ -1010,6 +1011,8 @@ async fn drive_run(
         } else {
             // A proposed playbook always waits for the user
             playbooks::gate(&deps.store, agent_id, &mut meta.planned_calls);
+            // So does an Inbox chat's decision (`inbox::tool`)
+            inbox::tool::gate(&mut meta.planned_calls);
         }
         let planned = meta.planned_calls.clone();
         bus.finish_step(&ctx, &message_id, meta).await?;
@@ -1324,18 +1327,13 @@ async fn llm_step(
                 crate::runtime::FOLDERS_MOUNT,
             ));
             system.push_str(&today_prompt(&chrono::Local::now()));
-            // An intake thread: the Chief of Staff gets the task it's about
-            if ctx.agent_id == CHIEF_OF_STAFF && intake::thread::is_thread(&ctx.conversation_id) {
-                let id = ctx.conversation_id.clone();
-                let task = deps
-                    .bus
-                    .db
-                    .call(move |conn| Ok(intake::thread::prompt(conn, &id)))
-                    .await
-                    .ok()
-                    .flatten();
-                if let Some(task) = task {
-                    system.push_str(&task);
+            // An Inbox item's thread (an intake one too): the Chief of
+            // Staff gets the item it's about and what's being decided
+            if ctx.agent_id == CHIEF_OF_STAFF && inbox::thread::is_thread(&ctx.conversation_id) {
+                if let Some(state) = app_state(deps) {
+                    if let Some(item) = inbox::thread::prompt(&state, &ctx.conversation_id).await {
+                        system.push_str(&item);
+                    }
                 }
             }
             // A step of a work plan the Chief of Staff does itself: the plan
@@ -1472,6 +1470,17 @@ async fn llm_step(
                 for spec in offered {
                     if !tools.iter().any(|t| t.name == spec.name) {
                         tools.push(spec);
+                    }
+                }
+            }
+            // An Inbox item's thread: the decisions that fit the item now
+            // (after deferral, so never hidden behind `tool_search`)
+            if ctx.agent_id == CHIEF_OF_STAFF {
+                if let Some(state) = app_state(deps) {
+                    for spec in inbox::tool::offered(&state, &ctx.conversation_id).await {
+                        if !tools.iter().any(|t| t.name == spec.name) {
+                            tools.push(spec);
+                        }
                     }
                 }
             }
@@ -2156,6 +2165,20 @@ async fn run_call(
                 },
             }
         }
+        // An Inbox chat's decision, confirmed by the user: the same service
+        // call as the item's button (`inbox::tool`)
+        _ if inbox::tool::is_decision_tool(&call.tool) => match app_state(deps) {
+            Some(state) if ctx.agent_id == CHIEF_OF_STAFF => {
+                inbox::tool::call(&state, &ctx.conversation_id, &call.tool, &call.args).await
+            }
+            _ => ToolOutcome {
+                result: format!(
+                    "Tool '{}' only works in an Inbox item's chat with the Chief of Staff",
+                    call.tool
+                ),
+                is_error: true,
+            },
+        },
         // The Chief of Staff's work tools: on the host
         _ if ctx.agent_id == CHIEF_OF_STAFF && requests::tool::is_work_tool(&call.tool) => {
             match app_state(deps) {

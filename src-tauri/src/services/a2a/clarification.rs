@@ -1665,11 +1665,39 @@ fn service(state: &AppState) -> Result<&Arc<ClarificationService>, String> {
 }
 
 /// The human (or a UI on their behalf) answers a round directly
+/// (recorded in the decisions file)
 pub async fn respond_to_clarification(
     state: &AppState,
     response: ClarificationResponse,
 ) -> Result<(), String> {
-    service(state)?.respond(response).await
+    let task_id = response.task_id.clone();
+    let refused = response.answers.values().any(|a| a.trim() == DENY_ANSWER);
+    let mut answers: Vec<(String, String)> = response
+        .answers
+        .iter()
+        .filter(|(_, a)| !a.trim().starts_with("__nandi:"))
+        .map(|(q, a)| (q.clone(), a.trim().to_string()))
+        .collect();
+    answers.sort();
+    service(state)?.respond(response).await?;
+    let note = answers
+        .iter()
+        .map(|(q, a)| format!("{q}: {a}"))
+        .collect::<Vec<_>>()
+        .join(
+            "
+",
+        );
+    crate::services::inbox::audit::record(
+        state,
+        crate::services::inbox::audit::Decided::new(
+            "clarification",
+            task_id,
+            if refused { "refused" } else { "answered" },
+        )
+        .note(Some(&note)),
+    );
+    Ok(())
 }
 
 /// Questions waiting for the human

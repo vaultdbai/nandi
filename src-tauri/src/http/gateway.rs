@@ -74,6 +74,9 @@ async fn close_assignment(
 struct DecideBody {
     #[serde(default)]
     approve: Option<bool>,
+    /// Goes back to the requester: a refusal's reason, a condition
+    #[serde(default)]
+    note: Option<String>,
 }
 
 async fn holds(State(state): State<AppState>) -> impl IntoResponse {
@@ -86,7 +89,7 @@ async fn decide_hold(
     Json(body): Json<DecideBody>,
 ) -> impl IntoResponse {
     ApiResult(match body.approve {
-        Some(approve) => gateway::decide_gateway_hold(&state, task_id, approve).await,
+        Some(approve) => gateway::decide_gateway_hold(&state, task_id, approve, body.note).await,
         None => Err("Body needs \"approve\": true or false".to_string()),
     })
 }

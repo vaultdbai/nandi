@@ -628,13 +628,17 @@ pub async fn handle_gateway_task(state: &AppState, task: Task) -> Result<TaskRes
             needs_approval: true,
         } => {
             // Held: it waits for the owner instead of being refused
-            match hold_for_approval(state, &service, &task, &who, capability.as_deref()).await {
+            let outcome =
+                hold_for_approval(state, &service, &task, &who, capability.as_deref()).await;
+            // A refusal's reason goes back with it (`decide_gateway_hold`)
+            let note = service.holds().take_note(&task.id);
+            match outcome {
                 HoldOutcome::Approved => {}
                 HoldOutcome::Rejected => {
                     return refuse(Refusal::new(
                         ReasonKind::Declined,
                         TaskStage::Approval,
-                        "The owner declined this request",
+                        declined_reason(note.as_deref()),
                     ))
                     .await
                 }
@@ -1220,15 +1224,33 @@ async fn hold_for_approval(
         }
     }
     if outcome == HoldOutcome::Approved {
+        // A condition the owner set goes to the requester with it
+        let reason = approved_reason(service.holds().take_note(&task.id).as_deref());
         crate::services::a2a::executor::gateway_waiting(
             state,
             task,
-            Change::reason("Approved by the owner").at(TaskStage::Approval),
+            Change::reason(reason).at(TaskStage::Approval),
             None,
         )
         .await;
     }
     outcome
+}
+
+/// What a requester is told when the owner declines, with their reason
+fn declined_reason(note: Option<&str>) -> String {
+    match note {
+        Some(note) => format!("The owner declined this request: {note}"),
+        None => "The owner declined this request".to_string(),
+    }
+}
+
+/// What a requester is told when the owner approves, with their condition
+fn approved_reason(note: Option<&str>) -> String {
+    match note {
+        Some(note) => format!("Approved by the owner: {note}"),
+        None => "Approved by the owner".to_string(),
+    }
 }
 
 /// The line for a slot: refused only when the wait runs out. While it

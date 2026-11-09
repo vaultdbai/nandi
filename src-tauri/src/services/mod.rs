@@ -58,6 +58,7 @@ pub mod gateway;
 pub mod harness;
 pub mod history;
 pub mod images;
+pub mod inbox;
 pub mod intake;
 pub mod live;
 pub mod llm_keys;

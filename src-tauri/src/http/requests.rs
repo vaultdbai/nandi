@@ -48,6 +48,11 @@ pub fn api() -> Router<AppState> {
             "/chief-of-staff/threads/{id}/messages",
             post(intake_message),
         )
+        // Returns `InboxThread`, made the first time (`id`: the item's
+        // conversation ID, `inbox:<kind>:<id>` or `intake:<id>`)
+        .route("/inbox/threads/{id}", post(open_inbox_thread))
+        // Body `{ text, clientMessageId? }`; returns `SendMessageResult`
+        .route("/inbox/threads/{id}/messages", post(inbox_message))
         // Returns the auto-approve rules; PUT a list to replace them
         .route(
             "/chief-of-staff/auto-approve",
@@ -83,7 +88,24 @@ async fn intake_message(
     Json(body): Json<ThreadMessageBody>,
 ) -> impl IntoResponse {
     ApiResult(
-        crate::services::intake::thread::send(&state, id, body.text, body.client_message_id).await,
+        crate::services::inbox::thread::send(&state, id, body.text, body.client_message_id).await,
+    )
+}
+
+async fn open_inbox_thread(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    ApiResult(crate::services::inbox::thread::open(&state, id).await)
+}
+
+async fn inbox_message(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<ThreadMessageBody>,
+) -> impl IntoResponse {
+    ApiResult(
+        crate::services::inbox::thread::send(&state, id, body.text, body.client_message_id).await,
     )
 }
 

@@ -18,6 +18,7 @@
 //! .nandi/policies/<id>.md                                 (policies)
 //! .nandi/groups/<group-id>.md                             (groups I'm in: signed policy copies)
 //! .nandi/groups/access.yaml                               (my access level per group)
+//! .nandi/decisions/<yyyy-mm>.md                           (every Inbox decision: who, what, why)
 //! .nandi/installed.yaml                                   (marketplace installs)
 //! .nandi/agents/marketplace/<publisher>/<id>/…            (installed agents)
 //! .nandi/agents/marketplace/packs/<pack>/agents/<id>/…    (installed packs)
@@ -53,6 +54,8 @@ pub const CAPABILITIES_DIR: &str = "capabilities";
 pub const POLICIES_DIR: &str = "policies";
 /// Under `.nandi/`: the groups this Nandi is in (protocol 7)
 pub const GROUPS_DIR: &str = "groups";
+/// Under `.nandi/`: the decisions made on the Inbox, one file per month
+pub const DECISIONS_DIR: &str = "decisions";
 /// Under the agents folder: vendored (read-only) marketplace installs. Not
 /// usable as an agent ID.
 pub const MARKETPLACE_DIR: &str = "marketplace";
@@ -171,6 +174,11 @@ impl RepoLayout {
         self.meta_dir.join(GROUPS_DIR)
     }
 
+    /// `.nandi/decisions/`: one `<yyyy-mm>.md` per month, appended to
+    pub fn decisions_dir(&self) -> PathBuf {
+        self.meta_dir.join(DECISIONS_DIR)
+    }
+
     /// `.nandi/agents/marketplace/`
     pub fn marketplace_dir(&self) -> PathBuf {
         self.agents_dir.join(MARKETPLACE_DIR)
@@ -243,6 +251,7 @@ mod tests {
             Path::new("/r/.nandi/triggers/t.yaml")
         );
         assert_eq!(layout.settings_path(), Path::new("/r/.nandi/settings.yaml"));
+        assert_eq!(layout.decisions_dir(), Path::new("/r/.nandi/decisions"));
         assert_eq!(
             layout.relative(&layout.trigger_path("t")).as_deref(),
             Some(".nandi/triggers/t.yaml")

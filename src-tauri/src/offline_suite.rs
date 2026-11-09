@@ -10,6 +10,7 @@
 //! - every screen's read endpoints answer
 //! - an agent runs, asks for approval, and finishes once approved
 //! - a workflow runs
+//! - an Inbox item opens as its Ask chat, and its decision is recorded
 //! - a starter pack installs from a local folder
 //! - person-to-person endpoints answer the typed `RelayUnavailable`
 //! - a build with an unreachable default relay and join code behaves the same
@@ -350,6 +351,72 @@ async fn with_no_relay_every_screen_answers() {
 async fn with_no_relay_an_agent_runs_and_waits_for_approval() {
     let (state, router) = boot(BuiltInRelay::default());
     an_agent_runs_and_its_request_is_approved(&state, &router).await;
+}
+
+/// A local Inbox item opens as its Ask chat with nothing but this Nandi,
+/// and deciding it (here from its card) lands in the decisions file
+async fn an_inbox_item_opens_as_a_chat(state: &AppState, router: &Router) {
+    let mut script = crate::engine::default_script();
+    script["tokenDelayMs"] = json!(0);
+    canned(state, script).await;
+    post(
+        router,
+        "agents",
+        json!({ "id": "offline-assistant", "name": "Offline Assistant" }),
+    )
+    .await;
+    post(
+        router,
+        "agents/offline-assistant/messages",
+        json!({ "text": "How long is the report?" }),
+    )
+    .await;
+    let pending = until(router, "approvals/pending", |body| {
+        body.as_array().is_some_and(|list| !list.is_empty())
+    })
+    .await;
+    let id = pending[0]["id"].as_str().unwrap().to_string();
+    let thread = format!("inbox%3Aapproval%3A{id}");
+
+    let opened = post(router, &format!("inbox/threads/{thread}"), Value::Null).await;
+    assert_eq!(opened["kind"], "approval", "{opened}");
+    assert_eq!(opened["waiting"], true, "{opened}");
+    assert_eq!(opened["tools"], json!(["inbox_approve", "inbox_refuse"]));
+
+    post(
+        router,
+        "agents/offline-assistant/approve",
+        json!({ "approvalId": id, "decision": "approved" }),
+    )
+    .await;
+    // The run takes the decision a moment later: then nothing waits
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let thread = post(router, &format!("inbox/threads/{thread}"), Value::Null).await;
+        if thread["waiting"] == false {
+            break;
+        }
+        assert!(Instant::now() < deadline, "still waiting: {thread}");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let month = chrono::Utc::now().format("%Y-%m").to_string();
+    let file = state
+        .store()
+        .layout()
+        .decisions_dir()
+        .join(format!("{month}.md"));
+    let text = std::fs::read_to_string(file).unwrap();
+    assert!(
+        text.contains(&format!("- **Item:** approval `{id}`")),
+        "{text}"
+    );
+    assert!(text.contains("- **Decision:** approved"), "{text}");
+}
+
+#[tokio::test]
+async fn with_no_relay_an_inbox_item_opens_as_a_chat() {
+    let (state, router) = boot(BuiltInRelay::default());
+    an_inbox_item_opens_as_a_chat(&state, &router).await;
 }
 
 #[tokio::test]

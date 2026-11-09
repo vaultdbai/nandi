@@ -24,6 +24,7 @@ pub mod calendar;
 pub mod capability;
 pub mod connector;
 pub mod connector_package;
+pub mod decision;
 pub mod error;
 pub mod events;
 pub mod grant;

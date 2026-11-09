@@ -20,7 +20,7 @@ async fn dismiss_return(
     State(state): State<AppState>,
     Path(task_id): Path<String>,
 ) -> impl IntoResponse {
-    ApiResult(a2a::returns::dismiss(state.db(), task_id).await)
+    ApiResult(a2a::returns::dismiss_request_return(&state, task_id).await)
 }
 
 /// History rows returned when `?limit=` is omitted

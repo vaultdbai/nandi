@@ -425,7 +425,18 @@ pub async fn reassign_task(
     state: &AppState,
     request: ReassignRequest,
 ) -> Result<TaskRecord, String> {
-    reassign(service(state)?, request).await
+    let (task_id, to, reason) = (
+        request.task_id.clone(),
+        request.new_provider_instance.clone(),
+        request.reason.clone(),
+    );
+    let record = reassign(service(state)?, request).await?;
+    crate::services::inbox::audit::record(
+        state,
+        crate::services::inbox::audit::Decided::new("task", task_id, format!("reassigned to {to}"))
+            .note(reason.as_deref()),
+    );
+    Ok(record)
 }
 
 /// Online instances (not us, not the requester, not anyone who already

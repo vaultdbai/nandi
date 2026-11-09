@@ -199,6 +199,19 @@ pub async fn list(db: &Db) -> Result<Vec<RequestReturn>, String> {
     .await
 }
 
+/// The user takes one out of the Inbox (recorded in the decisions file)
+pub async fn dismiss_request_return(
+    state: &crate::services::AppState,
+    task_id: String,
+) -> Result<(), String> {
+    dismiss(state.db(), task_id.clone()).await?;
+    crate::services::inbox::audit::record(
+        state,
+        crate::services::inbox::audit::Decided::new("requestReturn", task_id, "dismissed"),
+    );
+    Ok(())
+}
+
 /// Takes one out of the Inbox
 pub async fn dismiss(db: &Db, task_id: String) -> Result<(), String> {
     db.call(move |conn| {

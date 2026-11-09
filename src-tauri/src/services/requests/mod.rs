@@ -1271,7 +1271,13 @@ pub async fn retry_task(state: &AppState, id: String) -> Result<Request, String>
         .map(|b| b.task.clone())
         .ok_or_else(|| format!("Request {id} not found"))?;
     match tasks.retry(&latest).await? {
-        Some(_) => get_request(state, id).await,
+        Some(_) => {
+            crate::services::inbox::audit::record(
+                state,
+                crate::services::inbox::audit::Decided::new("failed", &id, "retried"),
+            );
+            get_request(state, id).await
+        }
         None => Err("There's no other provider to try right now".to_string()),
     }
 }

@@ -29,6 +29,7 @@ use specta::Type;
 use crate::db::{self, Db};
 use crate::services::ask::ActionPlan;
 use crate::services::events::{self, EventBus};
+use crate::services::inbox;
 use crate::services::requests::local::{self, RequestSource, RequestUpdated};
 use crate::services::AppState;
 use screen::{Evidence, Screening, Verdict};
@@ -325,7 +326,7 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
         item.status = IntakeStatus::Approved;
         item.result_request_id = item.request_id.clone();
         save(&conn, &item).map_err(|e| e.to_string())?;
-        thread::note(
+        inbox::thread::note(
             &conn,
             &item.thread_id,
             &format!("Approved automatically ({rule}): it's running."),
@@ -335,7 +336,7 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
         return Ok(Gate::Go);
     }
     if let Some(why) = waits_because {
-        thread::note(&conn, &item.thread_id, &format!("It waits for you: {why}."))
+        inbox::thread::note(&conn, &item.thread_id, &format!("It waits for you: {why}."))
             .map_err(|e| e.to_string())?;
     }
     changed(bus);
@@ -474,8 +475,8 @@ pub async fn propose(state: &AppState, proposal: Proposal) -> Result<QueuedWork,
 /// Saves a new item and opens (or adds to) its thread
 fn queue(conn: &Connection, item: &QueuedWork) -> rusqlite::Result<()> {
     save(conn, item)?;
-    thread::ensure(conn, &item.thread_id, &local::title_for(&item.text))?;
-    thread::note(conn, &item.thread_id, &queued_note(item))
+    inbox::thread::ensure(conn, &item.thread_id, &local::title_for(&item.text))?;
+    inbox::thread::note(conn, &item.thread_id, &queued_note(item))
 }
 
 /// The thread's note for a new item. Pure, for tests.
@@ -576,19 +577,26 @@ async fn approve_as(state: &AppState, id: String, rule: Option<String>) -> Resul
         IntakeAction::Update => "the news reached the work.",
         IntakeAction::Run => "it's running.",
     };
-    let note = match rule {
+    let note = match &rule {
         Some(rule) => format!("Approved automatically ({rule}): {done}"),
         None => format!("Approved: {done}"),
     };
     item.status = IntakeStatus::Approved;
     item.result_request_id = Some(request_id.clone());
+    let decided = inbox::audit::Decided::new("intake", &item.id, "approved")
+        .subject(local::title_for(&item.text))
+        .note(
+            rule.map(|rule| format!("Approved automatically ({rule})"))
+                .as_deref(),
+        );
     state
         .db()
         .call(move |conn| {
             save(conn, &item)?;
-            thread::note(conn, &item.thread_id, &note)
+            inbox::thread::note(conn, &item.thread_id, &note)
         })
         .await?;
+    inbox::audit::record(state, decided);
     if let Some(id) = created {
         local::spawn_runner(state, id);
     }
@@ -599,13 +607,16 @@ async fn approve_as(state: &AppState, id: String, rule: Option<String>) -> Resul
 pub async fn dismiss(state: &AppState, id: String) -> Result<(), String> {
     let mut item = decide(state, &id).await?;
     item.status = IntakeStatus::Dismissed;
+    let decided = inbox::audit::Decided::new("intake", &item.id, "dismissed")
+        .subject(local::title_for(&item.text));
     state
         .db()
         .call(move |conn| {
             save(conn, &item)?;
-            thread::note(conn, &item.thread_id, "Dismissed: nothing was done.")
+            inbox::thread::note(conn, &item.thread_id, "Dismissed: nothing was done.")
         })
         .await?;
+    inbox::audit::record(state, decided);
     changed(state.bus());
     Ok(())
 }
@@ -905,7 +916,7 @@ mod tests {
 
         // Only a thread takes thread messages
         assert!(
-            thread::send(&state, "agent:chief-of-staff".into(), "hi".into(), None)
+            inbox::thread::send(&state, "agent:chief-of-staff".into(), "hi".into(), None)
                 .await
                 .is_err()
         );

@@ -2605,20 +2605,22 @@ async fn a_capability_needing_approval_waits_for_the_owner() {
     assert_eq!(hold.capability.as_deref(), Some("summarize"));
     assert_eq!(hold.summary, "Summarize Q3 risk");
     assert!(!approved.is_finished(), "it waits");
-    gateway::decide_gateway_hold(&state, hold.task_id.clone(), true)
+    gateway::decide_gateway_hold(&state, hold.task_id.clone(), true, None)
         .await
         .unwrap();
     let result = approved.await.unwrap();
     assert_eq!(result.status, TaskStatus::Completed, "{:?}", result.error);
     // Decided once only
-    assert!(gateway::decide_gateway_hold(&state, hold.task_id, false)
-        .await
-        .is_err());
+    assert!(
+        gateway::decide_gateway_hold(&state, hold.task_id, false, None)
+            .await
+            .is_err()
+    );
 
     // Declined: refused with the owner's no, not a policy reason
     let declined = ask("Summarize Q4 risk");
     let hold = wait_for_hold(&state).await;
-    gateway::decide_gateway_hold(&state, hold.task_id, false)
+    gateway::decide_gateway_hold(&state, hold.task_id, false, None)
         .await
         .unwrap();
     let result = declined.await.unwrap();
@@ -2636,6 +2638,81 @@ async fn a_capability_needing_approval_waits_for_the_owner() {
         .await
         .unwrap()
         .is_empty());
+    state.shutdown();
+}
+
+/// Inbox Ask chats: a refusal confirmed in the hold's chat goes back to the
+/// requester with the owner's reason, and is recorded with the chat
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_refusal_from_the_holds_chat_tells_the_requester_why() {
+    use crate::services::gateway::{self, GATEWAY_AGENT_ID};
+    use crate::services::inbox;
+    let state = AppState::for_tests(vec![]);
+    echo_agents(&state).await;
+    save_agent(
+        &state,
+        "papers",
+        "serves: [{name: summarize}]
+",
+    );
+    let mut config = gateway::get_gateway_config(&state).await.unwrap();
+    config.policy.require_approval = vec!["summarize".into()];
+    gateway::set_gateway_config(&state, config).await.unwrap();
+    let target = AgentCard::card_id(&instance(&state), GATEWAY_AGENT_ID);
+    let delegator = state.a2a_delegator().unwrap().clone();
+    let declined = tokio::spawn(async move {
+        delegator
+            .delegate_request(DelegationRequest {
+                capability: "summarize".into(),
+                input: json!({ "text": "Summarize Q4 risk" }),
+                target: Some(target),
+                ..Default::default()
+            })
+            .await
+            .unwrap()
+    });
+    let hold = wait_for_hold(&state).await;
+    let thread = format!("inbox:gatewayHold:{}", hold.task_id);
+    let opened = inbox::thread::open(&state, thread.clone()).await.unwrap();
+    assert!(opened.tools.contains(&"inbox_refuse".to_string()));
+    let outcome = inbox::tool::call(
+        &state,
+        &thread,
+        inbox::tool::REFUSE,
+        &json!({ "reason": "Not before the board meeting" }),
+    )
+    .await;
+    assert!(!outcome.is_error, "{}", outcome.result);
+    let result = declined.await.unwrap();
+    assert_eq!(result.status, TaskStatus::Failed);
+    let error = result.error.unwrap_or_default();
+    assert!(
+        error.contains("declined this request: Not before the board meeting"),
+        "{error}"
+    );
+    let month = chrono::Utc::now().format("%Y-%m").to_string();
+    let decisions = state
+        .store()
+        .repos()
+        .decisions
+        .read(&month)
+        .unwrap()
+        .unwrap();
+    assert!(
+        decisions.contains("- **Decision:** declined"),
+        "{decisions}"
+    );
+    assert!(
+        decisions.contains("- **Reason:** Not before the board meeting"),
+        "{decisions}"
+    );
+    assert!(
+        decisions.contains(&format!("- **Chat:** `{thread}`")),
+        "{decisions}"
+    );
+    // Decided: the chat has nothing left to decide
+    let again = inbox::tool::call(&state, &thread, inbox::tool::APPROVE, &json!({})).await;
+    assert!(again.is_error);
     state.shutdown();
 }
 
@@ -2716,7 +2793,7 @@ async fn assigned_work_waits_for_the_owners_done_or_decline() {
     assert_eq!(asked.output["state"], "delivered");
     let hold = wait_for_hold(&state).await;
     assert_eq!(hold.task_id, asked.task_id);
-    gateway::decide_gateway_hold(&state, hold.task_id.clone(), true)
+    gateway::decide_gateway_hold(&state, hold.task_id.clone(), true, None)
         .await
         .unwrap();
     let assignment = wait_for_assignment(&state).await;
@@ -2757,7 +2834,7 @@ async fn assigned_work_waits_for_the_owners_done_or_decline() {
     // Declined: refused with the owner's note
     let declined = assign("Rotate the keys", json!([])).await;
     let hold = wait_for_hold(&state).await;
-    gateway::decide_gateway_hold(&state, hold.task_id, true)
+    gateway::decide_gateway_hold(&state, hold.task_id, true, None)
         .await
         .unwrap();
     let assignment = wait_for_assignment(&state).await;

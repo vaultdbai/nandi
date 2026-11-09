@@ -1861,7 +1861,20 @@ pub async fn approve_workflow_step(
     state
         .workflows()
         .approve_step(&run_id, &step_id, decision)
-        .await
+        .await?;
+    crate::services::inbox::audit::record(
+        state,
+        crate::services::inbox::audit::Decided::new(
+            "workflowApproval",
+            format!("{run_id}/{step_id}"),
+            if decision == ApprovalDecision::Approved {
+                "approved"
+            } else {
+                "refused"
+            },
+        ),
+    );
+    Ok(())
 }
 
 #[cfg(test)]

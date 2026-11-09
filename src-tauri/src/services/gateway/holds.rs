@@ -191,13 +191,40 @@ pub fn pending(conn: &Connection) -> rusqlite::Result<Vec<GatewayHold>> {
 
 // -- Waiters ------------------------------------------------------------------
 
-/// Routing waits on these; a decision wakes the one for its task
+/// Routing waits on these; a decision wakes the one for its task. The
+/// owner's note with a decision (a refusal's reason, an approval's
+/// condition) is kept here until routing takes it for the requester; it
+/// lives in this process only, like the waiter.
 #[derive(Default)]
-pub struct HoldWaiters(Mutex<HashMap<String, oneshot::Sender<HoldStatus>>>);
+pub struct HoldWaiters {
+    waiters: Mutex<HashMap<String, oneshot::Sender<HoldStatus>>>,
+    notes: Mutex<HashMap<String, String>>,
+}
 
 impl HoldWaiters {
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, oneshot::Sender<HoldStatus>>> {
-        self.0.lock().unwrap_or_else(|e| e.into_inner())
+        self.waiters.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn notes(&self) -> std::sync::MutexGuard<'_, HashMap<String, String>> {
+        self.notes.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Keeps the owner's note for the task's requester (blank: none)
+    pub fn set_note(&self, task_id: &str, note: Option<&str>) {
+        match note.map(str::trim).filter(|n| !n.is_empty()) {
+            Some(note) => {
+                self.notes().insert(task_id.to_string(), note.to_string());
+            }
+            None => {
+                self.notes().remove(task_id);
+            }
+        }
+    }
+
+    /// The owner's note for the task, once
+    pub fn take_note(&self, task_id: &str) -> Option<String> {
+        self.notes().remove(task_id)
     }
 
     pub fn wait(&self, task_id: &str) -> oneshot::Receiver<HoldStatus> {
@@ -292,8 +319,13 @@ mod tests {
         let mut receiver = waiters.wait("t1");
         waiters.wake("other", HoldStatus::Approved);
         assert!(receiver.try_recv().is_err());
+        waiters.set_note("t1", Some(" Not this quarter "));
         waiters.wake("t1", HoldStatus::Rejected);
         assert_eq!(receiver.try_recv().unwrap(), HoldStatus::Rejected);
+        assert_eq!(waiters.take_note("t1").as_deref(), Some("Not this quarter"));
+        assert_eq!(waiters.take_note("t1"), None);
+        waiters.set_note("t2", Some("  "));
+        assert_eq!(waiters.take_note("t2"), None);
     }
 
     #[test]

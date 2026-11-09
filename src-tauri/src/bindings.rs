@@ -301,6 +301,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             requests::dismiss_queued_work,
             requests::get_intake_thread,
             requests::send_intake_message,
+            requests::open_inbox_thread,
+            requests::send_inbox_message,
             requests::get_auto_approve_rules,
             requests::set_auto_approve_rules,
             requests::complete_request_step,

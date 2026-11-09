@@ -40,6 +40,7 @@ use crate::services::capability_index::CapabilityIndex;
 use crate::services::domain::agent_card::OwnerRef;
 use crate::services::domain::AgentCard;
 use crate::services::events::{self, EventBus, NandiEvent};
+use crate::services::inbox::audit::Decided;
 use crate::services::network;
 use crate::services::relay::client::split_token;
 use crate::services::relay::protocol::PeerMessage;
@@ -992,11 +993,14 @@ pub async fn list_gateway_holds(state: &AppState) -> Result<Vec<holds::GatewayHo
 }
 
 /// Approves (routing goes on) or declines (the request is rejected) a held
-/// request. Deciding one that's no longer pending is an error.
+/// request. `note` goes back to the requester with it: a refusal's reason,
+/// or an approval's condition. Deciding one that's no longer pending is an
+/// error. Recorded in the decisions file (`inbox::audit`).
 pub async fn decide_gateway_hold(
     state: &AppState,
     task_id: String,
     approve: bool,
+    note: Option<String>,
 ) -> Result<holds::GatewayHold, GatewayError> {
     let status = if approve {
         holds::HoldStatus::Approved
@@ -1010,8 +1014,19 @@ pub async fn decide_gateway_hold(
         .await?
         .ok_or_else(|| "This request was already decided, or it ended".to_string())?;
     if let Some(service) = state.gateway() {
+        service.holds().set_note(&task_id, note.as_deref());
         service.holds().wake(&task_id, status);
     }
+    crate::services::inbox::audit::record(
+        state,
+        Decided::new(
+            "gatewayHold",
+            &task_id,
+            if approve { "approved" } else { "declined" },
+        )
+        .subject(hold_subject(&decided))
+        .note(note.as_deref()),
+    );
     events::emit(
         state.bus(),
         &holds::GatewayHoldChanged {
@@ -1019,6 +1034,15 @@ pub async fn decide_gateway_hold(
         },
     );
     Ok(decided)
+}
+
+/// "Sam Lee, ask-me: <their request>", for the decisions file
+fn hold_subject(hold: &holds::GatewayHold) -> String {
+    let what = hold.summary.lines().next().unwrap_or_default();
+    match &hold.capability {
+        Some(capability) => format!("{}, {capability}: {what}", hold.caller_name),
+        None => format!("{}: {what}", hold.caller_name),
+    }
 }
 
 /// Work assigned to the owner that's still open, soonest due first (the
@@ -1052,6 +1076,20 @@ pub async fn close_gateway_assignment(
     if let Some(service) = state.gateway() {
         service.assignments().wake(&task_id, status);
     }
+    crate::services::inbox::audit::record(
+        state,
+        Decided::new(
+            "assignment",
+            &task_id,
+            if done { "done" } else { "declined" },
+        )
+        .subject(format!(
+            "{}: {}",
+            closed.caller_name,
+            closed.request.lines().next().unwrap_or_default()
+        ))
+        .note(closed.note.as_deref()),
+    );
     events::emit(
         state.bus(),
         &assignments::GatewayAssignmentChanged {
