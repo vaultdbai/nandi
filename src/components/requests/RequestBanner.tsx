@@ -88,7 +88,11 @@ export function RequestBanner({
       case 'reject':
         if (isGatewayHold(request, blocker)) {
           await result(
-            client.decideGatewayHold(blocker.taskId, action === 'approve'),
+            client.decideGatewayHold(
+              blocker.taskId,
+              action === 'approve',
+              null
+            ),
             t(
               action === 'approve'
                 ? 'request.done.holdApproved'

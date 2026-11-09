@@ -1,13 +1,15 @@
 /**
  * The Inbox (`buildInbox`) from what's pending now: tool approvals,
  * workflow step approvals, escalated questions, manual steps, a missing
- * model, work assigned to the user, and recent failures not dismissed.
+ * model, work assigned to the user, the intake queue (work from outside
+ * waiting for the user's OK), and recent failures not dismissed.
  * Kept live by the events of each source; approvals by `agent://approval_*`.
  */
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNow } from '@/components/agents/task-utils'
 import { buildInbox, inboxBadgeCount } from '@/components/inbox/inbox-model'
+import { useChiefOfStaffDigest } from '@/hooks/useChiefOfStaffDigest'
 import { usePendingClarifications } from '@/hooks/useClarifications'
 import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
 import { useTrustRequests } from '@/hooks/useTrustRequests'
@@ -79,10 +81,13 @@ export function useDecideGatewayHold() {
     mutationFn: async ({
       taskId,
       approve,
+      note = null,
     }: {
       taskId: string
       approve: boolean
-    }) => unwrapResult(await client.decideGatewayHold(taskId, approve)),
+      /** Goes back to them: a refusal's reason, a condition */
+      note?: string | null
+    }) => unwrapResult(await client.decideGatewayHold(taskId, approve, note)),
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: inboxKeys.holds }),
   })
@@ -193,6 +198,7 @@ export function useInbox() {
   const work = useWork(null)
   const dismissed = useDismissedWork()
   const returns = useRequestReturns()
+  const digest = useChiefOfStaffDigest()
   const model = useDefaultModel()
   // A query, not the agent store: the companion's webview has no store sync
   const { data: agents = [] } = useAgents()
@@ -210,6 +216,7 @@ export function useInbox() {
     work: work.data ?? [],
     dismissed: dismissed.data ?? [],
     returns: returns.data ?? [],
+    queue: digest.data?.queue ?? [],
     agentName: id => names.get(id) ?? id,
   })
 

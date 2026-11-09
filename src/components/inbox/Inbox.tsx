@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  ChevronRight,
   CircleAlert,
   ClipboardList,
   ExternalLink,
@@ -8,7 +9,9 @@ import {
   MessageCircleQuestion,
   MessageSquareReply,
   ShieldAlert,
+  Sparkles,
   UserRoundPlus,
+  type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApprovalRequestCard } from '@/components/agent-console/ApprovalRequestCard'
@@ -44,12 +47,14 @@ import { formatDuration } from '@/lib/format-time'
 import { useViewOpener } from '@/hooks/useViewOpener'
 import { workItemView } from '@/lib/work'
 import { approveWorkflowStep, runWorkflow } from '@/lib/workflow-actions'
-import type { InboxItem } from './inbox-model'
+import { cn } from '@/lib/utils'
+import { inboxItemView, inboxRowLabel, type InboxItem } from './inbox-model'
 
 /**
- * Everything waiting on the user, each with its fix inline: approve or
- * reject, answer, finish a manual step, add a model. Recent failures follow
- * with Retry / Dismiss; they aren't counted in the badge.
+ * Everything waiting on the user, one calm line each; opening one opens its
+ * Ask chat with the Chief of Staff, with the item's card (approve or
+ * reject, answer, finish a manual step) on top as shortcuts. Recent
+ * failures follow; they aren't counted in the badge.
  */
 export function Inbox() {
   const { t } = useTranslation()
@@ -79,11 +84,83 @@ export function Inbox() {
   )
 }
 
+const ROW_ICONS: Record<InboxItem['kind'], LucideIcon> = {
+  noModel: KeyRound,
+  approval: ShieldAlert,
+  workflowApproval: ShieldAlert,
+  gatewayHold: ShieldAlert,
+  assignment: ClipboardList,
+  clarification: MessageCircleQuestion,
+  manualStep: ClipboardList,
+  trustRequest: UserRoundPlus,
+  failed: CircleAlert,
+  requestReturn: MessageSquareReply,
+  intake: Sparkles,
+}
+
 /**
- * One Inbox item with its fix inline. Shared with the companion, whose
+ * One Inbox item as one line: what it is and how long it has; opening it
+ * opens its Ask chat (`inboxItemView`). Shared with the companion, whose
  * links go to the main window (`useViewOpener`).
  */
 export function InboxRow({ item }: { item: InboxItem }) {
+  const { t } = useTranslation()
+  const { open } = useViewOpener()
+  const now = useNow(item.deadline !== null, 30_000)
+  const label = inboxRowLabel(item)
+  const Icon = ROW_ICONS[item.kind]
+  const overdue = item.deadline !== null && item.deadline <= now
+  const quiet = item.kind === 'requestReturn'
+  return (
+    <button
+      type="button"
+      data-testid="inbox-row"
+      onClick={() => open(inboxItemView(item))}
+      className="flex w-full min-w-0 items-center gap-3 rounded-lg border bg-card px-4 py-2.5 text-start hover:bg-accent"
+    >
+      <Icon
+        aria-hidden
+        className={cn(
+          'size-4 shrink-0',
+          item.kind === 'failed' || overdue
+            ? 'text-destructive'
+            : quiet
+              ? 'text-primary'
+              : 'text-warning'
+        )}
+      />
+      <span className="min-w-0 flex-1 truncate text-sm">
+        {'text' in label ? label.text : t(label.key, label.values)}
+      </span>
+      {item.deadline !== null && (
+        <span
+          className={cn(
+            'shrink-0 text-xs',
+            overdue ? 'text-destructive' : 'text-muted-foreground'
+          )}
+        >
+          {overdue
+            ? t('inbox.assignment.overdue', {
+                duration: formatDuration(now - item.deadline),
+              })
+            : t('inbox.expiresIn', {
+                duration: formatDuration(item.deadline - now),
+              })}
+        </span>
+      )}
+      <ChevronRight
+        aria-hidden
+        className="size-4 shrink-0 text-muted-foreground rtl:rotate-180"
+      />
+    </button>
+  )
+}
+
+/**
+ * One Inbox item's card with its fix in place: the shortcuts on top of the
+ * item's Ask chat (`InboxItemThreadView`)
+ */
+export function InboxItemCard({ item }: { item: InboxItem }) {
   const { t } = useTranslation()
   const opener = useViewOpener()
   switch (item.kind) {
@@ -143,6 +220,20 @@ export function InboxRow({ item }: { item: InboxItem }) {
       return <FailedRow item={item} />
     case 'requestReturn':
       return <RequestReturnRow item={item} />
+    case 'intake':
+      return (
+        <SimpleRow
+          icon={<Sparkles className="text-warning" />}
+          text={t('inbox.intake', { text: item.work.text })}
+          action={t('inbox.review')}
+          onAction={() =>
+            opener.open({
+              kind: 'intake-thread',
+              conversationId: item.work.threadId,
+            })
+          }
+        />
+      )
   }
 }
 

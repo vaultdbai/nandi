@@ -93,6 +93,7 @@ Where it plugs in:
 - **Executor intake** (`a2a/executor.rs`, tasks to my agents, `ask-me` included): `Refuse` → `ReasonKind::NotAccepting` ("Not accepted here. Finance: …"); `Ask` → `intake::GroupSay::Ask`, the item waits in the queue even for trusted peers and auto-approve rules, with the reason as a thread note; `Auto` → `GroupSay::Auto`, a clean request is approved on the queue (so the trust check passes) with "your groups' policies and your access level let it run"; suspicious screening still waits.
 - **Gateway** (`gateway/router.rs`, tasks to `<me>/gateway`): `Refuse` → rejected at the policy stage; `Ask` → held for approval (`hold_for_approval`) unless it's `assign-me`, which waits for the owner's Done anyway.
 - Requests that went ahead are counted per group, member and day in `group_requests` (SQLite, runtime) for `daily_limit` and `first-time`.
+- A held or queued request is an Inbox item like any other, so it can be decided in its Ask chat ([interaction-layer](./interaction-layer.md#inbox-ask-chats)): the chat's decision waits for the owner's confirm and then calls the same `decide_gateway_hold` / `intake::approve` as the button, so a group's "Ask first" still holds it and chat never loosens a policy.
 
 A copy that doesn't read at all is skipped and logged (its members are unknown); the next refresh rewrites it.
 

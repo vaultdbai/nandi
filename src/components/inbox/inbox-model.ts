@@ -3,6 +3,9 @@
  * that exist today (work-model §2.3, `who = me`). Pure, so the order and
  * the badge count are tested without rendering. Home will read the same
  * model once it exists (task 7); a backend `list_inbox` can replace it later.
+ *
+ * Every item is an Ask chat with the Chief of Staff (`services::inbox`):
+ * `inboxThreadId` names it and `inboxItemView` opens it.
  */
 import type {
   GatewayAssignment,
@@ -10,10 +13,15 @@ import type {
   PendingApproval,
   PendingClarification,
   PendingManualStep,
+  QueuedWork,
   RequestReturn,
   TrustRequest,
   WorkItem,
 } from '@/lib/bindings'
+import type { NavLabel } from '@/components/layout/nav-tree'
+import { workItemView } from '@/lib/work'
+import type { View } from '@/store/navigation-store'
+import { approvalSummary } from './approval-model'
 
 /** Failures stay offered this long */
 const FAILED_WINDOW_MS = 24 * 60 * 60 * 1000
@@ -46,6 +54,8 @@ export type InboxItem =
   | (Base & { kind: 'failed'; item: WorkItem })
   /** A request the user sent came back while nobody watched */
   | (Base & { kind: 'requestReturn'; ret: RequestReturn })
+  /** Work from mail, the calendar or a teammate, waiting for the user's OK */
+  | (Base & { kind: 'intake'; work: QueuedWork })
 
 export interface InboxSources {
   now: number
@@ -64,6 +74,8 @@ export interface InboxSources {
   dismissed: string[]
   /** Requests that came back while nobody watched (`list_request_returns`) */
   returns: RequestReturn[]
+  /** The intake queue: work from outside waiting for the user's OK */
+  queue: QueuedWork[]
   agentName: (agentId: string) => string
 }
 
@@ -190,6 +202,20 @@ export function buildInbox(sources: InboxSources): InboxItem[] {
     })
   }
 
+  // One line per intake thread: news for the same work joins it
+  const threads = new Set<string>()
+  for (const work of sources.queue) {
+    if (work.status !== 'pending' || threads.has(work.threadId)) continue
+    threads.add(work.threadId)
+    items.push({
+      kind: 'intake',
+      id: `intake-${work.threadId}`,
+      work,
+      createdAt: work.at,
+      deadline: null,
+    })
+  }
+
   const dismissed = new Set(sources.dismissed)
   // A request that came back failed is already a return: not twice
   const returned = new Set(sources.returns.map(ret => ret.taskId))
@@ -225,4 +251,120 @@ function isOffered(item: InboxItem): boolean {
 
 export function inboxBadgeCount(items: InboxItem[]): number {
   return items.filter(item => !isOffered(item)).length
+}
+
+/** An ID inside a thread's ID: `/` and `%` escaped (as `inbox::item` does) */
+function part(id: string): string {
+  return id.replace(/%/g, '%25').replace(/\//g, '%2F')
+}
+
+/**
+ * The item's Ask chat with the Chief of Staff (`inbox:<kind>:<id>`, an
+ * intake item's own `intake:<id>`), or `null` when it has none: a missing
+ * model is fixed in Settings, and a workflow approval that doesn't name its
+ * step is reviewed on its run
+ */
+export function inboxThreadId(item: InboxItem): string | null {
+  const thread = (id: string) => `inbox:${item.kind}:${id}`
+  switch (item.kind) {
+    case 'noModel':
+      return null
+    case 'approval':
+      return thread(part(item.approval.id))
+    case 'workflowApproval': {
+      const target = item.item.nextAction?.target
+      if (!target?.runId || !target.stepId) return null
+      return thread(`${part(target.runId)}/${part(target.stepId)}`)
+    }
+    case 'gatewayHold':
+      return thread(part(item.hold.taskId))
+    case 'assignment':
+      return thread(part(item.assignment.taskId))
+    case 'clarification':
+      return thread(
+        `${part(item.clarification.taskId)}/${part(item.clarification.question.id)}`
+      )
+    case 'manualStep':
+      return thread(`${part(item.step.runId)}/${part(item.step.stepId)}`)
+    case 'trustRequest':
+      return thread(part(item.request.instanceId))
+    case 'requestReturn':
+      return thread(part(item.ret.taskId))
+    case 'failed':
+      return thread(part(item.item.id))
+    case 'intake':
+      return item.work.threadId
+  }
+}
+
+/** Where opening the item goes: its chat, else where it's fixed */
+export function inboxItemView(item: InboxItem): View {
+  if (item.kind === 'intake') {
+    return { kind: 'intake-thread', conversationId: item.work.threadId }
+  }
+  const conversationId = inboxThreadId(item)
+  if (conversationId) return { kind: 'inbox-thread', conversationId }
+  if (item.kind === 'workflowApproval') return workItemView(item.item)
+  return { kind: 'settings', section: 'models' }
+}
+
+const label = (key: string, values?: Record<string, string>): NavLabel =>
+  values ? { key, values } : { key }
+
+/** The first line of a text, for a one-line row */
+export function firstLine(text: string): string {
+  return text.trim().split('\n')[0] ?? ''
+}
+
+/** The item's one line in the Inbox list */
+export function inboxRowLabel(item: InboxItem): NavLabel {
+  switch (item.kind) {
+    case 'noModel':
+      return label('inbox.noModel')
+    case 'approval': {
+      const summary = approvalSummary(item.approval.tool, item.approval.args)
+      return label(`approval.summary.${summary.key}`, summary.values)
+    }
+    case 'workflowApproval':
+      return label('inbox.workflowApproval', { workflow: item.item.title })
+    case 'gatewayHold': {
+      const { callerName: member, capability } = item.hold
+      if (capability === 'assign-me') {
+        return label('inbox.hold.titleAssign', { member })
+      }
+      if (capability === 'ask-me')
+        return label('inbox.hold.titleAsk', { member })
+      return capability
+        ? label('inbox.hold.titleCapability', { member, capability })
+        : label('inbox.hold.title', { member })
+    }
+    case 'assignment':
+      return label('inbox.assignment.title', {
+        member: item.assignment.callerName,
+      })
+    case 'clarification':
+      return label('inbox.question', {
+        question: item.clarification.question.question,
+      })
+    case 'manualStep':
+      return label('work.manual.label', {
+        step: item.step.stepId,
+        workflow: item.step.workflowName,
+      })
+    case 'trustRequest':
+      return label('inbox.trust.title', {
+        name:
+          item.request.memberName ??
+          item.request.handle ??
+          item.request.instanceId,
+      })
+    case 'failed':
+      return label('inbox.failed', { title: item.item.title })
+    case 'requestReturn':
+      return label(`inbox.return.${item.ret.outcome}`, {
+        name: item.ret.fromName,
+      })
+    case 'intake':
+      return label('inbox.intake', { text: firstLine(item.work.text) })
+  }
 }

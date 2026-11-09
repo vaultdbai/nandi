@@ -313,6 +313,9 @@ export const tauriClient: NandiClient = {
   getIntakeThread: conversationId => commands.getIntakeThread(conversationId),
   sendIntakeMessage: (conversationId, text, clientMessageId) =>
     commands.sendIntakeMessage(conversationId, text, clientMessageId),
+  openInboxThread: conversationId => commands.openInboxThread(conversationId),
+  sendInboxMessage: (conversationId, text, clientMessageId) =>
+    commands.sendInboxMessage(conversationId, text, clientMessageId),
   cancelRequest: id => commands.cancelRequest(id),
   rerunRequest: id => commands.rerunRequest(id),
   mascotGet: () => commands.mascotGet(),
@@ -331,8 +334,8 @@ export const tauriClient: NandiClient = {
   getGatewayStatus: () => commands.getGatewayStatus(),
   makeGatewayReachable: () => commands.makeGatewayReachable(),
   listGatewayHolds: () => commands.listGatewayHolds(),
-  decideGatewayHold: (taskId, approve) =>
-    commands.decideGatewayHold(taskId, approve),
+  decideGatewayHold: (taskId, approve, note) =>
+    commands.decideGatewayHold(taskId, approve, note),
   listGatewayAssignments: () => commands.listGatewayAssignments(),
   getMyNotes: () => commands.getMyNotes(),
   readNote: name => commands.readNote(name),

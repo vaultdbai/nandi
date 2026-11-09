@@ -252,6 +252,10 @@ for it: Approve is a click, never a chat message. Home's rows open the
 thread, and a step waiting on the user can be marked done from Home
 (`DigestItem.waiting_step`, `complete_request_step`).
 
+The intake queue is an Inbox kind too (`buildInbox`, one line per thread),
+and its thread is one of the Inbox's Ask chats: the decision tools below
+work in it (`inbox_approve` / `inbox_refuse` with the queued `item`).
+
 **Screening** (`intake/screen.rs`, pure, offline) reads the request, and
 the email itself when the call names its `message_id`. No link is opened
 and no attachment is read (Nandi never downloads attachments; a malware
@@ -405,3 +409,77 @@ NANDI.md); `AskResponse` as `{ kind, data }`.
 
 Migration v14 adds `ask_history` and `work_preferences` (machine-local;
 neither is a projection of the gold copy).
+
+## Inbox Ask chats
+
+Every Inbox item is an Ask chat with the Chief of Staff (`services::inbox`).
+The Inbox list stays calm, one line per item (`InboxRow`, label from
+`inboxRowLabel`); opening a line (Home, the Inbox page, the work tray)
+opens the item's chat (`InboxItemThreadView`, view `inbox-thread`). The
+companion keeps the full cards (`InboxItemCard`), so it still decides in
+place.
+
+**One thread per item.** The conversation `inbox:<kind>:<id>` (`/` and `%`
+escaped in two-part IDs: `<run>/<step>`, `<task>/<question>`) is the Chief
+of Staff's, made the first time the item is opened (`open_inbox_thread`,
+`POST /api/inbox/threads/{id}`); an intake item keeps its `intake:<id>`
+thread. `inboxThreadId` (TypeScript) and `InboxItemRef` (Rust) name it the
+same way. The page puts the item's card on top (its buttons are the
+shortcuts), the conversation below, and the ask box in chat mode
+(`send_inbox_message`). Once the item no longer waits, the top says so and
+the chat stays.
+
+**What the Chief of Staff knows.** Its turns there get the item and what's
+being decided (`inbox::thread::prompt`, `item::load`), inside
+`<task-data>`, untrusted: the user's messages are instructions, the item
+never is.
+
+**Deciding in words.** Only in that thread, only for the Chief of Staff,
+and only those that fit the item now, it is offered decision tools
+(`inbox::tool`, after tool deferral so they're never hidden):
+
+| Kind               | Tools                                                    |
+| ------------------ | -------------------------------------------------------- |
+| `approval`         | approve, refuse (a hand-over: refuse only, it's skipped) |
+| `workflowApproval` | approve, refuse                                          |
+| `gatewayHold`      | approve (`note`), refuse (`reason`), reassign (`to`)     |
+| `assignment`       | done (`note`), refuse (`reason`), reassign (`to`)        |
+| `clarification`    | answer (`text`), refuse                                  |
+| `manualStep`       | done (`note`: the step's output)                         |
+| `trustRequest`     | approve (trust), refuse (not now)                        |
+| `requestReturn`    | done (dismiss)                                           |
+| `failed`           | approve (retry, not for workflow runs), done (dismiss)   |
+| intake             | approve, refuse (`item` when several wait)               |
+
+Every decision call waits for the user: `inbox::tool::gate` forces
+`requires_approval` on them after the step is planned (like
+`studio::save::gate`), whatever the model, the skill or the canned script
+said, and the confirm card shows in the chat (`approval-model.ts` words it:
+"Refuse this item, because: …"). A sentence never decides anything. The
+confirm card is left out of `list_pending_approvals`, so it isn't an Inbox
+line of its own. On confirm, the dispatcher calls the same service function
+as the item's button (`approve_action`; `access::answer` with Allow once,
+never a lasting grant; `answer_hand_over` skipped; `approve_workflow_step`;
+`decide_gateway_hold`; `close_gateway_assignment`;
+`respond_to_clarification`; `complete_manual_step`;
+`respond_trust_request`; `dismiss_request_return`; `retry_task`;
+`dismiss_work`; `intake::approve` / `dismiss`; `reassign_task`, the
+teammate found by name or instance ID among `reassign_candidates`). So
+group policies, typed reasons and the audit apply as for the button.
+Conditions ("approve up to $200", "skip the email") travel as the note or
+reason to the requester or the step; they never change a policy or a grant.
+A decision tool named outside an Inbox chat is refused.
+
+**Typed reasons back.** `decide_gateway_hold` takes an optional `note`
+(the button sends none). A refusal's reason goes back in the requester's
+refusal ("The owner declined this request: …"); an approval's condition in
+the "Approved by the owner: …" note on their task. The note waits in
+`HoldWaiters` (memory) until routing takes it.
+
+**Audit.** Each decision, from a button or a chat, is appended to
+`.nandi/decisions/<yyyy-mm>.md` in the gold copy, with the chat's
+conversation ID when it came from one ([data-model](./data-model.md#decisions)).
+The chat's text stays in `state.db`.
+
+**Offline.** Local items work with no relay. A person's request needs the
+relay only to send the answer back, through the existing outbox.

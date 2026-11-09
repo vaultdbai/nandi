@@ -8,8 +8,11 @@
 import type { NavLabel } from '@/components/layout/nav-tree'
 import type { ActivityStatus } from '@/components/home/activity-model'
 import type { HomeRow } from '@/components/home/home-model'
-import type { InboxItem } from '@/components/inbox/inbox-model'
-import { workItemView } from '@/lib/work'
+import {
+  firstLine,
+  inboxItemView,
+  type InboxItem,
+} from '@/components/inbox/inbox-model'
 import type { View } from '@/store/navigation-store'
 
 /** Rows each group shows before its "All" link */
@@ -54,29 +57,25 @@ const STATUS_TONES: Record<ActivityStatus, TrayTone> = {
   cancelled: 'quiet',
 }
 
-/** One Inbox item as a line; the fix is one click away (or in place) */
+/**
+ * One Inbox item as a line, opening its Ask chat (`inboxItemView`); a tool
+ * approval can also be decided in place
+ */
 export function inboxTrayRow(item: InboxItem): TrayRow {
-  const row = (
-    label: NavLabel,
-    view: View = INBOX,
-    tone: TrayTone = 'needsYou'
-  ): TrayRow => ({
+  const row = (label: NavLabel, tone: TrayTone = 'needsYou'): TrayRow => ({
     id: item.id,
     label,
     tone,
-    view,
+    view: inboxItemView(item),
     meta: null,
     approval: null,
   })
   switch (item.kind) {
     case 'noModel':
-      return row(key('tray.noModel'), { kind: 'settings', section: 'models' })
+      return row(key('tray.noModel'))
     case 'approval':
       return {
-        ...row(key('tray.approval', { tool: item.approval.tool }), {
-          kind: 'agent',
-          agentId: item.approval.agentId,
-        }),
+        ...row(key('tray.approval', { tool: item.approval.tool })),
         meta: { text: item.agentName },
         approval: {
           agentId: item.approval.agentId,
@@ -84,25 +83,13 @@ export function inboxTrayRow(item: InboxItem): TrayRow {
         },
       }
     case 'workflowApproval':
-      return row(
-        key('tray.workflowApproval', { title: item.item.title }),
-        workItemView(item.item)
-      )
+      return row(key('tray.workflowApproval', { title: item.item.title }))
     case 'gatewayHold':
-      return row(key('tray.hold', { name: item.hold.callerName }), {
-        kind: 'request',
-        requestId: item.hold.taskId,
-      })
+      return row(key('tray.hold', { name: item.hold.callerName }))
     case 'assignment':
-      return row(key('tray.assignment', { name: item.assignment.callerName }), {
-        kind: 'request',
-        requestId: item.assignment.taskId,
-      })
+      return row(key('tray.assignment', { name: item.assignment.callerName }))
     case 'clarification':
-      return row(
-        { text: item.clarification.question.question },
-        { kind: 'delegation-thread', taskId: item.clarification.taskId }
-      )
+      return row({ text: item.clarification.question.question })
     case 'manualStep':
       return row(key('tray.manualStep', { workflow: item.step.workflowName }))
     case 'trustRequest':
@@ -115,13 +102,11 @@ export function inboxTrayRow(item: InboxItem): TrayRow {
         })
       )
     case 'failed':
-      return row({ text: item.item.title }, workItemView(item.item), 'failed')
+      return row({ text: item.item.title }, 'failed')
     case 'requestReturn':
-      return row(
-        key('tray.requestReturn', { name: item.ret.fromName }),
-        { kind: 'request', requestId: item.ret.taskId },
-        'done'
-      )
+      return row(key('tray.requestReturn', { name: item.ret.fromName }), 'done')
+    case 'intake':
+      return row(key('tray.intake', { text: firstLine(item.work.text) }))
   }
 }
 

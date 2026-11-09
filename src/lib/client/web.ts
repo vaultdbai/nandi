@@ -501,6 +501,13 @@ export const webClient: NandiClient = {
       text,
       clientMessageId,
     }),
+  openInboxThread: conversationId =>
+    request('POST', `/inbox/threads/${id(conversationId)}`),
+  sendInboxMessage: (conversationId, text, clientMessageId) =>
+    request('POST', `/inbox/threads/${id(conversationId)}/messages`, {
+      text,
+      clientMessageId,
+    }),
   cancelRequest: requestId =>
     request('POST', `/requests/${id(requestId)}/cancel`),
   mascotGet: () => request('GET', '/mascot'),
@@ -525,9 +532,10 @@ export const webClient: NandiClient = {
   getGatewayStatus: () => request('GET', '/gateway/status'),
   makeGatewayReachable: () => request('POST', '/gateway/reachable'),
   listGatewayHolds: () => request('GET', '/gateway/holds'),
-  decideGatewayHold: (taskId, approve) =>
+  decideGatewayHold: (taskId, approve, note) =>
     request('POST', `/gateway/holds/${encodeURIComponent(taskId)}/decide`, {
       approve,
+      note,
     }),
   listGatewayAssignments: () => request('GET', '/gateway/assignments'),
   getMyNotes: () => request('GET', '/notes'),

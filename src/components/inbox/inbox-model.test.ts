@@ -5,11 +5,20 @@ import type {
   PendingApproval,
   PendingClarification,
   PendingManualStep,
+  QueuedWork,
   RequestReturn,
   TrustRequest,
   WorkItem,
 } from '@/lib/bindings'
-import { buildInbox, inboxBadgeCount, type InboxSources } from './inbox-model'
+import {
+  buildInbox,
+  inboxBadgeCount,
+  inboxItemView,
+  inboxRowLabel,
+  inboxThreadId,
+  type InboxItem,
+  type InboxSources,
+} from './inbox-model'
 
 const NOW = 1_000_000_000
 
@@ -81,6 +90,7 @@ const sources = (overrides: Partial<InboxSources>): InboxSources => ({
   work: [],
   dismissed: [],
   returns: [],
+  queue: [],
   agentName: id => (id === 'writer' ? 'Writer' : id),
   ...overrides,
 })
@@ -344,5 +354,155 @@ describe('inboxBadgeCount', () => {
     )
     expect(items).toHaveLength(3)
     expect(inboxBadgeCount(items)).toBe(2)
+  })
+})
+
+const queued = (
+  id: string,
+  threadId: string,
+  at: number,
+  status: QueuedWork['status'] = 'pending'
+): QueuedWork => ({
+  id,
+  at,
+  source: 'email',
+  action: 'start',
+  requestId: null,
+  requestTitle: null,
+  text: `Pay the Acme bill
+From Lena, ${id}`,
+  sender: 'Lena <lena@acme.com>',
+  screening: { verdict: 'clean', reasons: [], links: [] },
+  status,
+  resultRequestId: null,
+  threadId,
+  plan: null,
+})
+
+describe('the intake queue in the Inbox', () => {
+  it('shows one line per waiting thread, counted in the badge', () => {
+    const items = buildInbox(
+      sources({
+        queue: [
+          queued('q1', 'intake:q1', NOW - 3000),
+          // News for the same work joins its thread: not a second line
+          queued('q2', 'intake:q1', NOW - 2000),
+          queued('q3', 'intake:q3', NOW - 1000, 'dismissed'),
+          queued('q4', 'intake:q4', NOW - 500),
+        ],
+      })
+    )
+    expect(items.map(item => item.id)).toEqual([
+      'intake-intake:q1',
+      'intake-intake:q4',
+    ])
+    expect(inboxBadgeCount(items)).toBe(2)
+    const [first] = items
+    if (!first) throw new Error('no item')
+    expect(inboxRowLabel(first)).toEqual({
+      key: 'inbox.intake',
+      values: { text: 'Pay the Acme bill' },
+    })
+    // It keeps its own thread
+    expect(inboxThreadId(first)).toBe('intake:q1')
+    expect(inboxItemView(first)).toEqual({
+      kind: 'intake-thread',
+      conversationId: 'intake:q1',
+    })
+  })
+})
+
+describe('every Inbox item is an Ask chat', () => {
+  const base = { createdAt: NOW, deadline: null }
+
+  it('names each kind`s thread as the backend does', () => {
+    const items: InboxItem[] = [
+      {
+        ...base,
+        id: 'a',
+        kind: 'approval',
+        approval: approval('a1', NOW, null),
+        agentName: 'Writer',
+      },
+      {
+        ...base,
+        id: 'c',
+        kind: 'clarification',
+        clarification: clarification('ap', null),
+      },
+      { ...base, id: 'm', kind: 'manualStep', step: manual },
+      {
+        ...base,
+        id: 'h',
+        kind: 'gatewayHold',
+        hold: {
+          taskId: 't/1',
+          callerInstance: 'desktop-sam',
+          callerName: 'Sam',
+          capability: 'ask-me',
+          summary: 'Q3?',
+          status: 'pending',
+          createdAt: NOW,
+          expiresAt: NOW + 1000,
+        },
+      },
+      {
+        ...base,
+        id: 'f',
+        kind: 'failed',
+        item: work({ id: 'w9', state: 'failed' }),
+      },
+    ]
+    expect(items.map(inboxThreadId)).toEqual([
+      'inbox:approval:a1',
+      'inbox:clarification:t1/q1',
+      'inbox:manualStep:run-m/laptop',
+      'inbox:gatewayHold:t%2F1',
+      'inbox:failed:w9',
+    ])
+    expect(inboxItemView(items[0] as InboxItem)).toEqual({
+      kind: 'inbox-thread',
+      conversationId: 'inbox:approval:a1',
+    })
+    expect(inboxRowLabel(items[3] as InboxItem)).toEqual({
+      key: 'inbox.hold.titleAsk',
+      values: { member: 'Sam' },
+    })
+  })
+
+  it('opens a workflow approval on its run when it names no step, and a missing model in Settings', () => {
+    const noStep: InboxItem = {
+      ...base,
+      id: 'w',
+      kind: 'workflowApproval',
+      item: work({ id: 'run-1', state: 'waiting' }),
+    }
+    expect(inboxThreadId(noStep)).toBeNull()
+    expect(inboxItemView(noStep)).toEqual({ kind: 'work-item', id: 'run-1' })
+    const withStep: InboxItem = {
+      ...noStep,
+      item: work({
+        id: 'run-1',
+        state: 'waiting',
+        nextAction: {
+          description: '',
+          kind: 'approval',
+          deadline: null,
+          reasonKind: null,
+          target: {
+            runId: 'run-1',
+            stepId: 'publish',
+            agentId: null,
+            taskId: null,
+          },
+        } as WorkItem['nextAction'],
+      }),
+    }
+    expect(inboxThreadId(withStep)).toBe('inbox:workflowApproval:run-1/publish')
+    const noModel: InboxItem = { ...base, id: 'n', kind: 'noModel' }
+    expect(inboxItemView(noModel)).toEqual({
+      kind: 'settings',
+      section: 'models',
+    })
   })
 })

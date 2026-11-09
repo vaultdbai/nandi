@@ -55,6 +55,7 @@ import type {
   EmailSettingsInput,
   EmailSignInPoll,
   ChiefOfStaffDigest,
+  InboxThread,
   IntakeThread,
   EmailStatus,
   MailProvider,
@@ -866,6 +867,14 @@ export interface NandiClient {
     text: string,
     clientMessageId: string | null
   ): Promise<Result<SendMessageResult, string>>
+  /** An Inbox item's Ask chat, made the first time it's opened */
+  openInboxThread(conversationId: string): Promise<Result<InboxThread, string>>
+  /** A message to the Chief of Staff in an Inbox item's chat (a turn) */
+  sendInboxMessage(
+    conversationId: string,
+    text: string,
+    clientMessageId: string | null
+  ): Promise<Result<SendMessageResult, string>>
   completeRequestStep(
     id: string,
     position: number
@@ -909,10 +918,11 @@ export interface NandiClient {
   makeGatewayReachable(): Promise<Result<GatewayStatus, string>>
   /** Requests waiting for the owner's approval, oldest first */
   listGatewayHolds(): Promise<Result<GatewayHold[], string>>
-  /** Approve (routing goes on) or decline a held request */
+  /** Approve (routing goes on) or decline a held request; `note` goes back to them */
   decideGatewayHold(
     taskId: string,
-    approve: boolean
+    approve: boolean,
+    note: string | null
   ): Promise<Result<GatewayHold, string>>
   // My notes (the folder Chief of Staff keeps)
   /** The notes folder and its notes; creates and shares it on first use */

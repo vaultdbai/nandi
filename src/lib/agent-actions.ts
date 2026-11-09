@@ -115,6 +115,19 @@ export async function sendIntakeMessage(
   )
 }
 
+/** The user's message in an Inbox item's Ask chat: a Chief of Staff turn */
+export async function sendInboxMessage(
+  conversationId: string,
+  text: string
+): Promise<void> {
+  if (!useAgentStore.getState().conversations[conversationId]) {
+    await loadConversation(conversationId)
+  }
+  await sendOptimistically(conversationId, text, [], messageId =>
+    client.sendInboxMessage(conversationId, text, messageId)
+  )
+}
+
 /**
  * Opens a new, empty chat in Ask. Nothing is created until its first
  * message is sent (`sendToStudio` without a conversation).

@@ -3,6 +3,7 @@ import { CapabilityDetailView } from '@/components/views/CapabilityDetailView'
 import { DelegationThreadView } from '@/components/views/DelegationThreadView'
 import { RequestDetailView } from '@/components/views/RequestDetailView'
 import { IntakeThreadView } from '@/components/views/IntakeThreadView'
+import { InboxItemThreadView } from '@/components/views/InboxItemThreadView'
 import { MemberProfileView } from '@/components/views/MemberProfileView'
 import { OnboardingView } from '@/components/views/OnboardingView'
 import { RunDetailView } from '@/components/views/RunDetailView'
@@ -122,6 +123,13 @@ function CurrentView({ view }: { view: View }) {
     case 'intake-thread':
       return (
         <IntakeThreadView
+          key={view.conversationId}
+          conversationId={view.conversationId}
+        />
+      )
+    case 'inbox-thread':
+      return (
+        <InboxItemThreadView
           key={view.conversationId}
           conversationId={view.conversationId}
         />

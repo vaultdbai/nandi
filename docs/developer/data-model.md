@@ -14,33 +14,55 @@ On every start, `services::migration::bootstrap` opens `~/.nandi/repo`, or creat
 
 ## What Lives Where
 
-| Data                                                                          | Where                                                 | In git | Rebuildable              |
-| ----------------------------------------------------------------------------- | ----------------------------------------------------- | ------ | ------------------------ |
-| Agents (`skill.md`, `instructions.md`)                                        | `~/.nandi/repo/.nandi/agents/<id>/`                   | ✅     | source                   |
-| Agent playbooks                                                               | `~/.nandi/repo/.nandi/agents/<id>/skills/<name>.md`   | ✅     | source                   |
-| Agent-scoped workflows                                                        | `~/.nandi/repo/.nandi/agents/<id>/workflows/<w>.yaml` | ✅     | source                   |
-| Global workflows                                                              | `~/.nandi/repo/.nandi/workflows/<w>.yaml`             | ✅     | source                   |
-| Triggers                                                                      | `~/.nandi/repo/.nandi/triggers/<t>.yaml`              | ✅     | source                   |
-| Portable settings (theme, language, default model, provider pins)             | `~/.nandi/repo/.nandi/settings.yaml`                  | ✅     | source                   |
-| Connector declarations                                                        | `~/.nandi/repo/.nandi/connectors.yaml`                | ✅     | source                   |
-| Groups I'm in: each group's signed policy and members ([groups](./groups.md)) | `~/.nandi/repo/.nandi/groups/<group-id>.md`           | ✅     | refreshed from the relay |
-| My access level per group                                                     | `~/.nandi/repo/.nandi/groups/access.yaml`             | ✅     | source                   |
-| Repo format version, owner                                                    | `~/.nandi/repo/.nandi/manifest.yaml`                  | ✅     | source                   |
-| Marketplace installs (read-only until forked)                                 | `~/.nandi/repo/.nandi/agents/marketplace/…`           | ✅     | source                   |
-| What was installed from where                                                 | `~/.nandi/repo/.nandi/installed.yaml`                 | ✅     | source                   |
-| Registry index cache, fetch scratch repos                                     | `~/.nandi/local/cache/`                               | ❌     | ✅ re-fetched            |
-| Projection (`agents`, `workflows`, `triggers`, …)                             | `~/.nandi/local/state.db`                             | ❌     | ✅ `nandi rebuild`       |
-| Group requests that went ahead, per member and day                            | `state.db` → `group_requests`                         | ❌     | ❌ runtime history       |
-| Runs, messages, approvals, queue, fires, workflow runs                        | `~/.nandi/local/state.db`                             | ❌     | ❌ runtime history       |
-| Engine choice, canned script                                                  | `state.db` → `local_settings`                         | ❌     | ❌ machine-local         |
-| First-run step reached (`onboarding.step`), per Nandi home                    | `state.db` → `local_settings`                         | ❌     | ❌ machine-local         |
-| Dismissed hints (Get started, backup nudge)                                   | webview `localStorage` (`lib/dismissals.ts`)          | ❌     | ❌ hint comes back       |
-| Audit logs (llm, egress, triggers)                                            | `~/.nandi/local/logs/`                                | ❌     | ❌                       |
-| Agent workdirs                                                                | `~/.nandi/local/work/<id>/`                           | ❌     | ephemeral                |
-| Secrets (LLM/AWS keys, trigger secrets, remote credential)                    | OS keyring                                            | ❌     | ❌                       |
-| Deleted agents, replaced repos                                                | `~/.nandi/trash/`                                     | ❌     | —                        |
+| Data                                                                          | Where                                                 | In git | Rebuildable               |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------- | ------ | ------------------------- |
+| Agents (`skill.md`, `instructions.md`)                                        | `~/.nandi/repo/.nandi/agents/<id>/`                   | ✅     | source                    |
+| Agent playbooks                                                               | `~/.nandi/repo/.nandi/agents/<id>/skills/<name>.md`   | ✅     | source                    |
+| Agent-scoped workflows                                                        | `~/.nandi/repo/.nandi/agents/<id>/workflows/<w>.yaml` | ✅     | source                    |
+| Global workflows                                                              | `~/.nandi/repo/.nandi/workflows/<w>.yaml`             | ✅     | source                    |
+| Triggers                                                                      | `~/.nandi/repo/.nandi/triggers/<t>.yaml`              | ✅     | source                    |
+| Portable settings (theme, language, default model, provider pins)             | `~/.nandi/repo/.nandi/settings.yaml`                  | ✅     | source                    |
+| Connector declarations                                                        | `~/.nandi/repo/.nandi/connectors.yaml`                | ✅     | source                    |
+| Groups I'm in: each group's signed policy and members ([groups](./groups.md)) | `~/.nandi/repo/.nandi/groups/<group-id>.md`           | ✅     | refreshed from the relay  |
+| My access level per group                                                     | `~/.nandi/repo/.nandi/groups/access.yaml`             | ✅     | source                    |
+| Every Inbox decision: who, what, why, and the chat it came from               | `~/.nandi/repo/.nandi/decisions/<yyyy-mm>.md`         | ✅     | source (append-only)      |
+| Repo format version, owner                                                    | `~/.nandi/repo/.nandi/manifest.yaml`                  | ✅     | source                    |
+| Marketplace installs (read-only until forked)                                 | `~/.nandi/repo/.nandi/agents/marketplace/…`           | ✅     | source                    |
+| What was installed from where                                                 | `~/.nandi/repo/.nandi/installed.yaml`                 | ✅     | source                    |
+| Registry index cache, fetch scratch repos                                     | `~/.nandi/local/cache/`                               | ❌     | ✅ re-fetched             |
+| Projection (`agents`, `workflows`, `triggers`, …)                             | `~/.nandi/local/state.db`                             | ❌     | ✅ `nandi rebuild`        |
+| Group requests that went ahead, per member and day                            | `state.db` → `group_requests`                         | ❌     | ❌ runtime history        |
+| Runs, messages, approvals, queue, fires, workflow runs                        | `~/.nandi/local/state.db`                             | ❌     | ❌ runtime history        |
+| Inbox Ask chats (`inbox:<kind>:<id>`, `intake:<id>`): their messages          | `state.db` → `conversations`, `messages`              | ❌     | ❌ stays on this computer |
+| Engine choice, canned script                                                  | `state.db` → `local_settings`                         | ❌     | ❌ machine-local          |
+| First-run step reached (`onboarding.step`), per Nandi home                    | `state.db` → `local_settings`                         | ❌     | ❌ machine-local          |
+| Dismissed hints (Get started, backup nudge)                                   | webview `localStorage` (`lib/dismissals.ts`)          | ❌     | ❌ hint comes back        |
+| Audit logs (llm, egress, triggers)                                            | `~/.nandi/local/logs/`                                | ❌     | ❌                        |
+| Agent workdirs                                                                | `~/.nandi/local/work/<id>/`                           | ❌     | ephemeral                 |
+| Secrets (LLM/AWS keys, trigger secrets, remote credential)                    | OS keyring                                            | ❌     | ❌                        |
+| Deleted agents, replaced repos                                                | `~/.nandi/trash/`                                     | ❌     | —                         |
 
 The repo's `.gitignore` (written by the bootstrap) keeps `.nandi/local/`, `*.db*`, `*.log`, `work/`, and Nandi's atomic-write temp files out of commits.
+
+## Decisions
+
+Every decision on an Inbox item, from its button or from its Ask chat ([interaction-layer](./interaction-layer.md#inbox-ask-chats)), is appended to `.nandi/decisions/<yyyy-mm>.md`. The owner decided this on 2026-11-08: the record of who decided what, and why, belongs to the company's gold copy; the chats stay local. The file is written only by `repos::decision_repo` (atomic, staged like every gold-copy file, never projected), from `services::inbox::audit::record`, which each decision service calls once after the decision took effect (`chat::approve_action`, `workflows::approve_workflow_step`, `gateway::decide_gateway_hold`, `close_gateway_assignment`, `manual_steps::complete_manual_step`, `clarification::respond_to_clarification`, `trust_requests::respond_trust_request`, `returns::dismiss_request_return`, `requests::retry_task`, `work::dismiss_work`, `intake::approve_as` and `dismiss`, `reassign::reassign_task`). A chat decision runs inside `audit::in_chat`, which adds the conversation ID and the confirmed note. The entry format is `domain::decision` (pure):
+
+```markdown
+# Decisions, 2026-11
+
+…
+
+## 2026-11-08 14:32:05 UTC · gatewayHold
+
+- **Decided by:** Dev Chechi
+- **Item:** gatewayHold `task-123` (Sam Lee, ask-me: Can you send the Q3 numbers?)
+- **Decision:** declined
+- **Reason:** Not before the board meeting
+- **Chat:** `inbox:gatewayHold:task-123`
+```
+
+A note's later lines are indented under its field, so it can't start a heading or a field of its own. Writing is best effort: the decision already happened, so a failure is logged. `decisions.log` (`~/.nandi/local/logs/`) still records each tool approval as before.
 
 ## Projected vs Runtime Tables
 

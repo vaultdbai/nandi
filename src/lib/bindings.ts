@@ -2416,6 +2416,30 @@ async sendIntakeMessage(conversationId: string, text: string, clientMessageId: s
 }
 },
 /**
+ * An Inbox item's Ask chat (`inbox:<kind>:<id>`, or an intake item's
+ * `intake:<id>`): made the first time it's opened. Its messages come from
+ * `get_conversation`.
+ */
+async openInboxThread(conversationId: string) : Promise<Result<InboxThread, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("open_inbox_thread", { conversationId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The user's message in an Inbox item's chat: a Chief of Staff turn there
+ */
+async sendInboxMessage(conversationId: string, text: string, clientMessageId: string | null) : Promise<Result<SendMessageResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("send_inbox_message", { conversationId, text, clientMessageId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * What may skip the approval queue (`intake::rules`)
  */
 async getAutoApproveRules() : Promise<Result<AutoApproveRule[], string>> {
@@ -2560,11 +2584,12 @@ async listGatewayHolds() : Promise<Result<GatewayHold[], string>> {
 }
 },
 /**
- * Approve (routing goes on) or decline (it's rejected) a held request
+ * Approve (routing goes on) or decline (it's rejected) a held request;
+ * `note` goes back to the requester (a refusal's reason, a condition)
  */
-async decideGatewayHold(taskId: string, approve: boolean) : Promise<Result<GatewayHold, string>> {
+async decideGatewayHold(taskId: string, approve: boolean, note: string | null) : Promise<Result<GatewayHold, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("decide_gateway_hold", { taskId, approve }) };
+    return { status: "ok", data: await TAURI_INVOKE("decide_gateway_hold", { taskId, approve, note }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -3852,12 +3877,12 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const NO_SHARED_GROUP = "no_shared_group" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 
 /** user-defined types **/
 
@@ -6082,6 +6107,22 @@ log: string[];
  * Why the last job failed
  */
 error: string | null }
+/**
+ * An item's thread as its page shows it
+ */
+export type InboxThread = { conversationId: string; 
+/**
+ * The Inbox kind (`approval`, `gatewayHold`, …, `intake`)
+ */
+kind: string; title: string; 
+/**
+ * Still waiting on the user (there's something to decide)
+ */
+waiting: boolean; 
+/**
+ * The decisions the chat can propose now (`inbox_approve`, …)
+ */
+tools: string[] }
 /**
  * An agent that was installed.
  */

@@ -953,13 +953,13 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 
 ### RQ-16 — Inbox on Home
 
-- **What:** A section at the top of Home listing everything waiting on the user, each with its fix inline: missing model, tool approvals, workflow step approvals, held gateway requests, escalated clarification questions, people asking to be trusted, manual workflow steps, then failures from the last day. Ordered by soonest deadline, then age; failures last. Re-evaluated every 30 s and on events.
-- **Where:** Home (Sidebar → Home); `src/components/inbox/Inbox.tsx`, `inbox-model.ts` (`buildInbox`), `src/hooks/useInbox.ts`, `src/components/home/HomeView.tsx`. A request to a person is titled with what was asked (not its capability, `assign-me`) and shows "To {name}", the person's name rather than their instance ID (`services/work/mod.rs`, `task_title`, `member_names`).
+- **What:** A section at the top of Home listing everything waiting on the user, one calm line each (what it is and, when it has one, how long it has left): missing model, tool approvals, workflow step approvals, held gateway requests, work assigned to the user, escalated clarification questions, people asking to be trusted, manual workflow steps, work from mail, the calendar or a teammate waiting for the user's OK (the intake queue, one line per thread), then failures from the last day. Ordered by soonest deadline, then age; failures last. Re-evaluated every 30 s and on events. Clicking a line opens the item's Ask chat (RQ-34), where its card with the fix sits on top; the companion keeps the cards inline (AI-13).
+- **Where:** Home (Sidebar → Home); `src/components/inbox/Inbox.tsx` (`InboxRow`, `InboxItemCard`), `inbox-model.ts` (`buildInbox`, `inboxRowLabel`, `inboxItemView`), `src/hooks/useInbox.ts`, `src/components/home/HomeView.tsx`. A request to a person is titled with what was asked (not its capability, `assign-me`) and shows "To {name}", the person's name rather than their instance ID (`services/work/mod.rs`, `task_title`, `member_names`).
 - **Preconditions:** Items of several kinds pending.
 - **Steps:** Open Home; compare order with deadlines.
-- **Expected:** One row per item, soonest expiry first; "Nothing needs you right now." when empty.
-- **Edge / negative cases:** Items past their deadline drop out; a run waiting on a manual step shows once (as the step).
-- **Automation:** Covered by: `src/components/inbox/inbox-model.test.ts` | Layer: unit | Gap: Inbox component rendering not tested.
+- **Expected:** One line per item, soonest expiry first, with no buttons in the list; "Nothing needs you right now." when empty.
+- **Edge / negative cases:** Items past their deadline drop out; a run waiting on a manual step shows once (as the step); news for queued work shows once (its thread).
+- **Automation:** Covered by: `src/components/inbox/inbox-model.test.ts` (the intake queue, thread IDs), `src/components/home/Home.test.tsx` ("Home, Inbox": one line, opening its chat) | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -1002,12 +1002,12 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-20 — Held gateway requests ("hold, don't refuse")
 
 - **What:** A capability on "Needs my approval" no longer refuses another Nandi's request: the task stays Delivered at stage `approval`, a `gateway_holds` row puts "<member> asked for <capability>" with their words and the time left in the owner's Inbox with Approve / Decline (Decline asks "Decline <member>'s request?"). Approve continues routing; Decline rejects with `declined`; no decision within 1 hour (or the task's own deadline) expires as no. The requester sees "Waiting for <member> to approve this request". Holds survive restarts.
-- **Where:** Home → Inbox; `Inbox.tsx` (`GatewayHoldRow`); commands `list_gateway_holds`, `decide_gateway_hold`; HTTP `GET /api/gateway/holds`, `POST /api/gateway/holds/{taskId}/decide` (`{approve}`); `src-tauri/src/services/gateway/holds.rs`, `router.rs` (`hold_for_approval`); event `gateway://hold_changed`.
+- **Where:** Home → Inbox → the hold's chat (RQ-34); `Inbox.tsx` (`GatewayHoldRow`); commands `list_gateway_holds`, `decide_gateway_hold` (`taskId, approve, note?`: a refusal's reason or an approval's condition, sent to the requester); HTTP `GET /api/gateway/holds`, `POST /api/gateway/holds/{taskId}/decide` (`{approve, note?}`); `src-tauri/src/services/gateway/holds.rs` (`HoldWaiters::set_note`), `router.rs` (`hold_for_approval`, `declined_reason`); event `gateway://hold_changed`.
 - **Preconditions:** Two instances on a relay; a capability set to Needs my approval; caller trusted.
 - **Steps:** 1. From B, request the capability on A. 2. On A, Approve from the Inbox. 3. Repeat and Decline. 4. Repeat and wait an hour.
 - **Expected:** (2) toast "<member>'s request goes on", completes; (3) B sees "<member> declined this request" with Send elsewhere; (4) expires.
-- **Edge / negative cases:** Requester cancels while held → hold closes as rejected.
-- **Automation:** Covered by: `a_capability_needing_approval_waits_for_the_owner` (`src-tauri/src/services/a2a/tests.rs`), `holds.rs` tests, `inbox-model.test.ts` (held requests) | Layer: api / manual (two machines) | Gap: none.
+- **Edge / negative cases:** Requester cancels while held → hold closes as rejected. Declined from the chat with a reason → B sees "The owner declined this request: <reason>"; approved with a condition → B's thread notes "Approved by the owner: <condition>". The note is kept in memory until routing takes it: a restart between the decision and the requester's answer loses it (the decision stands).
+- **Automation:** Covered by: `a_capability_needing_approval_waits_for_the_owner`, `a_refusal_from_the_holds_chat_tells_the_requester_why` (`src-tauri/src/services/a2a/tests.rs`), `holds.rs` tests, `inbox-model.test.ts` (held requests) | Layer: api / manual (two machines) | Gap: none.
 - **Needs relay:** yes
 - **Status:** Shipped
 
@@ -1153,8 +1153,8 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
   - Step 4: a new item waits in the same thread; nothing runs yet.
   - Step 5: it starts, the thread gets an "approved" note, and the Request appears below with its steps.
   - Step 6: the step finishes and the row leaves "Needs you".
-- **Edge / negative cases:** A blocked item shows "Blocked by screening" and only Dismiss. A suspicious item asks before it starts. Dismissing adds a "dismissed" note and the item moves to the history line. A teammate's request opens its thread too, and its Request has no Mark done. Without a relay everything works except teammates' items, which need the relay.
-- **Automation:** Covered by: `digest-model.test.ts`, `intake-thread-model.test.ts`, `services::intake::thread` tests | Layer: unit + manual | Gap: the page against live email is manual.
+- **Edge / negative cases:** A blocked item shows "Blocked by screening" and only Dismiss. A suspicious item asks before it starts. Dismissing adds a "dismissed" note and the item moves to the history line. A teammate's request opens its thread too, and its Request has no Mark done. Without a relay everything works except teammates' items, which need the relay. The queue is an Inbox kind too: its line opens this thread. Saying "approve it" (or "dismiss it") in the thread makes the Chief of Staff propose `inbox_approve` / `inbox_refuse`, confirmed on its card like any Inbox chat decision (RQ-35).
+- **Automation:** Covered by: `digest-model.test.ts`, `intake-thread-model.test.ts`, `inbox-model.test.ts` (the intake queue), `services::intake::thread` tests | Layer: unit + manual | Gap: the page against live email is manual.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -1208,6 +1208,63 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
   - Step 7: the finished row has **Save as workflow** too.
 - **Edge / negative cases:** Work the user asks for in the ask box with a Chief of Staff step runs in the Request's own conversation. A plan with two Chief of Staff steps keeps the first and warns. Failed work, work that is only manual steps, and work that already ran a workflow are never proposed. Without a relay everything works.
 - **Automation:** Covered by: `services::requests::self_step`, `services::requests::recurrence` and `services::requests::local` tests (the step runs in the thread and settles, the loop guard queues, the draft cuts at hand-overs, the proposal shows), `ask::tests::the_planner_may_give_the_chief_of_staff_one_step`, `digest-model.test.ts`, `intake-thread-model.test.ts`, `ChiefOfStaffDigest.test.tsx` | Layer: unit + integration + manual | Gap: a live browser step is manual.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### RQ-34 — Every Inbox item opens as an Ask chat
+
+- **What:** Opening an Inbox line (Home, the Inbox page or the work tray) opens that item's chat with the Chief of Staff: a conversation `inbox:<kind>:<id>` made the first time it's opened (an intake item keeps its `intake:<id>` thread, RQ-31). The item's card sits on top with its buttons as shortcuts, the conversation below, and the ask box in chat mode at the bottom. The Chief of Staff gets the item and what's being decided as untrusted `<task-data>`, so the user can ask "why?", "what did they send?", "what happens if I refuse?", or answer in their own words. Once the item no longer waits, the top says "Nothing is left to decide here" and the chat stays.
+- **Where:** `src/components/views/InboxItemThreadView.tsx`, `ChiefOfStaffThread.tsx`, `src/hooks/useInboxThread.ts`, `inbox-model.ts` (`inboxThreadId`, `inboxItemView`), `tray-model.ts` (`inboxTrayRow`); view `inbox-thread`; commands `open_inbox_thread`, `send_inbox_message`; HTTP `POST /api/inbox/threads/{id}`, `POST /api/inbox/threads/{id}/messages`; `src-tauri/src/services/inbox/thread.rs`, `item.rs`.
+- **Preconditions:** A model; an item waiting (for example an agent with `requires_approval: [shell]` asking to run a command, or someone's `ask-me` held for approval).
+- **Steps:**
+  1. Open Home and click the item's line.
+  2. Ask: "Why does it need this?"
+  3. Click the card's Approve (or Reject) on top.
+  4. Open the same item from the work tray's Needs you.
+- **Expected:**
+  - Step 1: the chat opens titled like the line, with the item's card on top and an empty conversation.
+  - Step 2: the Chief of Staff answers from the item's details; nothing is decided.
+  - Step 3: the item is decided as from Home before; the top says "Nothing is left to decide here".
+  - Step 4: the same conversation opens (one chat per item).
+- **Edge / negative cases:** A missing model opens Settings › Models; a workflow approval that doesn't name its step opens its run. Text in the item that tries to instruct the model is treated as data. The companion keeps the cards inline. Works with no relay; a person's request needs the relay only to send the answer back (it waits in the outbox).
+- **Automation:** Covered by: `services::inbox::item` tests (every kind's ID round-trips), `services::inbox::thread` tests (the thread is the Chief of Staff's, made once; the prompt holds the item as untrusted data with its tools), `InboxItemThreadView.test.tsx`, `inbox-model.test.ts`, `tray-model.test.ts` | Layer: unit + manual | Gap: the Chief of Staff's answers with a real model are manual.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### RQ-35 — Decide an Inbox item in its chat, confirmed on its card
+
+- **What:** In an item's chat the user can decide in words, with conditions: "approve it, but only up to $200", "decline, Bea owns this", "tell them Friday works", "mark it done, sent to the auditors", "give this to Bob". The Chief of Staff proposes the matching decision tool (`inbox_approve` with `note`, `inbox_refuse` with `reason`, `inbox_answer` with `text`, `inbox_done` with `note`, `inbox_reassign` with `to`), offered only in that chat and only those that fit the item. Every call waits on an approval card in the chat, whatever the model or the agent's settings say: a sentence never decides anything. On confirm, the same service function as the item's button runs (`approve_action`, `access::answer` allow once, `approve_workflow_step`, `decide_gateway_hold`, `close_gateway_assignment`, `respond_to_clarification`, `complete_manual_step`, `respond_trust_request`, `dismiss_request_return`, `retry_task`, `dismiss_work`, `intake::approve` / `dismiss`, `reassign_task`), so group policies, typed reasons and the audit are the same. Conditions travel as the note or reason; policies and grants never change. The confirm card isn't an Inbox line of its own.
+- **Where:** `src-tauri/src/services/inbox/tool.rs` (`gate`, `offered`, `call`), `services/orchestrator.rs` (prompt, tools offered after deferral, `inbox::tool::gate`, the dispatcher arm), `services/chat.rs` (`list_pending_approvals` leaves the confirms out); `approval-model.ts` (`inboxDecision` summaries).
+- **Preconditions:** A model; a held `ask-me` from another Nandi (relay), or an assignment, or a failed delegation.
+- **Steps:**
+  1. Open a held request's chat and say "decline it, ask Bea instead".
+  2. Click Reject on the confirm card.
+  3. Say it again and click Approve on the card.
+  4. In an assignment's chat, say "done, uploaded to the audit folder" and confirm.
+  5. In a hold's chat, say "give this to <a teammate who serves it>" and confirm.
+- **Expected:**
+  - Step 1: a card "Refuse this item, because: ask Bea instead" waits; the hold is still pending.
+  - Step 2: nothing is decided; the Chief of Staff is told it was refused.
+  - Step 3: the hold is declined and the requester sees "The owner declined this request: ask Bea instead".
+  - Step 4: the assignment closes Done and the requester gets the note as the result.
+  - Step 5: the task moves to the teammate (NW-12) with the reason.
+- **Edge / negative cases:** A tool that doesn't fit the item (an answer to a hold) is refused with the tools that do. An item decided elsewhere first: the call says it no longer waits and changes nothing. A browser hand-over can only be skipped from a chat; a connector access request is allowed once only (lasting grants stay on the card). A failed workflow run is retried from its button only (it may send things again). A teammate who isn't online, or two who match, is named back. A decision tool named outside an Inbox chat is refused.
+- **Automation:** Covered by: `services::inbox::tool` tests (`every_decision_call_waits_for_the_user`, `a_chat_decision_waits_for_the_users_confirm_then_calls_the_service` through the orchestrator, `a_refused_confirm_decides_nothing`, `a_decision_that_does_not_fit_the_item_changes_nothing`, `done_on_an_assignment_sends_the_note_back_and_is_recorded`, `a_returned_request_is_dismissed_from_its_chat`, `reassigning_finds_the_teammate_by_name_or_id`), `a_refusal_from_the_holds_chat_tells_the_requester_why` (`a2a/tests.rs`) | Layer: unit + integration + manual | Gap: a real model choosing the tool is manual.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### RQ-36 — Every Inbox decision is kept in the gold copy
+
+- **What:** Every decision on an Inbox item, from a button or a chat, is appended to `.nandi/decisions/<yyyy-mm>.md` in the repo (staged in git, backed up like any definition): when (UTC), who decided (this Nandi's user), the item's kind and ID, what it was about, what was decided, the reason or note, and the chat's conversation ID when it came from a chat. The chat's text stays in `state.db`. Auto-approve rules record their decisions too, named in the reason.
+- **Where:** `src-tauri/src/services/inbox/audit.rs` (`record`, `in_chat`), `services/repos/decision_repo.rs`, `services/domain/decision.rs`, `repos/layout.rs` (`decisions_dir`); one `record` call in each decision service (`chat::approve_action`, `workflows::approve_workflow_step`, `gateway::decide_gateway_hold`, `close_gateway_assignment`, `manual_steps::complete_manual_step`, `clarification::respond_to_clarification`, `trust_requests::respond_trust_request`, `returns::dismiss_request_return`, `requests::retry_task`, `work::dismiss_work`, `intake::approve_as` / `dismiss`, `reassign::reassign_task`).
+- **Preconditions:** Any Inbox item.
+- **Steps:**
+  1. Decline a held request from its card with no chat.
+  2. Approve another from its chat with a condition.
+  3. Open `~/.nandi/repo/.nandi/decisions/<this month>.md` and run `git status` in the repo.
+- **Expected:** Two entries, oldest first: the first with "Decision: declined" and no Chat line; the second with "Decision: approved", "Reason: <the condition>" and "Chat: `inbox:gatewayHold:<id>`". The file is staged. No chat text is in it.
+- **Edge / negative cases:** The confirm on a chat's card isn't a second entry. A note can't forge a heading or a field (later lines are indented). A file that can't be written is logged; the decision still stands. A new month starts a new file with its heading.
+- **Automation:** Covered by: `domain::decision` tests, `repos::decision_repo` tests, `services::inbox::audit` tests, `the_button_and_the_chat_record_the_same_decision` (`inbox::tool` tests) | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 

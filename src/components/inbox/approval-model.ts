@@ -38,6 +38,14 @@ export interface ApprovalSummary {
     | 'pilotSetup'
     | 'proposePlaybook'
     | 'updatePlaybook'
+    | 'inboxApprove'
+    | 'inboxApproveNote'
+    | 'inboxRefuse'
+    | 'inboxRefuseNote'
+    | 'inboxAnswer'
+    | 'inboxDone'
+    | 'inboxDoneNote'
+    | 'inboxReassign'
     | 'other'
   values: Record<string, string>
 }
@@ -90,6 +98,37 @@ const PILOT_NAMES: Record<string, string> = {
   'browser-headless': 'Browser (headless)',
 }
 
+/**
+ * A decision the Chief of Staff proposes in an Inbox item's chat
+ * (`inbox::tool`): the person confirms it here, with the note it carries
+ */
+function inboxDecision(tool: string, args: Args): ApprovalSummary | null {
+  const value = (...names: string[]) => short(field(args, ...names) ?? '')
+  const note = value('note')
+  switch (tool) {
+    case 'inbox_approve':
+      return note
+        ? { key: 'inboxApproveNote', values: { note } }
+        : { key: 'inboxApprove', values: {} }
+    case 'inbox_refuse': {
+      const reason = value('reason')
+      return reason
+        ? { key: 'inboxRefuseNote', values: { reason } }
+        : { key: 'inboxRefuse', values: {} }
+    }
+    case 'inbox_answer':
+      return { key: 'inboxAnswer', values: { text: value('text') } }
+    case 'inbox_done':
+      return note
+        ? { key: 'inboxDoneNote', values: { note } }
+        : { key: 'inboxDone', values: {} }
+    case 'inbox_reassign':
+      return { key: 'inboxReassign', values: { to: value('to') } }
+    default:
+      return null
+  }
+}
+
 /** Studio saving a definition (`studio::save::SAVE_ARTIFACT`) */
 const SAVE_ARTIFACT_TOOL = 'nandi_save_artifact'
 
@@ -117,6 +156,8 @@ function short(text: string): string {
 /** `shell {cmd: "git push"}` → "Run a command: `git push`" */
 export function approvalSummary(tool: string, args: Args): ApprovalSummary {
   const value = (...names: string[]) => short(field(args, ...names) ?? '')
+  const decision = inboxDecision(tool, args)
+  if (decision) return decision
   switch (tool) {
     case 'shell':
       return { key: 'shell', values: { cmd: value('cmd', 'command') } }

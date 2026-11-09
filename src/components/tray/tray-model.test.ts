@@ -58,7 +58,7 @@ const homeRow = (overrides: Partial<HomeRow> = {}): HomeRow => ({
 const noModel: InboxItem = { ...base('noModel'), kind: 'noModel' }
 
 describe('inboxTrayRow', () => {
-  it('lets a tool approval be decided in place, and links its agent', () => {
+  it('lets a tool approval be decided in place, and opens its chat', () => {
     const row = inboxTrayRow(approval)
     expect(row.tone).toBe('needsYou')
     expect(row.label).toEqual({
@@ -66,7 +66,10 @@ describe('inboxTrayRow', () => {
       values: { tool: 'shell' },
     })
     expect(row.meta).toEqual({ text: 'Writer' })
-    expect(row.view).toEqual({ kind: 'agent', agentId: 'writer' })
+    expect(row.view).toEqual({
+      kind: 'inbox-thread',
+      conversationId: 'inbox:approval:a1',
+    })
     expect(row.approval).toEqual({ agentId: 'writer', approvalId: 'a1' })
   })
 
@@ -87,7 +90,7 @@ describe('inboxTrayRow', () => {
     expect(row.approval).toBeNull()
   })
 
-  it('shows a question as itself, opening its thread', () => {
+  it('shows a question as itself, opening its chat', () => {
     const row = inboxTrayRow({
       ...base('q'),
       kind: 'clarification',
@@ -105,20 +108,26 @@ describe('inboxTrayRow', () => {
       },
     })
     expect(row.label).toEqual({ text: 'Which quarter?' })
-    expect(row.view).toEqual({ kind: 'delegation-thread', taskId: 't1' })
+    expect(row.view).toEqual({
+      kind: 'inbox-thread',
+      conversationId: 'inbox:clarification:t1/q1',
+    })
   })
 
-  it('colours a failure as failed, and keeps it on its own page', () => {
+  it('colours a failure as failed, and opens its chat', () => {
     const row = inboxTrayRow({
       ...base('f'),
       kind: 'failed',
       item: work({ kind: 'request', state: 'failed', title: 'Report' }),
     })
     expect(row.tone).toBe('failed')
-    expect(row.view).toEqual({ kind: 'request', requestId: 'w1' })
+    expect(row.view).toEqual({
+      kind: 'inbox-thread',
+      conversationId: 'inbox:failed:w1',
+    })
   })
 
-  it('opens the Inbox for steps it can only finish there', () => {
+  it('opens a manual step in its chat, where its card finishes it', () => {
     const row = inboxTrayRow({
       ...base('m'),
       kind: 'manualStep',
@@ -132,7 +141,40 @@ describe('inboxTrayRow', () => {
         readyAt: NOW,
       },
     })
-    expect(row.view).toEqual({ kind: 'inbox' })
+    expect(row.view).toEqual({
+      kind: 'inbox-thread',
+      conversationId: 'inbox:manualStep:r1/s1',
+    })
+  })
+
+  it('opens queued work from outside in its intake thread', () => {
+    const row = inboxTrayRow({
+      ...base('i'),
+      kind: 'intake',
+      work: {
+        id: 'q1',
+        at: NOW,
+        source: 'email',
+        action: 'start',
+        requestId: null,
+        requestTitle: null,
+        text: 'Pay the Acme bill',
+        sender: null,
+        screening: { verdict: 'clean', reasons: [], links: [] },
+        status: 'pending',
+        resultRequestId: null,
+        threadId: 'intake:q1',
+        plan: null,
+      },
+    })
+    expect(row.label).toEqual({
+      key: 'tray.intake',
+      values: { text: 'Pay the Acme bill' },
+    })
+    expect(row.view).toEqual({
+      kind: 'intake-thread',
+      conversationId: 'intake:q1',
+    })
   })
 })
 

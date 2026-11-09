@@ -1,10 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Sparkles } from 'lucide-react'
-import { MessageList } from '@/components/agent-console/MessageList'
-import { isWorking } from '@/components/agent-console/working'
-import { AskBox } from '@/components/ask/AskBox'
 import { useNow } from '@/components/agents/task-utils'
 import {
   AlwaysAllowDialog,
@@ -23,24 +20,20 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Spinner } from '@/components/ui/spinner'
 import { useAlwaysAllow } from '@/hooks/useAutoApproveRules'
 import { errorMessage } from '@/hooks/useDelegation'
 import { useIntakeThread } from '@/hooks/useIntakeThread'
 import { useQueueDecisions } from '@/hooks/useQueueDecisions'
 import { useCompleteRequestStep, useRequest } from '@/hooks/useRequests'
-import { decideApproval, sendIntakeMessage } from '@/lib/agent-actions'
-import { CHIEF_OF_STAFF_AGENT_ID, displayAgent } from '@/lib/agent-identity'
-import { loadConversation } from '@/lib/agent-sync'
-import { askContextForView, openEditInStudio } from '@/lib/ask'
+import { sendIntakeMessage } from '@/lib/agent-actions'
 import type { Request, WorkflowProposal } from '@/lib/bindings'
-import { useConversation } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
 import {
   canMarkStepsDone,
   threadModel,
   workflowProposalFor,
 } from './intake-thread-model'
+import { ThreadComposer, ThreadConversation } from './ChiefOfStaffThread'
 import { ViewHeader } from './ViewHeader'
 
 /**
@@ -140,7 +133,10 @@ export function IntakeThreadView({
       )}
       <ThreadConversation conversationId={conversationId} />
       <div className="shrink-0 border-t bg-background p-3">
-        <ThreadComposer conversationId={conversationId} />
+        <ThreadComposer
+          placeholder={t('intakeThread.placeholder')}
+          onSend={text => void sendIntakeMessage(conversationId, text)}
+        />
       </div>
       <ApproveSuspiciousDialog
         open={decisions.confirming !== null}
@@ -245,54 +241,5 @@ function RequestCard({
         }
       />
     </div>
-  )
-}
-
-function ThreadConversation({ conversationId }: { conversationId: string }) {
-  const { t } = useTranslation()
-  const conversation = useConversation(conversationId)
-  const assistant = displayAgent(
-    CHIEF_OF_STAFF_AGENT_ID,
-    t('intakeThread.assistant')
-  )
-
-  useEffect(() => {
-    if (!conversation) void loadConversation(conversationId)
-  }, [conversationId, conversation])
-
-  if (!conversation) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <Spinner />
-      </div>
-    )
-  }
-  return (
-    <MessageList
-      messages={conversation.messages}
-      assistant={assistant}
-      working={isWorking(conversation.currentRun, conversation.messages)}
-      onDecide={(approvalId, decision) =>
-        decideApproval(CHIEF_OF_STAFF_AGENT_ID, approvalId, decision)
-      }
-    />
-  )
-}
-
-function ThreadComposer({ conversationId }: { conversationId: string }) {
-  const { t } = useTranslation()
-  const view = useNavigationStore(state => state.current)
-  return (
-    <AskBox
-      className="mx-auto max-w-3xl"
-      context={askContextForView(view)}
-      placeholder={t('intakeThread.placeholder')}
-      onApplyEdit={openEditInStudio}
-      fixedMode="chat"
-      chat={{
-        placeholder: t('intakeThread.placeholder'),
-        onSend: text => void sendIntakeMessage(conversationId, text),
-      }}
-    />
   )
 }

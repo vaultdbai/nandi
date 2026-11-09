@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { act, render, screen, waitFor, within } from '@/test/test-utils'
 import { commands } from '@/lib/tauri-bindings'
-import { client } from '@/lib/client'
 import type {
   AgentHealth,
   RelayStatus,
@@ -239,7 +238,7 @@ describe('Home, with activity', () => {
     expect(screen.queryByText(/asked for assign-me/)).toBeNull()
   })
 
-  it('shows work assigned to you, overdue, and marks it done with a note', async () => {
+  it('shows work assigned to you as one line, opening its chat', async () => {
     const user = userEvent.setup()
     const assignment = {
       taskId: 't9',
@@ -251,40 +250,24 @@ describe('Home, with activity', () => {
       createdAt: Date.now() - 3_600_000,
       dueAt: Date.now() - 2 * 3_600_000,
       closedAt: null,
-      links: [
-        { name: 'Evidence folder', url: 'https://drive.example.com/soc1' },
-      ],
+      links: [],
     }
-    const closeGatewayAssignment = ok({ ...assignment, status: 'done' })
     Object.assign(commands, {
       listGatewayAssignments: ok([assignment]),
-      closeGatewayAssignment,
     })
     render(<HomeView />)
-    const card = await screen.findByTestId('inbox-assignment')
-    expect(card).toHaveTextContent('Dev Chechi assigned you this')
-    expect(card).toHaveTextContent('Send the SOC 1 evidence owners')
-    expect(card).toHaveTextContent(/Overdue by/)
-    const openExternal = vi
-      .spyOn(client, 'openExternal')
-      .mockResolvedValue(undefined)
-    await user.click(
-      within(within(card).getByRole('list', { name: 'Attached' })).getByRole(
-        'button',
-        { name: 'Evidence folder' }
-      )
-    )
-    expect(openExternal).toHaveBeenCalledWith('https://drive.example.com/soc1')
-    await user.type(
-      within(card).getByRole('textbox', { name: 'Note for them (optional)' }),
-      'In the audit folder'
-    )
-    await user.click(within(card).getByRole('button', { name: 'Done' }))
-    expect(closeGatewayAssignment).toHaveBeenCalledWith(
-      't9',
-      true,
-      'In the audit folder'
-    )
+    const inbox = await screen.findByRole('region', { name: /Inbox/ })
+    const row = await within(inbox).findByRole('button', {
+      name: /Dev Chechi assigned you this/,
+    })
+    expect(row).toHaveTextContent(/Overdue by/)
+    // Calm: no inline note or buttons in the list
+    expect(within(inbox).queryByRole('textbox')).toBeNull()
+    await user.click(row)
+    expect(useNavigationStore.getState().current).toEqual({
+      kind: 'inbox-thread',
+      conversationId: 'inbox:assignment:t9',
+    })
   })
 
   it('shows running work with its step, and opens it', async () => {
@@ -399,37 +382,33 @@ describe('Home, with activity', () => {
 describe('Home, Inbox', () => {
   beforeEach(busy)
 
-  it('decides a tool approval in place; Reject asks first', async () => {
+  it('shows a tool approval as one line, opening its chat', async () => {
     const user = userEvent.setup()
     Object.assign(commands, { listPendingApprovals: ok([approval]) })
     render(<HomeView />)
-    const card = await screen.findByTestId('approval-card')
-    expect(card).toHaveTextContent('Run a command: git push origin main')
-    expect(card).toHaveTextContent(/Expires in 1[12] min/)
-
-    await user.click(within(card).getByRole('button', { name: 'Reject' }))
-    expect(await screen.findByText('Reject this step?')).toBeInTheDocument()
+    const inbox = await screen.findByRole('region', { name: /Inbox/ })
+    const row = await within(inbox).findByRole('button', {
+      name: /Run a command: git push origin main/,
+    })
+    expect(row).toHaveTextContent(/Expires in 1[12]m/)
+    await user.click(row)
     expect(mocks().approveAction).not.toHaveBeenCalled()
-    await user.click(screen.getByRole('button', { name: 'Keep waiting' }))
-
-    await user.click(within(card).getByRole('button', { name: 'Approve' }))
-    await waitFor(() =>
-      expect(mocks().approveAction).toHaveBeenCalledWith(
-        'writer',
-        'ap1',
-        'approved'
-      )
-    )
+    expect(useNavigationStore.getState().current).toEqual({
+      kind: 'inbox-thread',
+      conversationId: 'inbox:approval:ap1',
+    })
   })
 
   it('drops an approval decided elsewhere on the next event', async () => {
     Object.assign(commands, { listPendingApprovals: ok([approval]) })
     render(<HomeView />)
-    await screen.findByTestId('approval-card')
+    await screen.findByText('Run a command: git push origin main')
     Object.assign(commands, { listPendingApprovals: ok([]) })
     act(() => emitMockEvent('agent://approval_resolved', {}))
     await waitFor(() =>
-      expect(screen.queryByTestId('approval-card')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('Run a command: git push origin main')
+      ).not.toBeInTheDocument()
     )
   })
 
@@ -454,7 +433,7 @@ describe('Home, Inbox', () => {
     expect(screen.queryByRole('region', { name: /Running/ })).toBeNull()
   })
 
-  it('offers a recent failure with Dismiss', async () => {
+  it('offers a recent failure, after what waits on you', async () => {
     const user = userEvent.setup()
     Object.assign(commands, {
       listWork: ok([
@@ -468,11 +447,15 @@ describe('Home, Inbox', () => {
     })
     render(<HomeView />)
     const inbox = await screen.findByRole('region', { name: /Inbox/ })
-    await within(inbox).findByText('Nightly digest failed')
-    await user.click(within(inbox).getByRole('button', { name: 'Dismiss' }))
-    await waitFor(() =>
-      expect(mocks().dismissWork).toHaveBeenCalledWith('run-9')
+    await user.click(
+      await within(inbox).findByRole('button', {
+        name: /Nightly digest failed/,
+      })
     )
+    expect(useNavigationStore.getState().current).toEqual({
+      kind: 'inbox-thread',
+      conversationId: 'inbox:failed:run-9',
+    })
   })
 })
 

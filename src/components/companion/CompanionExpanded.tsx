@@ -4,7 +4,7 @@ import { AskComposer } from '@/components/ask/AskComposer'
 import { MarkdownLinkContext } from '@/components/agent-console/markdown-link-context'
 import { MessageList } from '@/components/agent-console/MessageList'
 import { RecentRow, RunningRow } from '@/components/home/HomeRows'
-import { InboxRow } from '@/components/inbox/Inbox'
+import { InboxItemCard } from '@/components/inbox/Inbox'
 import type { InboxItem } from '@/components/inbox/inbox-model'
 import type { HomeRow } from '@/components/home/home-model'
 import { Button } from '@/components/ui/button'
@@ -157,7 +157,7 @@ export function CompanionPanel({
                 >
                   {needsYou.map(item => (
                     <li key={item.id}>
-                      <InboxRow item={item} />
+                      <InboxItemCard item={item} />
                     </li>
                   ))}
                   {waiting.length > needsYou.length && (

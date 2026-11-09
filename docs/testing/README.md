@@ -121,7 +121,7 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-536 features to test: all 590 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+539 features to test: all 593 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
@@ -129,7 +129,7 @@ These turned up while building the catalog. In each case the catalog follows the
 | Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 77       |
 | Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
-| Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 87       |
+| Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 90       |
 | Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 75       |
 | Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 81       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
@@ -137,22 +137,21 @@ These turned up while building the catalog. In each case the catalog follows the
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 515   |
+| Shipped     | 519   |
 | Partial     | 17    |
 | Removed     | 11    |
 | Known issue | 3     |
-| Prototype   | 1     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 290   |
+| `unit`                | 293   |
 | `api`                 | 185   |
 | `manual`              | 37    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 454   |
+| no          | 457   |
 | yes         | 82    |
 
 ## Master index
@@ -198,6 +197,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | SH-18 | Recent results: rate and retry                                           | Shipped                                              | unit       | no          |                                        |
 | SH-19 | All activity                                                             | Shipped                                              | unit       | no          |                                        |
 | SH-20 | "No model connected" notice                                              | Shipped                                              | unit       | no          |                                        |
+| SH-36 | Work tray (Needs you · Working · Done)                                   | Shipped                                              | unit       | no          |                                        |
 | SH-21 | Command palette: open, search, open results                              | Shipped                                              | api        | no          |                                        |
 | SH-22 | Palette: empty state, recents, and "Ask Nandi"                           | Shipped                                              | unit       | no          |                                        |
 | SH-23 | Palette command mode (`>`) and local commands                            | Shipped                                              | unit       | no          |                                        |
@@ -245,7 +245,6 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-30 | Appearance › Companion settings                                          | Duplicate of AI-17                                   | —          | no          |                                        |
 | ST-31 | Preferences persistence                                                  | Shipped                                              | api        | no          |                                        |
 | SH-35 | Home: connect your email to-do                                           | Shipped                                              | unit       | no          |                                        |
-| SH-36 | Work tray: Needs you, Working, Done                                      | Shipped                                              | unit       | no          |                                        |
 
 ### Agents, chat and runs
 
@@ -519,6 +518,9 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RQ-31 | Each intake item has a Chief of Staff thread                                     | Shipped                                                                                    | unit + manual               | no          |                 |
 | RQ-32 | Auto-approve rules                                                               | Shipped                                                                                    | unit + manual               | no          |                 |
 | RQ-33 | Chief of Staff does a step of its own plans, and offers Save as workflow         | Shipped                                                                                    | unit + integration + manual | no          |                 |
+| RQ-34 | Every Inbox item opens as an Ask chat                                            | Shipped                                                                                    | unit + manual               | no          |                 |
+| RQ-35 | Decide an Inbox item in its chat, confirmed on its card                          | Shipped                                                                                    | unit + integration + manual | no          |                 |
+| RQ-36 | Every Inbox decision is kept in the gold copy                                    | Shipped                                                                                    | unit                        | no          |                 |
 | RQ-27 | What was asked, word for word                                                    | Shipped                                                                                    | unit + manual               | no          | 2026-10-30 pass |
 
 ### Library, capabilities, Studio and companion
