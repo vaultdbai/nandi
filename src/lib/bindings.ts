@@ -1083,6 +1083,28 @@ async listAuditLog(logKind: string, limit: number, offset: number) : Promise<Res
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * The months that have decisions (`2026-11`), newest first
+ */
+async listDecisionMonths() : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_decision_months") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * One month's decisions, newest first, narrowed by the filter
+ */
+async listDecisions(month: string, filter: DecisionFilter | null) : Promise<Result<DecisionRecord[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_decisions", { month, filter }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async listConnectors() : Promise<Result<ConnectorInfo[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_connectors") };
@@ -3877,12 +3899,12 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const SEAL_REFUSED = "seal_refused" as const;
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const NO_SHARED_GROUP = "no_shared_group" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const NO_SHARED_GROUP = "no_shared_group" as const;
 
 /** user-defined types **/
 
@@ -5360,6 +5382,47 @@ export type DashboardStats = { needsAttention: number; runningAgents: number; ru
  * `[from, to)`, ms since the Unix epoch.
  */
 export type DateRange = { from: number; to: number }
+/**
+ * Which decisions to show: every set field must match
+ */
+export type DecisionFilter = { 
+/**
+ * The item's kind
+ */
+kind: string | null; decision: string | null; 
+/**
+ * Text in the item or the reason, any case
+ */
+search: string | null }
+/**
+ * One decision as the Decisions page shows it, read back from a month file
+ */
+export type DecisionRecord = { 
+/**
+ * Epoch ms (a JavaScript number)
+ */
+at: number; 
+/**
+ * The Inbox item's kind (`approval`, `gatewayHold`, ...)
+ */
+kind: string; itemId: string; 
+/**
+ * What the item was about; the item's id when the file names nothing
+ */
+itemLabel: string; 
+/**
+ * `approved`, `refused`, `answered`, `done`, ...
+ */
+decision: string; decidedBy: string; reason: string | null; 
+/**
+ * The Ask chat it was decided in (`inbox:...` / `intake:...`), if any
+ */
+chatId: string | null; 
+/**
+ * That chat is still on this computer. Not in the file: the service
+ * fills it in; reading the file leaves it `false`.
+ */
+chatExists: boolean }
 /**
  * The default model from settings (`<provider>:<model>`) and the model
  * calls actually use with the keys set now

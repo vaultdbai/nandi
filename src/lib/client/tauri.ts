@@ -318,6 +318,8 @@ export const tauriClient: NandiClient = {
     commands.sendInboxMessage(conversationId, text, clientMessageId),
   cancelRequest: id => commands.cancelRequest(id),
   rerunRequest: id => commands.rerunRequest(id),
+  listDecisionMonths: () => commands.listDecisionMonths(),
+  listDecisions: (month, filter) => commands.listDecisions(month, filter),
   mascotGet: () => commands.mascotGet(),
   mascotSet: name => commands.mascotSet(name),
   mascotPhrase: input => commands.mascotPhrase(input),

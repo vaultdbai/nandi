@@ -19,6 +19,7 @@ import { AgentsListView } from '@/components/views/AgentsListView'
 import { AllActivityView } from '@/components/home/AllActivityView'
 import { HomeView } from '@/components/home/HomeView'
 import { InboxView } from '@/components/inbox/InboxView'
+import { DecisionsView } from '@/components/views/DecisionsView'
 import {
   AutomationsPage,
   LibraryPage,
@@ -56,6 +57,8 @@ function CurrentView({ view }: { view: View }) {
       return <AllActivityView filters={view.filters} />
     case 'inbox':
       return <InboxView />
+    case 'decisions':
+      return <DecisionsView />
     case 'agents':
       return <AgentsListView />
     case 'automations':

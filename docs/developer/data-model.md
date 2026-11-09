@@ -64,6 +64,13 @@ Every decision on an Inbox item, from its button or from its Ask chat ([interact
 
 A note's later lines are indented under its field, so it can't start a heading or a field of its own. Writing is best effort: the decision already happened, so a failure is logged. `decisions.log` (`~/.nandi/local/logs/`) still records each tool approval as before.
 
+**Reading them back.** `domain::decision::parse_month` turns a month file into `DecisionRecord`s
+(`at`, `kind`, `itemId`, `itemLabel`, `decision`, `decidedBy`, `reason?`, `chatId?`), the inverse of
+`DecisionEntry::render`. It is tolerant of hand edits: text outside entries is ignored, an entry that has no
+readable time, item or decision is skipped and logged (`repos::decision_repo::entries`), and the rest are returned.
+`months()` lists the `<yyyy-mm>.md` files, newest first. The Decisions page (Home › Decisions) is the reader;
+`DecisionFilter` (kind, decision word, text in the item or reason) is applied in `domain::decision::select`.
+
 ## Projected vs Runtime Tables
 
 | Table                                                       | Kind       | Written by                  |

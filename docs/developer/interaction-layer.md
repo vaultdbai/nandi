@@ -481,5 +481,15 @@ the "Approved by the owner: …" note on their task. The note waits in
 conversation ID when it came from one ([data-model](./data-model.md#decisions)).
 The chat's text stays in `state.db`.
 
+**Reading the audit back.** Home › Decisions (`DecisionsView`, view `decisions`; the Inbox's
+"Past decisions" link opens it too) lists those files: a month picker, a Kind
+and a Decision filter and a text search, newest first, read-only.
+`list_decision_months` and `list_decisions` (`GET /api/decisions/months`,
+`GET /api/decisions`) go through `services::inbox::decisions`, which reads
+the files with `repos::decision_repo` and `domain::decision::parse_month`
+and marks which entries' chats still exist in `state.db` (`chatExists`);
+the page links those to their `inbox-thread` / `intake-thread` view and
+shows only the id for the others. Local only, no relay.
+
 **Offline.** Local items work with no relay. A person's request needs the
 relay only to send the answer back, through the existing outbox.

@@ -510,6 +510,17 @@ export const webClient: NandiClient = {
     }),
   cancelRequest: requestId =>
     request('POST', `/requests/${id(requestId)}/cancel`),
+  listDecisionMonths: () => request('GET', '/decisions/months'),
+  listDecisions: (month, filter) =>
+    request(
+      'GET',
+      `/decisions${query({
+        month,
+        kind: filter?.kind ?? undefined,
+        decision: filter?.decision ?? undefined,
+        search: filter?.search ?? undefined,
+      })}`
+    ),
   mascotGet: () => request('GET', '/mascot'),
   mascotSet: name => request('PUT', '/mascot', { name }),
   mascotPhrase: input => request('POST', '/mascot/phrase', { input }),

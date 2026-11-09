@@ -17,6 +17,8 @@ import type {
   RequestReturn,
   ActionPlan,
   MascotInfo,
+  DecisionFilter,
+  DecisionRecord,
   PhraseResponse,
   AddRegistryInput,
   AgentCard,
@@ -881,6 +883,14 @@ export interface NandiClient {
   ): Promise<Result<null, string>>
   /** Stops a local Request and what its steps started */
   cancelRequest(id: string): Promise<Result<null, string>>
+  // Decisions (Home › Decisions)
+  /** The months that have decisions (`2026-11`), newest first */
+  listDecisionMonths(): Promise<Result<string[], string>>
+  /** One month's decisions, newest first, narrowed by the filter */
+  listDecisions(
+    month: string,
+    filter: DecisionFilter | null
+  ): Promise<Result<DecisionRecord[], string>>
   // The mascot (Nandi rename)
   /** The bull's name */
   mascotGet(): Promise<Result<MascotInfo, string>>

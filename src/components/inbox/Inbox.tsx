@@ -59,12 +59,23 @@ import { inboxItemView, inboxRowLabel, type InboxItem } from './inbox-model'
 export function Inbox() {
   const { t } = useTranslation()
   const { items, count, isPending } = useInbox()
+  const { open } = useViewOpener()
 
   return (
     <section aria-label={t('inbox.title')} className="flex flex-col gap-2">
-      <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {count > 0 ? t('inbox.titleCount', { count }) : t('inbox.title')}
-      </h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          {count > 0 ? t('inbox.titleCount', { count }) : t('inbox.title')}
+        </h2>
+        <Button
+          variant="link"
+          size="sm"
+          className="h-auto p-0 text-xs"
+          onClick={() => open({ kind: 'decisions' })}
+        >
+          {t('inbox.pastDecisions')}
+        </Button>
+      </div>
       {isPending ? (
         <Skeleton className="h-20 w-full" />
       ) : items.length === 0 ? (

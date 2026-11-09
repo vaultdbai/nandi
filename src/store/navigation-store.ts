@@ -19,6 +19,8 @@ export type View =
   | { kind: 'home-activity'; filters?: ActivityFilters }
   /** Home › Inbox: everything waiting on you, each with its fix */
   | { kind: 'inbox' }
+  /** Home › Decisions: every decision made on the Inbox, by month */
+  | { kind: 'decisions' }
   | { kind: 'agents' }
   | { kind: 'automations'; tab?: AutomationsTab }
   /**
@@ -148,6 +150,7 @@ export function navSection(view: View): NavSection | null {
     case 'home':
     case 'home-activity':
     case 'inbox':
+    case 'decisions':
     case 'request':
     case 'work-item':
     case 'delegation-thread':
@@ -326,6 +329,7 @@ const VIEW_KINDS: Record<View['kind'], true> = {
   home: true,
   'home-activity': true,
   inbox: true,
+  decisions: true,
   agents: true,
   automations: true,
   library: true,

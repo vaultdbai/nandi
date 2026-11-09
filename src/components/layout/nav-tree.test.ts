@@ -58,7 +58,11 @@ describe('buildNavTree', () => {
       'network',
       'settings',
     ])
-    expect(ids(tree[0]?.children)).toEqual(['home:inbox', 'home:activity'])
+    expect(ids(tree[0]?.children)).toEqual([
+      'home:inbox',
+      'home:decisions',
+      'home:activity',
+    ])
     expect(tree[0]?.badge).toBe(3)
     expect(tree[0]?.children?.[0]?.badge).toBe(3)
     expect(buildNavTree(input())[0]?.badge).toBeUndefined()

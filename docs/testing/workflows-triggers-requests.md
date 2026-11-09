@@ -1268,6 +1268,23 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **Needs relay:** no
 - **Status:** Shipped
 
+### RQ-37 — Decisions page: past Inbox decisions, month by month
+
+- **What:** Home › Decisions lists every decision kept in `.nandi/decisions/<yyyy-mm>.md` (RQ-36), newest first, one calm row each: a badge for what was decided (Approved, Refused, Declined, Answered, Done, …, green for yes, red for no), the item's label, the time, its kind, "by {name}", and the reason. A month picker (newest month first) switches files; the search box (item, id, reason), Kind and Decision filters narrow the month. A decision made in a chat shows "From a chat": a link to that chat while the chat is still on this computer, otherwise just the chat's id. With no decision yet the page says every decision from a button or an Ask chat is recorded here and kept in your repo. The Inbox has a "Past decisions" link to the page. Purely local: it reads the repo's files and works with no relay. A hand-edited file is read as far as it makes sense: an entry that lost its time, item or decision is skipped (and logged), the others still show.
+- **Where:** Sidebar → Home → Decisions; Inbox header → "Past decisions" (`src/components/inbox/Inbox.tsx`); `src/components/views/DecisionsView.tsx`, `src/components/decisions/decisions-model.ts`, `src/hooks/useDecisions.ts`; Tauri commands `list_decision_months`, `list_decisions` (`commands/decisions.rs`); HTTP `GET /api/decisions/months`, `GET /api/decisions?month=&kind=&decision=&search=` (`http/decisions.rs`); `services/inbox/decisions.rs`, `repos/decision_repo.rs` (`months`, `entries`), `domain/decision.rs` (`parse_month`, `DecisionFilter`, `select`).
+- **Preconditions:** Some Inbox decisions in this and an earlier month (RQ-36); one of them made in a chat.
+- **Steps:**
+  1. Open Home → Decisions (also from the Inbox's "Past decisions").
+  2. Check the order, then pick the earlier month.
+  3. Filter by Kind, then Decision, then type part of a reason in the search box; clear the filters.
+  4. Click "From a chat" on the chat decision.
+  5. In a fresh `NANDI_HOME`, open the page.
+- **Expected:** 1-2. Newest decision first; the picker lists months newest first and the earlier month shows its own entries. 3. Only matching rows stay; "No decisions match" with Clear filters when none do. A decision like "approved (once)" is found by Approved. 4. Opens the chat in the Inbox-thread view. 5. The empty state with the explanation; no month picker.
+- **Edge / negative cases:** A chat that no longer exists shows its id, not a link. Decisions of a month without a file aren't listed. A file with a broken entry still lists the others. A decision text the page doesn't know shows as written. Works offline (no relay). Reading is read-only: nothing is written.
+- **Automation:** Covered by: `domain::decision` tests (round trip, hand edits, filters), `repos::decision_repo` tests (months, entries), `services::inbox::decisions` tests, `offline_suite` ("decisions/months" answers with no relay), `DecisionsView.test.tsx`, `decisions-model.test.ts`, `nav-tree.test.ts` | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## Gaps and planned (not testable yet)
 
 - No way to delete a workflow in the UI or API; only by removing its YAML file (no `delete_workflow` command).
