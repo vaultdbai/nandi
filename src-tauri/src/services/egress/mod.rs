@@ -1,6 +1,7 @@
 //! Network egress control for agent containers.
 //!
-//! One host server on `127.0.0.1:11435` is the only way out. Containers sit
+//! One host server on `127.0.0.1:11435` is the only way out (on a Linux
+//! engine also on Docker's bridge gateway, where the relay reaches it). Containers sit
 //! on the internal `nandi-agents` network and reach it through the
 //! `nandi-egress` relay at `nandi-egress:11435` ([`relay`]):
 //!
@@ -445,6 +446,78 @@ impl ProxyContext {
     }
 }
 
+/// This process's proxy, kept so it can listen on one more address when
+/// the relay needs it ([`listen_on_bridge_gateway`])
+#[derive(Clone)]
+struct Server {
+    port: u16,
+    runtime: tokio::runtime::Handle,
+    router: Router,
+    context: ProxyContext,
+}
+
+static SERVER: std::sync::OnceLock<Server> = std::sync::OnceLock::new();
+/// The bridge gateway addresses the proxy listens on besides loopback
+static GATEWAYS: std::sync::Mutex<Vec<std::net::IpAddr>> = std::sync::Mutex::new(Vec::new());
+
+/// Keeps the proxy serving on `port` for [`listen_on_bridge_gateway`]. The
+/// first one a process starts is its proxy.
+fn register(server: Server) {
+    let _ = SERVER.set(server);
+}
+
+/// Also listens on `gateway` (Docker's bridge gateway, where a Linux
+/// engine's `host.docker.internal` lands), on this process's proxy port,
+/// so the relay reaches the proxy there. Only that one address, never all
+/// interfaces; the token check stays the guard. Nothing to do when this
+/// process runs no proxy, or when the relay is pointed at another
+/// process's port. An address that isn't this host's (Docker Desktop for
+/// Linux keeps its bridge in a VM, and reaches loopback itself) is skipped.
+pub(crate) fn listen_on_bridge_gateway(gateway: std::net::IpAddr) -> Result<(), String> {
+    let Some(server) = SERVER.get() else {
+        return Ok(());
+    };
+    if server.port != proxy_port() {
+        return Ok(());
+    }
+    let mut gateways = GATEWAYS.lock().unwrap_or_else(|e| e.into_inner());
+    if gateways.contains(&gateway) {
+        return Ok(());
+    }
+    let listener = match std::net::TcpListener::bind((gateway, server.port)) {
+        Ok(listener) => listener,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrNotAvailable => {
+            log::debug!("Docker's bridge gateway {gateway} isn't this host's address: {e}");
+            return Ok(());
+        }
+        Err(e) => {
+            return Err(format!(
+                "The egress proxy couldn't listen on Docker's bridge gateway                  {gateway}:{}: {e}",
+                server.port
+            ))
+        }
+    };
+    listener
+        .set_nonblocking(true)
+        .map_err(|e| format!("The egress proxy couldn't listen on {gateway}: {e}"))?;
+    let served = server.clone();
+    server.runtime.spawn(async move {
+        let listener = match tokio::net::TcpListener::from_std(listener) {
+            Ok(listener) => listener,
+            Err(e) => {
+                log::error!("Egress proxy could not listen on {gateway}: {e}");
+                return;
+            }
+        };
+        if let Err(e) = serve(listener, served.router, served.context).await {
+            log::error!("Egress proxy on {gateway} stopped: {e}");
+        }
+    });
+    log::info!("Egress proxy listening on {gateway}:{} too", server.port);
+    gateways.push(gateway);
+    Ok(())
+}
+
 /// Binds `127.0.0.1:PROXY_PORT`, or any free port when that one is taken
 pub fn bind_proxy_listener() -> std::io::Result<std::net::TcpListener> {
     std::net::TcpListener::bind(("127.0.0.1", PROXY_PORT)).or_else(|e| {
@@ -490,6 +563,12 @@ pub fn start_server(state: &AppState) {
     }) {
         Ok((listener, port)) => {
             BOUND_PORT.store(port, std::sync::atomic::Ordering::Relaxed);
+            register(Server {
+                port,
+                runtime: state.runtime().clone(),
+                router: router.clone(),
+                context: context.clone(),
+            });
             listener
         }
         Err(e) => {
@@ -550,7 +629,9 @@ pub(crate) mod tests {
     }
 
     /// The real proxy (its routes and CONNECT tunnels) on `listener`, every
-    /// agent with `capabilities`, and containers' relay pointed at it (the
+    /// agent with `capabilities`, registered as this process's proxy the
+    /// way `start_server` does (so it listens on the bridge gateway when
+    /// the relay needs it), and containers' relay pointed at it (the
     /// sandbox suite)
     pub async fn serve_on(
         listener: tokio::net::TcpListener,
@@ -558,7 +639,16 @@ pub(crate) mod tests {
         capabilities: Capabilities,
     ) -> std::io::Result<()> {
         let context = context(tokens, capabilities);
-        serve(listener, http_proxy::router(context.clone()), context).await
+        let router = http_proxy::router(context.clone());
+        let port = listener.local_addr()?.port();
+        BOUND_PORT.store(port, std::sync::atomic::Ordering::Relaxed);
+        register(Server {
+            port,
+            runtime: tokio::runtime::Handle::current(),
+            router: router.clone(),
+            context: context.clone(),
+        });
+        serve(listener, router, context).await
     }
 
     /// Points the egress relay at `port` from the next `relay::ensure_ready`

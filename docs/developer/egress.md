@@ -1,6 +1,6 @@
 # Egress Proxy
 
-Agent containers reach the outside world only through the host's egress proxy (`src-tauri/src/services/egress/`). It listens on `127.0.0.1:11435`.
+Agent containers reach the outside world only through the host's egress proxy (`src-tauri/src/services/egress/`). It listens on `127.0.0.1:11435` (another free port when that one is taken) and, on a Linux engine, on Docker's bridge gateway too (below).
 
 ## The agents' network
 
@@ -11,6 +11,7 @@ agent ──nandi-agents──▶ nandi-egress:11435 ──bridge──▶ host 
 ```
 
 - The relay runs from the image starting an agent (`relay.py` in `nandi-runtime`, `relay.mjs` in `nandi-harness`), read-only, no capabilities, no env. It's recreated when the proxy took another port (label `org.nandi.egress.target`).
+- Where the relay reaches the proxy: Docker Desktop (Windows, macOS) forwards `host.docker.internal` to the host's loopback. On a Linux engine `host-gateway` is the default bridge's gateway (`172.17.0.1` usually), so `relay::ensure_ready` reads it (`docker network inspect bridge`) and `egress::listen_on_bridge_gateway` binds the proxy's port on that one address as well, once per address, before the relay starts. Never `0.0.0.0` or another interface; the token check stays the guard. Nothing happens when this process runs no proxy or the relay is pointed at another process's port; an address that isn't the host's (Docker Desktop for Linux keeps the bridge in its VM) is skipped; any other bind failure stops the agent from starting.
 - A pre-existing `nandi-agents` that isn't internal is refused, not used.
 - The LiteLLM gateway joins `nandi-agents` too, so coding agents reach `nandi-litellm:4000` directly.
 - Stdio MCP connectors run in their own container on `nandi-agents` too (`connectors/mcp.rs`, `Placement::Container`). Their proxy identity is `connector:<id>` (`ProxyTokens`, issued when the container starts). They may reach the package registries (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`) and the hosts in their `config.network` list in `connectors.yaml`, nothing else. A connector runs on the host only for agents whose policy lists it in `connectors.run_on_host`.

@@ -12,6 +12,11 @@
 //! agent ──nandi-agents──▶ nandi-egress:11435 ──bridge──▶ host.docker.internal:<proxy port>
 //! ```
 //!
+//! On Docker Desktop `host.docker.internal` reaches the host's loopback,
+//! where the proxy listens. On a Linux engine it's the default bridge's
+//! gateway, so the proxy listens on that one address too
+//! ([`super::listen_on_bridge_gateway`]).
+//!
 //! The relay runs from whichever sandbox image is starting an agent: a
 //! Python script in `nandi-runtime`, a Node one in `nandi-harness`.
 
@@ -82,7 +87,36 @@ fn docker() -> Result<Docker, String> {
 pub async fn ensure_ready(image: RelayImage) -> Result<(), String> {
     let docker = docker()?;
     ensure_network(&docker, AGENT_NETWORK).await?;
+    reach_the_proxy(&docker).await?;
     ensure_relay(&docker, image).await
+}
+
+/// Makes the host proxy listen where the relay dials it. The relay is on
+/// Docker's default bridge and dials `host.docker.internal`, which
+/// `host-gateway` maps to that bridge's gateway on a Linux engine
+/// (`docker network inspect bridge`): the proxy listens there too. Docker
+/// Desktop (Windows, macOS) forwards `host.docker.internal` to the host's
+/// loopback, where the proxy already is.
+async fn reach_the_proxy(docker: &Docker) -> Result<(), String> {
+    if !cfg!(target_os = "linux") {
+        return Ok(());
+    }
+    let bridge = docker
+        .inspect_network("bridge", None)
+        .await
+        .map_err(|e| format!("Could not read Docker's bridge network: {e}"))?;
+    match bridge_gateway(bridge.ipam.and_then(|ipam| ipam.config).unwrap_or_default()) {
+        Some(gateway) => super::listen_on_bridge_gateway(gateway),
+        None => Err("Docker's bridge network has no IPv4 gateway".to_string()),
+    }
+}
+
+/// The first IPv4 gateway of a network's address pools
+fn bridge_gateway(config: Vec<bollard::models::IpamConfig>) -> Option<std::net::IpAddr> {
+    config
+        .into_iter()
+        .filter_map(|pool| pool.gateway?.parse::<std::net::IpAddr>().ok())
+        .find(std::net::IpAddr::is_ipv4)
 }
 
 /// Creates [`AGENT_NETWORK`] if it's missing (for the LiteLLM gateway,
@@ -186,7 +220,7 @@ fn relay_config(image: RelayImage, target_port: u16) -> ContainerCreateBody {
         // Past the harness image's entrypoint (it only sets up Codex)
         entrypoint: Some(Vec::new()),
         cmd: Some(image.command(target_port)),
-        user: Some(crate::runtime::CONTAINER_USER.to_string()),
+        user: Some(crate::runtime::IMAGE_USER.to_string()),
         labels: Some(HashMap::from([
             ("nandi.egress".to_string(), "1".to_string()),
             (TARGET_LABEL.to_string(), target_port.to_string()),
@@ -242,6 +276,25 @@ mod tests {
 
         let python = relay_config(RelayImage::Runtime, PROXY);
         assert_eq!(python.cmd.unwrap()[..2], ["python", "/opt/nandi/relay.py"]);
+    }
+
+    #[test]
+    fn the_proxy_listens_on_the_bridge_s_ipv4_gateway() {
+        use bollard::models::IpamConfig;
+        let pool = |gateway: Option<&str>| IpamConfig {
+            gateway: gateway.map(str::to_string),
+            ..Default::default()
+        };
+        assert_eq!(
+            bridge_gateway(vec![
+                pool(None),
+                pool(Some("fd00::1")),
+                pool(Some("172.17.0.1")),
+            ]),
+            Some("172.17.0.1".parse().unwrap())
+        );
+        assert_eq!(bridge_gateway(vec![pool(Some("not an ip"))]), None);
+        assert_eq!(bridge_gateway(Vec::new()), None);
     }
 
     const PROXY: u16 = super::super::PROXY_PORT;

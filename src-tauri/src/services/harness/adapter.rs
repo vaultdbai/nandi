@@ -435,6 +435,8 @@ impl From<std::io::Error> for HarnessError {
 
 /// The workdir inside the harness container
 pub const CONTAINER_WORKDIR: &str = "/agent/workdir";
+/// The harness image's home, a tmpfs (the image's `node` user's)
+const CONTAINER_HOME: &str = "/home/node";
 /// Lines of the child's stderr kept for error messages (never logged)
 const STDERR_TAIL_LINES: usize = 20;
 
@@ -472,7 +474,9 @@ impl SpawnedHarness {
 
 /// The `docker run` arguments for container placement. Every environment
 /// variable is passed as `-e NAME` (no value): Docker takes the value from
-/// its own environment, so secrets never appear in a command line.
+/// its own environment, so secrets never appear in a command line. The
+/// only values given are the agent user's `HOME` and `USER`, which aren't
+/// secret.
 pub fn docker_args(
     invocation: &Invocation,
     env_names: &[&str],
@@ -504,18 +508,27 @@ pub fn docker_args(
         "--cap-drop=ALL",
         "--security-opt=no-new-privileges",
         "--pids-limit=512",
-        // The image's `node` user; the CLIs' state lives in a home tmpfs
-        "--user=1000:1000",
-        "--read-only",
-        "--tmpfs=/tmp:rw,nosuid,nodev,size=512m",
-        "--tmpfs=/home/node:rw,nosuid,nodev,size=512m,uid=1000,gid=1000",
-        "-w",
-        CONTAINER_WORKDIR,
-        "-v",
     ]
     .iter()
     .map(|s| s.to_string())
     .collect();
+    // The agent user (the host user's uid on a Linux engine, the image's
+    // `node` on Docker Desktop); the CLIs' state lives in a home tmpfs
+    let user = crate::runtime::AgentUser::current();
+    args.push(format!("--user={}", user.user()));
+    args.push("--read-only".to_string());
+    args.push("--tmpfs=/tmp:rw,nosuid,nodev,size=512m".to_string());
+    args.push(format!(
+        "--tmpfs={CONTAINER_HOME}:{}",
+        user.home_tmpfs("rw,nosuid,nodev,size=512m")
+    ));
+    for var in crate::runtime::AgentUser::env(CONTAINER_HOME, "node") {
+        args.push("-e".to_string());
+        args.push(var);
+    }
+    args.push("-w".to_string());
+    args.push(CONTAINER_WORKDIR.to_string());
+    args.push("-v".to_string());
     args.push(format!("{}:{CONTAINER_WORKDIR}", host_workdir.display()));
     for folder in folders {
         args.push("-v".to_string());
@@ -1060,8 +1073,14 @@ mod tests {
         assert!(joined.starts_with("run -i --rm --init --name nandi-harness-writer"));
         assert!(joined.contains("-v nandi-tools-claude-code-abc:/opt/nandi-tools/claude-code:ro"));
         assert!(joined.contains("--cap-drop=ALL --security-opt=no-new-privileges"));
-        assert!(joined.contains("--user=1000:1000 --read-only"));
-        assert!(joined.contains("--tmpfs=/tmp:") && joined.contains("--tmpfs=/home/node:"));
+        let user = crate::runtime::AgentUser::current();
+        assert!(joined.contains(&format!("--user={} --read-only", user.user())));
+        assert!(joined.contains("--tmpfs=/tmp:"));
+        assert!(joined.contains(&format!(
+            "--tmpfs=/home/node:rw,nosuid,nodev,size=512m,uid={},gid={}",
+            user.uid, user.gid
+        )));
+        assert!(joined.contains("-e HOME=/home/node -e USER=node"));
         assert!(joined.contains("--network=nandi-harness"));
         assert!(joined.contains("-e ANTHROPIC_API_KEY -e AWS_SESSION_TOKEN"));
         assert!(joined.contains("/work/writer:/agent/workdir"));
@@ -1073,7 +1092,12 @@ mod tests {
             .filter(|pair| pair[0] == "-e")
             .map(|pair| &pair[1])
             .collect();
-        assert!(passed.iter().all(|name| !name.contains('=')), "{passed:?}");
+        assert!(
+            passed.iter().all(|name| !name.contains('=')
+                || name.starts_with("HOME=")
+                || name.starts_with("USER=")),
+            "{passed:?}"
+        );
     }
 
     #[test]

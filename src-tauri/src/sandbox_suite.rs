@@ -9,11 +9,13 @@
 //! `nandi-egress` relay. They pull the images on first use.
 //!
 //! An in-process egress proxy (the real routes and CONNECT tunnels) stands
-//! in for the app's, listening where the relay reaches it: Docker's bridge
-//! gateway on Linux, loopback on Docker Desktop. Agents may reach one host
-//! through it, an echo server on the host's loopback. A relay that a
-//! running Nandi left is pointed back at that Nandi's port when each test
-//! ends.
+//! in for the app's, set up the way the app's is: on the host's loopback,
+//! and, once a relay is made ready on a Linux engine, on Docker's bridge
+//! gateway too (`egress::listen_on_bridge_gateway`). Agents may reach one
+//! host through it, an echo server on the host's loopback. The containers
+//! run as the app runs them (`runtime::AgentUser`), with no folders opened
+//! up. A relay that a running Nandi left is pointed back at that Nandi's
+//! port when each test ends.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -40,8 +42,6 @@ const REFUSED_SITE: &str = "example.org:443";
 
 /// The test proxy, and the one host agents may reach through it
 struct Proxy {
-    /// Where the proxy listens, as the relay reaches it
-    host_ip: String,
     port: u16,
     /// `127.0.0.1:<port>`: an echo server on the host's loopback, the only
     /// entry in every agent's `network.allow`
@@ -54,10 +54,9 @@ struct Proxy {
 fn proxy() -> &'static Proxy {
     static PROXY: OnceLock<Proxy> = OnceLock::new();
     PROXY.get_or_init(|| {
-        let host_ip = proxy_host_ip();
         let tokens = ProxyTokens::default();
         let (ready, started) = std::sync::mpsc::channel();
-        let (bind_ip, served) = (host_ip.clone(), tokens.clone());
+        let served = tokens.clone();
         std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -76,7 +75,7 @@ fn proxy() -> &'static Proxy {
                         });
                     }
                 });
-                let listener = tokio::net::TcpListener::bind((bind_ip.as_str(), 0))
+                let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
                     .await
                     .unwrap();
                 ready
@@ -89,34 +88,11 @@ fn proxy() -> &'static Proxy {
         });
         let (port, allowed) = started.recv().unwrap();
         Proxy {
-            host_ip,
             port,
             allowed,
             tokens,
         }
     })
-}
-
-/// Where `host.docker.internal` (`host-gateway`) lands from the relay:
-/// Docker's bridge gateway on a Linux engine, the host's loopback on
-/// Docker Desktop
-fn proxy_host_ip() -> String {
-    if !cfg!(target_os = "linux") {
-        return "127.0.0.1".to_string();
-    }
-    let output = std::process::Command::new("docker")
-        .args([
-            "network",
-            "inspect",
-            "bridge",
-            "--format",
-            "{{(index .IPAM.Config 0).Gateway}}",
-        ])
-        .output()
-        .expect("Docker is installed");
-    let gateway = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    assert!(!gateway.is_empty(), "no bridge gateway: {output:?}");
-    gateway
 }
 
 /// Runs `test` with the relay pointed at the test proxy, then gives the
@@ -243,7 +219,7 @@ async fn files_with_the_mark(container: &str) -> String {
 /// through the container's own `HTTPS_PROXY`
 const PROBE: &str = r#"
 import base64, json, os, socket, sys, urllib.parse
-host_ip, proxy_port, allowed, refused = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+gateway, proxy_port, allowed, refused = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
 def reach(host, port):
     try:
         socket.create_connection((host, port), timeout=5).close()
@@ -260,23 +236,40 @@ def through_proxy(target):
     return status
 print(json.dumps({
     "internet": reach("1.1.1.1", 443),
-    "host": reach(host_ip, proxy_port),
+    "host": reach(gateway, proxy_port),
     "host_docker_internal": reach("host.docker.internal", proxy_port),
     "allowed": through_proxy(allowed),
     "refused": through_proxy(refused),
 }))
 "#;
 
+/// Docker's bridge gateway: on a Linux engine the host, where the proxy
+/// listens for the relay; agents must not reach it directly
+async fn bridge_gateway() -> String {
+    let output = docker(&[
+        "network",
+        "inspect",
+        "bridge",
+        "--format",
+        "{{(index .IPAM.Config 0).Gateway}}",
+    ])
+    .await;
+    let gateway = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    assert!(!gateway.is_empty(), "no bridge gateway: {output:?}");
+    gateway
+}
+
 /// SB-13, SB-14: no way out but the relay, and the proxy decides
 async fn only_the_proxy_gets_out(container: &str, proxy: &Proxy) {
     let port = proxy.port.to_string();
+    let gateway = bridge_gateway().await;
     let (code, stdout, stderr) = exec(
         container,
         &[
             "python3",
             "-c",
             PROBE,
-            &proxy.host_ip,
+            &gateway,
             &port,
             &proxy.allowed,
             REFUSED_SITE,
@@ -335,7 +328,7 @@ fn assert_hardened(info: &Value, pids_limit: i64, home_tmpfs: &str) {
         tmpfs.contains_key("/tmp") && tmpfs.contains_key(home_tmpfs),
         "{tmpfs:?}"
     );
-    assert_eq!(info["Config"]["User"], runtime::CONTAINER_USER);
+    assert_eq!(info["Config"]["User"], runtime::AgentUser::current().user());
     // No published ports, no way to the host by name
     let bindings = host["PortBindings"].as_object().map_or(0, |b| b.len());
     assert_eq!(bindings, 0, "{}", host["PortBindings"]);
@@ -367,23 +360,10 @@ fn mounts(info: &Value) -> HashMap<String, bool> {
         .collect()
 }
 
-/// The containers run as uid 1000, and a Linux host user may not be
-/// (GitHub's runner is 1001): the test's folders are opened up to them
-fn open_up(path: &Path, writable: bool) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = if writable { 0o777 } else { 0o755 };
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
-    }
-    let _ = (path, writable);
-}
-
-/// The agent's workdir as `runtime::start_container` makes it, opened up
+/// The agent's workdir, as `runtime::start_container` makes it
 fn workdir_of(id: &str) {
     let dir = crate::utils::nandi_config::work_dir().unwrap().join(id);
     std::fs::create_dir_all(&dir).unwrap();
-    open_up(&dir, true);
 }
 
 fn skill(id: &str, dir: &Path, folders: Vec<SharedFolder>) -> SkillConfig {
@@ -492,9 +472,10 @@ async fn the_native_container_is_locked_down() {
             );
         }
 
-        // Inside: uid 1000, nothing writable but the workdir and tmpfs
+        // Inside: the agent user (the host user's uid on a Linux engine),
+        // nothing writable but the workdir and tmpfs
         let (_, uid, _) = exec(id, &["id", "-u"]).await;
-        assert_eq!(uid.trim(), "1000");
+        assert_eq!(uid.trim(), runtime::AgentUser::current().uid.to_string());
         for path in ["/usr/x", "/agent/skill/x", "/agent/folders/notes/x"] {
             let (code, _, _) = exec(id, &["touch", path]).await;
             assert_ne!(code, 0, "{path} is writable");
@@ -533,7 +514,6 @@ async fn the_coding_agent_container_is_locked_down() {
         plant_credentials(home.path());
         let workdir = home.path().join("work");
         std::fs::create_dir_all(&workdir).unwrap();
-        open_up(&workdir, true);
         let agent = Agent::from_skill_md(
             AgentId::parse("sandbox-e2e-coder").unwrap(),
             "---\nname: Coder\nruntime: claude-code\n---\n\nYou code.\n",
@@ -674,7 +654,7 @@ async fn the_egress_relay_holds_nothing_and_is_replaced_when_wrong() {
         assert_eq!(host["Memory"], 64 * 1024 * 1024_i64);
         assert_eq!(host["PidsLimit"], 64);
         assert_eq!(host["Init"], true);
-        assert_eq!(info["Config"]["User"], runtime::CONTAINER_USER);
+        assert_eq!(info["Config"]["User"], runtime::IMAGE_USER);
         assert_eq!(
             info["Config"]["Labels"]["org.nandi.egress.target"],
             proxy.port.to_string()
@@ -732,7 +712,6 @@ async fn the_native_tool_server_is_confined() {
     with_relay(|proxy| async move {
         let agent_dir = tempfile::tempdir().unwrap();
         std::fs::write(agent_dir.path().join("skill.md"), "# e2e").unwrap();
-        open_up(agent_dir.path(), false);
         let skill = skill("sandbox-e2e-tools", agent_dir.path(), Vec::new());
         workdir_of(&skill.id);
         let egress = EgressState::new(Secrets::in_memory());

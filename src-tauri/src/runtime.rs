@@ -2,7 +2,8 @@
 //!
 //! Each container gets:
 //! - the agent folder at `/agent/skill` (read-only) and a persistent workdir
-//!   from `~/.nandi/local/work/<id>` at `/agent/workdir` (read-write);
+//!   from `~/.nandi/local/work/<id>` at `/agent/workdir` (read-write), as
+//!   [`AgentUser`] (the host user's uid on a Linux engine);
 //! - only the internal `nandi-agents` network, whose one way out is the
 //!   egress relay ([`crate::services::egress::relay`]), and no published
 //!   ports: the host runs the tool server over `docker exec -i` stdio
@@ -41,15 +42,74 @@ pub const CONNECTORS_IMAGE: &str = "ghcr.io/vaultdbai/nandi-connectors:sandbox-6
 pub const DEFAULT_MEMORY_MB: u32 = 1024;
 pub const DEFAULT_CPU: f32 = 1.0;
 const PIDS_LIMIT: i64 = 256;
-/// The image's `agent` user, set here too so the uid never depends on the
-/// image alone
-pub const CONTAINER_USER: &str = "1000:1000";
-/// The root filesystem is read-only; these are the writable scratch places
-/// besides the workdir and shared folders
-const TMPFS: [(&str, &str); 2] = [
-    ("/tmp", "rw,nosuid,nodev,size=256m"),
-    ("/home/agent", "rw,nosuid,nodev,size=64m,uid=1000,gid=1000"),
-];
+/// The images' own user (`agent`, `node`): uid 1000. Containers that write
+/// nothing of the host's (the relay, connectors, tool installs) run as it,
+/// set here too so the uid never depends on the image alone
+pub const IMAGE_USER: &str = "1000:1000";
+
+/// Who an agent container runs as: the containers that write the host's
+/// folders (its workdir, shared folders it may write).
+///
+/// On Docker Desktop (Windows, macOS) the image's uid 1000: its file
+/// sharing makes bind mounts writable to it. On a Linux engine a bind
+/// mount keeps the host's ownership, so the agent runs as the host user's
+/// own uid and gid: what the user owns is writable to their agent as to
+/// them, and nothing is opened up to anyone else (making the folders
+/// writable for uid 1000 instead would hand them to whoever is uid 1000
+/// on that machine). Nandi running as root keeps 1000: never root inside.
+/// The container has no passwd entry for that uid, so `HOME` and `USER`
+/// are set ([`AgentUser::env`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AgentUser {
+    pub uid: u32,
+    pub gid: u32,
+}
+
+impl AgentUser {
+    const IMAGE: Self = Self {
+        uid: 1000,
+        gid: 1000,
+    };
+
+    /// This host's agent user (see [`AgentUser`])
+    pub fn current() -> Self {
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::fs::MetadataExt;
+            // `/proc/self` belongs to this process's user and group
+            if let Ok(own) = std::fs::metadata("/proc/self") {
+                if own.uid() != 0 {
+                    return Self {
+                        uid: own.uid(),
+                        gid: own.gid(),
+                    };
+                }
+            }
+        }
+        Self::IMAGE
+    }
+
+    /// Docker's `--user` value
+    pub fn user(self) -> String {
+        format!("{}:{}", self.uid, self.gid)
+    }
+
+    /// A home tmpfs's mount options, owned by this user
+    pub fn home_tmpfs(self, options: &str) -> String {
+        format!("{options},uid={},gid={}", self.uid, self.gid)
+    }
+
+    /// `HOME` (the home tmpfs) and `USER`: a uid with no passwd entry
+    /// would get `HOME=/`, on the read-only root
+    pub fn env(home: &str, user: &str) -> [String; 2] {
+        [format!("HOME={home}"), format!("USER={user}")]
+    }
+}
+
+/// The native container's home, a tmpfs like `/tmp`: the root filesystem
+/// is read-only, so these are its writable scratch places besides the
+/// workdir and shared folders
+const HOME: &str = "/home/agent";
 
 /// A running agent container; its tool server is reached with
 /// `docker exec` ([`crate::mcp_client::McpSession::connect`])
@@ -234,6 +294,7 @@ fn container_config(
     workdir: &str,
     egress_env: Vec<String>,
 ) -> ContainerCreateBody {
+    let user = AgentUser::current();
     let bind = |source: String, target: &str, read_only: bool| Mount {
         typ: Some(MountType::BIND),
         source: Some(source),
@@ -262,6 +323,7 @@ fn container_config(
         ])),
         env: Some(
             std::iter::once(format!("NANDI_AGENT_ID={}", skill.id))
+                .chain(AgentUser::env(HOME, "agent"))
                 .chain(
                     skill
                         .shell_timeout_s
@@ -270,7 +332,7 @@ fn container_config(
                 .chain(egress_env)
                 .collect(),
         ),
-        user: Some(CONTAINER_USER.to_string()),
+        user: Some(user.user()),
         host_config: Some(HostConfig {
             // Internal: no route out but the relay, no published ports
             network_mode: Some(relay::AGENT_NETWORK.to_string()),
@@ -278,12 +340,13 @@ fn container_config(
             init: Some(true),
             mounts: Some(mounts),
             readonly_rootfs: Some(true),
-            tmpfs: Some(
-                TMPFS
-                    .iter()
-                    .map(|(path, options)| (path.to_string(), options.to_string()))
-                    .collect(),
-            ),
+            tmpfs: Some(HashMap::from([
+                ("/tmp".to_string(), "rw,nosuid,nodev,size=256m".to_string()),
+                (
+                    HOME.to_string(),
+                    user.home_tmpfs("rw,nosuid,nodev,size=64m"),
+                ),
+            ])),
             cap_drop: Some(vec!["ALL".to_string()]),
             security_opt: Some(vec!["no-new-privileges".to_string()]),
             memory: Some(memory_limit_bytes(skill)),
@@ -451,9 +514,12 @@ mod tests {
         assert_eq!(host.readonly_rootfs, Some(true));
         let tmpfs = host.tmpfs.as_ref().unwrap();
         assert!(tmpfs.contains_key("/tmp") && tmpfs.contains_key("/home/agent"));
-        assert_eq!(config.user.as_deref(), Some(CONTAINER_USER));
+        let user = AgentUser::current();
+        assert_eq!(config.user, Some(user.user()));
+        assert!(tmpfs["/home/agent"].ends_with(&format!(",uid={},gid={}", user.uid, user.gid)));
 
         let env = config.env.unwrap();
+        assert!(env.contains(&"HOME=/home/agent".to_string()), "{env:?}");
         assert!(env.iter().all(|var| !var.contains("MCP_TOKEN")));
         assert!(env.contains(&"NANDI_LLM_PROXY_TOKEN=proxy-t".to_string()));
         assert!(
@@ -463,6 +529,30 @@ mod tests {
         let labels = config.labels.unwrap();
         assert_eq!(labels[AGENT_ID_LABEL], "writer");
         assert_eq!(labels[INSTANCE_LABEL], nandi_config::instance_tag());
+    }
+
+    #[test]
+    fn agents_run_as_the_host_user_on_linux_and_never_as_root() {
+        let user = AgentUser::current();
+        assert_ne!(user.uid, 0, "never root inside");
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let own = std::fs::metadata("/proc/self").unwrap();
+            if own.uid() != 0 {
+                assert_eq!((user.uid, user.gid), (own.uid(), own.gid()));
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        assert_eq!(user.user(), IMAGE_USER, "Docker Desktop: the image's user");
+        assert_eq!(
+            AgentUser {
+                uid: 1001,
+                gid: 118
+            }
+            .home_tmpfs("rw,size=64m"),
+            "rw,size=64m,uid=1001,gid=118"
+        );
     }
 
     #[test]

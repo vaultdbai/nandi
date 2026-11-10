@@ -71,7 +71,8 @@ Claude Code is **not** in the image. Anthropic's licence (`SEE LICENSE IN README
 ```text
 docker run -i --rm --init --name nandi-harness-<tag>-<agent>
   --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=512
-  --user=1000:1000 --read-only --tmpfs=/tmp:… --tmpfs=/home/node:…
+  --user=<agent user> --read-only --tmpfs=/tmp:… --tmpfs=/home/node:…,uid=…,gid=…
+  -e HOME=/home/node -e USER=node
   -w /agent/workdir -v <workdir>:/agent/workdir
   [-v nandi-tools-claude-code-<hex>:/opt/nandi-tools/claude-code:ro]
   --network=nandi-agents -e NAME ... ghcr.io/vaultdbai/nandi-harness:sandbox-6 <acp command>
