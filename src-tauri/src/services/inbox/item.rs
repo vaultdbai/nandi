@@ -15,6 +15,7 @@
 //! | `requestReturn`    | task ID                | done                       |
 //! | `failed`           | work item ID           | approve (retry), done      |
 //! | intake             | `intake:<id>` (its own)| approve, refuse            |
+//! | `knowMe`           | `you` (one chat)       | propose (`knowme_propose`) |
 //!
 //! A browser hand-over can only be skipped from a chat (the person
 //! finishes it in the browser), and a failed workflow run is run again from
@@ -69,7 +70,12 @@ pub enum InboxItemRef {
     Intake {
         conversation_id: String,
     },
+    /// Getting to know you (`services::knowme`): one standing chat
+    KnowMe,
 }
+
+/// The know-me chat's ID inside its kind
+const KNOW_ME_ID: &str = "you";
 
 /// `/` and `%` escaped, so an ID never splits a two-part one
 fn encode(part: &str) -> String {
@@ -121,6 +127,7 @@ impl InboxItemRef {
             "trustRequest" => Self::TrustRequest { instance_id: one() },
             "requestReturn" => Self::RequestReturn { task_id: one() },
             "failed" => Self::Failed { work_id: one() },
+            "knowMe" if id == KNOW_ME_ID => Self::KnowMe,
             _ => return None,
         })
     }
@@ -138,6 +145,7 @@ impl InboxItemRef {
             Self::RequestReturn { .. } => "requestReturn",
             Self::Failed { .. } => "failed",
             Self::Intake { .. } => "intake",
+            Self::KnowMe => crate::services::knowme::KIND,
         }
     }
 
@@ -160,6 +168,7 @@ impl InboxItemRef {
                 task_id,
                 question_id,
             } => format!("{}/{}", encode(task_id), encode(question_id)),
+            Self::KnowMe => KNOW_ME_ID.to_string(),
         }
     }
 
@@ -180,6 +189,9 @@ pub enum DecisionTool {
     Answer,
     Done,
     Reassign,
+    /// Changes to NANDI.md and My notes from what the person said
+    /// (`knowme_propose`, know-me only)
+    Propose,
 }
 
 /// What a thread's turns are told about its item
@@ -521,6 +533,7 @@ dismisses it)"
                 requester: None,
             })
         }
+        InboxItemRef::KnowMe => Ok(know_me(state)),
         InboxItemRef::Intake { conversation_id } => {
             let id = conversation_id.clone();
             let items = state
@@ -548,6 +561,82 @@ Refuse dismisses it)"
                 requester: None,
             })
         }
+    }
+}
+
+/// What the know-me chat is told: the person's card and groups now. The
+/// questions are never done, so it always takes a proposal.
+fn know_me(state: &AppState) -> ItemFacts {
+    let mut facts = Vec::new();
+    match state.gateway().map(|g| g.manifest()) {
+        Some(Ok(manifest)) => {
+            let none = || "(none yet)".to_string();
+            let list = |items: &[String]| {
+                if items.is_empty() {
+                    none()
+                } else {
+                    items.join(", ")
+                }
+            };
+            facts.push(format!("Name: {}", manifest.display_name));
+            facts.push(format!("Description: {}", manifest.description));
+            facts.push(format!(
+                "Responsibilities on the card: {}",
+                list(&manifest.responsibilities)
+            ));
+            facts.push(format!(
+                "The card is shared on the relay: {}; responsibilities shown on it: {}",
+                if manifest.relay.enabled { "yes" } else { "no" },
+                if manifest.relay.share_responsibilities {
+                    "yes"
+                } else {
+                    "no"
+                }
+            ));
+            facts.push(format!(
+                "Profile text:
+{}",
+                cut(&crate::services::gateway::manifest::public_body(
+                    &manifest.body
+                ))
+            ));
+            facts.push(format!(
+                "Hidden from others: {}",
+                list(&manifest.policy.hide)
+            ));
+        }
+        Some(Err(e)) => facts.push(format!("NANDI.md doesn't read: {e}")),
+        None => {}
+    }
+    let served = crate::services::knowme::served(state);
+    facts.push(format!(
+        "Capabilities agents here serve: {}",
+        if served.is_empty() {
+            "(none)".to_string()
+        } else {
+            served.join(", ")
+        }
+    ));
+    let groups = crate::services::knowme::my_groups(state);
+    facts.push(format!(
+        "Groups the user is in (id: name): {}",
+        if groups.is_empty() {
+            "(none)".to_string()
+        } else {
+            groups
+                .iter()
+                .map(|g| format!("{}: {}", g.id, g.name))
+                .collect::<Vec<_>>()
+                .join("; ")
+        }
+    ));
+    ItemFacts {
+        title: "Getting to know you".to_string(),
+        deciding: "what the user tells you about their work and life, and which changes to their card (NANDI.md) and My notes they approve"
+            .to_string(),
+        facts,
+        tools: vec![DecisionTool::Propose],
+        requester: None,
     }
 }
 
@@ -591,6 +680,7 @@ mod tests {
             InboxItemRef::Intake {
                 conversation_id: "intake:q1".into(),
             },
+            InboxItemRef::KnowMe,
         ];
         for item in items {
             let id = item.conversation_id();
@@ -622,6 +712,7 @@ mod tests {
             "inbox:nope:x",
             "inbox:manualStep:r1",
             "inbox:manualStep:/s",
+            "inbox:knowMe:someone",
         ] {
             assert_eq!(InboxItemRef::parse(id), None, "{id}");
         }

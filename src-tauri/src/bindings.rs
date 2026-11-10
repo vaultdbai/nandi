@@ -5,11 +5,11 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         access, agents, analysis, ask, attachments, audit, aws_auth, bedrock, capabilities,
         capability, capability_registries, chat, companion, config, connectors, decisions,
         delegation, delegation_clarification, docker, egress, email, gateway, groups,
-        harness_sessions, harnesses, help, identity, images, live, llm_keys, machine, manual_steps,
-        marketplace, marketplace_search, mascot, memory, network, notes, notifications, palette,
-        pilots, policies, preferences, queue, reassign, recovery, relay, relay_capabilities,
-        remote, repo, requests, runs, shared, snapshots, studio, tasks, teams, teams_roster, tools,
-        triggers, work, workflow_builder, workflows, workspace,
+        harness_sessions, harnesses, help, identity, images, knowme, live, llm_keys, machine,
+        manual_steps, marketplace, marketplace_search, mascot, memory, network, notes,
+        notifications, palette, pilots, policies, preferences, queue, reassign, recovery, relay,
+        relay_capabilities, remote, repo, requests, runs, shared, snapshots, studio, tasks, teams,
+        teams_roster, tools, triggers, work, workflow_builder, workflows, workspace,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;
@@ -23,6 +23,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::services::events::*;
     use crate::services::grants::GrantsChanged;
     use crate::services::groups::GroupsChanged;
+    use crate::services::knowme::KnowMeChanged;
     use crate::services::live::LiveChange;
     use crate::services::marketplace::events::*;
     use crate::services::orchestrator::compaction::AgentRunCompacted;
@@ -170,6 +171,9 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             audit::list_audit_log,
             decisions::list_decision_months,
             decisions::list_decisions,
+            knowme::get_know_me,
+            knowme::know_me_todo,
+            knowme::confirm_know_me_proposal,
             connectors::list_connectors,
             connectors::install_connector,
             connectors::start_connector,
@@ -500,6 +504,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             RelaySealRefused,
             MemberKeyChanged,
             GroupsChanged,
+            KnowMeChanged,
             TeamChanged,
             DelegationTaskStarted,
             DelegationTaskCompleted,

@@ -61,6 +61,7 @@ pub mod history;
 pub mod images;
 pub mod inbox;
 pub mod intake;
+pub mod knowme;
 pub mod live;
 pub mod llm_keys;
 pub mod llm_trial;

@@ -38,6 +38,8 @@ import {
   parseAccessRequest,
 } from '@/components/connectors/access-model'
 import { AccessRequestCard } from '@/components/connectors/AccessRequestCard'
+import { parseKnowMeProposal } from '@/components/knowme/knowme-model'
+import { KnowMeProposalCard } from '@/components/knowme/KnowMeProposalCard'
 import { formatJson } from './format-json'
 import { HandOverCard } from './HandOverCard'
 import { parsePlaybookProposal } from './playbook-proposal-model'
@@ -97,6 +99,24 @@ export function ApprovalRequestCard(props: ApprovalRequestCardProps) {
         expiresAt={message.expiresAt}
         agentName={props.agentName}
         interactive={props.onDecide !== undefined}
+        className={props.className}
+      />
+    )
+  }
+  // Getting to know you: the changes, editable before the confirm
+  const knowMe = parseKnowMeProposal(message.tool, message.args)
+  if (knowMe) {
+    return (
+      <KnowMeProposalCard
+        approvalId={message.id}
+        proposal={knowMe}
+        status={message.status}
+        onDecide={props.onDecide}
+        statusBadge={
+          message.status === 'pending' ? undefined : (
+            <ApprovalStatusBadge status={message.status} />
+          )
+        }
         className={props.className}
       />
     )

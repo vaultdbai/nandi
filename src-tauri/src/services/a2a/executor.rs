@@ -145,6 +145,13 @@ pub fn gateway_child_id(task_id: &str) -> String {
     format!("{task_id}{GATEWAY_CHILD_SUFFIX}")
 }
 
+/// The gateway task a hand-off answers (the task itself when it isn't one)
+pub fn gateway_parent(task_id: &str) -> &str {
+    task_id
+        .strip_suffix(GATEWAY_CHILD_SUFFIX)
+        .unwrap_or(task_id)
+}
+
 fn gateway_handler(instance_id: &str) -> Option<GatewayHandler> {
     GATEWAY_HANDLERS
         .lock()

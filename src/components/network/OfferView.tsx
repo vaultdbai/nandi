@@ -1,6 +1,7 @@
 /**
- * Sharing › What you offer: "About this Nandi", then each capability your
- * agents serve as Offered, Needs your approval or Hidden, and the limits.
+ * Sharing › What you offer: "Tell Nandi about you" (the know-me chat),
+ * "About this Nandi", then each capability your agents serve as Offered,
+ * Needs your approval or Hidden, and the limits.
  * Edit changes all of it inline; Advanced opens NANDI.md in Studio and the
  * test chat (network.md §4.4).
  */
@@ -32,6 +33,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { GatewayChat } from '@/components/gateway/GatewayChat'
+import { TellNandiAboutYou } from '@/components/knowme/TellNandiAboutYou'
 import { useAgents } from '@/hooks/useAgents'
 import { capabilityQueryKeys } from '@/hooks/useCapabilities'
 import { errorMessage } from '@/hooks/useDelegation'
@@ -90,6 +92,7 @@ export function OfferView() {
   return (
     <div className="flex flex-col gap-6" data-testid="offer">
       <AvailabilityEditor manifest={manifest.data} />
+      <TellNandiAboutYou />
       {editing ? (
         <OfferEditor
           manifest={manifest.data}

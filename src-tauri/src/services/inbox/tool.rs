@@ -14,6 +14,11 @@
 //! | `inbox_answer`   | `{text}`              | `respond_to_clarification`                                       |
 //! | `inbox_done`     | `{note?}`             | `close_gateway_assignment`, `complete_manual_step`, `dismiss_request_return`, `dismiss_work` |
 //! | `inbox_reassign` | `{to, reason?}`       | `reassign_task`                                                  |
+//! | `knowme_propose` | a `KnowMeProposal`    | `knowme::apply` (NANDI.md, My notes), know-me chat only          |
+//!
+//! A know-me proposal may be edited on its card before the person confirms
+//! it (`knowme::confirm`): the confirmed arguments are the approval's
+//! ([`confirmed_args`]), not the model's.
 //!
 //! `item` picks one of an intake thread's queued items when it has several.
 
@@ -32,7 +37,8 @@ pub const REFUSE: &str = "inbox_refuse";
 pub const ANSWER: &str = "inbox_answer";
 pub const DONE: &str = "inbox_done";
 pub const REASSIGN: &str = "inbox_reassign";
-const TOOLS: [&str; 5] = [APPROVE, REFUSE, ANSWER, DONE, REASSIGN];
+pub const PROPOSE: &str = "knowme_propose";
+const TOOLS: [&str; 6] = [APPROVE, REFUSE, ANSWER, DONE, REASSIGN, PROPOSE];
 
 /// Longest note, reason or answer, in characters
 const MAX_TEXT_CHARS: usize = 2000;
@@ -48,6 +54,7 @@ pub fn name_of(tool: DecisionTool) -> &'static str {
         DecisionTool::Answer => ANSWER,
         DecisionTool::Done => DONE,
         DecisionTool::Reassign => REASSIGN,
+        DecisionTool::Propose => PROPOSE,
     }
 }
 
@@ -58,6 +65,7 @@ fn tool_of(name: &str) -> Option<DecisionTool> {
         ANSWER => DecisionTool::Answer,
         DONE => DecisionTool::Done,
         REASSIGN => DecisionTool::Reassign,
+        PROPOSE => DecisionTool::Propose,
         _ => return None,
     })
 }
@@ -69,7 +77,25 @@ pub fn gate(calls: &mut [PlannedCall]) {
     }
 }
 
+/// The arguments a confirmed call runs with: the approval's, which a
+/// know-me card may have edited before the person confirmed it; else the
+/// model's
+pub async fn confirmed_args(state: &AppState, call_id: &str, args: &Value) -> Value {
+    let id = call_id.to_string();
+    state
+        .db()
+        .call(move |conn| crate::db::approval_for_call(conn, &id))
+        .await
+        .ok()
+        .flatten()
+        .filter(|a| a.status == crate::model::ApprovalStatus::Approved)
+        .map_or_else(|| args.clone(), |a| a.args)
+}
+
 pub fn spec(tool: DecisionTool, intake: bool) -> ToolSpec {
+    if tool == DecisionTool::Propose {
+        return crate::services::knowme::proposal::spec();
+    }
     let item = json!({"type": "string", "description": "The queued item's id, when this thread has several"});
     let text = json!({"type": "string", "maxLength": MAX_TEXT_CHARS});
     let (description, schema) = match tool {
@@ -104,6 +130,7 @@ ID); `reason` goes with it.",
                 "reason": text,
             }}),
         ),
+        DecisionTool::Propose => unreachable!("specified by knowme::proposal"),
     };
     let mut schema = schema;
     if !intake {
@@ -303,6 +330,7 @@ async fn decide(
             crate::services::requests::retry_task(state, work_id.clone()).await?;
             Ok("retried".to_string())
         }
+        (InboxItemRef::KnowMe, Propose) => crate::services::knowme::apply(state, args).await,
         (InboxItemRef::Failed { work_id }, Done) => {
             crate::services::work::dismiss_work(state, work_id.clone()).await?;
             Ok("dismissed".to_string())

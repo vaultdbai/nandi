@@ -68,6 +68,7 @@ const SCREEN_ROUTES: &[&str] = &[
     "gateway/manifest",
     "gateway/status",
     "identity/status",
+    "know-me",
     "llm-keys",
     "marketplace/installed",
     "mascot",
@@ -461,6 +462,54 @@ async fn an_inbox_item_opens_as_a_chat(state: &AppState, router: &Router) {
 async fn with_no_relay_an_inbox_item_opens_as_a_chat() {
     let (state, router) = boot(BuiltInRelay::default());
     an_inbox_item_opens_as_a_chat(&state, &router).await;
+}
+
+/// Getting to know you with nothing but this Nandi: the to-do, its chat,
+/// and a confirmed proposal written to NANDI.md and My notes
+#[tokio::test]
+async fn with_no_relay_getting_to_know_you_works() {
+    let (state, router) = boot(BuiltInRelay::default());
+    let notes = tempfile::tempdir().unwrap();
+    crate::services::connectors::share_folder(
+        &state,
+        crate::services::connectors::folders::SharedFolder {
+            id: crate::services::notes::NOTES_FOLDER_ID.into(),
+            path: notes.path().to_string_lossy().to_string(),
+            access: crate::services::connectors::folders::Access::Write,
+        },
+    )
+    .await
+    .unwrap();
+    crate::services::knowme::start(&state).await.unwrap();
+    assert_eq!(get(&router, "know-me").await["todoOpen"], true);
+
+    let opened = post(&router, "inbox/threads/inbox%3AknowMe%3Ayou", Value::Null).await;
+    assert_eq!(opened["kind"], "knowMe", "{opened}");
+    assert_eq!(opened["tools"], json!(["knowme_propose"]));
+
+    // What the confirmed `knowme_propose` does
+    crate::services::knowme::apply(
+        &state,
+        &json!({
+            "summary": "Runs the books",
+            "responsibilities": [
+                {"text": "Month-end close", "kind": "work"},
+                {"text": "Grandma's medicines", "kind": "personal"}
+            ]
+        }),
+    )
+    .await
+    .unwrap();
+    let manifest = get(&router, "gateway/manifest").await;
+    assert_eq!(manifest["responsibilities"], json!(["Month-end close"]));
+    let private =
+        std::fs::read_to_string(notes.path().join("private").join("about-me.md")).unwrap();
+    assert!(private.contains("- Grandma's medicines"), "{private}");
+    let status = get(&router, "know-me").await;
+    assert_eq!(status["todoOpen"], false, "{status}");
+    assert_eq!(status["recent"][0]["kind"], "knowMe", "{status}");
+    let later = post(&router, "know-me/todo", json!({ "action": "later" })).await;
+    assert_eq!(later["todoOpen"], false, "{later}");
 }
 
 #[tokio::test]

@@ -121,7 +121,7 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-549 features to test: all 603 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+550 features to test: all 604 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
@@ -129,7 +129,7 @@ These turned up while building the catalog. In each case the catalog follows the
 | Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 77       |
 | Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 63       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
-| Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 91       |
+| Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 92       |
 | Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 75       |
 | Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 81       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
@@ -138,20 +138,20 @@ These turned up while building the catalog. In each case the catalog follows the
 | Status      | Count |
 | ----------- | ----- |
 | Shipped     | 530   |
-| Partial     | 16    |
+| Partial     | 17    |
 | Removed     | 11    |
 | Known issue | 3     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 298   |
+| `unit`                | 299   |
 | `api`                 | 194   |
 | `manual`              | 33    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 467   |
+| no          | 468   |
 | yes         | 82    |
 
 ## Master index
@@ -531,6 +531,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RQ-35 | Decide an Inbox item in its chat, confirmed on its card                          | Shipped                                                                                    | unit + integration + manual | no          |                 |
 | RQ-36 | Every Inbox decision is kept in the gold copy                                    | Shipped                                                                                    | unit                        | no          |                 |
 | RQ-37 | Decisions page: past Inbox decisions, month by month                             | Shipped                                                                                    | unit                        | no          |                 |
+| RQ-38 | Getting to know you: know-me to-dos and proposals                                | Partial (the relay's people search can't find a group-shared item: needs per-group card... | unit + integration + manual | no          |                 |
 | RQ-27 | What was asked, word for word                                                    | Shipped                                                                                    | unit + manual               | no          | 2026-10-30 pass |
 
 ### Library, capabilities, Studio and companion

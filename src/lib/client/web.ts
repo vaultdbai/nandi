@@ -521,6 +521,10 @@ export const webClient: NandiClient = {
   cancelRequest: requestId =>
     request('POST', `/requests/${id(requestId)}/cancel`),
   listDecisionMonths: () => request('GET', '/decisions/months'),
+  getKnowMe: () => request('GET', '/know-me'),
+  knowMeTodo: action => request('POST', '/know-me/todo', { action }),
+  confirmKnowMeProposal: (approvalId, proposal) =>
+    request('POST', `/know-me/proposals/${id(approvalId)}/confirm`, proposal),
   listDecisions: (month, filter) =>
     request(
       'GET',

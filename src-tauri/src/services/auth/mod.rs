@@ -146,6 +146,12 @@ pub async fn set_onboarding_step(state: &AppState, step: OnboardingStep) -> Resu
             .map(|_| ())
         })
         .await?;
+    // Setup is done: the first know-me to-do (once; `services::knowme`)
+    if step == OnboardingStep::Done {
+        if let Err(e) = crate::services::knowme::start(state).await {
+            log::warn!("The know-me to-do wasn't added: {e}");
+        }
+    }
     emit_changed(state).await;
     Ok(())
 }

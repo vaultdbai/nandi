@@ -8,6 +8,7 @@
  * `inboxThreadId` names it and `inboxItemView` opens it.
  */
 import type {
+  KnowMeStatus,
   GatewayAssignment,
   GatewayHold,
   PendingApproval,
@@ -56,6 +57,11 @@ export type InboxItem =
   | (Base & { kind: 'requestReturn'; ret: RequestReturn })
   /** Work from mail, the calendar or a teammate, waiting for the user's OK */
   | (Base & { kind: 'intake'; work: QueuedWork })
+  /**
+   * Getting to know you (`services::knowme`): never "done", never counted;
+   * `recheck` once the person answered before ("is this still right?")
+   */
+  | (Base & { kind: 'knowMe'; recheck: boolean })
 
 export interface InboxSources {
   now: number
@@ -76,6 +82,8 @@ export interface InboxSources {
   returns: RequestReturn[]
   /** The intake queue: work from outside waiting for the user's OK */
   queue: QueuedWork[]
+  /** The know-me to-do (`get_know_me`), when loaded */
+  knowMe?: Pick<KnowMeStatus, 'todoOpen' | 'recheck' | 'shownAt'> | null
   agentName: (agentId: string) => string
 }
 
@@ -216,6 +224,16 @@ export function buildInbox(sources: InboxSources): InboxItem[] {
     })
   }
 
+  if (sources.knowMe?.todoOpen) {
+    items.push({
+      kind: 'knowMe',
+      id: 'know-me',
+      recheck: sources.knowMe.recheck,
+      createdAt: sources.knowMe.shownAt ?? now,
+      deadline: null,
+    })
+  }
+
   const dismissed = new Set(sources.dismissed)
   // A request that came back failed is already a return: not twice
   const returned = new Set(sources.returns.map(ret => ret.taskId))
@@ -243,11 +261,19 @@ export function buildInbox(sources: InboxSources): InboxItem[] {
   return [...waiting, ...rest]
 }
 
-/** The nav badge: what waits on the user now (failures aren't counted) */
-/** Offered to the user, not waiting on them: kept out of the badge */
+/**
+ * Offered to the user, not waiting on them: kept out of the badge (a
+ * know-me question never nags)
+ */
 function isOffered(item: InboxItem): boolean {
-  return item.kind === 'failed' || item.kind === 'requestReturn'
+  return (
+    item.kind === 'failed' ||
+    item.kind === 'requestReturn' ||
+    item.kind === 'knowMe'
+  )
 }
+
+/** The nav badge: what waits on the user now (failures aren't counted) */
 
 export function inboxBadgeCount(items: InboxItem[]): number {
   return items.filter(item => !isOffered(item)).length
@@ -294,6 +320,8 @@ export function inboxThreadId(item: InboxItem): string | null {
       return thread(part(item.item.id))
     case 'intake':
       return item.work.threadId
+    case 'knowMe':
+      return 'inbox:knowMe:you'
   }
 }
 
@@ -366,5 +394,7 @@ export function inboxRowLabel(item: InboxItem): NavLabel {
       })
     case 'intake':
       return label('inbox.intake', { text: firstLine(item.work.text) })
+    case 'knowMe':
+      return label(item.recheck ? 'inbox.knowMe.recheck' : 'inbox.knowMe.first')
   }
 }

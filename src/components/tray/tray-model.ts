@@ -11,6 +11,7 @@ import type { HomeRow } from '@/components/home/home-model'
 import {
   firstLine,
   inboxItemView,
+  inboxRowLabel,
   type InboxItem,
 } from '@/components/inbox/inbox-model'
 import type { View } from '@/store/navigation-store'
@@ -107,6 +108,8 @@ export function inboxTrayRow(item: InboxItem): TrayRow {
       return row(key('tray.requestReturn', { name: item.ret.fromName }), 'done')
     case 'intake':
       return row(key('tray.intake', { text: firstLine(item.work.text) }))
+    case 'knowMe':
+      return row(inboxRowLabel(item), 'quiet')
   }
 }
 

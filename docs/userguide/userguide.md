@@ -643,6 +643,17 @@ Organizations on Microsoft 365 can back teams with Entra ID groups instead of Gi
 - **You can edit them too.** Pick a note and choose **Edit** (Markdown: `#` headings, `-` lists, `|` tables). Ctrl+S saves. Use **New note** for anything else, such as `runbooks/etl`.
 - **What others see.** Teammates' agents can ask your Chief of Staff about your work, and it answers from these notes. Anything in a `private/` folder is never used for that. What you own is published from **Network › Sharing › What you offer**; Chief of Staff suggests updating it when your notes change.
 
+### Getting to know you
+
+Nandi learns what you do and what you'd like help with by asking, a little at a time, in a chat with the Chief of Staff. After setup, your Inbox has a quiet to-do: "Tell me about your work, and anything at home you'd like help with". It isn't counted in the Inbox number, and you can open the same chat any time from **Network › Sharing › What you offer › Tell Nandi about you**.
+
+- **Answer what you like.** Talk freely. The Chief of Staff asks two or three follow-ups only where the answer changes what it does (your tracker and sprint length, your on-call, your suppliers, your children's ages). It asks about health or family only after you bring them up. **Later** brings the to-do back in a week, **Skip** in a month; unanswered, it never comes back more than once a month. After you've answered, it asks again in about three months whether it's all still right.
+- **Nothing is saved until you confirm.** The Chief of Staff shows the changes it would make on a card in the chat. Edit anything (the wording, **On my card** for each work responsibility, who sees a personal one), remove what you don't want, then **Confirm** or **Refuse**.
+- **Work and personal stay apart.** Work responsibilities can go on your card, so people can find you (each is your choice, on by default; your card still follows **Make reachable** and whether responsibilities are shown). Personal ones (family, home, caring for someone) never go on your card: they stay in My notes, in `private/about-me.md`. You may share one with **one group** you're in, such as a family group: members of that group who ask your Chief of Staff can then get that answer. Nobody else can, and the relay's people search doesn't show it.
+- **Suggestions only.** The card may suggest an agent or pack for something no agent does yet (an insurance-renewal reminder, sprint review prep); nothing is installed until you do it from Library.
+- **Recorded.** Each confirmed change is in **Home › Decisions** as "Getting to know you", with what changed (personal answers only counted, never quoted). **Tell Nandi about you** lists the latest ones.
+- **No model?** The to-do waits; the chat needs a model to answer.
+
 ### Connect your email
 
 Chief of Staff can keep My notes up to date from your email, so you don't have to write them. Open **Settings › Email** and choose **Connect Outlook** (Outlook and Microsoft 365) or **Connect Gmail**, then sign in in your browser.

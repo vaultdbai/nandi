@@ -11,6 +11,7 @@ import { useNow } from '@/components/agents/task-utils'
 import { buildInbox, inboxBadgeCount } from '@/components/inbox/inbox-model'
 import { useChiefOfStaffDigest } from '@/hooks/useChiefOfStaffDigest'
 import { usePendingClarifications } from '@/hooks/useClarifications'
+import { useKnowMe } from '@/hooks/useKnowMe'
 import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
 import { useTrustRequests } from '@/hooks/useTrustRequests'
 import { useManualSteps, useWork, workKeys } from '@/hooks/useWork'
@@ -200,6 +201,7 @@ export function useInbox() {
   const returns = useRequestReturns()
   const digest = useChiefOfStaffDigest()
   const model = useDefaultModel()
+  const knowMe = useKnowMe()
   // A query, not the agent store: the companion's webview has no store sync
   const { data: agents = [] } = useAgents()
   const names = new Map(agents.map(agent => [agent.id, agent.name]))
@@ -217,6 +219,7 @@ export function useInbox() {
     dismissed: dismissed.data ?? [],
     returns: returns.data ?? [],
     queue: digest.data?.queue ?? [],
+    knowMe: knowMe.data ?? null,
     agentName: id => names.get(id) ?? id,
   })
 

@@ -58,6 +58,7 @@ Technical documentation for building and extending this app. These docs describe
 | [Interaction Layer](./interaction-layer.md)               | Ask box, Studio split view, companion states, Work view    |
 | [Network and Reassignment](./network-and-reassignment.md) | Trust, task reassignment, manual steps, `.nandi/llm.yaml`  |
 | [Groups](./groups.md)                                     | Groups, signed group policies, access levels, visibility   |
+| [Getting to know you](./know-me.md)                       | Know-me to-dos, proposals, personal vs work, group sharing |
 | [Harness Container](./harness-container.md)               | Pulling the images, the Claude Code tools volume, sessions |
 | [Runtime Routing](./runtime-routing.md)                   | `runtime:` in skill.md, native vs harness runs             |
 | [Sign-in](./sign-in.md)                                   | Company identity first, keys last; Claude Code for LLMs    |

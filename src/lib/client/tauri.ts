@@ -327,6 +327,10 @@ export const tauriClient: NandiClient = {
   cancelRequest: id => commands.cancelRequest(id),
   rerunRequest: id => commands.rerunRequest(id),
   listDecisionMonths: () => commands.listDecisionMonths(),
+  getKnowMe: () => commands.getKnowMe(),
+  knowMeTodo: action => commands.knowMeTodo(action),
+  confirmKnowMeProposal: (approvalId, proposal) =>
+    commands.confirmKnowMeProposal(approvalId, proposal),
   listDecisions: (month, filter) => commands.listDecisions(month, filter),
   mascotGet: () => commands.mascotGet(),
   mascotSet: name => commands.mascotSet(name),

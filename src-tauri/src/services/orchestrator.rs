@@ -1341,6 +1341,19 @@ async fn llm_step(
                     }
                 }
             }
+            // Someone's request: what the user shares with a group they're
+            // both in (`knowme::sharing`)
+            if ctx.agent_id == CHIEF_OF_STAFF {
+                if let (Some(task_id), Some(state)) =
+                    (ctx.conversation_id.strip_prefix("task:"), app_state(deps))
+                {
+                    if let Some(shared) =
+                        crate::services::knowme::sharing::prompt_for_task(&state, task_id).await
+                    {
+                        system.push_str(&shared);
+                    }
+                }
+            }
             // A step of a work plan the Chief of Staff does itself: the plan
             if ctx.agent_id == CHIEF_OF_STAFF {
                 if let Some(request_id) = request_step(deps, &ctx.run_id).await {
@@ -2192,7 +2205,10 @@ async fn run_call(
         // call as the item's button (`inbox::tool`)
         _ if inbox::tool::is_decision_tool(&call.tool) => match app_state(deps) {
             Some(state) if ctx.agent_id == CHIEF_OF_STAFF => {
-                inbox::tool::call(&state, &ctx.conversation_id, &call.tool, &call.args).await
+                // A know-me card may have edited the proposal before the
+                // confirm: the approval's arguments are the confirmed ones
+                let args = inbox::tool::confirmed_args(&state, &call.id, &call.args).await;
+                inbox::tool::call(&state, &ctx.conversation_id, &call.tool, &args).await
             }
             _ => ToolOutcome {
                 result: format!(

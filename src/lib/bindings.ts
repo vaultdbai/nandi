@@ -1138,6 +1138,40 @@ async listDecisions(month: string, filter: DecisionFilter | null) : Promise<Resu
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * The know-me to-do (brought back when its time came), the groups a
+ * personal item may be shared with, and the latest confirmed changes
+ */
+async getKnowMe() : Promise<Result<KnowMeStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_know_me") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The to-do's Later (back in a week) or Skip (back in a month)
+ */
+async knowMeTodo(action: KnowMeTodoAction) : Promise<Result<KnowMeStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("know_me_todo", { action }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Confirms a `knowme_propose` card, with the person's edits
+ */
+async confirmKnowMeProposal(approvalId: string, proposal: KnowMeProposal) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("confirm_know_me_proposal", { approvalId, proposal }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async listConnectors() : Promise<Result<ConnectorInfo[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_connectors") };
@@ -3861,6 +3895,7 @@ delegationTaskFailed: DelegationTaskFailed,
 delegationTaskStarted: DelegationTaskStarted,
 emailChanged: EmailChanged,
 grantsChanged: GrantsChanged,
+knowmeChanged: KnowMeChanged,
 liveChanged: LiveChange,
 marketplaceError: MarketplaceError,
 marketplaceForked: MarketplaceForked,
@@ -3932,6 +3967,7 @@ delegationTaskFailed: "delegation://task_failed",
 delegationTaskStarted: "delegation://task_started",
 emailChanged: "email://changed",
 grantsChanged: "grants://changed",
+knowmeChanged: "knowme://changed",
 liveChanged: "live://changed",
 marketplaceError: "marketplace://error",
 marketplaceForked: "marketplace://forked",
@@ -3980,12 +4016,12 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const NO_SHARED_GROUP = "no_shared_group" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 
 /** user-defined types **/
 
@@ -6106,6 +6142,10 @@ author: string;
  * Ed25519 by the author's signing key over [`GroupPolicy::signed_bytes`]
  */
 signature: string; updatedAt: number }
+/**
+ * A group I'm in, as the card offers it
+ */
+export type GroupRef = { id: string; name: string }
 export type GroupRole = "admin" | "member"
 /**
  * A group as anyone on the relay sees it
@@ -6555,6 +6595,82 @@ export type KeyTestFailure =
  * Providers that need an API key (Ollama runs locally without one).
  */
 export type KeyedProvider = "deepSeek" | "anthropic" | "openAi"
+/**
+ * `knowme://changed`: the to-do or the answers changed
+ */
+export type KnowMeChanged = Record<string, never>
+/**
+ * What the person confirms on the card
+ */
+export type KnowMeProposal = { 
+/**
+ * One line: what changes
+ */
+summary: string; responsibilities: ProposedResponsibility[]; 
+/**
+ * NANDI.md `description`
+ */
+description: string | null; 
+/**
+ * The body's "What I can help with"
+ */
+canHelpWith: string | null; 
+/**
+ * The body's "What I can't help with"
+ */
+cantHelpWith: string | null; notes: ProposedNote[]; 
+/**
+ * Capabilities agents here serve, to offer to others
+ */
+offer: string[]; suggest: KnowMeSuggestion[] }
+/**
+ * The to-do and what the answers changed lately
+ */
+export type KnowMeStatus = { 
+/**
+ * The to-do is in the Inbox
+ */
+todoOpen: boolean; 
+/**
+ * The person answered before: the to-do asks if it's still right
+ */
+recheck: boolean; 
+/**
+ * Epoch ms the to-do last came
+ */
+shownAt: number | null; 
+/**
+ * Epoch ms a change was last confirmed
+ */
+answeredAt: number | null; 
+/**
+ * The chat (`inbox:knowMe:you`)
+ */
+threadId: string; 
+/**
+ * Groups I'm in, for sharing one personal item
+ */
+groups: GroupRef[]; 
+/**
+ * The latest confirmed changes, newest first
+ */
+recent: DecisionRecord[] }
+/**
+ * An agent or pack for something no agent here does: suggested only
+ */
+export type KnowMeSuggestion = { name: string; why: string }
+/**
+ * What the to-do's buttons do
+ */
+export type KnowMeTodoAction = 
+/**
+ * Back in a week
+ */
+"later" | 
+/**
+ * Back in a month at the soonest
+ */
+"skip"
 export type LatencyClass = "instant" | "fast" | "slow" | "long"
 /**
  * `/etc/os-release`
@@ -7165,6 +7281,20 @@ export type ProjectionStats = { agents: number; workflows: number; triggers: num
  * Files that couldn't be loaded and were left out
  */
 skipped: number }
+export type ProposedNote = { text: string; 
+/**
+ * For the person only (`private/about-me.md`)
+ */
+private: boolean }
+export type ProposedResponsibility = { text: string; kind: ResponsibilityKind; 
+/**
+ * Work only: on the card (NANDI.md); off, it stays in My notes
+ */
+onCard: boolean; 
+/**
+ * Personal only: the one group (a group I'm in) it's shared with
+ */
+shareWithGroup: string | null }
 /**
  * What implements a capability
  */
@@ -7817,6 +7947,14 @@ detail: string | null; etaSeconds: number | null; attempts: Attempt[];
  */
 children: RequestStep[]; startedAt: number | null; endedAt: number | null }
 export type RequestUpdated = { id: string }
+/**
+ * Work goes where people can find it; personal stays private
+ */
+export type ResponsibilityKind = "work" | 
+/**
+ * Family, home, caring for someone
+ */
+"personal"
 /**
  * How a request came back
  */

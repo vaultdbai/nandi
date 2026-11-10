@@ -1285,6 +1285,31 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **Needs relay:** no
 - **Status:** Shipped
 
+### RQ-38 — Getting to know you: know-me to-dos and proposals
+
+- **What:** After onboarding, the Inbox shows one quiet to-do (kind `knowMe`, not counted in the badge): "Tell me about your work, and anything at home you'd like help with". It opens the one know-me chat with the Chief of Staff (`inbox:knowMe:you`), which also opens any time from Network › Sharing › What you offer › **Tell Nandi about you** (with the latest confirmed changes listed). The Chief of Staff asks a few follow-ups (its `know-me` playbook) and proposes changes with `knowme_propose`, offered only there and always waiting on a card in the chat. On the card the person edits each change (text; **On my card** for work; Private or one of their groups for personal; remove notes, offers, suggestions) and confirms or refuses. On confirm: work items on the card join NANDI.md `responsibilities:`, off-card work and notes go to My notes `about-me.md`, personal items to `private/about-me.md` only (never NANDI.md), a personal item shared with a group also to `private/groups/<group>.md`; description and "What I can / can't help with" edit NANDI.md; offered capabilities leave `hide`; suggestions are shown only. The decision is recorded (`knowMe`, "Getting to know you", personal answers only counted) and the to-do closes. **Later** brings it back in a week, **Skip** in a month; a new to-do comes at most once a month, and three months after an answer it asks "Is what Nandi knows about you still right?". A member of the chosen group who asks this Nandi gets that group's shared items in the Chief of Staff's answer; nobody else does.
+- **Where:** Inbox (Home), the work tray, Network › Sharing › What you offer; `src/components/knowme/` (`KnowMeTodoCard`, `KnowMeProposalCard`, `TellNandiAboutYou`, `knowme-model.ts`), `src/hooks/useKnowMe.ts`, `inbox-model.ts` (`knowMe`), `ApprovalRequestCard.tsx`; commands `get_know_me`, `know_me_todo`, `confirm_know_me_proposal`; HTTP `GET /api/know-me`, `POST /api/know-me/todo`, `POST /api/know-me/proposals/{approval_id}/confirm`; event `knowme://changed`; `src-tauri/src/services/knowme/` (`cadence.rs`, `proposal.rs`, `sharing.rs`), `services/inbox/item.rs` (`KnowMe`), `tool.rs` (`knowme_propose`, `confirmed_args`), `thread.rs`; playbook `resources/builtin-agents/chief-of-staff/skills/know-me.md`; `docs/developer/know-me.md`.
+- **Preconditions:** A model; onboarding finished (or Settings › Run setup again to Done). For group sharing, a relay and a group with a second Nandi.
+- **Steps:**
+  1. Finish onboarding and open Home.
+  2. Open the to-do and say: "I'm a scrum master for two teams on Jira, and I have two kids at school."
+  3. On the card, switch one work item off the card and pick a group for a personal item (if you have one); click **Confirm**.
+  4. Open Network › Sharing › What you offer and `~/.nandi/repo/NANDI.md`, My notes (`about-me.md`, `private/about-me.md`), and Home › Decisions.
+  5. Click **Tell Nandi about you**, say something new, then **Refuse** the card.
+  6. With a fresh home, finish onboarding, open the to-do and click **Skip**; then **Later** on another.
+  7. From the second Nandi (a member of the group), ask the first: "What does Sam look after at home?"; from a Nandi outside the group, ask the same.
+- **Expected:**
+  - Step 1: the to-do is in the Inbox list, quiet, and the badge count doesn't change.
+  - Step 2: the Chief of Staff asks at most two or three follow-ups, then a card "Getting to know you · changes to confirm" waits; nothing is written yet.
+  - Step 3-4: NANDI.md lists only the work items left on the card; the personal ones are only in `private/about-me.md` (and the group's note); What you offer shows the new responsibilities; Decisions has "Getting to know you" with "on the card: …" and counts; the to-do is gone; Tell Nandi about you lists the change.
+  - Step 5: the same chat opens; nothing is written.
+  - Step 6: Skip and Later each close the to-do with a toast; it doesn't come back on reload.
+  - Step 7: the group member's answer can use the shared item; the outsider's can't.
+- **Edge / negative cases:** A personal item asked onto the card stays off it. A group the person isn't in is refused on the card ("isn't a group you're in") and the card keeps waiting. Offering a capability no agent serves is refused (suggest instead). A proposal that changes nothing is refused. Text with newlines can't forge a heading in a note. Onboarding again doesn't add another to-do. With no model, the to-do stays and the help guide ("know me") explains it. Works with no relay (only the group member's answer needs it).
+- **Automation:** Covered by: `services::knowme::cadence` tests (first once, skip a month, later a week, at most one a month, recheck), `services::knowme::proposal` tests (personal never on the card, group only one I'm in, served-only offers, sections, lines added once), `services::knowme::tests` (`a_proposal_writes_nothing_until_confirmed_then_writes_where_each_part_belongs` through the orchestrator with an edited card, `a_personal_item_is_shared_only_with_a_group_i_am_in`, `only_a_member_of_the_group_gets_what_is_shared_with_it`, `the_first_to_do_comes_after_onboarding_and_skip_puts_it_away`), `inbox::thread` (`the_know_me_chat_always_takes_a_proposal`), `inbox::item` (round trip), `help` tests, `offline_suite` (`with_no_relay_getting_to_know_you_works`, `know-me` route), `KnowMeProposalCard.test.tsx`, `KnowMe.test.tsx`, `inbox-model.test.ts` | Layer: unit + integration + manual | Gap: a real model's questions and proposals, and the group member's answer over a real relay, are manual.
+- **Needs relay:** no
+- **Status:** Partial (the relay's people search can't find a group-shared item: needs per-group card fields in the protocol; "Is this still yours?" from playbook proposals isn't wired, only the three-month recheck)
+
 ## Gaps and planned (not testable yet)
 
 - No way to delete a workflow in the UI or API; only by removing its YAML file (no `delete_workflow` command).

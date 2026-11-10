@@ -53,11 +53,15 @@ export function InboxItemThreadView({
   }
 
   const label = item ? inboxRowLabel(item) : null
-  const title = label
-    ? 'text' in label
-      ? label.text
-      : t(label.key, label.values)
-    : thread.data.title
+  // The know-me chat is one standing chat: always its own name
+  const title =
+    thread.data.kind === 'knowMe'
+      ? t('knowMe.entry.title')
+      : label
+        ? 'text' in label
+          ? label.text
+          : t(label.key, label.values)
+        : thread.data.title
 
   return (
     <section

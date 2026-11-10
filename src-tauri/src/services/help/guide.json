@@ -356,6 +356,46 @@
       "links": [{ "target": "inbox", "label": "inbox" }]
     },
     {
+      "id": "know-me",
+      "keywords": {
+        "en": [
+          "know me",
+          "getting to know you",
+          "tell nandi about you",
+          "about me",
+          "my responsibilities",
+          "questions from nandi",
+          "profile"
+        ],
+        "fr": [
+          "me connaître",
+          "faire connaissance",
+          "parler de vous à nandi",
+          "à propos de moi",
+          "mes responsabilités",
+          "profil"
+        ],
+        "ar": [
+          "التعرف عليك",
+          "أخبر nandi عنك",
+          "عني",
+          "مسؤولياتي",
+          "الملف الشخصي"
+        ],
+        "ja": [
+          "あなたについて",
+          "自己紹介",
+          "私について",
+          "担当",
+          "プロフィール"
+        ]
+      },
+      "links": [
+        { "target": "network:sharing", "label": "sharing" },
+        { "target": "settings:models", "label": "models" }
+      ]
+    },
+    {
       "id": "find-your-way",
       "weight": 0.5,
       "keywords": {

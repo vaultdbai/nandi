@@ -46,6 +46,7 @@ export interface ApprovalSummary {
     | 'inboxDone'
     | 'inboxDoneNote'
     | 'inboxReassign'
+    | 'knowMePropose'
     | 'other'
   values: Record<string, string>
 }
@@ -124,6 +125,8 @@ function inboxDecision(tool: string, args: Args): ApprovalSummary | null {
         : { key: 'inboxDone', values: {} }
     case 'inbox_reassign':
       return { key: 'inboxReassign', values: { to: value('to') } }
+    case 'knowme_propose':
+      return { key: 'knowMePropose', values: {} }
     default:
       return null
   }

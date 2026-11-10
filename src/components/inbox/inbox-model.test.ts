@@ -506,3 +506,38 @@ describe('every Inbox item is an Ask chat', () => {
     })
   })
 })
+
+describe('buildInbox: getting to know you', () => {
+  const knowMe = (todoOpen: boolean, recheck = false) => ({
+    todoOpen,
+    recheck,
+    shownAt: NOW - 1000,
+  })
+
+  it('offers the know-me to-do after what waits on you, outside the badge', () => {
+    const items = buildInbox(
+      sources({
+        approvals: [approval('a1', NOW - 5000, NOW + 60_000)],
+        knowMe: knowMe(true),
+      })
+    )
+    expect(items.map(item => item.id)).toEqual(['approval-a1', 'know-me'])
+    expect(inboxBadgeCount(items)).toBe(1)
+    const todo = items[1] as InboxItem
+    expect(inboxThreadId(todo)).toBe('inbox:knowMe:you')
+    expect(inboxItemView(todo)).toEqual({
+      kind: 'inbox-thread',
+      conversationId: 'inbox:knowMe:you',
+    })
+    expect(inboxRowLabel(todo)).toEqual({ key: 'inbox.knowMe.first' })
+  })
+
+  it('asks whether it is still right once answered, and is gone while closed', () => {
+    const [recheck] = buildInbox(sources({ knowMe: knowMe(true, true) }))
+    expect(inboxRowLabel(recheck as InboxItem)).toEqual({
+      key: 'inbox.knowMe.recheck',
+    })
+    expect(buildInbox(sources({ knowMe: knowMe(false) }))).toEqual([])
+    expect(buildInbox(sources({ knowMe: null }))).toEqual([])
+  })
+})

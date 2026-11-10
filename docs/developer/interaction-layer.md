@@ -450,6 +450,7 @@ and only those that fit the item now, it is offered decision tools
 | `requestReturn`    | done (dismiss)                                           |
 | `failed`           | approve (retry, not for workflow runs), done (dismiss)   |
 | intake             | approve, refuse (`item` when several wait)               |
+| `knowMe`           | propose (`knowme_propose`, see [know-me](./know-me.md))  |
 
 Every decision call waits for the user: `inbox::tool::gate` forces
 `requires_approval` on them after the step is planned (like
@@ -492,6 +493,13 @@ the files with `repos::decision_repo` and `domain::decision::parse_month`
 and marks which entries' chats still exist in `state.db` (`chatExists`);
 the page links those to their `inbox-thread` / `intake-thread` view and
 shows only the id for the others. Local only, no relay.
+
+**Getting to know you.** The know-me to-do (`knowMe`) opens one standing
+chat, `inbox:knowMe:you`, also reachable any time from Network › Sharing ›
+What you offer. Its `knowme_propose` card is editable before the confirm:
+the edited proposal replaces the approval's arguments, and the dispatcher
+runs the call with the approval's arguments (`inbox::tool::confirmed_args`).
+See [know-me](./know-me.md).
 
 **Offline.** Local items work with no relay. A person's request needs the
 relay only to send the answer back, through the existing outbox.

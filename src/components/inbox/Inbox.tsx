@@ -5,6 +5,7 @@ import {
   CircleAlert,
   ClipboardList,
   ExternalLink,
+  HeartHandshake,
   KeyRound,
   MessageCircleQuestion,
   MessageSquareReply,
@@ -29,6 +30,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { KnowMeTodoCard } from '@/components/knowme/KnowMeTodoCard'
 import { ManualStepCard } from '@/components/work/ManualStepCard'
 import { useNow } from '@/components/agents/task-utils'
 import {
@@ -107,6 +109,7 @@ const ROW_ICONS: Record<InboxItem['kind'], LucideIcon> = {
   failed: CircleAlert,
   requestReturn: MessageSquareReply,
   intake: Sparkles,
+  knowMe: HeartHandshake,
 }
 
 /**
@@ -121,7 +124,7 @@ export function InboxRow({ item }: { item: InboxItem }) {
   const label = inboxRowLabel(item)
   const Icon = ROW_ICONS[item.kind]
   const overdue = item.deadline !== null && item.deadline <= now
-  const quiet = item.kind === 'requestReturn'
+  const quiet = item.kind === 'requestReturn' || item.kind === 'knowMe'
   return (
     <button
       type="button"
@@ -231,6 +234,8 @@ export function InboxItemCard({ item }: { item: InboxItem }) {
       return <FailedRow item={item} />
     case 'requestReturn':
       return <RequestReturnRow item={item} />
+    case 'knowMe':
+      return <KnowMeTodoCard recheck={item.recheck} />
     case 'intake':
       return (
         <SimpleRow

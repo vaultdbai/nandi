@@ -23,6 +23,7 @@ mod config;
 mod connectors;
 mod decisions;
 mod delegation;
+mod knowme;
 // Wave final
 mod delegation_clarification;
 mod email;
@@ -86,6 +87,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
             routes::api()
                 .merge(marketplace::api())
                 .merge(decisions::api())
+                .merge(knowme::api())
                 .merge(mascot::api())
                 .merge(triggers::api())
                 .merge(repo::api())

@@ -48,6 +48,8 @@ fn common_questions_find_their_topic() {
         ("What is an agent?", "agents"),
         ("What are groups for?", "groups"),
         ("What's in the Inbox?", "inbox"),
+        ("Why does Nandi want to get to know me?", "know-me"),
+        ("What is Tell Nandi about you?", "know-me"),
         ("Where is everything?", "find-your-way"),
     ];
     for (question, topic) in cases {

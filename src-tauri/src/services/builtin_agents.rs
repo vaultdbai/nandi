@@ -62,6 +62,7 @@ pub const BUILTIN_AGENTS: &[BuiltinAgent] = &[BuiltinAgent {
         chief_playbook!("email-triage"),
         chief_playbook!("meeting-prep"),
         chief_playbook!("occasions"),
+        chief_playbook!("know-me"),
     ],
 }];
 
@@ -293,7 +294,7 @@ mod tests {
     #[test]
     fn the_shipped_playbooks_parse_and_stay_short() {
         let playbooks = shipped_playbooks();
-        assert_eq!(playbooks.len(), 8);
+        assert_eq!(playbooks.len(), 9);
         crate::services::domain::playbook::check_unique(&playbooks).unwrap();
         for playbook in &playbooks {
             // The domain caps them at 900; these aim for a short read
@@ -346,6 +347,7 @@ mod tests {
                 || requests::tool::is_work_tool(name)
                 || a2a::people::is_people_tool(name)
                 || name == a2a::clarification::ASK_REQUESTER_TOOL
+                || crate::services::inbox::tool::is_decision_tool(name)
         };
         let names =
             regex::Regex::new(r"`([a-z][a-z0-9]*(?:__?[a-z0-9]+)+)(?:\.[a-z_]+)?:?`").unwrap();

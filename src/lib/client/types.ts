@@ -18,6 +18,9 @@ import type {
   ActionPlan,
   MascotInfo,
   DecisionFilter,
+  KnowMeProposal,
+  KnowMeStatus,
+  KnowMeTodoAction,
   DecisionRecord,
   PhraseResponse,
   AddRegistryInput,
@@ -920,6 +923,16 @@ export interface NandiClient {
     month: string,
     filter: DecisionFilter | null
   ): Promise<Result<DecisionRecord[], string>>
+  // Getting to know you (`services::knowme`)
+  /** The know-me to-do, the groups I'm in and the latest confirmed changes */
+  getKnowMe(): Promise<Result<KnowMeStatus, string>>
+  /** The to-do's Later (back in a week) or Skip (back in a month) */
+  knowMeTodo(action: KnowMeTodoAction): Promise<Result<KnowMeStatus, string>>
+  /** Confirms a know-me proposal card, as the person edited it */
+  confirmKnowMeProposal(
+    approvalId: string,
+    proposal: KnowMeProposal
+  ): Promise<Result<null, string>>
   // The mascot (Nandi rename)
   /** The bull's name */
   mascotGet(): Promise<Result<MascotInfo, string>>

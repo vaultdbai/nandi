@@ -33,6 +33,7 @@ pub mod harnesses;
 pub mod help;
 pub mod identity;
 pub mod images;
+pub mod knowme;
 pub mod live;
 pub mod llm_keys;
 pub mod machine;
