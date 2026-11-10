@@ -220,7 +220,8 @@
           "network",
           "colleagues",
           "teammates",
-          "connection"
+          "connection",
+          "public relay"
         ],
         "fr": [
           "relais",
@@ -229,7 +230,8 @@
           "mon équipe",
           "réseau",
           "collègues",
-          "connexion"
+          "connexion",
+          "relais public"
         ],
         "ar": [
           "مرحّل",
@@ -240,7 +242,8 @@
           "فريقي",
           "الشبكة",
           "زملاء",
-          "الاتصال"
+          "الاتصال",
+          "المرحّل العام"
         ],
         "ja": [
           "リレー",
@@ -249,7 +252,8 @@
           "チーム",
           "ネットワーク",
           "同僚",
-          "接続"
+          "接続",
+          "公開リレー"
         ]
       },
       "links": [{ "target": "network:connection", "label": "connection" }]

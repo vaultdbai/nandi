@@ -81,11 +81,21 @@ export function isUnencryptedRemoteRelay(url: string): boolean {
   return !loopback
 }
 
-export type RelayChoice = 'public' | 'custom' | 'skip'
+/**
+ * `public`: the public relay, joined by signing in; `builtIn`: the relay
+ * this build comes with (a demo or company build); `custom`: a company
+ * relay by its address and join code
+ */
+export type RelayChoice = 'public' | 'builtIn' | 'custom' | 'skip'
 
 export interface RelayDraft {
   choice: RelayChoice
   customUrl: string
+  /**
+   * The public relay once this Nandi signed in to it (the sign-in saved it
+   * and connected); unset: not signed in
+   */
+  signedInRelay?: string
   /**
    * The join code for a team network (blank: none, or the relay needs
    * none). Kept in memory only, and never shown once typed
@@ -96,9 +106,10 @@ export interface RelayDraft {
 }
 
 /**
- * The URL the choice connects to (`null`: no relay). `public` is the relay
- * this build comes with (`RelayStatus.builtInUrl`); without one there's
- * nothing to join.
+ * The URL the choice connects to (`null`: no relay). `builtIn` is the
+ * relay this build comes with (`RelayStatus.builtInUrl`); without one
+ * there's nothing to join. `public` is the public relay once signed in to
+ * it, nothing before.
  */
 export function relayUrlFor(
   draft: RelayDraft,
@@ -106,6 +117,8 @@ export function relayUrlFor(
 ): string | null {
   switch (draft.choice) {
     case 'public':
+      return draft.signedInRelay ?? null
+    case 'builtIn':
       return builtInUrl
     case 'custom':
       return draft.customUrl.trim()
@@ -137,17 +150,26 @@ export function withoutToken(url: string): string {
 /**
  * The draft for a relay that's already configured (`NANDI_RELAY_URL`,
  * `config.json`, or the build's own), so onboarding keeps it: `public` for
- * the build's relay, `custom` with the URL otherwise. `null` while none is
- * configured.
+ * the public relay, `builtIn` for the build's relay, `custom` with the URL
+ * otherwise. `null` while none is configured.
  */
 export function relayDraftFrom(
   configuredUrl: string | null | undefined,
-  builtInUrl: string | null = null
+  builtInUrl: string | null = null,
+  publicUrl: string | null = null
 ): RelayDraft | null {
   const url = configuredUrl?.trim()
   if (!url) return null
-  return builtInUrl && withoutToken(url) === withoutToken(builtInUrl)
-    ? { choice: 'public', customUrl: '' }
+  const same = (other: string | null) =>
+    other !== null && withoutToken(url) === withoutToken(other)
+  if (same(publicUrl))
+    return {
+      choice: 'public',
+      customUrl: '',
+      signedInRelay: withoutToken(url),
+    }
+  return same(builtInUrl)
+    ? { choice: 'builtIn', customUrl: '' }
     : { choice: 'custom', customUrl: url }
 }
 
@@ -176,6 +198,8 @@ export function relayNeedsSave(
   configuredUrl: string | null | undefined,
   builtInUrl: string | null = null
 ): boolean {
+  // Signing in saved it already
+  if (draft.choice === 'public') return false
   const url = relayUrlFor(draft, builtInUrl)
   if (url === null) return false
   return withoutToken(url) !== withoutToken(configuredUrl ?? '')
@@ -186,7 +210,9 @@ export function relayNeedsSave(
  * "Let others send requests to my Nandi"; skipping never does
  */
 export function publishesGateway(draft: RelayDraft): boolean {
-  return draft.choice !== 'skip' && draft.reachable === true
+  if (draft.choice === 'skip') return false
+  if (draft.choice === 'public' && !draft.signedInRelay) return false
+  return draft.reachable === true
 }
 
 /**

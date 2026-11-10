@@ -211,6 +211,23 @@ struct Shared {
     /// The relay's `no_shared_group` errors, by message: the refusal that
     /// follows each is told as [`no_shared_group`]
     no_shared_group: HashSet<String>,
+    /// The relay's `daily_limit` errors, by message: the refusal that
+    /// follows each is told as [`super::limits::daily_limit`]
+    daily_limit: HashSet<String>,
+}
+
+impl Shared {
+    /// A refusal's words as the app tells them: the coded ones the relay
+    /// announced in an `Error` just before
+    fn retell(&mut self, message: &str) -> String {
+        if self.no_shared_group.remove(message) {
+            no_shared_group()
+        } else if self.daily_limit.remove(message) {
+            super::limits::daily_limit(message)
+        } else {
+            message.to_string()
+        }
+    }
 }
 
 struct Inner {
@@ -221,6 +238,7 @@ struct Inner {
     presence_store: Option<PresenceStore>,
     device_keys: Option<DeviceKeysSource>,
     peer_keys: Arc<dyn PeerKeyBook>,
+    offered: OfferedRelays,
     /// Seals and opens with this device's keys; made on the first connect
     sealer: Mutex<Option<Arc<Sealer>>>,
     /// Feeds the opener task (started on the first connect)
@@ -244,6 +262,16 @@ pub struct ClientOptions {
     pub device_keys: Option<DeviceKeysSource>,
     /// Other members' pinned keys; `None`: pinned in memory only (tests)
     pub peer_keys: Option<Arc<dyn PeerKeyBook>>,
+    /// The relays the app offers, carried by every status it emits
+    pub offered: OfferedRelays,
+}
+
+/// The relays the app offers whether or not one is in use: the build's own
+/// and the public relay ([`super::BuiltInRelay`])
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OfferedRelays {
+    pub built_in: Option<String>,
+    pub public: Option<String>,
 }
 
 impl Default for ClientOptions {
@@ -253,6 +281,7 @@ impl Default for ClientOptions {
             presence_store: None,
             device_keys: None,
             peer_keys: None,
+            offered: OfferedRelays::default(),
         }
     }
 }
@@ -283,6 +312,7 @@ impl WsRelayClient {
                 peer_keys: options
                     .peer_keys
                     .unwrap_or_else(|| Arc::new(MemoryKeyBook::default())),
+                offered: options.offered,
                 sealer: Mutex::default(),
                 inbound: Mutex::default(),
             }),
@@ -319,9 +349,10 @@ impl Inner {
             reason: shared.reason.clone(),
             instance_id: shared.instance_id.clone(),
             relay_url: shared.url.clone(),
-            relay_url_source: None,
             // Filled in by `get_relay_status`
-            built_in_url: None,
+            relay_url_source: None,
+            built_in_url: self.offered.built_in.clone(),
+            public_relay_url: self.offered.public.clone(),
             agents_online: u32::try_from(
                 shared
                     .online
@@ -1037,11 +1068,7 @@ impl Inner {
                             Some((task_id.clone(), Ok(*held)))
                         }
                         wire::TaskEvent::Refused { task_id, message } => {
-                            let said = if self.lock().no_shared_group.remove(message) {
-                                no_shared_group()
-                            } else {
-                                message.clone()
-                            };
+                            let said = self.lock().retell(message);
                             Some((
                                 task_id.clone(),
                                 Err(format!("{}{said}", super::client_api::REFUSED_BY_RELAY)),
@@ -1059,13 +1086,7 @@ impl Inner {
             }
             RelayMessage::ReassignResult { task_id, error } => {
                 let mut shared = self.lock();
-                let error = error.map(|error| {
-                    if shared.no_shared_group.remove(&error) {
-                        no_shared_group()
-                    } else {
-                        error
-                    }
-                });
+                let error = error.map(|error| shared.retell(&error));
                 if let Some(waiter) = shared.waiting_reassign.remove(&task_id) {
                     let _ = waiter.send(match error {
                         Some(error) => Err(error),
@@ -1091,6 +1112,16 @@ impl Inner {
                 if code == NO_SHARED_GROUP {
                     // A refusal with these words follows
                     shared.no_shared_group.insert(message);
+                    return;
+                }
+                if code == super::limits::DAILY_LIMIT {
+                    // A refusal with these words follows a request or a
+                    // reassignment; a clarification gets none, so the set
+                    // is kept small
+                    if shared.daily_limit.len() >= 32 {
+                        shared.daily_limit.clear();
+                    }
+                    shared.daily_limit.insert(message);
                     return;
                 }
                 if code == "unauthorized" || code == VERSION_MISMATCH || code == KEY_MISMATCH {
@@ -2071,5 +2102,23 @@ mod tests {
         assert_eq!(client.status().relay_url, None);
         assert_eq!(client.status().state, RelayConnectionState::Disconnected);
         assert_eq!(client.status().reason, None);
+    }
+
+    #[test]
+    fn coded_refusals_are_retold_once() {
+        let mut shared = Shared::default();
+        let words = "You've sent the 500 messages a day this relay allows                      (counted across your Nandis). It resets at 2026-11-11T00:00:00Z";
+        shared.daily_limit.insert(words.to_string());
+        shared
+            .no_shared_group
+            .insert("No group with bob".to_string());
+        assert_eq!(
+            shared.retell(words),
+            format!("daily_limit@1794355200000: {words}")
+        );
+        // Told once: the same words again are the relay's own
+        assert_eq!(shared.retell(words), words);
+        assert_eq!(shared.retell("No group with bob"), no_shared_group());
+        assert_eq!(shared.retell("Something else"), "Something else");
     }
 }

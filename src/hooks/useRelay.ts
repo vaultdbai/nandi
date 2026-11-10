@@ -21,6 +21,38 @@ export const relayQueryKeys = {
   instances: ['relay', 'instances'] as const,
   agents: (capability: string | null) =>
     ['relay', 'agents', capability] as const,
+  /** The public-relay account of the relay in use (the Account card) */
+  publicAccount: ['relay', 'publicAccount'] as const,
+}
+
+/** "Join the public relay": asked only when someone opens the flow */
+export const PUBLIC_RELAY_OFFER_KEY = ['publicRelay', 'offer'] as const
+
+/**
+ * Whether the public relay can be joined now (its `/health`, via the
+ * core). Never retried on its own: unreachable is an answer, and "Try
+ * again" refetches.
+ */
+export function usePublicRelayOffer(enabled = true) {
+  return useQuery({
+    queryKey: PUBLIC_RELAY_OFFER_KEY,
+    queryFn: async () => unwrapResult(await client.getPublicRelayOffer()),
+    enabled,
+    retry: false,
+    staleTime: 30_000,
+  })
+}
+
+/** The public-relay account this Nandi is signed in with */
+export function usePublicRelayAccount(enabled: boolean) {
+  return useQuery({
+    queryKey: relayQueryKeys.publicAccount,
+    queryFn: async () => unwrapResult(await client.getPublicRelayAccount()),
+    enabled,
+    retry: false,
+    // Today's usage moves as people send
+    refetchInterval: enabled ? 60_000 : false,
+  })
 }
 
 /** Cards grouped by the capabilities they serve, capabilities sorted */

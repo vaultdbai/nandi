@@ -32,3 +32,15 @@ export function formatDuration(ms: number): string {
     return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
   return `${seconds}s`
 }
+
+/**
+ * When a daily count resets (00:00 UTC), in the user's own clock: "Wed
+ * 01:00" / "mer. 01:00"
+ */
+export function formatResetTime(time: number, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(time))
+}

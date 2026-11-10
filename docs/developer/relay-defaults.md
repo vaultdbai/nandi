@@ -1,13 +1,13 @@
 # Relay Defaults
 
-Which relay an instance connects to, what the Relay screen suggests, and what changes when a public relay exists. How to run and test a relay is in `docs/relay-testing.md` of [vaultdbai/nandi-relay](https://github.com/vaultdbai/nandi-relay), where the relay server lives.
+Which relay an instance connects to, what the Relay screen suggests, and how people join the public relay by signing in. How to run and test a relay is in `docs/relay-testing.md` of [vaultdbai/nandi-relay](https://github.com/vaultdbai/nandi-relay), where the relay server lives.
 
 ## Current behavior
 
 A fresh install connects nowhere and enrolls nowhere until the user joins a relay. A plain build ships **no relay URL**. A build made with `NANDI_DEFAULT_RELAY_URL` (the release workflow, for a demo or company relay) only **offers** that relay as "Join the Nandi network"; see "A build's own relay" below. Without one:
 
 - The Relay screen's URL field is prefilled with `ws://127.0.0.1:8787/relay` (`nandi-relay` on this machine, its default port). The prefill is a frontend constant, `DEFAULT_RELAY_URL` in `src/hooks/useRelay.ts`, mirrored by `relay::DEFAULT_RELAY_URL` in Rust. It is a suggestion only: nothing dials it until the user clicks **Join**.
-- The screen shows a banner: "Running on the local network. Public relay coming soon." (`relay.lanBanner.*`), with a line saying relays are open and unencrypted.
+- Every build also offers the public relay ("Join the public relay", see "The public relay" below). Nothing dials it or signs in there until the user chooses it.
 - **Join** (`join_relay`, see "Joining a relay" below) writes the URL to `~/.nandi/config.json` (`relay_url`), so every later launch connects on its own. **Disconnect** clears it.
 
 ## Protocol version
@@ -71,6 +71,7 @@ There is no command-line flag for the relay URL; `NANDI_RELAY_URL` covers that c
 | secured, a token kept for it | Reuses it (joined before, then disconnected)    |
 | secured, a join code         | `POST /relay/enroll`, saves the token, connects |
 | secured, no code             | `codeNeeded`                                    |
+| public (`/health` `public`)  | `signInNeeded`: join it by signing in (below)   |
 
 The code is the one the user typed, or the build's `NANDI_RELAY_JOIN_CODE` when the URL is the build's relay. Refusals map to `JoinOutcome`: 401 `wrongCode`, 402 `relayFull` (the relay's message, shown verbatim), 403 `removed`, 404 `noEnrollment`, 409 `alreadyEnrolled`, other 4xx `refused`. Anything but `joined` changes no setting.
 
@@ -103,12 +104,24 @@ So people who download Nandi start on a shared relay (a demo, or a community rel
 - **Once per instance ID:** the first install to enroll an ID keeps it, and the relay records it in `relay.db`. A leaked join code lets strangers join, but it doesn't let them take over anyone's ID. Rotate the code on the relay (and the GitHub secret for the next build) whenever you like; issued tokens keep working.
 - An install that loses its token keeps its ID and can't re-enroll it. The operator issues the token by hand (`/relay/token`), or the user resets their instance ID.
 
-## Plan: a public relay
+## The public relay
 
-When a public relay is deployed, this file gets its URL, and:
+VaultDB.ai runs one public relay (nandi-relay `--public`, README "A public relay") for people without a company relay. People join it by signing in with GitHub, Google or Microsoft, not with a join code: "Join the public relay" in onboarding's network step and on Network › Connection (while no relay is set). One account, several Nandis; limits per person: 10 groups, 50 people per group, 500 messages a day.
 
-1. `DEFAULT_RELAY_URL` (both copies) becomes the public `wss://` URL, still as a suggestion. Whether the app connects to it without a click is a product decision to record here at that point.
-2. The banner goes away (or changes to name the relay in use).
-3. The public relay runs with `NANDI_RELAY_SECRET` and TLS, and sign-in issues instance tokens, so the "no auth, no TLS" list above no longer applies to it. Self-hosted LAN relays keep working through `config.json` and `NANDI_RELAY_URL`, unchanged.
+| What     | Where                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| URL      | `public::PUBLIC_RELAY_URL` (`wss://relay.vaultdb.ai/relay`), or `NANDI_PUBLIC_RELAY_URL` at runtime (staging, tests). `BuiltInRelay::of_this_build` carries it as `public_url`; tests set their own with `with_public` (or none). `RelayStatus.publicRelayUrl` reports it, events included (`ClientOptions::offered`)                                                                                                                        |
+| Offer    | `get_public_relay_offer` / `GET /api/relay/public`: the relay's `/health` (5 s). `ready {providers}`, `unreachable {detail}` (no answer, not a relay, not `public`, no provider the app knows), `versionMismatch`, `none` (no public relay offered)                                                                                                                                                                                          |
+| Start    | `start_public_relay_sign_in(provider)` / `POST /api/relay/public/sign-in/{provider}/start`: `POST <relay>/signin/{provider}/start {instanceId, publicKeys}` (this device's keys, made on first use, pinned by the relay) → `started {signinId, userCode, verificationUri, verificationUriComplete?, expiresIn, interval}`                                                                                                                    |
+| Poll     | `poll_public_relay_sign_in(provider, signinId)` / `POST /api/relay/public/sign-in/{provider}/poll`: every `interval` s → `pending`, `slowDown` (a new interval), `linked`, `refused`, `unreachable` (the UI keeps waiting until the code expires)                                                                                                                                                                                            |
+| Linked   | The token is kept exactly like an enrolled one (`set_relay_url` with `?token=`: `relay_state`, never `config.json`), the account in `relay_state.relay_account` (`{relay, account, provider, display}`), and the app connects. The token never reaches the UI or the logs                                                                                                                                                                    |
+| Account  | `get_public_relay_account` / `GET /api/relay/public/account`: `GET <relay>/account?instanceId=` with the token as bearer → `account {relay, thisInstance, account: {account, provider, display, instances, limits, usage}}`; `unavailable` (the kept account and why) while the relay doesn't answer; `notPublic` on any other relay                                                                                                         |
+| Refusals | `{error, code}` → `PublicRelayRefusal` (`signinExpired`, `signinDenied`, `accountSuspended`, `alreadyLinked`, `keyMismatch`, `deviceLimit`, `signupLimit`, `signinLimit`, `providerNotSupported`, `signinUnavailable`, `signinNotFound`, `revoked`, `invalidRequest`, `unauthorized`, `noAccount`, `notPublic`, `other`); the UI words each (`publicRelay.refusal.*`) with the relay's words under it. A 5xx without a code is `unreachable` |
+| Trust    | `team::trust::on_a_secured_relay` is false on the public relay (`public::on_public_relay`: the kept account is for the token's relay), so "Trust everyone on this relay" doesn't apply there (`RelayTrust.public`)                                                                                                                                                                                                                           |
+| Code     | `services/relay/public.rs` (tests: `public_tests.rs`, the real `nandi-relay` in public mode against a fake GitHub), UI `components/network/PublicRelayJoin.tsx`, `public-relay-model.ts`, `PublicRelayAccountCard.tsx`                                                                                                                                                                                                                       |
 
-Until then: LAN only. Onboarding's "Join the Nandi network" is the build's relay (`RelayStatus.builtInUrl`), so a release built with `NANDI_DEFAULT_RELAY_URL` offers it by its host, and a build without one offers only a team network.
+Nothing here runs at startup, and onboarding never waits on it: an unreachable relay is a calm line ("join later from Network › Connection"), and Continue goes on. `offline_suite.rs` (`an_unreachable_public_relay_never_blocks_onboarding`) checks it.
+
+**Limits per person** (`services/relay/limits.rs`): past the daily message limit the relay sends an `Error` coded `daily_limit` naming the reset (00:00 UTC) and then refuses the message (a request's `refused` event, a reassignment's `ReassignResult`, a group change's `GroupReply` refused). The client retells each as `daily_limit@<reset ms>: <the relay's words>` (`Shared::retell`, as `no_shared_group`), `friendly-error.ts` maps it to `errors.dailyLimit` with the reset in the user's clock (`friendlyErrorParams`), and the place the action was taken shows it calmly (the ask composer, a request's outputs, `toastGroupError`). `group_limit` says the limits count per person. A clarification past the limit gets only the `Error` frame, which is logged.
+
+**Before release, server side:** DNS for `relay.vaultdb.ai` and its TLS certificate; a GitHub OAuth app with device flow on (`NANDI_RELAY_GITHUB_CLIENT_ID`); a Google "TVs and Limited Input devices" client and its secret (`NANDI_RELAY_GOOGLE_CLIENT_ID`, `NANDI_RELAY_GOOGLE_CLIENT_SECRET`); a Microsoft app registration as a public client with the device code flow allowed (`NANDI_RELAY_MICROSOFT_CLIENT_ID`, tenant `common`); `NANDI_RELAY_SECRET`, `--public`, backups.

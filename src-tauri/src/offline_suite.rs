@@ -565,6 +565,99 @@ async fn an_unreachable_default_relay_changes_nothing_local() {
     relay_is_disconnected(&router).await;
 }
 
+/// A build whose public relay nobody can reach (not live yet, or no
+/// network): a port that was free a moment ago
+fn unreachable_public_relay() -> BuiltInRelay {
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    BuiltInRelay::default().with_public(Some(&format!("ws://127.0.0.1:{port}/relay")))
+}
+
+/// Onboarding's own calls, from Email to done, saying "Not now" to the
+/// network step: nothing on it touches a relay
+async fn onboarding_completes(router: &Router) {
+    for step in ["name", "model", "computer", "network", "packs"] {
+        let (status, body) = call(
+            router,
+            "PUT",
+            "identity/onboarding-step",
+            json!({ "step": step }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{step}: {body}");
+    }
+    let (status, body) = call(
+        router,
+        "PUT",
+        "identity/display-name",
+        json!({ "name": "Ada Lovelace" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = call(
+        router,
+        "PUT",
+        "identity/onboarding-step",
+        json!({ "step": "done" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let identity = get(router, "identity/status").await;
+    assert_eq!(identity["onboarded"], true, "{identity}");
+    assert_eq!(identity["onboardingStep"], "done", "{identity}");
+}
+
+/// With no relay at all, onboarding completes ("Not now") and saves none
+#[tokio::test]
+async fn with_no_relay_onboarding_completes_with_not_now() {
+    let (_state, router) = boot(BuiltInRelay::default());
+    onboarding_completes(&router).await;
+    let status = relay_is_disconnected(&router).await;
+    assert_eq!(status["relayUrl"], Value::Null, "{status}");
+}
+
+/// Choosing "Join the public relay" while it can't be reached: the offer
+/// and the sign-in answer calmly at once, nothing is saved, onboarding
+/// completes, and everything local works the same
+#[tokio::test]
+async fn an_unreachable_public_relay_never_blocks_onboarding() {
+    let started = Instant::now();
+    let (state, router) = boot(unreachable_public_relay());
+    let status = relay_is_disconnected(&router).await;
+    assert!(status["publicRelayUrl"].is_string(), "{status}");
+    assert_eq!(status["relayUrl"], Value::Null, "{status}");
+
+    let offer = get(&router, "relay/public").await;
+    assert_eq!(offer["kind"], "unreachable", "{offer}");
+    let sign_in = post(&router, "relay/public/sign-in/github/start", Value::Null).await;
+    assert_eq!(sign_in["kind"], "unreachable", "{sign_in}");
+    let poll = post(
+        &router,
+        "relay/public/sign-in/github/poll",
+        json!({ "signinId": "s-1" }),
+    )
+    .await;
+    assert_eq!(poll["kind"], "unreachable", "{poll}");
+    // No account to show
+    let account = get(&router, "relay/public/account").await;
+    assert_eq!(account["kind"], "notPublic", "{account}");
+
+    onboarding_completes(&router).await;
+    every_screen_answers(&router).await;
+    an_agent_runs_and_its_request_is_approved(&state, &router).await;
+    person_to_person_is_not_connected(&router).await;
+    assert!(
+        started.elapsed() < Duration::from_secs(20),
+        "{:?}",
+        started.elapsed()
+    );
+    let status = relay_is_disconnected(&router).await;
+    assert_eq!(status["relayUrl"], Value::Null, "{status}");
+}
+
 /// No key and no free trial: the ask box answers from the built-in help
 /// guide, and the guide's topics are served
 #[tokio::test]

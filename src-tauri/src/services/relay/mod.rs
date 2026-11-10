@@ -8,6 +8,8 @@
 //! - `tls`: what the client trusts for `wss://`
 //! - `unavailable`: [`RelayUnavailable`], the typed "not connected" answer
 //!   of every person-to-person action
+//! - `join`: joining a company relay (a join code); `public`: joining the
+//!   public relay (signing in); `limits`: a relay's limits per person
 //! - `device_keys`: this instance's own keys (made on first relay use, kept
 //!   in the OS keyring), sent at enrollment and registration
 //! - `opened`: person-to-person traffic as the app sees it, with content
@@ -42,8 +44,10 @@ pub mod client;
 pub mod client_api;
 pub mod device_keys;
 pub mod join;
+pub mod limits;
 pub mod opened;
 pub mod protocol;
+pub mod public;
 pub mod sealing;
 // Wave A (Track D): capability and tool presence
 pub mod presence;
@@ -113,19 +117,38 @@ pub const DEFAULT_RELAY_URL: &str = "ws://127.0.0.1:8787/relay";
 ///
 /// Only an offer: the app neither dials it nor enrolls there until the user
 /// joins it, so an install that never joins takes no seat.
+///
+/// It also carries the public relay the app offers as "Join the public
+/// relay" ([`public::public_relay_url`]); tests set their own, or none.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BuiltInRelay {
     url: Option<String>,
     join_code: Option<String>,
+    public_url: Option<String>,
 }
 
 impl BuiltInRelay {
-    /// The relay this build was made with, if any
+    /// The relay this build was made with, if any, and the public relay
     pub fn of_this_build() -> Self {
         Self::new(
             option_env!("NANDI_DEFAULT_RELAY_URL"),
             option_env!("NANDI_RELAY_JOIN_CODE"),
         )
+        .with_public(Some(&public::public_relay_url()))
+    }
+
+    /// The public relay to offer (`None` or blank: none)
+    pub fn with_public(mut self, url: Option<&str>) -> Self {
+        self.public_url = url
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .map(str::to_string);
+        self
+    }
+
+    /// The public relay offered ("Join the public relay"), if any
+    pub fn public_url(&self) -> Option<&str> {
+        self.public_url.as_deref()
     }
 
     /// Blank values count as none
@@ -139,6 +162,7 @@ impl BuiltInRelay {
         Self {
             url: clean(url),
             join_code: clean(join_code),
+            public_url: None,
         }
     }
 
@@ -210,6 +234,10 @@ pub struct RelayStatus {
     /// onboarding offers as "the Nandi network"); `None`: none
     #[serde(default)]
     pub built_in_url: Option<String>,
+    /// The public relay the app offers ("Join the public relay"), whether
+    /// or not it's in use; `None`: none
+    #[serde(default)]
+    pub public_relay_url: Option<String>,
     pub agents_online: u32,
     /// Distinct instances among the agents online
     pub instances_online: u32,
@@ -342,6 +370,10 @@ pub fn init(state: &AppState) -> Option<Arc<dyn RelayClient>> {
             peer_keys: Some(Arc::new(network::peer_keys::PinnedKeys::new(
                 state.db().clone(),
             ))),
+            offered: client::OfferedRelays {
+                built_in: state.built_in_relay().url().map(str::to_string),
+                public: state.built_in_relay().public_url().map(str::to_string),
+            },
             ..ClientOptions::default()
         },
     ));
@@ -391,6 +423,7 @@ pub async fn get_relay_status(state: &AppState) -> Result<RelayStatus, String> {
         }
         status.relay_url_source = source(&status.relay_url);
         status.built_in_url = state.built_in_relay().url().map(str::to_string);
+        status.public_relay_url = state.built_in_relay().public_url().map(str::to_string);
         return Ok(status.without_token());
     }
     let known = last_known_agents(state.db())?;
@@ -399,6 +432,7 @@ pub async fn get_relay_status(state: &AppState) -> Result<RelayStatus, String> {
         instance_id: network::local_instance_id(state.db())?,
         relay_url_source: source(&relay_url),
         built_in_url: state.built_in_relay().url().map(str::to_string),
+        public_relay_url: state.built_in_relay().public_url().map(str::to_string),
         relay_url,
         agents_online: u32::try_from(known.len()).unwrap_or(u32::MAX),
         ..RelayStatus::default()

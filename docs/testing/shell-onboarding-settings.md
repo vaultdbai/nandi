@@ -218,8 +218,8 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### ON-09 — Step 4: join a network (optional)
 
-- **What:** The choices are "Not now" (the default), "Join the Nandi network" (the relay this build comes with, `RelayStatus.builtInUrl` from `NANDI_DEFAULT_RELAY_URL`, named by its host; not shown when the build has none) and "Join my team's network" (a `ws://` or `wss://` address, a **Join code** password field and **Paste invite**). Nothing joins and no seat is taken until the user clicks **Join** (team network) or **Continue**: that calls `join_relay` (the build's own join code for the Nandi network, which the UI never sees). The result shows "Joined <host>. Connecting…" or a calm line saying why (unreachable, code needed, wrong code, relay full with the relay's own words, version mismatch), and **Continue anyway** goes on without a network. The join code is cleared once used and never shown. A relay already joined (or set by `NANDI_RELAY_URL`) is preselected and not joined again; env-set relays say so. "Not now" leaves a relay alone, except one joined on this step, which it leaves again (`setRelayUrl('')`).
-- **Where:** `src/components/onboarding/Step3_Network.tsx`, `identity-model.ts` (`relayNeedsSave`, `skipTurnsRelayOff`, `isRelayUrl`), `components/network/JoinRelayFields.tsx`, `join-model.ts`, `relay-invite.ts`; `join_relay`, `set_relay_url`, `get_relay_status`.
+- **What:** The choices are "Not now" (the default), "Join the public relay" (VaultDB.ai's, by signing in with GitHub, Google or Microsoft, RL-45; shown when the app offers one, `RelayStatus.publicRelayUrl`), "Join the Nandi network" (the relay this build comes with, `RelayStatus.builtInUrl` from `NANDI_DEFAULT_RELAY_URL`, named by its host; not shown when the build has none) and "Join my team's network" (a `ws://` or `wss://` address, a **Join code** password field and **Paste invite**). Nothing joins and no seat is taken until the user clicks **Join** (team network) or **Continue**: that calls `join_relay` (the build's own join code for the Nandi network, which the UI never sees). The result shows "Joined <host>. Connecting…" or a calm line saying why (unreachable, code needed, wrong code, relay full with the relay's own words, version mismatch), and **Continue anyway** goes on without a network. The join code is cleared once used and never shown. A relay already joined (or set by `NANDI_RELAY_URL`) is preselected and not joined again; env-set relays say so. "Not now" leaves a relay alone, except one joined on this step, which it leaves again (`setRelayUrl('')`). Choosing the public relay asks it for its sign-in providers and shows a button for each; signing in shows the code and **Open sign-in page**, polls, and ends "Signed in: Nandi is connected to the public relay." It never holds **Continue** up: without signing in, Continue goes on with no network, and an unreachable public relay says calmly "The public relay isn't reachable right now — you can join later from Network › Connection." A public relay signed in to before is preselected.
+- **Where:** `src/components/onboarding/Step3_Network.tsx`, `identity-model.ts` (`relayNeedsSave`, `skipTurnsRelayOff`, `isRelayUrl`, `relayDraftFrom`), `components/network/JoinRelayFields.tsx`, `join-model.ts`, `relay-invite.ts`, `PublicRelayJoin.tsx`; `join_relay`, `set_relay_url`, `get_relay_status`, `get_public_relay_offer`.
 - **Preconditions:** For the join cases, a relay (RL-07) with `NANDI_RELAY_JOIN_CODE`.
 - **Steps:**
   1. Leave "Not now" selected and click Continue.
@@ -227,17 +227,20 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   3. Choose "Join my team's network" and type "http://x".
   4. Paste an invite message into the address field.
   5. Type an unreachable `wss://` URL and click Join.
+  6. Choose "Join the public relay" with the public relay unreachable (`NANDI_PUBLIC_RELAY_URL=wss://127.0.0.1:9/relay`), then Continue.
 - **Expected:**
   - (1) Nothing is saved or enrolled, and step 4 shows "You can join a network later in Network." The relay's `/health` users count is unchanged.
   - (2) Nothing joins on choosing; Continue joins (one `/relay/enroll`), `relay_url` is saved to `config.json`.
   - (3) "Enter a ws:// or wss:// address."
   - (4) Address and join code fill from the invite; the code field is a password field.
   - (5) "Couldn't reach a relay at <host>…" with the detail, and "Continue anyway" goes on.
+  - (6) The calm unreachable line with **Try again**, no error; Continue goes on at once and nothing is saved.
 - **Edge / negative cases:**
   - Skipping never clears a relay that is already configured.
+  - Signed in to the public relay on this step, then "Not now": Continue leaves it again (the token stays kept for later).
   - A save failure shows "Couldn't save the network: …", and the next Continue proceeds.
   - Regression: Continue straight from a typed address must work.
-- **Automation:** Covered by: `OnboardingView.test.tsx` (the five network tests), `identity-model.test.ts` | Layer: unit | Gap: a real relay is manual (see the network area).
+- **Automation:** Covered by: `OnboardingView.test.tsx` (the network tests, four of them for the public relay: providers, unreachable, signing in, kept), `identity-model.test.ts`, `offline_suite.rs` (`with_no_relay_onboarding_completes_with_not_now`, `an_unreachable_public_relay_never_blocks_onboarding`) | Layer: unit + api | Gap: a real relay is manual (see the network area).
 - **Needs relay:** yes
 - **Status:** Shipped
 

@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight } from 'lucide-react'
-import { friendlyErrorKey, rawError } from '@/lib/friendly-error'
+import {
+  friendlyErrorKey,
+  friendlyErrorParams,
+  rawError,
+} from '@/lib/friendly-error'
 import { cn } from '@/lib/utils'
 
 /**
@@ -21,12 +25,15 @@ export function ErrorMessage({
    * says which line) */
   detailsOpen?: boolean
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [open, setOpen] = useState(detailsOpen)
   const raw = rawError(error)
   return (
     <div role="alert" className={cn('text-sm text-destructive', className)}>
-      <p>{message ?? t(friendlyErrorKey(error))}</p>
+      <p>
+        {message ??
+          t(friendlyErrorKey(error), friendlyErrorParams(error, i18n.language))}
+      </p>
       {raw && (
         <>
           <button

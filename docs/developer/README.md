@@ -25,7 +25,7 @@ Technical documentation for building and extending this app. These docs describe
 | [Triggers](./triggers.md)                                                                 | Cron, file, webhook, device, and event triggers                                   |
 | [Transports](./transports.md)                                                             | Services layer, Tauri IPC + HTTP/WebSocket, web auth                              |
 | [Relay Testing](https://github.com/vaultdbai/nandi-relay/blob/main/docs/relay-testing.md) | Running a relay, NANDI_HOME, one-machine and LAN tests (nandi-relay repo)         |
-| [Relay Defaults](./relay-defaults.md)                                                     | Relay URL precedence, the LAN prefill, public plan                                |
+| [Relay Defaults](./relay-defaults.md)                                                     | Relay URL precedence, the LAN prefill, the public relay (sign-in, limits)         |
 | [GitHub Auth](./github-auth.md)                                                           | Device-flow GitHub sign-in: one token for every github.com repository             |
 | [Email](./email.md)                                                                       | Outlook and Gmail read-only for the Chief of Staff's notes; token refresh         |
 | [Connector hub](./connector-hub.md)                                                       | Connector packages, grants while agents work, calendars and files, calendar notes |

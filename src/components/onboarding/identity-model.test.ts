@@ -12,6 +12,7 @@ import {
   relayDraftFrom,
   relayHost,
   relayNeedsSave,
+  relayUrlFor,
   skipTurnsRelayOff,
   resumeStep,
   slugify,
@@ -89,12 +90,12 @@ describe('configured relay', () => {
     expect(relayDraftFrom(undefined)).toBeNull()
     expect(relayDraftFrom('  ')).toBeNull()
     expect(relayDraftFrom(BUILT_IN, BUILT_IN)).toEqual({
-      choice: 'public',
+      choice: 'builtIn',
       customUrl: '',
     })
     // The build's relay with this instance's token is still the build's
     expect(relayDraftFrom(`${BUILT_IN}?token=t`, BUILT_IN)?.choice).toBe(
-      'public'
+      'builtIn'
     )
     // Without a build relay, any URL is the user's own
     expect(relayDraftFrom(BUILT_IN)?.choice).toBe('custom')
@@ -104,9 +105,33 @@ describe('configured relay', () => {
     })
   })
 
+  it('keeps the public relay signed in to before', () => {
+    const PUBLIC = 'wss://relay.vaultdb.test/relay'
+    expect(relayDraftFrom(`${PUBLIC}?token=t`, BUILT_IN, PUBLIC)).toEqual({
+      choice: 'public',
+      customUrl: '',
+      signedInRelay: PUBLIC,
+    })
+    expect(relayDraftFrom(BUILT_IN, BUILT_IN, PUBLIC)?.choice).toBe('builtIn')
+  })
+
+  it('never joins the public relay on Continue: signing in did', () => {
+    const PUBLIC = 'wss://relay.vaultdb.test/relay'
+    const pub = { choice: 'public' as const, customUrl: '' }
+    expect(relayUrlFor(pub, BUILT_IN)).toBeNull()
+    expect(relayNeedsSave(pub, null, BUILT_IN)).toBe(false)
+    const signedIn = { ...pub, signedInRelay: PUBLIC }
+    expect(relayUrlFor(signedIn, BUILT_IN)).toBe(PUBLIC)
+    expect(relayNeedsSave(signedIn, null, BUILT_IN)).toBe(false)
+    // Signed in on this step, then "Not now": left again
+    expect(
+      skipTurnsRelayOff({ choice: 'skip', customUrl: '' }, 'config', true)
+    ).toBe(true)
+  })
+
   it('saves (and so reconnects) only when the URL changes', () => {
     const custom = { choice: 'custom' as const, customUrl: 'ws://a.test/r' }
-    const pub = { choice: 'public' as const, customUrl: '' }
+    const pub = { choice: 'builtIn' as const, customUrl: '' }
     const skip = { choice: 'skip' as const, customUrl: '' }
 
     expect(relayNeedsSave(pub, null, BUILT_IN)).toBe(true)
@@ -129,7 +154,7 @@ describe('configured relay', () => {
 
   it('"Not now" leaves only a relay joined on this step', () => {
     const skip = { choice: 'skip' as const, customUrl: '' }
-    const pub = { choice: 'public' as const, customUrl: '' }
+    const pub = { choice: 'builtIn' as const, customUrl: '' }
     // The build's relay, joined before: left alone
     expect(skipTurnsRelayOff(skip, 'builtIn', false)).toBe(false)
     // Joined on this step, then the user chose Not now
@@ -146,9 +171,21 @@ describe('configured relay', () => {
 describe('gateway publishing', () => {
   it('publishes only when a relay is chosen and reachability is ticked', () => {
     // Off by default: being reachable is always a choice
-    expect(publishesGateway({ choice: 'public', customUrl: '' })).toBe(false)
+    expect(publishesGateway({ choice: 'builtIn', customUrl: '' })).toBe(false)
+    expect(
+      publishesGateway({ choice: 'builtIn', customUrl: '', reachable: true })
+    ).toBe(true)
+    // The public relay only once signed in
     expect(
       publishesGateway({ choice: 'public', customUrl: '', reachable: true })
+    ).toBe(false)
+    expect(
+      publishesGateway({
+        choice: 'public',
+        customUrl: '',
+        signedInRelay: 'wss://relay.vaultdb.test/relay',
+        reachable: true,
+      })
     ).toBe(true)
     expect(
       publishesGateway({

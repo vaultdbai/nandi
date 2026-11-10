@@ -22,6 +22,7 @@ import {
   JoinResult,
 } from '@/components/network/JoinRelayFields'
 import { joinMessage, type JoinMessage } from '@/components/network/join-model'
+import { PublicRelayJoin } from '@/components/network/PublicRelayJoin'
 
 export interface Step3NetworkProps {
   value: RelayDraft
@@ -34,17 +35,22 @@ export interface Step3NetworkProps {
   configuredSource?: RelayUrlSource | null
   /** The relay this build comes with; `null`: no Nandi network to offer */
   builtInUrl?: string | null
+  /** The public relay the app offers; `null`: none to offer */
+  publicUrl?: string | null
   /** The configured relay is still being read; Continue waits for it */
   checking?: boolean
 }
 
 /**
  * Onboarding step 3 (optional): the network to join. Nothing joins until
- * the user says so: "Join" (a team network) or Continue joins the chosen
- * network, enrolling with the join code where the relay needs one (the
- * build's own code for the Nandi network). A failed join says why, and
- * the next Continue goes on without a network. "Let others send requests"
- * is off until ticked. The relay already in use is never joined again.
+ * the user says so. "Join the public relay" signs in (GitHub, Google or
+ * Microsoft) and connects once linked; it never holds Continue up, and an
+ * unreachable relay just says to join later. For a company relay, "Join"
+ * or Continue joins it, enrolling with the join code where the relay needs
+ * one (the build's own code for the build's relay). A failed join says
+ * why, and the next Continue goes on without a network. "Let others send
+ * requests" is off until ticked. The relay already in use is never joined
+ * again.
  */
 export function Step3Network({
   value,
@@ -54,6 +60,7 @@ export function Step3Network({
   configuredUrl = null,
   configuredSource = null,
   builtInUrl = null,
+  publicUrl = null,
   checking = false,
 }: Step3NetworkProps) {
   const { t } = useTranslation()
@@ -146,11 +153,18 @@ export function Step3Network({
           label={t('onboarding.relay.skip')}
           description={t('onboarding.relay.skipDescription')}
         />
-        {builtInUrl && (
+        {publicUrl && (
           <ChoiceRow
             value="public"
             label={t('onboarding.relay.public')}
-            description={t('onboarding.relay.publicDescription', {
+            description={t('onboarding.relay.publicDescription')}
+          />
+        )}
+        {builtInUrl && (
+          <ChoiceRow
+            value="builtIn"
+            label={t('onboarding.relay.builtIn')}
+            description={t('onboarding.relay.builtInDescription', {
               host: relayHost(builtInUrl),
             })}
           />
@@ -169,6 +183,23 @@ export function Step3Network({
         >
           {t('onboarding.relay.fromEnv')}
         </p>
+      )}
+
+      {value.choice === 'public' && (
+        <div className="grid gap-2" data-testid="onboarding-public-relay">
+          {value.signedInRelay ? (
+            <p role="status" className="text-sm text-success">
+              {t('onboarding.relay.publicConnected')}
+            </p>
+          ) : (
+            <PublicRelayJoin
+              onLinked={relay => {
+                setJoinedUrl(relay)
+                onChange({ ...value, signedInRelay: relay })
+              }}
+            />
+          )}
+        </div>
       )}
 
       {value.choice === 'custom' && (

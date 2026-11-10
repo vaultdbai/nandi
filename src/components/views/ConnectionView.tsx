@@ -1,8 +1,9 @@
 /**
  * Network › Connection: the relay ("Join a company relay" with its address
- * and join code, status, Test, Copy invite, Disconnect), the
- * "Make this Nandi reachable" checklist, and Details, the only place the
- * device ID shows (network.md §4.2).
+ * and join code, status, Test, Copy invite, Disconnect), "Join the public
+ * relay" while no relay is set (or, on the public relay, its Account
+ * card), the "Make this Nandi reachable" checklist, and Details, the only
+ * place the device ID shows (network.md §4.2).
  */
 import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -27,6 +28,9 @@ import {
   type JoinDraft,
 } from '@/components/network/JoinRelayFields'
 import { joinMessage, type JoinMessage } from '@/components/network/join-model'
+import { PublicRelayAccountCard } from '@/components/network/PublicRelayAccountCard'
+import { PublicRelayJoin } from '@/components/network/PublicRelayJoin'
+import { onPublicRelay } from '@/components/network/public-relay-model'
 import { HealthDot, Term } from '@/components/network/NetworkHelp'
 import {
   isRelayUrl,
@@ -74,7 +78,14 @@ export function ConnectionView() {
         {isLoading ? (
           <Skeleton className="h-40 w-full" />
         ) : (
-          <RelayCard status={status} fieldRef={fieldRef} />
+          <>
+            <RelayCard status={status} fieldRef={fieldRef} />
+            {onPublicRelay(status) ? (
+              <PublicRelayAccountCard />
+            ) : (
+              status?.publicRelayUrl && !status.relayUrl && <PublicRelayCard />
+            )}
+          </>
         )}
         <RelayTrustCard />
         <ReachabilityChecklist onConnect={() => fieldRef.current?.focus()} />
@@ -350,6 +361,40 @@ function RelayCard({
 }
 
 /**
+ * "Join the public relay" for people who skipped it: the same sign-in as
+ * onboarding, asked of the relay only once they open it
+ */
+function PublicRelayCard() {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  return (
+    <section
+      aria-labelledby="public-relay-title"
+      className="flex flex-col gap-3 rounded-md border p-4"
+      data-testid="public-relay-card"
+    >
+      <div className="space-y-1">
+        <h2 id="public-relay-title" className="text-sm font-semibold">
+          {t('publicRelay.title')}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {t('publicRelay.description')}
+        </p>
+      </div>
+      {open ? (
+        <PublicRelayJoin />
+      ) : (
+        <div>
+          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+            {t('publicRelay.join')}
+          </Button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
  * "Trust everyone on this relay": on a relay that needs a token, its
  * members are the company's, so they're trusted unless this is off
  * (`team::trust::is_trusted`). On an open relay it doesn't apply.
@@ -368,7 +413,7 @@ function RelayTrustCard() {
       }),
   })
   if (!trust.data) return null
-  const { enabled, secured } = trust.data
+  const { enabled, secured, public: onPublic } = trust.data
   return (
     <section
       aria-labelledby="relay-trust-title"
@@ -382,7 +427,9 @@ function RelayTrustCard() {
         <p className="text-sm text-muted-foreground">
           {secured
             ? t('network.connection.relayTrust.secured')
-            : t('network.connection.relayTrust.open')}
+            : onPublic
+              ? t('network.connection.relayTrust.public')
+              : t('network.connection.relayTrust.open')}
         </p>
       </div>
       <Switch

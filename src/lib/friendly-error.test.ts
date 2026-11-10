@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  dailyLimitResetsAt,
   errorKind,
   friendlyErrorKey,
+  friendlyErrorParams,
   isPeerKeyChanged,
   isRelayUnavailable,
   rawError,
@@ -65,5 +67,27 @@ describe('friendly errors', () => {
     expect(isPeerKeyChanged(new Error(text))).toBe(true)
     expect(isPeerKeyChanged('relay_unavailable: no relay')).toBe(false)
     expect(friendlyErrorKey(text)).toBe('errors.peerKeyChanged')
+  })
+
+  it('recognises a public relay daily limit and says when it resets', () => {
+    const resetsAt = Date.UTC(2026, 10, 11)
+    const words =
+      "You've sent the 500 messages a day this relay allows (counted across your Nandis). It resets at 2026-11-11T00:00:00Z"
+    // A refused request, a reassignment and a group change all carry it
+    for (const raw of [
+      `The relay refused it: daily_limit@${resetsAt}: ${words}`,
+      `daily_limit@${resetsAt}: ${words}`,
+    ]) {
+      expect(errorKind(raw)).toBe('dailyLimit')
+      expect(dailyLimitResetsAt(new Error(raw))).toBe(resetsAt)
+    }
+    expect(friendlyErrorKey(`daily_limit@${resetsAt}: x`)).toBe(
+      'errors.dailyLimit'
+    )
+    const time = friendlyErrorParams(`daily_limit@${resetsAt}: x`, 'en').time
+    expect(time).toMatch(/\d/)
+    // The words alone (no code) aren't mistaken for it
+    expect(dailyLimitResetsAt(words)).toBeNull()
+    expect(friendlyErrorParams('timed out', 'en')).toEqual({})
   })
 })

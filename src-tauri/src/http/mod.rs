@@ -318,6 +318,8 @@ mod tests {
             ("PUT", "/api/relay/url"),
             ("POST", "/api/relay/join"),
             ("GET", "/api/relay/invite"),
+            ("GET", "/api/relay/public"),
+            ("GET", "/api/relay/public/account"),
             ("GET", "/api/relay/agents"),
             ("POST", "/api/relay/test"),
             ("GET", "/api/relay/instances"),

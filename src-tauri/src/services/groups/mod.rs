@@ -44,6 +44,7 @@ use crate::services::events::{self, EventBus, NandiEvent};
 use crate::services::network::{self, peer_keys};
 use crate::services::relay::client_api::GroupSignal;
 use crate::services::relay::device_keys::DeviceKeyring;
+use crate::services::relay::limits::DAILY_LIMIT;
 use crate::services::relay::{RelayClient, RelayUnavailable, RelayVisibility};
 use crate::services::repos::GroupRepository;
 use crate::services::AppState;
@@ -655,7 +656,12 @@ fn refusal(code: &str, message: &str) -> String {
         GROUP_INVITE_INVALID => "That invite code isn't valid: it may have expired or been used up",
         GROUP_POLICY_STALE => "Someone changed the group's policy at the same time; try again",
         GROUP_LAST_ADMIN => "A group needs an admin: make someone else an admin first",
-        GROUP_LIMIT => return format!("The relay's limit for groups is reached: {message}"),
+        GROUP_LIMIT => {
+            return format!(
+                "That's past this relay's group limits, which count per person (all your Nandis together): {message}"
+            )
+        }
+        DAILY_LIMIT => return crate::services::relay::limits::daily_limit(message),
         _ if message.trim().is_empty() => return format!("The relay refused it ({code})"),
         _ => return message.to_string(),
     };

@@ -126,7 +126,12 @@ import type {
   RelayPeer,
   RelayStatus,
   JoinOutcome,
+  PublicRelayAccount,
+  PublicRelayOffer,
+  PublicSignInPoll,
+  PublicSignInStart,
   RelayInvite,
+  RelaySignInProvider,
   RepoStatus,
   Result,
   RunDetail,
@@ -654,6 +659,22 @@ export interface NandiClient {
   ): Promise<Result<JoinOutcome, string>>
   /** What "Copy invite message" passes on (`null`: no relay in use) */
   getRelayInvite(): Promise<Result<RelayInvite | null, string>>
+  /** "Join the public relay": whether it can be joined now, and with whom */
+  getPublicRelayOffer(): Promise<Result<PublicRelayOffer, string>>
+  /** Starts signing this Nandi in to the public relay with `provider` */
+  startPublicRelaySignIn(
+    provider: RelaySignInProvider
+  ): Promise<Result<PublicSignInStart, string>>
+  /**
+   * Whether the person approved the sign-in (poll every `interval` s); on
+   * `linked` the core keeps the token and connects
+   */
+  pollPublicRelaySignIn(
+    provider: RelaySignInProvider,
+    signinId: string
+  ): Promise<Result<PublicSignInPoll, string>>
+  /** The public-relay account this Nandi is signed in with */
+  getPublicRelayAccount(): Promise<Result<PublicRelayAccount, string>>
   /** Agents online at the relay, optionally only those serving `capability` */
   listOnlineAgents(
     capability: string | null

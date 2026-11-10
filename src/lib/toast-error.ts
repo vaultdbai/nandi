@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import i18n from '@/i18n/config'
 import {
   friendlyErrorKey,
+  friendlyErrorParams,
   isRelayUnavailable,
   rawError,
 } from '@/lib/friendly-error'
@@ -14,7 +15,7 @@ import { useNavigationStore } from '@/store/navigation-store'
  */
 export function toastError(error: unknown, title?: string): void {
   const raw = rawError(error)
-  toast.error(title ?? i18n.t(friendlyErrorKey(error)), {
+  toast.error(title ?? plainError(error), {
     action: raw
       ? {
           label: i18n.t('errors.copyDetails'),
@@ -26,7 +27,10 @@ export function toastError(error: unknown, title?: string): void {
 
 /** The plain sentence for an error, to put inside a screen's own message */
 export function plainError(error: unknown): string {
-  return i18n.t(friendlyErrorKey(error))
+  return i18n.t(
+    friendlyErrorKey(error),
+    friendlyErrorParams(error, i18n.language)
+  )
 }
 
 /**

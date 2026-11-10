@@ -99,9 +99,10 @@ export function OnboardingView({
   const [relayEdit, setRelay] = useState<RelayDraft | null>(null)
   const configuredRelayUrl = relayStatus.data?.relayUrl ?? null
   const builtInRelayUrl = relayStatus.data?.builtInUrl ?? null
+  const publicRelayUrl = relayStatus.data?.publicRelayUrl ?? null
   const relay =
     relayEdit ??
-    relayDraftFrom(configuredRelayUrl, builtInRelayUrl) ??
+    relayDraftFrom(configuredRelayUrl, builtInRelayUrl, publicRelayUrl) ??
     DEFAULT_RELAY_DRAFT
   const [savingName, setSavingName] = useState(false)
   const [finishing, setFinishing] = useState(false)
@@ -272,6 +273,7 @@ export function OnboardingView({
               configuredUrl={configuredRelayUrl}
               configuredSource={relayStatus.data?.relayUrlSource ?? null}
               builtInUrl={builtInRelayUrl}
+              publicUrl={publicRelayUrl}
               checking={relayStatus.isPending}
             />
           )}

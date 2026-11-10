@@ -11,6 +11,7 @@
 //! | secured, a token kept for it       | Reuses it (joined before, then disconnected)                   |
 //! | secured, a join code               | Enrolls once (`POST /relay/enroll`), saves the token, connects |
 //! | secured, no code                   | [`JoinOutcome::CodeNeeded`]                                    |
+//! | public (`public: true`)            | [`JoinOutcome::SignInNeeded`]: join it by signing in           |
 //!
 //! The join code is the one the user typed, or the build's own
 //! ([`super::BuiltInRelay`]) for the build's relay. A typed code is kept in
@@ -69,6 +70,9 @@ pub enum JoinOutcome {
     Removed { message: String },
     /// The relay doesn't take enrollments (no join code set up there)
     NoEnrollment,
+    /// A public relay: people join it by signing in, not with a code
+    /// ("Join the public relay", [`super::public`])
+    SignInNeeded,
     /// Any other refusal, in the relay's words
     Refused { message: String },
 }
@@ -106,12 +110,16 @@ pub async fn join_relay(
         Ok(health) => health,
         Err(outcome) => return Ok(outcome),
     };
-    if health.protocol_version != PROTOCOL_VERSION {
+    if health.relay.protocol_version != PROTOCOL_VERSION {
         return Ok(JoinOutcome::VersionMismatch {
-            relay: health.protocol_version,
+            relay: health.relay.protocol_version,
             app: PROTOCOL_VERSION,
         });
     }
+    if health.public {
+        return Ok(JoinOutcome::SignInNeeded);
+    }
+    let health = health.relay;
     let token = if health.auth == "open" {
         None
     } else if let Some(token) = url_token {
@@ -176,8 +184,20 @@ fn keep_join_code(state: &AppState, relay: &str, code: &str) {
     }
 }
 
+/// A relay's `GET /health`: the protocol's fields, and whether it is a
+/// public relay and whom it signs in with
+#[derive(Debug, Clone, Deserialize)]
+pub(super) struct RelayHealthReport {
+    #[serde(flatten)]
+    pub relay: RelayHealth,
+    #[serde(default)]
+    pub public: bool,
+    #[serde(default)]
+    pub signin: Vec<String>,
+}
+
 /// `GET <relay host>/health`, or why it isn't a relay we can join
-async fn health(base: &str) -> Result<RelayHealth, JoinOutcome> {
+pub(super) async fn health(base: &str) -> Result<RelayHealthReport, JoinOutcome> {
     let mut endpoint = instances_endpoint(base).map_err(|_| JoinOutcome::InvalidUrl)?;
     endpoint.set_path("/health");
     let unreachable = |detail: String| JoinOutcome::Unreachable { detail };
@@ -192,7 +212,7 @@ async fn health(base: &str) -> Result<RelayHealth, JoinOutcome> {
         return Err(unreachable(format!("{endpoint} answered {status}")));
     }
     response
-        .json::<RelayHealth>()
+        .json::<RelayHealthReport>()
         .await
         .map_err(|_| unreachable(format!("{endpoint} isn't a Nandi relay")))
 }

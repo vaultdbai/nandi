@@ -35,6 +35,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { errorMessage } from '@/hooks/useDelegation'
+import { errorKind } from '@/lib/friendly-error'
+import { plainError } from '@/lib/toast-error'
 import {
   requestQueryKeys,
   useCompleteRequestStep,
@@ -415,11 +417,19 @@ function Outputs({ request }: { request: Request }) {
   return (
     <div className="flex flex-col gap-3 text-sm">
       {request.result !== null && <Result value={request.result} />}
-      {request.error && (
-        <p role="alert" className="text-destructive" dir="auto">
-          {request.error}
-        </p>
-      )}
+      {request.error &&
+        (errorKind(request.error) === 'dailyLimit' ? (
+          <p
+            className="text-muted-foreground"
+            data-testid="request-daily-limit"
+          >
+            {plainError(request.error)}
+          </p>
+        ) : (
+          <p role="alert" className="text-destructive" dir="auto">
+            {request.error}
+          </p>
+        ))}
     </div>
   )
 }

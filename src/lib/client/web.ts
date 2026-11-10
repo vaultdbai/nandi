@@ -351,6 +351,12 @@ export const webClient: NandiClient = {
   joinRelay: (url, joinCode) =>
     request('POST', '/relay/join', { url, joinCode }),
   getRelayInvite: () => request('GET', '/relay/invite'),
+  getPublicRelayOffer: () => request('GET', '/relay/public'),
+  startPublicRelaySignIn: provider =>
+    request('POST', `/relay/public/sign-in/${provider}/start`),
+  pollPublicRelaySignIn: (provider, signinId) =>
+    request('POST', `/relay/public/sign-in/${provider}/poll`, { signinId }),
+  getPublicRelayAccount: () => request('GET', '/relay/public/account'),
   listOnlineAgents: capability =>
     request('GET', `/relay/agents${query({ capability })}`),
   testRelayConnection: url => request('POST', '/relay/test', { url }),

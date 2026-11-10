@@ -101,6 +101,8 @@ A copy that doesn't read at all is skipped and logged (its members are unknown);
 
 `Registered { visibility }` is kept in the client and exposed as `RelayStatus.visibility` (`company` | `groups`, `None` before registering). With `groups`, People shows a note. The relay answers a submission to someone outside my groups with an `Error` `no_shared_group` and the task's `refused` event; the client remembers the error's message and turns that refusal into `no_shared_group: You don't share a group with them on this relay` (after `REFUSED_BY_RELAY`), which `friendly-error.ts` maps to `errors.noSharedGroup` (`NO_SHARED_GROUP` is exported to `bindings.ts`).
 
+**Relay limits per person.** A relay limits groups per person and people per group (`group_limit`; the public relay: 10 and 50, counted per account across its Nandis), and a public relay also messages a day (`daily_limit`, 500). `groups::refusal` words `group_limit` as a per-person limit and turns a `daily_limit` refusal into `daily_limit@<reset ms>: …` (`relay::limits::daily_limit`), which `toastGroupError` shows calmly with the reset time. See "The public relay" in `relay-defaults.md`.
+
 ## Owner decisions (2026-11-08)
 
 - Outside a group's `hours:`, a request **waits** for approval; it isn't refused.

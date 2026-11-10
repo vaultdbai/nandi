@@ -514,6 +514,141 @@ describe('OnboardingView', () => {
   })
 
   describe('network', () => {
+    const PUBLIC = 'wss://relay.vaultdb.ai/relay'
+    const withPublic = (relayUrl: string | null = null) =>
+      Object.assign(commands, {
+        getRelayStatus: ok({
+          ...relayStatus(relayUrl),
+          publicRelayUrl: PUBLIC,
+        }),
+      })
+
+    it('offers the public relay with its sign-in providers', async () => {
+      const user = userEvent.setup()
+      withPublic()
+      Object.assign(commands, {
+        getPublicRelayOffer: ok({
+          kind: 'ready',
+          relay: PUBLIC,
+          providers: ['github', 'google', 'microsoft'],
+        }),
+      })
+      render(<OnboardingView />)
+      await toNetwork(user)
+      // Next to the company relay and Not now
+      expect(screen.getByLabelText('Not now')).toBeChecked()
+      expect(
+        screen.getByLabelText("Join my team's network")
+      ).toBeInTheDocument()
+      await user.click(screen.getByLabelText('Join the public relay'))
+      for (const provider of ['GitHub', 'Google', 'Microsoft'])
+        expect(
+          await screen.findByRole('button', {
+            name: `Sign in with ${provider}`,
+          })
+        ).toBeInTheDocument()
+      // Continue never waits on it: no sign-in, no relay
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      await screen.findByText('Pick some agents to start with')
+      expect(mocks().joinRelay).not.toHaveBeenCalled()
+      expect(mocks().setRelayUrl).not.toHaveBeenCalled()
+      expect(
+        screen.getByText('You can join a network later in Network.')
+      ).toBeInTheDocument()
+    })
+
+    it('goes on calmly when the public relay is unreachable', async () => {
+      const user = userEvent.setup()
+      withPublic()
+      Object.assign(commands, {
+        getPublicRelayOffer: ok({
+          kind: 'unreachable',
+          relay: PUBLIC,
+          detail: "Couldn't reach https://relay.vaultdb.ai/health",
+        }),
+      })
+      render(<OnboardingView />)
+      await toNetwork(user)
+      await user.click(screen.getByLabelText('Join the public relay'))
+      expect(
+        await screen.findByTestId('public-relay-unreachable')
+      ).toHaveTextContent(
+        "The public relay isn't reachable right now — you can join later from Network › Connection."
+      )
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      await screen.findByText('Pick some agents to start with')
+      expect(mocks().setRelayUrl).not.toHaveBeenCalled()
+    })
+
+    it('signs in to the public relay and continues connected', async () => {
+      const user = userEvent.setup()
+      withPublic()
+      Object.assign(commands, {
+        getPublicRelayOffer: ok({
+          kind: 'ready',
+          relay: PUBLIC,
+          providers: ['github'],
+        }),
+        startPublicRelaySignIn: ok({
+          kind: 'started',
+          signinId: 's-1',
+          provider: 'github',
+          userCode: 'WDJB-MJHT',
+          verificationUri: 'https://github.com/login/device',
+          verificationUriComplete: null,
+          expiresIn: 900,
+          interval: 1,
+        }),
+        pollPublicRelaySignIn: ok({
+          kind: 'linked',
+          relay: PUBLIC,
+          account: 'github:583231',
+          provider: 'github',
+          display: 'octocat',
+        }),
+      })
+      render(<OnboardingView />)
+      await toNetwork(user)
+      await user.click(screen.getByLabelText('Join the public relay'))
+      await user.click(
+        await screen.findByRole('button', { name: 'Sign in with GitHub' })
+      )
+      expect(
+        await screen.findByTestId('public-relay-user-code')
+      ).toHaveTextContent('WDJB-MJHT')
+      expect(
+        await screen.findByText(
+          'Signed in: Nandi is connected to the public relay.',
+          {},
+          { timeout: 4000 }
+        )
+      ).toBeInTheDocument()
+      // Now a relay is in use: "Let others send requests" can be ticked
+      expect(
+        screen.getByLabelText('Let others send requests to my Nandi')
+      ).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      await screen.findByText('Pick some agents to start with')
+      expect(mocks().joinRelay).not.toHaveBeenCalled()
+      expect(mocks().setRelayUrl).not.toHaveBeenCalled()
+      expect(
+        screen.queryByText('You can join a network later in Network.')
+      ).toBeNull()
+    })
+
+    it('keeps the public relay signed in to before', async () => {
+      const user = userEvent.setup()
+      withPublic(`${PUBLIC}?token=abc`)
+      render(<OnboardingView />)
+      await toNetwork(user)
+      expect(screen.getByLabelText('Join the public relay')).toBeChecked()
+      expect(
+        screen.getByText('Signed in: Nandi is connected to the public relay.')
+      ).toBeInTheDocument()
+    })
+
     it('defaults to Not now and leaves the relay alone', async () => {
       const user = userEvent.setup()
       render(<OnboardingView />)

@@ -3,6 +3,7 @@
  * text stays behind "Details" (`ErrorMessage`, `toastError`).
  */
 import {
+  DAILY_LIMIT,
   ENVELOPE_TOO_LARGE,
   NO_SHARED_GROUP,
   PEER_KEY_CHANGED,
@@ -10,6 +11,7 @@ import {
   RELAY_UNAVAILABLE,
   SEAL_REFUSED,
 } from '@/lib/bindings'
+import { formatResetTime } from '@/lib/format-time'
 
 export type ErrorKind =
   | 'relayUnavailable'
@@ -18,6 +20,7 @@ export type ErrorKind =
   | 'sealRefused'
   | 'envelopeTooLarge'
   | 'noSharedGroup'
+  | 'dailyLimit'
   | 'offline'
   | 'timeout'
   | 'notFound'
@@ -95,10 +98,29 @@ export function errorKind(error: unknown): ErrorKind {
   if (sealing) return sealing[0]
   // After "The relay refused it: " (`relay::client::no_shared_group`)
   if (raw.includes(`${NO_SHARED_GROUP}:`)) return 'noSharedGroup'
+  if (dailyLimitResetsAt(error) !== null) return 'dailyLimit'
   return PATTERNS.find(([, pattern]) => pattern.test(raw))?.[0] ?? 'other'
+}
+
+/**
+ * When a public relay's daily message count resets, for a refusal past it
+ * (`daily_limit@<ms>: …`, `services::relay::limits`); `null` otherwise
+ */
+export function dailyLimitResetsAt(error: unknown): number | null {
+  const match = new RegExp(`${DAILY_LIMIT}@(\\d+):`).exec(rawError(error))
+  return match?.[1] ? Number(match[1]) : null
 }
 
 /** The `errors.*` key for the plain sentence */
 export function friendlyErrorKey(error: unknown): string {
   return `errors.${errorKind(error)}`
+}
+
+/** What the plain sentence names: the reset time of a daily limit */
+export function friendlyErrorParams(
+  error: unknown,
+  locale: string
+): Record<string, string> {
+  const resetsAt = dailyLimitResetsAt(error)
+  return resetsAt === null ? {} : { time: formatResetTime(resetsAt, locale) }
 }

@@ -3,6 +3,9 @@
 use tauri::State;
 
 pub use crate::services::relay::join::{JoinOutcome, RelayInvite};
+pub use crate::services::relay::public::{
+    PublicRelayAccount, PublicRelayOffer, PublicSignInPoll, PublicSignInStart, RelaySignInProvider,
+};
 pub use crate::services::relay::{RelayPeer, RelayStatus};
 
 use crate::services::domain::AgentCard;
@@ -39,6 +42,46 @@ pub async fn join_relay(
 #[specta::specta]
 pub async fn get_relay_invite(state: State<'_, AppState>) -> Result<Option<RelayInvite>, String> {
     relay::join::relay_invite(&state)
+}
+
+/// "Join the public relay": whether it can be joined now, and with whom
+#[tauri::command]
+#[specta::specta]
+pub async fn get_public_relay_offer(
+    state: State<'_, AppState>,
+) -> Result<PublicRelayOffer, String> {
+    Ok(relay::public::offer(&state).await)
+}
+
+/// Starts signing this Nandi in to the public relay with `provider`
+#[tauri::command]
+#[specta::specta]
+pub async fn start_public_relay_sign_in(
+    state: State<'_, AppState>,
+    provider: RelaySignInProvider,
+) -> Result<PublicSignInStart, String> {
+    relay::public::start_sign_in(&state, provider).await
+}
+
+/// Whether the person approved the sign-in (poll every `interval` s); on
+/// `linked` the app keeps the token and connects
+#[tauri::command]
+#[specta::specta]
+pub async fn poll_public_relay_sign_in(
+    state: State<'_, AppState>,
+    provider: RelaySignInProvider,
+    signin_id: String,
+) -> Result<PublicSignInPoll, String> {
+    relay::public::poll_sign_in(&state, provider, &signin_id).await
+}
+
+/// The public-relay account this Nandi is signed in with (the Account card)
+#[tauri::command]
+#[specta::specta]
+pub async fn get_public_relay_account(
+    state: State<'_, AppState>,
+) -> Result<PublicRelayAccount, String> {
+    relay::public::account(&state).await
 }
 
 /// Agents online at the relay, optionally only those serving `capability`

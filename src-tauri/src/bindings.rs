@@ -198,6 +198,10 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             relay::set_relay_url,
             relay::join_relay,
             relay::get_relay_invite,
+            relay::get_public_relay_offer,
+            relay::start_public_relay_sign_in,
+            relay::poll_public_relay_sign_in,
+            relay::get_public_relay_account,
             relay::list_online_agents,
             relay::test_relay_connection,
             relay::get_relay_instances,
@@ -546,6 +550,9 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         // The code a refusal starts with when a groups relay keeps you
         // from someone you share no group with
         .constant("NO_SHARED_GROUP", nandi_protocol::NO_SHARED_GROUP)
+        // The code a refusal starts with past a public relay's messages a
+        // day: `daily_limit@<reset ms>: ...` (`services::relay::limits`)
+        .constant("DAILY_LIMIT", crate::services::relay::limits::DAILY_LIMIT)
         .constant(
             "PEER_KEY_CHANGED",
             crate::services::network::peer_keys::PEER_KEY_CHANGED,

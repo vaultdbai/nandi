@@ -10,7 +10,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { errorMessage, useDelegateTask } from '@/hooks/useDelegation'
 import { useRelayConnected } from '@/hooks/useRelay'
 import type { GatewayCard } from '@/lib/bindings'
-import { isRelayUnavailable } from '@/lib/friendly-error'
+import { errorKind, isRelayUnavailable } from '@/lib/friendly-error'
+import { plainError } from '@/lib/toast-error'
 import { cn } from '@/lib/utils'
 import { useNavigationStore } from '@/store/navigation-store'
 import { askAvailability, gatewayRequest } from './ask-model'
@@ -67,6 +68,8 @@ export function AskMemberComposer({
         .navigate({ kind: 'delegation-thread', taskId })
     } catch (error) {
       if (isRelayUnavailable(error)) setRelayRefused(true)
+      // Past the public relay's messages a day: calmly, with the reset
+      else if (errorKind(error) === 'dailyLimit') toast(plainError(error))
       else toast.error(t('members.ask.failed', { error: errorMessage(error) }))
     }
   }

@@ -1,7 +1,7 @@
 //! Relay routes, mirroring `commands/relay.rs`. Errors are
 //! `400 {"error": "..."}`.
 
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
@@ -21,6 +21,14 @@ pub fn api() -> Router<AppState> {
         .route("/relay/join", post(join))
         // Returns `RelayInvite | null`
         .route("/relay/invite", get(invite))
+        // Returns `PublicRelayOffer`
+        .route("/relay/public", get(public_offer))
+        // Returns `PublicSignInStart`
+        .route("/relay/public/sign-in/{provider}/start", post(public_start))
+        // Body: `{"signinId"}`; returns `PublicSignInPoll`
+        .route("/relay/public/sign-in/{provider}/poll", post(public_poll))
+        // Returns `PublicRelayAccount`
+        .route("/relay/public/account", get(public_account))
         // `?capability=` (optional); returns `AgentCard[]`
         .route("/relay/agents", get(agents))
         // Body: `{"url": "ws://..."}`; returns the round trip in ms
@@ -58,6 +66,36 @@ async fn join(State(state): State<AppState>, Json(body): Json<JoinBody>) -> impl
 
 async fn invite(State(state): State<AppState>) -> impl IntoResponse {
     ApiResult(relay::join::relay_invite(&state))
+}
+
+async fn public_offer(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(Ok::<_, String>(relay::public::offer(&state).await))
+}
+
+async fn public_start(
+    State(state): State<AppState>,
+    Path(provider): Path<relay::public::RelaySignInProvider>,
+) -> impl IntoResponse {
+    ApiResult(relay::public::start_sign_in(&state, provider).await)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PollBody {
+    #[serde(default)]
+    signin_id: String,
+}
+
+async fn public_poll(
+    State(state): State<AppState>,
+    Path(provider): Path<relay::public::RelaySignInProvider>,
+    Json(body): Json<PollBody>,
+) -> impl IntoResponse {
+    ApiResult(relay::public::poll_sign_in(&state, provider, &body.signin_id).await)
+}
+
+async fn public_account(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(relay::public::account(&state).await)
 }
 
 #[derive(Deserialize)]

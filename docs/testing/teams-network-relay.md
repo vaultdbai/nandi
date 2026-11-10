@@ -1015,7 +1015,7 @@ Notes that apply to the whole section:
 
 ### RL-38 — Join a company relay with a join code, and invite a teammate
 
-- **What:** A public installer joins a secured company relay from the UI: the relay's address and the join code the operator gives out (Connection, RL-01; onboarding, ON-09). `join_relay` checks `/health` (reachable, a Nandi relay, same protocol version), then enrolls once and stores the token as the build's flow does (`relay_state`). Outcomes (`JoinOutcome`): `joined`, `invalidUrl`, `unreachable`, `versionMismatch`, `codeNeeded`, `wrongCode`, `relayFull` (the relay's message shown verbatim), `alreadyEnrolled`, `removed`, `noEnrollment`, `refused`. An open relay joins without a code. The typed code is kept in the keychain (`nandi.relay.join_code`) only for **Copy invite message**, whose invite line is `<url>#join=<code>`; **Paste invite** (or pasting the message into the address) fills both fields. The code and the token are never shown or logged after entry.
+- **What:** A public installer joins a secured company relay from the UI: the relay's address and the join code the operator gives out (Connection, RL-01; onboarding, ON-09). `join_relay` checks `/health` (reachable, a Nandi relay, same protocol version), then enrolls once and stores the token as the build's flow does (`relay_state`). Outcomes (`JoinOutcome`): `joined`, `invalidUrl`, `unreachable`, `versionMismatch`, `codeNeeded`, `wrongCode`, `relayFull` (the relay's message shown verbatim), `alreadyEnrolled`, `removed`, `noEnrollment`, `signInNeeded` (a public relay: join it by signing in, RL-45), `refused`. An open relay joins without a code. The typed code is kept in the keychain (`nandi.relay.join_code`) only for **Copy invite message**, whose invite line is `<url>#join=<code>`; **Paste invite** (or pasting the message into the address) fills both fields. The code and the token are never shown or logged after entry.
 - **Where:** `services/relay/join.rs`, `commands/relay.rs` (`join_relay`, `get_relay_invite`), `http/relay.rs` (`POST /relay/join`, `GET /relay/invite`), `components/network/JoinRelayFields.tsx`, `join-model.ts`, `relay-invite.ts`, `hooks/useRelay.ts` (`useJoinRelay`, `useCopyInvite`).
 - **Preconditions:** A relay with `NANDI_RELAY_SECRET` and `NANDI_RELAY_JOIN_CODE`; a public build (no default relay).
 - **Steps:** 1. Join with a wrong code. 2. Join with the right code. 3. Copy invite message, paste it into a second fresh install's address field, Join. 4. On a relay at its 20-user limit, Join. 5. Disconnect and Join again.
@@ -1119,7 +1119,7 @@ Notes that apply to the whole section:
 
 ### RL-34 — Everyone on the company's relay is trusted
 
-- **What:** When this Nandi's relay connection carries an instance token (the relay needs a secret, so only enrolled instances are on it), every member the relay lists is trusted, as if marked **Trusted peer**, unless the owner turns off **Trust everyone on this relay** (Network › Connection, `trust.relayMembers`, on by default). Pause and Block still apply. On an open relay the switch is disabled and trust stays manual. Revoking someone on the relay (RL-30) takes them off it, so they lose this trust too.
+- **What:** When this Nandi's relay connection carries an instance token (the relay needs a secret, so only enrolled instances are on it) and the relay isn't a public one, every member the relay lists is trusted, as if marked **Trusted peer**, unless the owner turns off **Trust everyone on this relay** (Network › Connection, `trust.relayMembers`, on by default). Pause and Block still apply. On an open relay the switch is disabled and trust stays manual, and on the public relay too (anyone can sign in there): "Anyone can sign in to the public relay, so you trust people one by one." (`RelayTrust.public`). Revoking someone on the relay (RL-30) takes them off it, so they lose this trust too.
 - **Where:** `services/team/trust.rs` (`is_trusted`, `trusted_by_relay`, `on_a_secured_relay`, `relay_trust`, `set_trusts_relay_members`), used by `a2a/executor.rs` (agent and workflow trust checks) and `team/trust_requests.rs`. Commands `get_relay_trust`, `set_relay_trust`; HTTP `GET`/`PUT /api/trust/relay`. UI: `ConnectionView.tsx` (`RelayTrustCard`).
 - **Preconditions:** A relay with `NANDI_RELAY_SECRET` and a join code, three Nandis enrolled on it.
 - **Steps:**
@@ -1127,7 +1127,7 @@ Notes that apply to the whole section:
   2. Block the sender on the receiving side, and repeat.
   3. Turn **Trust everyone on this relay** off on the receiver, and repeat.
 - **Expected:** Step 1 goes through. Steps 2 and 3 are refused (step 3 becomes a trust request).
-- **Automation:** Covered by: `trust.rs` (`everyone_on_a_secured_relay_is_trusted_unless_turned_off`) | Layer: unit | Gap: the three-Nandi run hasn't been done.
+- **Automation:** Covered by: `trust.rs` (`everyone_on_a_secured_relay_is_trusted_unless_turned_off`), `relay/public_tests.rs` (`signing_in_links_this_nandi_keeps_the_token_and_connects`: not secured, `public`) | Layer: unit | Gap: the three-Nandi run hasn't been done.
 - **Needs relay:** yes
 - **Status:** Shipped
 
@@ -1243,6 +1243,53 @@ Notes that apply to the whole section:
 - **Expected:** Step 2: the request goes to C with "B is away; C covers". Step 3: B's Nandi reseals it, C gets it, A's thread says "Reassigned to C by {by}". Step 4: both changes are in the audit.
 - **Edge / negative cases:** without the secret every endpoint answers 401; an open relay has none (404); a move to the requester or someone who had it is refused (409).
 - **Automation:** Covered by: nandi-relay `tests/admin.rs`, `tests/dispatch.rs` (`a_managers_move_waits_for_the_reseal`), `src/admin.rs` | Layer: api | Gap: none.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### RL-45 — Join the public relay (sign in with GitHub, Google or Microsoft)
+
+- **What:** People without a company relay join VaultDB.ai's public relay by signing in, not with a join code. Onboarding's network step (ON-09) and Network › Connection (while no relay is set: a **Public relay** card with **Join the public relay**) share one flow. It asks the relay's `/health` (`public`, `signin`: the providers), shows **Sign in with GitHub / Google / Microsoft** for the providers it lists and the free limits ("up to 10 groups, 50 people per group and 500 messages a day"). Signing in posts this Nandi's ID and device public keys to `/relay/signin/{provider}/start`, shows the user code and **Open sign-in page** (the page with the code filled in when the provider has one), then polls `/relay/signin/{provider}/poll` every `interval` seconds (`slow_down` moves it; a poll that doesn't reach the relay keeps waiting, "The relay didn't answer just now; still waiting…", until the code expires). On `linked` the token is kept exactly like an enrolled one (`relay_state`, never `config.json` or the UI), the account is remembered (`relay_state.relay_account`) and Nandi connects: "Signed in as <name> with <provider>. Connecting to the public relay…". Every refusal code has its own calm line (`PublicRelayRefusal`, `publicRelay.refusal.*`) with the relay's words under it: `signin_expired`, `signin_denied`, `account_suspended`, `already_linked`, `key_mismatch`, `device_limit`, `signup_limit`, `signin_limit`, `provider_not_supported`, `signin_unavailable`, `signin_not_found`, `revoked`, `invalid_request`, `unauthorized`, `no_account`, `not_public`, anything else. An unreachable relay is never an error: "The public relay isn't reachable right now — you can join later from Network › Connection." with **Try again**. The URL is `wss://relay.vaultdb.ai/relay`, or `NANDI_PUBLIC_RELAY_URL` (staging, tests).
+- **Where:** `services/relay/public.rs` (`offer`, `start_sign_in`, `poll_sign_in`, `PUBLIC_RELAY_URL`, `PUBLIC_RELAY_URL_ENV`), `services/relay/mod.rs` (`BuiltInRelay::public_url`, `RelayStatus.publicRelayUrl`), commands `get_public_relay_offer`, `start_public_relay_sign_in`, `poll_public_relay_sign_in`; HTTP `GET /api/relay/public`, `POST /api/relay/public/sign-in/{provider}/start`, `POST /api/relay/public/sign-in/{provider}/poll`; UI `components/network/PublicRelayJoin.tsx`, `public-relay-model.ts`, `ConnectionView.tsx` (`PublicRelayCard`), `Step3_Network.tsx`. The relay: nandi-relay `--public` (README "A public relay").
+- **Preconditions:** A relay run with `--public` and at least one provider (`NANDI_RELAY_GITHUB_CLIENT_ID`, …), the app started with `NANDI_PUBLIC_RELAY_URL` pointing at it.
+- **Steps:**
+  1. Fresh home: in onboarding choose **Join the public relay**.
+  2. **Sign in with GitHub**; **Open sign-in page**, enter the code, approve.
+  3. Restart the app.
+  4. Second fresh home on another device, same GitHub account: sign in again.
+  5. On GitHub's page, cancel instead (a third home).
+  6. Stop the relay and open Network › Connection › **Join the public relay** on a fresh home.
+- **Expected:**
+  - (1) One button per provider the relay offers.
+  - (2) The code shows; after approval "Signed in as <login> with GitHub", Connection shows the relay connected, its address without the token.
+  - (3) It reconnects with the kept token; no second sign-in.
+  - (4) The same account: its Account card (RL-46) lists both Nandis.
+  - (5) "The sign-in was cancelled. Start again when you're ready."; nothing saved.
+  - (6) The calm unreachable line and **Try again**; nothing else in Nandi changes.
+- **Edge / negative cases:** joining the public relay's address as a company relay answers `signInNeeded` ("… is a public relay: join it by signing in …"); the code expiring before approval; a Nandi already linked to another account (`already_linked`); the account at its Nandis (`device_limit`); a reinstalled device (`key_mismatch`).
+- **Automation:** Covered by: Rust `relay/public_tests.rs` (the real `nandi-relay` in public mode with a fake GitHub: `signing_in_links_this_nandi_keeps_the_token_and_connects` (offer, pending, slow_down, linked, token kept, connected, groups visibility, `signInNeeded`), `refusals_come_back_typed_and_change_nothing`, `every_refusal_code_has_its_kind`, `an_unreachable_public_relay_answers_calmly_and_quickly`), `offline_suite.rs` (`an_unreachable_public_relay_never_blocks_onboarding`); vitest `public-relay-model.test.ts`, `PublicRelayJoin.test.tsx`, `ConnectionView.test.tsx`, `OnboardingView.test.tsx` | Layer: unit + api | Gap: Google and Microsoft against their real device flows, and the live `relay.vaultdb.ai`, are manual.
+- **Needs relay:** yes
+- **Status:** Partial (the public relay at `relay.vaultdb.ai` isn't live yet; everything runs against a self-run `--public` relay)
+
+### RL-46 — The public relay's Account card
+
+- **What:** On the public relay, Network › Connection shows **Public relay account**: "Signed in as <name> with <provider>", this account's Nandis (instance IDs, "(this Nandi)" marked), the free limits and today's usage ("Groups 2 of 10", "People per group Up to 50", "Messages today 37 of 500") and when today's count resets, in the user's own clock. A note says "On a public relay you see only people you share a group with." with **Open Groups**. While the relay doesn't answer, the card names the account as kept and says "Your account's details show when the public relay answers." Refreshed every minute. On any other relay there is no card.
+- **Where:** `services/relay/public.rs` (`account`: `GET /relay/account?instanceId=` with the token as bearer; `PublicRelayAccount`), command `get_public_relay_account`, HTTP `GET /api/relay/public/account`, UI `components/network/PublicRelayAccountCard.tsx`, `hooks/useRelay.ts` (`usePublicRelayAccount`).
+- **Preconditions:** RL-45 signed in.
+- **Steps:** 1. Open Network › Connection. 2. Create a group and send a request. 3. Stop the relay and reopen.
+- **Expected:** 1. The card as above. 2. Groups and messages today go up by what the relay counts. 3. The kept account and the calm line.
+- **Automation:** Covered by: `relay/public_tests.rs` (`signing_in_links_this_nandi_keeps_the_token_and_connects`, `past_the_daily_limit_a_group_change_says_when_it_resets`: account, Nandis, limits, usage), `ConnectionView.test.tsx` (the card, the unavailable case) | Layer: unit + api | Gap: none.
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### RL-47 — Limits per person and the daily message limit
+
+- **What:** A relay's limits count per person (on the public relay, an account: all their Nandis share them). Past a group limit the relay's `group_limit` reads "That's past this relay's group limits, which count per person (all your Nandis together): …". Past the daily message limit (500 on the public relay) the relay answers `daily_limit` with its reset (00:00 UTC); the client retells it as `daily_limit@<reset ms>: <the relay's words>` for a request (its `refused` event), a reassignment (`ReassignResult`) and a group change (`GroupReply` refused). Where the action was taken it shows calmly, not as an error: "You've sent today's messages on the public relay. You can send again from <time>." (the ask composer's toast, a request's outputs, a group action's toast).
+- **Where:** `services/relay/limits.rs` (`DAILY_LIMIT`, `daily_limit`), `relay/client.rs` (`Shared::retell`), `groups/mod.rs` (`refusal`), `DAILY_LIMIT` in `bindings.ts`, `lib/friendly-error.ts` (`dailyLimit`, `dailyLimitResetsAt`, `friendlyErrorParams`), `toast-error.ts`, `network/group-toast.ts`, `AskMemberComposer.tsx`, `RequestDetailView.tsx`.
+- **Preconditions:** A `--public` relay with `NANDI_RELAY_MESSAGES_PER_DAY=1`, signed in (RL-45).
+- **Steps:** 1. Create a group. 2. Create another. 3. Ask a group-mate something.
+- **Expected:** 1. Created. 2 and 3. The calm daily-limit line with the local reset time; nothing else breaks, and leaving a group still works.
+- **Edge / negative cases:** a clarification past the limit gets only the relay's `Error` frame (logged; no place in the UI shows it yet).
+- **Automation:** Covered by: `relay/public_tests.rs` (`past_the_daily_limit_a_group_change_says_when_it_resets`), `relay/limits.rs` tests, `relay/client.rs` (`coded_refusals_are_retold_once`), vitest `friendly-error.test.ts`, `group-toast.test.ts` | Layer: unit + api | Gap: a request refused past the limit against a real relay (two signed-in people sharing a group).
 - **Needs relay:** yes
 - **Status:** Shipped
 
@@ -1425,7 +1472,7 @@ Notes that apply to the whole section:
 - **"Install locally" for a team agent**: the button is always disabled ("Installing a team agent locally isn't available yet", `SharedWithMe.tsx`).
 - **No UI to join a team by ID**: `join_team` is API-only and only re-syncs a known row.
 - **Delegation history page with filters** (status, capability, owner, tokens columns; `delegation.history.*` strings): there is no such page; delegations show in Home → All activity, and the history filters UI is not rendered.
-- **Public relay** (`wss://`, `NANDI_RELAY_SECRET`, sign-in-issued instance tokens, `DEFAULT_RELAY_URL` changing to it): `docs/developer/relay-defaults.md` "Plan". Relays are closed by default, can serve TLS and rate-limit connections; presence isn't persisted and there are no message size limits (nandi-relay `docs/relay-testing.md` "Not yet").
+- **The live public relay** (`wss://relay.vaultdb.ai/relay`): joining it is built (RL-45 to RL-47); the relay itself isn't deployed yet (DNS, TLS, the GitHub, Google and Microsoft OAuth apps). See `docs/developer/relay-defaults.md` "The public relay".
 - **Relay token UX**: the token flow exists in nandi-relay's `src/server.rs`, but there is no way to issue or enter tokens other than by hand (`relay-defaults.md`).
 - **Relay downloads and release packaging** (`nandi-relay` zip/tar.gz, container image, `--version` flag): planned. The relay is built in nandi-relay, which has no release workflow yet.
 - **`.nandi/llm.yaml` `routing.fallbacks`**: validated and shown, but not used for routing (`network-and-reassignment.md`).

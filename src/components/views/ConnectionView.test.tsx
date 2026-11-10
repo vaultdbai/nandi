@@ -8,6 +8,7 @@ import {
   manifestFixture,
   relayStatusFixture,
 } from '@/components/network/network-fixtures'
+import { useNavigationStore } from '@/store/navigation-store'
 import { ConnectionView } from './ConnectionView'
 
 describe('ConnectionView', () => {
@@ -154,5 +155,123 @@ describe('ConnectionView', () => {
       )
     )
     expect(screen.getByLabelText('Join code')).toHaveValue('acme 2026')
+  })
+
+  const PUBLIC = 'wss://relay.vaultdb.ai/relay'
+
+  it('offers the public relay to people who skipped it', async () => {
+    disconnected({
+      getRelayStatus: ok(
+        relayStatusFixture({
+          connected: false,
+          state: 'disconnected',
+          relayUrl: null,
+          relayUrlSource: null,
+          publicRelayUrl: PUBLIC,
+        })
+      ),
+      getPublicRelayOffer: ok({
+        kind: 'ready',
+        relay: PUBLIC,
+        providers: ['github', 'microsoft'],
+      }),
+    })
+    const user = userEvent.setup()
+    render(<ConnectionView />)
+    const card = await screen.findByTestId('public-relay-card')
+    // Nothing asks the relay until the person opens it
+    expect(commands.getPublicRelayOffer).not.toHaveBeenCalled()
+    expect(card).toHaveTextContent('you share a group with')
+    await user.click(
+      screen.getByRole('button', { name: 'Join the public relay' })
+    )
+    expect(
+      await screen.findByRole('button', { name: 'Sign in with Microsoft' })
+    ).toBeInTheDocument()
+  })
+
+  it('shows the account, its Nandis, the limits and today on the public relay', async () => {
+    const resetsAt = Date.UTC(2026, 10, 11)
+    disconnected({
+      getRelayStatus: ok(
+        relayStatusFixture({
+          relayUrl: PUBLIC,
+          publicRelayUrl: PUBLIC,
+          visibility: 'groups',
+        })
+      ),
+      getPublicRelayAccount: ok({
+        kind: 'account',
+        relay: PUBLIC,
+        thisInstance: 'ada-laptop-1a2b3c4d',
+        account: {
+          account: 'github:583231',
+          provider: 'github',
+          display: 'octocat',
+          createdAt: 1,
+          instances: ['ada-laptop-1a2b3c4d', 'ada-desktop-9f8e7d6c'],
+          limits: {
+            groupsPerPerson: 10,
+            membersPerGroup: 50,
+            messagesPerDay: 500,
+          },
+          usage: { groups: 2, messagesToday: 37, resetsAt },
+        },
+      }),
+    })
+    const user = userEvent.setup()
+    render(<ConnectionView />)
+    const card = await screen.findByTestId('public-relay-account')
+    expect(
+      await screen.findByTestId('public-relay-signed-in')
+    ).toHaveTextContent('Signed in as octocat with GitHub')
+    expect(screen.getByTestId('public-relay-nandis')).toHaveTextContent(
+      'ada-desktop-9f8e7d6c'
+    )
+    expect(screen.getByText('(this Nandi)')).toBeInTheDocument()
+    const usage = screen.getByTestId('public-relay-usage')
+    expect(usage).toHaveTextContent('2 of 10')
+    expect(usage).toHaveTextContent('Up to 50')
+    expect(usage).toHaveTextContent('37 of 500')
+    expect(screen.getByTestId('public-relay-resets')).toHaveTextContent(
+      "Today's messages reset"
+    )
+    expect(card).toHaveTextContent(
+      'On a public relay you see only people you share a group with.'
+    )
+    expect(screen.queryByTestId('public-relay-card')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Open Groups' }))
+    expect(useNavigationStore.getState().current).toEqual({
+      kind: 'network',
+      tab: 'groups',
+    })
+  })
+
+  it('names the account calmly while the public relay is away', async () => {
+    disconnected({
+      getRelayStatus: ok(
+        relayStatusFixture({
+          connected: false,
+          state: 'reconnecting',
+          relayUrl: PUBLIC,
+          publicRelayUrl: PUBLIC,
+        })
+      ),
+      getPublicRelayAccount: ok({
+        kind: 'unavailable',
+        relay: PUBLIC,
+        account: 'google:1',
+        provider: 'google',
+        display: 'Grace',
+        detail: "Couldn't reach it",
+      }),
+    })
+    render(<ConnectionView />)
+    expect(
+      await screen.findByTestId('public-relay-signed-in')
+    ).toHaveTextContent('Signed in as Grace with Google')
+    expect(screen.getByTestId('public-relay-account')).toHaveTextContent(
+      "Your account's details show when the public relay answers."
+    )
   })
 })

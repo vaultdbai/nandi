@@ -59,6 +59,8 @@ Environment:
                        ~/.nandi/config.json. With neither, Nandi doesn't
                        connect (the Relay screen suggests
                        ws://127.0.0.1:8787/relay for LAN testing)
+  NANDI_PUBLIC_RELAY_URL  The public relay \"Join the public relay\" signs
+                       in to (default wss://relay.vaultdb.ai/relay)
   NANDI_HOME          Use this folder instead of ~/.nandi";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

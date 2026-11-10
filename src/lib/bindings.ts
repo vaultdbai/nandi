@@ -1409,6 +1409,51 @@ async getRelayInvite() : Promise<Result<RelayInvite | null, string>> {
 }
 },
 /**
+ * "Join the public relay": whether it can be joined now, and with whom
+ */
+async getPublicRelayOffer() : Promise<Result<PublicRelayOffer, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_public_relay_offer") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Starts signing this Nandi in to the public relay with `provider`
+ */
+async startPublicRelaySignIn(provider: RelaySignInProvider) : Promise<Result<PublicSignInStart, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_public_relay_sign_in", { provider }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Whether the person approved the sign-in (poll every `interval` s); on
+ * `linked` the app keeps the token and connects
+ */
+async pollPublicRelaySignIn(provider: RelaySignInProvider, signinId: string) : Promise<Result<PublicSignInPoll, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("poll_public_relay_sign_in", { provider, signinId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The public-relay account this Nandi is signed in with (the Account card)
+ */
+async getPublicRelayAccount() : Promise<Result<PublicRelayAccount, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_public_relay_account") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Agents online at the relay, optionally only those serving `capability`
  */
 async listOnlineAgents(capability: string | null) : Promise<Result<AgentCard[], string>> {
@@ -4016,12 +4061,13 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const NO_SHARED_GROUP = "no_shared_group" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const DAILY_LIMIT = "daily_limit" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const NO_SHARED_GROUP = "no_shared_group" as const;
 
 /** user-defined types **/
 
@@ -6558,6 +6604,11 @@ export type JoinOutcome =
  */
 { kind: "noEnrollment" } | 
 /**
+ * A public relay: people join it by signing in, not with a code
+ * ("Join the public relay", [`super::public`])
+ */
+{ kind: "signInNeeded" } | 
+/**
  * Any other refusal, in the relay's words
  */
 { kind: "refused"; message: string }
@@ -7358,6 +7409,145 @@ failed: number;
  */
 avgDurationMs: number | null }
 /**
+ * The Account card on Network › Connection
+ */
+export type PublicRelayAccount = 
+/**
+ * The relay in use isn't a public relay this Nandi signed in to
+ */
+{ kind: "notPublic" } | 
+/**
+ * Signed in, but the relay didn't give the account now: what this
+ * Nandi kept
+ */
+{ kind: "unavailable"; relay: string; account: string; provider: RelaySignInProvider; display: string; detail: string } | { kind: "account"; relay: string; thisInstance: string; account: RelayAccount }
+/**
+ * Whether the public relay can be joined now, and how
+ */
+export type PublicRelayOffer = 
+/**
+ * This app offers no public relay
+ */
+{ kind: "none" } | 
+/**
+ * Sign in with one of `providers` to join
+ */
+{ kind: "ready"; relay: string; providers: RelaySignInProvider[] } | 
+/**
+ * It didn't answer (offline, or not live yet), or not as a public
+ * relay: join later from Network › Connection
+ */
+{ kind: "unreachable"; relay: string; detail: string } | 
+/**
+ * It speaks another protocol version: update Nandi
+ */
+{ kind: "versionMismatch"; relay: string; relayVersion: number; app: number }
+/**
+ * Why the public relay said no, from its refusal `code`
+ */
+export type PublicRelayRefusal = 
+/**
+ * `not_public`: the relay isn't a public one
+ */
+"notPublic" | 
+/**
+ * `provider_not_supported`
+ */
+"providerNotSupported" | 
+/**
+ * `signin_unavailable`: the provider is down
+ */
+"signinUnavailable" | 
+/**
+ * `signin_not_found`: no such sign-in is waiting
+ */
+"signinNotFound" | 
+/**
+ * `signin_expired`: the code expired
+ */
+"signinExpired" | 
+/**
+ * `signin_denied`: cancelled on the provider's page
+ */
+"signinDenied" | 
+/**
+ * `account_suspended`
+ */
+"accountSuspended" | 
+/**
+ * `revoked`: the operator removed this Nandi
+ */
+"revoked" | 
+/**
+ * `already_linked`: this Nandi is another account's
+ */
+"alreadyLinked" | 
+/**
+ * `key_mismatch`: the relay pinned other keys for this Nandi
+ */
+"keyMismatch" | 
+/**
+ * `device_limit`: the account links its most Nandis already
+ */
+"deviceLimit" | 
+/**
+ * `signup_limit`: too many new accounts from this network today
+ */
+"signupLimit" | 
+/**
+ * `signin_limit`: too many sign-ins waiting from this network
+ */
+"signinLimit" | 
+/**
+ * `invalid_request`
+ */
+"invalidRequest" | 
+/**
+ * `unauthorized`: the token didn't work
+ */
+"unauthorized" | 
+/**
+ * `no_account`: this Nandi isn't linked to an account
+ */
+"noAccount" | 
+/**
+ * Anything else, in the relay's words
+ */
+"other"
+/**
+ * One poll of a sign-in
+ */
+export type PublicSignInPoll = 
+/**
+ * Not approved yet: ask again in `interval` seconds
+ */
+{ kind: "pending"; interval: number } | 
+/**
+ * Asked too soon: ask again in `interval` seconds
+ */
+{ kind: "slowDown"; interval: number } | 
+/**
+ * Signed in: the token is kept and the app is connecting to `relay`
+ */
+{ kind: "linked"; relay: string; account: string; provider: RelaySignInProvider; display: string } | { kind: "refused"; refusal: PublicRelayRefusal; message: string } | 
+/**
+ * The relay didn't answer this time; asking again may work
+ */
+{ kind: "unreachable"; detail: string }
+/**
+ * Starting a sign-in
+ */
+export type PublicSignInStart = 
+/**
+ * Show `user_code` and open `verification_uri`; poll every `interval`
+ * seconds for up to `expires_in`
+ */
+{ kind: "started"; signinId: string; provider: RelaySignInProvider; userCode: string; verificationUri: string; verificationUriComplete: string | null; expiresIn: number; interval: number } | { kind: "refused"; refusal: PublicRelayRefusal; message: string } | 
+/**
+ * The relay didn't answer
+ */
+{ kind: "unreachable"; detail: string }
+/**
  * Publishing one of the user's own agents to a registry.
  */
 export type PublishAgentInput = { agentId: string; 
@@ -7587,6 +7777,19 @@ export type RegistryKind =
  */
 "local" | "github" | "gitlab" | "generic"
 /**
+ * `GET /relay/account`: the account, its Nandis, its limits and today's
+ * usage
+ */
+export type RelayAccount = { 
+/**
+ * `github:583231`, `google:<sub>`, `microsoft:<tid>.<oid>`
+ */
+account: string; provider: RelaySignInProvider; display: string; createdAt: number; 
+/**
+ * The instance IDs of this account's Nandis
+ */
+instances: string[]; limits: RelayLimits; usage: RelayUsage }
+/**
  * `relay://agent_offline`
  */
 export type RelayAgentOffline = { cardId: string; instanceId: string }
@@ -7630,6 +7833,14 @@ export type RelayConnectionState =
  */
 export type RelayInvite = { url: string; joinCode: string | null }
 /**
+ * The relay's limits per person (all of a person's Nandis share them)
+ */
+export type RelayLimits = { groupsPerPerson: number; membersPerGroup: number; 
+/**
+ * `None`: no daily limit
+ */
+messagesPerDay: number | null }
+/**
  * One instance at the relay, from its `/instances` endpoint
  */
 export type RelayPeer = { instanceId: string; 
@@ -7647,6 +7858,10 @@ export type RelaySealRefused = { fromInstance: string; taskId: string;
  * Starts with `SEAL_REFUSED` (or `PEER_KEY_CHANGED`)
  */
 error: string }
+/**
+ * Who a person signs in to the public relay with
+ */
+export type RelaySignInProvider = "github" | "google" | "microsoft"
 /**
  * Connection state; also the `relay://status` payload.
  */
@@ -7677,7 +7892,12 @@ relayUrl: string | null; relayUrlSource: RelayUrlSource | null;
  * The relay this build comes with, whether or not it's in use (what
  * onboarding offers as "the Nandi network"); `None`: none
  */
-builtInUrl?: string | null; agentsOnline: number; 
+builtInUrl?: string | null; 
+/**
+ * The public relay the app offers ("Join the public relay"), whether
+ * or not it's in use; `None`: none
+ */
+publicRelayUrl?: string | null; agentsOnline: number; 
 /**
  * Distinct instances among the agents online
  */
@@ -7698,7 +7918,12 @@ enabled: boolean;
 /**
  * Our relay needs a token, so the choice applies
  */
-secured: boolean }
+secured: boolean; 
+/**
+ * Our relay is a public one: anyone can sign in, so the choice
+ * doesn't apply
+ */
+public?: boolean }
 /**
  * Where the relay URL came from
  */
@@ -7715,6 +7940,14 @@ export type RelayUrlSource =
  * This build's default relay (`NANDI_DEFAULT_RELAY_URL` at build time)
  */
 "builtIn"
+/**
+ * What the person used of them
+ */
+export type RelayUsage = { groups: number; messagesToday: number; 
+/**
+ * When the daily count resets (00:00 UTC)
+ */
+resetsAt: number }
 /**
  * Who sees whom on a relay (`nandi_protocol::Visibility`, named apart
  * from the app's own sharing `Visibility` in the bindings)

@@ -121,7 +121,7 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-550 features to test: all 604 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+553 features to test: all 607 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
@@ -131,20 +131,20 @@ These turned up while building the catalog. In each case the catalog follows the
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
 | Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 92       |
 | Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 75       |
-| Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 81       |
+| Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 84       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
 | Data, platform and quality gates            | [data-platform-quality.md](./data-platform-quality.md)             | 60       |
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 530   |
-| Partial     | 17    |
+| Shipped     | 532   |
+| Partial     | 18    |
 | Removed     | 11    |
 | Known issue | 3     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 299   |
+| `unit`                | 302   |
 | `api`                 | 194   |
 | `manual`              | 33    |
 | `ui-e2e`              | 24    |
@@ -152,7 +152,7 @@ These turned up while building the catalog. In each case the catalog follows the
 | Needs relay | Count |
 | ----------- | ----- |
 | no          | 468   |
-| yes         | 82    |
+| yes         | 85    |
 
 ## Master index
 
@@ -173,7 +173,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ON-06 | Step 3: enter and test a provider key                                    | Shipped                                              | api        | no          |                                        |
 | ON-07 | Step 3: Ollama and Amazon Bedrock options                                | Shipped                                              | unit       | no          |                                        |
 | ON-08 | Step 3: free tokens notice and skipping without a model                  | Shipped                                              | unit       | no          |                                        |
-| ON-09 | Step 4: join a network (optional)                                        | Shipped                                              | unit       | yes         | 2026-11-01 pass after fix              |
+| ON-09 | Step 4: join a network (optional)                                        | Shipped                                              | unit + api | yes         | 2026-11-01 pass after fix              |
 | ON-10 | Step 4: "Let others send requests to my Nandi"                           | Shipped                                              | unit       | yes         |                                        |
 | ON-11 | Step 5: starter packs                                                    | Shipped                                              | unit       | no          | 2026-11-01 pass                        |
 | ON-12 | Finishing setup and the welcome strip                                    | Shipped                                              | unit       | no          |                                        |
@@ -618,96 +618,99 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 
 ### Teams, network, delegation and relay
 
-| ID    | Feature                                                                   | Status                                                                                    | Layer           | Needs relay | Last verified   |
-| ----- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------- | ----------- | --------------- |
-| TM-01 | Local identity: display name and user slug                                | Duplicate of ST-13                                                                        | —               | no          |                 |
-| TM-02 | Create a team from a registry git URL                                     | Shipped                                                                                   | api             | no          |                 |
-| TM-03 | Team detail: members, shared agents, packs, last sync                     | Shipped                                                                                   | api             | no          |                 |
-| TM-04 | Sync team registry                                                        | Shipped                                                                                   | api             | no          |                 |
-| TM-05 | Join (re-sync) a known team                                               | Partial (no UI entry point; new teams come in through TM-02)                              | api             | no          |                 |
-| TM-06 | Leave team                                                                | Shipped                                                                                   | api             | no          |                 |
-| TM-07 | Share an agent with a team (push a share branch, pending merge)           | Shipped                                                                                   | api             | no          |                 |
-| TM-08 | Stop sharing an agent with a team                                         | Shipped                                                                                   | api             | no          |                 |
-| TM-09 | Teams as a filter on People, with the team strip                          | Shipped                                                                                   | ui-e2e          | yes         |                 |
-| TM-10 | Agent menu: Share with team, Callable over the relay                      | Shipped                                                                                   | ui-e2e          | yes         |                 |
-| TM-11 | Agent sharing dialog ("Share {name}")                                     | Shipped                                                                                   | ui-e2e          | yes         |                 |
-| TM-12 | Shared with me (agents from teams and the relay)                          | Shipped                                                                                   | api             | yes         |                 |
-| TM-13 | By capability: provider ranking, Auto and pins                            | Shipped                                                                                   | api + unit      | no          |                 |
-| TM-14 | Call dialog (send one task to a shared agent)                             | Shipped                                                                                   | api             | yes         |                 |
-| TM-15 | Shared by me                                                              | Shipped                                                                                   | api             | no          |                 |
-| TM-16 | Trust policies per caller and agent (Allow / Ask / Deny)                  | Shipped                                                                                   | api             | yes         |                 |
-| TM-17 | Who may call you: list and trust graph                                    | Shipped                                                                                   | ui-e2e          | yes         |                 |
-| TM-18 | Trust requests (refused "Ask" attempts), in Sharing and in the Home Inbox | Shipped                                                                                   | api             | yes         |                 |
-| TM-19 | Member trust switches: Trusted peer                                       | Shipped                                                                                   | api             | yes         |                 |
-| TM-20 | Pause delegations from a member                                           | Shipped                                                                                   | api             | yes         |                 |
-| TM-21 | Block a member, or one of their agents                                    | Shipped                                                                                   | api             | yes         |                 |
-| NW-01 | Network page shell: tabs, status pill, "How networking works"             | Shipped                                                                                   | ui-e2e          | yes         |                 |
-| NW-02 | People directory                                                          | Shipped                                                                                   | api             | yes         | 2026-11-01 pass |
-| NW-03 | People empty states and invite                                            | Shipped                                                                                   | ui-e2e          | yes         |                 |
-| NW-04 | "Others can't see you" banner with Make reachable                         | Shipped                                                                                   | ui-e2e          | yes         |                 |
-| NW-05 | Network directory events and member diffing                               | Shipped                                                                                   | api             | yes         |                 |
-| NW-06 | Member profile                                                            | Shipped                                                                                   | ui-e2e          | yes         |                 |
-| NW-07 | "Can {name} receive from me?" diagnosis with a copyable message           | Shipped                                                                                   | unit            | yes         |                 |
-| NW-08 | Ask {name} (a plain-language request to a member's gateway)               | Shipped                                                                                   | api             | yes         |                 |
-| NW-09 | Sharing: What you offer (overlaps the gateway area)                       | Shipped                                                                                   | unit            | no          |                 |
-| NW-10 | Sharing: Incoming requests                                                | Shipped                                                                                   | ui-e2e          | yes         |                 |
-| NW-11 | Sharing: Capabilities tab (overlaps the capability area)                  | Duplicate of CP-11                                                                        | —               | no          |                 |
-| NW-12 | Reassign a task you are serving to a teammate                             | Shipped                                                                                   | api             | yes         |                 |
-| NW-14 | Availability: busy or away until, and who covers                          | Shipped                                                                                   | unit + ui-e2e   | yes         | 2026-11-01 pass |
-| NW-13 | Device (instance) ID                                                      | Duplicate of ST-14                                                                        | —               | no          |                 |
-| RL-01 | Connection: Join a company relay, Change                                  | Shipped                                                                                   | api + ui        | yes         | 2026-11-01 pass |
-| RL-02 | Test connection                                                           | Shipped                                                                                   | api             | yes         |                 |
-| RL-03 | Disconnect                                                                | Shipped                                                                                   | api             | yes         |                 |
-| RL-04 | Relay URL precedence (`NANDI_RELAY_URL` > config.json > none)             | Shipped                                                                                   | api             | yes         |                 |
-| RL-05 | Connection status, reconnect and Details                                  | Shipped                                                                                   | api             | yes         |                 |
-| RL-06 | "Make this Nandi reachable" checklist (7 rows)                            | Shipped                                                                                   | unit            | yes         |                 |
-| RL-07 | Run a relay: `nandi-relay`                                                | Shipped                                                                                   | api             | yes         |                 |
-| RL-08 | Relay HTTP endpoints: `/health`, `/instances`                             | Shipped                                                                                   | api             | yes         |                 |
-| RL-09 | Relay token auth (`NANDI_RELAY_SECRET`)                                   | Partial (the token flow works, but there is no end-to-end UX; relays are open by default) | api             | yes         |                 |
-| RL-10 | Presence: heartbeats, eviction, capability presence                       | Shipped                                                                                   | api             | yes         |                 |
-| RL-11 | Two instances on one machine (`NANDI_HOME`)                               | Shipped                                                                                   | manual          | no          |                 |
-| RL-12 | Agent delegation settings                                                 | Shipped                                                                                   | api             | no          |                 |
-| RL-13 | `delegate_to_agent` tool, with approval                                   | Shipped                                                                                   | api             | no          |                 |
-| RL-14 | Delegate a task: ranking, fallback, timeout, failover at the relay        | Shipped                                                                                   | api             | no          | 2026-11-01 pass |
-| RL-15 | Inbound admission (provider side)                                         | Shipped                                                                                   | api             | yes         |                 |
-| RL-16 | Delegation thread view                                                    | Shipped                                                                                   | ui-e2e          | no          |                 |
-| RL-17 | Clarifications between agents (respond, escalate, policy)                 | Shipped                                                                                   | api             | no          |                 |
-| RL-18 | Delegation history and audit log                                          | Shipped                                                                                   | api             | no          |                 |
-| RL-27 | Find who is responsible for a topic (`find_people`)                       | Shipped                                                                                   | unit + api      | yes         | 2026-11-01 pass |
-| RL-37 | "Update Nandi or the relay" (protocol version mismatch)                   | Shipped                                                                                   | unit + api      | yes         |                 |
-| RL-28 | Open requests both ways (`my_requests`)                                   | Shipped                                                                                   | unit + manual   | no          | 2026-11-01 pass |
-| RL-19 | Configure the git remote, credential and test                             | Duplicate of DT-18, DT-19, DT-21                                                          | —               | no          |                 |
-| RL-20 | Push, pull, conflicts, branches (main and master protected)               | Duplicate of DT-22, DT-23, DT-24, DT-25, DT-26                                            | —               | no          |                 |
-| RL-21 | `.nandi/llm.yaml` shared LLM config                                       | Duplicate of MD-18                                                                        | —               | no          |                 |
-| RL-22 | Web server launch modes (`--server`, `--port`, `--headless`)              | Duplicate of PL-02, PL-03                                                                 | —               | no          |                 |
-| RL-23 | Web auth token                                                            | Shipped                                                                                   | api             | no          |                 |
-| RL-29 | A build's own relay, offered and joined only when the user agrees         | Shipped                                                                                   | unit + api      | yes         |                 |
-| RL-38 | Join a company relay with a join code, and invite a teammate              | Shipped                                                                                   | api + ui        | yes         |                 |
-| RL-30 | Revoking a device on the relay (a leaver)                                 | Shipped                                                                                   | api             | yes         | 2026-10-31 pass |
-| RL-31 | Relay over TLS, trusting a company's own CA                               | Shipped                                                                                   | api             | yes         | 2026-10-31 pass |
-| RL-32 | Warning for an unencrypted relay on another machine                       | Shipped                                                                                   | unit            | yes         |                 |
-| RL-33 | Relay limits, container image and Helm chart                              | Shipped                                                                                   | api             | yes         |                 |
-| RL-35 | A relay's user limit (20 free, more with a licence)                       | Shipped                                                                                   | api             | yes         | 2026-11-01 pass |
-| RL-34 | Everyone on the company's relay is trusted                                | Shipped                                                                                   | unit            | yes         | 2026-11-01 pass |
-| RL-39 | Device keys, pinned by the relay                                          | Shipped                                                                                   | api             | yes         |                 |
-| RL-40 | "Their key changed" on a member's profile                                 | Shipped                                                                                   | unit + api + ui | yes         |                 |
-| RL-41 | The relay's task ledger (operator view)                                   | Shipped                                                                                   | api             | yes         |                 |
-| RL-42 | Content sealed end to end                                                 | Shipped                                                                                   | unit + api      | yes         |                 |
-| RL-43 | Store-and-forward: work and answers wait at the relay                     | Shipped                                                                                   | api             | yes         |                 |
-| RL-44 | The relay's management API (operator secret)                              | Shipped                                                                                   | api             | yes         |                 |
-| RL-24 | WebSocket event stream (`/ws`)                                            | Shipped                                                                                   | api             | no          |                 |
-| RL-25 | Frontend served over HTTP                                                 | Shipped                                                                                   | ui-e2e          | no          |                 |
-| RL-26 | HTTP API as an automation surface                                         | Shipped                                                                                   | api             | no          |                 |
-| RL-36 | "Connect to your company's relay" (the typed not connected)               | Shipped                                                                                   | unit + api      | no          | 2026-11-01 pass |
-| GR-01 | Network › Groups lists the relay's groups                                 | Shipped                                                                                   | unit            | yes         |                 |
-| GR-02 | Create a group with a signed policy                                       | Shipped                                                                                   | unit + api      | yes         |                 |
-| GR-03 | Join with a code, invites for me                                          | Shipped                                                                                   | unit            | yes         |                 |
-| GR-04 | Group detail: members, roles, Leave                                       | Shipped                                                                                   | unit            | yes         |                 |
-| GR-05 | Invites: a person or a code                                               | Shipped                                                                                   | api             | yes         |                 |
-| GR-06 | The policy: verified or fail closed; admins edit it                       | Shipped                                                                                   | unit            | yes         |                 |
-| GR-07 | My access level per group                                                 | Shipped                                                                                   | unit            | no          |                 |
-| GR-08 | Group policies on incoming work                                           | Partial (intake only, see Gap)                                                            | unit            | yes         |                 |
-| GR-09 | A relay that shows only people you share a group with                     | Shipped                                                                                   | unit            | yes         |                 |
+| ID    | Feature                                                                   | Status                                                                                     | Layer           | Needs relay | Last verified   |
+| ----- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------- | ----------- | --------------- |
+| TM-01 | Local identity: display name and user slug                                | Duplicate of ST-13                                                                         | —               | no          |                 |
+| TM-02 | Create a team from a registry git URL                                     | Shipped                                                                                    | api             | no          |                 |
+| TM-03 | Team detail: members, shared agents, packs, last sync                     | Shipped                                                                                    | api             | no          |                 |
+| TM-04 | Sync team registry                                                        | Shipped                                                                                    | api             | no          |                 |
+| TM-05 | Join (re-sync) a known team                                               | Partial (no UI entry point; new teams come in through TM-02)                               | api             | no          |                 |
+| TM-06 | Leave team                                                                | Shipped                                                                                    | api             | no          |                 |
+| TM-07 | Share an agent with a team (push a share branch, pending merge)           | Shipped                                                                                    | api             | no          |                 |
+| TM-08 | Stop sharing an agent with a team                                         | Shipped                                                                                    | api             | no          |                 |
+| TM-09 | Teams as a filter on People, with the team strip                          | Shipped                                                                                    | ui-e2e          | yes         |                 |
+| TM-10 | Agent menu: Share with team, Callable over the relay                      | Shipped                                                                                    | ui-e2e          | yes         |                 |
+| TM-11 | Agent sharing dialog ("Share {name}")                                     | Shipped                                                                                    | ui-e2e          | yes         |                 |
+| TM-12 | Shared with me (agents from teams and the relay)                          | Shipped                                                                                    | api             | yes         |                 |
+| TM-13 | By capability: provider ranking, Auto and pins                            | Shipped                                                                                    | api + unit      | no          |                 |
+| TM-14 | Call dialog (send one task to a shared agent)                             | Shipped                                                                                    | api             | yes         |                 |
+| TM-15 | Shared by me                                                              | Shipped                                                                                    | api             | no          |                 |
+| TM-16 | Trust policies per caller and agent (Allow / Ask / Deny)                  | Shipped                                                                                    | api             | yes         |                 |
+| TM-17 | Who may call you: list and trust graph                                    | Shipped                                                                                    | ui-e2e          | yes         |                 |
+| TM-18 | Trust requests (refused "Ask" attempts), in Sharing and in the Home Inbox | Shipped                                                                                    | api             | yes         |                 |
+| TM-19 | Member trust switches: Trusted peer                                       | Shipped                                                                                    | api             | yes         |                 |
+| TM-20 | Pause delegations from a member                                           | Shipped                                                                                    | api             | yes         |                 |
+| TM-21 | Block a member, or one of their agents                                    | Shipped                                                                                    | api             | yes         |                 |
+| NW-01 | Network page shell: tabs, status pill, "How networking works"             | Shipped                                                                                    | ui-e2e          | yes         |                 |
+| NW-02 | People directory                                                          | Shipped                                                                                    | api             | yes         | 2026-11-01 pass |
+| NW-03 | People empty states and invite                                            | Shipped                                                                                    | ui-e2e          | yes         |                 |
+| NW-04 | "Others can't see you" banner with Make reachable                         | Shipped                                                                                    | ui-e2e          | yes         |                 |
+| NW-05 | Network directory events and member diffing                               | Shipped                                                                                    | api             | yes         |                 |
+| NW-06 | Member profile                                                            | Shipped                                                                                    | ui-e2e          | yes         |                 |
+| NW-07 | "Can {name} receive from me?" diagnosis with a copyable message           | Shipped                                                                                    | unit            | yes         |                 |
+| NW-08 | Ask {name} (a plain-language request to a member's gateway)               | Shipped                                                                                    | api             | yes         |                 |
+| NW-09 | Sharing: What you offer (overlaps the gateway area)                       | Shipped                                                                                    | unit            | no          |                 |
+| NW-10 | Sharing: Incoming requests                                                | Shipped                                                                                    | ui-e2e          | yes         |                 |
+| NW-11 | Sharing: Capabilities tab (overlaps the capability area)                  | Duplicate of CP-11                                                                         | —               | no          |                 |
+| NW-12 | Reassign a task you are serving to a teammate                             | Shipped                                                                                    | api             | yes         |                 |
+| NW-14 | Availability: busy or away until, and who covers                          | Shipped                                                                                    | unit + ui-e2e   | yes         | 2026-11-01 pass |
+| NW-13 | Device (instance) ID                                                      | Duplicate of ST-14                                                                         | —               | no          |                 |
+| RL-01 | Connection: Join a company relay, Change                                  | Shipped                                                                                    | api + ui        | yes         | 2026-11-01 pass |
+| RL-02 | Test connection                                                           | Shipped                                                                                    | api             | yes         |                 |
+| RL-03 | Disconnect                                                                | Shipped                                                                                    | api             | yes         |                 |
+| RL-04 | Relay URL precedence (`NANDI_RELAY_URL` > config.json > none)             | Shipped                                                                                    | api             | yes         |                 |
+| RL-05 | Connection status, reconnect and Details                                  | Shipped                                                                                    | api             | yes         |                 |
+| RL-06 | "Make this Nandi reachable" checklist (7 rows)                            | Shipped                                                                                    | unit            | yes         |                 |
+| RL-07 | Run a relay: `nandi-relay`                                                | Shipped                                                                                    | api             | yes         |                 |
+| RL-08 | Relay HTTP endpoints: `/health`, `/instances`                             | Shipped                                                                                    | api             | yes         |                 |
+| RL-09 | Relay token auth (`NANDI_RELAY_SECRET`)                                   | Partial (the token flow works, but there is no end-to-end UX; relays are open by default)  | api             | yes         |                 |
+| RL-10 | Presence: heartbeats, eviction, capability presence                       | Shipped                                                                                    | api             | yes         |                 |
+| RL-11 | Two instances on one machine (`NANDI_HOME`)                               | Shipped                                                                                    | manual          | no          |                 |
+| RL-12 | Agent delegation settings                                                 | Shipped                                                                                    | api             | no          |                 |
+| RL-13 | `delegate_to_agent` tool, with approval                                   | Shipped                                                                                    | api             | no          |                 |
+| RL-14 | Delegate a task: ranking, fallback, timeout, failover at the relay        | Shipped                                                                                    | api             | no          | 2026-11-01 pass |
+| RL-15 | Inbound admission (provider side)                                         | Shipped                                                                                    | api             | yes         |                 |
+| RL-16 | Delegation thread view                                                    | Shipped                                                                                    | ui-e2e          | no          |                 |
+| RL-17 | Clarifications between agents (respond, escalate, policy)                 | Shipped                                                                                    | api             | no          |                 |
+| RL-18 | Delegation history and audit log                                          | Shipped                                                                                    | api             | no          |                 |
+| RL-27 | Find who is responsible for a topic (`find_people`)                       | Shipped                                                                                    | unit + api      | yes         | 2026-11-01 pass |
+| RL-37 | "Update Nandi or the relay" (protocol version mismatch)                   | Shipped                                                                                    | unit + api      | yes         |                 |
+| RL-28 | Open requests both ways (`my_requests`)                                   | Shipped                                                                                    | unit + manual   | no          | 2026-11-01 pass |
+| RL-19 | Configure the git remote, credential and test                             | Duplicate of DT-18, DT-19, DT-21                                                           | —               | no          |                 |
+| RL-20 | Push, pull, conflicts, branches (main and master protected)               | Duplicate of DT-22, DT-23, DT-24, DT-25, DT-26                                             | —               | no          |                 |
+| RL-21 | `.nandi/llm.yaml` shared LLM config                                       | Duplicate of MD-18                                                                         | —               | no          |                 |
+| RL-22 | Web server launch modes (`--server`, `--port`, `--headless`)              | Duplicate of PL-02, PL-03                                                                  | —               | no          |                 |
+| RL-23 | Web auth token                                                            | Shipped                                                                                    | api             | no          |                 |
+| RL-29 | A build's own relay, offered and joined only when the user agrees         | Shipped                                                                                    | unit + api      | yes         |                 |
+| RL-38 | Join a company relay with a join code, and invite a teammate              | Shipped                                                                                    | api + ui        | yes         |                 |
+| RL-30 | Revoking a device on the relay (a leaver)                                 | Shipped                                                                                    | api             | yes         | 2026-10-31 pass |
+| RL-31 | Relay over TLS, trusting a company's own CA                               | Shipped                                                                                    | api             | yes         | 2026-10-31 pass |
+| RL-32 | Warning for an unencrypted relay on another machine                       | Shipped                                                                                    | unit            | yes         |                 |
+| RL-33 | Relay limits, container image and Helm chart                              | Shipped                                                                                    | api             | yes         |                 |
+| RL-35 | A relay's user limit (20 free, more with a licence)                       | Shipped                                                                                    | api             | yes         | 2026-11-01 pass |
+| RL-34 | Everyone on the company's relay is trusted                                | Shipped                                                                                    | unit            | yes         | 2026-11-01 pass |
+| RL-39 | Device keys, pinned by the relay                                          | Shipped                                                                                    | api             | yes         |                 |
+| RL-40 | "Their key changed" on a member's profile                                 | Shipped                                                                                    | unit + api + ui | yes         |                 |
+| RL-41 | The relay's task ledger (operator view)                                   | Shipped                                                                                    | api             | yes         |                 |
+| RL-42 | Content sealed end to end                                                 | Shipped                                                                                    | unit + api      | yes         |                 |
+| RL-43 | Store-and-forward: work and answers wait at the relay                     | Shipped                                                                                    | api             | yes         |                 |
+| RL-44 | The relay's management API (operator secret)                              | Shipped                                                                                    | api             | yes         |                 |
+| RL-45 | Join the public relay (sign in with GitHub, Google or Microsoft)          | Partial (the public relay at `relay.vaultdb.ai` isn't live yet; everything runs against... | unit + api      | yes         |                 |
+| RL-46 | The public relay's Account card                                           | Shipped                                                                                    | unit + api      | yes         |                 |
+| RL-47 | Limits per person and the daily message limit                             | Shipped                                                                                    | unit + api      | yes         |                 |
+| RL-24 | WebSocket event stream (`/ws`)                                            | Shipped                                                                                    | api             | no          |                 |
+| RL-25 | Frontend served over HTTP                                                 | Shipped                                                                                    | ui-e2e          | no          |                 |
+| RL-26 | HTTP API as an automation surface                                         | Shipped                                                                                    | api             | no          |                 |
+| RL-36 | "Connect to your company's relay" (the typed not connected)               | Shipped                                                                                    | unit + api      | no          | 2026-11-01 pass |
+| GR-01 | Network › Groups lists the relay's groups                                 | Shipped                                                                                    | unit            | yes         |                 |
+| GR-02 | Create a group with a signed policy                                       | Shipped                                                                                    | unit + api      | yes         |                 |
+| GR-03 | Join with a code, invites for me                                          | Shipped                                                                                    | unit            | yes         |                 |
+| GR-04 | Group detail: members, roles, Leave                                       | Shipped                                                                                    | unit            | yes         |                 |
+| GR-05 | Invites: a person or a code                                               | Shipped                                                                                    | api             | yes         |                 |
+| GR-06 | The policy: verified or fail closed; admins edit it                       | Shipped                                                                                    | unit            | yes         |                 |
+| GR-07 | My access level per group                                                 | Shipped                                                                                    | unit            | no          |                 |
+| GR-08 | Group policies on incoming work                                           | Partial (intake only, see Gap)                                                             | unit            | yes         |                 |
+| GR-09 | A relay that shows only people you share a group with                     | Shipped                                                                                    | unit            | yes         |                 |
 
 ### Instance gateway
 

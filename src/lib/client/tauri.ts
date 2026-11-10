@@ -202,6 +202,11 @@ export const tauriClient: NandiClient = {
   setRelayUrl: url => commands.setRelayUrl(url),
   joinRelay: (url, joinCode) => commands.joinRelay(url, joinCode),
   getRelayInvite: () => commands.getRelayInvite(),
+  getPublicRelayOffer: () => commands.getPublicRelayOffer(),
+  startPublicRelaySignIn: provider => commands.startPublicRelaySignIn(provider),
+  pollPublicRelaySignIn: (provider, signinId) =>
+    commands.pollPublicRelaySignIn(provider, signinId),
+  getPublicRelayAccount: () => commands.getPublicRelayAccount(),
   listOnlineAgents: capability => commands.listOnlineAgents(capability),
   testRelayConnection: url => commands.testRelayConnection(url),
   getRelayInstances: () => commands.getRelayInstances(),
