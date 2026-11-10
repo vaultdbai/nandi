@@ -40,6 +40,7 @@
     "tauri:check": "pnpm run typecheck && pnpm run tauri build --check",
     "test:all": "pnpm run test:run && pnpm run rust:test",
     "test:offline": "cd src-tauri && cargo test --lib offline_suite::",
+    "test:sandbox": "cd src-tauri && cargo test --lib sandbox_suite:: -- --ignored --test-threads=1",
     "check:all": "pnpm run typecheck && pnpm run lint && pnpm run ast:lint && pnpm run format:check && pnpm run rust:fmt:check && pnpm run rust:clippy && pnpm run test:run && pnpm run rust:test",
     "fix:all": "pnpm run lint:fix && pnpm run format && pnpm run rust:fmt && pnpm run rust:clippy:fix",
     "build:analyze": "vite build && echo '\\n📊 Bundle analysis complete. Check dist/ folder sizes or use a tool like webpack-bundle-analyzer on the dist folder.'",

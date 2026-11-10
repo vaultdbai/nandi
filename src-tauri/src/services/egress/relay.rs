@@ -81,30 +81,36 @@ fn docker() -> Result<Docker, String> {
 /// or (on a non-internal network) one that skips the proxy.
 pub async fn ensure_ready(image: RelayImage) -> Result<(), String> {
     let docker = docker()?;
-    ensure_network(&docker).await?;
+    ensure_network(&docker, AGENT_NETWORK).await?;
     ensure_relay(&docker, image).await
 }
 
 /// Creates [`AGENT_NETWORK`] if it's missing (for the LiteLLM gateway,
 /// which joins it so coding agents reach it directly)
 pub async fn ensure_agent_network() -> Result<(), String> {
-    ensure_network(&docker()?).await
+    ensure_network(&docker()?, AGENT_NETWORK).await
 }
 
-async fn ensure_network(docker: &Docker) -> Result<(), String> {
-    if let Ok(network) = docker.inspect_network(AGENT_NETWORK, None).await {
+/// [`ensure_agent_network`] for a network named `name` (the sandbox suite)
+#[cfg(test)]
+pub(crate) async fn ensure_network_named(name: &str) -> Result<(), String> {
+    ensure_network(&docker()?, name).await
+}
+
+async fn ensure_network(docker: &Docker, name: &str) -> Result<(), String> {
+    if let Ok(network) = docker.inspect_network(name, None).await {
         // A same-named network that isn't internal would let agents out
         return if network.internal == Some(true) {
             Ok(())
         } else {
             Err(format!(
-                "The Docker network {AGENT_NETWORK} exists but isn't internal. Remove it \
-                 (docker network rm {AGENT_NETWORK}) and Nandi recreates it."
+                "The Docker network {name} exists but isn't internal. Remove it \
+                 (docker network rm {name}) and Nandi recreates it."
             ))
         };
     }
     let request = NetworkCreateRequest {
-        name: AGENT_NETWORK.to_string(),
+        name: name.to_string(),
         driver: Some("bridge".to_string()),
         internal: Some(true),
         labels: Some(HashMap::from([(
@@ -116,8 +122,8 @@ async fn ensure_network(docker: &Docker) -> Result<(), String> {
     match docker.create_network(request).await {
         Ok(_) => Ok(()),
         // Created concurrently
-        Err(_) if docker.inspect_network(AGENT_NETWORK, None).await.is_ok() => Ok(()),
-        Err(e) => Err(format!("Could not create the {AGENT_NETWORK} network: {e}")),
+        Err(_) if docker.inspect_network(name, None).await.is_ok() => Ok(()),
+        Err(e) => Err(format!("Could not create the {name} network: {e}")),
     }
 }
 

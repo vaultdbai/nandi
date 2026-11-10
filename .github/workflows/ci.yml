@@ -132,3 +132,85 @@ jobs:
       # endpoints answer "not connected" (AGENTS.md, Works Without the Relay)
       - name: Offline suite
         run: pnpm run test:offline
+
+  # The container's isolation claims against real Docker and the published
+  # sandbox images (`src-tauri/src/sandbox_suite.rs`, docs/testing SB-01,
+  # SB-13 to SB-15, RT-05, RT-06): no host credentials inside, the internal
+  # network, the egress relay and proxy, the hardening of both container
+  # kinds. GitHub's Linux runners come with Docker; the tests pull
+  # ghcr.io/vaultdbai/nandi-runtime and nandi-harness (public) themselves
+  sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The sibling repos, as in `check`
+      - name: Check out nandi-spec
+        uses: actions/checkout@v4
+        with:
+          repository: vaultdbai/nandi-spec
+          path: .siblings/nandi-spec
+
+      - name: Check out nandi-relay
+        uses: actions/checkout@v4
+        with:
+          repository: vaultdbai/nandi-relay
+          ssh-key: ${{ secrets.NANDI_RELAY_DEPLOY_KEY }}
+          path: .siblings/nandi-relay
+
+      - name: Place the sibling repos
+        shell: bash
+        run: mv .siblings/nandi-spec .siblings/nandi-relay .. && rmdir .siblings
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'pnpm'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential curl wget file pkg-config patchelf \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev
+
+      # As in `check`: swap for linking the test binary, disk for the
+      # target dir and the images
+      - name: Make room for the Rust build
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo swapoff -a
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 12G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          docker version
+          df -h / /mnt
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `tauri::generate_context!` needs `frontendDist` (../dist) to exist
+      - name: Build frontend
+        run: pnpm run build
+
+      - name: Sandbox suite
+        run: pnpm run test:sandbox
+        env:
+          CARGO_BUILD_JOBS: 2
+          # Containers, workdirs and logs of a throwaway Nandi
+          NANDI_HOME: ${{ runner.temp }}/nandi-home

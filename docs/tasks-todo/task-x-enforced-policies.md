@@ -31,7 +31,7 @@ The enforcement underneath also has holes:
 
 ## Wave 1: close the container gaps (done)
 
-Shipped in #8 and #9: read-only, non-root containers (`org.nandi.sandbox=3`); no `placement: host`; coding agents ask before they act (`harness/approvals.rs`); every agent container on the internal `nandi-agents` network, whose only exit is the `nandi-egress` relay to the egress proxy; Nandi's tools over `docker exec` stdio; leak tests in `runtime_e2e`, verified on Docker Desktop.
+Shipped in #8 and #9: read-only, non-root containers (`org.nandi.sandbox=3`); no `placement: host`; coding agents ask before they act (`harness/approvals.rs`); every agent container on the internal `nandi-agents` network, whose only exit is the `nandi-egress` relay to the egress proxy; Nandi's tools over `docker exec` stdio; leak tests in the sandbox suite (`sandbox_suite.rs`, run in CI since 2026-11-09).
 
 Two items moved to the policy waves, because a policy is what configures them:
 

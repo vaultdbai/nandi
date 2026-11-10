@@ -549,6 +549,23 @@ pub(crate) mod tests {
         }
     }
 
+    /// The real proxy (its routes and CONNECT tunnels) on `listener`, every
+    /// agent with `capabilities`, and containers' relay pointed at it (the
+    /// sandbox suite)
+    pub async fn serve_on(
+        listener: tokio::net::TcpListener,
+        tokens: ProxyTokens,
+        capabilities: Capabilities,
+    ) -> std::io::Result<()> {
+        let context = context(tokens, capabilities);
+        serve(listener, http_proxy::router(context.clone()), context).await
+    }
+
+    /// Points the egress relay at `port` from the next `relay::ensure_ready`
+    pub fn set_proxy_port(port: u16) {
+        BOUND_PORT.store(port, std::sync::atomic::Ordering::Relaxed);
+    }
+
     pub fn allow_hosts(hosts: &[&str]) -> Capabilities {
         Capabilities {
             network: NetworkCapabilities {
