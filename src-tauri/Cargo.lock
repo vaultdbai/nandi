@@ -4023,6 +4023,7 @@ dependencies = [
  "log",
  "nandi-protocol",
  "rand_core 0.6.4",
+ "reqwest",
  "rusqlite",
  "rustls",
  "rustls-pki-types",
@@ -4033,6 +4034,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
