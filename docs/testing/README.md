@@ -121,11 +121,11 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-544 features to test: all 598 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+545 features to test: all 599 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
-| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 62       |
+| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 63       |
 | Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 77       |
 | Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
@@ -137,21 +137,21 @@ These turned up while building the catalog. In each case the catalog follows the
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 525   |
+| Shipped     | 526   |
 | Partial     | 16    |
 | Removed     | 11    |
 | Known issue | 3     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 293   |
+| `unit`                | 294   |
 | `api`                 | 194   |
 | `manual`              | 33    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 462   |
+| no          | 463   |
 | yes         | 82    |
 
 ## Master index
@@ -179,6 +179,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ON-12 | Finishing setup and the welcome strip                                    | Shipped                                              | unit       | no          |                                        |
 | ON-15 | Step 1: connect your email (skippable)                                   | Shipped (live test pending)                          | unit       | no          |                                        |
 | ON-16 | Step 4: get your computer ready (recommended, skippable)                 | Shipped                                              | unit       | no          |                                        |
+| ON-17 | Settings › Account › Run setup again                                     | Shipped                                              | unit       | no          |                                        |
 | ON-13 | Starter packs page (after setup)                                         | Duplicate of LB-20                                   | —          | no          |                                        |
 | ON-14 | Upgrades from pre-identity installs                                      | Removed (2026-10-22, no legacy support)              | —          | no          |                                        |
 | SH-04 | Title bar and window controls                                            | Shipped                                              | ui-e2e     | no          |                                        |

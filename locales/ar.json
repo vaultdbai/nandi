@@ -4809,5 +4809,10 @@
   "machine.step.imagesFirewall": "في العمل، قد يحظر جدار حماية أو وكيل ghcr.io. اطلب من قسم تقنية المعلومات السماح بـ ghcr.io و pkg-containers.githubusercontent.com.",
   "machine.step.imagesCertificate": "شبكتك تستبدل الشهادات (أمر شائع مع وكلاء الشركات). اطلب من قسم تقنية المعلومات شهادته الجذرية وأضفها إلى الشهادات الموثوقة في هذا الحاسوب.",
   "machine.step.imagesProxyAuth": "يطلب الوكيل تسجيل الدخول. اضبط HTTPS_PROXY بعنوان الوكيل وبيانات الدخول، أو اسأل قسم تقنية المعلومات.",
-  "machine.step.imagesRefused": "رفض ghcr.io التنزيل. ربما تحظره شركتك: اطلب من قسم تقنية المعلومات السماح بـ ghcr.io."
+  "machine.step.imagesRefused": "رفض ghcr.io التنزيل. ربما تحظره شركتك: اطلب من قسم تقنية المعلومات السماح بـ ghcr.io.",
+  "onboarding.again.subtitle": "إعادة الإعداد: تبدأ كل خطوة مما حفظته، ولا يُحذف شيء.",
+  "onboarding.again.cancel": "إلغاء والعودة",
+  "settings.account.setupAgain.title": "الإعداد",
+  "settings.account.setupAgain.description": "أعد خطوات الإعداد الأول. تُملأ اختياراتك المحفوظة مسبقًا، ولا يُحذف شيء، ويمكنك الإلغاء في أي خطوة.",
+  "settings.account.setupAgain.button": "إعادة الإعداد"
 }

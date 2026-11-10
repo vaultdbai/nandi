@@ -102,7 +102,7 @@ function CurrentView({ view }: { view: View }) {
     case 'run':
       return <RunHistoryView key={view.runId} runId={view.runId} />
     case 'onboarding':
-      return <OnboardingView />
+      return <OnboardingView again={view.again === true} />
     case 'starter-packs':
       return <StarterPacksView />
     case 'run-detail':

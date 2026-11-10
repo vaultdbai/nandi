@@ -4809,5 +4809,10 @@
   "machine.step.imagesFirewall": "職場ではファイアウォールやプロキシが ghcr.io をブロックしていることがあります。ghcr.io と pkg-containers.githubusercontent.com を許可するよう IT 部門に依頼してください。",
   "machine.step.imagesCertificate": "ネットワークが証明書を置き換えています（企業のプロキシでよくあります）。IT 部門からルート証明書を入手し、このコンピューターの信頼された証明書に追加してください。",
   "machine.step.imagesProxyAuth": "プロキシがサインインを求めています。プロキシのアドレスと認証情報を HTTPS_PROXY に設定するか、IT 部門に相談してください。",
-  "machine.step.imagesRefused": "ghcr.io がダウンロードを拒否しました。会社がブロックしている可能性があります。ghcr.io を許可するよう IT 部門に依頼してください。"
+  "machine.step.imagesRefused": "ghcr.io がダウンロードを拒否しました。会社がブロックしている可能性があります。ghcr.io を許可するよう IT 部門に依頼してください。",
+  "onboarding.again.subtitle": "セットアップをやり直しています。各ステップは保存済みの内容から始まり、何も削除されません。",
+  "onboarding.again.cancel": "キャンセルして戻る",
+  "settings.account.setupAgain.title": "セットアップ",
+  "settings.account.setupAgain.description": "初回セットアップをもう一度行います。保存済みの選択が入力された状態で始まり、何も削除されず、どのステップでもキャンセルできます。",
+  "settings.account.setupAgain.button": "セットアップをやり直す"
 }

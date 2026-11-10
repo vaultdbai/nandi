@@ -81,8 +81,11 @@ export type View =
   /** A historical run of an agent */
   | { kind: 'run'; agentId: string; runId: string }
   // First-launch setup
-  /** Name, relay, and optional remote (local identity) */
-  | { kind: 'onboarding' }
+  /**
+   * Name, relay, and optional remote (local identity). `again`: Settings ›
+   * Account › Run setup again (saved choices filled in, cancellable)
+   */
+  | { kind: 'onboarding'; again?: boolean }
   /** First launch: pick curated packs to install */
   | { kind: 'starter-packs' }
   /** The user's notes, which Chief of Staff keeps; `note` is the one open */

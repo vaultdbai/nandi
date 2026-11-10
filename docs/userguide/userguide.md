@@ -110,7 +110,7 @@ Agents use DeepSeek unless their `skill.md` says otherwise. Open **Settings › 
 
 ![screenshot: Welcome to Nandi](placeholder)
 
-The first launch is five short steps: **Name → Model → Email → Network → Agents**. Each step saves as you leave it, so if you quit midway Nandi opens where you stopped (**Skip the rest of setup** jumps straight in).
+The first launch is six short steps: **Email → Name → Model → Computer → Network → Agents**. Each step saves as you leave it, so if you quit midway Nandi opens where you stopped (**Skip the rest of setup** jumps straight in). Every step after Email has **Back**. To go through it again later, use **Settings › Account › Run setup again**: your saved choices are filled in, nothing is removed, and **Cancel and go back** leaves at any step.
 
 ### 1. Name
 

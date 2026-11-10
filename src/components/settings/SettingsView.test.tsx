@@ -48,6 +48,16 @@ describe('SettingsView', () => {
     ).toHaveAttribute('aria-current', 'page')
   })
 
+  it('Account › Run setup again reopens the whole setup', async () => {
+    const user = userEvent.setup()
+    render(<SettingsView view={{ kind: 'settings', section: 'account' }} />)
+    await user.click(screen.getByRole('button', { name: 'Run setup again' }))
+    expect(useNavigationStore.getState().current).toEqual({
+      kind: 'onboarding',
+      again: true,
+    })
+  })
+
   it('puts Nandi’s model, the coding agents and the keys on one page', () => {
     render(<SettingsView view={{ kind: 'settings', section: 'models' }} />)
     for (const group of [

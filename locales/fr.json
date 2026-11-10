@@ -4809,5 +4809,10 @@
   "machine.step.imagesFirewall": "Au travail, un pare-feu ou un proxy peut bloquer ghcr.io. Demandez au service informatique d'autoriser ghcr.io et pkg-containers.githubusercontent.com.",
   "machine.step.imagesCertificate": "Votre réseau remplace les certificats (fréquent avec les proxys d'entreprise). Demandez au service informatique son certificat racine et ajoutez-le aux certificats de confiance de cet ordinateur.",
   "machine.step.imagesProxyAuth": "Votre proxy demande une connexion. Définissez HTTPS_PROXY avec l'adresse et les identifiants du proxy, ou demandez au service informatique.",
-  "machine.step.imagesRefused": "ghcr.io a refusé le téléchargement. Votre entreprise le bloque peut-être : demandez au service informatique d'autoriser ghcr.io."
+  "machine.step.imagesRefused": "ghcr.io a refusé le téléchargement. Votre entreprise le bloque peut-être : demandez au service informatique d'autoriser ghcr.io.",
+  "onboarding.again.subtitle": "Nouvelle configuration : chaque étape reprend ce que vous avez enregistré, et rien n'est supprimé.",
+  "onboarding.again.cancel": "Annuler et revenir",
+  "settings.account.setupAgain.title": "Configuration",
+  "settings.account.setupAgain.description": "Refaire la configuration du premier lancement. Vos choix enregistrés sont préremplis, rien n'est supprimé, et vous pouvez annuler à chaque étape.",
+  "settings.account.setupAgain.button": "Refaire la configuration"
 }

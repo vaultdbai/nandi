@@ -871,4 +871,72 @@ describe('OnboardingView', () => {
       expect(onComplete).not.toHaveBeenCalled()
     })
   })
+
+  describe('back and run again', () => {
+    it('goes back from Name to Email', async () => {
+      const user = userEvent.setup()
+      render(<OnboardingView />)
+      await skipEmail(user)
+      await user.click(screen.getByRole('button', { name: 'Back' }))
+      expect(await screen.findByText('Connect your email')).toBeInTheDocument()
+    })
+
+    it('runs setup again with the saved name filled in, recording no step, and cancels', async () => {
+      const user = userEvent.setup()
+      Object.assign(commands, {
+        getIdentityStatus: ok({
+          ...fresh,
+          onboarded: true,
+          displayName: 'Ada Lovelace',
+          userSlug: 'ada',
+          onboardingStep: 'done',
+        }),
+      })
+      useNavigationStore.setState({
+        current: { kind: 'onboarding', again: true },
+        history: [],
+      })
+      render(<OnboardingView again />)
+
+      // Opens on the first step instead of leaving a finished setup
+      expect(await screen.findByText('Connect your email')).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          /Running setup again: each step starts from what you saved/
+        )
+      ).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Skip for now' }))
+      expect(await screen.findByLabelText('Your name')).toHaveValue(
+        'Ada Lovelace'
+      )
+      expect(mocks().setOnboardingStep).not.toHaveBeenCalled()
+
+      await user.click(
+        screen.getByRole('button', { name: 'Cancel and go back' })
+      )
+      expect(useNavigationStore.getState().current).toEqual({ kind: 'home' })
+      expect(mocks().setOnboardingStep).not.toHaveBeenCalled()
+      expect(mocks().setDisplayName).not.toHaveBeenCalled()
+    })
+
+    it('saves the name again without touching the step', async () => {
+      const user = userEvent.setup()
+      Object.assign(commands, {
+        getIdentityStatus: ok({
+          ...fresh,
+          onboarded: true,
+          displayName: 'Ada Lovelace',
+          userSlug: 'ada',
+          onboardingStep: 'done',
+        }),
+      })
+      render(<OnboardingView again />)
+      await skipEmail(user)
+      await user.click(screen.getByRole('button', { name: 'Continue' }))
+      expect(await screen.findByText('Connect a model')).toBeInTheDocument()
+      expect(mocks().setDisplayName).toHaveBeenCalledWith('Ada Lovelace')
+      expect(mocks().setUserSlug).toHaveBeenCalledWith('ada')
+      expect(mocks().setOnboardingStep).not.toHaveBeenCalled()
+    })
+  })
 })

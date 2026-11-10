@@ -46,6 +46,12 @@ export interface OnboardingViewProps {
    * dashboard.
    */
   onComplete?: () => void
+  /**
+   * Settings › Account › Run setup again: opens on the first step with the
+   * saved choices filled in, doesn't record the step reached (so leaving
+   * midway changes nothing), and offers Cancel
+   */
+  again?: boolean
 }
 
 /**
@@ -58,9 +64,14 @@ export interface OnboardingViewProps {
  * step reached is remembered on this Nandi home, so quitting midway
  * resumes there. The name is saved on step 2 because installing packs
  * writes agents into the repo. A relay that's already configured
- * (`NANDI_RELAY_URL` or `config.json`) is preselected and kept.
+ * (`NANDI_RELAY_URL` or `config.json`) is preselected and kept. Run again
+ * from Settings (`again`), every step starts from what's saved and nothing
+ * is wiped; Cancel leaves at any step.
  */
-export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
+export function OnboardingView({
+  onComplete,
+  again = false,
+}: OnboardingViewProps = {}) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const identity = useIdentity()
@@ -70,11 +81,15 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
   const mailbox = mailboxIdentity(emailStatus.data?.providers ?? [])
   // `null` until the user edits: what the mailbox says, else nothing
   const [nameEdit, setNameEdit] = useState<IdentityDraft | null>(null)
+  const savedName = identity.data?.displayName
+  const savedSlug = identity.data?.userSlug
   const name: IdentityDraft =
     nameEdit ??
-    (mailbox
-      ? draftFromMailbox(mailbox)
-      : { name: '', slug: '', slugEdited: false })
+    (savedName && savedSlug
+      ? { name: savedName, slug: savedSlug, slugEdited: true }
+      : mailbox
+        ? draftFromMailbox(mailbox)
+        : { name: '', slug: '', slugEdited: false })
   const relayStatus = useQuery({
     queryKey: relayQueryKeys.status,
     queryFn: async () => unwrapResult(await client.getRelayStatus()),
@@ -93,7 +108,8 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
   const published = useRef(false)
   const left = useRef(false)
 
-  const resumedAt = identity.data ? resumeStep(identity.data) : 'email'
+  const resumedAt =
+    !again && identity.data ? resumeStep(identity.data) : 'email'
   const step = stepEdit ?? resumedAt
 
   const leave = (packIds: string[]) => {
@@ -110,7 +126,10 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
   }
 
   const alreadyOnboarded =
-    identity.data !== undefined && !needsOnboarding(identity.data) && !finishing
+    !again &&
+    identity.data !== undefined &&
+    !needsOnboarding(identity.data) &&
+    !finishing
   useEffect(() => {
     if (alreadyOnboarded) leave([])
   })
@@ -118,6 +137,8 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
   /** Remembers the step reached; a failure only costs the resume */
   const advance = (next: OnboardingStepKey) => {
     setStep(next)
+    // Run again: setup is done already; leaving midway must not reopen it
+    if (again) return
     void client.setOnboardingStep(next).then(result => {
       if (result.status === 'error') {
         logger.warn('Onboarding: saving the step failed', {
@@ -133,7 +154,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
     // `done` left by an earlier setup would close this one if it still
     // stood then
     const writes: (() => Promise<Result<null, string>>)[] = [
-      () => client.setOnboardingStep('model'),
+      ...(again ? [] : [() => client.setOnboardingStep('model')]),
       () => client.setDisplayName(name.name.trim()),
       () => client.setUserSlug(name.slug),
     ]
@@ -209,7 +230,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold">{t('onboarding.title')}</h1>
           <p className="text-sm text-muted-foreground">
-            {t('onboarding.subtitle')}
+            {again ? t('onboarding.again.subtitle') : t('onboarding.subtitle')}
           </p>
         </header>
 
@@ -224,6 +245,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
               saving={savingName}
               mailbox={mailbox}
               onNext={() => void saveName()}
+              onBack={() => setStep('email')}
             />
           )}
           {step === 'model' && (
@@ -283,6 +305,16 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
           <p className="text-xs text-muted-foreground">
             {t('onboarding.relay.skippedNote')}
           </p>
+        )}
+        {again && (
+          <Button
+            variant="link"
+            className="self-center"
+            disabled={finishing}
+            onClick={() => leave([])}
+          >
+            {t('onboarding.again.cancel')}
+          </Button>
         )}
         {resumed && (
           <Button

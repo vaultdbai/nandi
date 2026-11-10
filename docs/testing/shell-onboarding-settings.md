@@ -85,7 +85,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### ON-02 — Onboarding steps, step indicator and resume
 
-- **What:** First-run setup has six steps: Email (skippable), Name, Model, Computer (recommended, skippable, ON-16), Network, Agents (starter packs). A numbered indicator shows done steps with a check. The step reached is saved per Nandi home, so quitting midway resumes there. A resumed setup offers "Skip the rest of setup".
+- **What:** First-run setup has six steps: Email (skippable), Name, Model, Computer (recommended, skippable, ON-16), Network, Agents (starter packs). Every step after Email has **Back** (Name goes back to Email). A numbered indicator shows done steps with a check. The step reached is saved per Nandi home, so quitting midway resumes there. A resumed setup offers "Skip the rest of setup".
 - **Where:** `src/components/views/OnboardingView.tsx` (`StepIndicator`), `identity-model.ts` (`ONBOARDING_STEPS`, `resumeStep`), `set_onboarding_step` (`PUT /api/identity/onboarding-step`, body `{"step":"model"}`). Stored in `local_settings` key `onboarding.step` in `~/.nandi/local/state.db`.
 - **Preconditions:** A home that is not onboarded.
 - **Steps:**
@@ -322,6 +322,27 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - Quitting on this step resumes on it.
   - The check failing (core error) shows "Nandi couldn't check this computer: …"; setup still goes on.
 - **Automation:** Covered by: `src/components/machine/MachineChecklist.test.tsx` ('the onboarding step is skippable…', 'the onboarding step continues once Docker answers'), `OnboardingView.test.tsx` ('shows six steps, Email first', the model step leading to the computer step) | Layer: unit | Gap: the real Docker start, by hand.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### ON-17 — Settings › Account › Run setup again
+
+- **What:** **Run setup again** (Settings › Account, "Setup") opens the whole setup from the Email step with the saved choices filled in: the saved name and handle, the configured relay, the default model, connected mailboxes. Nothing is removed. The step reached is not recorded while re-running, so quitting or **Cancel and go back** (under the steps) leaves setup finished and changes nothing else; each step still saves its own choice when left with Continue. Finishing returns to Home as usual.
+- **Where:** `src/components/settings/sections/AccountSection.tsx`, `OnboardingView.tsx` (`again`), the `{ kind: 'onboarding', again: true }` view (`MainPane.tsx`).
+- **Preconditions:** A home that finished setup.
+- **Steps:**
+  1. Settings › Account › Run setup again.
+  2. Skip Email; look at the Name step.
+  3. Click Cancel and go back; quit and relaunch.
+  4. Run it again, change the name, Continue, then Cancel.
+- **Expected:**
+  - (1) Setup opens on Email with "Running setup again: each step starts from what you saved, and nothing is removed."
+  - (2) The saved name is in the field.
+  - (3) Home opens; after relaunch the app opens normally (`onboarding.step` is still `done`).
+  - (4) The new name is saved (Settings › Account shows it); setup isn't reopened at launch.
+- **Edge / negative cases:**
+  - A name step left without Continue saves nothing.
+- **Automation:** Covered by: `OnboardingView.test.tsx` ('goes back from Name to Email', 'runs setup again with the saved name filled in, recording no step, and cancels', 'saves the name again without touching the step'), `SettingsView.test.tsx` ('Account › Run setup again reopens the whole setup') | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 

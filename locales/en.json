@@ -4809,5 +4809,10 @@
   "machine.step.imagesFirewall": "At work, a firewall or proxy may block ghcr.io. Ask IT to allow ghcr.io and pkg-containers.githubusercontent.com.",
   "machine.step.imagesCertificate": "Your network replaces certificates (common with company proxies). Ask IT for its root certificate and add it to this computer's trusted certificates.",
   "machine.step.imagesProxyAuth": "Your proxy wants a sign-in. Set HTTPS_PROXY with your proxy's address and sign-in, or ask IT.",
-  "machine.step.imagesRefused": "ghcr.io refused the download. Your company may block it: ask IT to allow ghcr.io."
+  "machine.step.imagesRefused": "ghcr.io refused the download. Your company may block it: ask IT to allow ghcr.io.",
+  "onboarding.again.subtitle": "Running setup again: each step starts from what you saved, and nothing is removed.",
+  "onboarding.again.cancel": "Cancel and go back",
+  "settings.account.setupAgain.title": "Setup",
+  "settings.account.setupAgain.description": "Go through first-run setup again. Your saved choices are filled in, nothing is removed, and you can cancel at any step.",
+  "settings.account.setupAgain.button": "Run setup again"
 }

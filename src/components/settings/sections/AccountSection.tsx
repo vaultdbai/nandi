@@ -3,6 +3,7 @@ import { Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { GithubSignInPanel } from '@/components/github/GithubSignInPanel'
 import { useRelay } from '@/hooks/useRelay'
+import { useNavigationStore } from '@/store/navigation-store'
 import { IdentitySection } from '../IdentitySection'
 import { AdvancedBlock, SettingsSectionFrame } from '../SettingsFrame'
 
@@ -26,6 +27,25 @@ export function AccountSection() {
           {t('github.signIn.description')}
         </p>
         <GithubSignInPanel />
+      </section>
+      <section className="space-y-2" aria-labelledby="account-setup-again">
+        <h3 id="account-setup-again" className="text-sm font-medium">
+          {t('settings.account.setupAgain.title')}
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          {t('settings.account.setupAgain.description')}
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() =>
+            useNavigationStore
+              .getState()
+              .navigate({ kind: 'onboarding', again: true })
+          }
+        >
+          {t('settings.account.setupAgain.button')}
+        </Button>
       </section>
       <AdvancedBlock label={t('settings.details')}>
         <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">

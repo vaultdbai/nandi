@@ -34,6 +34,8 @@ export interface Step1NameProps {
   onChange: (value: IdentityDraft) => void
   /** Called once the name and handle are valid; saves them */
   onNext: () => void
+  /** Back to the email step */
+  onBack?: () => void
   /** The name is being saved */
   saving?: boolean
   /**
@@ -53,6 +55,7 @@ export function Step1Name({
   value,
   onChange,
   onNext,
+  onBack,
   saving,
   mailbox,
 }: Step1NameProps) {
@@ -132,7 +135,14 @@ export function Step1Name({
             </span>
           </p>
         </div>
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-2">
+          {onBack ? (
+            <Button type="button" variant="ghost" onClick={onBack}>
+              {t('onboarding.back')}
+            </Button>
+          ) : (
+            <span />
+          )}
           <Button type="submit" disabled={saving}>
             {saving && <Spinner />}
             {t('onboarding.continue')}
@@ -227,7 +237,14 @@ export function Step1Name({
           </Field>
         )}
       </FieldGroup>
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-2">
+        {onBack ? (
+          <Button type="button" variant="ghost" onClick={onBack}>
+            {t('onboarding.back')}
+          </Button>
+        ) : (
+          <span />
+        )}
         <Button type="submit" disabled={saving}>
           {saving && <Spinner />}
           {t('onboarding.continue')}
