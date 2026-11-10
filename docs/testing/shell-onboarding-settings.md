@@ -85,7 +85,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### ON-02 — Onboarding steps, step indicator and resume
 
-- **What:** First-run setup has five steps: Email (skippable), Name, Model, Network, Agents (starter packs). A numbered indicator shows done steps with a check. The step reached is saved per Nandi home, so quitting midway resumes there. A resumed setup offers "Skip the rest of setup".
+- **What:** First-run setup has six steps: Email (skippable), Name, Model, Computer (recommended, skippable, ON-16), Network, Agents (starter packs). A numbered indicator shows done steps with a check. The step reached is saved per Nandi home, so quitting midway resumes there. A resumed setup offers "Skip the rest of setup".
 - **Where:** `src/components/views/OnboardingView.tsx` (`StepIndicator`), `identity-model.ts` (`ONBOARDING_STEPS`, `resumeStep`), `set_onboarding_step` (`PUT /api/identity/onboarding-step`, body `{"step":"model"}`). Stored in `local_settings` key `onboarding.step` in `~/.nandi/local/state.db`.
 - **Preconditions:** A home that is not onboarded.
 - **Steps:**
@@ -100,7 +100,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - A failed step save is only logged ("Onboarding: saving the step failed"). Setup continues.
   - `PUT /api/identity/onboarding-step` without `step` returns 400 "Body needs a \"step\"".
   - An unknown stored value counts as unset.
-- **Automation:** Covered by: `src/components/views/OnboardingView.test.tsx` ('shows five steps, Email first', 'opens where an interrupted setup stopped', 'renders nothing on a home that finished setup'), `identity-model.test.ts`, Rust `onboarding_step_is_remembered_per_home` | Layer: api + unit | Gap: none significant.
+- **Automation:** Covered by: `src/components/views/OnboardingView.test.tsx` ('shows six steps, Email first', 'opens where an interrupted setup stopped', 'renders nothing on a home that finished setup'), `identity-model.test.ts`, Rust `onboarding_step_is_remembered_per_home` | Layer: api + unit | Gap: none significant.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -304,6 +304,26 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Automation:** Covered by: `StepEmail.test.tsx` (both mailboxes, default 30 and skip, unavailable provider), `email-model.test.ts`, `OnboardingView.test.tsx`, `builtin_agents.rs` (`the_mailbox_owner_goes_into_my_role`), `email/profile.rs` tests, `email/tests.rs` (`outlook_pages_to_the_delta_link_and_resumes_from_it`: profile read at connect) | Layer: unit | Gap: a live sign-in during setup (manual); time zone and working hours need `MailboxSettings.Read` and are not read yet.
 - **Needs relay:** no
 - **Status:** Shipped (live test pending)
+
+### ON-16 — Step 4: get your computer ready (recommended, skippable)
+
+- **What:** After Model, setup shows "Get your computer ready" with the line "Without Docker, agents can only talk, not act." and the same checklist as Settings › This computer (ST-33), re-checked every 10 seconds. **Skip for now** goes on while Docker isn't ready; **Continue** replaces it once Docker answers. **Back** returns to Model, and Network's Back returns here. Skipping leaves the Home item (SH-37).
+- **Where:** `src/components/onboarding/StepComputer.tsx`, `identity-model.ts` (`ONBOARDING_STEPS` has `computer`), Rust `auth::OnboardingStep::Computer` (stored as `"computer"`).
+- **Preconditions:** A home that is not onboarded. Docker stopped (or not installed), then running.
+- **Steps:**
+  1. Go through Email, Name and Model.
+  2. With Docker stopped, look at the step, then click Skip for now.
+  3. Click Back on Network, start Docker, wait up to 10 seconds.
+- **Expected:**
+  - (1) `onboarding.step = "computer"` is stored; the indicator shows Computer as step 4 of 6.
+  - (2) Docker running is "Not running" with Start Docker; Skip for now opens Network.
+  - (3) The step is back; once Docker answers, the summary says agents can act and Continue shows.
+- **Edge / negative cases:**
+  - Quitting on this step resumes on it.
+  - The check failing (core error) shows "Nandi couldn't check this computer: …"; setup still goes on.
+- **Automation:** Covered by: `src/components/machine/MachineChecklist.test.tsx` ('the onboarding step is skippable…', 'the onboarding step continues once Docker answers'), `OnboardingView.test.tsx` ('shows six steps, Email first', the model step leading to the computer step) | Layer: unit | Gap: the real Docker start, by hand.
+- **Needs relay:** no
+- **Status:** Shipped
 
 ### ON-13 — Starter packs page (after setup)
 
@@ -638,6 +658,44 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - An empty group says so in one muted line ("Nothing running").
   - No relay: the tray works the same; person-to-person rows just never appear.
 - **Automation:** Covered by: `src/components/tray/tray-model.test.ts`, `WorkTray.test.tsx` (empty groups, ✓ and ✗ decide, rows and All open, the close button), `AppShell.test.tsx` | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### SH-37 — Home: "Agents can talk, but need Docker to act"
+
+- **What:** Until Docker answers, Home shows a calm line "Agents can talk, but need Docker to act." with **Set up**, which opens Settings › This computer. It disappears once Docker runs. Nothing else on Home waits on it.
+- **Where:** `src/components/machine/MachineHomeItem.tsx` in `HomeView.tsx`; `useMachineReport` (`check_machine`, `GET /api/machine/readiness`).
+- **Preconditions:** Docker stopped or not installed.
+- **Steps:**
+  1. Open Home.
+  2. Click Set up.
+  3. Start Docker and come back to Home.
+- **Expected:**
+  - (1) The line shows, without a warning colour.
+  - (2) Settings › This computer opens.
+  - (3) The line is gone (within 30 seconds, or on reload).
+- **Edge / negative cases:**
+  - While the check runs, or if it fails, nothing shows.
+- **Automation:** Covered by: `MachineChecklist.test.tsx` ('Home shows a calm Set up line until Docker is ready', 'Home shows nothing once Docker is ready') | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### SH-38 — Agent page: "Agents need Docker to act. Set up"
+
+- **What:** When a run's tools can't start, the core still sends `agent://warning` ("Tool execution unavailable: …") and the agent answers without tools. The agent page now shows a calm line "Agents need Docker to act." with **Set up** (opens Settings › This computer) and Dismiss, instead of the warning text. Other agent warnings show as before.
+- **Where:** `src/components/agent-console/ContainerControls.tsx` (`AgentWarningBanner`), `src/components/machine/DockerSetupPrompt.tsx`, `machine-model.ts` (`isToolsUnavailable`).
+- **Preconditions:** Docker stopped; an agent with a model.
+- **Steps:**
+  1. Send the agent a message.
+  2. Click Set up.
+  3. Go back, click Dismiss.
+- **Expected:**
+  - (1) The agent answers in text; the line shows above the chat, not "Tool execution unavailable".
+  - (2) Settings › This computer opens.
+  - (3) The line goes away until the next warning.
+- **Edge / negative cases:**
+  - A connector warning (not tools) shows its own text in the warning banner.
+- **Automation:** Covered by: `MachineChecklist.test.tsx` ('"Tool execution unavailable" becomes…', 'other warnings show as they are'), Rust `chat::tests` (the warning event is unchanged) | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -1109,6 +1167,32 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Expected:** The entries are listed with durations and outcomes. Secrets are redacted.
 - **Edge / negative cases:** An empty tab.
 - **Automation:** Covered by: `src/components/views/AuditLogView.test.tsx` | Layer: unit | Gap: see the audit area.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### ST-33 — Settings › This computer (get your computer ready)
+
+- **What:** A checklist of what agents need to act, checked read-only: Docker installed, Docker running, WSL 2 (Windows), Virtualization (Windows, macOS), Disk space (about 15 GB), Nandi's images (downloaded, or ghcr.io reachable). Each row shows Ready, Missing, Not running, Needs an update, Blocked or Couldn't tell, and what Nandi saw. A row that isn't ready adds one sentence saying why it matters, numbered steps for this OS (Linux: for the distribution family), copyable commands, and buttons: **Start Docker** (Docker Desktop, no admin rights) and links to official pages. A summary line says whether agents can act. The page re-checks every 10 seconds; **Check again** re-runs the slower checks too. "Docker Desktop is unable to start" lists, in order: quit Docker Desktop, `wsl --update`, `wsl --shutdown`, start it, check virtualization, Docker's factory reset. Linux shows `sudo systemctl start docker` and the `docker` group fix as commands; Nandi never runs them.
+- **Where:** `src/components/settings/sections/ThisComputerSection.tsx`, `src/components/machine/` (`MachineChecklist`, `machine-model.ts`), `hooks/useMachine.ts`; Rust `services/machine/` (`check_machine`, `start_docker`; `GET /api/machine/readiness?fresh=true`, `POST /api/machine/start-docker`). See `docs/developer/machine-readiness.md`.
+- **Preconditions:** None. For the states: Docker not installed, stopped, failing to start; on Linux, a user outside the `docker` group.
+- **Steps:**
+  1. Open Settings › This computer with Docker running.
+  2. Quit Docker Desktop and wait up to 10 seconds.
+  3. Click Start Docker.
+  4. Click Check again.
+  5. Linux: remove yourself from the `docker` group (new login) and open the page.
+- **Expected:**
+  - (1) Every row Ready (on the dev machine 2026-11-09: the Docker Desktop path, "Docker Engine 29.9.2", "WSL 3.0.5.0", "Turned on", "38.0 GB free at …", images "Downloaded"); "This computer is ready. Agents can act."
+  - (2) Docker running: Not running, with Start Docker and steps; the summary says agents can only talk.
+  - (3) Docker Desktop opens; the row turns Ready on a later re-check.
+  - (4) WSL, virtualization, disk and image rows are re-read (otherwise kept for a minute).
+  - (5) Docker running: Blocked, with `sudo usermod -aG docker $USER` and "Log out and back in".
+- **Edge / negative cases:**
+  - Offline or ghcr.io blocked with the image not downloaded: Nandi's images is Blocked with network and proxy steps; nothing else is affected.
+  - Podman's `docker`, or rootless Docker only: Couldn't tell, with a note that it isn't supported yet.
+  - Intel Docker Desktop on Apple silicon: Needs an update, with the Apple silicon download.
+  - Arabic: steps read right to left, commands stay left to right.
+- **Automation:** Covered by: Rust `services::machine::parse::tests`, `services::machine::assess::tests` (every state on Windows, macOS, Linux), `probe::tests::an_unreachable_registry_says_so_quickly`, offline suite `with_no_relay_the_computer_checklist_answers`; Vitest `machine-model.test.ts`, `MachineChecklist.test.tsx`, `SettingsView.test.tsx` | Layer: api + unit | Gap: macOS and Linux by hand.
 - **Needs relay:** no
 - **Status:** Shipped
 

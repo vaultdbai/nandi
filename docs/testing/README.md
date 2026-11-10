@@ -121,11 +121,11 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-540 features to test: all 594 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+544 features to test: all 598 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
-| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 58       |
+| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 62       |
 | Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 77       |
 | Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
@@ -137,21 +137,21 @@ These turned up while building the catalog. In each case the catalog follows the
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 521   |
+| Shipped     | 525   |
 | Partial     | 16    |
 | Removed     | 11    |
 | Known issue | 3     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 290   |
-| `api`                 | 193   |
+| `unit`                | 293   |
+| `api`                 | 194   |
 | `manual`              | 33    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 458   |
+| no          | 462   |
 | yes         | 82    |
 
 ## Master index
@@ -178,6 +178,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ON-11 | Step 5: starter packs                                                    | Shipped                                              | unit       | no          | 2026-11-01 pass                        |
 | ON-12 | Finishing setup and the welcome strip                                    | Shipped                                              | unit       | no          |                                        |
 | ON-15 | Step 1: connect your email (skippable)                                   | Shipped (live test pending)                          | unit       | no          |                                        |
+| ON-16 | Step 4: get your computer ready (recommended, skippable)                 | Shipped                                              | unit       | no          |                                        |
 | ON-13 | Starter packs page (after setup)                                         | Duplicate of LB-20                                   | —          | no          |                                        |
 | ON-14 | Upgrades from pre-identity installs                                      | Removed (2026-10-22, no legacy support)              | —          | no          |                                        |
 | SH-04 | Title bar and window controls                                            | Shipped                                              | ui-e2e     | no          |                                        |
@@ -198,6 +199,8 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | SH-19 | All activity                                                             | Shipped                                              | unit       | no          |                                        |
 | SH-20 | "No model connected" notice                                              | Shipped                                              | unit       | no          |                                        |
 | SH-36 | Work tray (Needs you · Working · Done)                                   | Shipped                                              | unit       | no          |                                        |
+| SH-37 | Home: "Agents can talk, but need Docker to act"                          | Shipped                                              | unit       | no          |                                        |
+| SH-38 | Agent page: "Agents need Docker to act. Set up"                          | Shipped                                              | unit       | no          |                                        |
 | SH-21 | Command palette: open, search, open results                              | Shipped                                              | api        | no          |                                        |
 | SH-22 | Palette: empty state, recents, and "Ask Nandi"                           | Shipped                                              | unit       | no          |                                        |
 | SH-23 | Palette command mode (`>`) and local commands                            | Shipped                                              | unit       | no          |                                        |
@@ -238,6 +241,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-23 | Backup › This computer's copy                                            | Duplicate of DT-31                                   | —          | no          |                                        |
 | ST-24 | Sources (registries)                                                     | Shipped                                              | unit       | no          |                                        |
 | ST-25 | Logs                                                                     | Shipped                                              | unit       | no          |                                        |
+| ST-33 | Settings › This computer (get your computer ready)                       | Shipped                                              | api + unit | no          |                                        |
 | ST-26 | Language and right-to-left layout                                        | Shipped                                              | unit       | no          |                                        |
 | ST-27 | Light, dark and system mode                                              | Shipped                                              | unit       | no          |                                        |
 | ST-28 | Color palettes and window icon                                           | Shipped                                              | unit       | no          |                                        |

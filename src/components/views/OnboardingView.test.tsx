@@ -13,6 +13,7 @@ import { packManifest } from '@/test/fixtures'
 import { emitMockEvent } from '@/test/mock-events'
 import { useNavigationStore } from '@/store/navigation-store'
 import { OnboardingView } from './OnboardingView'
+import { check, report } from '@/components/machine/machine.fixtures'
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
@@ -99,6 +100,10 @@ const research = packManifest('research-pack', 'Research Pack', {
 })
 const productivity = packManifest('productivity-pack', 'Productivity Pack')
 
+const machineReady = report({
+  checks: [check({ id: 'dockerInstalled' }), check({ id: 'dockerRunning' })],
+})
+
 const mocks = () =>
   commands as unknown as Record<string, ReturnType<typeof vi.fn>>
 
@@ -118,8 +123,14 @@ async function fillName(user: User) {
   await screen.findByText('Connect a model')
 }
 
-async function toNetwork(user: User) {
+async function toComputer(user: User) {
   await fillName(user)
+  await user.click(await screen.findByRole('button', { name: 'Continue' }))
+  await screen.findByText('Get your computer ready')
+}
+
+async function toNetwork(user: User) {
+  await toComputer(user)
   await user.click(await screen.findByRole('button', { name: 'Continue' }))
   await screen.findByText('Work with other people? (optional)')
 }
@@ -175,6 +186,7 @@ describe('OnboardingView', () => {
       checkEmailNow: ok(emailStatus),
       listMarketplacePacks: ok([research, productivity]),
       installPack: ok(null),
+      checkMachine: ok(machineReady),
     })
     useNavigationStore.setState({
       current: { kind: 'onboarding' },
@@ -284,10 +296,12 @@ describe('OnboardingView', () => {
       expect(screen.queryByText('Connect a model')).toBeNull()
     })
 
-    it('shows five steps, Email first', async () => {
+    it('shows six steps, Email first', async () => {
       render(<OnboardingView />)
       const steps = await screen.findByRole('list', { name: 'Setup steps' })
-      expect(steps).toHaveTextContent(/Email.*Name.*Model.*Network.*Agents/)
+      expect(steps).toHaveTextContent(
+        /Email.*Name.*Model.*Computer.*Network.*Agents/
+      )
       expect(steps.querySelector('[aria-current="step"]')).toHaveTextContent(
         'Email'
       )
@@ -376,9 +390,9 @@ describe('OnboardingView', () => {
         'claude:claude-sonnet-5'
       )
       expect(
-        await screen.findByText('Work with other people? (optional)')
+        await screen.findByText('Get your computer ready')
       ).toBeInTheDocument()
-      expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('network')
+      expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('computer')
     })
 
     it('tests a typed key before storing it', async () => {
@@ -471,7 +485,7 @@ describe('OnboardingView', () => {
       await user.click(screen.getByRole('button', { name: 'Skip for now' }))
       await user.click(screen.getByRole('button', { name: 'Skip anyway' }))
       expect(
-        await screen.findByText('Work with other people? (optional)')
+        await screen.findByText('Get your computer ready')
       ).toBeInTheDocument()
     })
   })

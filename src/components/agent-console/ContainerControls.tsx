@@ -1,9 +1,15 @@
 import { useTranslation } from 'react-i18next'
 import { TriangleAlert, X } from 'lucide-react'
+import { DockerSetupPrompt } from '@/components/machine/DockerSetupPrompt'
+import { isToolsUnavailable } from '@/components/machine/machine-model'
 import { Button } from '@/components/ui/button'
 import { useAgentStore } from '@/store/agent-store'
 
-/** Shown after `agent://warning`, e.g. the agent is answering without tools. */
+/**
+ * Shown after `agent://warning`. "Tool execution unavailable" (Docker
+ * isn't ready, so the agent answers without tools) becomes the calm
+ * "Agents need Docker to act. Set up"; other warnings show as they are.
+ */
 export function AgentWarningBanner({
   agentId,
   warning,
@@ -12,6 +18,10 @@ export function AgentWarningBanner({
   warning: string
 }) {
   const { t } = useTranslation()
+  const dismiss = () => useAgentStore.getState().setAgentWarning(agentId, null)
+
+  if (isToolsUnavailable(warning))
+    return <DockerSetupPrompt onDismiss={dismiss} />
 
   return (
     <div
@@ -28,7 +38,7 @@ export function AgentWarningBanner({
         className="size-6"
         aria-label={t('agentConsole.container.dismissWarning')}
         title={t('agentConsole.container.dismissWarning')}
-        onClick={() => useAgentStore.getState().setAgentWarning(agentId, null)}
+        onClick={dismiss}
       >
         <X />
       </Button>

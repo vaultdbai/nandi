@@ -12,6 +12,7 @@ import {
 } from '@/components/onboarding/Step1_Name'
 import { Step2Model } from '@/components/onboarding/Step2_Model'
 import { Step3Network } from '@/components/onboarding/Step3_Network'
+import { StepComputer } from '@/components/onboarding/StepComputer'
 import { StepEmail } from '@/components/onboarding/StepEmail'
 import {
   DEFAULT_RELAY_DRAFT,
@@ -48,10 +49,10 @@ export interface OnboardingViewProps {
 }
 
 /**
- * First launch: email (1, skippable), name (2), model (3), network (4,
- * optional), starter packs (5), then the Dashboard. A connected mailbox
- * fills in the name step ("You're Dev Chechi · Change"); skipping it
- * leaves the name step to ask. Finishing starts the first email check at
+ * First launch: email (1, skippable), name (2), model (3), this computer
+ * (4, recommended, skippable), network (5, optional), starter packs (6),
+ * then the Dashboard. A connected mailbox fills in the name step
+ * ("You're Dev Chechi · Change"); skipping it leaves the name step to ask. Finishing starts the first email check at
  * once, so the Chief of Staff has notes to work from before the first
  * interval passes. Each step saves its own setting as it's left, and the
  * step reached is remembered on this Nandi home, so quitting midway
@@ -227,8 +228,14 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
           )}
           {step === 'model' && (
             <Step2Model
-              onNext={() => advance('network')}
+              onNext={() => advance('computer')}
               onBack={() => setStep('name')}
+            />
+          )}
+          {step === 'computer' && (
+            <StepComputer
+              onNext={() => advance('network')}
+              onBack={() => setStep('model')}
             />
           )}
           {step === 'network' && (
@@ -239,7 +246,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps = {}) {
                 if (publishesGateway(relay)) void publishGateway()
                 advance('packs')
               }}
-              onBack={() => setStep('model')}
+              onBack={() => setStep('computer')}
               configuredUrl={configuredRelayUrl}
               configuredSource={relayStatus.data?.relayUrlSource ?? null}
               builtInUrl={builtInRelayUrl}

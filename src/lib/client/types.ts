@@ -25,6 +25,7 @@ import type {
   AgentConnectorChoice,
   FolderUsers,
   ImageStatus,
+  MachineReport,
   SandboxImage,
   ToolBundle,
   ToolsStatus,
@@ -741,6 +742,13 @@ export interface NandiClient {
   getToolsStatus(bundle: ToolBundle): Promise<Result<ToolsStatus, string>>
   /** Gets it now, or again after a failure (`images://tools` events) */
   installTools(bundle: ToolBundle): Promise<Result<null, string>>
+  /**
+   * Is this computer ready for agents to act (Docker, WSL, virtualization,
+   * disk, images). Read-only; `fresh` re-runs the slower checks
+   */
+  checkMachine(fresh: boolean): Promise<Result<MachineReport, string>>
+  /** Launches Docker Desktop (no admin rights) */
+  startDocker(): Promise<Result<null, string>>
   /** Sizes the companion for `shape` and keeps it in its screen corner */
   placeCompanion(
     shape: 'collapsed' | 'expanded' | 'overlay'

@@ -9,6 +9,7 @@ import {
 import { isFreshDashboard } from '@/components/dashboard/dashboard-model'
 import { Inbox } from '@/components/inbox/Inbox'
 import { LlmKeyNotice } from '@/components/layout/LlmKeyNotice'
+import { MachineHomeItem } from '@/components/machine/MachineHomeItem'
 import { RecentChanges } from '@/components/live/RecentChanges'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,9 +28,11 @@ const navigate = (view: View) => useNavigationStore.getState().navigate(view)
 
 /**
  * Home: does anything need me? Ask Nandi, the Chief of Staff's digest and
- * email to-do, then the Inbox (fix it here). Running and finished work live
- * in the work tray on every page, and All activity in the sidebar. A fresh
- * install shows what to do first instead of empty sections.
+ * email to-do, then the Inbox (fix it here). Until Docker answers, a calm
+ * line says agents can talk but not act, with Set up. Running and finished
+ * work live in the work tray on every page, and All activity in the
+ * sidebar. A fresh install shows what to do first instead of empty
+ * sections.
  */
 export function HomeView({
   welcome,
@@ -59,6 +62,7 @@ export function HomeView({
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
           <AskNandi />
           {fresh && <LlmKeyNotice className="m-0" />}
+          <MachineHomeItem />
           {welcome && welcome.packIds.length > 0 && (
             <WelcomeStrip packIds={welcome.packIds} />
           )}

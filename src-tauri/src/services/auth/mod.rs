@@ -67,6 +67,8 @@ pub enum OnboardingStep {
     Model,
     /// Connect the mailboxes the Chief of Staff reads (optional)
     Email,
+    /// Get your computer ready (Docker; recommended, skippable)
+    Computer,
     Network,
     Packs,
     Done,

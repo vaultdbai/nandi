@@ -197,6 +197,7 @@ export const ONBOARDING_STEPS = [
   'email',
   'name',
   'model',
+  'computer',
   'network',
   'packs',
 ] as const

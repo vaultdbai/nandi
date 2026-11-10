@@ -30,6 +30,7 @@ describe('SettingsView', () => {
         .map(button => button.textContent)
     ).toEqual([
       'Models & runtimes',
+      'This computer',
       'Account',
       'Email',
       'Calendar & files',

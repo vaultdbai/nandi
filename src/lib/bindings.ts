@@ -3250,6 +3250,31 @@ async installTools(bundle: ToolBundle) : Promise<Result<null, string>> {
 }
 },
 /**
+ * Is this computer ready for agents to act: Docker, WSL, virtualization,
+ * disk space, Nandi's images. Read-only. `fresh` re-runs the slower
+ * checks (otherwise they come from the last minute).
+ */
+async checkMachine(fresh: boolean) : Promise<Result<MachineReport, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_machine", { fresh }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Launches Docker Desktop (no admin rights). Linux Docker Engine needs
+ * `sudo systemctl start docker`, which the app shows instead.
+ */
+async startDocker() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_docker") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Probes the machine again (PATH, `--version`, config folders)
  */
 async detectHarnesses() : Promise<Result<HarnessInfo[], string>> {
@@ -3899,12 +3924,12 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const NO_SHARED_GROUP = "no_shared_group" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 
 /** user-defined types **/
 
@@ -5021,6 +5046,68 @@ export type ChatMessage = { kind: "user"; id: string; runId: string | null; crea
  * The message ID is also the approval ID
  */
 { kind: "approval"; id: string; runId: string | null; createdAt: number; tool: string; args: JsonValue; status: ApprovalStatus; expiresAt: number | null } | { kind: "error"; id: string; runId: string | null; createdAt: number; content: string }
+export type CheckId = "dockerInstalled" | "dockerRunning" | "wsl" | "virtualization" | "disk" | "images"
+/**
+ * Why a check is in its state: the UI picks its sentence and steps by it
+ */
+export type CheckReason = "ready" | "notInstalled" | 
+/**
+ * macOS: the Intel build of Docker Desktop on Apple silicon
+ */
+"wrongBuild" | 
+/**
+ * Linux: the `docker` command is Podman's
+ */
+"podman" | 
+/**
+ * Linux: only rootless Docker was found
+ */
+"rootless" | 
+/**
+ * Docker isn't installed, so it can't run
+ */
+"needsDocker" | "notRunning" | "starting" | 
+/**
+ * "Docker Desktop is unable to start": the app is there, its engine failed
+ */
+"desktopFailed" | 
+/**
+ * Linux: permission denied on `/var/run/docker.sock`
+ */
+"socketPermission" | 
+/**
+ * The WSL built into Windows, or older than Docker needs
+ */
+"oldWsl" | "kernelUpdate" | "virtualizationOff" | "lowDisk" | 
+/**
+ * The runtime image is on this computer already
+ */
+"downloaded" | "reachable" | 
+/**
+ * No answer from ghcr.io (offline, firewall, proxy)
+ */
+"unreachable" | 
+/**
+ * A certificate Nandi doesn't trust (often a company proxy)
+ */
+"certificate" | 
+/**
+ * The proxy wants a sign-in
+ */
+"proxyAuth" | 
+/**
+ * The registry refused (a company policy)
+ */
+"refused" | 
+/**
+ * Nandi couldn't tell
+ */
+"notChecked"
+export type CheckState = "ok" | "missing" | "stopped" | "needsUpdate" | 
+/**
+ * By policy, permissions, a proxy, the firmware or a failed engine
+ */
+"blocked" | "unknown"
 export type ChiefOfStaffDigest = { 
 /**
  * When the user last marked it seen, epoch ms (`None`: never)
@@ -5544,6 +5631,22 @@ export type Direction =
  * This Nandi asked another
  */
 "outgoing"
+/**
+ * Linux distributions, grouped by how Docker installs on them
+ */
+export type DistroFamily = 
+/**
+ * Debian, Ubuntu, Mint, Pop!_OS, ...
+ */
+"debian" | 
+/**
+ * Fedora, RHEL, CentOS, Rocky, Alma
+ */
+"fedora" | 
+/**
+ * Arch, Manjaro, EndeavourOS
+ */
+"arch" | "other"
 export type EditPreview = { artifact: ArtifactRef; before: string; after: string; 
 /**
  * Unified diff
@@ -6346,6 +6449,26 @@ export type KeyTestFailure =
  */
 export type KeyedProvider = "deepSeek" | "anthropic" | "openAi"
 export type LatencyClass = "instant" | "fast" | "slow" | "long"
+/**
+ * `/etc/os-release`
+ */
+export type LinuxDistro = { 
+/**
+ * `ID`, e.g. `ubuntu`
+ */
+id: string; 
+/**
+ * `ID_LIKE`, e.g. `["debian"]`
+ */
+idLike: string[]; 
+/**
+ * `VERSION_ID`, e.g. `24.04`
+ */
+versionId: string | null; 
+/**
+ * `PRETTY_NAME`, e.g. `Ubuntu 24.04.1 LTS`
+ */
+name: string | null; family: DistroFamily }
 export type LitellmGatewayStatus = { running: boolean; 
 /**
  * For host sessions, e.g. `http://127.0.0.1:4000`
@@ -6406,6 +6529,50 @@ endpoint?: string | null;
  */
 model?: string | null }
 export type LlmProviderKind = "bedrock" | "azure" | "litellm" | "anthropic" | "openai" | "ollama"
+/**
+ * What the user can do about a check, in phase 1. Phase 2 adds the
+ * approved installs and fixes.
+ */
+export type MachineAction = 
+/**
+ * Launches Docker Desktop (no admin rights)
+ */
+{ kind: "startDocker" } | 
+/**
+ * An official download or docs page
+ */
+{ kind: "openLink"; url: string } | { kind: "checkAgain" }
+export type MachineCheck = { id: CheckId; state: CheckState; reason: CheckReason; 
+/**
+ * What Nandi saw: a path, a version, the error line
+ */
+detail: string; actions: MachineAction[] }
+export type MachineOs = "windows" | "macos" | "linux" | "other"
+export type MachineReport = { os: MachineOs; 
+/**
+ * `x86_64`, `aarch64`
+ */
+arch: string; 
+/**
+ * macOS on an M-series chip (even when Nandi runs under Rosetta)
+ */
+appleSilicon: boolean; 
+/**
+ * Linux: from `/etc/os-release`
+ */
+distro: LinuxDistro | null; checks: MachineCheck[]; 
+/**
+ * Docker answers: agents can act
+ */
+dockerReady: boolean; 
+/**
+ * Every check is `ok`
+ */
+ready: boolean; 
+/**
+ * RFC 3339
+ */
+checkedAt: string }
 export type MailProvider = 
 /**
  * Outlook and Microsoft 365, through Microsoft Graph
@@ -6645,7 +6812,11 @@ export type OnboardingStep = "name" | "model" |
 /**
  * Connect the mailboxes the Chief of Staff reads (optional)
  */
-"email" | "network" | "packs" | "done"
+"email" | 
+/**
+ * Get your computer ready (Docker; recommended, skippable)
+ */
+"computer" | "network" | "packs" | "done"
 export type OwnerKind = "user" | "team" | "org"
 /**
  * Who runs the instance an agent lives on.

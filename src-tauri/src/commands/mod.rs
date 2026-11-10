@@ -34,6 +34,7 @@ pub mod identity;
 pub mod images;
 pub mod live;
 pub mod llm_keys;
+pub mod machine;
 pub mod manual_steps;
 pub mod marketplace;
 pub mod marketplace_search;

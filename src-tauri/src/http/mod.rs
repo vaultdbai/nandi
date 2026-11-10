@@ -33,6 +33,7 @@ mod harnesses;
 mod identity;
 mod images;
 mod live;
+mod machine;
 mod manual_steps;
 mod marketplace;
 mod marketplace_search;
@@ -91,6 +92,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(policies::api())
                 .merge(connectors::api())
                 .merge(images::api())
+                .merge(machine::api())
                 // Wave 2A
                 .merge(capability::api())
                 .merge(relay::api())

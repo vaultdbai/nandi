@@ -63,6 +63,7 @@ pub mod intake;
 pub mod live;
 pub mod llm_keys;
 pub mod llm_trial;
+pub mod machine;
 pub mod marketplace;
 pub mod mascot;
 // Not every API has a caller yet

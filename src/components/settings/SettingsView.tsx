@@ -24,6 +24,7 @@ import { EmailSection } from './sections/EmailSection'
 import { InternetAccessSection } from './sections/InternetAccessSection'
 import { ModelsSection } from './sections/ModelsSection'
 import { SourcesSection } from './sections/SourcesSection'
+import { ThisComputerSection } from './sections/ThisComputerSection'
 import { WorkspaceSection } from './sections/WorkspaceSection'
 
 /**
@@ -103,6 +104,7 @@ export function SettingsView({
         </nav>
         <main className="min-h-0 min-w-0 flex-1" data-section={section}>
           {section === 'models' && <ModelsSection />}
+          {section === 'computer' && <ThisComputerSection />}
           {section === 'account' && <AccountSection />}
           {section === 'email' && <EmailSection />}
           {section === 'workspace' && <WorkspaceSection />}

@@ -14,6 +14,8 @@
 //! - a starter pack installs from a local folder
 //! - person-to-person endpoints answer the typed `RelayUnavailable`
 //! - a build with an unreachable default relay and join code behaves the same
+//! - Settings › This computer's checklist answers (its image check pointed
+//!   where nothing listens)
 
 use std::time::{Duration, Instant};
 
@@ -338,6 +340,45 @@ async fn a_starter_pack_installs_from_a_local_folder(router: &Router) {
 async fn with_no_relay_a_starter_pack_installs_from_a_folder() {
     let (_state, router) = boot(BuiltInRelay::default());
     a_starter_pack_installs_from_a_local_folder(&router).await;
+}
+
+/// Settings › This computer: the checklist answers, read-only, with every
+/// row a state and the image check's "no answer" kept to its own row
+#[tokio::test]
+async fn with_no_relay_the_computer_checklist_answers() {
+    crate::services::machine::use_registry_for_tests("http://127.0.0.1:9");
+    let (_state, router) = boot(BuiltInRelay::default());
+    // Local commands (WSL, PowerShell, df) take their own short timeouts;
+    // none of them is the relay
+    let request = Request::builder()
+        .uri("/api/machine/readiness")
+        .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+        .body(Body::empty())
+        .unwrap();
+    let response = tokio::time::timeout(Duration::from_secs(30), router.oneshot(request))
+        .await
+        .expect("the checklist answers within 30 s")
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let report: Value = serde_json::from_slice(&bytes).unwrap();
+    let checks = report["checks"].as_array().expect("checks");
+    let ids: Vec<&str> = checks.iter().filter_map(|c| c["id"].as_str()).collect();
+    for id in ["dockerInstalled", "dockerRunning", "disk", "images"] {
+        assert!(ids.contains(&id), "{id} missing: {report}");
+    }
+    for check in checks {
+        assert!(
+            check["state"].is_string() && check["reason"].is_string(),
+            "{check}"
+        );
+    }
+    assert!(report["dockerReady"].is_boolean(), "{report}");
+    let images = checks.iter().find(|c| c["id"] == "images").unwrap();
+    assert!(
+        ["downloaded", "unreachable"].contains(&images["reason"].as_str().unwrap()),
+        "{images}"
+    );
 }
 
 #[tokio::test]

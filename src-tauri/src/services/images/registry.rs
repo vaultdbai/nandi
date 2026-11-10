@@ -15,7 +15,7 @@ use serde::Deserialize;
 /// The whole lookup gives up after this
 const TIMEOUT: Duration = Duration::from_secs(6);
 
-const ACCEPT: &str = "application/vnd.oci.image.index.v1+json, \
+pub(crate) const ACCEPT: &str = "application/vnd.oci.image.index.v1+json, \
     application/vnd.docker.distribution.manifest.list.v2+json, \
     application/vnd.oci.image.manifest.v1+json, \
     application/vnd.docker.distribution.manifest.v2+json";
@@ -147,7 +147,7 @@ async fn get(client: &reqwest::Client, url: &str, token: Option<&str>) -> Result
 }
 
 /// The anonymous pull token the challenge points to
-async fn pull_token(
+pub(crate) async fn pull_token(
     client: &reqwest::Client,
     challenge: &str,
     repository: &str,

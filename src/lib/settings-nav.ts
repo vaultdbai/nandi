@@ -8,9 +8,13 @@ import {
   type View,
 } from '@/store/navigation-store'
 
-/** The sections of Settings, in rail order. `models` is Models & runtimes. */
+/**
+ * The sections of Settings, in rail order. `models` is Models & runtimes,
+ * `computer` is This computer ("Get your computer ready").
+ */
 export const SETTINGS_SECTIONS = [
   'models',
+  'computer',
   'account',
   'email',
   'workspace',
