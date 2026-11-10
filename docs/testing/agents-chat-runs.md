@@ -786,7 +786,8 @@ Shared preconditions used below:
 - **Edge / negative cases:**
   - Approval ID for another agent via `/agents/{other}/approve`: "Approval not found".
   - Approve stays a single click (no confirm) by design.
-- **Automation:** Covered by: Rust tests in `services/chat.rs` (`runs_suspend_for_approval_and_resume`, `rejection_skips_the_tool_and_completes`); `approvals_suite.rs` `approvals_and_refusals_are_on_the_record` over the HTTP API (the run waits, is approved and completes, a second decision is refused, the entry in the decisions file) | Layer: api | Gap: card UI untested.
+  - A tool a policy denies (`tools.deny`) is refused before it's asked about: no card, even when it's in `requires_approval` (PO-14).
+- **Automation:** Covered by: Rust tests in `services/chat.rs` (`runs_suspend_for_approval_and_resume`, `rejection_skips_the_tool_and_completes`); `approvals_suite.rs` `approvals_and_refusals_are_on_the_record` over the HTTP API (the run waits, is approved and completes, a second decision is refused, the entry in the decisions file), `a_denied_tool_is_refused_without_asking_first` (a denied tool gets no card) | Layer: api | Gap: card UI untested.
 - **Needs relay:** no
 - **Status:** Shipped
 

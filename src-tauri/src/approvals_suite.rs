@@ -8,7 +8,8 @@
 //! - CP-06: a call through a connector waits for access; refused, the run
 //!   goes on without it
 //! - PO-14: each decision is in the month's file: who, what, the decision;
-//!   a policy's refusal is decided by that policy
+//!   a policy's refusal is decided by that policy, and a tool it denies is
+//!   refused before anyone is asked, even one that needs approval
 //! - Inbox Ask chats: a decision made in the item's chat, once the person
 //!   confirms it, names the chat
 //! - RQ-32: an auto-approve rule's and the groups' approvals are theirs; a
@@ -328,6 +329,95 @@ async fn approvals_and_refusals_are_on_the_record() {
     );
     assert!(denied.contains("(approver: tool shell)"), "{denied}");
     assert!(denied.contains("- **Decision:** refused"), "{denied}");
+    state.shutdown();
+}
+
+/// PO-14, CH-08: a tool a policy denies that also needs approval (shell,
+/// by default), named by the model anyway, is refused by the policy
+/// before anyone is asked: no approval row, one decision, the policy's
+#[tokio::test]
+async fn a_denied_tool_is_refused_without_asking_first() {
+    let (state, router) = boot(BuiltInRelay::default());
+    // As a real model's call is planned: shell is in the approval list
+    canned(
+        &state,
+        json!({
+            "agent": [
+                { "text": "Counting.", "toolCalls": [{
+                    "tool": "shell",
+                    "args": { "cmd": "wc -w report.md" },
+                    "result": "1284 report.md",
+                    "requiresApproval": true
+                }] },
+                { "text": "Done." }
+            ],
+            "studio": [],
+            "tokenDelayMs": 0
+        }),
+    )
+    .await;
+    post(
+        &router,
+        "agents",
+        json!({ "id": "counter", "name": "Counter" }),
+    )
+    .await;
+    write_policy(
+        &state,
+        "no-shell",
+        "---
+applies_to: ['agent:counter']
+tools: { deny: [shell] }
+---
+No shell.
+",
+    );
+    let (run_id, detail) = run(&router, "counter", "How long is the report?").await;
+    assert_eq!(
+        detail["run"]["status"], "completed",
+        "never asked: {detail}"
+    );
+    assert!(
+        detail
+            .to_string()
+            .contains("Tool 'shell' is not available: a policy doesn't allow it"),
+        "the model got the refusal: {detail}"
+    );
+    let calls = state
+        .db()
+        .call(move |conn| crate::db::list_run_messages(conn, &run_id))
+        .await
+        .unwrap();
+    let shell_call = calls
+        .iter()
+        .filter(|m| m.role == crate::db::role::TOOL_CALL)
+        .find(|m| m.metadata["tool"] == "shell")
+        .map(|m| m.id.clone())
+        .expect("the model tried shell");
+    let id = shell_call.clone();
+    let approval = state
+        .db()
+        .call(move |conn| crate::db::approval_for_call(conn, &id))
+        .await
+        .unwrap();
+    assert!(approval.is_none(), "nobody was asked: {approval:?}");
+    let pending = get(&router, "approvals/pending").await;
+    assert_eq!(pending, json!([]), "no approval card");
+    let denied = recorded(&state, "policy", &shell_call).await;
+    assert!(
+        denied.contains("- **Decided by:** policy no-shell"),
+        "{denied}"
+    );
+    assert!(denied.contains("(counter: tool shell)"), "{denied}");
+    assert!(denied.contains("- **Decision:** refused"), "{denied}");
+    assert_eq!(
+        decisions(&state)
+            .matches(&format!("`{shell_call}`"))
+            .count(),
+        1,
+        "one decision: {}",
+        decisions(&state)
+    );
     state.shutdown();
 }
 

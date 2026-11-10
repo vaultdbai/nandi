@@ -2015,6 +2015,24 @@ async fn run_call(
         return Ok(true);
     }
 
+    // A tool its policies deny (`tools.deny`) is refused before anything
+    // else, whatever the engine: nobody is asked, and the refusal is the
+    // policy's. A broken policy stops the call later, in `execute_tool`.
+    if ctx.agent_id != STUDIO_AGENT_ID {
+        let refused = deps
+            .store
+            .skill(&ctx.agent_id)
+            .ok()
+            .and_then(|skill| denied_by_policy(deps, ctx, call, &skill));
+        if let Some(outcome) = refused {
+            if existing.is_none() {
+                bus.tool_call(ctx, call).await?;
+            }
+            bus.tool_result(ctx, call, &outcome).await?;
+            return Ok(true);
+        }
+    }
+
     // Plan mode (or another middleware) blocks it outright: no approval,
     // and the model reads why in the call's error result
     if let Some(name) = middleware::blocking_middleware(pipeline, &call.tool) {
@@ -2292,12 +2310,7 @@ async fn run_call(
         }
         Engine::Canned(canned) => {
             tokio::time::sleep(canned.token_delay() * 4).await;
-            let refused = deps
-                .store
-                .skill(&ctx.agent_id)
-                .ok()
-                .and_then(|skill| denied_by_policy(deps, ctx, call, &skill));
-            refused.unwrap_or_else(|| canned.execute(call))
+            canned.execute(call)
         }
         Engine::Llm => execute_tool(deps, ctx, call).await?,
     };
@@ -2376,8 +2389,8 @@ fn screenshot_call(
 }
 
 /// A call to a tool its policies deny (`tools.deny`), recorded as the
-/// policy's decision. Checked whatever the engine, so the canned one obeys
-/// policies too.
+/// policy's decision. Checked in `run_call` before any approval, whatever
+/// the engine, so the canned one obeys policies too.
 fn denied_by_policy(
     deps: &RunDeps,
     ctx: &RunContext,
@@ -2428,9 +2441,6 @@ async fn execute_tool(
     }
     // Its skill.md narrowed by its policies; a broken policy stops it here
     let skill = deps.store.skill(&ctx.agent_id)?;
-    if let Some(refused) = denied_by_policy(deps, ctx, call, &skill) {
-        return Ok(refused);
-    }
     // Pilots (Track A): host-side, governed by skill.md `pilots:` + consent
     if let Some((pilot, _)) = pilots::tools::parse_tool_name(&call.tool) {
         if !skill.pilots.iter().any(|p| p == pilot) {
