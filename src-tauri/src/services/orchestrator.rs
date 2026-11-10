@@ -2811,12 +2811,25 @@ pilots: { allow: [] }
             requires_approval: false,
         };
 
+        // `run_call` refuses it before any approval, as the policy's
+        let skill = state.store().skill("writer").unwrap();
+        let refused = denied_by_policy(&deps(&state), &context("writer"), &call("shell"), &skill)
+            .expect("refused by the policy");
+        assert!(refused.is_error);
+        assert!(
+            refused.result.contains("a policy doesn't allow it"),
+            "{}",
+            refused.result
+        );
+        // and the runtime never gets it either
         let shell = execute_tool(&deps(&state), &context("writer"), &call("shell"))
             .await
             .unwrap();
         assert!(shell.is_error);
         assert!(
-            shell.result.contains("a policy doesn't allow it"),
+            shell
+                .result
+                .contains("not allowed by this agent's skill.md or its policies"),
             "{}",
             shell.result
         );
