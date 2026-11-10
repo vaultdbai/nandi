@@ -1,6 +1,8 @@
 //! `~/.nandi/local/logs/connectors.log`: one JSON line per connector tool
 //! call. Like the other audit logs it records metadata only: argument
-//! *names*, never their values or the tool's output.
+//! *names*, never their values or the tool's output. Who may use a
+//! connector (grants, access requests, policy refusals) are decisions, kept
+//! in the decisions file (`inbox::audit`), not here.
 
 use std::path::PathBuf;
 
@@ -30,46 +32,6 @@ pub struct Entry<'a> {
     /// `ok` | `error` | `unavailable`
     pub outcome: &'a str,
     pub duration_ms: u64,
-}
-
-/// One grant decision or refusal, so "who let this agent read my mail, and
-/// when" has an answer: `granted`, `removed`, `allowed_once`, `refused`
-/// (the person said no), `forbidden` (a policy), `revoked_in_run` (a call
-/// after its grant was removed)
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccessEntry {
-    pub timestamp: u64,
-    pub kind: &'static str,
-    pub event: &'static str,
-    pub agent_id: String,
-    pub connector_id: String,
-    /// `read` or `write`
-    pub access: &'static str,
-    /// `local` or `saved`, for grants
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scope: Option<&'static str>,
-    /// Who decided (the local user's name), or the policy
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub by: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub run_id: Option<String>,
-}
-
-impl AccessEntry {
-    pub fn new(event: &'static str, agent: &str, connector: &str, access: &'static str) -> Self {
-        Self {
-            timestamp: crate::audit::now_ms(),
-            kind: "connector_access",
-            event,
-            agent_id: agent.to_string(),
-            connector_id: connector.to_string(),
-            access,
-            scope: None,
-            by: None,
-            run_id: None,
-        }
-    }
 }
 
 /// Where entries go. The default is `~/.nandi/local/logs/connectors.log`,
@@ -137,18 +99,6 @@ impl AuditSink {
     }
 }
 
-impl AuditSink {
-    /// Appends one access entry (failures are logged, as for calls)
-    pub async fn record_access(&self, entry: &AccessEntry) {
-        let Some(path) = self.path() else {
-            return;
-        };
-        if let Err(e) = append(&path, entry).await {
-            log::error!("Failed to write the connector audit log: {e}");
-        }
-    }
-}
-
 async fn append(path: &std::path::Path, entry: &impl Serialize) -> Result<(), String> {
     let mut line = serde_json::to_string(entry).map_err(|e| e.to_string())?;
     line.push('\n');
@@ -199,17 +149,6 @@ mod tests {
         assert_eq!(lines[0]["tool"], "write_file");
         assert_eq!(lines[0]["argsRedacted"]["content"], "[redacted]");
         assert_eq!(lines[1]["outcome"], "error");
-
-        let mut granted = AccessEntry::new("granted", "chief-of-staff", "outlook", "read");
-        granted.scope = Some("saved");
-        granted.by = Some("Dev".into());
-        sink.record_access(&granted).await;
-        let text = std::fs::read_to_string(&path).unwrap();
-        let last: Value = serde_json::from_str(text.lines().last().unwrap()).unwrap();
-        assert_eq!(last["kind"], "connector_access");
-        assert_eq!(last["event"], "granted");
-        assert_eq!(last["scope"], "saved");
-        assert_eq!(last["by"], "Dev");
     }
 
     #[test]

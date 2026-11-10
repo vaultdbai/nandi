@@ -28,9 +28,6 @@ pub enum AuditLog {
     Egress,
     /// `triggers.log` — every trigger fire and what it dispatched
     Triggers,
-    /// `decisions.log` — every approval decision (who, or that it expired)
-    /// and every call a policy refused (which policy)
-    Decisions,
 }
 
 impl AuditLog {
@@ -39,7 +36,6 @@ impl AuditLog {
             AuditLog::Llm => "llm.log",
             AuditLog::Egress => "egress.log",
             AuditLog::Triggers => "triggers.log",
-            AuditLog::Decisions => "decisions.log",
         }
     }
 
@@ -54,14 +50,7 @@ impl AuditLog {
 // renamed or removed.
 
 /// The logs the viewer can read, by `AuditEntry::kind`.
-pub const AUDIT_KINDS: [&str; 6] = [
-    "llm",
-    "egress",
-    "triggers",
-    "pilots",
-    "connectors",
-    "decisions",
-];
+pub const AUDIT_KINDS: [&str; 5] = ["llm", "egress", "triggers", "pilots", "connectors"];
 
 /// The most entries one page may hold.
 pub const MAX_AUDIT_PAGE: u32 = 500;
@@ -134,7 +123,6 @@ fn log_file_name(kind: &str) -> Result<&'static str, String> {
         "llm" => Ok(AuditLog::Llm.file_name()),
         "egress" => Ok(AuditLog::Egress.file_name()),
         "triggers" => Ok(AuditLog::Triggers.file_name()),
-        "decisions" => Ok(AuditLog::Decisions.file_name()),
         // Written by the pilots track (wave 1)
         "pilots" => Ok(crate::services::pilots::audit::FILE_NAME),
         // Written by the connectors track (wave 1)

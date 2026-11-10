@@ -957,9 +957,11 @@ fn allowed_url(sites: &Capabilities, url: &str) -> Result<(), String> {
     }
 }
 
-/// Runs `tool` in `agent`'s `pilot` browser: `(content, is_error)`
+/// Runs `tool` (the tool call `call_id`) in `agent`'s `pilot` browser:
+/// `(content, is_error)`
 pub async fn call(
     agent: &Agent,
+    call_id: &str,
     pilot: &str,
     tool: &str,
     args: &Value,
@@ -1016,8 +1018,12 @@ pub async fn call(
         });
         if let Some(message) = refused {
             drop(pool);
-            crate::services::policies::audit_refused(&host.store, agent_id, "browser controls")
-                .await;
+            crate::services::policies::record_refused(
+                &host.store,
+                agent_id,
+                call_id,
+                "browser controls",
+            );
             return Ok((message, true));
         }
         // It wasn't asked about because it looked refused, and the page

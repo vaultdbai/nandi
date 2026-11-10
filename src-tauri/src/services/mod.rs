@@ -618,13 +618,6 @@ impl AppState {
         grants::GrantStore::new(&self.0.store, &self.0.nandi_dir)
     }
 
-    /// Where grant decisions are audited (the connector log)
-    pub fn connector_audit(&self) -> connectors::audit::AuditSink {
-        self.connectors()
-            .map(|registry| registry.audit_sink())
-            .unwrap_or_default()
-    }
-
     /// Readers for the audit logs
     pub fn audit_store(&self) -> &Arc<AuditStore> {
         &self.0.audit_store

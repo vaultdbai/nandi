@@ -201,8 +201,7 @@ pub async fn approve_action(
     if approval.status != ApprovalStatus::Pending {
         return Err("This approval request is no longer pending".to_string());
     }
-    // Who decided, for the approval and `decisions.log`: read again when
-    // the decision closes it
+    // Who decided, kept on the approval (the decisions file names them too)
     let who = decider(state);
     let id = approval_id.clone();
     state
@@ -277,8 +276,36 @@ fn record_decision(state: &AppState, approval: &db::ApprovalRow, decision: Appro
             &approval.id,
             choice.unwrap_or_else(|| word.to_string()),
         )
-        .subject(format!("{}: {}", approval.agent_id, approval.tool)),
+        .subject(format!(
+            "{}: {}",
+            approval.agent_id,
+            approval_subject(approval)
+        )),
     );
+}
+
+/// What an approval asked for, in a few words: the tool, or for an access
+/// request what it wanted to reach (`read with Issue tracker`, `the site
+/// shop.example`)
+fn approval_subject(approval: &db::ApprovalRow) -> String {
+    if approval.tool != crate::services::access::ACCESS_TOOL {
+        return approval.tool.clone();
+    }
+    let args = &approval.args;
+    if let Some(site) = args["site"]["display"].as_str() {
+        return format!("the site {site}");
+    }
+    let names: Vec<&str> = args["connectors"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c["name"].as_str())
+        .collect();
+    format!(
+        "{} with {}",
+        args["access"].as_str().unwrap_or("use"),
+        names.join(", ")
+    )
 }
 
 /// Answers a hand-over (`pilots::handover`): Done and Changed it approve

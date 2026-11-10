@@ -1734,7 +1734,6 @@
   "audit.tab.triggers": "Triggers",
   "audit.tab.pilots": "Pilots",
   "audit.tab.connectors": "Connectors",
-  "audit.tab.decisions": "Decisions",
   "audit.column.label": "Search in",
   "audit.column.all": "All columns",
   "audit.column.agent": "Agent",
@@ -4683,7 +4682,7 @@
   "nav.tree.decisions": "Decisions",
   "inbox.pastDecisions": "Past decisions",
   "decisions.title": "Decisions",
-  "decisions.subtitle": "Every decision you made from a button or an Ask chat, kept in your repo",
+  "decisions.subtitle": "Every decision, by you, an auto-approve rule or a policy, kept in your repo",
   "decisions.month": "Month",
   "decisions.search": "Search items and reasons",
   "decisions.kind.label": "Kind",
@@ -4695,7 +4694,7 @@
   "decisions.loadError": "Couldn't read the decisions: {{error}}",
   "decisions.clearFilters": "Clear filters",
   "decisions.empty.title": "No decisions yet",
-  "decisions.empty.description": "Every decision you make from a button or an Ask chat is recorded here, and kept in your repo as plain files.",
+  "decisions.empty.description": "Every decision is recorded here: yours from a button or an Ask chat, an auto-approve rule's, and every call a policy refused. They're kept in your repo as plain files.",
   "decisions.noMatch.title": "No decisions match",
   "decisions.noMatch.description": "Nothing this month fits those filters.",
   "decisions.noneThisMonth.title": "Nothing decided this month",
@@ -4722,5 +4721,9 @@
   "decisions.decision.reassigned": "Reassigned",
   "decisions.decision.trusted": "Trusted",
   "decisions.decision.notNow": "Not now",
-  "decisions.decision.blocked": "Blocked"
+  "decisions.decision.blocked": "Blocked",
+  "decisions.kind.policy": "Refused by a policy",
+  "decisions.kind.connectorGrant": "Connector access",
+  "decisions.decision.granted": "Granted",
+  "decisions.decision.removed": "Removed"
 }

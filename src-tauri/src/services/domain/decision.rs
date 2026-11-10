@@ -1,8 +1,9 @@
-//! A decision the person made on an Inbox item, as the gold copy keeps it
-//! (`.nandi/decisions/<yyyy-mm>.md`, written by
-//! `repos::decision_repo`). Every decision is recorded, from a button or
-//! from the item's Ask chat: when, who, the item, what was decided, the
-//! reason or note, and the chat it came from. The chat's text stays local.
+//! A decision, as the gold copy keeps it (`.nandi/decisions/<yyyy-mm>.md`,
+//! written by `repos::decision_repo`), the one record of them: a person's
+//! (from a button or an Inbox item's Ask chat), an auto-approve rule's or
+//! the groups', or a policy's refusal. When, who, the item, what was
+//! decided, the reason or note, and the chat it came from. The chat's text
+//! stays local.
 //!
 //! ```text
 //! ## 2026-11-08 14:32:05 UTC · gatewayHold
@@ -29,9 +30,9 @@ const MAX_TEXT_CHARS: usize = 2000;
 pub struct DecisionEntry {
     /// Epoch ms
     pub at: i64,
-    /// This Nandi's user, by name
+    /// This Nandi's user, by name, or the rule or policy that decided
     pub decided_by: String,
-    /// The Inbox item's kind (`approval`, `gatewayHold`, …)
+    /// The item's kind (`approval`, `gatewayHold`, `policy`, …)
     pub item_kind: String,
     pub item_id: String,
     /// What it was about, in a few words (a tool, a request), if known
@@ -308,8 +309,9 @@ pub fn parse_month(text: &str) -> ParsedMonth {
 /// The heading a new month file starts with
 pub fn month_header(month: &str) -> String {
     format!(
-        "# Decisions, {month}\n\nEvery decision made on this Nandi's Inbox, from a button or an Ask \
-chat. Written by Nandi; the chats themselves stay on this computer.\n\n"
+        "# Decisions, {month}\n\nEvery decision made on this Nandi: its user's (from a button or an \
+Ask chat), an auto-approve rule's or the groups', and every call a policy refused. Written by \
+Nandi; the chats themselves stay on this computer.\n\n"
     )
 }
 

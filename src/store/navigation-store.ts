@@ -114,7 +114,7 @@ export const RUN_DETAIL_TABS = [
 export type RunDetailTab = (typeof RUN_DETAIL_TABS)[number]
 
 export type AuditLogTab =
-  'llm' | 'egress' | 'triggers' | 'pilots' | 'connectors' | 'decisions'
+  'llm' | 'egress' | 'triggers' | 'pilots' | 'connectors'
 
 export type AutomationsTab = 'workflows' | 'triggers'
 export type WorkflowTab = 'overview' | 'graph' | 'runs' | 'configuration'

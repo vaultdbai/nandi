@@ -1734,7 +1734,6 @@
   "audit.tab.triggers": "المُشغِّلات",
   "audit.tab.pilots": "الطيارون",
   "audit.tab.connectors": "الموصلات",
-  "audit.tab.decisions": "القرارات",
   "audit.column.label": "البحث في",
   "audit.column.all": "كل الأعمدة",
   "audit.column.agent": "الوكيل",
@@ -4683,7 +4682,7 @@
   "nav.tree.decisions": "القرارات",
   "inbox.pastDecisions": "القرارات السابقة",
   "decisions.title": "القرارات",
-  "decisions.subtitle": "كل قرار اتخذته من زر أو من محادثة اسأل، محفوظ في مستودعك",
+  "decisions.subtitle": "كل قرار، منك أو من قاعدة موافقة تلقائية أو من سياسة، محفوظ في مستودعك",
   "decisions.month": "الشهر",
   "decisions.search": "ابحث في العناصر والأسباب",
   "decisions.kind.label": "النوع",
@@ -4695,7 +4694,7 @@
   "decisions.loadError": "تعذّرت قراءة القرارات: {{error}}",
   "decisions.clearFilters": "مسح عوامل التصفية",
   "decisions.empty.title": "لا توجد قرارات بعد",
-  "decisions.empty.description": "كل قرار تتخذه من زر أو من محادثة اسأل يُسجَّل هنا، ويُحفظ في مستودعك كملفات عادية.",
+  "decisions.empty.description": "يُسجَّل هنا كل قرار: قراراتك من زر أو من محادثة Ask، وقرارات قواعد الموافقة التلقائية، وكل استدعاء رفضته سياسة. تُحفظ في مستودعك كملفات نصية بسيطة.",
   "decisions.noMatch.title": "لا توجد قرارات مطابقة",
   "decisions.noMatch.description": "لا شيء هذا الشهر يطابق عوامل التصفية هذه.",
   "decisions.noneThisMonth.title": "لم يُتخذ أي قرار هذا الشهر",
@@ -4722,5 +4721,9 @@
   "decisions.decision.reassigned": "أُعيد إسناده",
   "decisions.decision.trusted": "موثوق",
   "decisions.decision.notNow": "ليس الآن",
-  "decisions.decision.blocked": "محظور"
+  "decisions.decision.blocked": "محظور",
+  "decisions.kind.policy": "رفضته سياسة",
+  "decisions.kind.connectorGrant": "الوصول إلى الموصلات",
+  "decisions.decision.granted": "مُنح",
+  "decisions.decision.removed": "أُزيل"
 }

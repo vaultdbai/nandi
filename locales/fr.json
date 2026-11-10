@@ -1734,7 +1734,6 @@
   "audit.tab.triggers": "Déclencheurs",
   "audit.tab.pilots": "Pilotes",
   "audit.tab.connectors": "Connecteurs",
-  "audit.tab.decisions": "Décisions",
   "audit.column.label": "Rechercher dans",
   "audit.column.all": "Toutes les colonnes",
   "audit.column.agent": "Agent",
@@ -4683,7 +4682,7 @@
   "nav.tree.decisions": "Décisions",
   "inbox.pastDecisions": "Décisions passées",
   "decisions.title": "Décisions",
-  "decisions.subtitle": "Chaque décision prise depuis un bouton ou une discussion Demander, conservée dans votre dépôt",
+  "decisions.subtitle": "Chaque décision, la vôtre, celle d'une règle d'approbation automatique ou d'une politique, conservée dans votre dépôt",
   "decisions.month": "Mois",
   "decisions.search": "Rechercher dans les éléments et les motifs",
   "decisions.kind.label": "Type",
@@ -4695,7 +4694,7 @@
   "decisions.loadError": "Impossible de lire les décisions : {{error}}",
   "decisions.clearFilters": "Effacer les filtres",
   "decisions.empty.title": "Aucune décision pour l’instant",
-  "decisions.empty.description": "Chaque décision prise depuis un bouton ou une discussion Demander est enregistrée ici, et conservée dans votre dépôt sous forme de fichiers simples.",
+  "decisions.empty.description": "Chaque décision est enregistrée ici : les vôtres, prises d'un bouton ou dans une discussion Ask, celles d'une règle d'approbation automatique, et chaque appel refusé par une politique. Elles sont conservées dans votre dépôt sous forme de fichiers simples.",
   "decisions.noMatch.title": "Aucune décision ne correspond",
   "decisions.noMatch.description": "Rien ce mois-ci ne correspond à ces filtres.",
   "decisions.noneThisMonth.title": "Aucune décision ce mois-ci",
@@ -4722,5 +4721,9 @@
   "decisions.decision.reassigned": "Réattribué",
   "decisions.decision.trusted": "Approuvé comme fiable",
   "decisions.decision.notNow": "Pas maintenant",
-  "decisions.decision.blocked": "Bloqué"
+  "decisions.decision.blocked": "Bloqué",
+  "decisions.kind.policy": "Refusé par une règle",
+  "decisions.kind.connectorGrant": "Accès aux connecteurs",
+  "decisions.decision.granted": "Accordé",
+  "decisions.decision.removed": "Retiré"
 }

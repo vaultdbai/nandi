@@ -1734,7 +1734,6 @@
   "audit.tab.triggers": "トリガー",
   "audit.tab.pilots": "パイロット",
   "audit.tab.connectors": "コネクター",
-  "audit.tab.decisions": "判断",
   "audit.column.label": "検索対象",
   "audit.column.all": "すべての列",
   "audit.column.agent": "エージェント",
@@ -4683,7 +4682,7 @@
   "nav.tree.decisions": "決定",
   "inbox.pastDecisions": "過去の決定",
   "decisions.title": "決定",
-  "decisions.subtitle": "ボタンや質問チャットで下したすべての決定を、リポジトリに保管しています",
+  "decisions.subtitle": "あなた、自動承認ルール、ポリシーによるすべての判断を、リポジトリに保存しています",
   "decisions.month": "月",
   "decisions.search": "項目と理由を検索",
   "decisions.kind.label": "種類",
@@ -4695,7 +4694,7 @@
   "decisions.loadError": "決定を読み込めませんでした: {{error}}",
   "decisions.clearFilters": "フィルターを解除",
   "decisions.empty.title": "まだ決定はありません",
-  "decisions.empty.description": "ボタンや質問チャットで下した決定はすべてここに記録され、通常のファイルとしてリポジトリに保管されます。",
+  "decisions.empty.description": "すべての判断がここに記録されます。ボタンや Ask チャットでのあなたの判断、自動承認ルールの判断、ポリシーが拒否したすべての呼び出しです。リポジトリにプレーンなファイルとして保存されます。",
   "decisions.noMatch.title": "一致する決定はありません",
   "decisions.noMatch.description": "今月はこのフィルターに合うものがありません。",
   "decisions.noneThisMonth.title": "今月の決定はありません",
@@ -4722,5 +4721,9 @@
   "decisions.decision.reassigned": "再割り当て",
   "decisions.decision.trusted": "信頼済み",
   "decisions.decision.notNow": "今はしない",
-  "decisions.decision.blocked": "ブロック"
+  "decisions.decision.blocked": "ブロック",
+  "decisions.kind.policy": "ポリシーによる拒否",
+  "decisions.kind.connectorGrant": "コネクタへのアクセス",
+  "decisions.decision.granted": "許可",
+  "decisions.decision.removed": "取り消し"
 }

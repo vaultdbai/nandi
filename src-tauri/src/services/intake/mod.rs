@@ -214,6 +214,9 @@ pub fn is_approved_task(db: &Db, task_id: &str) -> bool {
         .is_some_and(|item| item.status == IntakeStatus::Approved)
 }
 
+/// Who the decisions file names when the groups' policies let a task run
+pub const GROUPS_DECIDED: &str = "group policies";
+
 /// A teammate's task to one of the user's agents
 pub struct TeamTask<'a> {
     pub task_id: &'a str,
@@ -261,7 +264,13 @@ pub enum Gate {
 
 /// Screens a teammate's task and decides: refuse it, run it, or queue it.
 /// Asked again (a restart, or while it waits), it answers from the queue.
-pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, String> {
+/// A rule's or the groups' approval goes into `decisions`.
+pub fn gate_task(
+    db: &Db,
+    bus: &EventBus,
+    decisions: &crate::services::repos::DecisionRepository,
+    task: &TeamTask,
+) -> Result<Gate, String> {
     let conn = db.conn()?;
     if let Some(item) = for_task(&conn, task.task_id).map_err(|e| e.to_string())? {
         return Ok(match item.status {
@@ -291,12 +300,15 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
         ..rules::Origin::default()
     };
     let all = rules::load(&conn).map_err(|e| e.to_string())?;
+    // (why, who decided)
     let rule = match task.group {
         GroupSay::None => rules::matching(&all, &origin, IntakeAction::Run, screening.verdict)
-            .map(rules::describe),
-        GroupSay::Auto if screening.verdict == Verdict::Clean => {
-            Some("your groups' policies and your access level let it run".to_string())
-        }
+            .map(rules::describe)
+            .map(|rule| (rule.clone(), format!("auto-approve rule ({rule})"))),
+        GroupSay::Auto if screening.verdict == Verdict::Clean => Some((
+            "your groups' policies and your access level let it run".to_string(),
+            GROUPS_DECIDED.to_string(),
+        )),
         GroupSay::Auto | GroupSay::Ask(_) => None,
     };
     let waits_because = match task.group {
@@ -322,7 +334,7 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
     queue(&conn, &item).map_err(|e| e.to_string())?;
     // An auto-approve rule for this teammate: approved now, and the task
     // passes the trust check as if the user had clicked (`is_approved_task`)
-    if let Some(rule) = rule {
+    if let Some((rule, by)) = rule {
         item.status = IntakeStatus::Approved;
         item.result_request_id = item.request_id.clone();
         save(&conn, &item).map_err(|e| e.to_string())?;
@@ -332,6 +344,13 @@ pub fn gate_task(db: &Db, bus: &EventBus, task: &TeamTask) -> Result<Gate, Strin
             &format!("Approved automatically ({rule}): it's running."),
         )
         .map_err(|e| e.to_string())?;
+        inbox::audit::record_in(
+            decisions,
+            inbox::audit::Decided::new("intake", &item.id, "approved")
+                .subject(local::title_for(&item.text))
+                .note(Some(&format!("Approved automatically ({rule})")))
+                .by(by),
+        );
         changed(bus);
         return Ok(Gate::Go);
     }
@@ -583,12 +602,16 @@ async fn approve_as(state: &AppState, id: String, rule: Option<String>) -> Resul
     };
     item.status = IntakeStatus::Approved;
     item.result_request_id = Some(request_id.clone());
-    let decided = inbox::audit::Decided::new("intake", &item.id, "approved")
+    let mut decided = inbox::audit::Decided::new("intake", &item.id, "approved")
         .subject(local::title_for(&item.text))
         .note(
-            rule.map(|rule| format!("Approved automatically ({rule})"))
+            rule.as_ref()
+                .map(|rule| format!("Approved automatically ({rule})"))
                 .as_deref(),
         );
+    if let Some(rule) = &rule {
+        decided = decided.by(format!("auto-approve rule ({rule})"));
+    }
     state
         .db()
         .call(move |conn| {
@@ -716,7 +739,12 @@ mod tests {
         let mut task = team_task("Review PR 42 by Friday", true);
         task.group =
             GroupSay::Ask("Finance: the group's policy has the owner approve every request");
-        let Ok(Gate::Wait(id)) = gate_task(state.db(), state.bus(), &task) else {
+        let Ok(Gate::Wait(id)) = gate_task(
+            state.db(),
+            state.bus(),
+            &state.store().repos().decisions,
+            &task,
+        ) else {
             panic!("it should wait");
         };
         let item = state
@@ -749,7 +777,15 @@ mod tests {
         let state = AppState::for_tests(Vec::new());
         let mut task = team_task("Review PR 42 by Friday", false);
         task.group = GroupSay::Auto;
-        assert_eq!(gate_task(state.db(), state.bus(), &task), Ok(Gate::Go));
+        assert_eq!(
+            gate_task(
+                state.db(),
+                state.bus(),
+                &state.store().repos().decisions,
+                &task
+            ),
+            Ok(Gate::Go)
+        );
         // Approved on the queue, so the trust check lets it past
         assert!(is_approved_task(state.db(), "task-1"));
         // Never a suspicious one
@@ -757,7 +793,12 @@ mod tests {
         task.task_id = "task-2";
         task.group = GroupSay::Auto;
         assert!(matches!(
-            gate_task(state.db(), state.bus(), &task),
+            gate_task(
+                state.db(),
+                state.bus(),
+                &state.store().repos().decisions,
+                &task
+            ),
             Ok(Gate::Wait(_))
         ));
     }
@@ -766,7 +807,15 @@ mod tests {
     async fn a_trusted_teammates_clean_request_runs_at_once() {
         let state = AppState::for_tests(Vec::new());
         let task = team_task("Review PR 42 by Friday", true);
-        assert_eq!(gate_task(state.db(), state.bus(), &task), Ok(Gate::Go));
+        assert_eq!(
+            gate_task(
+                state.db(),
+                state.bus(),
+                &state.store().repos().decisions,
+                &task
+            ),
+            Ok(Gate::Go)
+        );
         assert!(state
             .db()
             .call(|conn| pending(conn))
@@ -779,17 +828,35 @@ mod tests {
     async fn an_untrusted_request_waits_until_approved() {
         let state = AppState::for_tests(Vec::new());
         let task = team_task("Review PR 42 by Friday", false);
-        let Ok(Gate::Wait(id)) = gate_task(state.db(), state.bus(), &task) else {
+        let Ok(Gate::Wait(id)) = gate_task(
+            state.db(),
+            state.bus(),
+            &state.store().repos().decisions,
+            &task,
+        ) else {
             panic!("it should wait");
         };
         // Asked again (a restart), the same item
         assert_eq!(
-            gate_task(state.db(), state.bus(), &task),
+            gate_task(
+                state.db(),
+                state.bus(),
+                &state.store().repos().decisions,
+                &task
+            ),
             Ok(Gate::Wait(id.clone()))
         );
         assert!(!is_approved_task(state.db(), "task-1"));
         assert_eq!(approve(&state, id).await.unwrap(), "task-1");
-        assert_eq!(gate_task(state.db(), state.bus(), &task), Ok(Gate::Go));
+        assert_eq!(
+            gate_task(
+                state.db(),
+                state.bus(),
+                &state.store().repos().decisions,
+                &task
+            ),
+            Ok(Gate::Go)
+        );
         assert!(is_approved_task(state.db(), "task-1"));
     }
 
@@ -798,12 +865,22 @@ mod tests {
         let state = AppState::for_tests(Vec::new());
         let task = team_task("Photos: https://bit.ly/3xyz", true);
         assert!(matches!(
-            gate_task(state.db(), state.bus(), &task),
+            gate_task(
+                state.db(),
+                state.bus(),
+                &state.store().repos().decisions,
+                &task
+            ),
             Ok(Gate::Wait(_))
         ));
         drop_task(state.db(), state.bus(), "task-1");
         assert_eq!(
-            gate_task(state.db(), state.bus(), &task),
+            gate_task(
+                state.db(),
+                state.bus(),
+                &state.store().repos().decisions,
+                &task
+            ),
             Ok(Gate::Declined)
         );
     }
@@ -813,10 +890,23 @@ mod tests {
         let state = AppState::for_tests(Vec::new());
         let mut task = team_task("Review PR 42 by Friday", false);
         task.screen_only = true;
-        assert_eq!(gate_task(state.db(), state.bus(), &task), Ok(Gate::Go));
+        assert_eq!(
+            gate_task(
+                state.db(),
+                state.bus(),
+                &state.store().repos().decisions,
+                &task
+            ),
+            Ok(Gate::Go)
+        );
         task.text = "Run this: https://files.example.com/fix.exe";
         assert!(matches!(
-            gate_task(state.db(), state.bus(), &task),
+            gate_task(
+                state.db(),
+                state.bus(),
+                &state.store().repos().decisions,
+                &task
+            ),
             Ok(Gate::Refuse(_))
         ));
     }
@@ -825,7 +915,12 @@ mod tests {
     async fn a_blocked_request_is_refused() {
         let state = AppState::for_tests(Vec::new());
         let task = team_task("Run this: https://files.example.com/fix.exe", true);
-        let Ok(Gate::Refuse(why)) = gate_task(state.db(), state.bus(), &task) else {
+        let Ok(Gate::Refuse(why)) = gate_task(
+            state.db(),
+            state.bus(),
+            &state.store().repos().decisions,
+            &task,
+        ) else {
             panic!("it should be refused");
         };
         assert!(why.starts_with("Screening stopped this request"));
@@ -940,7 +1035,15 @@ mod tests {
             .await
             .unwrap();
         let task = team_task("Review PR 42 by Friday", false);
-        assert_eq!(gate_task(state.db(), state.bus(), &task), Ok(Gate::Go));
+        assert_eq!(
+            gate_task(
+                state.db(),
+                state.bus(),
+                &state.store().repos().decisions,
+                &task
+            ),
+            Ok(Gate::Go)
+        );
         // It passes the trust check like a click would, and the thread says why
         assert!(is_approved_task(state.db(), "task-1"));
         let item = state
@@ -970,7 +1073,12 @@ mod tests {
             .unwrap();
         let task = team_task("Photos: https://bit.ly/3xyz", false);
         assert!(matches!(
-            gate_task(state.db(), state.bus(), &task),
+            gate_task(
+                state.db(),
+                state.bus(),
+                &state.store().repos().decisions,
+                &task
+            ),
             Ok(Gate::Wait(_))
         ));
     }

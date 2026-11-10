@@ -26,8 +26,7 @@ pub async fn grant_connector_access(
     access: GrantAccess,
     scope: GrantScope,
 ) -> Result<(), String> {
-    let who = crate::services::chat::decider(&state);
-    access::grant_up_front(&state, &agent_id, &connector_id, access, scope, who).await
+    access::grant_up_front(&state, &agent_id, &connector_id, access, scope).await
 }
 
 /// Removes a grant; the agent's next call asks again
@@ -37,8 +36,7 @@ pub async fn revoke_connector_access(
     state: State<'_, AppState>,
     grant: GrantInfo,
 ) -> Result<(), String> {
-    let who = crate::services::chat::decider(&state);
-    access::revoke(&state, grant, who).await
+    access::revoke(&state, grant).await
 }
 
 /// The person's answer to a paused run's access request. `subdomains`: a

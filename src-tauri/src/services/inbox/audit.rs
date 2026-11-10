@@ -1,8 +1,10 @@
-//! Every Inbox decision goes into the gold copy
-//! (`.nandi/decisions/<yyyy-mm>.md`, `repos::decision_repo`), from a
-//! button or from the item's Ask chat. Each decision service calls
-//! [`record`] once, after the decision took effect, so both paths write
-//! the same entry.
+//! The one record of decisions: every approve, refuse, allow or deny, by
+//! a person (from a button or an Inbox item's Ask chat), by an auto-approve
+//! rule or a group's policy, or by a policy that refused a call, goes into
+//! the gold copy (`.nandi/decisions/<yyyy-mm>.md`, `repos::decision_repo`).
+//! Each decision service calls [`record`] (a person) or [`record_in`] (a
+//! rule or policy, named in [`Decided::by`]) once, after the decision took
+//! effect, so every path writes the same entry.
 //!
 //! A decision from a chat runs inside [`in_chat`]: the entry then names the
 //! conversation, and carries the note the person confirmed when the
@@ -12,6 +14,7 @@
 use std::future::Future;
 
 use crate::services::domain::decision::DecisionEntry;
+use crate::services::repos::DecisionRepository;
 use crate::services::AppState;
 
 /// The chat a decision is being made from
@@ -54,6 +57,9 @@ pub struct Decided {
     pub decision: String,
     /// The reason or note that went with it
     pub note: Option<String>,
+    /// Who decided when it wasn't this Nandi's user: the auto-approve rule,
+    /// the group policies or the policy (`policy no-shell`)
+    pub by: Option<String>,
 }
 
 impl Decided {
@@ -69,6 +75,11 @@ impl Decided {
     pub fn subject(mut self, subject: impl Into<String>) -> Self {
         let subject = subject.into();
         self.subject = (!subject.trim().is_empty()).then_some(subject);
+        self
+    }
+
+    pub fn by(mut self, by: impl Into<String>) -> Self {
+        self.by = Some(by.into());
         self
     }
 
@@ -98,12 +109,30 @@ fn entry(decided: Decided, who: String, at: i64) -> DecisionEntry {
     }
 }
 
-/// Appends the decision to this month's file. The decision already took
-/// effect, so a failure to write is logged, never returned.
+/// Appends a decision of this Nandi's user (or of whoever
+/// [`Decided::by`] names) to this month's file
 pub fn record(state: &AppState, decided: Decided) {
-    let who = crate::services::chat::decider(state);
-    let entry = entry(decided, who, crate::db::now_ms());
-    if let Err(e) = state.store().repos().decisions.append(&entry) {
+    let who = decided
+        .by
+        .clone()
+        .unwrap_or_else(|| crate::services::chat::decider(state));
+    append(
+        &state.store().repos().decisions,
+        entry(decided, who, crate::db::now_ms()),
+    );
+}
+
+/// Appends a decision no person made here: [`Decided::by`] names the rule
+/// or policy that made it
+pub fn record_in(decisions: &DecisionRepository, decided: Decided) {
+    let who = decided.by.clone().unwrap_or_else(|| "Nandi".to_string());
+    append(decisions, entry(decided, who, crate::db::now_ms()));
+}
+
+/// The decision already took effect, so a failure to write is logged,
+/// never returned
+fn append(decisions: &DecisionRepository, entry: DecisionEntry) {
+    if let Err(e) = decisions.append(&entry) {
         log::warn!(
             "Couldn't record the decision on {} {}: {e}",
             entry.item_kind,

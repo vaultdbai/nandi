@@ -786,7 +786,7 @@ Shared preconditions used below:
 - **Edge / negative cases:**
   - Approval ID for another agent via `/agents/{other}/approve`: "Approval not found".
   - Approve stays a single click (no confirm) by design.
-- **Automation:** Covered by: Rust tests in `services/chat.rs` (`runs_suspend_for_approval_and_resume`, `rejection_skips_the_tool_and_completes`) | Layer: api | Gap: card UI untested.
+- **Automation:** Covered by: Rust tests in `services/chat.rs` (`runs_suspend_for_approval_and_resume`, `rejection_skips_the_tool_and_completes`); `approvals_suite.rs` `approvals_and_refusals_are_on_the_record` over the HTTP API (the run waits, is approved and completes, a second decision is refused, the entry in the decisions file) | Layer: api | Gap: card UI untested.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -804,7 +804,7 @@ Shared preconditions used below:
 
 ### CH-10 — Restart behavior for runs and approvals
 
-- **What:** On startup, runs left `running` are marked failed; runs `awaiting_approval` survive and their approvals are re-announced; queued runs drain in order. A panicking run or orchestrator is logged, the agent is marked error in `agent_state`, and the orchestrator restarts (up to 5 times, 1 s apart).
+- **What:** On startup, runs left `running` are marked failed; runs `awaiting_approval` survive and their approvals are re-announced; queued runs drain in order. A panicking run or orchestrator is logged, the agent is marked error in `agent_state`, and the orchestrator restarts (up to 5 times, 1 s apart); after that it stays down until the next command for that agent starts a fresh one.
 - **Where:** `services/orchestrator.rs` (`MAX_RESTARTS`, `RESTART_DELAY`), `services/queue.rs`.
 - **Preconditions:** Docker + image, model key.
 - **Steps:**
@@ -812,7 +812,7 @@ Shared preconditions used below:
   2. Kill the app mid-stream; relaunch.
 - **Expected:** Step 1: the approval card is still there and approving resumes the run. Step 2: that run shows Failed.
 - **Edge / negative cases:** A CLI-runtime run waiting on approval at quit is cancelled (the CLI is gone).
-- **Automation:** Covered by: Rust tests `approvals_survive_an_orchestrator_restart` (`services/chat.rs`), `the_queue_survives_a_restart_and_drains_in_order` (`services/queue.rs`) | Layer: api | Gap: crash-restart cap untested.
+- **Automation:** Covered by: Rust tests `approvals_survive_an_orchestrator_restart` (`services/chat.rs`), `the_queue_survives_a_restart_and_drains_in_order` (`services/queue.rs`), `approvals_suite.rs` `a_crashing_orchestrator_restarts_up_to_the_cap` (five crashes restarted, the sixth left down with the agent in error, the waiting approval kept, approving it starts the agent and the run completes) | Layer: api | Gap: killing the app mid-stream (step 2) is manual.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -1227,11 +1227,11 @@ Shared preconditions used below:
 
 ### RN-15 — Audit log viewer
 
-- **What:** Settings › Logs with tabs Model calls (`llm`), Internet (`egress`), Triggers, Pilots, Connectors, Decisions (`decisions`: approval decisions with `decided_by`, and policy refusals, PO-14). Each shows a table (Time, Agent, a per-tab column, Outcome, Duration, Details), 100 rows per page with Previous page/Next page, "Search this page" with a "Search in" column selector, **Refresh**, and **Download raw log** (all entries as JSONL, `nandi-audit-<kind>-….jsonl`). Entries are metadata only and redacted by the backend (`[redacted]`) and again in the UI; refused/failed outcomes are highlighted.
+- **What:** Settings › Logs with tabs Model calls (`llm`), Internet (`egress`), Triggers, Pilots, Connectors. Decisions aren't a log here: they're in the gold copy, read on Home › Decisions (PO-14). Each shows a table (Time, Agent, a per-tab column, Outcome, Duration, Details), 100 rows per page with Previous page/Next page, "Search this page" with a "Search in" column selector, **Refresh**, and **Download raw log** (all entries as JSONL, `nandi-audit-<kind>-….jsonl`). Entries are metadata only and redacted by the backend (`[redacted]`) and again in the UI; refused/failed outcomes are highlighted.
 - **Where:** Sidebar → Settings → Logs. `src/components/views/AuditLogView.tsx`, `src/hooks/useAuditLog.ts`; `list_audit_log` (`commands/audit.rs`, `src-tauri/src/audit.rs`); files in `~/.nandi/local/logs/`; HTTP `GET /api/audit/{kind}?limit=&offset=`.
-- **Preconditions:** Some model calls, an egress request, a trigger fire and an approval decision.
+- **Preconditions:** Some model calls, an egress request and a trigger fire.
 - **Steps:** Open each tab; search; page; Download.
-- **Expected:** Newest first; downloaded file has every entry, one JSON per line; no keys or prompt text anywhere. The Decisions tab shows the approval with its outcome and who decided it.
+- **Expected:** Newest first; downloaded file has every entry, one JSON per line; no keys or prompt text anywhere.
 - **Edge / negative cases:** Missing log file = empty list; unknown kind = error; page size capped at 500 server-side.
 - **Automation:** Covered by: `AuditLogView.test.tsx`, `src/hooks/useAuditLog.test.ts`, Rust tests in `src-tauri/src/audit.rs` (`redacts_secret_fields_and_text`, `reads_jsonl_newest_first_and_pages`, …) | Layer: unit + api | Gap: none.
 - **Needs relay:** no
@@ -1244,5 +1244,5 @@ Shared preconditions used below:
 - No status filter for **Compacted** or **Queued** runs on the agent Runs tab (server accepts them).
 - No component tests for `AgentsListView.tsx`, `AgentView.tsx`, `AgentSettingsTab.tsx`, `NewAgentDialog.tsx`, `DeleteAgentDialog.tsx`, `ApprovalRequestCard.tsx`, `ToolCallCard.tsx`, `MarkdownContent.tsx`, `ProviderStatePanel.tsx`, `ReassignMenu.tsx`.
 - Per-agent Docker workloads (custom images built from a Dockerfile, ports, env, volumes, health checks, job mode): planned in `docs/tasks-todo/task-6-agent-docker-runtimes.md`, not implemented.
-- Policies: runs use them (PO-13) and the agent page shows them (PO-11). Approval decisions and policy refusals are in `decisions.log` (PO-14). Still open: `workflow:` targets (see [policies.md](./policies.md) "Gaps and planned"). Raw API keys in harness containers wait for model access through the gateway (`docs/tasks-todo/task-x-enforced-policies.md`, Wave 3).
+- Policies: runs use them (PO-13) and the agent page shows them (PO-11). Approval decisions and policy refusals are in the decisions files, `.nandi/decisions/<yyyy-mm>.md` (PO-14). Still open: `workflow:` targets (see [policies.md](./policies.md) "Gaps and planned"). Raw API keys in harness containers wait for model access through the gateway (`docs/tasks-todo/task-x-enforced-policies.md`, Wave 3).
 - Tool-search loaded tools and open clarification rounds are kept in memory only; a restart drops them (documented limitation in `tool_search.rs` and `a2a/clarification.rs`).

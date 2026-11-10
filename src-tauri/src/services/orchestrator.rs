@@ -257,6 +257,9 @@ pub enum OrchestratorCommand {
         run_id: String,
         outcome: StepOutcome,
     },
+    /// Tests: the orchestrator itself panics, as a bug in it would
+    #[cfg(test)]
+    Crash,
 }
 
 #[derive(Debug)]
@@ -371,6 +374,8 @@ impl Orchestrator {
                     self.step_finished(&run_id, outcome).await;
                 }
                 OrchestratorCommand::Shutdown => break,
+                #[cfg(test)]
+                OrchestratorCommand::Crash => panic!("the orchestrator crashed (test)"),
             }
         }
 
@@ -2287,7 +2292,12 @@ async fn run_call(
         }
         Engine::Canned(canned) => {
             tokio::time::sleep(canned.token_delay() * 4).await;
-            canned.execute(call)
+            let refused = deps
+                .store
+                .skill(&ctx.agent_id)
+                .ok()
+                .and_then(|skill| denied_by_policy(deps, ctx, call, &skill));
+            refused.unwrap_or_else(|| canned.execute(call))
         }
         Engine::Llm => execute_tool(deps, ctx, call).await?,
     };
@@ -2365,6 +2375,33 @@ fn screenshot_call(
     Some((call, name))
 }
 
+/// A call to a tool its policies deny (`tools.deny`), recorded as the
+/// policy's decision. Checked whatever the engine, so the canned one obeys
+/// policies too.
+fn denied_by_policy(
+    deps: &RunDeps,
+    ctx: &RunContext,
+    call: &PlannedCall,
+    skill: &SkillConfig,
+) -> Option<ToolOutcome> {
+    if !skill.denied_tools.contains(&call.tool) {
+        return None;
+    }
+    crate::services::policies::record_refused(
+        &deps.store,
+        &ctx.agent_id,
+        &call.id,
+        &format!("tool {}", call.tool),
+    );
+    Some(ToolOutcome {
+        result: format!(
+            "Tool '{}' is not available: a policy doesn't allow it",
+            call.tool
+        ),
+        is_error: true,
+    })
+}
+
 /// Executes a model-requested tool in the agent's container.
 async fn execute_tool(
     deps: &RunDeps,
@@ -2391,24 +2428,18 @@ async fn execute_tool(
     }
     // Its skill.md narrowed by its policies; a broken policy stops it here
     let skill = deps.store.skill(&ctx.agent_id)?;
-    if skill.denied_tools.contains(&call.tool) {
-        crate::services::policies::audit_refused(
-            &deps.store,
-            &ctx.agent_id,
-            &format!("tool {}", call.tool),
-        )
-        .await;
-        return Ok(unavailable("a policy doesn't allow it"));
+    if let Some(refused) = denied_by_policy(deps, ctx, call, &skill) {
+        return Ok(refused);
     }
     // Pilots (Track A): host-side, governed by skill.md `pilots:` + consent
     if let Some((pilot, _)) = pilots::tools::parse_tool_name(&call.tool) {
         if !skill.pilots.iter().any(|p| p == pilot) {
-            crate::services::policies::audit_refused(
+            crate::services::policies::record_refused(
                 &deps.store,
                 &ctx.agent_id,
+                &call.id,
                 &format!("pilot {pilot}"),
-            )
-            .await;
+            );
             return Ok(unavailable("a policy doesn't allow this pilot"));
         }
         let agent = deps.store.agent(&ctx.agent_id)?;
@@ -2611,6 +2642,22 @@ impl Orchestrators {
         response
             .await
             .map_err(|_| format!("The orchestrator for '{agent_id}' stopped"))?
+    }
+
+    /// Tests: whether the agent's orchestrator is up, without starting it
+    #[cfg(test)]
+    pub fn is_running(&self, agent_id: &str) -> bool {
+        let senders = self.0.senders.lock().unwrap_or_else(|e| e.into_inner());
+        senders.get(agent_id).is_some_and(|tx| !tx.is_closed())
+    }
+
+    /// Tests: crashes the agent's running orchestrator (`false`: none runs)
+    #[cfg(test)]
+    pub fn crash(&self, agent_id: &str) -> bool {
+        let senders = self.0.senders.lock().unwrap_or_else(|e| e.into_inner());
+        senders
+            .get(agent_id)
+            .is_some_and(|tx| tx.try_send(OrchestratorCommand::Crash).is_ok())
     }
 
     /// Stops one agent's orchestrator and forgets it (e.g. when deleted).

@@ -394,11 +394,6 @@ impl ConnectorRegistry {
         }
     }
 
-    /// A sink writing where this registry's calls are audited
-    pub fn audit_sink(&self) -> audit::AuditSink {
-        self.audit.clone()
-    }
-
     pub fn is_running(&self, id: &str) -> bool {
         lock(&self.running).contains_key(id)
     }
@@ -1193,8 +1188,7 @@ pub async fn remove_connector(state: &AppState, id: &str) -> Result<(), String> 
         let _ = state.secrets().delete(entry.as_str());
     }
     for gone in state.grants().revoke_connector(id)? {
-        crate::services::grants::audit(&state.connector_audit(), "removed", &gone, None, None)
-            .await;
+        crate::services::grants::record(state, "removed", &gone, Some("The connector was removed"));
     }
     events::emit(state.bus(), &crate::services::grants::GrantsChanged {});
     events::emit(state.bus(), &ConnectorsChanged {});

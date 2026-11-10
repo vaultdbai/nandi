@@ -94,7 +94,7 @@ Each check reads `EffectivePermissions` and never reads the raw `skill.md` field
   - `mode: read` turns a write folder into a read-only one, for both the tools and the `:ro` mount.
   - The domain check in Wave 2 matches `files` paths against the folder's `path`, so `files` can also name folder ids: `{ folder: reports, mode: read }`.
 - [x] **Pilots:** `pilots.allow` narrows the pilots an agent's tools come from and refuses calls to the rest. (Placement no longer exists.)
-- [x] **Audit:** log each deny and each approval decision to the audit log (`audit.rs`) with the policy id. Add a `decided_by` column to `approvals` (local user for now). **Done:** `decisions.log` (Settings › Logs › Decisions); schema 2, and an older `state.db` is refused with what to delete.
+- [x] **Audit:** log each deny and each approval decision to the audit log (`audit.rs`) with the policy id. Add a `decided_by` column to `approvals` (local user for now). **Done:** the decisions files in the gold copy (`.nandi/decisions/<yyyy-mm>.md`, Home › Decisions; `decisions.log` was folded into them on 2026-11-09); schema 2, and an older `state.db` is refused with what to delete.
 
 ## Wave 4: screens
 

@@ -447,7 +447,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **Steps:** Run an agent that calls a non-safe MCP tool.
 - **Expected:** Approval card; log line in `connectors.log` without argument values.
 - **Edge / negative cases:** Undeclared connector's tool names are not parsed; invalid tool names refused; a policy's `tools.deny` hides a `<connector>__<tool>` and refuses calls to it, `tools.ask` adds it to the approvals, and `connectors.allow` drops whole connectors (PO-13).
-- **Automation:** Covered by: Rust `tools.rs` (4), `audit.rs` (2), `mcp.rs` (`talks_mcp_over_a_line_transport`, `prefers_structured_content`) | Layer: unit | Gap: approval path e2e.
+- **Automation:** Covered by: Rust `tools.rs` (4), `audit.rs` (2), `mcp.rs` (`talks_mcp_over_a_line_transport`, `prefers_structured_content`); `approvals_suite.rs` `approvals_and_refusals_are_on_the_record` (a connector call waits for access, is refused, the run goes on with the refusal, and the decision is in the decisions file; a policy that forbids the connector refuses it, recorded as the policy's) | Layer: api | Gap: a real MCP server's call (the suite's engine is canned).
 - **Needs relay:** no
 - **Status:** Shipped
 

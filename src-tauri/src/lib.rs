@@ -4,6 +4,8 @@
 //! Command implementations are organized in the `commands` module,
 //! and shared types are in the `types` module.
 
+#[cfg(test)]
+mod approvals_suite;
 mod audit;
 mod bindings;
 #[cfg(test)]

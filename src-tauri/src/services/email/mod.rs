@@ -595,8 +595,7 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
             access: GrantAccess::Read,
             scope: GrantScope::Saved,
         };
-        crate::services::grants::audit(&state.connector_audit(), "granted", &info, None, None)
-            .await;
+        crate::services::grants::record(state, "granted", &info, Some("The mailbox was connected"));
         events::emit(state.bus(), &crate::services::grants::GrantsChanged {});
     }
     if same_mailbox {
@@ -655,8 +654,12 @@ pub async fn disconnect(state: &AppState, provider: MailProvider) -> Result<Emai
         }
     })?;
     for gone in state.grants().revoke_connector(provider.id())? {
-        crate::services::grants::audit(&state.connector_audit(), "removed", &gone, None, None)
-            .await;
+        crate::services::grants::record(
+            state,
+            "removed",
+            &gone,
+            Some("The mailbox was disconnected"),
+        );
     }
     events::emit(state.bus(), &crate::services::grants::GrantsChanged {});
     log::info!("Disconnected {}", provider.name());

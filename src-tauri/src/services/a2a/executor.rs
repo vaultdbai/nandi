@@ -505,7 +505,12 @@ impl Executor {
         let deadline = self.deadline(task);
         let mut told = false;
         loop {
-            match intake::gate_task(&self.deps.db, &self.deps.bus, &team_task) {
+            match intake::gate_task(
+                &self.deps.db,
+                &self.deps.bus,
+                &self.deps.decisions,
+                &team_task,
+            ) {
                 Ok(intake::Gate::Go) => {
                     if let (Some(rules), Some(gate)) = (self.deps.groups.as_ref(), group.as_ref()) {
                         rules.went_ahead(gate, &task.requester.instance_id);

@@ -5,7 +5,10 @@
 import type { DecisionFilter, DecisionRecord } from '@/lib/bindings'
 import type { View } from '@/store/navigation-store'
 
-/** The Inbox kinds a decision is made on (`services::inbox::audit`) */
+/**
+ * What a decision is made on (`services::inbox::audit`): the Inbox kinds,
+ * a call a policy refused, and a connector grant
+ */
 export const DECISION_KINDS = [
   'approval',
   'workflowApproval',
@@ -18,6 +21,8 @@ export const DECISION_KINDS = [
   'requestReturn',
   'intake',
   'task',
+  'policy',
+  'connectorGrant',
 ] as const
 
 /** The words a decision starts with; a choice can follow ("approved (once)") */
@@ -34,6 +39,8 @@ export const DECISION_WORDS = [
   'trusted',
   'not now',
   'blocked',
+  'granted',
+  'removed',
 ] as const
 
 /** An empty field means "any" */

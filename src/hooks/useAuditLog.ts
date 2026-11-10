@@ -23,7 +23,6 @@ export const AUDIT_KINDS: readonly AuditKind[] = [
   'triggers',
   'pilots',
   'connectors',
-  'decisions',
 ]
 
 /** Entries per page (the server pages) */

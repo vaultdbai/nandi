@@ -897,54 +897,39 @@ impl EventBus {
         status: ApprovalStatus,
     ) -> Result<(), String> {
         let ctx = ctx.clone();
-        let decision = serde_json::json!({
-            "ts": db::now_ms(),
-            "agent_id": ctx.agent_id,
-            "run_id": ctx.run_id,
-            "approval_id": approval.id,
-            "tool": approval.tool,
-            "outcome": status.as_str(),
-            // Set by `chat::approve_action` before the decision closes it
-            "decided_by": approval.decided_by,
-        });
-        let closed = self
-            .commit(move |conn, outbox| {
-                db::set_approval_status(conn, &approval, status)?;
-                let run = db::set_run_status(conn, &ctx.run_id, RunStatus::Running, None)?;
-                outbox.record(
-                    conn,
-                    &ctx.run_id,
-                    &AgentApprovalResolved {
-                        agent_id: ctx.agent_id.clone(),
-                        conversation_id: ctx.conversation_id.clone(),
-                        run_id: ctx.run_id.clone(),
-                        approval_id: approval.id.clone(),
-                        status,
-                    },
-                )?;
-                if let Some(run) = run {
-                    outbox.record(conn, &ctx.run_id, &run_updated(&ctx, run))?;
-                }
-                outbox.push(&DashboardAttention::Remove {
-                    item_id: approval.id.clone(),
-                });
-                let action = match status {
-                    ApprovalStatus::Approved => Some(ActivityAction::Approved),
-                    ApprovalStatus::Rejected => Some(ActivityAction::Rejected),
-                    _ => None,
-                };
-                if let Some(action) = action {
-                    let mut item = activity(&ctx, action, &approval.tool);
-                    item.id = format!("{}:{}", approval.id, status.as_str());
-                    outbox.activity(item);
-                }
-                Ok(())
-            })
-            .await;
-        if closed.is_ok() {
-            crate::audit::record(crate::audit::AuditLog::Decisions, &decision).await;
-        }
-        closed
+        self.commit(move |conn, outbox| {
+            db::set_approval_status(conn, &approval, status)?;
+            let run = db::set_run_status(conn, &ctx.run_id, RunStatus::Running, None)?;
+            outbox.record(
+                conn,
+                &ctx.run_id,
+                &AgentApprovalResolved {
+                    agent_id: ctx.agent_id.clone(),
+                    conversation_id: ctx.conversation_id.clone(),
+                    run_id: ctx.run_id.clone(),
+                    approval_id: approval.id.clone(),
+                    status,
+                },
+            )?;
+            if let Some(run) = run {
+                outbox.record(conn, &ctx.run_id, &run_updated(&ctx, run))?;
+            }
+            outbox.push(&DashboardAttention::Remove {
+                item_id: approval.id.clone(),
+            });
+            let action = match status {
+                ApprovalStatus::Approved => Some(ActivityAction::Approved),
+                ApprovalStatus::Rejected => Some(ActivityAction::Rejected),
+                _ => None,
+            };
+            if let Some(action) = action {
+                let mut item = activity(&ctx, action, &approval.tool);
+                item.id = format!("{}:{}", approval.id, status.as_str());
+                outbox.activity(item);
+            }
+            Ok(())
+        })
+        .await
     }
 
     /// Ends a run. Failure adds an error message and an attention item;

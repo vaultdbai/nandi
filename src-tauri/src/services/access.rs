@@ -263,21 +263,25 @@ pub async fn decide(
         Some(skill) => (&skill.connector_forbid, &skill.connector_ask),
         None => (&[], &[]),
     };
-    let audit = state.connector_audit();
     let mut open = Vec::new();
     let mut forbidden = Vec::new();
     for connector in &need.connectors {
         match policy_hit(forbid, &connector.id, need.access) {
             Some(by) => {
-                let mut entry = connectors::audit::AccessEntry::new(
-                    "forbidden",
-                    agent,
-                    &connector.id,
-                    need.access.as_str(),
+                crate::services::inbox::audit::record_in(
+                    &state.store().repos().decisions,
+                    crate::services::inbox::audit::Decided::new(
+                        crate::services::policies::REFUSED_KIND,
+                        run_id,
+                        "refused",
+                    )
+                    .subject(format!(
+                        "{agent}: {} with {}",
+                        need.access.as_str(),
+                        connector.name
+                    ))
+                    .by(format!("policy {by}")),
                 );
-                entry.by = Some(format!("policy {by}"));
-                entry.run_id = Some(run_id.to_string());
-                audit.record_access(&entry).await;
                 forbidden.push((connector.name.clone(), by.to_string()));
             }
             None => open.push(connector.clone()),
@@ -320,17 +324,8 @@ pub async fn decide(
             site: None,
         })));
     }
+    // The person refused it earlier in this run (recorded then)
     if usable.is_empty() {
-        for connector in &need.connectors {
-            let mut entry = connectors::audit::AccessEntry::new(
-                "refused",
-                agent,
-                &connector.id,
-                need.access.as_str(),
-            );
-            entry.run_id = Some(run_id.to_string());
-            audit.record_access(&entry).await;
-        }
         return Some(Decision::Refused(format!(
             "Tool '{tool}' is not allowed: the person didn't let this agent {} with {}. \
              Don't call it again in this task; say what you would have needed.",
@@ -387,45 +382,14 @@ pub async fn answer(
     if scope.is_some() && request.ask_every_time {
         return Err("A policy asks every time for this: allow it once, or don't allow it".into());
     }
-    let audit = state.connector_audit();
+    // The choice itself is recorded with the request's decision
+    // (`chat::approve_action`): "approved (allowSaved)", "refused (deny)"
     let mut changed = false;
-    for connector in &request.connectors {
-        let info = GrantInfo {
-            agent: request.agent.clone(),
-            connector: connector.id.clone(),
-            access: request.access,
-            scope: scope.unwrap_or(GrantScope::Local),
-        };
-        match scope {
-            Some(scope) => {
-                let grant = ConnectorGrant::new(&request.agent, &connector.id, request.access)
-                    .map_err(|e| e.to_string())?;
-                changed |= state.grants().grant(grant, scope)?;
-                grants::audit(
-                    &audit,
-                    "granted",
-                    &info,
-                    Some(who.clone()),
-                    Some(approval.run_id.clone()),
-                )
-                .await;
-            }
-            None => {
-                let event = if choice == AccessChoice::Deny {
-                    "refused"
-                } else {
-                    "allowed_once"
-                };
-                let mut entry = connectors::audit::AccessEntry::new(
-                    event,
-                    &request.agent,
-                    &connector.id,
-                    request.access.as_str(),
-                );
-                entry.by = Some(who.clone());
-                entry.run_id = Some(approval.run_id.clone());
-                audit.record_access(&entry).await;
-            }
+    if let Some(scope) = scope {
+        for connector in &request.connectors {
+            let grant = ConnectorGrant::new(&request.agent, &connector.id, request.access)
+                .map_err(|e| e.to_string())?;
+            changed |= state.grants().grant(grant, scope)?;
         }
     }
     if changed {
@@ -621,7 +585,6 @@ pub async fn grant_up_front(
     connector: &str,
     access: GrantAccess,
     scope: GrantScope,
-    who: String,
 ) -> Result<(), String> {
     state.store().require_agent(agent)?;
     let grant = ConnectorGrant::new(agent, connector, access).map_err(|e| e.to_string())?;
@@ -632,19 +595,19 @@ pub async fn grant_up_front(
             access,
             scope,
         };
-        grants::audit(&state.connector_audit(), "granted", &info, Some(who), None).await;
+        grants::record(state, "granted", &info, None);
         events::emit(state.bus(), &GrantsChanged {});
     }
     Ok(())
 }
 
 /// Removes a grant; the agent's next call asks again
-pub async fn revoke(state: &AppState, grant: GrantInfo, who: String) -> Result<(), String> {
+pub async fn revoke(state: &AppState, grant: GrantInfo) -> Result<(), String> {
     if state
         .grants()
         .revoke(&grant.agent, &grant.connector, grant.access, grant.scope)?
     {
-        grants::audit(&state.connector_audit(), "removed", &grant, Some(who), None).await;
+        grants::record(state, "removed", &grant, None);
         events::emit(state.bus(), &GrantsChanged {});
     }
     Ok(())

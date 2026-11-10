@@ -36,7 +36,6 @@ struct GrantBody {
 }
 
 async fn grant(State(state): State<AppState>, Json(body): Json<GrantBody>) -> ApiResult<()> {
-    let who = crate::services::chat::decider(&state);
     ApiResult(
         access::grant_up_front(
             &state,
@@ -44,15 +43,13 @@ async fn grant(State(state): State<AppState>, Json(body): Json<GrantBody>) -> Ap
             &body.connector_id,
             body.access,
             body.scope,
-            who,
         )
         .await,
     )
 }
 
 async fn revoke(State(state): State<AppState>, Json(grant): Json<GrantInfo>) -> ApiResult<()> {
-    let who = crate::services::chat::decider(&state);
-    ApiResult(access::revoke(&state, grant, who).await)
+    ApiResult(access::revoke(&state, grant).await)
 }
 
 #[derive(Deserialize)]

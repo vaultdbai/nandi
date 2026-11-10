@@ -84,7 +84,7 @@ answer_access_request(choice) ─▶ grant (allowSaved | allowLocal) or not (all
 - The request is an ordinary approval: it shows in the run, the Inbox and the companion, survives restarts and expires like any approval (expired = not allowed).
 - `connectors.ask` in a policy asks every time: only Allow once and Don't allow (`askEveryTime`).
 - Don't allow (or an expired request) isn't asked again in that run; the model is told to stop.
-- Audit: `~/.nandi/local/logs/connectors.log`, `kind: connector_access`, events `granted`, `removed`, `allowed_once`, `refused`, `forbidden`, with who decided and the run.
+- Audit: each choice is a decision in `.nandi/decisions/<yyyy-mm>.md` (PO-14): the access request's entry names the connector and the choice (`approved (allowOnce)`, `refused (deny)`), a grant given or removed is kind `connectorGrant`, and a connector a policy forbids is kind `policy`, decided by it. `connectors.log` keeps only the calls themselves.
 - A browser pilot opening a site outside the agent's allowed sites asks through the same approval, family `site` (no connectors; `args.site` holds the host). Its answers are Allow once (this run), Always allow for the agent (`allowSaved`: written into its skill.md) and Don't allow; `allowLocal` is refused. `answer_access_request` takes `subdomains` for it. See `docs/developer/pilots.md` › The browser pilots.
 
 Policy:

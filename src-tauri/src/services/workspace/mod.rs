@@ -516,7 +516,7 @@ async fn connect(state: &AppState, kind: AccountKind) -> Result<(), String> {
             access: GrantAccess::Read,
             scope: GrantScope::Saved,
         };
-        grants::audit(&state.connector_audit(), "granted", &info, None, None).await;
+        grants::record(state, "granted", &info, Some("The account was connected"));
         events::emit(state.bus(), &GrantsChanged {});
     }
     log::info!("Connected {}", kind.name());
@@ -540,7 +540,7 @@ pub async fn disconnect(state: &AppState, kind: AccountKind) -> Result<Workspace
     }
     update(state, |s| s.accounts.retain(|a| a.kind != kind))?;
     for gone in state.grants().revoke_connector(kind.id())? {
-        grants::audit(&state.connector_audit(), "removed", &gone, None, None).await;
+        grants::record(state, "removed", &gone, Some("The account was signed out"));
     }
     events::emit(state.bus(), &GrantsChanged {});
     emit_changed(state);

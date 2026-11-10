@@ -152,27 +152,27 @@ pub fn view(agent: &Agent, skill: &SkillConfig, policies: &PolicySet) -> AgentPo
     }
 }
 
-/// Logs a call a policy refused to `decisions.log`, with the policy that
-/// refused it. `item` is as in [`PolicyChange::item`] (`tool shell`,
-/// `pilot browser`).
-pub async fn audit_refused(
-    store: &crate::services::repo_store::RepoStore,
-    agent_id: &str,
-    item: &str,
-) {
+/// Records a call a policy refused in the decisions file, decided by the
+/// policy that refused it. `item` is as in [`PolicyChange::item`] (`tool
+/// shell`, `pilot browser`); `call_id` is the tool call it refused.
+pub fn record_refused(store: &RepoStore, agent_id: &str, call_id: &str, item: &str) {
     let by = agent_policies(store, agent_id)
         .ok()
         .and_then(|view| view.changes.into_iter().find(|c| c.item == item))
-        .map(|change| change.by);
-    let line = serde_json::json!({
-        "ts": crate::db::now_ms(),
-        "agent_id": agent_id,
-        "tool": item,
-        "outcome": "refused",
-        "policy": by,
-    });
-    crate::audit::record(crate::audit::AuditLog::Decisions, &line).await;
+        .map_or_else(
+            || "a policy".to_string(),
+            |change| format!("policy {}", change.by),
+        );
+    crate::services::inbox::audit::record_in(
+        &store.repos().decisions,
+        crate::services::inbox::audit::Decided::new(REFUSED_KIND, call_id, "refused")
+            .subject(format!("{agent_id}: {item}"))
+            .by(by),
+    );
 }
+
+/// The decisions file's kind for a call a policy refused
+pub const REFUSED_KIND: &str = "policy";
 
 /// [`view`] for agent `id` in `store`
 pub fn agent_policies(store: &RepoStore, id: &str) -> Result<AgentPolicies, String> {

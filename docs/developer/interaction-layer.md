@@ -479,6 +479,8 @@ the "Approved by the owner: …" note on their task. The note waits in
 **Audit.** Each decision, from a button or a chat, is appended to
 `.nandi/decisions/<yyyy-mm>.md` in the gold copy, with the chat's
 conversation ID when it came from one ([data-model](./data-model.md#decisions)).
+The same files hold the decisions no person made here: an auto-approve
+rule's, the groups', and a policy's refusals.
 The chat's text stays in `state.db`.
 
 **Reading the audit back.** Home › Decisions (`DecisionsView`, view `decisions`; the Inbox's

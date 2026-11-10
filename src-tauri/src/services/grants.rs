@@ -3,8 +3,8 @@
 //! The model is in `domain::grant`. A grant is kept either on this computer
 //! (`~/.nandi/settings.local.yaml`, never committed or backed up) or saved
 //! in the repo's `settings.yaml` (the gold copy). Nothing expires. Every
-//! grant and removal goes to the connector audit log
-//! (`~/.nandi/local/logs/connectors.log`) and fires `grants://changed`.
+//! grant and removal is a decision, recorded in the decisions file
+//! (`inbox::audit`), and fires `grants://changed`.
 //!
 //! Grants are read again on every connector call, so removing one takes
 //! effect on the agent's next call, even mid-run.
@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::services::connectors::audit::{AccessEntry, AuditSink};
 use crate::services::domain::grant::{ConnectorGrant, GrantAccess, GrantScope, LocalSettings};
 use crate::services::domain::EntityKind;
 use crate::services::events::NandiEvent;
@@ -212,19 +211,35 @@ impl GrantStore {
     }
 }
 
-/// Records a grant event in the audit log
-pub async fn audit(
-    sink: &AuditSink,
-    event: &'static str,
+/// The decisions file's kind for a grant given or removed
+pub const GRANT_KIND: &str = "connectorGrant";
+
+/// Records a grant given (`granted`) or removed (`removed`) by this Nandi's
+/// user in the decisions file, with `why` when it followed from something
+/// else (a connector removed, an account signed out)
+pub fn record(
+    state: &crate::services::AppState,
+    decision: &'static str,
     grant: &GrantInfo,
-    by: Option<String>,
-    run_id: Option<String>,
+    why: Option<&str>,
 ) {
-    let mut entry = AccessEntry::new(event, &grant.agent, &grant.connector, grant.access.as_str());
-    entry.scope = Some(grant.scope.as_str());
-    entry.by = by;
-    entry.run_id = run_id;
-    sink.record_access(&entry).await;
+    use crate::services::inbox::audit::{self, Decided};
+    audit::record(
+        state,
+        Decided::new(
+            GRANT_KIND,
+            format!("{}/{}", grant.agent, grant.connector),
+            decision,
+        )
+        .subject(format!(
+            "{}: {} with {} ({})",
+            grant.agent,
+            grant.access.as_str(),
+            grant.connector,
+            grant.scope.as_str()
+        ))
+        .note(why),
+    );
 }
 
 #[cfg(test)]

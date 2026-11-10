@@ -485,7 +485,7 @@ async fn run(
         return Ok((handover::result(handover::take(call_id), args), false));
     }
     if browser::is_browser(&pilot.id) {
-        return browser::call(agent, &pilot.id, tool, args)
+        return browser::call(agent, call_id, &pilot.id, tool, args)
             .await
             .map_err(|e| (e, "error"));
     }
