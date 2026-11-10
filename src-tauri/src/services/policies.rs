@@ -39,12 +39,9 @@ pub fn narrow(
 fn evaluate(agent: &Agent, skill: &SkillConfig, policies: &PolicySet) -> Result<Effective, String> {
     let request = request(agent, skill);
     let tags = agent.tags();
-    // Runs don't say which workflow they're a step of, and the egress proxy
-    // sees agents, not runs: `workflow:` targets match nothing yet
     let subject = Subject {
         agent: &skill.id,
         tags: &tags,
-        workflow: None,
     };
     let effective = policies.effective(&request, &subject)?;
     // A coding agent's model is its CLI's (`runtime_config.model`); the
@@ -79,7 +76,6 @@ pub fn admits_hosts(store: &RepoStore, id: &str, hosts: &[String]) -> bool {
     let subject = Subject {
         agent: &skill.id,
         tags: &tags,
-        workflow: None,
     };
     policies
         .effective(&request, &subject)

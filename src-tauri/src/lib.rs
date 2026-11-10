@@ -29,6 +29,8 @@ mod offline_suite;
 mod runtime;
 #[cfg(test)]
 mod sandbox_suite;
+#[cfg(test)]
+mod secrets_suite;
 mod services;
 mod types;
 mod utils;

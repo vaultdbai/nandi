@@ -59,7 +59,7 @@ Why this exists, in plain words. The body never grants anything; Studio and the 
 - [x] `services/domain/policy.rs`: a pure `Policy` type parsed from the frontmatter. Validation rejects unknown keys, bad patterns, and relative paths in `files`. A `files` entry is a path or a shared-folder id, with `mode: read | write`. Files with no frontmatter rules stay prose-only and apply nothing, so today's files keep working.
 - [x] Targets in `applies_to`:
   - `agent:<id or glob>`
-  - `workflow:<id or glob>`
+  - `workflow:<id or glob>` (refused on save until runs carry their workflow, PO-04)
   - `tag:<tag>` (add `tags` to `skill.md` frontmatter)
   - `*`
 - [x] `effective_permissions(agent, policies) -> EffectivePermissions` (done as `domain::policy::effective` / `PolicySet::effective`):

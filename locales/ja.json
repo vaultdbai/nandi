@@ -569,6 +569,7 @@
   "studio.field.rateLimit": "1 時間あたりのリクエスト数",
   "studio.field.requireApprovalFor": "承認が必要な対象",
   "studio.field.appliesTo": "適用対象",
+  "studio.field.appliesToHint": "対象: *(すべてのエージェント)、agent:<id>(複数なら agent:report-*)、または tag:<tag>。ワークフローの対象はまだ使えません。実行はどのワークフローのステップかを持たないため、それを含むポリシーは保存されません。",
   "studio.field.agentTags": "タグ（ポリシーの対象に指定できます）",
   "studio.field.toolsAllow": "これらのツールのみ",
   "studio.field.toolsDeny": "これらのツールは使わない",

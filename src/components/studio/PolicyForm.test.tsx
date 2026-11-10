@@ -28,4 +28,11 @@ describe('PolicyForm', () => {
       screen.getByLabelText('Only these models (e.g. claude:*)')
     ).toHaveValue('claude:*')
   })
+
+  it('says which targets work, and that workflow targets are refused', () => {
+    render(<PolicyForm text={TEXT} onChange={vi.fn()} />)
+    expect(screen.getByLabelText('Applies to')).toHaveAccessibleDescription(
+      /Workflow targets aren't supported yet/
+    )
+  })
 })

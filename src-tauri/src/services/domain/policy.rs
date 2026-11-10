@@ -2,7 +2,7 @@
 //!
 //! ```yaml
 //! ---
-//! applies_to: [agent:report-*, workflow:month-end, tag:finance]   # or ["*"]
+//! applies_to: [agent:report-*, tag:finance]   # or ["*"]
 //! tools: { allow: [read_file, shell], deny: [shell], ask: [write_file] }
 //! files: [{ path: "D:/Finance", mode: read }, { folder: reports, mode: read }]
 //! network: { allow: [{ host: "*.amazonaws.com" }] }
@@ -75,8 +75,6 @@ pub enum Target {
     All,
     /// `agent:<id or glob>`
     Agent(glob::Pattern),
-    /// `workflow:<id or glob>`: agents while they run a step of it
-    Workflow(glob::Pattern),
     /// `tag:<tag>`: agents whose skill.md lists the tag
     Tag(String),
 }
@@ -335,10 +333,16 @@ impl Target {
         }
         match text.split_once(':') {
             Some(("agent", id)) if !id.trim().is_empty() => Ok(Self::Agent(pattern(id)?)),
-            Some(("workflow", id)) if !id.trim().is_empty() => Ok(Self::Workflow(pattern(id)?)),
+            // A rule that seems to apply but matches nothing is worse than
+            // none: runs don't carry their workflow yet, so it's refused
+            Some(("workflow", _)) => Err(invalid(format!(
+                "has '{text}', but workflow targets aren't supported yet: runs don't say \
+                 which workflow they're a step of, so the rule would apply to nothing. Use *, \
+                 agent:<id> or tag:<tag>"
+            ))),
             Some(("tag", tag)) if !tag.trim().is_empty() => Ok(Self::Tag(tag.trim().to_string())),
             _ => Err(invalid(format!(
-                "has '{text}'; use *, agent:<id>, workflow:<id> or tag:<tag>"
+                "has '{text}'; use *, agent:<id> or tag:<tag>"
             ))),
         }
     }
@@ -347,7 +351,6 @@ impl Target {
         match self {
             Self::All => true,
             Self::Agent(pattern) => pattern.matches(subject.agent),
-            Self::Workflow(pattern) => subject.workflow.is_some_and(|w| pattern.matches(w)),
             Self::Tag(tag) => subject.tags.iter().any(|t| t == tag),
         }
     }
@@ -591,8 +594,6 @@ impl PolicySet {
 pub struct Subject<'a> {
     pub agent: &'a str,
     pub tags: &'a [String],
-    /// The workflow it's running a step of, if any
-    pub workflow: Option<&'a str>,
 }
 
 /// A shared folder an agent asks for
@@ -1003,11 +1004,7 @@ mod tests {
     }
 
     fn subject(agent: &str) -> Subject<'_> {
-        Subject {
-            agent,
-            tags: &[],
-            workflow: None,
-        }
+        Subject { agent, tags: &[] }
     }
 
     fn host(host: &str, methods: &[&str]) -> HostRule {
@@ -1092,10 +1089,10 @@ mod tests {
     }
 
     #[test]
-    fn targets_pick_agents_workflows_and_tags() {
+    fn targets_pick_agents_and_tags() {
         let p = policy(
             "p",
-            "applies_to: [agent:report-*, workflow:month-end, tag:finance]\ntools: { deny: [shell] }",
+            "applies_to: [agent:report-*, tag:finance]\ntools: { deny: [shell] }",
         );
         assert!(p.applies(&subject("report-weekly")));
         assert!(!p.applies(&subject("writer")));
@@ -1103,15 +1100,28 @@ mod tests {
         assert!(p.applies(&Subject {
             agent: "writer",
             tags: &tags,
-            workflow: None
-        }));
-        assert!(p.applies(&Subject {
-            agent: "writer",
-            tags: &[],
-            workflow: Some("month-end")
         }));
         let all = policy("all", "applies_to: ['*']\ntools: { deny: [shell] }");
         assert!(all.applies(&subject("anyone")));
+    }
+
+    /// Runs don't carry their workflow, so a `workflow:` target would
+    /// match nothing: refused, saying why, rather than silently ignored
+    #[test]
+    fn a_workflow_target_is_refused_with_why() {
+        for applies_to in ["[workflow:month-end]", "['*', workflow:month-*]"] {
+            let error = Policy::parse(
+                "month-end",
+                &format!("---\napplies_to: {applies_to}\ntools: {{ deny: [shell] }}\n---\nWhy.\n"),
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(
+                error.contains("workflow targets aren't supported yet"),
+                "{error}"
+            );
+            assert!(error.contains("agent:<id> or tag:<tag>"), "{error}");
+        }
     }
 
     #[test]

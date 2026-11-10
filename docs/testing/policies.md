@@ -20,7 +20,8 @@ Policy files in `~/.nandi/repo/.nandi/policies/<id>.md` say what agents may do. 
 
 - **What:** A policy that can't be enforced as written is refused with the policy id, the field and a plain reason:
   - rule blocks with no `applies_to`: "is missing, so its rules (tools, …) would apply to nobody. Add applies_to: ["*"] or name the agents";
-  - a bad target: "has 'robot:x'; use \*, agent:<id>, workflow:<id> or tag:<tag>", or a bad glob;
+  - a bad target: "has 'robot:x'; use \*, agent:<id> or tag:<tag>", or a bad glob;
+  - a `workflow:` target: "has 'workflow:month-end', but workflow targets aren't supported yet: runs don't say which workflow they're a step of, so the rule would apply to nothing. Use \*, agent:<id> or tag:<tag>" (PO-04);
   - an unknown key inside a rule block (`tools: { block: [shell] }`);
   - a `files` entry with both `path` and `folder` or neither, or a relative path ("paths must be absolute (D:/Data, /home/me/data) or under ~");
   - a bad host pattern in `network.allow` (`a.*.com`), a bad glob in `models.allow`, or an `aws.services` entry without `service`.
@@ -47,19 +48,15 @@ Policy files in `~/.nandi/repo/.nandi/policies/<id>.md` say what agents may do. 
 
 ### PO-04 — Targets (`applies_to`)
 
-- **What:** `applies_to` lists who the rules are for: `*` (every agent), `agent:<id or glob>` (`agent:report-*`), `workflow:<id or glob>` (agents while they run a step of that workflow), and `tag:<tag>` (agents whose `skill.md` lists the tag in `tags`). A policy applies when any of its targets matches.
-- **Where:** `domain/policy.rs` (`Target`, `Policy::applies`, `Subject { agent, tags, workflow }`).
+- **What:** `applies_to` lists who the rules are for: `*` (every agent), `agent:<id or glob>` (`agent:report-*`) and `tag:<tag>` (agents whose `skill.md` lists the tag in `tags`). A policy applies when any of its targets matches. A `workflow:<id>` target is refused, with why, wherever a policy is saved or read (Studio, the Studio chat's save tool, a pack install, a group's policy, a file edited by hand, which then blocks the agents it may cover until fixed): runs don't carry their workflow yet, so such a rule would silently apply to nothing, and a rule the user thinks applies but doesn't is a trust bug. Studio's policy form says so under **Applies to**.
+- **Where:** `domain/policy.rs` (`Target`, `Target::parse`, `Policy::applies`, `Subject { agent, tags }`); `src/components/studio/PolicyForm.tsx` (`studio.field.appliesToHint`).
 - **Preconditions:** None (unit level).
-- **Steps:** 1. Evaluate `applies_to: [agent:report-*, workflow:month-end, tag:finance]` for agent `report-weekly`, agent `writer`, `writer` with tag `finance`, and `writer` in workflow `month-end`. 2. Evaluate `applies_to: ['*']` for any agent.
-- **Expected:** 1. Applies to `report-weekly`, not to plain `writer`, applies to `writer` with the tag and to `writer` in the workflow. 2. Applies.
-- **Edge / negative cases:** tags match exactly (no globs); `tags:` entries are trimmed and empty ones dropped (`Agent::tags`); nothing passes a `workflow` yet, so `workflow:` targets never match.
-- **Automation:** Covered by: `domain/policy.rs` (`targets_pick_agents_workflows_and_tags`), `services/policies.rs` (`tags_in_skill_md_select_policies`), `domain/agent.rs` (`every_frontmatter_key_is_documented` reads `tags`) | Layer: unit | Gap: no `workflow:` caller.
+- **Steps:** 1. Evaluate `applies_to: [agent:report-*, tag:finance]` for agent `report-weekly`, agent `writer` and `writer` with tag `finance`. 2. Evaluate `applies_to: ['*']` for any agent. 3. Save a policy with `applies_to: [workflow:month-end]` in Studio. 4. Open a policy in Studio and read under **Applies to**.
+- **Expected:** 1. Applies to `report-weekly`, not to plain `writer`, applies to `writer` with the tag. 2. Applies. 3. Not saved: "…has 'workflow:month-end', but workflow targets aren't supported yet: runs don't say which workflow they're a step of, so the rule would apply to nothing. Use \*, agent:<id> or tag:<tag>". 4. The targets that work, and that workflow targets aren't supported yet.
+- **Edge / negative cases:** tags match exactly (no globs); `tags:` entries are trimmed and empty ones dropped (`Agent::tags`); `['*', workflow:x]` is refused too (one bad target refuses the policy).
+- **Automation:** Covered by: `domain/policy.rs` (`targets_pick_agents_and_tags`, `a_workflow_target_is_refused_with_why`), `services/policies.rs` (`tags_in_skill_md_select_policies`), `domain/agent.rs` (`every_frontmatter_key_is_documented` reads `tags`), `PolicyForm.test.tsx` (the hint) | Layer: unit | Gap: none.
 - **Needs relay:** no
-- **Status:** Partial (`*`, `agent:` and `tag:` (skill.md `tags:`) enforced; `workflow:` matches nothing: runs don't carry their workflow and the egress proxy sees agents, not runs)
-
-## What an agent ends up with (evaluator)
-
-The evaluator starts from what `skill.md` asks for (`Request`), narrows it by every rule policy that applies (`Effective`), and records each change with the policy that made it (`Change { item, outcome, by }`, outcomes `Removed`, `Narrowed`, `MustAsk`, `OnHost`), for the planned Permissions panel. Policies are applied in id order, so the result does not depend on file order.
+- **Status:** Shipped (`*`, `agent:` and `tag:`; `workflow:` refused until runs carry their workflow)
 
 ### PO-05 — Effective permissions: tools and approvals
 
@@ -216,7 +213,7 @@ The evaluator starts from what `skill.md` asks for (`Request`), narrows it by ev
 
 From `docs/tasks-todo/task-x-enforced-policies.md`:
 
-- Workflow steps: a workflow's policies applying to every agent while it runs as a step of that workflow. The evaluator takes `Subject.workflow`, but runs don't carry their workflow and the egress proxy sees agents, not runs (PO-04).
+- Workflow steps: a workflow's policies applying to every agent while it runs as a step of that workflow. Until runs carry their workflow (and the egress proxy can tell runs apart), a `workflow:` target is refused (PO-04).
 - Model access through the gateway: every coding agent's model calls through LiteLLM with a per-run key, real keys kept on the host; then `models.allow` refused at the gateway and the LLM proxy as well as before the run (PO-08).
 - Runtime and pilot use deniable by policy (`runtime: { placement }` is a note today, PO-01).
 - Wave 4 leftovers: a preview of the agents and workflows a policy reaches; a blocked log of recent denies per agent; the before-and-after view for any looser change; `network` and `files` in the policy form (YAML only today, PO-12).

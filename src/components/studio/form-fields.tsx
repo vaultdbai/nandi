@@ -14,15 +14,19 @@ export interface FormProps {
 interface FieldProps extends FormProps {
   path: string
   label: string
+  /** What the field takes, under it */
+  hint?: string
 }
 
 function Field({
   label,
   id,
+  hint,
   children,
 }: {
   label: string
   id: string
+  hint?: string
   children: React.ReactNode
 }) {
   return (
@@ -31,6 +35,11 @@ function Field({
         {label}
       </Label>
       {children}
+      {hint && (
+        <p id={`${id}-hint`} className="text-xs text-muted-foreground">
+          {hint}
+        </p>
+      )}
     </div>
   )
 }
@@ -88,14 +97,15 @@ export function SwitchField({ text, onChange, path, label }: FieldProps) {
 }
 
 /** A comma-separated list, written as `[a, b]` */
-export function ListField({ text, onChange, path, label }: FieldProps) {
+export function ListField({ text, onChange, path, label, hint }: FieldProps) {
   const id = useId()
   const value = getField(text, path)
   const items = Array.isArray(value) ? value : []
   return (
-    <Field label={label} id={id}>
+    <Field label={label} id={id} hint={hint}>
       <Input
         id={id}
+        aria-describedby={hint ? `${id}-hint` : undefined}
         value={items.join(', ')}
         onChange={event =>
           onChange(

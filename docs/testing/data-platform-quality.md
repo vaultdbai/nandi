@@ -73,7 +73,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **Edge / negative cases:**
   - Linux without Secret Service: saving a key fails with an error, nothing written to disk.
   - A corrupt keyring entry: treated as missing by `get`, error from `read`.
-- **Automation:** Covered by: `services/secrets.rs` `in_memory_round_trip`, `an_unreadable_entry_is_missing_to_get_and_an_error_to_read` | Layer: unit (in-memory), manual (real keychain per OS) | Gap: no test scanning the repo for leaked secrets after a full save flow.
+- **Automation:** Covered by: `services/secrets.rs` `in_memory_round_trip`, `an_unreadable_entry_is_missing_to_get_and_an_error_to_read`; `secrets_suite.rs` `no_secret_reaches_the_repo_or_its_history` (over the HTTP API: a provider key and AWS keys, a connector's API key, an agent's browser site password, a webhook trigger's generated secret and the backup remote's token are saved next to a workflow, everything is committed, and neither the repo's files nor `git log --all -p` holds any of the values; the keychain does, and the files hold the refs) | Layer: unit (in-memory) + api, manual (real keychain per OS) | Gap: the GitHub sign-in token and mail/calendar OAuth tokens need a live sign-in, so they aren't in the scan.
 - **Needs relay:** no
 - **Status:** Shipped
 

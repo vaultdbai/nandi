@@ -569,6 +569,7 @@
   "studio.field.rateLimit": "الطلبات في الساعة",
   "studio.field.requireApprovalFor": "الموافقة مطلوبة لـ",
   "studio.field.appliesTo": "ينطبق على",
+  "studio.field.appliesToHint": "لمن تنطبق: * (كل الوكلاء)، أو agent:<id> (agent:report-* لعدة وكلاء)، أو tag:<tag>. أهداف سير العمل غير مدعومة بعد: لا تذكر عمليات التشغيل سير العمل الذي هي خطوة منه، لذلك لا تُحفظ السياسة التي تتضمن هدفًا منها.",
   "studio.field.agentTags": "الوسوم (يمكن للسياسات استهدافها)",
   "studio.field.toolsAllow": "هذه الأدوات فقط",
   "studio.field.toolsDeny": "ليس هذه الأدوات أبدًا",

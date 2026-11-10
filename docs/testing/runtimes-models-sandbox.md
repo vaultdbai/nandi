@@ -820,7 +820,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - Gemini CLI telemetry host `play.googleapis.com` is refused by the proxy (SB-15).
 - The app's egress proxy binds `127.0.0.1`, which a Linux engine's `host.docker.internal` (`host-gateway`, the bridge gateway) can't reach: on Linux without Docker Desktop, agents have no way out. The sandbox suite binds its own proxy on the bridge gateway, so CI tests the isolation, not this (`docs/tasks-todo/task-x-linux-docker-engine.md`).
 - Containers run as uid 1000; a Linux host user with another uid can't write the agent's workdir (the sandbox suite opens its folders up; GitHub's runner is uid 1001) (`task-x-linux-docker-engine.md`).
-- Policy work still open (workflow targets, the gateway, audit of decisions): see [policies.md](./policies.md) "Gaps and planned".
+- Policy work still open (workflow steps, the gateway): see [policies.md](./policies.md) "Gaps and planned".
 - Budgets per policy (tokens or money) (`task-x-enforced-policies.md`, "Later").
 - Model picker per CLI runtime saved with `setHarnessDefault(id, model)`; UI always sends `null` (`docs/tasks-todo/task-x-models-and-runtimes.md` Wave A, unchecked item). Acceptance items (pick `gpt:` and see "Using GPT-5", Claude Code's model on its row, Build turns the card Ready) are unchecked.
 - Prebuilt images pulled from GHCR (Build stays as fallback) (`task-x-models-and-runtimes.md` Wave C). No cancel for a running build.

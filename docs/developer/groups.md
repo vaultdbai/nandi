@@ -110,7 +110,7 @@ A copy that doesn't read at all is skipped and logged (its members are unknown);
 
 ## Gaps
 
-- **Run-level policy.** A group policy's `tools:`, `connectors:`, `network:` blocks are validated but not applied to the run a group request starts: policies narrow per agent (`services::policies`), and runs carry no record of which request or group started them (the same reason `workflow:` targets match nothing). Enforcement is at intake.
+- **Run-level policy.** A group policy's `tools:`, `connectors:`, `network:` blocks are validated but not applied to the run a group request starts: policies narrow per agent (`services::policies`), and runs carry no record of which request or group started them (the same reason `workflow:` targets are refused). Enforcement is at intake.
 - **Send me info.** There is no intake for information on its own yet; this level lets only questions (`ask-me`) through, and they always wait in my queue.
 - **Ignore** on an invite lasts for the session only.
 

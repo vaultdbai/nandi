@@ -569,6 +569,7 @@
   "studio.field.rateLimit": "Requêtes par heure",
   "studio.field.requireApprovalFor": "Approbation requise pour",
   "studio.field.appliesTo": "S’applique à",
+  "studio.field.appliesToHint": "À qui elle s'applique : * (tous les agents), agent:<id> (agent:report-* pour plusieurs) ou tag:<tag>. Les cibles de workflow ne sont pas encore prises en charge : une exécution n'indique pas de quel workflow elle est une étape, donc une politique qui en contient une n'est pas enregistrée.",
   "studio.field.agentTags": "Étiquettes (les règles peuvent les viser)",
   "studio.field.toolsAllow": "Seulement ces outils",
   "studio.field.toolsDeny": "Jamais ces outils",

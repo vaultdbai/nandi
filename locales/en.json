@@ -569,6 +569,7 @@
   "studio.field.rateLimit": "Requests per hour",
   "studio.field.requireApprovalFor": "Approval needed for",
   "studio.field.appliesTo": "Applies to",
+  "studio.field.appliesToHint": "Who it's for: * (every agent), agent:<id> (agent:report-* for several) or tag:<tag>. Workflow targets aren't supported yet: runs don't say which workflow they're a step of, so a policy with one isn't saved.",
   "studio.field.agentTags": "Tags (policies can aim at them)",
   "studio.field.toolsAllow": "Only these tools",
   "studio.field.toolsDeny": "Never these tools",

@@ -54,6 +54,7 @@ export function PolicyForm({
         {...props}
         path="applies_to"
         label={t('studio.field.appliesTo')}
+        hint={t('studio.field.appliesToHint')}
       />
       {/* Rules the app enforces (`domain::policy`); they only take away.
           network and files are lists of objects: edit them in the YAML */}

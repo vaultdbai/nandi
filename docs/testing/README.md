@@ -137,16 +137,16 @@ These turned up while building the catalog. In each case the catalog follows the
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 520   |
-| Partial     | 17    |
+| Shipped     | 521   |
+| Partial     | 16    |
 | Removed     | 11    |
 | Known issue | 3     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 294   |
-| `api`                 | 185   |
-| `manual`              | 37    |
+| `unit`                | 290   |
+| `api`                 | 193   |
+| `manual`              | 33    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
@@ -340,8 +340,8 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RT-18 | Download the pinned sandbox image from GitHub's container registry              | Shipped (needs the `images.yml` run that publishes `nandi-harness:sandbox-6` and `nandi... | unit          | no          |               |
 | RT-29 | Claude Code fetched on first use into a tools volume                            | Shipped                                                                                    | unit + live   | no          |               |
 | RT-04 | Agent tool container lifecycle (start, stop, restart, reconcile)                | Shipped                                                                                    | api           | no          |               |
-| RT-05 | Native container configuration (mounts, resources, no published ports)          | Shipped                                                                                    | unit + manual | no          |               |
-| RT-06 | Tool server in the container (shell, read_file, write_file, list_dir)           | Shipped                                                                                    | manual        | no          |               |
+| RT-05 | Native container configuration (mounts, resources, no published ports)          | Shipped                                                                                    | api           | no          |               |
+| RT-06 | Tool server in the container (shell, read_file, write_file, list_dir)           | Shipped                                                                                    | api           | no          |               |
 | RT-07 | Built-in tool catalog and On/Off switch                                         | Shipped                                                                                    | api           | no          |               |
 | RT-08 | Runtime cards and detection (Nandi, Claude Code, Codex, Gemini CLI)             | Shipped                                                                                    | api + unit    | no          |               |
 | RT-09 | Sign-in status per runtime card ("Ready")                                       | Shipped                                                                                    | unit + manual | no          |               |
@@ -385,7 +385,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | MD-19 | AWS sign-in for Bedrock (profiles, SSO login, check)                            | Shipped                                                                                    | manual        | no          |               |
 | MD-20 | Bedrock model picker                                                            | Partial (chosen model is not saved as a runtime default)                                   | api           | no          |               |
 | MD-21 | LiteLLM gateway for third-party Bedrock models                                  | Shipped                                                                                    | manual        | no          |               |
-| SB-01 | Container hardening (tool and coding-agent containers)                          | Shipped                                                                                    | manual        | no          |               |
+| SB-01 | Container hardening (tool and coding-agent containers)                          | Shipped                                                                                    | api           | no          |               |
 | SB-02 | Ask before CLI tools act (harness approvals)                                    | Shipped                                                                                    | manual        | no          |               |
 | SB-03 | Egress proxy server and per-container tokens                                    | Shipped                                                                                    | api           | no          |               |
 | SB-04 | LLM proxy for containers (`POST /llm`)                                          | Shipped                                                                                    | api           | no          |               |
@@ -399,9 +399,9 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | SB-10 | Internet access settings page                                                   | Shipped                                                                                    | unit + ui-e2e | no          |               |
 | SB-11 | Egress environment injected into agent containers                               | Shipped                                                                                    | unit          | no          |               |
 | SB-12 | Secrets in the OS keyring                                                       | Duplicate of DT-04                                                                         | —             | no          |               |
-| SB-13 | Agents' internal network (`nandi-agents`)                                       | Shipped                                                                                    | manual        | no          |               |
-| SB-14 | Egress relay container (`nandi-egress`)                                         | Shipped                                                                                    | manual        | no          |               |
-| SB-15 | Coding agents through the egress proxy, with their model hosts for the run only | Shipped                                                                                    | unit + manual | no          |               |
+| SB-13 | Agents' internal network (`nandi-agents`)                                       | Shipped                                                                                    | api           | no          |               |
+| SB-14 | Egress relay container (`nandi-egress`)                                         | Shipped                                                                                    | api           | no          |               |
+| SB-15 | Coding agents through the egress proxy, with their model hosts for the run only | Shipped                                                                                    | api           | no          |               |
 
 ### Policies
 
@@ -410,7 +410,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | PO-01 | Policy files: prose and rule policies                       | Shipped                                                                                    | unit  | no          |               |
 | PO-02 | Policy validation errors                                    | Shipped                                                                                    | unit  | no          |               |
 | PO-03 | Studio checks policies with the enforcing parser            | Shipped                                                                                    | api   | no          |               |
-| PO-04 | Targets (`applies_to`)                                      | Partial (`*`, `agent:` and `tag:` (skill.md `tags:`) enforced; `workflow:` matches noth... | unit  | no          |               |
+| PO-04 | Targets (`applies_to`)                                      | Shipped (`*`, `agent:` and `tag:`; `workflow:` refused until runs carry their workflow)    | unit  | no          |               |
 | PO-05 | Effective permissions: tools and approvals                  | Shipped                                                                                    | unit  | no          |               |
 | PO-06 | Effective permissions: files and shared folders             | Shipped                                                                                    | unit  | no          |               |
 | PO-07 | Effective permissions: network and AWS                      | Shipped                                                                                    | unit  | no          |               |
@@ -420,7 +420,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | PO-11 | Agent page: the policies over an agent                      | Shipped                                                                                    | api   | no          |               |
 | PO-12 | Studio policy form and agent tags                           | Shipped                                                                                    | unit  | no          |               |
 | PO-13 | Policies applied to every run                               | Shipped                                                                                    | unit  | no          |               |
-| PO-14 | Decisions log: who approved, and what a policy refused      | Shipped                                                                                    | unit  | no          |               |
+| PO-14 | The decision record: who decided, and what a policy refused | Shipped                                                                                    | api   | no          |               |
 | PO-15 | Browser controls a policy refuses (`browser.refuse`)        | Shipped                                                                                    | unit  | no          |               |
 | PO-16 | Policies a starter pack ships for its own agents            | Shipped                                                                                    | unit  | no          |               |
 
@@ -516,7 +516,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RQ-29 | Chief of Staff acts on what arrives and shows Since you were away                | Shipped                                                                                    | unit + manual               | no          |                 |
 | RQ-30 | Teammates' requests take the same intake                                         | Shipped                                                                                    | unit + integration + manual | yes         |                 |
 | RQ-31 | Each intake item has a Chief of Staff thread                                     | Shipped                                                                                    | unit + manual               | no          |                 |
-| RQ-32 | Auto-approve rules                                                               | Shipped                                                                                    | unit + manual               | no          |                 |
+| RQ-32 | Auto-approve rules                                                               | Shipped                                                                                    | unit + api + manual         | no          |                 |
 | RQ-33 | Chief of Staff does a step of its own plans, and offers Save as workflow         | Shipped                                                                                    | unit + integration + manual | no          |                 |
 | RQ-34 | Every Inbox item opens as an Ask chat                                            | Shipped                                                                                    | unit + manual               | no          |                 |
 | RQ-35 | Decide an Inbox item in its chat, confirmed on its card                          | Shipped                                                                                    | unit + integration + manual | no          |                 |
@@ -564,7 +564,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | CP-35 | The Chief of Staff keeps My notes from the calendar                                        | Shipped (live test pending)                                                    | unit               | no          |                 |
 | CP-04 | Shared folders on the Filesystem connector                                                 | Shipped                                                                        | unit               | no          |                 |
 | CP-05 | Per-agent connectors and folder grants                                                     | Shipped                                                                        | api                | no          |                 |
-| CP-06 | Connector tool calls: prefixing, approvals, audit log                                      | Shipped                                                                        | unit               | no          |                 |
+| CP-06 | Connector tool calls: prefixing, approvals, audit log                                      | Shipped                                                                        | api                | no          |                 |
 | CP-22 | Stdio connectors run in their own container                                                | Shipped                                                                        | manual             | no          |                 |
 | CP-23 | GitHub connector (pull requests, files, reviews)                                           | Shipped                                                                        | unit + manual      | no          | 2026-10-30 pass |
 | CP-24 | AWS connector (alarms, logs, Batch jobs, approved restart)                                 | Shipped                                                                        | unit + manual      | no          |                 |
