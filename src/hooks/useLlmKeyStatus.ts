@@ -57,3 +57,19 @@ export function useOllama() {
     staleTime: 30_000,
   })
 }
+
+/**
+ * The free trial's allowance as Nandi's trial gateway counts it (used,
+ * limit, paused, the account this computer is linked to). Asked only
+ * while the trial is shown; it needs the internet, so a failure is shown
+ * as "can't reach", not retried.
+ */
+export function useFreeTrialAccount(enabled: boolean) {
+  return useQuery({
+    queryKey: [...llmKeyStatusQueryKey, 'trialAccount'],
+    queryFn: async () => unwrapResult(await client.getFreeTrialAccount()),
+    enabled,
+    retry: false,
+    staleTime: 60_000,
+  })
+}

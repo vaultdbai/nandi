@@ -16,6 +16,8 @@
 //! - a build with an unreachable default relay and join code behaves the same
 //! - Settings › This computer's checklist answers (its image check pointed
 //!   where nothing listens)
+//! - with no model at all (no key, the free trial's gateway unreachable),
+//!   the ask box answers from the built-in help guide instead of an error
 
 use std::time::{Duration, Instant};
 
@@ -512,4 +514,66 @@ async fn an_unreachable_default_relay_changes_nothing_local() {
         started.elapsed()
     );
     relay_is_disconnected(&router).await;
+}
+
+/// No key and no free trial: the ask box answers from the built-in help
+/// guide, and the guide's topics are served
+#[tokio::test]
+async fn with_no_model_the_ask_box_answers_from_the_help_guide() {
+    let (_state, router) = boot(BuiltInRelay::default());
+    let answer = post(
+        &router,
+        "ask",
+        json!({ "text": "How do I install Docker?" }),
+    )
+    .await;
+    assert_eq!(answer["kind"], "help", "{answer}");
+    assert_eq!(answer["data"]["topic"]["id"], "install-docker", "{answer}");
+    assert_eq!(answer["data"]["reason"], "noModel", "{answer}");
+
+    let topics = get(&router, "help/topics").await;
+    assert!(topics.as_array().is_some_and(|t| t.len() >= 10), "{topics}");
+    let chat = post(&router, "help/answer", json!({ "text": "join a relay" })).await;
+    assert_eq!(chat["topic"]["id"], "join-relay", "{chat}");
+}
+
+/// The free trial's gateway can't be reached (offline): the ask still gets
+/// a help answer, and the next one doesn't wait on the gateway again
+#[tokio::test]
+async fn with_the_trial_gateway_unreachable_the_ask_box_still_helps() {
+    use crate::services::llm_trial::{use_test_trial, Trial};
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    use_test_trial(Some(std::sync::Arc::new(Trial::new(
+        format!("http://127.0.0.1:{port}"),
+        "offline-instance".into(),
+    ))));
+    let (_state, router) = boot(BuiltInRelay::default());
+    let model = get(&router, "default-model").await;
+    assert!(
+        model["effectiveModel"].is_string(),
+        "the trial is offered: {model}"
+    );
+
+    let first = post(&router, "ask", json!({ "text": "What is an agent?" })).await;
+    assert_eq!(first["kind"], "help", "{first}");
+    assert_eq!(first["data"]["topic"]["id"], "agents", "{first}");
+    assert_eq!(first["data"]["reason"], "modelFailed", "{first}");
+
+    // Now known unreachable: no model is offered, the guide answers at once
+    let model = get(&router, "default-model").await;
+    assert!(model["effectiveModel"].is_null(), "{model}");
+    assert_eq!(model["trial"]["unreachable"], true, "{model}");
+    let second = post(
+        &router,
+        "ask",
+        json!({ "text": "How do I connect a model?" }),
+    )
+    .await;
+    assert_eq!(second["data"]["topic"]["id"], "connect-model", "{second}");
+    assert_eq!(second["data"]["reason"], "noModel", "{second}");
+    use_test_trial(None);
 }

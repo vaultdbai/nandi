@@ -7,7 +7,7 @@
 
 - **Settings › Models** (`ModelsSection.tsx` → `LlmKeysSection.tsx`): the free trial line with one Turn off / Use free tokens button (`FreeTrialField`), a free-text default model with a `<datalist>` (`DefaultModelField`), then provider key rows and Ollama.
 - **Settings › Runtimes** (`RuntimesPanel` in `RuntimesSection.tsx`): a Nandi card that only says "Uses your Models settings", a `HarnessCard` for Claude Code, Codex and Gemini (sign-in, Test, Make default, "Use an API key instead" jumps back to Models), the Bedrock model picker, the LiteLLM gateway, sessions. `setHarnessDefault(id, model)` is always sent `null`.
-- **Trial** (`llm_trial.rs`, `llm_keys.rs` `resolve_model`): Auto turns itself off once the user's own model works. Turning it off with no key leaves no model and no guidance. The button disappears when the tokens run out. "Use free tokens" overwrites the default model. The fallback order (preferred → first keyed provider → trial) is shown only as "using X instead".
+- **Trial** (`llm_trial/`, `llm_keys.rs` `resolve_model`): Auto turns itself off once the user's own model works. Turning it off with no key leaves no model and no guidance. The button disappears when the tokens run out. "Use free tokens" overwrites the default model. The fallback order (preferred → first keyed provider → trial) is shown only as "using X instead".
 - **Images**: built by hand (`docker build -t nandi-harness:latest runtimes/nandi-harness`, `… nandi-runtime …`). Rust only checks `image_present` and prints the command. The Dockerfiles aren't bundled, so an installed app can't build them.
 
 ## What the images are for (say this in the UI)

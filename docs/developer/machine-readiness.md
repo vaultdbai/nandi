@@ -78,6 +78,35 @@ Phase 1 (built): detection, the checklist UI, the no-admin **Start Docker** acti
 
 `machine/machine-model.ts` is pure: the steps for each check, reason, OS and Linux family (`stepsFor`), the why sentence (`machine.why.<checkId>`), link labels, and `isToolsUnavailable`. `MachineChecklist.tsx` renders rows, steps (commands copyable and `dir="ltr"`) and `MachineActions`, where phase 2's install buttons go. Data comes from `hooks/useMachine.ts` (one TanStack Query key, `['machine','report']`).
 
+## With no model: the built-in help guide
+
+The checklist above is rule-based; so is the help guide
+(`services/help/`), for when no model can answer (no key, the trial
+used up, paused or unreachable, offline). It's out of the model path:
+when a model exists, the model answers.
+
+- **Content:** `services/help/guide.json`: each topic's ID, its keywords
+  in en, fr, ar and ja, an optional `weight` (the generic "where things
+  are" topic weighs 0.5) and its links (`settings:<section>[:<focus>]`,
+  `network:<tab>`, `agents`, `library`, `automations`, `inbox`, `home`,
+  `settings`, `url:https://...`). The words live in the locales:
+  `help.topics.<id>.title` and `.answer`, `help.links.<label>`.
+- **Matcher:** lowercase, French accents folded; each keyword found adds
+  its length to the topic's score. Latin keywords must stand as words (a
+  plural `s` allowed, another script next to them is a boundary); Arabic
+  and Japanese ones match anywhere. Best score wins, ties go to the
+  topic listed first; up to three others come along as `related`. No
+  match: every topic.
+- **Where it answers:** the Ask box (`AskResponse::Help`, when
+  `AskLlm::has_model` is false, or when a question's model call fails,
+  with the reason), a chat sent with no model (`AskBox` calls
+  `help_answer`), and the help window (`HelpGuideDialog`, opened by
+  **How?** on the no-model notice and "Agents need Docker to act").
+- **Adding a topic:** add it to `guide.json` (keywords in all four
+  languages, at least one link), add `help.topics.<id>.*` to all four
+  locales, the ID to `src/lib/help.test.ts`, and a question to
+  `help/tests.rs` `common_questions_find_their_topic`.
+
 ## Tests
 
 - Rust: `services::machine::parse::tests`, `services::machine::assess::tests` (Windows, macOS, Linux fixtures for every state, including "unable to start", WSL not installed and old WSL, socket permission denied), `probe::tests::an_unreachable_registry_says_so_quickly`, and the offline suite's `with_no_relay_the_computer_checklist_answers`.

@@ -30,6 +30,7 @@ pub mod gateway;
 pub mod groups;
 pub mod harness_sessions;
 pub mod harnesses;
+pub mod help;
 pub mod identity;
 pub mod images;
 pub mod live;

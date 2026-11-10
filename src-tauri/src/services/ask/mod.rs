@@ -23,6 +23,7 @@ use crate::llm::{self, CallSource, LlmRequest, Message};
 use crate::model::Timestamp;
 use crate::services::events::{self, NandiEvent};
 use crate::services::gateway::GATEWAY_AGENT_ID;
+use crate::services::help::{self, HelpAnswer, HelpReason};
 use crate::services::llm_keys;
 use crate::services::repo_store::RepoStore;
 use crate::services::secrets::Secrets;
@@ -101,6 +102,8 @@ pub enum AskResponse {
     Edit(EditPreview),
     /// The ask was ambiguous: a question back to the user
     Clarification(String),
+    /// No model could answer: the built-in help guide did
+    Help(HelpAnswer),
 }
 
 impl AskResponse {
@@ -110,6 +113,7 @@ impl AskResponse {
             Self::Action(_) => "action",
             Self::Edit(_) => "edit",
             Self::Clarification(_) => "clarification",
+            Self::Help(_) => "help",
         }
     }
 }
@@ -229,6 +233,12 @@ pub trait AskLlm: Send + Sync {
         prompt: &'a str,
         deltas: mpsc::Sender<String>,
     ) -> BoxFuture<'a, Result<String, AskError>>;
+
+    /// Whether any model can be called now. Without one, asks get the
+    /// built-in help guide (`services::help`) and the model isn't tried.
+    fn has_model(&self) -> bool {
+        true
+    }
 }
 
 /// The real model: the default model from settings, its key from the OS
@@ -251,9 +261,7 @@ impl ModelAskLlm {
     ) -> Result<String, AskError> {
         let model = crate::services::orchestrator::default_model(&self.store);
         if llm_keys::usable_model(&self.secrets, &model).is_err() {
-            return Err(
-                "Add an LLM API key in Preferences → Advanced so the ask box can answer".into(),
-            );
+            return Err("No model can answer: add one in Settings › Models & runtimes".into());
         }
         let request = LlmRequest {
             model,
@@ -277,6 +285,11 @@ impl ModelAskLlm {
 }
 
 impl AskLlm for ModelAskLlm {
+    fn has_model(&self) -> bool {
+        let model = crate::services::orchestrator::default_model(&self.store);
+        llm_keys::usable_model(&self.secrets, &model).is_ok()
+    }
+
     fn complete<'a>(
         &'a self,
         system: &'a str,
@@ -336,6 +349,14 @@ impl AskService {
         deltas: Option<mpsc::Sender<String>>,
     ) -> Result<AskResponse, AskError> {
         let text = validate(&request.text)?;
+        // No model at all: the built-in help guide answers, offline too
+        if !self.llm.has_model() {
+            return Ok(AskResponse::Help(help::answer(
+                text,
+                HelpReason::NoModel,
+                None,
+            )));
+        }
         let state = self.state()?;
         // Once per ask: the classifier and the answer share it
         let context = context::load(&state, &request.context).await;
@@ -344,9 +365,16 @@ impl AskService {
             return Ok(AskResponse::Clarification(clarification(&context)));
         }
         match classification.kind {
-            AskKind::Question => answer(self.llm.as_ref(), text, &context, deltas)
-                .await
-                .map(AskResponse::Question),
+            AskKind::Question => match answer(self.llm.as_ref(), text, &context, deltas).await {
+                Ok(answer) => Ok(AskResponse::Question(answer)),
+                // The model failed (the trial unreachable, a bad key): the
+                // guide still helps, and says why the model didn't answer
+                Err(e) => Ok(AskResponse::Help(help::answer(
+                    text,
+                    HelpReason::ModelFailed,
+                    Some(e),
+                ))),
+            },
             AskKind::Action => Ok(AskResponse::Action(
                 planner::plan(self.llm.as_ref(), text, &context).await,
             )),

@@ -494,39 +494,39 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - **Needs relay:** no
 - **Status:** Shipped
 
-### MD-13 — Free tokens (DeepSeek trial)
+### MD-13 — Free tokens (trial gateway)
 
-- **What:** Release builds ship an obfuscated DeepSeek key (CI secret `NANDI_TRIAL_DEEPSEEK_KEY`, XOR-masked by `build.rs`) giving 100,000 tokens (input + output) per computer on `deepseek:deepseek-flash`, used only when nothing of the user's own works; the counter lives in the keychain (`nandi.trial.deepseek.used`) so clearing `~/.nandi` doesn't reset it; the key is never written to disk or sent into a container.
-- **Where:** `services/llm_trial.rs`, `services/llm_keys.rs`, `llm/deepseek.rs`; Settings → Models & runtimes → Nandi (built in) → Free tokens (`FreeTrialField`); onboarding model step.
-- **Preconditions:** A build with the trial key; no own keys.
-- **Steps:** 1. Fresh install, chat with Ask. 2. Watch Free tokens. 3. Delete `~/.nandi`, reinstall.
-- **Expected:** "In use: N of 100,000 free tokens left. ..."; count decreases per call; count survives reset. When used up: "Your 100,000 free tokens are used up. ..." and the switch disabled.
-- **Edge / negative cases:** dev build without the variable: no Free tokens field, no trial; key extractable from the binary (spending cap on the account required).
-- **Automation:** Covered by: `llm_trial.rs` tests (11), `LlmKeysSection.test.tsx` | Layer: unit | Gap: release-build behavior is manual.
+- **What:** Every build has a free trial on `deepseek:deepseek-flash` through Nandi's trial gateway (`https://trial.vaultdb.ai`, `NANDI_TRIAL_GATEWAY_URL` overrides it). The DeepSeek key lives only on the gateway; nothing is baked into the app. The gateway gives each person 100,000 tokens (input + output), one device or all of a person's devices once they sign in, and is the only counter: Settings shows what `GET /v1/trial` says. The trial is used only when nothing of the user's own works, only on the host, never in a container. Each call is signed with the instance's device key (`X-Nandi-Instance`, `X-Nandi-Key`, `X-Nandi-Time`, `X-Nandi-Signature` over `nandi-trial-v1\n<METHOD>\n<path>\n<instance>\n<time>\n<hex sha256(body)>`) and streamed through the DeepSeek adapter's parser with no bearer key.
+- **Where:** `services/llm_trial/` (`mod.rs` modes and health, `gateway.rs` signed client), `llm/mod.rs` (`dispatch`), `llm/deepseek.rs` (`request_body`, `read_stream`), `services/llm_keys.rs` (`usable_model`, `get_free_trial_account`); Settings › Models & runtimes › Free tokens (`FreeTrialField`, `lib/free-trial.ts`); HTTP `GET /api/free-trial/account`; onboarding model step.
+- **Preconditions:** No own keys; internet (or `NANDI_TRIAL_GATEWAY_URL` pointing at a local gateway).
+- **Steps:** 1. Fresh install, ask something. 2. Open Settings › Models & runtimes › Free tokens. 3. Ask again and reopen the card.
+- **Expected:** The answer streams. The card says "In use: N of 100,000 free tokens left." and N drops after each call (the gateway's count). Used up: "Your free tokens are used up. ..." and the switch disabled.
+- **Edge / negative cases:** Offline: "Can't reach the free trial right now. ..." on the card, and the Ask box answers from the help guide (SH-39). Gateway paused (daily cap): "paused for today" with when it's back. Reinstalling or deleting `~/.nandi` doesn't reset anything: the gateway counts per device key and per person.
+- **Automation:** Covered by: `llm_trial/tests.rs`, `llm_trial/gateway_tests.rs` (fake gateway: streaming, `/v1/trial`, golden signing string, end-to-end through `llm::complete`), `free-trial.test.ts`, `LlmKeysSection.test.tsx`, `offline_suite::with_the_trial_gateway_unreachable_the_ask_box_still_helps` | Layer: unit | Gap: the live gateway is manual.
 - **Needs relay:** no
 - **Status:** Shipped
 
 ### MD-14 — Free tokens switch and automatic turn-off
 
-- **What:** The "Use free tokens" switch turns the trial on (remembering the current default, making the trial model default) or off (giving the previous default back unless the user picked another since). The trial turns itself off for good after a call on the user's own model succeeds (key, working Claude Code sign-in, Ollama default, llm.yaml/env model); saving a key also turns it off.
-- **Where:** `FreeTrialField` switch `#free-trial-switch`, `commands/llm_keys.rs` (`set_free_trial`), `llm_trial.rs` (`set_enabled`, `own_model_worked`, `own_model_set_up`, `remember_default`, `take_remembered_default`). HTTP `PUT /api/free-trial`. Keychain `nandi.trial.deepseek.mode`, `nandi.trial.deepseek.previous-model`.
-- **Preconditions:** Trial build with tokens left.
+- **What:** The "Use free tokens" switch turns the trial on (remembering the current default, making the trial model default) or off (giving the previous default back unless the user picked another since). The trial turns itself off for good after a call on the user's own model succeeds (key, working Claude Code sign-in, Ollama default, llm.yaml/env model); saving a key also turns it off. It can be turned back on while the gateway hasn't said the tokens are used up.
+- **Where:** `FreeTrialField` switch `#free-trial-switch`, `commands/llm_keys.rs` (`set_free_trial`), `llm_trial/mod.rs` (`set_enabled`, `own_model_worked`, `own_model_set_up`, `remember_default`, `take_remembered_default`). HTTP `PUT /api/free-trial`. Keychain `nandi.trial.deepseek.mode`, `nandi.trial.deepseek.previous-model`.
+- **Preconditions:** Tokens left on the gateway.
 - **Steps:** 1. Turn on with default `claude:x`. 2. Turn off. 3. Turn on, change default to `gpt:y`, turn off. 4. Add a working key and make a call.
 - **Expected:** 1. Default becomes `deepseek:deepseek-flash`. 2. Back to `claude:x`. 3. Stays `gpt:y`. 4. Message "Off, because you set up your own model. You still have N free tokens."; while on, `deepseek:` calls use the trial before the user's DeepSeek key.
-- **Edge / negative cases:** reading status never writes the keychain; a stale Claude Code login doesn't turn it off; turning on with 0 left is refused.
-- **Automation:** Covered by: `llm_trial.rs`, `llm_keys.rs` tests, `LlmKeysSection.test.tsx` | Layer: api | Gap: none.
+- **Edge / negative cases:** reading status never writes the keychain; a stale Claude Code login doesn't turn it off; turning on once the gateway said used up is refused; an unreadable mode counts as off.
+- **Automation:** Covered by: `llm_trial/tests.rs`, `llm_keys.rs` tests, `LlmKeysSection.test.tsx` | Layer: api | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 
-### MD-15 — Trial accounting fails closed
+### MD-15 — Trial errors, Retry-After and the gateway's state
 
-- **What:** Each trial call reserves its prompt estimate plus its answer cap against what's left after calls in flight; it settles with reported usage; a failed call is charged its prompt, a cancelled one its whole reservation; an unreadable or non-numeric counter counts as used up and is never rewritten; an unreadable mode counts as off.
-- **Where:** `llm_trial.rs` (`reserve`, `estimate_input`, `settle`, `failed`), `services/secrets.rs` (`read` vs `get`).
-- **Preconditions:** Trial build.
-- **Steps:** 1. Fire several concurrent Ask calls near the limit. 2. Corrupt the keychain counter.
-- **Expected:** 1. Extra calls fail with "The free tokens left are in use by other calls right now. Try again when they finish." 2. Trial reported used up.
-- **Edge / negative cases:** cancel mid-stream charges the full reservation.
-- **Automation:** Covered by: `llm_trial.rs` tests, `secrets.rs` tests | Layer: unit | Gap: none.
+- **What:** Gateway error codes become clear messages: `trial_used_up` (add your own model), `trial_not_enough` (tokens left, shorter conversation), `trial_busy`, `trial_paused` (back in about N hours), `rate_limited` (try again in N seconds), `too_many_devices`, `stale_time` (fix the clock), `key_mismatch`, `upstream_busy`, `upstream_error`. The trial path doesn't use the DeepSeek adapter's retries: a short `Retry-After` (10 s or less) on `trial_busy`, `rate_limited` or `upstream_busy` is waited out once; longer ones are reported. `stale_time` adjusts the clock by the server's `serverTime` and signs again once. Signed times always go up (no replays). Used up, paused (until `Retry-After`) and unreachable (for a minute) are remembered in memory, so calls stop offering the trial and a computer with no model gets the help guide at once.
+- **Where:** `llm_trial/gateway.rs` (`GatewayError::user_message`, `chat`, `send`), `llm_trial/mod.rs` (`Trial::note`, `why_unavailable`), `LlmKeyNotice.tsx` (paused/unreachable lines).
+- **Preconditions:** A local gateway (`NANDI_TRIAL_GATEWAY_URL`) whose limits can be set low.
+- **Steps:** 1. Set `NANDI_TRIAL_DEVICE_RPM=1` on the gateway and ask twice quickly. 2. Set `NANDI_TRIAL_DAILY_CAP=1` and ask. 3. Move this computer's clock 10 minutes off and ask. 4. Stop the gateway and ask.
+- **Expected:** 1. "Too many free-trial calls from this computer. Try again in N seconds." 2. "The free trial is paused for today ..." and the notice "The free trial is paused for today." 3. The answer arrives (clock corrected once). 4. A help-guide answer; Settings says it can't reach the trial.
+- **Edge / negative cases:** a captive-portal page instead of JSON reads "HTTP <status>: ..."; a second busy answer isn't retried again.
+- **Automation:** Covered by: `gateway_tests.rs` (`every_error_code_has_a_clear_message`, `a_short_retry_after_is_waited_out_once`, `a_long_retry_after_is_reported_not_waited`, `a_stale_clock_is_corrected_by_the_servers_and_signed_again`, `paused_and_used_up_are_never_retried`, `signed_times_only_go_up`), `llm_trial/tests.rs` (`paused_and_unreachable_are_not_offered_for_a_while`) | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -585,6 +585,18 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - **Expected:** Ready within 90 s; container on `127.0.0.1:4000`; `docker inspect nandi-litellm` lists both `nandi-harness` and `nandi-agents` (checklist 4.10); agent run goes through it with no model hosts opened on the proxy (SB-15); Stop removes it.
 - **Edge / negative cases:** invalid model id rejected (`valid_model_id`); readiness timeout; agent needing a different model restarts it; attaching to `nandi-agents` fails ("Could not attach the gateway to the agents' network", container removed).
 - **Automation:** Covered by: `gateway.rs` tests | Layer: manual | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### MD-22 — Sign in to keep the free trial on all your computers
+
+- **What:** The Free tokens card offers "Sign in with GitHub" (the providers `GET /v1/trial` lists in `signIn`); Google and Microsoft show as "(coming soon)", disabled, until the gateway offers them. Start shows a code ("Enter this code on GitHub: WDJB-MJHT"), opens the verification page, and polls every `interval` seconds (`slow_down` raises it) until linked: "Signed in as <name>. Your free tokens now follow you." The device then shares the person's 100,000 tokens; its earlier usage counts toward them. Errors stop polling with a sentence (code expired, cancelled on GitHub, already linked to another account).
+- **Where:** `LlmKeysSection.tsx` (`TrialSignIn`), `lib/free-trial.ts` (`signInOptions`), `llm_trial/gateway.rs` (`sign_in_start`, `sign_in_poll`), commands `start_free_trial_sign_in`, `poll_free_trial_sign_in`; HTTP `POST /api/free-trial/sign-in/{provider}/start` and `/poll` (body `{ signinId }`).
+- **Preconditions:** A gateway with `NANDI_TRIAL_GITHUB_CLIENT_ID` set; no account linked on this device.
+- **Steps:** 1. Open the card, click Sign in with GitHub. 2. Enter the code on github.com/login/device and approve. 3. On a second computer, sign in with the same GitHub account.
+- **Expected:** 1. The code and a spinner; the browser opens. 2. "Signed in as <login>"; the card shows the account. 3. Both cards show the same used/limit.
+- **Edge / negative cases:** Cancel stops polling; letting the code expire shows "The sign-in code expired. Start again."; a device already linked to someone else shows the already-linked message.
+- **Automation:** Covered by: `gateway_tests.rs` (`signing_in_polls_until_linked`, `sign_in_errors_stop_with_a_clear_message`), `LlmKeysSection.test.tsx` ('signs in with GitHub…', 'stops polling…', 'shows the linked account'), `free-trial.test.ts` | Layer: unit | Gap: the real GitHub device flow is manual.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -830,5 +842,5 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - Cost logging only for DeepSeek (`cost_usd` is `None` for Anthropic, OpenAI, Ollama, Claude Code) (`src-tauri/src/llm/*.rs`).
 - `verify` does not consider Claude Code sign-in, the trial, or CLI runtimes/harness image (`src-tauri/src/verify.rs`).
 - `scripts/e2e-smoke.ps1` only checks for a DeepSeek key (paths, schema and identifier were fixed on 2026-10-22).
-- Model error messages from the core still say "Settings › Models" rather than "Settings › Models & runtimes" (`llm_trial.rs` `TRIAL_USED_UP`, `llm_keys.rs` `NO_KEY`, `requests/blocker.rs`, `studio/validate.rs`).
+- Model error messages from the core still say "Settings › Models" rather than "Settings › Models & runtimes" (`llm_trial` `TRIAL_USED_UP`, `llm_keys.rs` `NO_KEY`, `requests/blocker.rs`, `studio/validate.rs`).
 - `list_containers` has no UI.

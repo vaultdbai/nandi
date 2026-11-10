@@ -100,8 +100,6 @@ jobs:
           NANDI_MICROSOFT_CLIENT_ID: ${{ vars.NANDI_MICROSOFT_CLIENT_ID }}
           NANDI_GOOGLE_CLIENT_ID: ${{ vars.NANDI_GOOGLE_CLIENT_ID }}
           NANDI_GOOGLE_CLIENT_SECRET: ${{ secrets.NANDI_GOOGLE_CLIENT_SECRET }}
-          # The free trial's DeepSeek key (services/llm_trial.rs); unset = no trial
-          NANDI_TRIAL_DEEPSEEK_KEY: ${{ secrets.NANDI_TRIAL_DEEPSEEK_KEY }}
           # The relay a fresh install joins (services/relay/mod.rs), e.g. the
           # demo or community relay; unset = none until the user picks one
           NANDI_DEFAULT_RELAY_URL: ${{ vars.NANDI_DEFAULT_RELAY_URL }}

@@ -273,7 +273,7 @@ fn has_key(secrets: &Secrets, provider: KeyedProvider) -> bool {
 /// The model to call: `preferred` (an agent's model, or the default
 /// model from settings) when its provider has a key (Ollama needs none),
 /// else a model of the first provider the user has set a key for, else the
-/// free trial (`llm_trial`) while it has tokens left. A signed-in Claude
+/// free trial (`llm_trial`) while the gateway offers it. A signed-in Claude
 /// Code stands in for an Anthropic key, so with nothing else set every
 /// call runs on Claude Code.
 pub fn usable_model(secrets: &Secrets, preferred: &str) -> Result<String, String> {
@@ -312,11 +312,9 @@ fn resolve_model(secrets: &Secrets, preferred: &str) -> Result<(String, bool), S
     if llm_trial::available(secrets) {
         return Ok((llm_trial::TRIAL_MODEL.to_string(), true));
     }
-    Err(if llm_trial::used_up(secrets) {
-        llm_trial::TRIAL_USED_UP.to_string()
-    } else {
-        NO_KEY.to_string()
-    })
+    Err(llm_trial::why_unavailable(secrets)
+        .unwrap_or(NO_KEY)
+        .to_string())
 }
 
 /// Stores `api_key` for `provider` in the keyring (never in the repo;
@@ -350,7 +348,7 @@ pub struct DefaultModelStatus {
     /// team's Bedrock profile, or Claude Code's own login): an Anthropic
     /// key isn't needed then. `None`: they need the key.
     pub claude_sign_in: Option<crate::services::harness::HarnessAuth>,
-    /// The free trial's progress; `None` when this build has none
+    /// The free trial's state; `None` when it isn't set up (tests)
     pub trial: Option<TrialStatus>,
 }
 
@@ -430,6 +428,29 @@ pub async fn set_free_trial(state: &AppState, enabled: bool) -> Result<DefaultMo
         return set_default_model(state, previous).await;
     }
     get_default_model(state).await
+}
+
+/// The free trial's allowance as the gateway counts it (`GET /v1/trial`)
+pub async fn get_free_trial_account(state: &AppState) -> Result<llm_trial::TrialAccount, String> {
+    llm_trial::account(state.secrets()).await
+}
+
+/// Starts signing in to link this computer's free trial to a person's
+/// account (the provider's device flow): a code to type on its page
+pub async fn start_free_trial_sign_in(
+    state: &AppState,
+    provider: llm_trial::TrialSignInProvider,
+) -> Result<llm_trial::TrialSignInStart, String> {
+    llm_trial::sign_in_start(state.secrets(), provider).await
+}
+
+/// Whether the person finished signing in (poll every `interval` seconds)
+pub async fn poll_free_trial_sign_in(
+    state: &AppState,
+    provider: llm_trial::TrialSignInProvider,
+    signin_id: String,
+) -> Result<llm_trial::TrialSignInPoll, String> {
+    llm_trial::sign_in_poll(state.secrets(), provider, &signin_id).await
 }
 
 /// The model to make the default when the trial is turned off: the one

@@ -217,4 +217,4 @@ From `docs/tasks-todo/task-x-enforced-policies.md`:
 - Model access through the gateway: every coding agent's model calls through LiteLLM with a per-run key, real keys kept on the host; then `models.allow` refused at the gateway and the LLM proxy as well as before the run (PO-08).
 - Runtime and pilot use deniable by policy (`runtime: { placement }` is a note today, PO-01).
 - Wave 4 leftovers: a preview of the agents and workflows a policy reaches; a blocked log of recent denies per agent; the before-and-after view for any looser change; `network` and `files` in the policy form (YAML only today, PO-12).
-- Later: budgets per policy (reusing `llm_trial.rs` reserve-and-settle at the gateway), managed read-only policy sources ("Managed by your organization"), roles as named policy bundles.
+- Later: budgets per policy (modelled on the trial gateway's reserve-and-settle), managed read-only policy sources ("Managed by your organization"), roles as named policy bundles.

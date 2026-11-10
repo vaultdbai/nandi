@@ -2,7 +2,7 @@
 
 **From:** design talk 2026-10-21. The owner proposed IAM-style roles. We chose to build on the existing `.nandi/policies/` files instead: one place to say what agents may do, aimed at one agent, a group, or everything.
 **Size:** L, in four waves. Wave 1 comes first and ships on its own. A policy is only as strong as the container it limits.
-**Out of scope:** budgets (tokens or money per policy). They come later and will reuse the trial's reserve-and-settle code in `services/llm_trial.rs`.
+**Out of scope:** budgets (tokens or money per policy). They come later (the free trial's per-person counting now lives on the trial gateway, `nandi-cloud/trial-gateway`, as a model to follow).
 **Docs to update:** `docs/developer/egress.md`, `agent-runtime.md`, `harness-container.md`, `runtime-routing.md`, `data-model.md`, `domain-model.md`, `resources/studio-guides/approvals-and-policies.md`, the agents page design (drop the "Approvals aren't enforced" note).
 
 ## Why

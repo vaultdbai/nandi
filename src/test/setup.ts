@@ -112,6 +112,20 @@ vi.mock('@/lib/tauri-bindings', () => {
         defaultModel: 'claude:claude-sonnet-5',
         effectiveModel: 'claude:claude-sonnet-5',
       }),
+      getFreeTrialAccount: ok({
+        account: null,
+        used: 0,
+        limit: 100000,
+        paused: false,
+        signIn: ['github'],
+      }),
+      helpTopics: ok([]),
+      helpAnswer: ok({
+        topic: null,
+        related: [],
+        reason: 'noModel',
+        detail: null,
+      }),
       setFreeTrial: ok({
         defaultModel: 'deepseek:deepseek-flash',
         effectiveModel: 'deepseek:deepseek-flash',

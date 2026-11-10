@@ -117,10 +117,7 @@ export function Step2Model({ onNext, onBack }: Step2ModelProps) {
               className="size-4 shrink-0 text-success"
             />
             {defaultModel.data?.trial?.active
-              ? t('onboarding.model.trial', {
-                  limit: defaultModel.data.trial.limit.toLocaleString(),
-                  model: modelLabel(effective),
-                })
+              ? t('onboarding.model.trial', { model: modelLabel(effective) })
               : t('onboarding.model.willUse', { model: modelLabel(effective) })}
           </p>
         )

@@ -23,6 +23,9 @@ import { ActionPlanPreview } from './ActionPlanPreview'
 import { AskAnswer } from './AskAnswer'
 import { AskComposer } from './AskComposer'
 import { EditPreviewCard } from './EditPreview'
+import { HelpAnswerCard } from '@/components/help/HelpAnswerCard'
+import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
+import type { HelpAnswer } from '@/lib/bindings'
 
 /**
  * Saves a plan as a Request the core carries out, and opens its page.
@@ -101,6 +104,19 @@ export function AskBox({
   )
   const mode = fixedMode ?? chosenMode
   const chatting = chat !== undefined && mode === 'chat'
+  // No model at all: a chat message also gets the built-in help guide
+  const { data: modelStatus } = useDefaultModel()
+  const noModel =
+    modelStatus !== undefined && modelStatus.effectiveModel === null
+  const [chatHelp, setChatHelp] = useState<{
+    text: string
+    answer: HelpAnswer
+  } | null>(null)
+
+  const helpWithChat = async (text: string) => {
+    const result = await client.helpAnswer(text)
+    if (result.status === 'ok') setChatHelp({ text, answer: result.data })
+  }
 
   return (
     <div className={cn('flex w-full flex-col gap-2', className)}>
@@ -117,6 +133,34 @@ export function AskBox({
             })
           }
         />
+      )}
+      {chatHelp && (
+        <section
+          aria-label={t('help.title')}
+          className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto rounded-lg border bg-card p-3 shadow-xs"
+        >
+          <div className="flex items-start gap-2">
+            <p className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
+              {chatHelp.text}
+            </p>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              className="-mt-1 -me-1 size-6"
+              onClick={() => setChatHelp(null)}
+              aria-label={t('ask.dismiss')}
+              title={t('ask.dismiss')}
+            >
+              <X />
+            </Button>
+          </div>
+          <HelpAnswerCard
+            key={chatHelp.text}
+            answer={chatHelp.answer}
+            onNavigate={() => setChatHelp(null)}
+          />
+        </section>
       )}
       {chat && !fixedMode && (
         <ToggleGroup
@@ -148,6 +192,7 @@ export function AskBox({
         onSend={(text, attachments) => {
           if (chatting) {
             chat.onSend(text, attachments)
+            if (noModel) void helpWithChat(text)
             return
           }
           void ask.submit(
@@ -249,6 +294,13 @@ export function AskResult({
               }
             })
           }
+        />
+      )}
+      {turn.response?.kind === 'help' && (
+        <HelpAnswerCard
+          key={turn.text}
+          answer={turn.response.data}
+          onNavigate={onDismiss}
         />
       )}
       {turn.response?.kind === 'clarification' && (

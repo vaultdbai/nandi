@@ -6,9 +6,9 @@
 
 ## Owner actions (no code)
 
-- [ ] **DeepSeek spending cap.** Set a hard monthly cap on the DeepSeek account behind `NANDI_TRIAL_DEEPSEEK_KEY`. The key is only masked in the binary (`build.rs`), so anyone can recover it, and deleting the keychain entry `nandi.trial.deepseek.used` resets a computer's allowance. The cap is the only real limit. A Nandi-run proxy is the step after that if abuse shows up.
-- [ ] **Key rotation plan.** Decide how to rotate the key (new CI secret, new release; old builds lose the trial when the old key is revoked) and write it down in `docs/developer/sign-in.md` or next to `services/llm_trial.rs`.
-- [ ] **Repo secret.** Make sure `NANDI_TRIAL_DEEPSEEK_KEY` is set in the GitHub repo, or release builds ship without a trial.
+- [ ] **DeepSeek spending cap.** Set a hard monthly cap on the DeepSeek account the trial gateway uses (`nandi-cloud/trial-gateway`). The key now lives only on the gateway, which counts each person's tokens; the cap is the backstop.
+- [x] **Key rotation plan.** Done: rotating is a server change only (trial-gateway README, "Rotating the key"); the app holds no key.
+- [ ] **Trial gateway live.** Deploy the gateway at `trial.vaultdb.ai` (key file, GitHub OAuth app with device flow, Caddy) before v0.2.0; the app has no baked key and no repo secret any more.
 - [x] **Untracked files in the main checkout.** Done 2026-11-01: the brand kit and `docs/ideas/` moved out of this repo.
 
 ## Check in the running app

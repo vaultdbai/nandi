@@ -121,13 +121,13 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-545 features to test: all 599 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+549 features to test: all 603 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
-| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 63       |
+| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 66       |
 | Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 77       |
-| Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
+| Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 63       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
 | Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 91       |
 | Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 75       |
@@ -137,21 +137,21 @@ These turned up while building the catalog. In each case the catalog follows the
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 526   |
+| Shipped     | 530   |
 | Partial     | 16    |
 | Removed     | 11    |
 | Known issue | 3     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 294   |
+| `unit`                | 298   |
 | `api`                 | 194   |
 | `manual`              | 33    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 463   |
+| no          | 467   |
 | yes         | 82    |
 
 ## Master index
@@ -250,6 +250,9 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-30 | Appearance › Companion settings                                          | Duplicate of AI-17                                   | —          | no          |                                        |
 | ST-31 | Preferences persistence                                                  | Shipped                                              | api        | no          |                                        |
 | SH-35 | Home: connect your email to-do                                           | Shipped                                              | unit       | no          |                                        |
+| SH-39 | Ask box answers from the built-in help guide with no model               | Shipped                                              | unit       | no          |                                        |
+| SH-40 | A chat sent with no model also gets the help guide                       | Shipped                                              | unit       | no          |                                        |
+| SH-41 | Help window from the no-model and Docker notices                         | Shipped                                              | unit       | no          |                                        |
 
 ### Agents, chat and runs
 
@@ -381,15 +384,16 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | MD-10 | Claude models through Claude Code's sign-in (Agent SDK bridge)                  | Shipped                                                                                    | manual        | no          |               |
 | MD-11 | Claude sign-in shown on the Anthropic key row                                   | Shipped                                                                                    | unit          | no          |               |
 | MD-12 | Ollama (local models)                                                           | Shipped                                                                                    | manual        | no          |               |
-| MD-13 | Free tokens (DeepSeek trial)                                                    | Shipped                                                                                    | unit          | no          |               |
+| MD-13 | Free tokens (trial gateway)                                                     | Shipped                                                                                    | unit          | no          |               |
 | MD-14 | Free tokens switch and automatic turn-off                                       | Shipped                                                                                    | api           | no          |               |
-| MD-15 | Trial accounting fails closed                                                   | Shipped                                                                                    | unit          | no          |               |
+| MD-15 | Trial errors, Retry-After and the gateway's state                               | Shipped                                                                                    | unit          | no          |               |
 | MD-16 | No-model notice banner                                                          | Duplicate of SH-20                                                                         | —             | no          |               |
 | MD-17 | Onboarding model step                                                           | Duplicate of ON-05, ON-06, ON-07, ON-08                                                    | —             | no          |               |
 | MD-18 | Team LLM config (`.nandi/llm.yaml`) and Enterprise config panel                 | Shipped                                                                                    | api           | no          |               |
 | MD-19 | AWS sign-in for Bedrock (profiles, SSO login, check)                            | Shipped                                                                                    | manual        | no          |               |
 | MD-20 | Bedrock model picker                                                            | Partial (chosen model is not saved as a runtime default)                                   | api           | no          |               |
 | MD-21 | LiteLLM gateway for third-party Bedrock models                                  | Shipped                                                                                    | manual        | no          |               |
+| MD-22 | Sign in to keep the free trial on all your computers                            | Shipped                                                                                    | unit          | no          |               |
 | SB-01 | Container hardening (tool and coding-agent containers)                          | Shipped                                                                                    | api           | no          |               |
 | SB-02 | Ask before CLI tools act (harness approvals)                                    | Shipped                                                                                    | manual        | no          |               |
 | SB-03 | Egress proxy server and per-container tokens                                    | Shipped                                                                                    | api           | no          |               |

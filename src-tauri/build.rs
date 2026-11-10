@@ -1,5 +1,5 @@
 fn main() {
-    write_trial_key();
+    watch_build_env();
 
     // Windows: embed the common-controls v6 manifest via the linker for
     // *every* target, not just the app binary. tauri-build's default only
@@ -22,15 +22,9 @@ fn main() {
     tauri_build::try_build(attributes).expect("failed to run tauri-build");
 }
 
-/// Writes `$OUT_DIR/trial_key.rs` (`services::llm_trial`): the free-trial
-/// DeepSeek key from `NANDI_TRIAL_DEEPSEEK_KEY`, XORed with a pad made for
-/// this build so the key never sits in the binary as plain text. Unset or
-/// empty: both arrays are empty and the build has no trial.
-fn write_trial_key() {
-    use std::hash::{BuildHasher, Hasher};
-
-    println!("cargo:rerun-if-env-changed=NANDI_TRIAL_DEEPSEEK_KEY");
-    // Email sign-in client IDs, read with `option_env!` (services::email::provider)
+/// Rebuilds when a client ID read with `option_env!` changes (email
+/// sign-in, `services::email::provider`)
+fn watch_build_env() {
     for name in [
         "NANDI_MICROSOFT_CLIENT_ID",
         "NANDI_GOOGLE_CLIENT_ID",
@@ -38,25 +32,4 @@ fn write_trial_key() {
     ] {
         println!("cargo:rerun-if-env-changed={name}");
     }
-    let key = std::env::var("NANDI_TRIAL_DEEPSEEK_KEY").unwrap_or_default();
-    let key = key.trim().as_bytes();
-    let random = std::collections::hash_map::RandomState::new();
-    let pad: Vec<u8> = (0..key.len())
-        .map(|i| {
-            let mut hasher = random.build_hasher();
-            hasher.write_usize(i);
-            hasher.finish() as u8
-        })
-        .collect();
-    let masked: Vec<u8> = key.iter().zip(&pad).map(|(k, p)| k ^ p).collect();
-    let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("trial_key.rs");
-    std::fs::write(
-        out,
-        format!(
-            "const TRIAL_KEY_MASKED: &[u8] = &{masked:?};
-const TRIAL_KEY_PAD: &[u8] = &{pad:?};
-"
-        ),
-    )
-    .expect("failed to write trial_key.rs");
 }

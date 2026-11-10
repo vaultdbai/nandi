@@ -22,6 +22,11 @@ interface UIState {
   settingsSection: SettingsSection | null
   setSettingsSection: (section: SettingsSection) => void
   setSquareCorners: (enabled: boolean) => void
+  /** The built-in help guide's window, on one topic (`null`: the list) */
+  helpOpen: boolean
+  helpTopicId: string | null
+  openHelp: (topicId?: string) => void
+  closeHelp: () => void
 }
 
 export const useUIStore = create<UIState>()(
@@ -32,6 +37,8 @@ export const useUIStore = create<UIState>()(
       commandPaletteOpen: false,
       settingsSection: null,
       mascotDoneUntil: 0,
+      helpOpen: false,
+      helpTopicId: null,
 
       toggleLeftSidebar: () =>
         set(
@@ -76,6 +83,15 @@ export const useUIStore = create<UIState>()(
 
       setSettingsSection: section =>
         set({ settingsSection: section }, undefined, 'setSettingsSection'),
+
+      openHelp: topicId =>
+        set(
+          { helpOpen: true, helpTopicId: topicId ?? null },
+          undefined,
+          'openHelp'
+        ),
+
+      closeHelp: () => set({ helpOpen: false }, undefined, 'closeHelp'),
 
       setSquareCorners: (enabled: boolean) => {
         document.documentElement.classList.toggle('square-corners', enabled)

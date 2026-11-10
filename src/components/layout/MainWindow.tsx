@@ -1,5 +1,6 @@
 import { TitleBar } from '@/components/titlebar/TitleBar'
 import { CommandPalette } from '@/components/palette'
+import { HelpGuideDialog } from '@/components/help/HelpGuideDialog'
 import { Toaster } from 'sonner'
 import { useTheme } from '@/hooks/use-theme'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
@@ -29,6 +30,7 @@ export function MainWindow({ children }: MainWindowProps) {
 
       {/* Global UI Components (hidden until triggered) */}
       <CommandPalette />
+      <HelpGuideDialog />
       {/* The browser has no companion window: it docks in the corner */}
       {client.transport === 'web' && <CompanionApp docked />}
       <Toaster

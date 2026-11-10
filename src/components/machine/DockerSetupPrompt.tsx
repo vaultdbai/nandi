@@ -3,12 +3,13 @@ import { Container, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { openSettings } from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
+import { useUIStore } from '@/store/ui-store'
 
 /**
  * "Agents need Docker to act. Set up": a calm line wherever a run would
  * need tools and Docker isn't ready (the agent page replaces the core's
  * "Tool execution unavailable" warning with it). Set up opens Settings ›
- * This computer.
+ * This computer; How? opens the built-in help guide's Docker topic.
  */
 export function DockerSetupPrompt({
   onDismiss,
@@ -29,6 +30,14 @@ export function DockerSetupPrompt({
     >
       <Container aria-hidden className="size-3.5 shrink-0" />
       <span className="min-w-0 flex-1">{t('machine.prompt.text')}</span>
+      <Button
+        size="sm"
+        variant="link"
+        className="h-auto p-0 text-xs"
+        onClick={() => useUIStore.getState().openHelp('install-docker')}
+      >
+        {t('help.how')}
+      </Button>
       <Button
         size="sm"
         variant="link"

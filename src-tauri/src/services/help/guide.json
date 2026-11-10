@@ -1,0 +1,415 @@
+{
+  "topics": [
+    {
+      "id": "install-docker",
+      "keywords": {
+        "en": [
+          "docker",
+          "docker desktop",
+          "install docker",
+          "container",
+          "containers",
+          "sandbox",
+          "wsl",
+          "virtualization",
+          "need docker to act",
+          "tools don't run"
+        ],
+        "fr": [
+          "docker",
+          "installer docker",
+          "conteneur",
+          "conteneurs",
+          "bac à sable",
+          "virtualisation"
+        ],
+        "ar": [
+          "دوكر",
+          "docker",
+          "حاوية",
+          "حاويات",
+          "تثبيت دوكر",
+          "صندوق الحماية",
+          "المحاكاة الافتراضية"
+        ],
+        "ja": [
+          "docker",
+          "ドッカー",
+          "コンテナ",
+          "サンドボックス",
+          "仮想化",
+          "dockerをインストール"
+        ]
+      },
+      "links": [
+        { "target": "settings:computer", "label": "thisComputer" },
+        {
+          "target": "url:https://docs.docker.com/get-started/get-docker/",
+          "label": "getDocker"
+        }
+      ]
+    },
+    {
+      "id": "connect-model",
+      "keywords": {
+        "en": [
+          "model",
+          "models",
+          "llm",
+          "ai model",
+          "connect a model",
+          "set up a model",
+          "no model",
+          "which model",
+          "default model"
+        ],
+        "fr": [
+          "modèle",
+          "modèles",
+          "modele",
+          "llm",
+          "connecter un modèle",
+          "aucun modèle",
+          "modèle par défaut"
+        ],
+        "ar": [
+          "نموذج",
+          "النموذج",
+          "نماذج",
+          "ربط نموذج",
+          "لا يوجد نموذج",
+          "النموذج الافتراضي"
+        ],
+        "ja": ["モデル", "llm", "モデルを接続", "モデルがない", "既定のモデル"]
+      },
+      "links": [{ "target": "settings:models", "label": "models" }]
+    },
+    {
+      "id": "api-key",
+      "keywords": {
+        "en": [
+          "api key",
+          "key",
+          "keys",
+          "openai",
+          "anthropic key",
+          "deepseek",
+          "paste a key",
+          "add a key"
+        ],
+        "fr": [
+          "clé api",
+          "cle api",
+          "clé",
+          "clés",
+          "openai",
+          "deepseek",
+          "ajouter une clé"
+        ],
+        "ar": [
+          "مفتاح api",
+          "مفتاح",
+          "مفاتيح",
+          "openai",
+          "deepseek",
+          "إضافة مفتاح"
+        ],
+        "ja": [
+          "apiキー",
+          "api キー",
+          "キー",
+          "openai",
+          "deepseek",
+          "キーを追加"
+        ]
+      },
+      "links": [{ "target": "settings:models", "label": "models" }]
+    },
+    {
+      "id": "claude-sign-in",
+      "keywords": {
+        "en": [
+          "claude",
+          "claude code",
+          "sign in to claude",
+          "claude login",
+          "bedrock",
+          "subscription"
+        ],
+        "fr": [
+          "claude",
+          "claude code",
+          "se connecter à claude",
+          "connexion claude",
+          "bedrock",
+          "abonnement"
+        ],
+        "ar": [
+          "claude",
+          "كلود",
+          "claude code",
+          "تسجيل الدخول إلى claude",
+          "bedrock",
+          "اشتراك"
+        ],
+        "ja": [
+          "claude",
+          "クロード",
+          "claude code",
+          "claudeにサインイン",
+          "bedrock",
+          "サブスクリプション"
+        ]
+      },
+      "links": [
+        { "target": "settings:models:anthropic", "label": "claudeSignIn" }
+      ]
+    },
+    {
+      "id": "ollama",
+      "keywords": {
+        "en": [
+          "ollama",
+          "local model",
+          "offline model",
+          "run a model locally",
+          "llama"
+        ],
+        "fr": ["ollama", "modèle local", "modele local", "hors ligne", "llama"],
+        "ar": ["ollama", "أولاما", "نموذج محلي", "بدون إنترنت", "llama"],
+        "ja": ["ollama", "オラマ", "ローカルモデル", "オフライン", "llama"]
+      },
+      "links": [
+        { "target": "settings:models:ollama", "label": "models" },
+        { "target": "url:https://ollama.com/download", "label": "getOllama" }
+      ]
+    },
+    {
+      "id": "free-trial",
+      "keywords": {
+        "en": [
+          "trial",
+          "free trial",
+          "free tokens",
+          "tokens",
+          "used up",
+          "tokens left",
+          "paused"
+        ],
+        "fr": ["essai", "essai gratuit", "jetons gratuits", "jetons", "épuisé"],
+        "ar": ["تجربة", "التجربة المجانية", "رموز مجانية", "رموز", "نفدت"],
+        "ja": [
+          "トライアル",
+          "無料トライアル",
+          "無料トークン",
+          "トークン",
+          "使い切"
+        ]
+      },
+      "links": [{ "target": "settings:models", "label": "freeTokens" }]
+    },
+    {
+      "id": "join-relay",
+      "keywords": {
+        "en": [
+          "relay",
+          "join a relay",
+          "join code",
+          "my team",
+          "connect to my team",
+          "network",
+          "colleagues",
+          "teammates",
+          "connection"
+        ],
+        "fr": [
+          "relais",
+          "rejoindre un relais",
+          "code d'invitation",
+          "mon équipe",
+          "réseau",
+          "collègues",
+          "connexion"
+        ],
+        "ar": [
+          "مرحّل",
+          "مرحل",
+          "ريلاي",
+          "الانضمام إلى مرحّل",
+          "رمز الانضمام",
+          "فريقي",
+          "الشبكة",
+          "زملاء",
+          "الاتصال"
+        ],
+        "ja": [
+          "リレー",
+          "リレーに参加",
+          "参加コード",
+          "チーム",
+          "ネットワーク",
+          "同僚",
+          "接続"
+        ]
+      },
+      "links": [{ "target": "network:connection", "label": "connection" }]
+    },
+    {
+      "id": "agents",
+      "keywords": {
+        "en": [
+          "agent",
+          "agents",
+          "what is an agent",
+          "create an agent",
+          "new agent",
+          "chief of staff",
+          "pack",
+          "packs"
+        ],
+        "fr": [
+          "agent",
+          "agents",
+          "qu'est-ce qu'un agent",
+          "créer un agent",
+          "nouvel agent",
+          "chef de cabinet",
+          "pack",
+          "packs"
+        ],
+        "ar": [
+          "وكيل",
+          "الوكيل",
+          "وكلاء",
+          "ما هو الوكيل",
+          "إنشاء وكيل",
+          "وكيل جديد",
+          "رئيس الموظفين",
+          "حزمة",
+          "حزم"
+        ],
+        "ja": [
+          "エージェント",
+          "エージェントとは",
+          "エージェントを作成",
+          "新しいエージェント",
+          "チーフ・オブ・スタッフ",
+          "パック"
+        ]
+      },
+      "links": [
+        { "target": "agents", "label": "agents" },
+        { "target": "library", "label": "library" }
+      ]
+    },
+    {
+      "id": "groups",
+      "keywords": {
+        "en": [
+          "group",
+          "groups",
+          "what is a group",
+          "create a group",
+          "share with a group"
+        ],
+        "fr": [
+          "groupe",
+          "groupes",
+          "qu'est-ce qu'un groupe",
+          "créer un groupe"
+        ],
+        "ar": ["مجموعة", "مجموعات", "ما هي المجموعة", "إنشاء مجموعة"],
+        "ja": ["グループ", "グループとは", "グループを作成"]
+      },
+      "links": [{ "target": "network:groups", "label": "groups" }]
+    },
+    {
+      "id": "inbox",
+      "keywords": {
+        "en": [
+          "inbox",
+          "approval",
+          "approvals",
+          "approve",
+          "waiting on me",
+          "decisions",
+          "requests"
+        ],
+        "fr": [
+          "boîte de réception",
+          "boite de reception",
+          "approbation",
+          "approuver",
+          "décisions",
+          "demandes"
+        ],
+        "ar": [
+          "صندوق الوارد",
+          "الوارد",
+          "موافقة",
+          "موافقات",
+          "قرارات",
+          "طلبات"
+        ],
+        "ja": ["受信トレイ", "インボックス", "承認", "決定", "リクエスト"]
+      },
+      "links": [{ "target": "inbox", "label": "inbox" }]
+    },
+    {
+      "id": "find-your-way",
+      "weight": 0.5,
+      "keywords": {
+        "en": [
+          "where is",
+          "where are",
+          "where do i",
+          "how do i find",
+          "find",
+          "settings",
+          "menu",
+          "navigate",
+          "get started",
+          "help",
+          "what can you do"
+        ],
+        "fr": [
+          "où est",
+          "où sont",
+          "où trouver",
+          "trouver",
+          "paramètres",
+          "réglages",
+          "menu",
+          "commencer",
+          "aide"
+        ],
+        "ar": [
+          "أين",
+          "أين أجد",
+          "العثور",
+          "الإعدادات",
+          "القائمة",
+          "البدء",
+          "مساعدة"
+        ],
+        "ja": [
+          "どこ",
+          "どこにある",
+          "見つけ",
+          "設定",
+          "メニュー",
+          "はじめ",
+          "ヘルプ"
+        ]
+      },
+      "links": [
+        { "target": "home", "label": "home" },
+        { "target": "agents", "label": "agents" },
+        { "target": "automations", "label": "automations" },
+        { "target": "library", "label": "library" },
+        { "target": "network:people", "label": "network" },
+        { "target": "settings", "label": "settings" }
+      ]
+    }
+  ]
+}

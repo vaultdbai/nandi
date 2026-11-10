@@ -30,7 +30,7 @@
 
 ## 3. A model helps when the rules can't
 
-- [ ] When automatic repair fails, Nandi asks a model to diagnose it: the user's default model, else the free trial's DeepSeek key (`services/llm_trial.rs`; note the release secret `NANDI_TRIAL_DEEPSEEK_KEY` isn't set yet), else no model and the recovery screen alone.
+- [ ] When automatic repair fails, Nandi asks a model to diagnose it: the user's default model, else the free trial through Nandi's gateway (`services/llm_trial/`), else no model: the recovery screen and the built-in help guide (`services/help/`).
 - [ ] Input: the error, the schema drift report and recent log lines, **redacted**: no secrets, tokens, notes, email or message content, file contents.
 - [ ] Output: a choice from a fixed list of safe actions (back up, add a column, rebuild a table, rebuild projections, clear a cache, re-run a sign-in, start fresh), each shown to the user with what it changes, and run only after they approve. Never free-form SQL or shell commands.
 - [ ] The same path for user-facing errors elsewhere (a connector that won't start, a sign-in that expired, an image that won't pull): plain words, a suggested fix, one click.

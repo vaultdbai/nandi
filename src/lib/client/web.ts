@@ -165,6 +165,13 @@ export const webClient: NandiClient = {
   getDefaultModel: () => request('GET', '/default-model'),
   setDefaultModel: model => request('PUT', '/default-model', { model }),
   setFreeTrial: enabled => request('PUT', '/free-trial', { enabled }),
+  getFreeTrialAccount: () => request('GET', '/free-trial/account'),
+  startFreeTrialSignIn: provider =>
+    request('POST', `/free-trial/sign-in/${provider}/start`),
+  pollFreeTrialSignIn: (provider, signinId) =>
+    request('POST', `/free-trial/sign-in/${provider}/poll`, { signinId }),
+  helpTopics: () => request('GET', '/help/topics'),
+  helpAnswer: text => request('POST', '/help/answer', { text }),
   testLlmKey: (provider, apiKey) =>
     request('POST', `/llm-keys/${provider}/test`, { apiKey }),
   listProviderModels: provider =>

@@ -97,6 +97,12 @@ import type {
   LlmKeyStatus,
   LlmKeyTest,
   DefaultModelStatus,
+  HelpAnswer,
+  HelpTopic,
+  TrialAccount,
+  TrialSignInPoll,
+  TrialSignInProvider,
+  TrialSignInStart,
   OllamaStatus,
   OnboardingStep,
   MarketplaceFilter,
@@ -351,6 +357,21 @@ export interface NandiClient {
   setDefaultModel(model: string): Promise<Result<DefaultModelStatus, string>>
   /** Turns the free trial on (its model becomes the default) or off */
   setFreeTrial(enabled: boolean): Promise<Result<DefaultModelStatus, string>>
+  /** The free trial's allowance as Nandi's trial gateway counts it */
+  getFreeTrialAccount(): Promise<Result<TrialAccount, string>>
+  /** Starts linking this computer's free trial to a person's account */
+  startFreeTrialSignIn(
+    provider: TrialSignInProvider
+  ): Promise<Result<TrialSignInStart, string>>
+  /** Whether the person finished signing in (poll every `interval` s) */
+  pollFreeTrialSignIn(
+    provider: TrialSignInProvider,
+    signinId: string
+  ): Promise<Result<TrialSignInPoll, string>>
+  /** Every topic of the built-in help guide (no model needed) */
+  helpTopics(): Promise<Result<HelpTopic[], string>>
+  /** The built-in help guide's answer to `text` */
+  helpAnswer(text: string): Promise<Result<HelpAnswer, string>>
   /** Checks a key (`null`: the stored one) without storing it */
   testLlmKey(
     provider: KeyedProvider,

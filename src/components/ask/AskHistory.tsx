@@ -108,6 +108,10 @@ function HistoryEntry({ entry }: { entry: AskHistoryEntry }) {
             </span>
           )}
           {response.kind === 'clarification' && response.data}
+          {response.kind === 'help' &&
+            (response.data.topic
+              ? t(`help.topics.${response.data.topic.id}.title`)
+              : t('help.noMatch'))}
         </div>
       )}
     </li>

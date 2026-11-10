@@ -56,6 +56,7 @@ pub mod gateway;
 // Wave B: harness adapters
 #[allow(dead_code)]
 pub mod harness;
+pub mod help;
 pub mod history;
 pub mod images;
 pub mod inbox;
@@ -284,6 +285,11 @@ impl AppState {
         match crate::utils::nandi_config::local_dir() {
             Ok(local) => network::keep_instance_id(&db, &local),
             Err(e) => log::warn!("Instance ID not kept on disk: {e}"),
+        }
+        // The free trial signs its calls as this instance
+        match network::local_instance_id(&db) {
+            Ok(id) => llm_trial::init(id),
+            Err(e) => log::warn!("No free trial without an instance ID: {e}"),
         }
         match db
             .conn()

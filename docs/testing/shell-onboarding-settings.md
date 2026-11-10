@@ -202,9 +202,9 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### ON-08 — Step 3: free tokens notice and skipping without a model
 
-- **What:** With no key, if the build ships the trial, the step says "You can start now: Nandi comes with 100,000 free tokens on <model>". Otherwise it says "Nandi will use <model>" when some model is usable. "Skip for now" asks a second time ("Without a model, agents can't run…", with Go back and Skip anyway).
-- **Where:** `Step2_Model.tsx`, `get_default_model` (`GET /api/default-model`), `services/llm_trial.rs`.
-- **Preconditions:** No keys. A release build with `NANDI_TRIAL_DEEPSEEK_KEY` for the trial line.
+- **What:** With no key, while the free trial is offered, the step says "You can start now: Nandi comes with free tokens on <model>". Otherwise it says "Nandi will use <model>" when some model is usable. "Skip for now" asks a second time ("Without a model, agents can't run…", with Go back and Skip anyway).
+- **Where:** `Step2_Model.tsx`, `get_default_model` (`GET /api/default-model`), `services/llm_trial/`.
+- **Preconditions:** No keys. The trial gateway reachable for the trial line.
 - **Steps:**
   1. Reach step 2 with no keys.
   2. Click Skip for now, then Skip anyway.
@@ -212,7 +212,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Edge / negative cases:**
   - A dev build without the trial key: no trial line.
   - "Go back" cancels the skip.
-- **Automation:** Covered by: `OnboardingView.test.tsx` ('asks twice before skipping without a model'), Rust `services/llm_trial.rs` tests | Layer: unit | Gap: the trial line with a real trial build is manual.
+- **Automation:** Covered by: `OnboardingView.test.tsx` ('asks twice before skipping without a model'), Rust `services/llm_trial/` tests | Layer: unit | Gap: the trial line against the live gateway is manual.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -651,7 +651,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### SH-20 — "No model connected" notice
 
-- **What:** While no model can be called (no key for any provider, no Claude Code sign-in, no Ollama default, and no trial), a notice says "No model connected. Nandi can't run agents yet." When the trial is used up it says "Your free tokens are used up. Connect your own model to keep going." "Connect a model" opens Settings › Models & runtimes. It shows on Ask, on the agent message box, and on a fresh Home.
+- **What:** While no model can be called (no key for any provider, no Claude Code sign-in, no Ollama default, and no trial), a notice says "No model connected. Nandi can't run agents yet." When the trial is used up it says "Your free tokens are used up. Connect your own model to keep going."; paused: "The free trial is paused for today. ..."; unreachable: "Can't reach the free trial (offline?). Nandi's built-in help still works." "Connect a model" opens Settings › Models & runtimes; **How?** opens the help guide on "Connect a model" (SH-41). It shows on Ask, on the agent message box, and on a fresh Home.
 - **Where:** `src/components/layout/LlmKeyNotice.tsx`, `MainPane.tsx`, `src/components/agent-console/AgentComposer.tsx`, `HomeView.tsx`, `useDefaultModel` (`effectiveModel === null`).
 - **Preconditions:** No model available.
 - **Steps:**
@@ -703,7 +703,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### SH-38 — Agent page: "Agents need Docker to act. Set up"
 
-- **What:** When a run's tools can't start, the core still sends `agent://warning` ("Tool execution unavailable: …") and the agent answers without tools. The agent page now shows a calm line "Agents need Docker to act." with **Set up** (opens Settings › This computer) and Dismiss, instead of the warning text. Other agent warnings show as before.
+- **What:** When a run's tools can't start, the core still sends `agent://warning` ("Tool execution unavailable: …") and the agent answers without tools. The agent page now shows a calm line "Agents need Docker to act." with **How?** (the help guide's Docker topic, SH-41), **Set up** (opens Settings › This computer) and Dismiss, instead of the warning text. Other agent warnings show as before.
 - **Where:** `src/components/agent-console/ContainerControls.tsx` (`AgentWarningBanner`), `src/components/machine/DockerSetupPrompt.tsx`, `machine-model.ts` (`isToolsUnavailable`).
 - **Preconditions:** Docker stopped; an agent with a model.
 - **Steps:**
@@ -1330,7 +1330,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Brand and trial follow-ups** (`docs/tasks-todo/task-x-followups-trial-brand-ask.md`):
   - The macOS Dock icon does not follow the palette.
   - There is no tray icon or monochrome mark.
-  - The trial status is read from the keychain on every call.
+  - The trial's mode is read from the keychain on every call (its tokens come from the trial gateway).
   - Checks still to run in the app: the palette changes the bull and taskbar icon, and Ctrl+K lists "New chat in Ask".
 - **Network setup guidance**: onboarding does not walk through the networking opt-ins. Accepting delegation and trust are left for later, and only a note is shown.
 - **Untested areas:**
@@ -1348,5 +1348,41 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Expected:** Step 1: the card. Step 2: the card goes; the "You can also connect Gmail." line remains (if Gmail is available). Step 3: the card is back.
 - **Edge / negative cases:** No dismiss: it is a to-do until a mailbox is connected. A mailbox that needs a new sign-in is handled in Settings › Email (Reconnect), not here.
 - **Automation:** Covered by: `EmailTodo.test.tsx`, `email-model.test.ts` (`emailTodo`) | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### SH-39 — Ask box answers from the built-in help guide with no model
+
+- **What:** With no model at all (no key, no Claude Code sign-in, no Ollama default, and the free trial off, used up, paused or unreachable), the Ask box doesn't show an error: it answers from the built-in help guide ("No model is connected, so this answer is from Nandi's built-in help."). The guide covers: install Docker, connect a model, add an API key, Claude Code sign-in, Ollama, free tokens, join a relay, what agents, groups and the Inbox are, and where things are. Each answer is short, in the app's language (en, fr, ar, ja), with buttons to the right screen or page and other topics to open in place. Nothing matching: "I can't answer that without a model. These topics might help:" and every topic. When a model exists, the model answers; if its call fails (the trial unreachable), the guide answers with the reason underneath.
+- **Where:** `services/help/` (`guide.json` content, `mod.rs` matcher), `services/ask/mod.rs` (`AskResponse::Help`, `AskLlm::has_model`), `components/help/HelpAnswerCard.tsx`, `HelpTopicView.tsx`, `lib/help.ts`; locales `help.*`. HTTP `POST /api/ask`.
+- **Preconditions:** No model (remove keys, turn the trial off), or offline.
+- **Steps:** 1. Ask "How do I install Docker?". 2. Click "Open This computer". 3. Ask "Comment rejoindre un relais ?". 4. Ask "bake me a cake".
+- **Expected:** 1. The Install Docker topic with "Open This computer" and "Download Docker". 2. Settings › This computer. 3. Join your team's relay (in the app's language). 4. The no-match line and every topic.
+- **Edge / negative cases:** Ask history shows the topic's title with a "Help" badge. The guide never calls a model.
+- **Automation:** Covered by: `help/tests.rs` (every topic in four languages, word matching), `ask/tests.rs` (`with_no_model_the_help_guide_answers_without_calling_one`, `a_failed_model_falls_back_to_the_help_guide`), `offline_suite::with_no_model_the_ask_box_answers_from_the_help_guide`, `offline_suite::with_the_trial_gateway_unreachable_the_ask_box_still_helps`, `Help.test.tsx`, `help.test.ts` | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### SH-40 — A chat sent with no model also gets the help guide
+
+- **What:** In any chat box (an agent's page, Ask conversations, Chief of Staff threads) a message sent while no model can be called is sent as usual, and the help guide's answer to it appears above the box, dismissable.
+- **Where:** `components/ask/AskBox.tsx` (chat mode, `useDefaultModel().effectiveModel === null`), command `help_answer` (HTTP `POST /api/help/answer`, body `{ text }`).
+- **Preconditions:** No model.
+- **Steps:** 1. Open an agent, type "install docker" in Chat and send.
+- **Expected:** The message is sent; the Install Docker topic shows above the box. With a model, nothing extra shows.
+- **Edge / negative cases:** Dismiss hides it; a link to a screen closes it.
+- **Automation:** Covered by: `Help.test.tsx` ('a chat sent with no model also gets the guide', 'a chat with a model gets no guide'), `offline_suite` (`help/answer`) | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### SH-41 — Help window from the no-model and Docker notices
+
+- **What:** **How?** on the "No model connected" notice and on "Agents need Docker to act." opens a help window on that topic, with every topic listed to switch between. Links to a screen go there and close the window; web links open in the browser.
+- **Where:** `components/help/HelpGuideDialog.tsx` (mounted in `MainWindow.tsx`), `useUIStore` (`openHelp`, `closeHelp`), `LlmKeyNotice.tsx`, `DockerSetupPrompt.tsx`, command `help_topics` (HTTP `GET /api/help/topics`).
+- **Preconditions:** No model, or Docker stopped.
+- **Steps:** 1. Click How? on the notice. 2. Pick "Install Docker". 3. Click "Open This computer".
+- **Expected:** 1. The window on "Connect a model". 2. That topic. 3. Settings › This computer; the window closes.
+- **Edge / negative cases:** Works offline (nothing is fetched from the internet).
+- **Automation:** Covered by: `Help.test.tsx` ('the help window lists every topic and opens one') | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped

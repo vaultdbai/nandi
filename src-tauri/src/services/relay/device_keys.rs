@@ -2,10 +2,11 @@
 //! key (`nandi-seal`), one pair per device.
 //!
 //! They're made the first time this Nandi uses a relay (it connects or
-//! enrolls) and kept in the OS keyring under [`DEVICE_KEYS_ENTRY`]. The
+//! enrolls) or the free trial's gateway (`llm_trial`), and kept in the OS keyring under [`DEVICE_KEYS_ENTRY`]. The
 //! secret is 86 characters, well under Windows' 2560-byte credential limit,
 //! so it's one entry, not chunked. The public half is sent at enrollment and
-//! registration, and the relay pins it for this instance ID.
+//! registration, and the relay pins it for this instance ID (the trial
+//! gateway pins it too, on first use).
 //!
 //! A keyring that can't be read is an error, never a reason to make new
 //! keys: new keys for the same ID would be refused by the relay

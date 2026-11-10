@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor } from '@/test/test-utils'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { commands } from '@/lib/tauri-bindings'
 import { LlmKeysSection } from './LlmKeysSection'
 
@@ -73,14 +74,32 @@ describe('LlmKeysSection', () => {
     expect(mocks().testLlmKey).toHaveBeenCalledWith('anthropic', null)
   })
 
-  it('shows the free tokens left while calls use them', async () => {
+  const trial = (overrides: Record<string, unknown> = {}) => ({
+    enabled: true,
+    active: false,
+    usedUp: false,
+    paused: false,
+    unreachable: false,
+    ...overrides,
+  })
+  const account = (overrides: Record<string, unknown> = {}) => ({
+    account: null,
+    used: 0,
+    limit: 100_000,
+    paused: false,
+    signIn: ['github'],
+    ...overrides,
+  })
+
+  it('shows the free tokens left as the gateway counts them', async () => {
     Object.assign(commands, {
       getDefaultModel: ok({
         defaultModel: 'deepseek:deepseek-flash',
         effectiveModel: 'deepseek:deepseek-flash',
         claudeSignIn: null,
-        trial: { used: 25_000, limit: 100_000, enabled: true, active: true },
+        trial: trial({ active: true }),
       }),
+      getFreeTrialAccount: ok(account({ used: 25_000 })),
     })
     render(<LlmKeysSection />)
     expect(
@@ -95,8 +114,9 @@ describe('LlmKeysSection', () => {
         defaultModel: 'claude:claude-sonnet-5',
         effectiveModel: 'claude:claude-sonnet-5',
         claudeSignIn: null,
-        trial: { used: 1_000, limit: 100_000, enabled: false, active: false },
+        trial: trial({ enabled: false }),
       }),
+      getFreeTrialAccount: ok(account({ used: 1_000 })),
       setFreeTrial: ok({
         defaultModel: 'deepseek:deepseek-flash',
         effectiveModel: 'deepseek:deepseek-flash',
@@ -118,16 +138,138 @@ describe('LlmKeysSection', () => {
         defaultModel: 'deepseek:deepseek-flash',
         effectiveModel: null,
         claudeSignIn: null,
-        trial: { used: 100_000, limit: 100_000, enabled: true, active: false },
+        trial: trial(),
       }),
+      getFreeTrialAccount: ok(account({ used: 100_000 })),
     })
     render(<LlmKeysSection />)
     expect(
-      await screen.findByText(/Your 100,000 free tokens are used up/)
+      await screen.findByText(/Your free tokens are used up/)
     ).toBeInTheDocument()
     const toggle = screen.getByRole('switch', { name: 'Use free tokens' })
     expect(toggle).toBeDisabled()
     expect(toggle).not.toBeChecked()
+  })
+
+  it('says when the gateway can’t be reached', async () => {
+    Object.assign(commands, {
+      getDefaultModel: ok({
+        defaultModel: 'deepseek:deepseek-flash',
+        effectiveModel: null,
+        claudeSignIn: null,
+        trial: trial({ unreachable: true }),
+      }),
+      getFreeTrialAccount: vi
+        .fn()
+        .mockResolvedValue({ status: 'error', error: 'offline' }),
+    })
+    render(<LlmKeysSection />)
+    expect(
+      await screen.findByText(/Can’t reach the free trial right now/)
+    ).toBeInTheDocument()
+  })
+
+  it('signs in with GitHub to link this computer, polling until linked', async () => {
+    const user = userEvent.setup()
+    Object.assign(commands, {
+      getDefaultModel: ok({
+        defaultModel: 'deepseek:deepseek-flash',
+        effectiveModel: 'deepseek:deepseek-flash',
+        claudeSignIn: null,
+        trial: trial({ active: true }),
+      }),
+      getFreeTrialAccount: ok(account({ used: 10 })),
+      startFreeTrialSignIn: ok({
+        signinId: 's1',
+        userCode: 'WDJB-MJHT',
+        verificationUri: 'https://github.com/login/device',
+        expiresIn: 900,
+        interval: 0,
+      }),
+      pollFreeTrialSignIn: vi
+        .fn()
+        .mockResolvedValueOnce({
+          status: 'ok',
+          data: { status: 'pending', interval: 0 },
+        })
+        .mockResolvedValue({
+          status: 'ok',
+          data: {
+            status: 'linked',
+            account: 'github:1',
+            display: 'alice',
+            used: 10,
+            limit: 100_000,
+          },
+        }),
+    })
+    render(<LlmKeysSection />)
+    // Google and Microsoft aren't offered yet
+    expect(
+      await screen.findByRole('button', { name: 'Google (coming soon)' })
+    ).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: 'Microsoft (coming soon)' })
+    ).toBeDisabled()
+    await user.click(
+      screen.getByRole('button', { name: 'Sign in with GitHub' })
+    )
+    expect(await screen.findByTestId('free-trial-user-code')).toHaveTextContent(
+      'WDJB-MJHT'
+    )
+    expect(mocks().startFreeTrialSignIn).toHaveBeenCalledWith('github')
+    expect(openUrl).toHaveBeenCalledWith('https://github.com/login/device')
+    await waitFor(() =>
+      expect(mocks().pollFreeTrialSignIn).toHaveBeenCalledTimes(2)
+    )
+    expect(mocks().pollFreeTrialSignIn).toHaveBeenCalledWith('github', 's1')
+    expect(await screen.findByText(/Signed in as alice/)).toBeInTheDocument()
+  })
+
+  it('stops polling and shows why when sign-in fails', async () => {
+    const user = userEvent.setup()
+    Object.assign(commands, {
+      getDefaultModel: ok({
+        defaultModel: 'deepseek:deepseek-flash',
+        effectiveModel: 'deepseek:deepseek-flash',
+        claudeSignIn: null,
+        trial: trial({ active: true }),
+      }),
+      getFreeTrialAccount: ok(account()),
+      startFreeTrialSignIn: ok({
+        signinId: 's1',
+        userCode: 'CODE-1234',
+        verificationUri: 'https://github.com/login/device',
+        expiresIn: 900,
+        interval: 0,
+      }),
+      pollFreeTrialSignIn: vi.fn().mockResolvedValue({
+        status: 'error',
+        error: 'The sign-in code expired. Start again.',
+      }),
+    })
+    render(<LlmKeysSection />)
+    await user.click(
+      await screen.findByRole('button', { name: 'Sign in with GitHub' })
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent('expired')
+    expect(screen.queryByTestId('free-trial-user-code')).not.toBeInTheDocument()
+  })
+
+  it('shows the linked account', async () => {
+    Object.assign(commands, {
+      getDefaultModel: ok({
+        defaultModel: 'deepseek:deepseek-flash',
+        effectiveModel: 'deepseek:deepseek-flash',
+        claudeSignIn: null,
+        trial: trial({ active: true }),
+      }),
+      getFreeTrialAccount: ok(account({ account: 'github:583231' })),
+    })
+    render(<LlmKeysSection />)
+    expect(await screen.findByTestId('free-trial-account')).toHaveTextContent(
+      'github:583231'
+    )
   })
 
   it('takes any model the provider has, typed, with suggestions', async () => {

@@ -63,6 +63,12 @@ export const tauriClient: NandiClient = {
   getDefaultModel: () => commands.getDefaultModel(),
   setDefaultModel: model => commands.setDefaultModel(model),
   setFreeTrial: enabled => commands.setFreeTrial(enabled),
+  getFreeTrialAccount: () => commands.getFreeTrialAccount(),
+  startFreeTrialSignIn: provider => commands.startFreeTrialSignIn(provider),
+  pollFreeTrialSignIn: (provider, signinId) =>
+    commands.pollFreeTrialSignIn(provider, signinId),
+  helpTopics: () => commands.helpTopics(),
+  helpAnswer: text => commands.helpAnswer(text),
   testLlmKey: (provider, apiKey) => commands.testLlmKey(provider, apiKey),
   listProviderModels: provider => commands.listProviderModels(provider),
   detectOllama: () => commands.detectOllama(),

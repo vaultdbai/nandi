@@ -19,6 +19,8 @@ use crate::services::events::tests::RecordingSink;
 pub struct FakeAskLlm {
     replies: Mutex<VecDeque<Result<String, String>>>,
     pub calls: Mutex<Vec<(String, String)>>,
+    /// No model can be called (no key, no usable trial)
+    no_model: bool,
 }
 
 impl FakeAskLlm {
@@ -36,6 +38,14 @@ impl FakeAskLlm {
             .unwrap()
             .push_back(Err("Add an API key".to_string()));
         Arc::new(llm)
+    }
+
+    /// Nothing can be called at all
+    pub fn without_a_model() -> Arc<Self> {
+        Arc::new(Self {
+            no_model: true,
+            ..Self::default()
+        })
     }
 
     pub fn calls(&self) -> Vec<(String, String)> {
@@ -60,6 +70,10 @@ impl FakeAskLlm {
 }
 
 impl AskLlm for FakeAskLlm {
+    fn has_model(&self) -> bool {
+        !self.no_model
+    }
+
     fn complete<'a>(
         &'a self,
         system: &'a str,
@@ -504,6 +518,62 @@ async fn a_question_is_answered_inline() {
     let calls = llm.calls();
     assert_eq!(calls.len(), 2, "classify, then answer");
     assert!(calls[1].0.contains("## Running now"));
+    state.shutdown();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn with_no_model_the_help_guide_answers_without_calling_one() {
+    let state = AppState::for_tests(vec![]);
+    let llm = FakeAskLlm::without_a_model();
+    let service = AskService::new(state.downgrade(), llm.clone());
+    let response = service
+        .respond(
+            &AskRequest {
+                text: "How do I install Docker?".into(),
+                ..AskRequest::default()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let AskResponse::Help(help) = response else {
+        panic!("expected the help guide, got {response:?}");
+    };
+    assert_eq!(help.topic.unwrap().id, "install-docker");
+    assert_eq!(help.reason, HelpReason::NoModel);
+    assert!(llm.calls().is_empty(), "no model was tried");
+    // Remembered like any ask
+    let history = list_ask_history(&state, None).await.unwrap();
+    assert!(matches!(history[0].response, AskResponse::Help(_)));
+    state.shutdown();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_model_falls_back_to_the_help_guide() {
+    let state = AppState::for_tests(vec![]);
+    // The classifier reads the question; the answer call fails
+    let llm = FakeAskLlm::default();
+    llm.replies.lock().unwrap().extend([
+        Ok(QUESTION.to_string()),
+        Err("Can't reach the free trial right now.".to_string()),
+    ]);
+    let service = AskService::new(state.downgrade(), Arc::new(llm));
+    let response = service
+        .respond(
+            &AskRequest {
+                text: "What is an agent?".into(),
+                ..AskRequest::default()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let AskResponse::Help(help) = response else {
+        panic!("expected the help guide, got {response:?}");
+    };
+    assert_eq!(help.topic.unwrap().id, "agents");
+    assert_eq!(help.reason, HelpReason::ModelFailed);
+    assert!(help.detail.unwrap().contains("free trial"));
     state.shutdown();
 }
 

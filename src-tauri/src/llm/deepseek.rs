@@ -100,6 +100,18 @@ async fn stream_from(
         return Err(error_message(status, &body));
     };
 
+    read_stream(response, model, text).await
+}
+
+/// Reads a streamed answer (server-sent events) into a response, sending
+/// text deltas to `text` as they arrive. Also reads the free trial's
+/// gateway (`services::llm_trial`), which passes DeepSeek's stream through
+/// unchanged.
+pub(crate) async fn read_stream(
+    response: reqwest::Response,
+    model: &str,
+    text: Option<mpsc::Sender<String>>,
+) -> Result<LlmResponse, String> {
     let mut state = StreamState::default();
     let mut lines = LineBuffer::default();
     let mut bytes = response.bytes_stream();
@@ -233,7 +245,9 @@ fn message(message: &Message) -> Value {
     }
 }
 
-fn request_body(model: &str, request: &LlmRequest, max_tokens: u32) -> Value {
+/// The Chat Completions body for `model` (also what the free trial's
+/// gateway takes, with its one model)
+pub(crate) fn request_body(model: &str, request: &LlmRequest, max_tokens: u32) -> Value {
     let mut messages = Vec::new();
     if let Some(system) = request.system.as_deref().filter(|s| !s.is_empty()) {
         messages.push(json!({"role": "system", "content": system}));

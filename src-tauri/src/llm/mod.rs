@@ -13,11 +13,12 @@
 //! Claude Agent SDK), else the Anthropic key. Keys come last.
 //!
 //! With nothing of the user's own, `deepseek:` calls run on the free trial
-//! (`services::llm_trial`) until its tokens are used up.
+//! (`services::llm_trial`): Nandi's gateway, which holds the key and counts
+//! the tokens.
 
 mod anthropic;
 pub mod claude_code;
-mod deepseek;
+pub(crate) mod deepseek;
 #[cfg(test)]
 pub(crate) use deepseek::BASE_URL_OVERRIDE as DEEPSEEK_BASE_URL_OVERRIDE;
 mod ollama;
@@ -293,25 +294,8 @@ async fn dispatch(
                 return own_model(secrets, result);
             }
         }
-        // The free trial, on its one model. The reservation is charged in
-        // full if this future is dropped (the call cancelled) before it ends.
-        let input = llm_trial::estimate_input(request);
-        let (key, max_tokens, call) = llm_trial::reserve(secrets, input, max_tokens)?;
-        let (_, trial_model) = parse_model(llm_trial::TRIAL_MODEL)?;
-        let result = deepseek::stream(
-            streaming_client(),
-            key,
-            trial_model,
-            request,
-            max_tokens,
-            text,
-        )
-        .await;
-        match &result {
-            Ok(response) => call.settle(&response.usage),
-            Err(_) => call.failed(),
-        }
-        return result;
+        // The free trial, on its one model, through Nandi's gateway
+        return llm_trial::chat(secrets, streaming_client(), request, max_tokens, text).await;
     }
 
     // The team's or Claude Code's own sign-in before a pasted key

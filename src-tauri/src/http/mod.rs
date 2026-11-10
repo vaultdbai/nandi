@@ -30,6 +30,7 @@ mod gateway;
 mod groups;
 mod harness_sessions;
 mod harnesses;
+mod help;
 mod identity;
 mod images;
 mod live;
@@ -93,6 +94,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(connectors::api())
                 .merge(images::api())
                 .merge(machine::api())
+                .merge(help::api())
                 // Wave 2A
                 .merge(capability::api())
                 .merge(relay::api())

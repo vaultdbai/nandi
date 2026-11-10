@@ -69,34 +69,78 @@ set up, every call uses Claude Code (`llm_keys::usable_model`).
 
 ## The free tokens (trial)
 
-Release builds ship Nandi's own DeepSeek key so a new user can try
-Nandi before setting up a model (`services::llm_trial`).
+A new user can try Nandi before setting up a model: Nandi's trial
+gateway (`https://trial.vaultdb.ai`, private repo
+`nandi-cloud/trial-gateway`) holds the DeepSeek key and counts tokens
+(`services::llm_trial`). **The app holds no key**: nothing is baked into
+builds, no CI secret, no fallback.
 
-- **Allowance:** 100,000 tokens (input + output) per computer, on
-  `deepseek:deepseek-flash` only. The count lives in the keychain
-  (`nandi.trial.deepseek.used`), so clearing `~/.nandi` doesn't reset it.
+- **Allowance:** 100,000 tokens (input + output) per person on
+  `deepseek:deepseek-flash` only. A device nobody signed in on counts as
+  one person; signing in links devices so they share one allowance. The
+  gateway is the only counter: the app keeps none, and Settings shows
+  what `GET /v1/trial` says (`get_free_trial_account`).
 - **Last resort:** `llm_keys::usable_model` tries the user's own keys and
-  sign-ins first. The trial runs only when nothing else works.
+  sign-ins first. The trial runs only when nothing else works, only on
+  the host, never in a container.
 - **Off once the user has their own model:** the first time a key, a
   Claude Code sign-in, or Ollama as the default works, the trial turns
   off for good (`nandi.trial.deepseek.mode = off`). Saving a key turns it
   off even after the user turned it back on.
 - **Back on by choice:** Settings › Models › Free tokens › **Use free
-  tokens** (`set_free_trial`) works while tokens are left. It makes the
-  trial model the default, and `deepseek:` calls use the trial before the
-  user's DeepSeek key.
-- **The key:** CI passes `NANDI_TRIAL_DEEPSEEK_KEY` (a repository
-  secret) to the build. `build.rs` XORs it with a pad made for that build,
-  so it isn't plain text in the binary. It is unmasked in memory only for
-  a trial call, never written to disk, and never sent into a container.
-  Once the tokens are used up the app never unmasks it again. A build
-  without the variable has no trial, and tests never see one.
-- **Limits of this design:** the key is the same in every copy of the
-  app, and someone who takes the binary apart can recover it. Keep a
-  spending cap on the DeepSeek account and rotate the key if it leaks. A
-  per-user limit that can't be bypassed needs a Nandi-run proxy that
-  holds the key; the trial is shaped so `deepseek::stream` could point at
-  one later.
+  tokens** (`set_free_trial`) works unless the gateway said the tokens are
+  used up. It makes the trial model the default, and `deepseek:` calls use
+  the trial before the user's DeepSeek key.
+- **Gateway URL:** `llm_trial::gateway::DEFAULT_GATEWAY_URL`;
+  `NANDI_TRIAL_GATEWAY_URL` overrides it (staging, a local gateway). The
+  trial is set up at start (`llm_trial::init`) with the instance ID.
+  Tests never reach it: they see only a trial they set on their thread
+  (`llm_trial::use_test_trial`, usually a fake axum gateway).
+
+### Signing
+
+Each request carries `X-Nandi-Instance` (the instance ID),
+`X-Nandi-Key` (the device's Ed25519 public key, `relay::device_keys`, made
+on first use and pinned by the gateway like the relay pins it),
+`X-Nandi-Time` (epoch ms) and `X-Nandi-Signature`
+(`DeviceKeys::sign`) over:
+
+```text
+nandi-trial-v1\n<METHOD>\n<path>\n<instance>\n<time>\n<hex sha256(body)>
+```
+
+The body is serialized once and those bytes are hashed, signed and sent.
+Signed times always go up (the gateway refuses replays).
+`gateway_tests::the_signing_string_matches_the_gateway` pins the
+gateway's own golden string.
+
+### Calls and errors
+
+- `POST /v1/chat/completions`: `deepseek::request_body` on the trial
+  model, no bearer key; the answer is DeepSeek's stream, read by
+  `deepseek::read_stream`.
+- The trial path doesn't use the DeepSeek adapter's retries. A
+  `Retry-After` of 10 s or less on `trial_busy`, `rate_limited` or
+  `upstream_busy` is waited out once; longer ones are reported.
+  `stale_time` adjusts the clock by `serverTime` and signs again once.
+- `GatewayError::user_message` turns each code into a sentence with what
+  to do (used up, not enough left, paused until about when, rate limited,
+  too many devices, clock, key mismatch, model busy or refused).
+- What the gateway last said is kept in memory (`Trial::note`): used up,
+  paused until `Retry-After`, unreachable for a minute. While any holds
+  the trial isn't offered, `effectiveModel` is `null`, and the Ask box
+  answers from the help guide (`machine-readiness.md`) without waiting on
+  a timeout.
+
+### Linking devices (sign-in)
+
+`POST /v1/signin/<provider>/start` returns a user code and a
+verification URL; the app opens it and polls `/poll` every `interval`
+seconds (`pending`, `slow_down`, `linked`, or an error that stops it).
+The provider's device code stays on the gateway. Settings shows a button
+for each provider `GET /v1/trial` lists in `signIn` (GitHub today);
+Google and Microsoft show as "coming soon" until the gateway offers them
+(it answers `provider_not_supported`).
 
 ## What the UI shows
 

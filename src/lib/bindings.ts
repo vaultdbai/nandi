@@ -530,6 +530,39 @@ async setFreeTrial(enabled: boolean) : Promise<Result<DefaultModelStatus, string
 }
 },
 /**
+ * The free trial's allowance as the gateway counts it
+ */
+async getFreeTrialAccount() : Promise<Result<TrialAccount, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_free_trial_account") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Starts linking this computer's free trial to a person's account
+ */
+async startFreeTrialSignIn(provider: TrialSignInProvider) : Promise<Result<TrialSignInStart, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_free_trial_sign_in", { provider }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Whether the person finished signing in (poll every `interval` seconds)
+ */
+async pollFreeTrialSignIn(provider: TrialSignInProvider, signinId: string) : Promise<Result<TrialSignInPoll, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("poll_free_trial_sign_in", { provider, signinId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Checks a key (`None`: the stored one) without storing it
  */
 async testLlmKey(provider: KeyedProvider, apiKey: string | null) : Promise<Result<LlmKeyTest, string>> {
@@ -3263,6 +3296,29 @@ async checkMachine(fresh: boolean) : Promise<Result<MachineReport, string>> {
 }
 },
 /**
+ * Every topic of the built-in help guide, in order
+ */
+async helpTopics() : Promise<Result<HelpTopic[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("help_topics") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The help guide's answer to `text`, for when no model can answer (a chat
+ * sent with no model)
+ */
+async helpAnswer(text: string) : Promise<Result<HelpAnswer, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("help_answer", { text }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Launches Docker Desktop (no admin rights). Linux Docker Engine needs
  * `sudo systemctl start docker`, which the app shows instead.
  */
@@ -3924,12 +3980,12 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const SEAL_REFUSED = "seal_refused" as const;
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const NO_SHARED_GROUP = "no_shared_group" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const NO_SHARED_GROUP = "no_shared_group" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 
 /** user-defined types **/
 
@@ -4510,7 +4566,11 @@ export type AskResponse = { kind: "question"; data: QuestionAnswer } | { kind: "
 /**
  * The ask was ambiguous: a question back to the user
  */
-{ kind: "clarification"; data: string }
+{ kind: "clarification"; data: string } | 
+/**
+ * No model could answer: the built-in help guide did
+ */
+{ kind: "help"; data: HelpAnswer }
 /**
  * Something an answer drew on
  */
@@ -5526,7 +5586,7 @@ effectiveModel: string | null;
  */
 claudeSignIn: HarnessAuth | null; 
 /**
- * The free trial's progress; `None` when this build has none
+ * The free trial's state; `None` when it isn't set up (tests)
  */
 trial: TrialStatus | null }
 /**
@@ -6209,6 +6269,53 @@ export type HarnessSessionSummary = { id: string; adapterId: string; agentId: st
  * One end-to-end check: start the CLI, open a session, close it
  */
 export type HarnessTestResult = { harnessId: string; ok: boolean; latencyMs: number | null; version: string | null; configuredProvider: string | null; message: string; error: string | null }
+/**
+ * The guide's answer to a question
+ */
+export type HelpAnswer = { 
+/**
+ * The topic that matches best, if any
+ */
+topic: HelpTopic | null; 
+/**
+ * Other topics: the next best matches, or every topic when none matched
+ */
+related: HelpTopic[]; reason: HelpReason; 
+/**
+ * The model's error, for `ModelFailed`
+ */
+detail: string | null }
+/**
+ * A place in the app (or a page on the web) a topic points to
+ */
+export type HelpLink = { 
+/**
+ * `settings:<section>[:<focus>]`, `network:<tab>`, `agents`,
+ * `library`, `automations`, `inbox`, `home`, `settings`, or
+ * `url:<https://...>`
+ */
+target: string; 
+/**
+ * The link's words: `help.links.<label>` in the locales
+ */
+label: string }
+/**
+ * Why the guide answered instead of a model
+ */
+export type HelpReason = 
+/**
+ * No model can be called (no key, sign-in or usable trial)
+ */
+"noModel" | 
+/**
+ * A model was tried and failed (`detail` says how)
+ */
+"modelFailed"
+/**
+ * One topic of the guide; its title and answer are
+ * `help.topics.<id>.title` and `.answer` in the locales
+ */
+export type HelpTopic = { id: string; links: HelpLink[] }
 /**
  * Where a hold is
  */
@@ -8496,9 +8603,57 @@ downloadBytes: number; log: string[];
  */
 error: string | null }
 /**
- * The trial's progress on this computer
+ * `GET /v1/trial`: the person's allowance as the gateway counts it
  */
-export type TrialStatus = { used: number; limit: number; 
+export type TrialAccount = { 
+/**
+ * `github:583231` once someone signed in on this device, else none
+ */
+account: string | null; used: number; limit: number; 
+/**
+ * The trial is paused for everyone (its daily cap), until UTC midnight
+ */
+paused?: boolean; 
+/**
+ * The sign-in providers the gateway offers (`github`, ...)
+ */
+signIn?: string[] }
+/**
+ * `POST /v1/signin/<provider>/poll`
+ */
+export type TrialSignInPoll = 
+/**
+ * Keep polling every `interval` seconds
+ */
+{ status: "pending"; interval: number } | 
+/**
+ * Keep polling, at the new `interval`
+ */
+{ status: "slow_down"; interval: number } | 
+/**
+ * Done: this device shares the person's allowance
+ */
+{ status: "linked"; account: string; display: string; used: number; limit: number }
+/**
+ * A sign-in provider the gateway may offer for linking devices
+ */
+export type TrialSignInProvider = "github" | "google" | "microsoft"
+/**
+ * `POST /v1/signin/<provider>/start`
+ */
+export type TrialSignInStart = { signinId: string; 
+/**
+ * The code the person types on the provider's page
+ */
+userCode: string; verificationUri: string; expiresIn: number; 
+/**
+ * Seconds between polls
+ */
+interval: number }
+/**
+ * The trial's state for Settings
+ */
+export type TrialStatus = { 
 /**
  * Not turned off (by the user, or by their own model)
  */
@@ -8506,7 +8661,19 @@ enabled: boolean;
 /**
  * The default model runs on the trial right now
  */
-active: boolean }
+active: boolean; 
+/**
+ * The gateway said the tokens are used up
+ */
+usedUp: boolean; 
+/**
+ * The gateway said the trial is paused for today
+ */
+paused: boolean; 
+/**
+ * The gateway couldn't be reached a moment ago
+ */
+unreachable: boolean }
 /**
  * A trigger rule. In API responses `source_config` never holds the secret
  * (see `has_secret` and `SavedTrigger`).

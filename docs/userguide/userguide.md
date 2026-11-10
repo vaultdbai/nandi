@@ -127,7 +127,9 @@ Agents think with a model from a provider you choose. Keys go into your OS keych
 - **Ollama**: if it's running on this computer, pick one of its models. No key needed.
 - **Amazon Bedrock** works through the Claude Code runtime; set it up later under **Settings › Models & runtimes** and **Settings › Cloud credentials**.
 
-**Free tokens:** Nandi comes with 100,000 free tokens on DeepSeek Flash, so you can start without a key. They switch off once you set up your own model. While some are left, you can turn them back on in **Settings › Models › Free tokens**.
+**Free tokens:** Nandi gives each person 100,000 free tokens on DeepSeek Flash, so you can start without a key. They switch off once you set up your own model. While some are left, you can turn them back on in **Settings › Models › Free tokens**. **Sign in with GitHub** there to keep your trial on all your computers: they then share one 100,000. The trial needs the internet; it may pause for the day when everyone together has used the day's share.
+
+**Help without a model:** with no model at all (offline, no key, free tokens used up), Nandi still helps with the basics. Ask it how to install Docker, connect a model, join a relay, or what agents, groups and the Inbox are, and it answers from its built-in help, with buttons to the right screen. **How?** next to "No model connected" and "Agents need Docker to act" opens the same help.
 
 **Skip for now** asks once more, because without a model agents can't run. You can add one any time in **Settings › Models**.
 

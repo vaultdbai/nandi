@@ -703,9 +703,9 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 
 ### PL-09 — Release workflow (GitHub Actions)
 
-- **What:** On a `v*` tag or manual dispatch, builds macOS (`app,dmg`), Windows (`msi`) and Linux (`appimage`, Ubuntu 22.04) with `tauri-action`, creates a draft GitHub release "Nandi vX" with updater JSON and signatures, injects `NANDI_GITHUB_CLIENT_ID` and `NANDI_TRIAL_DEEPSEEK_KEY`, and (when S3 secrets are set) uploads each installer to `s3://<bucket>/downloads/nandi/<version>/` and a stable `downloads/nandi/latest/VaultDB-Nandi-<os>.<ext>` plus `latest/VERSION`.
+- **What:** On a `v*` tag or manual dispatch, builds macOS (`app,dmg`), Windows (`msi`) and Linux (`appimage`, Ubuntu 22.04) with `tauri-action`, creates a draft GitHub release "Nandi vX" with updater JSON and signatures, injects `NANDI_GITHUB_CLIENT_ID` (no trial key: the free trial's key lives only on the trial gateway), and (when S3 secrets are set) uploads each installer to `s3://<bucket>/downloads/nandi/<version>/` and a stable `downloads/nandi/latest/VaultDB-Nandi-<os>.<ext>` plus `latest/VERSION`.
 - **Where:** `.github/workflows/release.yml`; `docs/developer/releases.md`.
-- **Preconditions:** Repo secrets `TAURI_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, optional `S3_ID`, `S3_KEY`, `AWS_REGION`, `AWS_BUCKET`, `NANDI_GITHUB_CLIENT_ID`, `NANDI_TRIAL_DEEPSEEK_KEY`.
+- **Preconditions:** Repo secrets `TAURI_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, optional `S3_ID`, `S3_KEY`, `AWS_REGION`, `AWS_BUCKET`, `NANDI_GITHUB_CLIENT_ID`.
 - **Steps:** Push tag `v0.1.1` (or dispatch with a version).
 - **Expected:** Draft release with dmg/msi/AppImage, `.sig` files and `latest.json`; S3 objects when enabled; step fails if not exactly one installer per bundle.
 - **Edge / negative cases:** Forks without S3 secrets still release to GitHub.
