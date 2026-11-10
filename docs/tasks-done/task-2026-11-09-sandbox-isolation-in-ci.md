@@ -21,4 +21,4 @@ Every item above fails CI if the isolation breaks. No new features.
 
 ## Status (2026-11-09)
 
-Written and in CI (`ad8c51a`): `src-tauri/src/sandbox_suite.rs` (`pnpm run test:sandbox`), the CI job `sandbox`, and every entry's Automation line. Not yet seen passing: Docker Desktop on the dev machine stopped ("unable to start", WSL check failed) before the suite's first run, so the first green run is the CI job's or the next local run's. Close this task once it has passed once. Found on the way: `task-x-linux-docker-engine.md`.
+Written and in CI (`ad8c51a`): `src-tauri/src/sandbox_suite.rs` (`pnpm run test:sandbox`), the CI job `sandbox`, and every entry's Automation line. First green run: CI run 42744830086 on 2026-11-09, job `sandbox`, all 5 tests passed in 22 s. It hasn't run locally yet: Docker Desktop on the dev machine stopped ("unable to start", WSL check failed). Found on the way: `task-x-linux-docker-engine.md`.
