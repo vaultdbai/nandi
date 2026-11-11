@@ -1492,7 +1492,6 @@ pub fn insert_run(conn: &Connection, run: &RunSummary) -> rusqlite::Result<()> {
 }
 
 /// The runs continuing `parent_run_id` after compaction, oldest first.
-#[allow(dead_code)] // The UI builds lineage from `parent_run_id` on run lists
 pub fn child_runs(conn: &Connection, parent_run_id: &str) -> rusqlite::Result<Vec<RunSummary>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {RUN_COLUMNS} FROM runs WHERE parent_run_id = ?1 ORDER BY started_at, id"

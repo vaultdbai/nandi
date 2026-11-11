@@ -103,6 +103,7 @@ pub mod repos;
 #[allow(dead_code)]
 pub mod run_analysis;
 pub mod run_plan;
+pub mod run_waiter;
 pub mod runs;
 pub mod runtimes;
 // v1: Requests and their Steps, projected from the task tables (task 3)

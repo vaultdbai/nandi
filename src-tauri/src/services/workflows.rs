@@ -50,17 +50,17 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use specta::Type;
-use tokio::sync::broadcast::error::RecvError;
 
-use crate::db::{self, role, Db};
+use crate::db::{self, Db};
 use crate::model::{ApprovalDecision, RunStatus, RunSummary, Timestamp};
 use crate::services::chat;
 use crate::services::domain::{self, WorkflowId};
 use crate::services::domain::{ChangedBy, EntityKind};
-use crate::services::events::{self, AgentTurnDone, BroadcastSink, EventBus, NandiEvent};
+use crate::services::events::{self, BroadcastSink, EventBus, NandiEvent};
 use crate::services::orchestrator::{Orchestrators, RunSource};
 use crate::services::relay::{unavailable, RelayClient};
 use crate::services::repo_store::RepoStore;
+use crate::services::run_waiter::RunWaiter;
 use crate::services::AppState;
 
 /// Runs listed per workflow, most recent first
@@ -672,16 +672,6 @@ fn workflow_name(conn: &Connection, id: &str) -> rusqlite::Result<Option<String>
         row.get(0)
     })
     .optional()
-}
-
-/// The agent's final reply: its last non-empty message in the run.
-fn final_reply(conn: &Connection, run_id: &str) -> rusqlite::Result<String> {
-    Ok(db::list_run_messages(conn, run_id)?
-        .into_iter()
-        .rev()
-        .find(|m| m.role == role::ASSISTANT && !m.content.trim().is_empty())
-        .map(|m| m.content)
-        .unwrap_or_default())
 }
 
 // ---------------------------------------------------------------------------
@@ -1711,43 +1701,16 @@ impl WorkflowEngine {
         Ok(false)
     }
 
-    /// Waits for an agent run's `agent://turn_done`, returning the run and
-    /// its final reply. Subscribes before checking the DB, so a turn that
-    /// ends in between is never missed; lag or silence re-checks the DB.
+    /// Waits for an agent run to settle (the newest run it compacted into
+    /// has finished), returning that run and its final reply
     async fn wait_for_agent_run(&self, agent_run_id: &str) -> Result<(RunSummary, String), String> {
-        let mut events = self.broadcast.subscribe();
-        loop {
-            let id = agent_run_id.to_string();
-            let ended = self
-                .db
-                .call(move |conn| match db::get_run(conn, &id)? {
-                    Some(run) if run.status.is_finished() => {
-                        let reply = final_reply(conn, &id)?;
-                        Ok(Some(Some((run, reply))))
-                    }
-                    Some(_) => Ok(Some(None)),
-                    None => Ok(None),
-                })
-                .await?
-                .ok_or_else(|| format!("Agent run {agent_run_id} not found"))?;
-            if let Some(ended) = ended {
-                return Ok(ended);
-            }
-
-            loop {
-                match tokio::time::timeout(RECHECK_INTERVAL, events.recv()).await {
-                    Ok(Ok(event)) => {
-                        if event.event == AgentTurnDone::NAME
-                            && event.payload["runId"] == agent_run_id
-                        {
-                            break;
-                        }
-                    }
-                    Ok(Err(RecvError::Lagged(_))) | Err(_) => break,
-                    Ok(Err(RecvError::Closed)) => return Err("Event bus closed".to_string()),
-                }
-            }
-        }
+        RunWaiter::new(
+            self.db.clone(),
+            self.broadcast.subscribe(),
+            RECHECK_INTERVAL,
+        )
+        .until_settled(agent_run_id)
+        .await
     }
 
     async fn fail(

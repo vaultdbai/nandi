@@ -23,6 +23,7 @@ use crate::services::a2a::task::{self, TaskState};
 use crate::services::ask::{ActionPlan, PlanStepKind};
 use crate::services::events::{self, NandiEvent};
 use crate::services::run_plan::{self, RunPlanStep, RunStepKind};
+use crate::services::run_waiter;
 use crate::services::workflows::WorkflowRunStatus;
 use crate::services::AppState;
 
@@ -571,54 +572,31 @@ fn runners() -> &'static Mutex<HashSet<String>> {
 /// What a started step's run, workflow run or task says now
 async fn observe(state: &AppState, step: &LocalStep) -> Option<(StepStatus, Option<String>)> {
     if let Some(run_id) = &step.run_id {
-        let mut id = run_id.clone();
-        // A compacted run goes on in a child run
-        for _ in 0..8 {
-            let lookup = id.clone();
-            let run = state
-                .db()
-                .call(move |conn| {
-                    let run = db::get_run(conn, &lookup)?;
-                    let child: Option<String> = conn
-                        .query_row(
-                            "SELECT id FROM runs WHERE parent_run_id = ?1
-                              ORDER BY started_at DESC LIMIT 1",
-                            [&lookup],
-                            |row| row.get(0),
-                        )
-                        .optional()?;
-                    Ok((run, child))
-                })
-                .await
-                .ok()?;
-            let (Some(run), child) = run else {
-                return None;
-            };
-            return Some(match run.status {
-                RunStatus::Compacted => match child {
-                    Some(child) => {
-                        id = child;
-                        continue;
-                    }
-                    None => (StepStatus::Running, None),
-                },
-                RunStatus::Queued | RunStatus::Running => (StepStatus::Running, None),
-                RunStatus::AwaitingApproval => (StepStatus::Waiting, None),
-                RunStatus::Completed => (StepStatus::Done, None),
-                RunStatus::Failed => (
-                    StepStatus::Failed,
-                    Some(
-                        run.summary
-                            .unwrap_or_else(|| "The agent's run failed".into()),
-                    ),
+        let lookup = run_id.clone();
+        let run = state
+            .db()
+            .call(move |conn| run_waiter::newest_run(conn, &lookup))
+            .await
+            .ok()??;
+        return Some(match run.status {
+            // Compacted with no child yet: it goes on in one
+            RunStatus::Queued | RunStatus::Running | RunStatus::Compacted => {
+                (StepStatus::Running, None)
+            }
+            RunStatus::AwaitingApproval => (StepStatus::Waiting, None),
+            RunStatus::Completed => (StepStatus::Done, None),
+            RunStatus::Failed => (
+                StepStatus::Failed,
+                Some(
+                    run.summary
+                        .unwrap_or_else(|| "The agent's run failed".into()),
                 ),
-                RunStatus::Cancelled => (
-                    StepStatus::Failed,
-                    Some("The agent's run was cancelled".into()),
-                ),
-            });
-        }
-        return None;
+            ),
+            RunStatus::Cancelled => (
+                StepStatus::Failed,
+                Some("The agent's run was cancelled".into()),
+            ),
+        });
     }
     if let Some(run_id) = &step.workflow_run_id {
         let run = state.workflows().run(run_id).await.ok()??;
@@ -1049,25 +1027,6 @@ pub async fn rerun_request(state: &AppState, id: String) -> Result<String, Strin
     start_request_from(state, request.plan, request.ask_text, request.source).await
 }
 
-/// The run a step's run went on in: its latest compaction child, if any
-fn latest_run(conn: &Connection, run_id: &str) -> rusqlite::Result<String> {
-    let mut id = run_id.to_string();
-    for _ in 0..8 {
-        let child: Option<String> = conn
-            .query_row(
-                "SELECT id FROM runs WHERE parent_run_id = ?1 ORDER BY started_at DESC LIMIT 1",
-                [&id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        match child {
-            Some(child) => id = child,
-            None => break,
-        }
-    }
-    Ok(id)
-}
-
 /// The run plans of the Request's agent steps, by step position
 pub fn run_plans(
     conn: &Connection,
@@ -1078,8 +1037,11 @@ pub fn run_plans(
         let Some(run_id) = &step.run_id else {
             continue;
         };
-        let run_id = latest_run(conn, run_id)?;
-        if let Some(plan) = run_plan::store::current(conn, &run_id)? {
+        // The run a step's run went on in, after compactions
+        let Some(run) = run_waiter::newest_run(conn, run_id)? else {
+            continue;
+        };
+        if let Some(plan) = run_plan::store::current(conn, &run.id)? {
             plans.insert(step.position, plan.steps);
         }
     }

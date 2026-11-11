@@ -40,7 +40,6 @@ use std::time::Duration;
 
 use futures_util::future::BoxFuture;
 use serde_json::Value;
-use tokio::sync::broadcast::error::RecvError;
 use tokio::time::Instant;
 
 use super::delegator::A2aDeps;
@@ -49,17 +48,17 @@ use super::queue::SlotQueue;
 use super::task::{self, ReasonKind, Refusal, TaskRecord, TaskStage, TaskState};
 use super::task_state::{self, Change};
 use super::{eta, DelegationDirection, Task, TaskResult, TaskStatus};
-use crate::db::{self, role};
-use crate::model::{RunStatus, RunSummary};
+use crate::db;
+use crate::model::RunStatus;
 use crate::services::capability::workflow_provider;
 use crate::services::chat;
 use crate::services::domain::group::Decision;
 use crate::services::domain::{Agent, AgentCard};
-use crate::services::events::{AgentTurnDone, NandiEvent, WireEvent};
 use crate::services::intake;
 use crate::services::orchestrator::{OrchestratorCommand, RunSource};
 use crate::services::relay::protocol::{PeerMessage, TaskAssigned};
 use crate::services::relay::RelayClient;
+use crate::services::run_waiter::RunWaiter;
 use crate::services::team::trust as member_trust;
 use crate::services::trust::{self, TrustPolicy};
 
@@ -883,7 +882,11 @@ impl Executor {
             .call(move |conn| db::ensure_task_conversation(conn, &id, &task_id, &title))
             .await?;
         // Before submitting, so the turn's end can't be missed
-        let mut events = self.deps.broadcast.subscribe();
+        let mut waiter = RunWaiter::new(
+            self.deps.db.clone(),
+            self.deps.broadcast.subscribe(),
+            RECHECK_INTERVAL,
+        );
         let sent = chat::submit(
             &self.deps.orchestrators,
             &agent_id,
@@ -913,7 +916,7 @@ impl Executor {
 
         // The deadline moves on while the task waits for the requester's
         // answer (`ask_requester`): that time isn't the provider's
-        let waiting = wait_for_run(&self.deps.db, &mut events, &sent.run_id);
+        let waiting = waiter.until_settled(&sent.run_id);
         tokio::pin!(waiting);
         let mut checked = Instant::now();
         let ended = loop {
@@ -1385,47 +1388,6 @@ fn prompt(task: &Task) -> String {
 /// JSON replies stay structured; anything else is text.
 fn parse_reply(reply: &str) -> Value {
     serde_json::from_str(reply.trim()).unwrap_or_else(|_| Value::String(reply.to_string()))
-}
-
-/// Waits for a run to finish; returns it and its final reply.
-async fn wait_for_run(
-    db: &crate::db::Db,
-    events: &mut tokio::sync::broadcast::Receiver<WireEvent>,
-    run_id: &str,
-) -> Result<(RunSummary, String), String> {
-    loop {
-        let id = run_id.to_string();
-        let ended = db
-            .call(move |conn| match db::get_run(conn, &id)? {
-                Some(run) if run.status.is_finished() => {
-                    let reply = db::list_run_messages(conn, &id)?
-                        .into_iter()
-                        .rev()
-                        .find(|m| m.role == role::ASSISTANT && !m.content.trim().is_empty())
-                        .map(|m| m.content)
-                        .unwrap_or_default();
-                    Ok(Some(Some((run, reply))))
-                }
-                Some(_) => Ok(Some(None)),
-                None => Ok(None),
-            })
-            .await?
-            .ok_or_else(|| format!("Run {run_id} not found"))?;
-        if let Some(ended) = ended {
-            return Ok(ended);
-        }
-        loop {
-            match tokio::time::timeout(RECHECK_INTERVAL, events.recv()).await {
-                Ok(Ok(event)) => {
-                    if event.event == AgentTurnDone::NAME && event.payload["runId"] == run_id {
-                        break;
-                    }
-                }
-                Ok(Err(RecvError::Lagged(_))) | Err(_) => break,
-                Ok(Err(RecvError::Closed)) => return Err("Event bus closed".to_string()),
-            }
-        }
-    }
 }
 
 /// Runs the tasks the relay assigns to this instance and sends each result
