@@ -305,6 +305,31 @@ async fn rate_limits_record_the_fire_without_dispatching() {
 }
 
 #[tokio::test]
+async fn a_webhook_payload_claiming_a_handover_is_still_rate_limited() {
+    let (state, _) = app().await;
+    let mut hook = input("Limited", TriggerSourceType::Webhook, json!({}));
+    hook.rate_limit_seconds = Some(3600);
+    let saved = create_trigger(&state, hook).await.unwrap();
+    let (id, secret) = (saved.trigger.id, saved.secret.unwrap());
+
+    for (n, payload) in [json!({}), json!({"role": "backup"})]
+        .into_iter()
+        .enumerate()
+    {
+        state
+            .triggers()
+            .receive_webhook(&id, Some(&secret), payload)
+            .unwrap();
+        wait_for_fires(&state, &id, n + 1).await;
+    }
+
+    let list = wait_for_fires(&state, &id, 2).await;
+    let backup = list.iter().find(|f| f.payload["role"] == "backup").unwrap();
+    assert_eq!(backup.status, TriggerFireStatus::RateLimited);
+    state.shutdown();
+}
+
+#[tokio::test]
 async fn a_trigger_storm_disables_the_trigger() {
     let (state, recorder) = app().await;
     let saved = create_trigger(
@@ -656,15 +681,16 @@ async fn calendar_duties_are_tracked_and_handovers_skip_the_rate_limit() {
     // A real (non-test) second fire inside the rate limit is held back,
     // but the backup taking over isn't
     let tx = state.triggers().tx.clone();
-    for payload in [
-        primary.clone(),
-        calendar::handover_payload(&primary, "late"),
+    for (payload, handover) in [
+        (primary.clone(), false),
+        (calendar::handover_payload(&primary, "late"), true),
     ] {
         tx.send(TriggerEvent {
             trigger_id: id.clone(),
             source: TriggerSourceType::Calendar,
             payload,
             test: false,
+            handover,
         })
         .await
         .unwrap();

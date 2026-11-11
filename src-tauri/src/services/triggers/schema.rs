@@ -286,6 +286,9 @@ pub struct TriggerEvent {
     pub payload: Value,
     /// A manual test fire: allowed while disabled, never a storm
     pub test: bool,
+    /// A backup taking over a calendar duty (`handover`): the same duty, so
+    /// never rate limited. Only Nandi sets it, never a payload
+    pub handover: bool,
 }
 
 // ---------------------------------------------------------------------------

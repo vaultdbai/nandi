@@ -97,6 +97,7 @@ pub fn spawn(
                         "trigger_id": trigger_id,
                     }),
                     test: false,
+                    handover: false,
                 };
                 if events.send(event).await.is_err() {
                     return; // engine stopped

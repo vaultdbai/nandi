@@ -84,8 +84,7 @@ pub async fn process(engine: &TriggerEngine, event: TriggerEvent) -> Option<Trig
     };
 
     // A backup taking over is the same duty, not another fire
-    let handover = event.payload.get("role").and_then(Value::as_str) == Some("backup");
-    if !event.test && !handover {
+    if !event.test && !event.handover {
         if let Some(next) = rate_limited_until(&trigger, now) {
             let error = format!("Rate limited until {}", iso(next));
             let fire = record(engine, fire, TriggerFireStatus::RateLimited, Some(error)).await?;

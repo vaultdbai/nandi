@@ -227,6 +227,7 @@ async fn act(
                 source: TriggerSourceType::Calendar,
                 payload: primary.clone(),
                 test: false,
+                handover: false,
             };
             if deps.events.send(event).await.is_err() {
                 return false;

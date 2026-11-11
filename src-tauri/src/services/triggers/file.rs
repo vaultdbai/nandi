@@ -134,6 +134,7 @@ pub fn spawn(
                             source: TriggerSourceType::File,
                             payload: payload(&path, kind),
                             test: false,
+                            handover: false,
                         };
                         if events.send(event).await.is_err() {
                             return;

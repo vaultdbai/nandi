@@ -626,6 +626,7 @@ impl TriggerEngine {
                 source: trigger.source_type,
                 payload,
                 test: true,
+                handover: false,
             },
         )
         .await
@@ -664,6 +665,7 @@ impl TriggerEngine {
             source: TriggerSourceType::Webhook,
             payload,
             test: false,
+            handover: false,
         })
     }
 
@@ -689,6 +691,7 @@ impl TriggerEngine {
                 source: TriggerSourceType::Device,
                 payload: payload.clone(),
                 test: false,
+                handover: false,
             }) {
                 Ok(()) => fired += 1,
                 Err(ReceiveError::RateLimited) => limited = true,
@@ -740,6 +743,7 @@ async fn watch_bus(engine: Weak<TriggerEngine>) {
                     source: TriggerSourceType::Event,
                     payload: payload.clone(),
                     test: false,
+                    handover: false,
                 };
                 if engine.tx.send(fire).await.is_err() {
                     return;

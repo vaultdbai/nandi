@@ -165,6 +165,7 @@ pub fn spawn(
             source: TriggerSourceType::Calendar,
             payload: calendar::handover_payload(&primary_payload, &reason),
             test: false,
+            handover: true,
         };
         let _ = events.send(event).await;
     });
