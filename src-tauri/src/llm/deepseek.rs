@@ -115,11 +115,15 @@ pub(crate) async fn read_stream(
     let mut state = StreamState::default();
     let mut lines = LineBuffer::default();
     let mut bytes = response.bytes_stream();
+    let mut done = false;
     'read: while let Some(chunk) = bytes.next().await {
         let chunk = chunk.map_err(|e| format!("DeepSeek stream interrupted: {e}"))?;
         for line in lines.push(&chunk) {
             match parse_line(&line)? {
-                SseLine::Done => break 'read,
+                SseLine::Done => {
+                    done = true;
+                    break 'read;
+                }
                 SseLine::Ignore => {}
                 SseLine::Chunk(chunk) => {
                     if let Some(delta) = state.apply(&chunk) {
@@ -133,7 +137,7 @@ pub(crate) async fn read_stream(
         }
     }
 
-    Ok(state.finish(model, SystemTime::now()))
+    state.finish(model, SystemTime::now(), done)
 }
 
 fn retry_after(response: &reqwest::Response) -> Option<Duration> {
@@ -373,7 +377,13 @@ impl StreamState {
         Some(text.to_string())
     }
 
-    fn finish(self, model: &str, at: SystemTime) -> LlmResponse {
+    /// The whole answer. `done`: the stream ended with `[DONE]`. Without it
+    /// or a finish reason the answer was cut off, and so may its tool calls'
+    /// arguments be: neither is used.
+    fn finish(self, model: &str, at: SystemTime, done: bool) -> Result<LlmResponse, String> {
+        if !done && self.finish_reason.is_none() {
+            return Err("DeepSeek's answer was cut off before it finished".to_string());
+        }
         let tool_calls = self
             .calls
             .into_values()
@@ -384,26 +394,29 @@ impl StreamState {
                 } else {
                     &call.arguments
                 };
-                ToolCall {
+                // A call is never run on arguments it didn't really send
+                let arguments = serde_json::from_str(raw).map_err(|e| {
+                    format!("DeepSeek asked for '{}' with arguments that aren't JSON ({e}), so it wasn't run", call.name)
+                })?;
+                Ok(ToolCall {
                     id: if call.id.is_empty() {
                         format!("call_{}", uuid::Uuid::new_v4().simple())
                     } else {
                         call.id
                     },
                     name: call.name,
-                    // Malformed JSON stays visible rather than being dropped
-                    arguments: serde_json::from_str(raw).unwrap_or_else(|_| json!({ "_raw": raw })),
-                }
+                    arguments,
+                })
             })
-            .collect();
-        LlmResponse {
+            .collect::<Result<_, String>>()?;
+        Ok(LlmResponse {
             content: self.content,
             tool_calls,
             stop_reason: self.finish_reason,
             cost_usd: cost_usd(model, &self.usage, at),
             usage: self.usage,
             reasoning: (!self.reasoning.is_empty()).then_some(self.reasoning),
-        }
+        })
     }
 }
 
@@ -526,20 +539,8 @@ mod tests {
 
     #[test]
     fn accumulates_text_reasoning_tool_calls_and_usage() {
-        let mut state = StreamState::default();
-        let mut lines = LineBuffer::default();
-        let mut deltas = Vec::new();
-        // Feed in awkward slices to exercise partial lines
-        for piece in SSE.as_bytes().chunks(7) {
-            for line in lines.push(piece) {
-                match parse_line(&line).unwrap() {
-                    SseLine::Chunk(chunk) => deltas.extend(state.apply(&chunk)),
-                    SseLine::Done => break,
-                    SseLine::Ignore => {}
-                }
-            }
-        }
-        let response = state.finish("deepseek-flash", UNIX_EPOCH);
+        let (state, deltas, done) = feed(SSE);
+        let response = state.finish("deepseek-flash", UNIX_EPOCH, done).unwrap();
 
         assert_eq!(deltas, ["Let me ", "check."]);
         assert_eq!(response.content, "Let me check.");
@@ -562,6 +563,53 @@ mod tests {
             }
         );
         assert!(response.cost_usd.unwrap() > 0.0);
+    }
+
+    /// Folds `sse` in, in awkward slices to exercise partial lines: the
+    /// state, its text deltas, and whether `[DONE]` came
+    fn feed(sse: &str) -> (StreamState, Vec<String>, bool) {
+        let mut state = StreamState::default();
+        let mut lines = LineBuffer::default();
+        let mut deltas = Vec::new();
+        let mut done = false;
+        for piece in sse.as_bytes().chunks(7) {
+            for line in lines.push(piece) {
+                match parse_line(&line).unwrap() {
+                    SseLine::Chunk(chunk) => deltas.extend(state.apply(&chunk)),
+                    SseLine::Done => done = true,
+                    SseLine::Ignore => {}
+                }
+            }
+        }
+        (state, deltas, done)
+    }
+
+    #[test]
+    fn a_cut_off_answer_or_cut_off_tool_arguments_are_errors() {
+        const TEXT: &str = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Half an ans\"},\"finish_reason\":null}]}\n\n";
+        const CUT_CALL: &str = "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_0\",\"function\":{\"name\":\"shell\",\"arguments\":\"{\\\"cmd\\\":\\\"rm -rf /tm\"}}]},\"finish_reason\":null}]}\n\n";
+        const STOP: &str =
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";
+        const DONE: &str = "data: [DONE]\n\n";
+        // (stream, the error it ends in, or None when it's whole)
+        let cases = [
+            (vec![TEXT], Some("cut off")),
+            (vec![CUT_CALL], Some("cut off")),
+            (vec![CUT_CALL, STOP, DONE], Some("aren't JSON")),
+            (vec![TEXT, STOP], None),
+            (vec![TEXT, DONE], None),
+        ];
+        for (stream, expected) in cases {
+            let (state, _, done) = feed(&stream.concat());
+            let finished = state.finish("deepseek-flash", UNIX_EPOCH, done);
+            match expected {
+                Some(error) => {
+                    let got = finished.unwrap_err();
+                    assert!(got.contains(error), "{stream:?}: {got}");
+                }
+                None => assert!(finished.is_ok(), "{stream:?}"),
+            }
+        }
     }
 
     #[test]
