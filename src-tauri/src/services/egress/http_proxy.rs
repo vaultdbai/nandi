@@ -6,6 +6,7 @@
 //! not followed, so a redirect can't lead outside the allowlist.
 
 use std::collections::BTreeMap;
+use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
 use axum::extract::{DefaultBodyLimit, State};
@@ -17,7 +18,7 @@ use base64::Engine;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
-use super::{error, record, EgressKind, EgressLogEntry, ProxyContext};
+use super::{address, error, record, EgressKind, EgressLogEntry, ProxyContext};
 use crate::audit;
 
 const MAX_REQUEST_BYTES: usize = 10 * 1024 * 1024;
@@ -73,15 +74,31 @@ struct FetchResponse {
     body_base64: Option<String>,
 }
 
-pub(super) fn router(context: ProxyContext) -> Router {
-    let client = reqwest::Client::builder()
+/// How the proxy's requests go out
+fn client_builder() -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         // The host's own proxy settings must not apply (or loop back here)
         .no_proxy()
         .timeout(TIMEOUT)
         .connect_timeout(Duration::from_secs(10))
-        .build()
-        .unwrap_or_default();
+}
+
+/// The client for a request to `url`, pinned to `addrs` (checked by
+/// `address::reachable`) so the name is never resolved again. An IP literal
+/// needs no pin: the shared client connects to it as checked.
+fn client_for(shared: &reqwest::Client, url: &Url, addrs: &[SocketAddr]) -> reqwest::Client {
+    match url.domain() {
+        Some(name) => client_builder()
+            .resolve_to_addrs(name, addrs)
+            .build()
+            .unwrap_or_default(),
+        None => shared.clone(),
+    }
+}
+
+pub(super) fn router(context: ProxyContext) -> Router {
+    let client = client_builder().build().unwrap_or_default();
     Router::new()
         .route("/fetch", post(handle_fetch))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
@@ -155,6 +172,15 @@ async fn handle_fetch(
         record(entry(false, Some(403), Some(message.clone()))).await;
         return error(StatusCode::FORBIDDEN, &message);
     }
+    let port = url.port_or_known_default().unwrap_or(443);
+    let named = |ip| capabilities.names_address(ip, url.port());
+    let addrs = match address::reachable(&host, port, named).await {
+        Ok(addrs) => addrs,
+        Err(message) => {
+            record(entry(false, Some(403), Some(message.clone()))).await;
+            return error(StatusCode::FORBIDDEN, &message);
+        }
+    };
 
     let body = match (&request.body, &request.body_base64) {
         (Some(_), Some(_)) => {
@@ -168,7 +194,7 @@ async fn handle_fetch(
         (None, None) => Vec::new(),
     };
 
-    let mut outgoing = state.client.request(method, url);
+    let mut outgoing = client_for(&state.client, &url, &addrs).request(method, url);
     for (name, value) in &request.headers {
         if !HOP_BY_HOP.contains(&name.to_ascii_lowercase().as_str()) {
             outgoing = outgoing.header(name, value);
@@ -381,6 +407,33 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{url}");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_allowed_name_that_resolves_to_the_host_is_refused() {
+        let port = start_upstream().await;
+        let tokens = ProxyTokens::default();
+        let token = tokens.issue("writer");
+        let app = router(context(
+            tokens,
+            allow_hosts(&[&format!("localhost:{port}"), "*"]),
+        ));
+
+        for url in [
+            format!("http://localhost:{port}/echo"),
+            "http://169.254.169.254/latest/meta-data".to_string(),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(post_fetch(Some(&token), serde_json::json!({ "url": url })))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{url}");
+            assert!(json_body(response).await["error"]
+                .as_str()
+                .unwrap()
+                .contains("internal address"));
         }
     }
 

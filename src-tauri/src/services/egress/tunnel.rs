@@ -15,7 +15,8 @@ use base64::Engine;
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpStream;
 
-use super::{record, EgressKind, EgressLogEntry, ProxyContext};
+use super::capabilities::Capabilities;
+use super::{address, record, EgressKind, EgressLogEntry, ProxyContext};
 use crate::audit;
 
 const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
@@ -54,9 +55,10 @@ pub(super) async fn handle_connect(context: ProxyContext, mut request: Request<B
         error,
     };
 
-    let allowed = (context.capabilities)(&agent_id)
-        .map(|caps| caps.allows_tunnel(&host, port))
-        .unwrap_or(false);
+    let capabilities = (context.capabilities)(&agent_id).ok();
+    let allowed = capabilities
+        .as_ref()
+        .is_some_and(|caps| caps.allows_tunnel(&host, port));
     if !allowed {
         record(entry(
             false,
@@ -67,12 +69,22 @@ pub(super) async fn handle_connect(context: ProxyContext, mut request: Request<B
         return StatusCode::FORBIDDEN.into_response();
     }
 
+    // Resolved once and checked: the tunnel goes to these addresses only
+    let named = |ip| {
+        capabilities
+            .as_ref()
+            .is_some_and(|caps| caps.names_address(ip, Capabilities::tunnel_port(port)))
+    };
+    let addrs = match address::reachable(&host, port, named).await {
+        Ok(addrs) => addrs,
+        Err(e) => {
+            record(entry(false, StatusCode::FORBIDDEN, Some(e))).await;
+            return StatusCode::FORBIDDEN.into_response();
+        }
+    };
+
     // Connect first, so a dead upstream is a 502 rather than a dropped tunnel
-    let upstream = match tokio::time::timeout(
-        CONNECT_TIMEOUT,
-        TcpStream::connect((host.as_str(), port)),
-    )
-    .await
+    let upstream = match tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(&addrs[..])).await
     {
         Ok(Ok(stream)) => stream,
         Ok(Err(e)) => {
@@ -200,6 +212,22 @@ mod tests {
         let mut reply = [0u8; 4];
         stream.read_exact(&mut reply).await.unwrap();
         assert_eq!(&reply, b"ping");
+    }
+
+    #[tokio::test]
+    async fn a_tunnel_to_a_name_that_resolves_to_the_host_is_refused() {
+        let tokens = ProxyTokens::default();
+        let token = tokens.issue("writer");
+        let echo = start_echo().await;
+        let proxy = start_proxy(tokens, &[&format!("localhost:{echo}"), "*"]).await;
+
+        for target in [
+            format!("localhost:{echo}"),
+            "169.254.169.254:443".to_string(),
+        ] {
+            let (_, head) = connect(proxy, &target, Some(&token)).await;
+            assert!(head.starts_with("HTTP/1.1 403"), "{target}: {head}");
+        }
     }
 
     #[test]

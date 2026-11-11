@@ -17,6 +17,7 @@
 //! may reach its package registries and `config.network`. AWS, fetch,
 //! and tunnel requests are audited to `~/.nandi/local/logs/egress.log`.
 
+mod address;
 mod aws_proxy;
 pub mod capabilities;
 pub mod credentials;

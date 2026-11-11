@@ -172,7 +172,7 @@ impl Capabilities {
     /// TLS tunnel can't be checked, so only rules without a `methods` limit
     /// allow tunnels; method-limited hosts must go through `/fetch`.
     pub fn allows_tunnel(&self, host: &str, port: u16) -> bool {
-        let port = (port != 443).then_some(port);
+        let port = Self::tunnel_port(port);
         // STS agents call AWS directly with their scoped credentials
         let sts_endpoint = port.is_none()
             && self
@@ -187,6 +187,20 @@ impl Capabilities {
             || self
                 .matching_rules(host, port)
                 .any(|rule| rule.methods.is_empty())
+    }
+
+    /// A tunnel's port as rules name it: `None` for 443, which they leave out
+    pub fn tunnel_port(port: u16) -> Option<u16> {
+        (port != 443).then_some(port)
+    }
+
+    /// Whether a rule names `ip` itself for `port` (`None`: the default
+    /// port), not by a name or a wildcard. The only way an internal address
+    /// is reached (`address::reachable`).
+    pub fn names_address(&self, ip: std::net::IpAddr, port: Option<u16>) -> bool {
+        let literal = ip.to_string();
+        self.matching_rules(&literal, port)
+            .any(|rule| split_port(&rule.host).0 == literal)
     }
 
     fn matching_rules<'a>(
