@@ -419,19 +419,6 @@ const FIXTURES: &[(&str, &str, AskKind)] = &[
 ];
 
 #[tokio::test]
-async fn ten_fixture_asks_classify_without_a_model() {
-    let llm = FakeAskLlm::failing();
-    for (view, text, kind) in FIXTURES {
-        let classification = classifier::classify(llm.as_ref(), text, &context_for(view)).await;
-        assert_eq!(classification.kind, *kind, "{text}");
-        assert!(
-            classification.confidence >= classifier::MIN_CONFIDENCE,
-            "{text}"
-        );
-    }
-}
-
-#[tokio::test]
 async fn ten_fixture_asks_classify_with_the_model() {
     for (view, text, kind) in FIXTURES {
         let reply = format!(
@@ -446,11 +433,11 @@ async fn ten_fixture_asks_classify_with_the_model() {
         let classification = classifier::classify(llm.as_ref(), text, &context_for(view)).await;
         assert_eq!(
             classification,
-            Classification {
+            Ok(Classification {
                 kind: *kind,
                 confidence: 0.92,
                 reason: "fixture".into()
-            }
+            })
         );
         let (system, prompt) = &llm.calls()[0];
         assert!(system.contains("Reply with JSON only"));
@@ -462,11 +449,11 @@ async fn ten_fixture_asks_classify_with_the_model() {
 }
 
 #[tokio::test]
-async fn an_unreadable_classification_falls_back_to_keywords() {
+async fn an_unreadable_classification_is_an_error() {
     let llm = FakeAskLlm::replying(&["{\"kind\": \"dance\"}"]);
-    let classification =
+    let classified =
         classifier::classify(llm.as_ref(), "What failed today?", &context_for("home")).await;
-    assert_eq!(classification.kind, AskKind::Question);
+    assert!(classified.is_err());
     assert!(classifier::parse("no json here").is_err());
     assert_eq!(
         classifier::parse("Sure: {\"kind\":\"Edit\"}").unwrap().kind,
@@ -551,29 +538,34 @@ async fn with_no_model_the_help_guide_answers_without_calling_one() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_failed_model_falls_back_to_the_help_guide() {
     let state = AppState::for_tests(vec![]);
-    // The classifier reads the question; the answer call fails
-    let llm = FakeAskLlm::default();
-    llm.replies.lock().unwrap().extend([
-        Ok(QUESTION.to_string()),
-        Err("Can't reach the free trial right now.".to_string()),
-    ]);
-    let service = AskService::new(state.downgrade(), Arc::new(llm));
-    let response = service
-        .respond(
-            &AskRequest {
-                text: "What is an agent?".into(),
-                ..AskRequest::default()
-            },
-            None,
-        )
-        .await
-        .unwrap();
-    let AskResponse::Help(help) = response else {
-        panic!("expected the help guide, got {response:?}");
-    };
-    assert_eq!(help.topic.unwrap().id, "agents");
-    assert_eq!(help.reason, HelpReason::ModelFailed);
-    assert!(help.detail.unwrap().contains("free trial"));
+    let unreachable = || Err("Can't reach the free trial right now.".to_string());
+    let cases = [
+        // The classifier reads the question; the answer call fails
+        vec![Ok(QUESTION.to_string()), unreachable()],
+        // The classifier call itself fails
+        vec![unreachable()],
+    ];
+    for replies in cases {
+        let llm = FakeAskLlm::default();
+        llm.replies.lock().unwrap().extend(replies);
+        let service = AskService::new(state.downgrade(), Arc::new(llm));
+        let response = service
+            .respond(
+                &AskRequest {
+                    text: "What is an agent?".into(),
+                    ..AskRequest::default()
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        let AskResponse::Help(help) = response else {
+            panic!("expected the help guide, got {response:?}");
+        };
+        assert_eq!(help.topic.unwrap().id, "agents");
+        assert_eq!(help.reason, HelpReason::ModelFailed);
+        assert!(help.detail.unwrap().contains("free trial"));
+    }
     state.shutdown();
 }
 
@@ -660,57 +652,27 @@ fn plan_targets(plan: &ActionPlan) -> Vec<(PlanStepKind, &str)> {
 }
 
 #[tokio::test]
-async fn five_fixture_asks_get_the_right_plan() {
-    let llm = FakeAskLlm::failing();
-    let home = context_for("home");
-
-    // One capability: a delegation
-    let one = planner::plan(llm.as_ref(), "Review my Python code", &home).await;
-    assert_eq!(
-        plan_targets(&one),
-        [(PlanStepKind::Capability, "code-review.python")]
-    );
-    assert_eq!(one.estimated_duration_seconds, Some(300));
-    assert!(one.rejection.is_none());
-    assert!(one.steps[0].description.contains("provided here"));
-
-    // Several: a workflow, in the order asked
-    let two = planner::plan(
-        llm.as_ref(),
-        "Review my Python code and then summarize the findings",
-        &home,
-    )
-    .await;
-    assert_eq!(
-        plan_targets(&two),
-        [
-            (PlanStepKind::Capability, "code-review.python"),
-            (PlanStepKind::Capability, "summarize"),
-        ]
-    );
-    assert_eq!(two.estimated_duration_seconds, Some(600));
-    assert!(two.warnings.iter().any(|w| w.contains("as a new workflow")));
-
-    // An existing workflow
-    let workflow = planner::plan(
-        llm.as_ref(),
-        "Run the onboarding workflow for Aayushi",
-        &home,
-    )
-    .await;
-    assert_eq!(
-        plan_targets(&workflow),
-        [(PlanStepKind::Workflow, "onboarding")]
-    );
-
-    // A local agent
-    let agent = planner::plan(llm.as_ref(), "Write the release notes", &home).await;
-    assert_eq!(plan_targets(&agent), [(PlanStepKind::LocalAgent, "writer")]);
-
-    // Out of scope
-    let none = planner::plan(llm.as_ref(), "Book me a flight to Lisbon", &home).await;
-    assert!(none.steps.is_empty());
-    assert!(none.rejection.unwrap().contains("Nothing on this instance"));
+async fn without_a_model_answer_the_plan_is_a_rejection_saying_why() {
+    let cases = [
+        (
+            FakeAskLlm::failing(),
+            "Nandi couldn't plan this: Add an API key",
+        ),
+        (
+            FakeAskLlm::replying(&["no json"]),
+            "Nandi couldn't plan this",
+        ),
+        (
+            FakeAskLlm::replying(&[r#"{"steps": []}"#]),
+            "Nothing on this instance",
+        ),
+    ];
+    for (llm, why) in cases {
+        let plan = planner::plan(llm.as_ref(), "Review my Python code", &context_for("home")).await;
+        assert!(plan.steps.is_empty());
+        let rejection = plan.rejection.unwrap();
+        assert!(rejection.starts_with(why), "{rejection}");
+    }
 }
 
 #[tokio::test]

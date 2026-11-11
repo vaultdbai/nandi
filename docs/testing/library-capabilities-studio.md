@@ -843,13 +843,13 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 
 ### AI-07 — Ask box: classify, answer, plan, edit, clarify (streaming)
 
-- **What:** One ask box component used in Ask (Studio), agent pages (with Chat/Ask toggle, starting in Chat), and workflow run project view. The ask is classified (model, fallback keyword heuristic; below 0.5 confidence it asks back). Questions stream Markdown with source links and follow-up buttons (`FOLLOWUPS:` line). Placeholder depends on view.
+- **What:** One ask box component used in Ask (Studio), agent pages (with Chat/Ask toggle, starting in Chat), and workflow run project view. The model classifies the ask (below 0.5 confidence it asks back; with no model, or when the model fails, the help guide answers and says why). Questions stream Markdown with source links and follow-up buttons (`FOLLOWUPS:` line). Placeholder depends on view.
 - **Where:** `src/components/ask/AskBox.tsx`, `AskComposer.tsx`, `AskAnswer.tsx`, `src/hooks/useAsk.ts`, `src/lib/ask.ts` (`askContextForView`); commands `ask` (`POST /api/ask`), `ask_streaming` (`POST /api/ask/stream`) with events `ask://streaming_delta`, `ask://completed`; `services/ask/{classifier,context,planner,editor}.rs`.
 - **Preconditions:** Model key (classification falls back without one).
 - **Steps:** 1. Ask a question. 2. Click a source and a follow-up. 3. Ask something vague. 4. Dismiss.
 - **Expected:** Streaming text then final answer; follow-ups re-ask; vague → clarifying question; Dismiss clears.
 - **Edge / negative cases:** Model error → error alert; events arriving before the request ID are buffered and not lost.
-- **Automation:** Covered by: `src/components/ask/AskBox.test.tsx` (4), `AskStreaming.test.tsx`; Rust `services/ask/tests.rs` (17, incl. `ten_fixture_asks_classify_without_a_model`, `a_low_confidence_ask_gets_a_question_back`, `streaming_emits_deltas_then_completed`) | Layer: api | Gap: live model.
+- **Automation:** Covered by: `src/components/ask/AskBox.test.tsx` (4), `AskStreaming.test.tsx`; Rust `services/ask/tests.rs` (17, incl. `ten_fixture_asks_classify_with_the_model`, `a_failed_model_falls_back_to_the_help_guide`, `a_low_confidence_ask_gets_a_question_back`, `streaming_emits_deltas_then_completed`) | Layer: api | Gap: live model.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -860,8 +860,8 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **Preconditions:** Agents/workflows/capabilities to target.
 - **Steps:** Ask "run the weekly report" → Run plan.
 - **Expected:** Request page opens; steps start in order.
-- **Edge / negative cases:** Model names unknown targets → dropped; nothing matches → rejection.
-- **Automation:** Covered by: `src/components/ask/Previews.test.tsx`; Rust `ask/tests.rs` (`five_fixture_asks_get_the_right_plan`, `the_model_plan_is_kept_to_what_exists`, `plans_warn_about_offline_providers_and_approval`) | Layer: api | Gap: none.
+- **Edge / negative cases:** Model names unknown targets → dropped; nothing matches, or the model fails or replies with no plan → rejection saying why.
+- **Automation:** Covered by: `src/components/ask/Previews.test.tsx`; Rust `ask/tests.rs` (`without_a_model_answer_the_plan_is_a_rejection_saying_why`, `the_model_plan_is_kept_to_what_exists`, `plans_warn_about_offline_providers_and_approval`) | Layer: api | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped (Request execution itself belongs to the Requests area)
 

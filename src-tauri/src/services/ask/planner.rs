@@ -1,25 +1,24 @@
 //! Action plans for asks classified as actions (Track B). The gateway's
 //! model picks from what this instance and its network offer (it may only
-//! name listed capabilities, agents, workflows, and members); a keyword
-//! matcher stands in when the model is unavailable. Then:
+//! name listed capabilities, agents, workflows, and members). Without a
+//! usable answer from it there is no plan, only a rejection saying why.
+//! The model is told:
 //!
 //! - one capability matches → one delegation step;
 //! - several match → one step each, in the order the ask mentions them
 //!   (a new workflow);
 //! - an existing workflow matches → run it;
-//! - a local agent matches (or the ask was typed on an agent's page) →
-//!   send it to that agent;
+//! - a local agent fits better than any capability → send it to that
+//!   agent;
 //! - nothing does → a rejection with the reason.
 //!
 //! Estimates and warnings come from the context (SLAs, per-call costs,
 //! providers online, approval policies), never from the model.
 
-use std::collections::HashSet;
-
 use serde::Deserialize;
 
 use super::classifier::extract_json;
-use super::context::{CapabilityBrief, GatewayContext, ViewScope};
+use super::context::GatewayContext;
 use super::{ActionPlan, AskError, AskLlm, PlanStep, PlanStepKind};
 use crate::services::requests::self_step;
 
@@ -47,7 +46,8 @@ pub async fn plan(llm: &dyn AskLlm, text: &str, context: &GatewayContext) -> Act
     let steps = match plan_with_model(llm, text, context).await {
         Ok(Ok(steps)) if !steps.is_empty() => Ok(steps),
         Ok(Err(rejection)) => Err(rejection),
-        Ok(Ok(_)) | Err(_) => match_steps(text, context),
+        Ok(Ok(_)) => Err(OUT_OF_SCOPE.to_string()),
+        Err(e) => Err(format!("Nandi couldn't plan this: {e}")),
     };
     match steps {
         // One step at most for the Chief of Staff (`requests::self_step`)
@@ -137,137 +137,6 @@ pub(crate) fn known(kind: PlanStepKind, target: &str, context: &GatewayContext) 
         PlanStepKind::Workflow => context.workflows.iter().any(|w| w.id == target),
         PlanStepKind::Human => context.members.iter().any(|m| m.instance_id == target),
         PlanStepKind::Manual => true,
-    }
-}
-
-const STOPWORDS: &[&str] = &[
-    "the", "and", "for", "with", "this", "that", "please", "can", "you", "could", "would", "then",
-    "into", "from", "about", "our", "your", "mine", "them", "some", "out", "all", "get", "have",
-    "has", "make", "let", "ask", "someone", "help", "want", "need", "new",
-];
-
-/// Lowercase words of 3+ characters that carry meaning, with their
-/// positions
-fn tokens(text: &str) -> Vec<(usize, String)> {
-    text.to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| w.len() >= 3 && !STOPWORDS.contains(w))
-        .enumerate()
-        .map(|(i, w)| (i, w.to_string()))
-        .collect()
-}
-
-/// `review` matches `reviews`, `reviewer`, `code-review`; `summarize`
-/// matches `summary` (shared 6-letter stem)
-fn same_word(a: &str, b: &str) -> bool {
-    if a == b {
-        return true;
-    }
-    let stem = |w: &str| w.chars().take(6).collect::<String>();
-    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
-    (short.len() >= 4 && long.starts_with(short)) || (short.len() >= 6 && stem(short) == stem(long))
-}
-
-fn capability_words(c: &CapabilityBrief) -> Vec<String> {
-    let mut words: Vec<String> = c.id.split(['.', '-', '_']).map(str::to_string).collect();
-    words.extend(tokens(&c.name).into_iter().map(|(_, w)| w));
-    words.extend(c.tags.iter().map(|t| t.to_lowercase()));
-    words
-}
-
-/// The ask's tokens (by position) that any of `words` matches
-fn matched(ask: &[(usize, String)], words: &[String]) -> Vec<usize> {
-    ask.iter()
-        .filter(|(_, token)| words.iter().any(|w| same_word(token, w)))
-        .map(|(i, _)| *i)
-        .collect()
-}
-
-/// The keyword plan: workflows by name, then capabilities covering the
-/// ask, then local agents, then the agent whose page this is
-pub fn match_steps(text: &str, context: &GatewayContext) -> Result<Vec<PlanStep>, String> {
-    let ask = tokens(text);
-    // A workflow whose every name word appears
-    for workflow in &context.workflows {
-        let words: Vec<String> = tokens(&workflow.name)
-            .into_iter()
-            .map(|(_, w)| w)
-            .chain(workflow.id.split('-').map(str::to_string))
-            .collect();
-        let name_words: Vec<String> = tokens(&workflow.name).into_iter().map(|(_, w)| w).collect();
-        let all_named = !name_words.is_empty()
-            && name_words
-                .iter()
-                .all(|w| ask.iter().any(|(_, t)| same_word(t, w)));
-        if all_named && !matched(&ask, &words).is_empty() {
-            return Ok(vec![step(PlanStepKind::Workflow, &workflow.id, context)]);
-        }
-    }
-    // Capabilities, greedily: each must cover a word the others don't
-    let mut covered: HashSet<usize> = HashSet::new();
-    let mut picked: Vec<(usize, &CapabilityBrief)> = Vec::new();
-    loop {
-        let best = context
-            .capabilities
-            .iter()
-            .filter(|c| !picked.iter().any(|(_, p)| p.id == c.id))
-            .map(|c| {
-                let hits = matched(&ask, &capability_words(c));
-                let fresh: Vec<usize> = hits
-                    .iter()
-                    .copied()
-                    .filter(|i| !covered.contains(i))
-                    .collect();
-                (c, hits, fresh)
-            })
-            .filter(|(_, _, fresh)| !fresh.is_empty())
-            .max_by(|a, b| {
-                a.2.len()
-                    .cmp(&b.2.len())
-                    .then(a.1.len().cmp(&b.1.len()))
-                    // Provided here or online wins a tie
-                    .then(
-                        (a.0.provided as u32 + a.0.online_providers.min(1))
-                            .cmp(&(b.0.provided as u32 + b.0.online_providers.min(1))),
-                    )
-            });
-        let Some((capability, hits, _)) = best else {
-            break;
-        };
-        covered.extend(hits.iter().copied());
-        picked.push((hits.iter().copied().min().unwrap_or(0), capability));
-    }
-    if !picked.is_empty() {
-        picked.sort_by_key(|(position, _)| *position);
-        return Ok(picked
-            .into_iter()
-            .map(|(_, c)| step(PlanStepKind::Capability, &c.id, context))
-            .collect());
-    }
-    // A local agent by ID or name
-    if let Some(agent) = context.agents.iter().find(|a| {
-        let words: Vec<String> =
-            a.id.split('-')
-                .map(str::to_string)
-                .chain(tokens(&a.name).into_iter().map(|(_, w)| w))
-                .collect();
-        !matched(&ask, &words).is_empty()
-    }) {
-        return Ok(vec![step(PlanStepKind::LocalAgent, &agent.id, context)]);
-    }
-    if let ViewScope::Agent(id) = &context.view {
-        if context.agents.iter().any(|a| &a.id == id) {
-            return Ok(vec![step(PlanStepKind::LocalAgent, id, context)]);
-        }
-    }
-    Err(OUT_OF_SCOPE.to_string())
-}
-
-fn step(kind: PlanStepKind, target: &str, context: &GatewayContext) -> PlanStep {
-    PlanStep {
-        kind,
-        target: target.to_string(),
-        description: default_description(kind, target, context),
     }
 }
 

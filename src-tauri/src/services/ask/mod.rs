@@ -360,20 +360,17 @@ impl AskService {
         let state = self.state()?;
         // Once per ask: the classifier and the answer share it
         let context = context::load(&state, &request.context).await;
-        let classification = classifier::classify(self.llm.as_ref(), text, &context).await;
+        let classification = match classifier::classify(self.llm.as_ref(), text, &context).await {
+            Ok(classification) => classification,
+            Err(e) => return Ok(model_failed(text, e)),
+        };
         if classification.confidence < MIN_CONFIDENCE {
             return Ok(AskResponse::Clarification(clarification(&context)));
         }
         match classification.kind {
             AskKind::Question => match answer(self.llm.as_ref(), text, &context, deltas).await {
                 Ok(answer) => Ok(AskResponse::Question(answer)),
-                // The model failed (the trial unreachable, a bad key): the
-                // guide still helps, and says why the model didn't answer
-                Err(e) => Ok(AskResponse::Help(help::answer(
-                    text,
-                    HelpReason::ModelFailed,
-                    Some(e),
-                ))),
+                Err(e) => Ok(model_failed(text, e)),
             },
             AskKind::Action => Ok(AskResponse::Action(
                 planner::plan(self.llm.as_ref(), text, &context).await,
@@ -395,6 +392,12 @@ impl AskService {
             },
         }
     }
+}
+
+/// The model failed (the trial unreachable, a bad key, a bad reply): the
+/// guide still helps, and says why the model didn't answer
+fn model_failed(text: &str, error: AskError) -> AskResponse {
+    AskResponse::Help(help::answer(text, HelpReason::ModelFailed, Some(error)))
 }
 
 fn validate(text: &str) -> Result<&str, AskError> {

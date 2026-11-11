@@ -45,15 +45,15 @@ It's loaded once per ask and shared by every step.
 
 - **Classifier** (`classifier.rs`): the gateway's model returns
   `{ kind, confidence, reason }` from a scoped prompt (view and focus
-  only). If the model is unavailable or unreadable, a keyword heuristic
-  decides. Below `MIN_CONFIDENCE` (0.5) the box asks back
+  only). If the call fails or the reply is unreadable, the help guide
+  answers with `HelpReason::ModelFailed`. Below `MIN_CONFIDENCE` (0.5) the box asks back
   (`AskResponse::Clarification`).
 - **Question**: answered from the context in Markdown, streamed; the last
   line `FOLLOWUPS: a | b | c` becomes follow-up buttons, and the IDs the
   answer mentions become source links.
 - **Action** (`planner.rs`): the model may only name listed capabilities,
-  agents, workflows, and members; unknown targets are dropped and a
-  keyword matcher stands in when it can't answer. One capability → a
+  agents, workflows, and members; unknown targets are dropped, and when
+  it can't answer the plan is a `rejection` saying why. One capability → a
   delegation; several → one step each in the order asked (a workflow);
   an existing workflow → run it; a local agent → message it; nothing →
   `rejection` with the reason. Durations, costs, and warnings come from
