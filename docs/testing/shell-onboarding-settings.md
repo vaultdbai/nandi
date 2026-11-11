@@ -85,7 +85,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### ON-02 — Onboarding steps, step indicator and resume
 
-- **What:** First-run setup has six steps: Email (skippable), Name, Model, Computer (recommended, skippable, ON-16), Network, Agents (starter packs). Every step after Email has **Back** (Name goes back to Email). A numbered indicator shows done steps with a check. The step reached is saved per Nandi home, so quitting midway resumes there. A resumed setup offers "Skip the rest of setup".
+- **What:** First-run setup has six steps: Email (skippable), Name, Model, Computer (recommended, skippable, ON-16), Network, Agents (starter packs). Every step after Email has **Back** (Name goes back to Email). The heading says "A few quick steps. You can change all of this later." (no count). A numbered indicator shows done steps with a check; the wizard keeps one width on every step and the step labels wrap rather than cut off ("Na…"), in every language including Arabic. The step reached is saved per Nandi home, so quitting midway resumes there. A resumed setup offers "Skip the rest of setup".
 - **Where:** `src/components/views/OnboardingView.tsx` (`StepIndicator`), `identity-model.ts` (`ONBOARDING_STEPS`, `resumeStep`), `set_onboarding_step` (`PUT /api/identity/onboarding-step`, body `{"step":"model"}`). Stored in `local_settings` key `onboarding.step` in `~/.nandi/local/state.db`.
 - **Preconditions:** A home that is not onboarded.
 - **Steps:**

@@ -2896,7 +2896,7 @@
   "request.done.holdApproved": "Approved: {{member}}'s request goes on",
   "request.done.holdDeclined": "Declined {{member}}'s request",
   "onboarding.title": "Welcome to Nandi",
-  "onboarding.subtitle": "Four quick steps. You can change all of this later.",
+  "onboarding.subtitle": "A few quick steps. You can change all of this later.",
   "onboarding.steps.label": "Setup steps",
   "onboarding.steps.name": "Name",
   "onboarding.steps.model": "Model",
@@ -4961,5 +4961,6 @@
   "settings.account.verified.title": "Your email",
   "settings.account.verified.description": "This Nandi's identity is the mailbox you connected first. The public relay and the free trial know you by it. It can't be changed here.",
   "settings.account.verified.none": "No email connected yet. Connect Outlook or Gmail in Settings › Email.",
-  "settings.account.verified.from": "From {{provider}}"
+  "settings.account.verified.from": "From {{provider}}",
+  "network.connection.relayTrust.none": "Applies once you join your company's relay: its members are then trusted as colleagues."
 }

@@ -7,13 +7,6 @@ import { client } from '@/lib/client'
 import type { AgentCard, JsonValue, RelayStatus } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
-/**
- * The relay the Relay view prefills while none is configured: `nandi-relay`
- * on this machine (see `docs/relay-testing.md` in vaultdbai/nandi-relay). Mirrors
- * `relay::DEFAULT_RELAY_URL`.
- */
-export const DEFAULT_RELAY_URL = 'ws://127.0.0.1:8787/relay'
-
 /** Everything relay-related lives under `['relay']` */
 export const relayQueryKeys = {
   all: ['relay'] as const,

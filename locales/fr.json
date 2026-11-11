@@ -2896,7 +2896,7 @@
   "request.done.holdApproved": "Approuvée : la demande de {{member}} continue",
   "request.done.holdDeclined": "Demande de {{member}} refusée",
   "onboarding.title": "Bienvenue dans Nandi",
-  "onboarding.subtitle": "Quatre étapes rapides. Vous pourrez tout modifier plus tard.",
+  "onboarding.subtitle": "Quelques étapes rapides. Vous pourrez tout modifier plus tard.",
   "onboarding.steps.label": "Étapes de configuration",
   "onboarding.steps.name": "Nom",
   "onboarding.steps.model": "Modèle",
@@ -4961,5 +4961,6 @@
   "settings.account.verified.title": "Votre e-mail",
   "settings.account.verified.description": "L’identité de ce Nandi est la boîte mail que vous avez connectée en premier. Le relais public et l’essai gratuit vous reconnaissent par elle. Elle ne peut pas être modifiée ici.",
   "settings.account.verified.none": "Aucun e-mail connecté pour l’instant. Connectez Outlook ou Gmail dans Réglages › E-mail.",
-  "settings.account.verified.from": "Depuis {{provider}}"
+  "settings.account.verified.from": "Depuis {{provider}}",
+  "network.connection.relayTrust.none": "S’applique quand vous rejoignez le relais de votre entreprise : ses membres sont alors considérés comme des collègues de confiance."
 }

@@ -42,7 +42,6 @@ import { ReachabilityChecklist } from '@/components/network/ReachabilityChecklis
 import { errorMessage } from '@/hooks/useDelegation'
 import { useGatewayManifest, useSetGatewayManifest } from '@/hooks/useGateway'
 import {
-  DEFAULT_RELAY_URL,
   useCopyInvite,
   useJoinRelay,
   useRelay,
@@ -87,7 +86,7 @@ export function ConnectionView() {
             )}
           </>
         )}
-        <RelayTrustCard />
+        <RelayTrustCard hasRelay={Boolean(status?.relayUrl)} />
         <ReachabilityChecklist onConnect={() => fieldRef.current?.focus()} />
         <ConnectionDetails status={status} />
       </div>
@@ -124,7 +123,8 @@ function RelayCard({
   // A saved address is text until Change…; none yet: the field, prefilled
   const [draft, setDraft] = useState<JoinDraft | null>(null)
   const editing = !saved || draft !== null
-  const value = draft ?? { url: DEFAULT_RELAY_URL, joinCode: '' }
+  // Empty (the placeholder shows an example) unless this build has a relay
+  const value = draft ?? { url: status?.builtInUrl ?? '', joinCode: '' }
   const connected = Boolean(status?.connected)
   const instances = useRelayInstances(connected)
   const nandis = instances.data?.length ?? status?.instancesOnline ?? 0
@@ -397,9 +397,10 @@ function PublicRelayCard() {
 /**
  * "Trust everyone on this relay": on a relay that needs a token, its
  * members are the company's, so they're trusted unless this is off
- * (`team::trust::is_trusted`). On an open relay it doesn't apply.
+ * (`team::trust::is_trusted`). Where it can't apply (no relay, an open or
+ * a public relay) the switch shows off and disabled, with the reason.
  */
-function RelayTrustCard() {
+function RelayTrustCard({ hasRelay }: { hasRelay: boolean }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const trust = useRelayTrust()
@@ -414,6 +415,13 @@ function RelayTrustCard() {
   })
   if (!trust.data) return null
   const { enabled, secured, public: onPublic } = trust.data
+  const reason = !hasRelay
+    ? 'none'
+    : secured
+      ? 'secured'
+      : onPublic
+        ? 'public'
+        : 'open'
   return (
     <section
       aria-labelledby="relay-trust-title"
@@ -425,17 +433,14 @@ function RelayTrustCard() {
           {t('network.connection.relayTrust.title')}
         </Label>
         <p className="text-sm text-muted-foreground">
-          {secured
-            ? t('network.connection.relayTrust.secured')
-            : onPublic
-              ? t('network.connection.relayTrust.public')
-              : t('network.connection.relayTrust.open')}
+          {t(`network.connection.relayTrust.${reason}`)}
         </p>
       </div>
       <Switch
         id="relay-trust"
-        checked={enabled}
-        disabled={!secured || save.isPending}
+        // On only where it applies: the words and the switch agree
+        checked={reason === 'secured' && enabled}
+        disabled={reason !== 'secured' || save.isPending}
         onCheckedChange={checked => save.mutate(checked)}
       />
     </section>

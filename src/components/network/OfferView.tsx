@@ -5,6 +5,7 @@
  * Edit changes all of it inline; Advanced opens NANDI.md in Studio and the
  * test chat (network.md §4.4).
  */
+import { MarkdownContent } from '@/components/agent-console/MarkdownContent'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueries } from '@tanstack/react-query'
@@ -137,6 +138,25 @@ export function OfferView() {
   )
 }
 
+/**
+ * "About this Nandi": the public part of NANDI.md, rendered as markdown
+ * (its headings and lists read as such, never as raw `##`)
+ */
+export function OfferAbout({ about }: { about: string }) {
+  const { t } = useTranslation()
+  if (!about)
+    return (
+      <p className="text-sm" dir="auto">
+        {t('network.offer.noAbout')}
+      </p>
+    )
+  return (
+    <div className="line-clamp-6" dir="auto" data-testid="offer-about">
+      <MarkdownContent content={about} />
+    </div>
+  )
+}
+
 function OfferSummary({
   manifest,
   offer,
@@ -165,9 +185,7 @@ function OfferSummary({
         <h3 className="text-xs font-medium text-muted-foreground">
           {t('network.offer.about')}
         </h3>
-        <p className="line-clamp-6 text-sm whitespace-pre-wrap" dir="auto">
-          {about || t('network.offer.noAbout')}
-        </p>
+        <OfferAbout about={about} />
       </div>
       <div className="grid gap-1" data-testid="offer-responsibilities">
         <h3 className="text-xs font-medium text-muted-foreground">

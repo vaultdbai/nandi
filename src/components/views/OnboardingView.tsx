@@ -222,12 +222,8 @@ export function OnboardingView({
 
   return (
     <div className="flex h-full w-full justify-center overflow-y-auto bg-background p-6">
-      <div
-        className={cn(
-          'flex w-full flex-col gap-8 py-8',
-          step === 'packs' ? 'max-w-3xl' : 'max-w-xl'
-        )}
-      >
+      {/* One width for every step, so the stepper's labels always fit */}
+      <div className="flex w-full max-w-3xl flex-col gap-8 py-8">
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold">{t('onboarding.title')}</h1>
           <p className="text-sm text-muted-foreground">
@@ -361,7 +357,7 @@ function StepIndicator({ current }: { current: OnboardingStepKey }) {
             </span>
             <span
               className={cn(
-                'truncate text-sm',
+                'min-w-0 text-sm leading-tight break-words',
                 active ? 'font-medium' : 'text-muted-foreground'
               )}
             >

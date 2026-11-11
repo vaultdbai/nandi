@@ -2896,7 +2896,7 @@
   "request.done.holdApproved": "承認しました: {{member}} の依頼を進めます",
   "request.done.holdDeclined": "{{member}} の依頼を断りました",
   "onboarding.title": "Nandi へようこそ",
-  "onboarding.subtitle": "簡単な 4 つのステップです。すべて後から変更できます。",
+  "onboarding.subtitle": "簡単なステップだけです。すべて後から変更できます。",
   "onboarding.steps.label": "セットアップ手順",
   "onboarding.steps.name": "名前",
   "onboarding.steps.model": "モデル",
@@ -4961,5 +4961,6 @@
   "settings.account.verified.title": "あなたのメール",
   "settings.account.verified.description": "この Nandi の ID は、最初に接続したメールボックスです。公開リレーと無料トライアルはこのメールであなたを識別します。ここでは変更できません。",
   "settings.account.verified.none": "まだメールが接続されていません。設定 › メール で Outlook または Gmail を接続してください。",
-  "settings.account.verified.from": "{{provider}} から"
+  "settings.account.verified.from": "{{provider}} から",
+  "network.connection.relayTrust.none": "会社のリレーに参加すると適用され、そのメンバーを同僚として信頼します。"
 }

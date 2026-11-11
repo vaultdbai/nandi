@@ -485,7 +485,7 @@ Notes that apply to the whole section:
 
 ### NW-09 — Sharing: What you offer (overlaps the gateway area)
 
-- **What:** Each capability your agents serve sits in one of three columns: Offered, Needs your approval, or Hidden. The page also shows the "About this Nandi" text (the description and NANDI.md body without its private `<!-- -->` comments, `publicAbout`), max concurrent requests and rate limit, and "Edit as file" (opens Studio on the gateway policy). Saving rewrites the NANDI.md `expose`, `hide` and `requireApproval` lists.
+- **What:** Each capability your agents serve sits in one of three columns: Offered, Needs your approval, or Hidden. The page also shows the "About this Nandi" text (the description and NANDI.md body without its private `<!-- -->` comments, `publicAbout`), rendered as markdown (headings and lists, never raw `##`; `OfferAbout`), max concurrent requests and rate limit, and "Edit as file" (opens Studio on the gateway policy). Saving rewrites the NANDI.md `expose`, `hide` and `requireApproval` lists.
 - **Where:** Network → Sharing → What you offer. Code: `src/components/network/OfferView.tsx`, `offer-model.ts`.
 - **Preconditions:** Local agents with `serves:`.
 - **Steps:** 1. Open Network → Sharing → What you offer and click **Edit**. 2. Set one capability to "Hide" and one to "Needs approval". 3. Click **Save**.
@@ -568,7 +568,7 @@ Notes that apply to the whole section:
 ### RL-01 — Connection: Join a company relay, Change
 
 - **What:**
-  - With no relay, the card reads **Join a company relay**: the **Relay URL** (prefilled with `ws://127.0.0.1:8787/relay`), a **Join code** password field and **Paste invite**. Nothing connects or enrolls until you click **Join** (`join_relay`, RL-38). A joined relay shows a toast "Joined <host>. Connecting…"; anything else shows why under the form and changes nothing.
+  - With no relay, the card reads **Join a company relay**: the **Relay URL** (empty, with the example `wss://relay.example.com/relay` as its placeholder; prefilled only with the build's own relay, never a developer address), a **Join code** password field and **Paste invite**. Nothing connects or enrolls until you click **Join** (`join_relay`, RL-38). A joined relay shows a toast "Joined <host>. Connecting…"; anything else shows why under the form and changes nothing.
   - Once joined, the URL shows as text with **Change…**, **Test connection**, **Copy invite message** and **Disconnect**. The text never shows this instance's `?token=`; neither do invites, `NetworkSnapshot.relayUrl` or `RelayStatus.relayUrl` (the command, `GET /api/relay/status` and `relay://status` strip it: `RelayStatus::without_token`).
   - The URL goes to `~/.nandi/config.json` (`relay_url`), and the app reconnects on every launch.
 - **Where:** Network → Connection (`src/components/views/ConnectionView.tsx` `RelayCard`, `components/network/JoinRelayFields.tsx`, `src/hooks/useRelay.ts` `useJoinRelay`, `useCopyInvite`, `DEFAULT_RELAY_URL`). Code: `commands/relay.rs` (`get_relay_status`, `join_relay`, `get_relay_invite`), `services/relay/join.rs`, `services/relay/mod.rs` (`resolve_url`). HTTP: `GET /api/relay/status`, `POST /api/relay/join {"url","joinCode"}`, `GET /api/relay/invite`. Event: `relay://status`.
@@ -1119,7 +1119,7 @@ Notes that apply to the whole section:
 
 ### RL-34 — Everyone on the company's relay is trusted
 
-- **What:** When this Nandi's relay connection carries an instance token (the relay needs a secret, so only enrolled instances are on it) and the relay isn't a public one, every member the relay lists is trusted, as if marked **Trusted peer**, unless the owner turns off **Trust everyone on this relay** (Network › Connection, `trust.relayMembers`, on by default). Pause and Block still apply. On an open relay the switch is disabled and trust stays manual, and on the public relay too (anyone can sign in there): "Anyone can sign in to the public relay, so you trust people one by one." (`RelayTrust.public`). Revoking someone on the relay (RL-30) takes them off it, so they lose this trust too.
+- **What:** When this Nandi's relay connection carries an instance token (the relay needs a secret, so only enrolled instances are on it) and the relay isn't a public one, every member the relay lists is trusted, as if marked **Trusted peer**, unless the owner turns off **Trust everyone on this relay** (Network › Connection, `trust.relayMembers`, on by default). Pause and Block still apply. Where it can't apply the switch shows off and disabled, whatever was saved, with the reason: no relay yet ("Applies once you join your company's relay…"), an open relay, or the public relay ("Anyone with an email can join the public relay, so you trust people one by one.", `RelayTrust.public`); the switch and the words always agree. Revoking someone on the relay (RL-30) takes them off it, so they lose this trust too.
 - **Where:** `services/team/trust.rs` (`is_trusted`, `trusted_by_relay`, `on_a_secured_relay`, `relay_trust`, `set_trusts_relay_members`), used by `a2a/executor.rs` (agent and workflow trust checks) and `team/trust_requests.rs`. Commands `get_relay_trust`, `set_relay_trust`; HTTP `GET`/`PUT /api/trust/relay`. UI: `ConnectionView.tsx` (`RelayTrustCard`).
 - **Preconditions:** A relay with `NANDI_RELAY_SECRET` and a join code, three Nandis enrolled on it.
 - **Steps:**

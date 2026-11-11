@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { render, screen, waitFor } from '@/test/test-utils'
+import { render, screen, waitFor, within } from '@/test/test-utils'
 import { commands } from '@/lib/tauri-bindings'
 import { ok } from '@/hooks/useSharedAgents.fixtures'
 import {
@@ -88,6 +88,64 @@ describe('ConnectionView', () => {
       joinRelay: ok({ kind: 'joined', relay: 'wss://relay.acme.test/relay' }),
       ...overrides,
     })
+
+  it('never prefills a developer address; a build relay prefills itself', async () => {
+    disconnected()
+    render(<ConnectionView />)
+    const url = await screen.findByLabelText('Relay URL')
+    expect(url).toHaveValue('')
+    expect(url).toHaveAttribute('placeholder', 'wss://relay.example.com/relay')
+    expect(document.body).not.toHaveTextContent('127.0.0.1:8787')
+  })
+
+  it("prefills the build's own relay", async () => {
+    disconnected({
+      getRelayStatus: ok(
+        relayStatusFixture({
+          connected: false,
+          state: 'disconnected',
+          relayUrl: null,
+          relayUrlSource: null,
+          builtInUrl: 'wss://relay.acme.test/relay',
+        })
+      ),
+    })
+    render(<ConnectionView />)
+    expect(await screen.findByLabelText('Relay URL')).toHaveValue(
+      'wss://relay.acme.test/relay'
+    )
+  })
+
+  it('shows trust off, with the reason, where it cannot apply', async () => {
+    // Saved as on, but no relay yet
+    disconnected({
+      getRelayTrust: ok({ enabled: true, secured: false, public: false }),
+    })
+    const { unmount } = render(<ConnectionView />)
+    const card = await screen.findByTestId('relay-trust')
+    const toggle = await screen.findByRole('switch')
+    expect(toggle).not.toBeChecked()
+    expect(toggle).toBeDisabled()
+    expect(card).toHaveTextContent("Applies once you join your company's relay")
+    unmount()
+
+    // On the public relay: off, and it says why
+    disconnected({
+      getRelayStatus: ok(
+        relayStatusFixture({ relayUrl: 'wss://relay.vaultdb.ai/relay' })
+      ),
+      getRelayTrust: ok({ enabled: true, secured: false, public: true }),
+      getPublicRelayAccount: ok({ kind: 'notPublic' }),
+    })
+    render(<ConnectionView />)
+    const publicCard = await screen.findByTestId('relay-trust')
+    await waitFor(() =>
+      expect(publicCard).toHaveTextContent(
+        'Anyone with an email can join the public relay'
+      )
+    )
+    expect(within(publicCard).getByRole('switch')).not.toBeChecked()
+  })
 
   it('joins a company relay with its address and join code', async () => {
     disconnected()

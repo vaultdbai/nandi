@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { render, screen, waitFor } from '@/test/test-utils'
+import { render, screen, waitFor, within } from '@/test/test-utils'
 import { toast } from 'sonner'
 import { commands } from '@/lib/tauri-bindings'
 import type {
@@ -305,6 +305,29 @@ describe('OnboardingView', () => {
       expect(steps.querySelector('[aria-current="step"]')).toHaveTextContent(
         'Email'
       )
+    })
+
+    it('names no step count, and keeps every step label whole', async () => {
+      const user = userEvent.setup()
+      render(<OnboardingView />)
+      expect(
+        await screen.findByText(
+          'A few quick steps. You can change all of this later.'
+        )
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/Four quick steps/)).toBeNull()
+      const steps = screen.getByRole('list', { name: 'Setup steps' })
+      const wizard = steps.parentElement
+      expect(wizard).toHaveClass('max-w-3xl')
+      for (const label of ['Name', 'Model', 'Computer', 'Network']) {
+        const item = within(steps).getByText(label)
+        expect(item).not.toHaveClass('truncate')
+      }
+      // The same width on the narrower steps (the network step here)
+      await toNetwork(user)
+      expect(
+        screen.getByRole('list', { name: 'Setup steps' }).parentElement
+      ).toHaveClass('max-w-3xl')
     })
 
     it('says who the user is from the connected mailbox, and Change edits it', async () => {

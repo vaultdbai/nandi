@@ -435,7 +435,7 @@ Notes that apply to the whole section:
 ### GW-18 — What you offer: the editor, limits and Advanced (Edit as file)
 
 - **What:** This extends NW-09.
-  - **Summary:** "About this Nandi" (the description and the body), "What you're responsible for" (the `responsibilities:` as tags, or "None listed yet…"), the three columns (Offered, Needs your approval, Hidden), with each capability and the agents that serve it.
+  - **Summary:** "About this Nandi" (the description and the body, rendered as markdown), "What you're responsible for" (the `responsibilities:` as tags, or "None listed yet…"), the three columns (Offered, Needs your approval, Hidden), with each capability and the agents that serve it.
     - When `expose` is empty, the note reads "Everything your agents can do is offered, except what you hide."
     - When the approval column has items, it reads "Requests for these wait for you in the Inbox."
     - The limits line reads "Limits: {max} at a time · {rate} per caller per hour".

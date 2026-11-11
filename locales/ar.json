@@ -2896,7 +2896,7 @@
   "request.done.holdApproved": "تمت الموافقة: يستمر طلب {{member}}",
   "request.done.holdDeclined": "رُفض طلب {{member}}",
   "onboarding.title": "مرحبًا بك في Nandi",
-  "onboarding.subtitle": "أربع خطوات سريعة. يمكنك تغيير كل هذا لاحقًا.",
+  "onboarding.subtitle": "بضع خطوات سريعة. يمكنك تغيير كل هذا لاحقًا.",
   "onboarding.steps.label": "خطوات الإعداد",
   "onboarding.steps.name": "الاسم",
   "onboarding.steps.model": "النموذج",
@@ -4961,5 +4961,6 @@
   "settings.account.verified.title": "بريدك الإلكتروني",
   "settings.account.verified.description": "هوية Nandi هذا هي صندوق البريد الذي ربطته أولًا. يعرفك المرحّل العام والتجربة المجانية من خلاله. لا يمكن تغييره هنا.",
   "settings.account.verified.none": "لم يُربط أي بريد إلكتروني بعد. اربط Outlook أو Gmail في الإعدادات › البريد الإلكتروني.",
-  "settings.account.verified.from": "من {{provider}}"
+  "settings.account.verified.from": "من {{provider}}",
+  "network.connection.relayTrust.none": "ينطبق عند انضمامك إلى مرحّل شركتك: يُعامل أعضاؤه حينها كزملاء موثوقين."
 }
