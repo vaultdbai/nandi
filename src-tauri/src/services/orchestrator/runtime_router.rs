@@ -182,7 +182,8 @@ pub fn approval_tool_kinds(approval: &[String]) -> Vec<String> {
     tool_kinds(approval)
 }
 
-/// Nandi's tool names as ACP kinds; other names stay, matched by title
+/// Nandi's tool names as ACP kinds; other names stay, matched by title to
+/// deny or ask first (a title never allows, `acp::PermissionPolicy`)
 fn tool_kinds(tools: &[String]) -> Vec<String> {
     let mut kinds: Vec<String> = tools
         .iter()

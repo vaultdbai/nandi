@@ -128,11 +128,12 @@ pub struct AcpAgentInfo {
 pub enum PermissionPolicy {
     #[default]
     AllowAll,
-    /// Allowed when the tool's title or ACP kind contains one of these
-    /// (case-insensitive), e.g. `read`, `edit`, `Bash`
+    /// Allowed when the call's ACP kind is one of these (case-insensitive),
+    /// e.g. `read`, `edit`. The CLI writes the title, so it never allows
     Allow(Vec<String>),
     DenyAll,
-    /// `allow` (`None`: everything) minus `deny`, which wins
+    /// `allow` (`None`: everything) minus `deny`, which wins and also
+    /// matches a word in the title
     Except {
         allow: Option<Vec<String>>,
         deny: Vec<String>,
@@ -157,26 +158,31 @@ impl PermissionPolicy {
         match self {
             Self::AllowAll => true,
             Self::DenyAll => false,
-            Self::Allow(tools) => matches_tool(tools, title, kind),
+            Self::Allow(tools) => matches_kind(tools, kind),
             Self::Except { allow, deny } => {
                 !matches_tool(deny, title, kind)
-                    && allow
-                        .as_ref()
-                        .is_none_or(|allow| matches_tool(allow, title, kind))
+                    && allow.as_ref().is_none_or(|allow| matches_kind(allow, kind))
             }
         }
     }
 }
 
+/// Whether one of `tools` is the call's ACP kind (case-insensitive). The only
+/// match that may allow a call: the agent's CLI writes the title, so
+/// `cat thread.txt` must not pass as `read`.
+fn matches_kind(tools: &[String], kind: Option<&str>) -> bool {
+    kind.is_some_and(|kind| tools.iter().any(|tool| tool.eq_ignore_ascii_case(kind)))
+}
+
 /// Whether one of `tools` names the call: its ACP kind, or a word in its
-/// title (case-insensitive)
+/// title (case-insensitive). Only for the safe direction: to deny a call or
+/// to ask a person first.
 fn matches_tool(tools: &[String], title: &str, kind: Option<&str>) -> bool {
     let title = title.to_lowercase();
-    let kind = kind.map(str::to_lowercase);
-    tools
-        .iter()
-        .map(|t| t.to_lowercase())
-        .any(|tool| title.contains(&tool) || kind.as_deref().is_some_and(|k| k == tool))
+    matches_kind(tools, kind)
+        || tools
+            .iter()
+            .any(|tool| title.contains(&tool.to_lowercase()))
 }
 
 /// A harness tool call waiting for a person's approval
@@ -1029,6 +1035,42 @@ pub(crate) mod tests {
                 Some("read")
             ),
             Decision::Allow
+        );
+    }
+
+    #[test]
+    fn a_title_never_allows_a_call_but_can_ask_or_deny() {
+        let read = PermissionPolicy::Allow(vec!["read".into()]);
+        let none = Approvals::default();
+        // (title, kind, the decision under `allowed-tools: [read_file]`)
+        let cases = [
+            ("cat thread.txt", Some("execute"), Decision::Reject),
+            (
+                "npm run build && echo already",
+                Some("execute"),
+                Decision::Reject,
+            ),
+            ("Read the docs", None, Decision::Reject),
+            ("Read a.txt", Some("read"), Decision::Allow),
+        ];
+        for (title, kind, expected) in cases {
+            assert_eq!(decide(&read, &none, title, kind), expected, "{title}");
+        }
+
+        let ask_on_title = Approvals {
+            kinds: vec!["deploy".into()],
+            asker: None,
+        };
+        assert_eq!(
+            decide(&read, &ask_on_title, "Read deploy.log", Some("read")),
+            Decision::Ask,
+            "a title can add an approval"
+        );
+        let deny_on_title = PermissionPolicy::from_tools(&["read".into()], &["secret".into()]);
+        assert_eq!(
+            decide(&deny_on_title, &none, "Read secret.env", Some("read")),
+            Decision::Reject,
+            "a title can add a denial"
         );
     }
 
