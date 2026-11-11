@@ -4,8 +4,24 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { commands, type JsonValue } from '@/lib/tauri-bindings'
 import { CORE_EVENT_NAMES, type NandiEvent } from './events'
+import { createEventBus } from './event-bus'
 import { marketplaceFilter } from './marketplace-filter'
 import type { NandiClient } from './types'
+
+/** One `listen()` per core event, shared by every subscriber */
+const coreEvents = createEventBus(emit => {
+  const subscriptions: Promise<UnlistenFn>[] = CORE_EVENT_NAMES.map(name =>
+    listen(name, e => emit({ event: name, payload: e.payload } as NandiEvent))
+  )
+  return {
+    ready: Promise.all(subscriptions).then(() => undefined),
+    unsubscribe: () => {
+      for (const subscription of subscriptions) {
+        void subscription.then(unlisten => unlisten())
+      }
+    },
+  }
+})
 
 export const tauriClient: NandiClient = {
   transport: 'tauri',
@@ -544,19 +560,5 @@ export const tauriClient: NandiClient = {
 
   openExternal: url => openUrl(url),
 
-  subscribe(handler) {
-    const subscriptions: Promise<UnlistenFn>[] = CORE_EVENT_NAMES.map(name =>
-      listen(name, e =>
-        handler({ event: name, payload: e.payload } as NandiEvent)
-      )
-    )
-    return {
-      ready: Promise.all(subscriptions).then(() => undefined),
-      unsubscribe: () => {
-        for (const subscription of subscriptions) {
-          void subscription.then(unlisten => unlisten())
-        }
-      },
-    }
-  },
+  subscribe: handler => coreEvents.subscribe(handler),
 }

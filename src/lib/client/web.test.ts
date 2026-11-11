@@ -141,4 +141,16 @@ describe('webClient', () => {
     subscription.unsubscribe()
     expect(second?.closed).toBe(true)
   })
+
+  it('shares one WebSocket between subscribers', () => {
+    const first = webClient.subscribe(vi.fn())
+    const second = webClient.subscribe(vi.fn())
+
+    expect(FakeSocket.instances).toHaveLength(1)
+
+    first.unsubscribe()
+    expect(FakeSocket.instances[0]?.closed).toBe(false)
+    second.unsubscribe()
+    expect(FakeSocket.instances[0]?.closed).toBe(true)
+  })
 })

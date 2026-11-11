@@ -6,6 +6,7 @@
 
 import type { AccountKind, Result } from '@/lib/bindings'
 import type { NandiEvent } from './events'
+import { createEventBus } from './event-bus'
 import { marketplaceQuery } from './marketplace-filter'
 import type { NandiClient } from './types'
 
@@ -67,6 +68,58 @@ function query(
   const encoded = search.toString()
   return encoded ? `?${encoded}` : ''
 }
+
+/**
+ * One WebSocket for the page, shared by every subscriber. It reconnects
+ * with backoff and asks for a resync, as events sent meanwhile are lost
+ */
+const socketEvents = createEventBus(emit => {
+  let socket: WebSocket | null = null
+  let retryDelay = RECONNECT_MIN_MS
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let connectedBefore = false
+  let closed = false
+  let markReady: () => void = () => undefined
+  const ready = new Promise<void>(resolve => {
+    markReady = resolve
+    setTimeout(resolve, READY_TIMEOUT_MS)
+  })
+
+  const connect = () => {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    socket = new WebSocket(`${protocol}//${location.host}/ws`)
+
+    socket.onopen = () => {
+      retryDelay = RECONNECT_MIN_MS
+      // Anything emitted while disconnected is only in the DB now
+      if (connectedBefore) emit({ event: 'nandi://resync', payload: {} })
+      connectedBefore = true
+      markReady()
+    }
+    socket.onmessage = message => {
+      try {
+        emit(JSON.parse(String(message.data)) as NandiEvent)
+      } catch {
+        // Ignore malformed frames
+      }
+    }
+    socket.onclose = () => {
+      if (closed) return
+      retryTimer = setTimeout(connect, retryDelay)
+      retryDelay = Math.min(retryDelay * 2, RECONNECT_MAX_MS)
+    }
+  }
+
+  connect()
+  return {
+    ready,
+    unsubscribe: () => {
+      closed = true
+      clearTimeout(retryTimer)
+      socket?.close()
+    },
+  }
+})
 
 export const webClient: NandiClient = {
   transport: 'web',
@@ -855,51 +908,5 @@ export const webClient: NandiClient = {
     return Promise.resolve()
   },
 
-  subscribe(handler) {
-    let socket: WebSocket | null = null
-    let retryDelay = RECONNECT_MIN_MS
-    let retryTimer: ReturnType<typeof setTimeout> | undefined
-    let connectedBefore = false
-    let closed = false
-    let markReady: () => void = () => undefined
-    const ready = new Promise<void>(resolve => {
-      markReady = resolve
-      setTimeout(resolve, READY_TIMEOUT_MS)
-    })
-
-    const connect = () => {
-      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-      socket = new WebSocket(`${protocol}//${location.host}/ws`)
-
-      socket.onopen = () => {
-        retryDelay = RECONNECT_MIN_MS
-        // Anything emitted while disconnected is only in the DB now
-        if (connectedBefore) handler({ event: 'nandi://resync', payload: {} })
-        connectedBefore = true
-        markReady()
-      }
-      socket.onmessage = message => {
-        try {
-          handler(JSON.parse(String(message.data)) as NandiEvent)
-        } catch {
-          // Ignore malformed frames
-        }
-      }
-      socket.onclose = () => {
-        if (closed) return
-        retryTimer = setTimeout(connect, retryDelay)
-        retryDelay = Math.min(retryDelay * 2, RECONNECT_MAX_MS)
-      }
-    }
-
-    connect()
-    return {
-      ready,
-      unsubscribe: () => {
-        closed = true
-        clearTimeout(retryTimer)
-        socket?.close()
-      },
-    }
-  },
+  subscribe: handler => socketEvents.subscribe(handler),
 }
