@@ -80,11 +80,10 @@ impl<'a> Gmail<'a> {
 
     async fn history_id(&self) -> Result<String, MailError> {
         let profile = self.api.get(&self.url(&["profile"], &[]), &[]).await?;
-        match profile.get("historyId") {
-            Some(Value::String(id)) => Ok(id.clone()),
-            Some(Value::Number(id)) => Ok(id.to_string()),
-            _ => Err(MailError::Failed("Gmail returned no history ID".into())),
-        }
+        profile
+            .get("historyId")
+            .and_then(history_id)
+            .ok_or_else(|| MailError::Failed("Gmail returned no history ID".into()))
     }
 
     /// Inbox and sent mail added since `cursor` (`{"historyId": …}`), or
@@ -96,12 +95,12 @@ impl<'a> Gmail<'a> {
             .map(str::to_string);
         if let Some(start) = stored {
             match self.history(&start).await {
-                Ok((ids, latest)) => {
+                Ok((ids, read_to)) => {
                     let mut headers = self.headers(&ids).await?;
                     headers.retain(|h| h.at >= since);
                     return Ok(Changes {
                         headers,
-                        cursor: json!({ "historyId": latest.unwrap_or(start) }),
+                        cursor: json!({ "historyId": read_to }),
                         restarted: false,
                     });
                 }
@@ -121,11 +120,13 @@ impl<'a> Gmail<'a> {
         })
     }
 
-    /// IDs of inbox and sent mail added since history `start`, and the
-    /// newest history ID
-    async fn history(&self, start: &str) -> Result<(Vec<String>, Option<String>), MailError> {
-        let mut ids = Vec::new();
-        let mut latest = None;
+    /// IDs of inbox and sent mail added since history `start` (at most
+    /// `MAX_MESSAGES`), and the history ID they were read up to: the
+    /// mailbox's newest when everything was read, else the last record
+    /// taken, so the next read goes on from there and skips nothing
+    async fn history(&self, start: &str) -> Result<(Vec<String>, String), MailError> {
+        let mut ids: Vec<String> = Vec::new();
+        let mut read_to = start.to_string();
         let mut page_token = String::new();
         for _ in 0..MAX_PAGES {
             let mut params = vec![
@@ -137,40 +138,34 @@ impl<'a> Gmail<'a> {
                 params.push(("pageToken", &page_token));
             }
             let page = self.api.get(&self.url(&["history"], &params), &[]).await?;
-            if let Some(id) = page.get("historyId") {
-                latest = id
-                    .as_str()
-                    .map(str::to_string)
-                    .or_else(|| id.as_u64().map(|n| n.to_string()));
-            }
             for entry in page
                 .get("history")
                 .and_then(Value::as_array)
                 .into_iter()
                 .flatten()
             {
-                for added in entry
-                    .get("messagesAdded")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                {
-                    let message = added.get("message").unwrap_or(&Value::Null);
-                    let labels = labels(message);
-                    let wanted = labels.iter().any(|l| *l == "INBOX" || *l == "SENT")
-                        && !labels.iter().any(|l| SKIPPED_LABELS.contains(l));
-                    let id = str_of(message, "id");
-                    if wanted && !id.is_empty() && !ids.iter().any(|i| i == id) {
-                        ids.push(id.to_string());
-                    }
+                let added: Vec<String> = added_mail(entry).filter(|id| !ids.contains(id)).collect();
+                if !ids.is_empty() && ids.len() + added.len() > MAX_MESSAGES {
+                    return Ok((ids, read_to));
+                }
+                ids.extend(added);
+                if let Some(id) = entry.get("id").and_then(history_id) {
+                    read_to = id;
                 }
             }
             match page.get("nextPageToken").and_then(Value::as_str) {
                 Some(token) => page_token = token.to_string(),
-                None => break,
+                None => {
+                    // All of it: up to the mailbox's newest
+                    if let Some(newest) = page.get("historyId").and_then(history_id) {
+                        read_to = newest;
+                    }
+                    return Ok((ids, read_to));
+                }
             }
         }
-        Ok((ids, latest))
+        // Out of pages: the rest waits for the next read
+        Ok((ids, read_to))
     }
 
     /// IDs of inbox and sent mail since `since`, newest first
@@ -333,6 +328,30 @@ fn older_query(before: i64, floor: Option<i64>) -> String {
 /// Inbox and sent mail, nothing else
 fn mailbox_query() -> &'static str {
     "(in:inbox OR in:sent) -in:chats -in:spam -in:trash -in:drafts"
+}
+
+/// The inbox and sent mail one history record added, by message ID
+fn added_mail(entry: &Value) -> impl Iterator<Item = String> + '_ {
+    entry
+        .get("messagesAdded")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|added| added.get("message").unwrap_or(&Value::Null))
+        .filter(|message| {
+            let labels = labels(message);
+            labels.iter().any(|l| *l == "INBOX" || *l == "SENT")
+                && !labels.iter().any(|l| SKIPPED_LABELS.contains(l))
+        })
+        .map(|message| str_of(message, "id").to_string())
+        .filter(|id| !id.is_empty())
+}
+
+/// A history ID, which Gmail sends as a string (or, now and then, a number)
+fn history_id(id: &Value) -> Option<String> {
+    id.as_str()
+        .map(str::to_string)
+        .or_else(|| id.as_u64().map(|n| n.to_string()))
 }
 
 fn labels(message: &Value) -> Vec<&str> {

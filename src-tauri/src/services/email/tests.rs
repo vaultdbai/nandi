@@ -729,6 +729,46 @@ async fn gmail_history_too_old_reads_the_window_again() {
 }
 
 #[tokio::test]
+async fn a_gmail_history_too_long_for_one_read_moves_the_cursor_only_as_far_as_read() {
+    // Every page has one more record and another page after it
+    let mock = mock(|req| {
+        if req.path != "/gmail/users/me/history" {
+            return gmail_api(req);
+        }
+        let page: u32 = req
+            .query
+            .get("pageToken")
+            .map_or(0, |token| token.parse().unwrap());
+        (
+            200,
+            json!({
+                "historyId": "999",
+                "history": [{"id": (201 + page).to_string(), "messagesAdded": [
+                    {"message": {"id": "g3", "labelIds": ["INBOX"]}},
+                ]}],
+                "nextPageToken": (page + 1).to_string(),
+            }),
+        )
+    })
+    .await;
+    let (state, _) = state_with(&mock).await;
+    connected(&state, MailProvider::Gmail).await;
+    save_setting(
+        &state,
+        MailProvider::Gmail.cursor_key(),
+        json!({"historyId": "200"}),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(check_all(&state).await.found, 1);
+    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    // Ten pages read: up to the tenth record, not the mailbox's newest
+    assert_eq!(cursor, json!({"historyId": "210"}));
+    state.shutdown();
+}
+
+#[tokio::test]
 async fn both_mailboxes_go_to_the_chief_of_staff_in_one_run() {
     let mock = mock(|req| {
         if req.path.starts_with("/graph") {
