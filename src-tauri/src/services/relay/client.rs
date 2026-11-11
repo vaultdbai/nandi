@@ -7,9 +7,11 @@
 //!
 //! One supervisor task per `connect` owns the socket: it reads frames,
 //! writes queued messages, and sends heartbeats. Requests that expect an
-//! answer (`register`, `query_capability`, `route`, `delegate_task`) park a oneshot
-//! that the reader resolves. A new `connect` (or `connect("")`, which
-//! disconnects) cancels the previous supervisor.
+//! answer (`register`, `query_capability`, `route`, `delegate_task`, …)
+//! park a waiter in a `Pending` that the reader resolves, and wait in
+//! `await_reply`; a lost connection fails them with `RelayUnavailable`.
+//! A new `connect` (or `connect("")`, which disconnects) cancels the
+//! previous supervisor.
 //!
 //! The instance token is configured with the relay URL as a `token` query
 //! parameter (`wss://relay.example/relay?token=…`, see `server.rs`); the
@@ -69,6 +71,7 @@
 //! us offline.
 
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -172,6 +175,64 @@ struct Handlers {
     groups: Vec<Arc<Handler<GroupSignal>>>,
 }
 
+/// Calls waiting for the relay's answer, by key. Several may wait on one
+/// key (the same query asked twice); the answer goes to each.
+struct Pending<K, V> {
+    waiting: HashMap<K, Vec<oneshot::Sender<Result<V, String>>>>,
+}
+
+impl<K, V> Default for Pending<K, V> {
+    fn default() -> Self {
+        Self {
+            waiting: HashMap::new(),
+        }
+    }
+}
+
+impl<K: Eq + Hash, V: Clone> Pending<K, V> {
+    /// Parks a call waiting for `key`'s answer. Calls that gave up (timed
+    /// out, or failed to send) are dropped here.
+    fn insert(&mut self, key: K) -> oneshot::Receiver<Result<V, String>> {
+        self.waiting.retain(|_, waiters| {
+            waiters.retain(|waiter| !waiter.is_closed());
+            !waiters.is_empty()
+        });
+        let (tx, rx) = oneshot::channel();
+        self.waiting.entry(key).or_default().push(tx);
+        rx
+    }
+
+    /// Answers every call waiting for `key`
+    fn resolve(&mut self, key: &K, answer: Result<V, String>) {
+        for waiter in self.waiting.remove(key).unwrap_or_default() {
+            let _ = waiter.send(answer.clone());
+        }
+    }
+
+    /// Fails every waiting call with `error`
+    fn fail_all(&mut self, error: &str) {
+        for (_, waiters) in self.waiting.drain() {
+            for waiter in waiters {
+                let _ = waiter.send(Err(error.to_string()));
+            }
+        }
+    }
+}
+
+/// Waits up to [`REQUEST_TIMEOUT`] for the relay to answer what `rx` was
+/// parked for. A call dropped unanswered means the connection went
+/// ([`super::RelayUnavailable`]); a timeout says the relay didn't `what`.
+async fn await_reply<V>(rx: oneshot::Receiver<Result<V, String>>, what: &str) -> Result<V, String> {
+    match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
+        Ok(Ok(answer)) => answer,
+        Ok(Err(_)) => Err(super::RelayUnavailable.into()),
+        Err(_) => Err(format!(
+            "The relay didn't {what} within {}s",
+            REQUEST_TIMEOUT.as_secs()
+        )),
+    }
+}
+
 #[derive(Default)]
 struct Shared {
     instance_id: String,
@@ -194,7 +255,7 @@ struct Shared {
     reason: Option<String>,
     last_connected_at: Option<Timestamp>,
     last_heartbeat_at: Option<Timestamp>,
-    waiting_registered: Vec<oneshot::Sender<Result<(), String>>>,
+    waiting_registered: Pending<(), ()>,
     /// The relay confirmed our registration on this connection (queries
     /// before it are refused with `not_registered`)
     registered: bool,
@@ -208,28 +269,28 @@ struct Shared {
     /// This device's public keys, read on the first `connect`
     public_keys: Option<PublicKeys>,
     /// Key queries by instance ID
-    waiting_keys: HashMap<String, Vec<oneshot::Sender<Option<PublicKeys>>>>,
-    waiting_queries: HashMap<String, Vec<oneshot::Sender<Vec<AgentCard>>>>,
+    waiting_keys: Pending<String, Option<PublicKeys>>,
+    waiting_queries: Pending<String, Vec<AgentCard>>,
     /// Submissions by task ID: held (`Ok(true)`), with the provider, or
     /// the relay's refusal
-    waiting_acks: HashMap<String, oneshot::Sender<Result<bool, String>>>,
+    waiting_acks: Pending<String, bool>,
     /// `Reassign`s by task ID
-    waiting_reassign: HashMap<String, oneshot::Sender<Result<(), String>>>,
+    waiting_reassign: Pending<String, ()>,
     /// Mail handled on this connection (dropped when it comes again)
     handled_mail: HashSet<u64>,
     /// Our gateway card (wave final); re-sent on reconnect
     gateway: Option<GatewayCard>,
-    waiting_directory: Vec<oneshot::Sender<Vec<MemberRecord>>>,
+    waiting_directory: Pending<(), Vec<MemberRecord>>,
     /// People searches by `(topic, limit)`
-    waiting_people: HashMap<(String, u32), Vec<oneshot::Sender<PeopleSearch>>>,
+    waiting_people: Pending<(String, u32), PeopleSearch>,
     /// Wave A: what we provide; carried by every `RegisterInstance`
     capabilities: Vec<CapabilityPresence>,
     tools: Vec<String>,
-    waiting_presence: HashMap<String, Vec<oneshot::Sender<Vec<InstancePresence>>>>,
+    waiting_presence: Pending<String, Vec<InstancePresence>>,
     /// Route queries by query ID
-    waiting_routes: HashMap<String, oneshot::Sender<RoutePlan>>,
+    waiting_routes: Pending<String, RoutePlan>,
     /// Group calls by request ID
-    waiting_groups: HashMap<String, oneshot::Sender<GroupOutcome>>,
+    waiting_groups: Pending<String, GroupOutcome>,
     /// Who sees whom, from the relay's last `Registered`
     visibility: Option<super::RelayVisibility>,
     /// The relay's `no_shared_group` errors, by message: the refusal that
@@ -241,6 +302,20 @@ struct Shared {
 }
 
 impl Shared {
+    /// Fails every call waiting for an answer (not those waiting for the
+    /// registration) with `error`
+    fn fail_calls(&mut self, error: &str) {
+        self.waiting_keys.fail_all(error);
+        self.waiting_queries.fail_all(error);
+        self.waiting_acks.fail_all(error);
+        self.waiting_reassign.fail_all(error);
+        self.waiting_directory.fail_all(error);
+        self.waiting_people.fail_all(error);
+        self.waiting_presence.fail_all(error);
+        self.waiting_routes.fail_all(error);
+        self.waiting_groups.fail_all(error);
+    }
+
     /// A refusal's words as the app tells them: the coded ones the relay
     /// announced in an `Error` just before
     fn retell(&mut self, message: &str) -> String {
@@ -517,23 +592,11 @@ impl Inner {
     /// The keys the relay pinned for `instance`, or `None`
     async fn query_keys(&self, instance: &str) -> Result<Option<PublicKeys>, String> {
         self.until_registered().await?;
-        let (tx, rx) = oneshot::channel();
-        self.lock()
-            .waiting_keys
-            .entry(instance.to_string())
-            .or_default()
-            .push(tx);
+        let rx = self.lock().waiting_keys.insert(instance.to_string());
         self.send(RelayMessage::PublicKeysQuery {
             instance_ids: vec![instance.to_string()],
         })?;
-        match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-            Ok(Ok(keys)) => Ok(keys),
-            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
-            Err(_) => Err(format!(
-                "The relay didn't answer for {instance}'s keys within {}s",
-                REQUEST_TIMEOUT.as_secs()
-            )),
-        }
+        await_reply(rx, &format!("answer for {instance}'s keys")).await
     }
 
     /// Starts the opener task, once
@@ -912,8 +975,7 @@ impl Inner {
                 Err(e) => log::info!("Task {}: {target} left out of the plan: {e}", task.id),
             }
         }
-        let (tx, rx) = oneshot::channel();
-        self.lock().waiting_acks.insert(task.id.clone(), tx);
+        let rx = self.lock().waiting_acks.insert(task.id.clone());
         let message = RelayMessage::SubmitTask {
             task_id: task.id.clone(),
             kind: crate::services::a2a::route::kind_of(&task.capability),
@@ -923,43 +985,16 @@ impl Inner {
             signature: self.token(),
             attempts,
         };
-        if let Err(e) = self.send(message) {
-            self.lock().waiting_acks.remove(&task.id);
-            return Err(e);
-        }
-        match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-            Ok(Ok(Ok(held))) => Ok(Submitted { held }),
-            Ok(Ok(Err(e))) => Err(e),
-            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
-            Err(_) => {
-                self.lock().waiting_acks.remove(&task.id);
-                Err(format!(
-                    "The relay didn't take the task within {}s",
-                    REQUEST_TIMEOUT.as_secs()
-                ))
-            }
-        }
+        self.send(message)?;
+        let held = await_reply(rx, "take the task").await?;
+        Ok(Submitted { held })
     }
 
     /// Sends `Reassign` and waits for the relay's answer
     async fn reassign_at_relay(&self, message: RelayMessage, task_id: &str) -> Result<(), String> {
-        let (tx, rx) = oneshot::channel();
-        self.lock().waiting_reassign.insert(task_id.to_string(), tx);
-        if let Err(e) = self.send(message) {
-            self.lock().waiting_reassign.remove(task_id);
-            return Err(e);
-        }
-        match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-            Ok(Ok(answer)) => answer,
-            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
-            Err(_) => {
-                self.lock().waiting_reassign.remove(task_id);
-                Err(format!(
-                    "The relay didn't answer within {}s",
-                    REQUEST_TIMEOUT.as_secs()
-                ))
-            }
-        }
+        let rx = self.lock().waiting_reassign.insert(task_id.to_string());
+        self.send(message)?;
+        await_reply(rx, "answer").await
     }
 
     /// Asks for what waits in our mailbox, when registered
@@ -1035,22 +1070,9 @@ impl Inner {
             shared.registered = false;
             shared.state = RelayConnectionState::Reconnecting;
             shared.reason = Some("Lost the relay connection".to_string());
-            for waiter in shared.waiting_registered.drain(..) {
-                let _ = waiter.send(Err(super::RelayUnavailable.into()));
-            }
-            shared.waiting_queries.clear();
-            shared.waiting_directory.clear();
-            shared.waiting_people.clear();
-            shared.waiting_presence.clear();
-            shared.waiting_routes.clear();
-            shared.waiting_groups.clear();
-            shared.waiting_keys.clear();
-            for (_, waiter) in shared.waiting_acks.drain() {
-                let _ = waiter.send(Err(super::RelayUnavailable.into()));
-            }
-            for (_, waiter) in shared.waiting_reassign.drain() {
-                let _ = waiter.send(Err(super::RelayUnavailable.into()));
-            }
+            let unavailable = super::RelayUnavailable.to_string();
+            shared.waiting_registered.fail_all(&unavailable);
+            shared.fail_calls(&unavailable);
         }
         self.emit_status();
     }
@@ -1062,7 +1084,7 @@ impl Inner {
         };
         match message {
             RelayMessage::Registered { visibility, .. } => {
-                let waiters = {
+                {
                     let mut shared = self.lock();
                     shared.registered = true;
                     shared.visibility = Some(visibility.into());
@@ -1080,10 +1102,7 @@ impl Inner {
                     if let Some(outbound) = shared.outbound.as_ref() {
                         let _ = outbound.send(RelayMessage::InboxSync {});
                     }
-                    std::mem::take(&mut shared.waiting_registered)
-                };
-                for waiter in waiters {
-                    let _ = waiter.send(Ok(()));
+                    shared.waiting_registered.resolve(&(), Ok(()));
                 }
                 // The visibility may have changed
                 self.emit_status();
@@ -1094,22 +1113,13 @@ impl Inner {
                 request_id,
                 outcome,
             } => {
-                if let Some(waiter) = self.lock().waiting_groups.remove(&request_id) {
-                    let _ = waiter.send(outcome);
-                }
+                self.lock().waiting_groups.resolve(&request_id, Ok(outcome));
             }
             RelayMessage::GroupChanged { group_id, change } => {
                 self.tell_groups(GroupSignal::Changed { group_id, change });
             }
             RelayMessage::CapabilityResult { capability, agents } => {
-                let waiters = self
-                    .lock()
-                    .waiting_queries
-                    .remove(&capability)
-                    .unwrap_or_default();
-                for waiter in waiters {
-                    let _ = waiter.send(agents.clone());
-                }
+                self.lock().waiting_queries.resolve(&capability, Ok(agents));
             }
             RelayMessage::Deliver { mail_id, item } => {
                 if mail_id != 0 && self.lock().handled_mail.contains(&mail_id) {
@@ -1135,9 +1145,7 @@ impl Inner {
                         _ => None,
                     };
                     if let Some((task_id, answer)) = answer {
-                        if let Some(waiter) = self.lock().waiting_acks.remove(&task_id) {
-                            let _ = waiter.send(answer);
-                        }
+                        self.lock().waiting_acks.resolve(&task_id, answer);
                     }
                 }
                 self.queue_inbound(Inbound { mail_id, item });
@@ -1145,23 +1153,16 @@ impl Inner {
             RelayMessage::ReassignResult { task_id, error } => {
                 let mut shared = self.lock();
                 let error = error.map(|error| shared.retell(&error));
-                if let Some(waiter) = shared.waiting_reassign.remove(&task_id) {
-                    let _ = waiter.send(match error {
-                        Some(error) => Err(error),
-                        None => Ok(()),
-                    });
-                }
+                shared
+                    .waiting_reassign
+                    .resolve(&task_id, error.map_or(Ok(()), Err));
             }
             RelayMessage::PublicKeysResult { keys } => {
                 let mut shared = self.lock();
                 for found in keys {
-                    for waiter in shared
+                    shared
                         .waiting_keys
-                        .remove(&found.instance_id)
-                        .unwrap_or_default()
-                    {
-                        let _ = waiter.send(found.public_keys.clone());
-                    }
+                        .resolve(&found.instance_id, Ok(found.public_keys));
                 }
             }
             RelayMessage::Error { code, message } => {
@@ -1184,9 +1185,7 @@ impl Inner {
                 }
                 if code == "unauthorized" || code == VERSION_MISMATCH || code == KEY_MISMATCH {
                     let refused = format!("The relay refused us: {message}");
-                    for waiter in shared.waiting_registered.drain(..) {
-                        let _ = waiter.send(Err(refused.clone()));
-                    }
+                    shared.waiting_registered.fail_all(&refused);
                     shared.refused = true;
                     shared.version_mismatch = code == VERSION_MISMATCH;
                     shared.key_mismatch = code == KEY_MISMATCH;
@@ -1196,27 +1195,12 @@ impl Inner {
                     return self.emit_status();
                 }
                 if code == "not_registered" {
-                    // Dropping the waiters fails them now instead of at the timeout
-                    shared.waiting_queries.clear();
-                    shared.waiting_presence.clear();
-                    shared.waiting_directory.clear();
-                    shared.waiting_people.clear();
-                    shared.waiting_routes.clear();
-                    shared.waiting_groups.clear();
-                    shared.waiting_keys.clear();
-                    for (_, waiter) in shared.waiting_acks.drain() {
-                        let _ = waiter.send(Err(super::RelayUnavailable.into()));
-                    }
-                    for (_, waiter) in shared.waiting_reassign.drain() {
-                        let _ = waiter.send(Err(super::RelayUnavailable.into()));
-                    }
+                    // Fails them now instead of at the timeout
+                    shared.fail_calls(&super::RelayUnavailable.to_string());
                 }
             }
             RelayMessage::Directory { members } => {
-                let waiters = std::mem::take(&mut self.lock().waiting_directory);
-                for waiter in waiters {
-                    let _ = waiter.send(members.clone());
-                }
+                self.lock().waiting_directory.resolve(&(), Ok(members));
             }
             RelayMessage::PeopleMatches {
                 topic,
@@ -1226,38 +1210,26 @@ impl Inner {
                 unstated,
                 total,
             } => {
-                let waiters = self
-                    .lock()
-                    .waiting_people
-                    .remove(&(topic, limit))
-                    .unwrap_or_default();
                 let found = PeopleSearch {
                     matches,
                     searched,
                     unstated,
                     total,
                 };
-                for waiter in waiters {
-                    let _ = waiter.send(found.clone());
-                }
+                self.lock()
+                    .waiting_people
+                    .resolve(&(topic, limit), Ok(found));
             }
             RelayMessage::CapabilityPresenceResponse {
                 capability_id,
                 providers,
             } => {
-                let waiters = self
-                    .lock()
+                self.lock()
                     .waiting_presence
-                    .remove(&capability_id)
-                    .unwrap_or_default();
-                for waiter in waiters {
-                    let _ = waiter.send(providers.clone());
-                }
+                    .resolve(&capability_id, Ok(providers));
             }
             RelayMessage::RoutePlan { query_id, plan } => {
-                if let Some(waiter) = self.lock().waiting_routes.remove(&query_id) {
-                    let _ = waiter.send(plan);
-                }
+                self.lock().waiting_routes.resolve(&query_id, Ok(plan));
             }
             other => log::debug!("Relay: ignoring {other:?}"),
         }
@@ -1274,27 +1246,9 @@ impl Inner {
     async fn group_call(&self, op: GroupOp) -> Result<GroupOutcome, String> {
         self.until_registered().await?;
         let request_id = uuid::Uuid::new_v4().to_string();
-        let (tx, rx) = oneshot::channel();
-        self.lock().waiting_groups.insert(request_id.clone(), tx);
-        let sent = self.send(RelayMessage::GroupRequest {
-            request_id: request_id.clone(),
-            op,
-        });
-        if let Err(e) = sent {
-            self.lock().waiting_groups.remove(&request_id);
-            return Err(e);
-        }
-        match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-            Ok(Ok(outcome)) => Ok(outcome),
-            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
-            Err(_) => {
-                self.lock().waiting_groups.remove(&request_id);
-                Err(format!(
-                    "The relay didn't answer within {}s",
-                    REQUEST_TIMEOUT.as_secs()
-                ))
-            }
-        }
+        let rx = self.lock().waiting_groups.insert(request_id.clone());
+        self.send(RelayMessage::GroupRequest { request_id, op })?;
+        await_reply(rx, "answer").await
     }
 
     /// Waits (up to [`REQUEST_TIMEOUT`]) until the relay confirms our
@@ -1309,42 +1263,29 @@ impl Inner {
             if shared.outbound.is_none() || shared.refused {
                 return Err(super::RelayUnavailable.into());
             }
-            let (tx, rx) = oneshot::channel();
-            shared.waiting_registered.push(tx);
-            rx
+            shared.waiting_registered.insert(())
         };
         match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
             Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
-            // Connected but still not registered: as good as not connected
-            Err(_) => Err(super::RelayUnavailable.into()),
+            // Dropped, or connected but still not registered: as good as
+            // not connected
+            Ok(Err(_)) | Err(_) => Err(super::RelayUnavailable.into()),
         }
     }
 
     async fn query(&self, capability: &str) -> Result<Vec<AgentCard>, String> {
         self.until_registered().await?;
-        let (tx, rx) = oneshot::channel();
-        let message = {
+        let (rx, message) = {
             let mut shared = self.lock();
-            shared
-                .waiting_queries
-                .entry(capability.to_string())
-                .or_default()
-                .push(tx);
-            RelayMessage::QueryCapability {
+            let rx = shared.waiting_queries.insert(capability.to_string());
+            let message = RelayMessage::QueryCapability {
                 capability: capability.to_string(),
                 requester_instance: shared.instance_id.clone(),
-            }
+            };
+            (rx, message)
         };
         self.send(message)?;
-        match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-            Ok(Ok(cards)) => Ok(cards),
-            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
-            Err(_) => Err(format!(
-                "The relay didn't answer within {}s",
-                REQUEST_TIMEOUT.as_secs()
-            )),
-        }
+        await_reply(rx, "answer").await
     }
 
     async fn refresh_presence(self: Arc<Self>) {
@@ -1646,8 +1587,7 @@ impl RelayClient for WsRelayClient {
 
     fn register(&self, cards: Vec<AgentCard>) -> BoxFuture<'_, Result<(), String>> {
         async move {
-            let (tx, rx) = oneshot::channel();
-            {
+            let rx = {
                 let mut shared = self.inner.lock();
                 for card in &cards {
                     shared.load.entry(card.agent_id().to_string()).or_insert(0);
@@ -1658,19 +1598,13 @@ impl RelayClient for WsRelayClient {
                     .outbound
                     .clone()
                     .ok_or_else(|| String::from(super::RelayUnavailable))?;
-                shared.waiting_registered.push(tx);
+                let rx = shared.waiting_registered.insert(());
                 outbound
                     .send(message)
                     .map_err(|_| String::from(super::RelayUnavailable))?;
-            }
-            match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-                Ok(Ok(result)) => result,
-                Ok(Err(_)) => Err(super::RelayUnavailable.into()),
-                Err(_) => Err(format!(
-                    "The relay didn't confirm the registration within {}s",
-                    REQUEST_TIMEOUT.as_secs()
-                )),
-            }
+                rx
+            };
+            await_reply(rx, "confirm the registration").await
         }
         .boxed()
     }
@@ -1936,18 +1870,10 @@ impl RelayClient for WsRelayClient {
     fn query_directory(&self) -> BoxFuture<'_, Result<Vec<MemberRecord>, String>> {
         async move {
             self.inner.until_registered().await?;
-            let (tx, rx) = oneshot::channel();
-            self.inner.lock().waiting_directory.push(tx);
+            let rx = self.inner.lock().waiting_directory.insert(());
             self.inner
                 .send(RelayMessage::QueryDirectory { since: None })?;
-            match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-                Ok(Ok(members)) => Ok(members),
-                Ok(Err(_)) => Err(super::RelayUnavailable.into()),
-                Err(_) => Err(format!(
-                    "The relay didn't list its members within {}s",
-                    REQUEST_TIMEOUT.as_secs()
-                )),
-            }
+            await_reply(rx, "list its members").await
         }
         .boxed()
     }
@@ -1959,25 +1885,16 @@ impl RelayClient for WsRelayClient {
     ) -> BoxFuture<'a, Result<PeopleSearch, String>> {
         async move {
             self.inner.until_registered().await?;
-            let (tx, rx) = oneshot::channel();
-            self.inner
+            let rx = self
+                .inner
                 .lock()
                 .waiting_people
-                .entry((topic.to_string(), limit))
-                .or_default()
-                .push(tx);
+                .insert((topic.to_string(), limit));
             self.inner.send(RelayMessage::FindPeople {
                 topic: topic.to_string(),
                 limit,
             })?;
-            match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-                Ok(Ok(found)) => Ok(found),
-                Ok(Err(_)) => Err(super::RelayUnavailable.into()),
-                Err(_) => Err(format!(
-                    "The relay didn't search within {}s",
-                    REQUEST_TIMEOUT.as_secs()
-                )),
-            }
+            await_reply(rx, "search").await
         }
         .boxed()
     }
@@ -2012,30 +1929,12 @@ impl RelayClient for WsRelayClient {
         async move {
             self.inner.until_registered().await?;
             let query_id = uuid::Uuid::new_v4().to_string();
-            let (tx, rx) = oneshot::channel();
-            self.inner
-                .lock()
-                .waiting_routes
-                .insert(query_id.clone(), tx);
-            let sent = self.inner.send(RelayMessage::RouteQuery {
-                query_id: query_id.clone(),
+            let rx = self.inner.lock().waiting_routes.insert(query_id.clone());
+            self.inner.send(RelayMessage::RouteQuery {
+                query_id,
                 query: query.clone(),
-            });
-            if let Err(e) = sent {
-                self.inner.lock().waiting_routes.remove(&query_id);
-                return Err(e);
-            }
-            match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-                Ok(Ok(plan)) => Ok(plan),
-                Ok(Err(_)) => Err(super::RelayUnavailable.into()),
-                Err(_) => {
-                    self.inner.lock().waiting_routes.remove(&query_id);
-                    Err(format!(
-                        "The relay didn't route within {}s",
-                        REQUEST_TIMEOUT.as_secs()
-                    ))
-                }
-            }
+            })?;
+            await_reply(rx, "route").await
         }
         .boxed()
     }
@@ -2062,28 +1961,17 @@ impl RelayClient for WsRelayClient {
     ) -> BoxFuture<'a, Result<Vec<InstancePresence>, String>> {
         async move {
             self.inner.until_registered().await?;
-            let (tx, rx) = oneshot::channel();
-            let message = {
+            let (rx, message) = {
                 let mut shared = self.inner.lock();
-                shared
-                    .waiting_presence
-                    .entry(capability_id.to_string())
-                    .or_default()
-                    .push(tx);
-                RelayMessage::CapabilityPresenceQuery {
+                let rx = shared.waiting_presence.insert(capability_id.to_string());
+                let message = RelayMessage::CapabilityPresenceQuery {
                     capability_id: capability_id.to_string(),
                     requester_instance: shared.instance_id.clone(),
-                }
+                };
+                (rx, message)
             };
             self.inner.send(message)?;
-            match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
-                Ok(Ok(providers)) => Ok(providers),
-                Ok(Err(_)) => Err(super::RelayUnavailable.into()),
-                Err(_) => Err(format!(
-                    "The relay didn't answer within {}s",
-                    REQUEST_TIMEOUT.as_secs()
-                )),
-            }
+            await_reply(rx, "answer").await
         }
         .boxed()
     }
@@ -2163,6 +2051,38 @@ mod tests {
         assert_eq!(client.status().reason, None);
     }
 
+    #[tokio::test]
+    async fn pending_calls_get_their_keys_answer_and_fail_together() {
+        let mut pending: Pending<&str, u32> = Pending::default();
+        let (first, second, other) = (
+            pending.insert("a"),
+            pending.insert("a"),
+            pending.insert("b"),
+        );
+        pending.resolve(&"a", Ok(7));
+        assert_eq!(first.await.unwrap(), Ok(7));
+        assert_eq!(second.await.unwrap(), Ok(7), "every call on a key");
+
+        // A call that gave up is dropped on the next insert
+        drop(pending.insert("gone"));
+        let late = pending.insert("c");
+        assert!(!pending.waiting.contains_key("gone"));
+
+        pending.fail_all("down");
+        assert_eq!(other.await.unwrap(), Err("down".to_string()));
+        assert_eq!(late.await.unwrap(), Err("down".to_string()));
+        assert!(pending.waiting.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_call_dropped_unanswered_is_relay_unavailable() {
+        let mut pending: Pending<(), ()> = Pending::default();
+        let dropped = pending.insert(());
+        drop(pending);
+        let error = await_reply(dropped, "answer").await.unwrap_err();
+        assert!(super::super::RelayUnavailable::is(&error), "{error}");
+    }
+
     /// A client with an open socket (its frames go to the receiver), as
     /// registered as `registered` says
     fn open_client(registered: bool) -> (WsRelayClient, mpsc::UnboundedReceiver<RelayMessage>) {
@@ -2215,7 +2135,7 @@ mod tests {
         let (client, _sent) = open_client(false);
         let inner = client.inner.clone();
         let call = tokio::spawn(async move { client.query_directory().await });
-        while inner.lock().waiting_registered.is_empty() {
+        while inner.lock().waiting_registered.waiting.is_empty() {
             tokio::task::yield_now().await;
         }
         let generation = inner.lock().generation;
