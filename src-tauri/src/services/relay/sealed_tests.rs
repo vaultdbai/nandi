@@ -56,20 +56,40 @@ fn read_unlocked(file: &Path) -> Vec<u8> {
 struct Tap {
     addr: SocketAddr,
     frames: Arc<Mutex<Vec<String>>>,
+    swallow: Swallow,
 }
+
+/// What a frame from the relay that the tap swallows (once) holds, all of
+/// it; `None` once swallowed
+type Swallow = Arc<Mutex<Option<&'static [&'static str]>>>;
 
 impl Tap {
     async fn new(relay: SocketAddr) -> Self {
+        Self::swallowing(relay, None).await
+    }
+
+    /// A tap that doesn't pass on the first frame from the relay that holds
+    /// everything in `swallow`
+    async fn swallowing(relay: SocketAddr, swallow: Option<&'static [&'static str]>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let frames: Arc<Mutex<Vec<String>>> = Arc::default();
-        let kept = frames.clone();
+        let swallow: Swallow = Arc::new(Mutex::new(swallow));
+        let (kept, swallowing) = (frames.clone(), swallow.clone());
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
-                tokio::spawn(Self::pipe(stream, relay, kept.clone()));
+                tokio::spawn(Self::pipe(stream, relay, kept.clone(), swallowing.clone()));
             }
         });
-        Self { addr, frames }
+        Self {
+            addr,
+            frames,
+            swallow,
+        }
+    }
+
+    fn swallowed(&self) -> bool {
+        self.swallow.lock().unwrap().is_none()
     }
 
     // tungstenite's handshake callback returns its own (large) error type
@@ -78,6 +98,7 @@ impl Tap {
         stream: tokio::net::TcpStream,
         relay: SocketAddr,
         frames: Arc<Mutex<Vec<String>>>,
+        swallow: Swallow,
     ) {
         let path: Arc<Mutex<String>> = Arc::default();
         let seen = path.clone();
@@ -110,6 +131,11 @@ impl Tap {
         let down = async move {
             while let Some(Ok(message)) = from_relay.next().await {
                 if let Message::Text(text) = &message {
+                    let mut swallow = swallow.lock().unwrap();
+                    if swallow.is_some_and(|parts| parts.iter().all(|part| text.contains(part))) {
+                        *swallow = None;
+                        continue;
+                    }
                     down_frames.lock().unwrap().push(text.to_string());
                 }
                 if to_client.send(message).await.is_err() {
@@ -526,6 +552,37 @@ async fn work_for_someone_offline_waits_at_the_relay_and_so_does_the_result() {
     ada.client.register(Vec::new()).await.unwrap();
     let done = wait(|| ada.results.lock().unwrap().first().cloned()).await;
     assert_eq!(done.task_id, "t1");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_task_whose_keys_the_relay_didnt_answer_for_isnt_acked_and_comes_again() {
+    let relay = serve_with(
+        "127.0.0.1:0".parse().unwrap(),
+        RelayServerConfig::new(SECRET.to_vec()),
+    )
+    .await
+    .unwrap();
+    // Ada's keys never reach Bob the first time he asks
+    let ada_keys = &["public_keys_result", r#""instanceId":"ada""#];
+    let tap = Tap::swallowing(relay, Some(ada_keys)).await;
+    let cards = vec![card("bob", "writer", "write")];
+    let bob = Member::join(&tap, "bob", cards.clone(), ClientOptions::default()).await;
+    let ada = Member::join(&tap, "ada", Vec::new(), ClientOptions::default()).await;
+    let task = request("t1", "ada", "bob/writer");
+    ada.client.delegate_task(&task, &[]).await.unwrap();
+    wait(|| tap.swallowed().then_some(())).await;
+
+    // Bob drops while he waits for them: no refusal, and the task isn't
+    // acked, so the sync after he's back brings it again
+    bob.client.connect("", "bob").await.unwrap();
+    let token = issue_instance_token(SECRET, "bob");
+    bob.client
+        .connect(&format!("ws://{}/relay?token={token}", tap.addr), "bob")
+        .await
+        .unwrap();
+    bob.client.register(cards).await.unwrap();
+    assert_eq!(bob.task().await.input, task.input);
+    assert!(bob.refusals().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

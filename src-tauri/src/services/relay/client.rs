@@ -105,6 +105,12 @@ pub fn no_shared_group() -> String {
     format!("{NO_SHARED_GROUP}: You don't share a group with them on this relay")
 }
 
+/// Leaves delivery `mail_id` unacked: it couldn't be opened yet, and the
+/// next `InboxSync` brings it again
+fn not_acked(mail_id: u64, why: &str) {
+    log::info!("Relay: delivery {mail_id} waits for the next sync: {why}");
+}
+
 /// How often the client heartbeats
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -128,6 +134,24 @@ pub type PresenceStore = Box<dyn Fn(&[AgentCard]) + Send + Sync>;
 
 /// This device's keys (made on first use)
 pub type DeviceKeysSource = Arc<dyn Fn() -> Result<DeviceKeys, String> + Send + Sync>;
+
+/// Why a peer's keys aren't at hand
+enum KeysError {
+    /// The relay didn't answer for them (a timeout, a disconnect): worth
+    /// asking again
+    Unanswered(String),
+    /// There are none to use: none published, no shared group, or a key
+    /// change not accepted yet
+    Refused(String),
+}
+
+impl From<KeysError> for String {
+    fn from(error: KeysError) -> Self {
+        match error {
+            KeysError::Unanswered(e) | KeysError::Refused(e) => e,
+        }
+    }
+}
 
 /// One delivery from our mailbox, opened in order on the client's inbound
 /// queue (mail ID 0: live only, not acked)
@@ -442,16 +466,30 @@ impl Inner {
     /// `instance`'s keys to seal for or check: the pinned ones, else the
     /// relay's, pinned now
     async fn keys_for(&self, instance: &str) -> Result<PublicKeys, String> {
-        if let Some(keys) = self.peer_keys.pinned(instance)? {
+        Ok(self.lookup_keys(instance).await?)
+    }
+
+    /// [`Self::keys_for`], telling a relay that didn't answer apart from a
+    /// definite refusal
+    async fn lookup_keys(&self, instance: &str) -> Result<PublicKeys, KeysError> {
+        if let Some(keys) = self
+            .peer_keys
+            .pinned(instance)
+            .map_err(KeysError::Refused)?
+        {
             return Ok(keys);
         }
-        match self.query_keys(instance).await? {
-            Some(keys) => self.learn(instance, &keys),
+        let queried = self
+            .query_keys(instance)
+            .await
+            .map_err(KeysError::Unanswered)?;
+        match queried {
+            Some(keys) => self.learn(instance, &keys).map_err(KeysError::Refused),
             // A groups relay hides the keys of people we share no group with
             None if self.lock().visibility == Some(super::RelayVisibility::Groups) => {
-                Err(no_shared_group())
+                Err(KeysError::Refused(no_shared_group()))
             }
-            None => Err(sealing::missing(instance)),
+            None => Err(KeysError::Refused(sealing::missing(instance))),
         }
     }
 
@@ -529,8 +567,10 @@ impl Inner {
         }
     }
 
-    /// Opens one delivery, hands it to the handlers and acks it. One with
-    /// no handler yet isn't acked: the next `InboxSync` brings it again.
+    /// Opens one delivery, hands it to the handlers and acks it once it's
+    /// settled: opened, a duplicate, or refused for good. One with no
+    /// handler yet, or whose author's keys the relay didn't answer for,
+    /// isn't acked: the next `InboxSync` brings it again.
     async fn open_inbound(&self, inbound: Inbound) {
         let sealer = match self.sealer() {
             Ok(sealer) => sealer,
@@ -546,7 +586,8 @@ impl Inner {
                 if !handlers.is_empty() {
                     let opened = match self.author_keys(&requester, &task_id).await {
                         Ok(keys) => sealer.open_task(sealed, &keys),
-                        Err(e) => Err(e),
+                        Err(KeysError::Refused(e)) => Err(e),
+                        Err(KeysError::Unanswered(e)) => return not_acked(mail_id, &e),
                     };
                     if let Some(task) = self.opened(opened, &requester, &task_id, false).await {
                         let assigned = TaskAssigned {
@@ -573,7 +614,8 @@ impl Inner {
                 if !handlers.is_empty() {
                     let opened = match self.author_keys(&provider, &task_id).await {
                         Ok(keys) => sealer.open_result(result, (&provider, &keys)),
-                        Err(e) => Err(e),
+                        Err(KeysError::Refused(e)) => Err(e),
+                        Err(KeysError::Unanswered(e)) => return not_acked(mail_id, &e),
                     };
                     if let Some(result) = self.opened(opened, &provider, &task_id, true).await {
                         let completed = TaskCompleted { task_id, result };
@@ -596,7 +638,8 @@ impl Inner {
                     } else {
                         match self.author_keys(&from_instance, &task_id).await {
                             Ok(keys) => sealer.open_peer(&from_instance, body, Some(&keys)),
-                            Err(e) => Err(e),
+                            Err(KeysError::Refused(e)) => Err(e),
+                            Err(KeysError::Unanswered(e)) => return not_acked(mail_id, &e),
                         }
                     };
                     if let Some(body) = self.opened(opened, &from_instance, &task_id, true).await {
@@ -615,10 +658,12 @@ impl Inner {
             wire::Delivery::Event { event } => {
                 let handlers = self.handlers().events.clone();
                 if !handlers.is_empty() {
-                    if let Some(event) = self.open_event(&sealer, event).await {
-                        for handler in handlers.iter() {
-                            handler(event.clone());
-                        }
+                    let event = match self.open_event(&sealer, event).await {
+                        Ok(event) => event,
+                        Err(e) => return not_acked(mail_id, &e),
+                    };
+                    for handler in handlers.iter() {
+                        handler(event.clone());
                     }
                 }
                 !handlers.is_empty()
@@ -667,7 +712,8 @@ impl Inner {
                                 Ok(keys) => {
                                     sealer.open_note(Some(envelope), &duty_id, (&primary, &keys))
                                 }
-                                Err(e) => Err(e),
+                                Err(KeysError::Refused(e)) => Err(e),
+                                Err(KeysError::Unanswered(e)) => return not_acked(mail_id, &e),
                             };
                             self.opened(opened, &primary, &duty_id, false)
                                 .await
@@ -696,9 +742,14 @@ impl Inner {
     }
 
     /// A task event, its note opened (a reassignment's reason, sealed by
-    /// whoever moved it)
-    async fn open_event(&self, sealer: &Sealer, event: wire::TaskEvent) -> Option<TaskEvent> {
-        Some(match event {
+    /// whoever moved it), or why the note can't be checked yet (the relay
+    /// didn't answer for its author's keys)
+    async fn open_event(
+        &self,
+        sealer: &Sealer,
+        event: wire::TaskEvent,
+    ) -> Result<TaskEvent, String> {
+        Ok(match event {
             wire::TaskEvent::Accepted {
                 task_id,
                 provider_instance,
@@ -743,7 +794,8 @@ impl Inner {
                             Ok(keys) => {
                                 sealer.open_note(Some(&envelope), &task_id, (&from_instance, &keys))
                             }
-                            Err(e) => Err(e),
+                            Err(KeysError::Refused(e)) => Err(e),
+                            Err(KeysError::Unanswered(e)) => return Err(e),
                         };
                         // A note that doesn't open is left out; the move stands
                         self.opened(opened, &from_instance, &task_id, false)
@@ -774,11 +826,17 @@ impl Inner {
         })
     }
 
-    /// The keys to check what `author` sent about `task_id` against
-    async fn author_keys(&self, author: &str, task_id: &str) -> Result<PublicKeys, String> {
-        self.keys_for(author)
-            .await
-            .map_err(|e| sealing::refused(author, task_id, &format!("of their keys: {e}")))
+    /// The keys to check what `author` sent about `task_id` against; a
+    /// refusal is worded as one of their message
+    async fn author_keys(&self, author: &str, task_id: &str) -> Result<PublicKeys, KeysError> {
+        self.lookup_keys(author).await.map_err(|error| match error {
+            KeysError::Refused(e) => KeysError::Refused(sealing::refused(
+                author,
+                task_id,
+                &format!("of their keys: {e}"),
+            )),
+            unanswered => unanswered,
+        })
     }
 
     /// What opening came to: the value, or `None` after a duplicate was
