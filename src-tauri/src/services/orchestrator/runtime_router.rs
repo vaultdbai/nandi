@@ -21,6 +21,7 @@ use std::path::PathBuf;
 
 use crate::db::{self, role};
 use crate::model::RunStatus;
+use crate::runtime::{DEFAULT_CPU, DEFAULT_MEMORY_MB};
 use crate::services::config::repo_config::{self, HarnessDefaults};
 use crate::services::domain::{Agent, AgentRuntimeKind};
 use crate::services::events::{EventBus, RunContext};
@@ -233,8 +234,9 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         image: HARNESS_IMAGE.to_string(),
         name: container_name(agent.id().as_str()),
         host_workdir: inputs.workdir.clone(),
-        memory_mb: agent.container().memory_mb(),
-        cpu: agent.container().cpu(),
+        // The native runtime's limits when skill.md sets none
+        memory_mb: Some(agent.container().memory_mb().unwrap_or(DEFAULT_MEMORY_MB)),
+        cpu: Some(agent.container().cpu().unwrap_or(DEFAULT_CPU)),
         // Internal: its way out is the egress relay (`HTTPS_PROXY` below)
         network: Some(crate::services::egress::relay::AGENT_NETWORK.to_string()),
         folders: inputs.folders.clone(),
@@ -924,6 +926,39 @@ mod tests {
         assert_eq!(host_workdir, &PathBuf::from("/work/writer"));
         // Always the internal network, gateway or not
         assert_eq!(network.as_deref(), Some("nandi-agents"));
+    }
+
+    #[test]
+    fn harness_containers_get_the_native_limits_unless_skill_md_sets_them() {
+        let cases = [
+            ("", (DEFAULT_MEMORY_MB, DEFAULT_CPU)),
+            (
+                "memory_mb: 4096
+cpu: 2.5
+",
+                (4096, 2.5),
+            ),
+            (
+                "memory_mb: 512
+",
+                (512, DEFAULT_CPU),
+            ),
+        ];
+        for (limits, expected) in cases {
+            let agent = agent(&format!(
+                "runtime: claude-code
+{limits}"
+            ));
+            let plan = harness_plan(plan(&agent, inputs()));
+            let Placement::Container { memory_mb, cpu, .. } = &plan.config.placement else {
+                panic!("container placement")
+            };
+            assert_eq!(
+                (*memory_mb, *cpu),
+                (Some(expected.0), Some(expected.1)),
+                "{limits:?}"
+            );
+        }
     }
 
     #[test]
