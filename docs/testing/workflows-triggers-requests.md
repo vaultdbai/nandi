@@ -473,8 +473,8 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **Preconditions:** A target agent.
 - **Steps:** 1. Create a cron trigger `* * * * *` targeting an agent. 2. Wait two minutes. 3. Try `*/10 * * * * *` (seconds).
 - **Expected:** One run per minute with source `cron`; the trigger's Firings tab lists each; seconds schedule fires every 10 s.
-- **Edge / negative cases:** Invalid schedule rejected on save; disabling stops further fires; cron is exempt from the storm guard.
-- **Automation:** Covered by: `cron.rs` tests (`parses_standard_and_seconds_schedules`, `weekday_schedules_skip_the_weekend`, `seconds_schedules_tick_every_second`), `a_fast_cron_dispatches_exactly_one_run_per_fire` | Layer: unit / api | Gap: none.
+- **Edge / negative cases:** Invalid schedule rejected on save; disabling stops further fires; cron is exempt from the storm guard. A fire while the trigger's last run is still queued or running is recorded as `skipped` ("Skipped: the last run is still queued or running") and starts nothing; the same holds for calendar triggers, but not for a test fire or a calendar handover.
+- **Automation:** Covered by: `cron.rs` tests (`parses_standard_and_seconds_schedules`, `weekday_schedules_skip_the_weekend`, `seconds_schedules_tick_every_second`), `a_fast_cron_dispatches_at_most_one_run_per_fire`, `a_schedule_skips_a_fire_while_its_last_run_is_still_going` | Layer: unit / api | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 

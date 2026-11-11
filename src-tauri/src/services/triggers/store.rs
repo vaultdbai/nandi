@@ -9,6 +9,9 @@ use super::schema::{
     TriggerStats, TriggerTargetType,
 };
 use crate::db::{self, role};
+use crate::model::RunStatus;
+use crate::services::run_waiter;
+use crate::services::workflows::WorkflowRunStatus;
 
 const TRIGGER_COLUMNS: &str = "t.id, t.name, t.enabled, t.source_type, t.source_config,
      t.target_type, t.target_id, t.input_template, t.priority, t.rate_limit_seconds,
@@ -176,6 +179,35 @@ pub fn run_status(
         |row| row.get(0),
     )
     .optional()
+}
+
+/// Whether the run the trigger's latest dispatched fire started is still
+/// queued or running. An agent run is followed into the child a
+/// compaction left it going on in.
+pub fn last_run_in_progress(
+    conn: &Connection,
+    trigger_id: &str,
+    target: TriggerTargetType,
+) -> rusqlite::Result<bool> {
+    let run_id: Option<String> = conn
+        .query_row(
+            "SELECT run_id FROM trigger_fires WHERE trigger_id = ?1 AND run_id IS NOT NULL
+              ORDER BY fired_at DESC, rowid DESC LIMIT 1",
+            [trigger_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(run_id) = run_id else {
+        return Ok(false);
+    };
+    Ok(match target {
+        TriggerTargetType::Agent => run_waiter::newest_run(conn, &run_id)?
+            .is_some_and(|run| matches!(run.status, RunStatus::Queued | RunStatus::Running)),
+        TriggerTargetType::Workflow => {
+            run_status(conn, target, &run_id)?.as_deref()
+                == Some(WorkflowRunStatus::Running.as_str())
+        }
+    })
 }
 
 /// A trigger's fires, newest first.

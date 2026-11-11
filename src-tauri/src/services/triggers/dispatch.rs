@@ -2,11 +2,14 @@
 //!
 //! 1. `rate_limit_seconds`: too soon after the last dispatched fire records
 //!    a `rate_limited` fire and emits `trigger://rate_limited`.
-//! 2. Storm guard: more than `STORM_MAX_FIRES` in `STORM_WINDOW_MS` of the
+//! 2. Overlap: a cron or calendar fire while the trigger's last run is
+//!    still queued or running records a `skipped` fire. A schedule never
+//!    stacks runs.
+//! 3. Storm guard: more than `STORM_MAX_FIRES` in `STORM_WINDOW_MS` of the
 //!    fires left (cron and test fires excepted) disables the trigger and
 //!    emits `trigger://error`.
-//! 3. An event trigger ignores runs it dispatched itself (no self-loops).
-//! 4. Render `input_template`, write the `trigger_fires` row (DB first),
+//! 4. An event trigger ignores runs it dispatched itself (no self-loops).
+//! 5. Render `input_template`, write the `trigger_fires` row (DB first),
 //!    then enqueue an agent run (or start a workflow run) and record the
 //!    run on the fire. Emits `trigger://fired` or `trigger://error`.
 //!
@@ -59,6 +62,14 @@ pub fn rate_limited_until(trigger: &Trigger, now: i64) -> Option<i64> {
     (limit > 0 && now < next).then_some(next)
 }
 
+/// Cron and calendar triggers fire on a schedule, not on outside events.
+fn is_scheduled(source: TriggerSourceType) -> bool {
+    matches!(
+        source,
+        TriggerSourceType::Cron | TriggerSourceType::Calendar
+    )
+}
+
 fn iso(ms: i64) -> String {
     chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)
         .unwrap_or_default()
@@ -100,14 +111,26 @@ pub async fn process(engine: &TriggerEngine, event: TriggerEvent) -> Option<Trig
         }
     }
 
+    if !event.test && !event.handover && is_scheduled(trigger.source_type) {
+        let (id, target) = (trigger.id.clone(), trigger.target_type);
+        let busy = engine
+            .db
+            .call(move |conn| store::last_run_in_progress(conn, &id, target))
+            .await
+            .unwrap_or_else(|e| {
+                log::warn!("Trigger '{}': overlap check failed: {e}", trigger.id);
+                false
+            });
+        if busy {
+            let reason = "Skipped: the last run is still queued or running".to_string();
+            return record(engine, fire, TriggerFireStatus::Skipped, Some(reason)).await;
+        }
+    }
+
     // Only fires that would run count: a rate-limited trigger's burst (a
     // folder of files copied at once) is one run, not a storm
-    let storm = !event.test
-        && !matches!(
-            trigger.source_type,
-            TriggerSourceType::Cron | TriggerSourceType::Calendar
-        )
-        && engine.record_fire(&trigger.id, now);
+    let storm =
+        !event.test && !is_scheduled(trigger.source_type) && engine.record_fire(&trigger.id, now);
     if storm {
         let error = format!(
             "Fired more than {STORM_MAX_FIRES} times in {}s, so it was disabled",

@@ -165,7 +165,7 @@ async fn a_webhook_queues_a_run_with_its_source_and_payload() {
 }
 
 #[tokio::test]
-async fn a_fast_cron_dispatches_exactly_one_run_per_fire() {
+async fn a_fast_cron_dispatches_at_most_one_run_per_fire() {
     let (state, _recorder) = app().await;
     let saved = create_trigger(
         &state,
@@ -199,8 +199,20 @@ async fn a_fast_cron_dispatches_exactly_one_run_per_fire() {
         .collect();
     scheduled.dedup();
     assert_eq!(scheduled.len(), list.len(), "no occurrence fired twice");
-    let run_ids: Vec<String> = list.iter().filter_map(|f| f.run_id.clone()).collect();
-    assert_eq!(run_ids.len(), list.len(), "every fire dispatched one run");
+    // A tick while the last run is still going is skipped, not stacked
+    let queued: Vec<&TriggerFire> = list
+        .iter()
+        .filter(|f| f.status == TriggerFireStatus::Queued)
+        .collect();
+    assert!(!queued.is_empty());
+    assert!(
+        queued.iter().all(|f| f.run_id.is_some()),
+        "one run per fire"
+    );
+    // Cron is exempt from the storm guard: no fire is an error
+    assert!(list
+        .iter()
+        .all(|f| f.status == TriggerFireStatus::Queued || f.status == TriggerFireStatus::Skipped));
     let trigger_id = id.clone();
     let runs = state
         .db()
@@ -213,9 +225,125 @@ async fn a_fast_cron_dispatches_exactly_one_run_per_fire() {
         })
         .await
         .unwrap();
-    assert_eq!(runs as usize, list.len());
-    // Cron is exempt from the storm guard, so it's still just disabled by us
-    assert!(list.iter().all(|f| f.status == TriggerFireStatus::Queued));
+    assert_eq!(runs as usize, queued.len());
+    state.shutdown();
+}
+
+/// The trigger's last run, as an earlier fire left it: in `status`, or
+/// compacted and going on in a child in `status`.
+enum LastRun {
+    Plain(RunStatus),
+    Compacted(RunStatus),
+}
+
+/// Records a dispatched fire of `trigger_id` whose run is `last`. The run
+/// belongs to agent `held`, so no orchestrator touches it.
+fn leave_last_run(
+    conn: &mut rusqlite::Connection,
+    trigger_id: &str,
+    case: usize,
+    last: &LastRun,
+) -> rusqlite::Result<()> {
+    let run_id = format!("held-{case}");
+    db::tests::start_run(conn, "held", &run_id);
+    match last {
+        LastRun::Plain(status) => {
+            db::set_run_status(conn, &run_id, *status, None)?;
+        }
+        LastRun::Compacted(status) => {
+            let mut child = db::get_run(conn, &run_id)?.unwrap();
+            child.id = format!("{run_id}-child");
+            child.parent_run_id = Some(run_id.clone());
+            db::start_compacted_child(conn, &child, &[])?;
+            db::set_run_status(conn, &child.id, *status, None)?;
+        }
+    }
+    store::insert_fire(
+        conn,
+        &TriggerFire {
+            id: uuid::Uuid::new_v4().to_string(),
+            trigger_id: trigger_id.into(),
+            fired_at: db::ts(db::now_ms()),
+            payload: json!({}),
+            run_id: Some(run_id),
+            status: TriggerFireStatus::Queued,
+            error: None,
+            run_status: None,
+        },
+    )
+}
+
+#[tokio::test]
+async fn a_schedule_skips_a_fire_while_its_last_run_is_still_going() {
+    let (state, _recorder) = app().await;
+    // Once a year, so only the fires sent below happen
+    let rule = input(
+        "Yearly",
+        TriggerSourceType::Cron,
+        json!({"schedule": "0 0 1 1 *"}),
+    );
+    let id = create_trigger(&state, rule).await.unwrap().trigger.id;
+    let cases = [
+        (
+            LastRun::Plain(RunStatus::Queued),
+            TriggerFireStatus::Skipped,
+        ),
+        (
+            LastRun::Plain(RunStatus::Running),
+            TriggerFireStatus::Skipped,
+        ),
+        (
+            LastRun::Compacted(RunStatus::Running),
+            TriggerFireStatus::Skipped,
+        ),
+        (
+            LastRun::Plain(RunStatus::AwaitingApproval),
+            TriggerFireStatus::Queued,
+        ),
+        (
+            LastRun::Plain(RunStatus::Completed),
+            TriggerFireStatus::Queued,
+        ),
+        (
+            LastRun::Compacted(RunStatus::Completed),
+            TriggerFireStatus::Queued,
+        ),
+    ];
+
+    for (case, (last, expected)) in cases.into_iter().enumerate() {
+        let trigger_id = id.clone();
+        state
+            .db()
+            .call(move |conn| leave_last_run(conn, &trigger_id, case, &last))
+            .await
+            .unwrap();
+        let before = fires(&state, &id).await.len();
+        state
+            .triggers()
+            .tx
+            .send(TriggerEvent {
+                trigger_id: id.clone(),
+                source: TriggerSourceType::Cron,
+                payload: json!({"case": case}),
+                test: false,
+                handover: false,
+            })
+            .await
+            .unwrap();
+        let fire = wait_for_fires(&state, &id, before + 1).await.pop().unwrap();
+        assert_eq!(fire.status, expected, "case {case}: {:?}", fire.error);
+        assert_eq!(fire.run_id.is_some(), expected == TriggerFireStatus::Queued);
+    }
+
+    // A manual test fire is never held back
+    let held = id.clone();
+    state
+        .db()
+        .call(move |conn| leave_last_run(conn, &held, 99, &LastRun::Plain(RunStatus::Running)))
+        .await
+        .unwrap();
+    let test = test_fire_trigger(&state, id, None).await.unwrap();
+    assert_eq!(test.status, TriggerFireStatus::Queued);
     state.shutdown();
 }
 
