@@ -58,3 +58,12 @@ export function toastPersonError(
     },
   })
 }
+
+/**
+ * A relay-origin action's failure (a hold, an assignment, a request to
+ * someone else): the calm "connect to your relay" when there is no relay,
+ * the error's own text otherwise.
+ */
+export function toastRelayActionError(error: unknown): void {
+  toastPersonError(error, failure => toast.error(rawError(failure)))
+}

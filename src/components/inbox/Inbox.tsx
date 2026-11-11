@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { toastRelayActionError } from '@/lib/toast-error'
 import { ApprovalRequestCard } from '@/components/agent-console/ApprovalRequestCard'
 import {
   AlertDialog,
@@ -427,10 +428,7 @@ function GatewayHoldRow({
                     member: hold.callerName,
                   })
                 ),
-              onError: error =>
-                toast.error(
-                  error instanceof Error ? error.message : String(error)
-                ),
+              onError: toastRelayActionError,
             }
           )
           .catch(() => undefined)
@@ -476,8 +474,7 @@ function AssignmentRow({
               { member }
             )
           ),
-        onError: error =>
-          toast.error(error instanceof Error ? error.message : String(error)),
+        onError: toastRelayActionError,
       }
     )
 
@@ -680,8 +677,7 @@ export function TrustRequestRow({ request }: { request: TrustRequest }) {
               { name }
             )
           ),
-        onError: error =>
-          toast.error(error instanceof Error ? error.message : String(error)),
+        onError: toastRelayActionError,
       }
     )
 
@@ -741,8 +737,7 @@ function FailedRow({ item }: { item: Extract<InboxItem, { kind: 'failed' }> }) {
     }
     // A new attempt of the delegation (the provider still gates it)
     retry.mutate(work.id, {
-      onError: error =>
-        toast.error(error instanceof Error ? error.message : String(error)),
+      onError: toastRelayActionError,
     })
   }
   // A workflow run again may write or send things again: ask first

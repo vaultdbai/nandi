@@ -36,7 +36,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { rawError } from '@/lib/friendly-error'
 import { errorKind } from '@/lib/friendly-error'
-import { plainError } from '@/lib/toast-error'
+import { plainError, toastRelayActionError } from '@/lib/toast-error'
 import {
   requestQueryKeys,
   useCompleteRequestStep,
@@ -140,7 +140,9 @@ function RequestPage({
       ? await client.cancelRequest(request.id)
       : await client.cancelTask(taskId, null)
     if (result.status === 'error') {
-      toast.error(result.error)
+      // Stopping someone else's work goes through the relay
+      if (local) toast.error(result.error)
+      else toastRelayActionError(result.error)
       return
     }
     toast.success(t('request.done.stopped'))
