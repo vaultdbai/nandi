@@ -294,7 +294,14 @@ impl RegistryClient {
         let etag = cached.as_ref().and_then(|c| c.etag.as_deref());
         match self.get(&url, api, token, etag).await {
             Ok(Fetched::NotModified) => {
-                let mut cached = cached.expect("a 304 answers our cached ETag");
+                // Only our cached ETag earns a 304; without one, a proxy or
+                // captive portal answered
+                let Some(mut cached) = cached else {
+                    return Err(format!(
+                        "{} answered 'not modified' with nothing cached here. A proxy may be in the way",
+                        registry.url
+                    ));
+                };
                 cached.fetched_at_ms = now_ms();
                 self.save_cache(registry, &cached);
                 Self::parse(registry, &cached.body, SystemTime::now(), None)
@@ -630,5 +637,25 @@ mod tests {
         // No cache at all: an error
         let fresh = RegistryClient::new(tmp.path().join("empty"));
         assert!(fresh.fetch_index(&reg, None, true).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_304_with_nothing_cached_is_an_error_not_a_panic() {
+        // A proxy that answers "not modified" to everything
+        let app = axum::Router::new().route(
+            "/index.json",
+            axum::routing::get(|| async { axum::http::StatusCode::NOT_MODIFIED }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let tmp = tempfile::tempdir().unwrap();
+        let reg = registry(&format!("http://{addr}"), RegistryKind::Personal);
+
+        let error = RegistryClient::new(tmp.path())
+            .fetch_index(&reg, None, false)
+            .await
+            .unwrap_err();
+        assert!(error.contains("not modified"), "{error}");
     }
 }

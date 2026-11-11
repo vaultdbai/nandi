@@ -398,7 +398,9 @@ async fn catalog(state: &AppState, force: bool) -> Catalog {
 const PUBLISHER_TTL: Duration = Duration::from_secs(60 * 60);
 
 /// The publisher's public key from `publishers/<handle>.json` in
-/// `registry` (cached), or `None` if they don't sign.
+/// `registry`, or `None` if they don't sign or it couldn't be fetched. Only
+/// a fetched file is cached: a fetch that failed is tried again next time,
+/// so one timeout doesn't leave signed entries unverified for an hour.
 async fn publisher_key(state: &AppState, registry: &Registry, handle: &str) -> Option<String> {
     let key = (registry.url.clone(), handle.to_string());
     if let Some((fetched, value)) = state
@@ -414,7 +416,7 @@ async fn publisher_key(state: &AppState, registry: &Registry, handle: &str) -> O
         }
     }
     let token = token(state, registry);
-    let value = state
+    let fetched = state
         .marketplace()
         .client
         .fetch_file(
@@ -422,11 +424,18 @@ async fn publisher_key(state: &AppState, registry: &Registry, handle: &str) -> O
             &format!("publishers/{handle}.json"),
             token.as_deref(),
         )
-        .await
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<manifest::PublisherFile>(&bytes).ok())
-        .filter(|file| file.github_handle.eq_ignore_ascii_case(handle))
-        .and_then(|file| file.public_key);
+        .await;
+    let bytes = match fetched {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            log::warn!(
+                "Couldn't fetch publisher '{handle}' from {}: {e}",
+                registry.url
+            );
+            return None;
+        }
+    };
+    let value = publisher_file_key(&bytes, handle);
     state
         .marketplace()
         .publisher_keys
@@ -434,6 +443,15 @@ async fn publisher_key(state: &AppState, registry: &Registry, handle: &str) -> O
         .unwrap_or_else(|e| e.into_inner())
         .insert(key, (Instant::now(), value.clone()));
     value
+}
+
+/// The public key in a fetched `publishers/<handle>.json`, if it's that
+/// publisher's file and names one
+fn publisher_file_key(bytes: &[u8], handle: &str) -> Option<String> {
+    serde_json::from_slice::<manifest::PublisherFile>(bytes)
+        .ok()
+        .filter(|file| file.github_handle.eq_ignore_ascii_case(handle))
+        .and_then(|file| file.public_key)
 }
 
 /// Marks entries whose signature verifies against their publisher's key

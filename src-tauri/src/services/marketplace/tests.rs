@@ -474,15 +474,21 @@ fn write_index(dir: &Path, agents: serde_json::Value) {
     .unwrap();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_latest_version_across_registries_is_the_one_installed() {
-    use crate::services::domain::settings::{RegistryConfig, RegistryKind};
-    use crate::services::marketplace::{self, MarketplaceFilter};
+/// An app with an empty, loaded gold-copy repo to install into
+fn state_with_repo() -> crate::services::AppState {
     let state = crate::services::AppState::for_tests(Vec::new());
     let root = state.store().layout().root.clone();
     fs::create_dir_all(&root).unwrap();
     git2::Repository::init(&root).unwrap();
     state.store().load().unwrap();
+    state
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_latest_version_across_registries_is_the_one_installed() {
+    use crate::services::domain::settings::{RegistryConfig, RegistryKind};
+    use crate::services::marketplace::{self, MarketplaceFilter};
+    let state = state_with_repo();
     let tmp = tempfile::tempdir().unwrap();
 
     let old = tmp.path().join("old-source");
@@ -698,11 +704,7 @@ async fn signatures_verify_and_pin_the_release_commit() {
     use super::signature;
     use crate::services::domain::settings::{RegistryConfig, RegistryKind};
     use crate::services::marketplace::{self, MarketplaceFilter};
-    let state = crate::services::AppState::for_tests(Vec::new());
-    let root = state.store().layout().root.clone();
-    fs::create_dir_all(&root).unwrap();
-    git2::Repository::init(&root).unwrap();
-    state.store().load().unwrap();
+    let state = state_with_repo();
     let tmp = tempfile::tempdir().unwrap();
 
     let signed_repo = tmp.path().join("signed");
@@ -795,6 +797,53 @@ async fn signatures_verify_and_pin_the_release_commit() {
         .unwrap_err();
     assert!(refused.contains("tampered"), "{refused}");
     assert!(state.store().repos().agents.locate("mover").is_none());
+    state.shutdown();
+}
+
+/// A publisher file that couldn't be fetched isn't remembered: once it's
+/// there, the entry verifies without waiting out the key cache
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_publisher_key_fetch_is_tried_again() {
+    use super::signature;
+    use crate::services::domain::settings::{RegistryConfig, RegistryKind};
+    use crate::services::marketplace::{self, MarketplaceFilter};
+    let state = state_with_repo();
+    let tmp = tempfile::tempdir().unwrap();
+    let source = tmp.path().join("signed");
+    let sha = commit(&source, &agent_files("signed"), "v1.0.0");
+    let (secret, public) = signature::generate();
+    let registry = tmp.path().join("registry");
+    write_index(
+        &registry,
+        serde_json::json!([{
+            "id": "arxiv", "name": "arxiv", "publisher": "alice",
+            "repo": source.display().to_string(), "path": "agents/arxiv",
+            "latest_version": "1.0.0", "commit": sha,
+            "signature": signature::sign(&secret, "agent", "arxiv", "1.0.0", &sha).unwrap(),
+        }]),
+    );
+    marketplace::save_registries(
+        &state,
+        vec![RegistryConfig::new(&file_url(&registry), RegistryKind::Personal, None).unwrap()],
+    )
+    .await
+    .unwrap();
+    let verified = || async {
+        marketplace::list_available_agents(&state, &MarketplaceFilter::default())
+            .await
+            .unwrap()[0]
+            .verified
+    };
+
+    // No publisher file yet: the fetch fails
+    assert!(!verified().await);
+    fs::create_dir_all(registry.join("publishers")).unwrap();
+    fs::write(
+        registry.join("publishers/alice.json"),
+        serde_json::json!({ "github_handle": "alice", "public_key": public }).to_string(),
+    )
+    .unwrap();
+    assert!(verified().await);
     state.shutdown();
 }
 
