@@ -6,23 +6,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type {
   AgentCard,
-  Result,
   ShareResult,
   TaskResult,
   Team,
   TeamDetail,
 } from '@/lib/bindings'
+import { unwrapResult } from '@/lib/tauri-bindings'
 
 export const teamsQueryKeys = {
   all: ['teams'] as const,
   list: ['teams', 'list'] as const,
   detail: (teamId: string) => ['teams', 'detail', teamId] as const,
-}
-
-async function unwrap<T>(result: Promise<Result<T, string>>): Promise<T> {
-  const resolved = await result
-  if (resolved.status === 'error') throw new Error(resolved.error)
-  return resolved.data
 }
 
 /** Refetches the team queries whenever the core says a team changed */
@@ -46,7 +40,7 @@ export function useTeams() {
   useTeamEvents()
   return useQuery({
     queryKey: teamsQueryKeys.list,
-    queryFn: (): Promise<Team[]> => unwrap(client.listTeams()),
+    queryFn: (): Promise<Team[]> => client.listTeams().then(unwrapResult),
   })
 }
 
@@ -54,7 +48,8 @@ export function useTeams() {
 export function useTeam(teamId: string | null) {
   return useQuery({
     queryKey: teamsQueryKeys.detail(teamId ?? ''),
-    queryFn: (): Promise<TeamDetail> => unwrap(client.getTeam(teamId ?? '')),
+    queryFn: (): Promise<TeamDetail> =>
+      client.getTeam(teamId ?? '').then(unwrapResult),
     enabled: teamId !== null,
   })
 }
@@ -74,16 +69,16 @@ export function useTeamAction() {
     }): Promise<void> => {
       switch (action) {
         case 'create':
-          await unwrap(client.createTeam(teamId))
+          await client.createTeam(teamId).then(unwrapResult)
           return
         case 'join':
-          await unwrap(client.joinTeam(teamId))
+          await client.joinTeam(teamId).then(unwrapResult)
           return
         case 'leave':
-          await unwrap(client.leaveTeam(teamId))
+          await client.leaveTeam(teamId).then(unwrapResult)
           return
         case 'sync':
-          await unwrap(client.syncTeamRegistry(teamId))
+          await client.syncTeamRegistry(teamId).then(unwrapResult)
           return
       }
     },
@@ -106,11 +101,11 @@ export function useShareAgent() {
       share: boolean
     }): Promise<ShareResult | null> => {
       if (!share) {
-        await unwrap(client.unshareAgent(teamId, agentId))
+        await client.unshareAgent(teamId, agentId).then(unwrapResult)
         return null
       }
       // `branch`: pushed for a team admin to merge, not yet in the index
-      return unwrap(client.shareAgent(teamId, agentId))
+      return client.shareAgent(teamId, agentId).then(unwrapResult)
     },
     onSettled: (_data, _error, { teamId }) =>
       queryClient.invalidateQueries({

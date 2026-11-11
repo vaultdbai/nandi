@@ -5,14 +5,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { TeamRoster } from '@/lib/bindings'
-import { rosterQueryKeys, unwrapNandi, useMemberEvents } from './useNetwork'
+import { rosterQueryKeys, useMemberEvents } from './useNetwork'
+import { unwrapResult } from '@/lib/tauri-bindings'
 
 export function useTeamRoster(teamId: string) {
   useMemberEvents()
   return useQuery({
     queryKey: rosterQueryKeys.team(teamId),
     queryFn: (): Promise<TeamRoster> =>
-      unwrapNandi(client.getTeamRoster(teamId)),
+      client.getTeamRoster(teamId).then(unwrapResult),
     enabled: teamId !== '',
   })
 }

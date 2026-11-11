@@ -11,7 +11,8 @@ import type {
   GroupView,
   InviteRequest,
 } from '@/lib/bindings'
-import { unwrapNandi, useMemberEvents } from './useNetwork'
+import { useMemberEvents } from './useNetwork'
+import { unwrapResult } from '@/lib/tauri-bindings'
 
 export const groupQueryKeys = {
   all: ['network', 'groups'] as const,
@@ -23,7 +24,7 @@ export function useGroups() {
   useMemberEvents()
   return useQuery({
     queryKey: groupQueryKeys.list,
-    queryFn: () => unwrapNandi(client.listGroups()),
+    queryFn: () => client.listGroups().then(unwrapResult),
   })
 }
 
@@ -31,7 +32,7 @@ export function useGroup(groupId: string) {
   useMemberEvents()
   return useQuery({
     queryKey: groupQueryKeys.one(groupId),
-    queryFn: () => unwrapNandi(client.getGroup(groupId)),
+    queryFn: () => client.getGroup(groupId).then(unwrapResult),
     retry: false,
   })
 }
@@ -61,66 +62,68 @@ function useGroupsChange<A, T>(call: (args: A) => Promise<T>) {
 export function useCreateGroup() {
   return useGroupMutation(
     (input: { name: string; description: string; policy: string }) =>
-      unwrapNandi(
-        client.createGroup(input.name, input.description, input.policy)
-      )
+      client
+        .createGroup(input.name, input.description, input.policy)
+        .then(unwrapResult)
   )
 }
 
 export function useUpdateGroup() {
   return useGroupMutation(
     (input: { groupId: string; name: string; description: string }) =>
-      unwrapNandi(
-        client.updateGroup(input.groupId, input.name, input.description)
-      )
+      client
+        .updateGroup(input.groupId, input.name, input.description)
+        .then(unwrapResult)
   )
 }
 
 export function useSetGroupPolicy() {
   return useGroupMutation((input: { groupId: string; policy: string }) =>
-    unwrapNandi(client.setGroupPolicy(input.groupId, input.policy))
+    client.setGroupPolicy(input.groupId, input.policy).then(unwrapResult)
   )
 }
 
 export function useJoinGroup() {
-  return useGroupMutation((code: string) => unwrapNandi(client.joinGroup(code)))
+  return useGroupMutation((code: string) =>
+    client.joinGroup(code).then(unwrapResult)
+  )
 }
 
 export function useRemoveGroupMember() {
   return useGroupMutation((input: { groupId: string; instanceId: string }) =>
-    unwrapNandi(client.removeGroupMember(input.groupId, input.instanceId))
+    client.removeGroupMember(input.groupId, input.instanceId).then(unwrapResult)
   )
 }
 
 export function useSetGroupRole() {
   return useGroupMutation(
     (input: { groupId: string; instanceId: string; role: GroupRole }) =>
-      unwrapNandi(
-        client.setGroupRole(input.groupId, input.instanceId, input.role)
-      )
+      client
+        .setGroupRole(input.groupId, input.instanceId, input.role)
+        .then(unwrapResult)
   )
 }
 
 export function useInviteToGroup() {
   return useGroupsChange((input: { groupId: string; invite: InviteRequest }) =>
-    unwrapNandi(client.inviteToGroup(input.groupId, input.invite))
+    client.inviteToGroup(input.groupId, input.invite).then(unwrapResult)
   )
 }
 
 export function useRevokeGroupInvite() {
   return useGroupsChange((code: string) =>
-    unwrapNandi(client.revokeGroupInvite(code))
+    client.revokeGroupInvite(code).then(unwrapResult)
   )
 }
 
 export function useLeaveGroup() {
   return useGroupsChange((groupId: string) =>
-    unwrapNandi(client.leaveGroup(groupId))
+    client.leaveGroup(groupId).then(unwrapResult)
   )
 }
 
 export function useSetGroupAccess() {
   return useGroupsChange((input: { groupId: string; level: AccessLevel }) =>
-    unwrapNandi(client.setGroupAccess(input.groupId, input.level))
+    client.setGroupAccess(input.groupId, input.level).then(unwrapResult)
   )
 }

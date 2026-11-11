@@ -10,10 +10,10 @@ import {
 } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { AgentConnectorChoice, JsonValue } from '@/lib/bindings'
-import type {
-  ConnectorInfo,
-  ConnectorStatus,
-  Result,
+import {
+  unwrapResult,
+  type ConnectorInfo,
+  type ConnectorStatus,
 } from '@/lib/tauri-bindings'
 
 /**
@@ -46,12 +46,6 @@ export const connectorsQueryKeys = {
   list: ['connectors', 'list'] as const,
   status: (id: string) => ['connectors', 'status', id] as const,
   agent: (agentId: string) => ['connectors', 'agent', agentId] as const,
-}
-
-async function unwrap<T>(result: Promise<Result<T, string>>): Promise<T> {
-  const resolved = await result
-  if (resolved.status === 'error') throw new Error(resolved.error)
-  return resolved.data
 }
 
 /** Applies a `connector://changed` status to the cached list in place */
@@ -104,7 +98,7 @@ export function useConnectors() {
   return useQuery({
     queryKey: connectorsQueryKeys.list,
     queryFn: async () =>
-      (await unwrap(client.listConnectors())) as ConnectorDetails[],
+      (await client.listConnectors().then(unwrapResult)) as ConnectorDetails[],
   })
 }
 
@@ -112,7 +106,7 @@ export function useConnectors() {
 export function useConnectorStatus(id: string | null) {
   return useQuery({
     queryKey: connectorsQueryKeys.status(id ?? ''),
-    queryFn: () => unwrap(client.connectorStatus(id ?? '')),
+    queryFn: () => client.connectorStatus(id ?? '').then(unwrapResult),
     enabled: id !== null,
   })
 }
@@ -126,11 +120,11 @@ export function useConnectorAction() {
     mutationFn: ({ id, action }: { id: string; action: ConnectorAction }) => {
       switch (action) {
         case 'install':
-          return unwrap(client.installConnector(id))
+          return client.installConnector(id).then(unwrapResult)
         case 'start':
-          return unwrap(client.startConnector(id))
+          return client.startConnector(id).then(unwrapResult)
         case 'stop':
-          return unwrap(client.stopConnector(id))
+          return client.stopConnector(id).then(unwrapResult)
       }
     },
     onSettled: () =>
@@ -150,7 +144,7 @@ export function useSetConnectorSecret() {
       id: string
       key: string
       value: string
-    }) => unwrap(client.setConnectorSecret(id, key, value)),
+    }) => client.setConnectorSecret(id, key, value).then(unwrapResult),
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),
   })
@@ -166,7 +160,7 @@ export function useConfigureConnector() {
     }: {
       id: string
       config: Record<string, JsonValue>
-    }) => unwrap(client.configureConnector(id, config)),
+    }) => client.configureConnector(id, config).then(unwrapResult),
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),
   })
@@ -176,7 +170,7 @@ export function useConfigureConnector() {
 export function useFolderUsers(connectorId: string) {
   return useQuery({
     queryKey: [...connectorsQueryKeys.all, 'folder-users', connectorId],
-    queryFn: () => unwrap(client.listFolderUsers(connectorId)),
+    queryFn: () => client.listFolderUsers(connectorId).then(unwrapResult),
   })
 }
 
@@ -184,7 +178,7 @@ export function useFolderUsers(connectorId: string) {
 export function useAgentConnectors(agentId: string) {
   return useQuery({
     queryKey: connectorsQueryKeys.agent(agentId),
-    queryFn: () => unwrap(client.getAgentConnectors(agentId)),
+    queryFn: () => client.getAgentConnectors(agentId).then(unwrapResult),
   })
 }
 
@@ -193,7 +187,7 @@ export function useSetAgentConnectors(agentId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (connectors: AgentConnectorChoice[]) =>
-      unwrap(client.setAgentConnectors(agentId, connectors)),
+      client.setAgentConnectors(agentId, connectors).then(unwrapResult),
     onSettled: () =>
       // The agent's own list, and who uses each folder
       queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),

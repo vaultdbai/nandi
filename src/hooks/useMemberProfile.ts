@@ -14,16 +14,16 @@ import {
   memberQueryKeys,
   networkQueryKeys,
   rosterQueryKeys,
-  unwrapNandi,
   useMemberEvents,
 } from './useNetwork'
+import { unwrapResult } from '@/lib/tauri-bindings'
 
 export function useMemberProfile(instanceId: string) {
   useMemberEvents()
   return useQuery({
     queryKey: memberQueryKeys.byInstance(instanceId),
     queryFn: (): Promise<MemberProfile> =>
-      unwrapNandi(client.getMemberByInstance(instanceId)),
+      client.getMemberByInstance(instanceId).then(unwrapResult),
     enabled: instanceId !== '',
   })
 }
@@ -72,7 +72,7 @@ export function useAcceptPeerKey() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (instanceId: string) =>
-      unwrapNandi(client.acceptPeerKey(instanceId)),
+      client.acceptPeerKey(instanceId).then(unwrapResult),
     onSettled: (_key, _error, instanceId) =>
       queryClient.invalidateQueries({
         queryKey: memberQueryKeys.byInstance(instanceId),
@@ -84,9 +84,9 @@ export function useAcceptPeerKey() {
 export function useSetTrustRelationship() {
   return useMutation({
     mutationFn: (change: { instanceId: string; update: TrustUpdate }) =>
-      unwrapNandi(
-        client.setTrustRelationship(change.instanceId, change.update)
-      ),
+      client
+        .setTrustRelationship(change.instanceId, change.update)
+        .then(unwrapResult),
     ...useTrustCallbacks(),
   })
 }
@@ -99,11 +99,10 @@ export function useBlockAgentFromMember() {
       agentId: string
       blocked: boolean
     }) =>
-      unwrapNandi(
-        change.blocked
-          ? client.blockAgentFromMember(change.instanceId, change.agentId)
-          : client.unblockAgentFromMember(change.instanceId, change.agentId)
-      ),
+      (change.blocked
+        ? client.blockAgentFromMember(change.instanceId, change.agentId)
+        : client.unblockAgentFromMember(change.instanceId, change.agentId)
+      ).then(unwrapResult),
     ...useTrustCallbacks(),
   })
 }
@@ -111,9 +110,9 @@ export function useBlockAgentFromMember() {
 export function usePauseDelegationsFromMember() {
   return useMutation({
     mutationFn: (change: { instanceId: string; paused: boolean }) =>
-      unwrapNandi(
-        client.pauseDelegationsFromMember(change.instanceId, change.paused)
-      ),
+      client
+        .pauseDelegationsFromMember(change.instanceId, change.paused)
+        .then(unwrapResult),
     ...useTrustCallbacks(),
   })
 }

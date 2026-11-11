@@ -8,7 +8,8 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type { NetworkMember, NetworkSnapshot, Result } from '@/lib/bindings'
+import type { NetworkMember, NetworkSnapshot } from '@/lib/bindings'
+import { unwrapResult } from '@/lib/tauri-bindings'
 
 export const networkQueryKeys = {
   all: ['network'] as const,
@@ -24,15 +25,6 @@ export const memberQueryKeys = {
 export const rosterQueryKeys = {
   all: ['roster'] as const,
   team: (teamId: string) => ['roster', teamId] as const,
-}
-
-/** Rejects with an `Error` carrying the core's message */
-export async function unwrapNandi<T>(
-  result: Promise<Result<T, string>>
-): Promise<T> {
-  const resolved = await result
-  if (resolved.status === 'error') throw new Error(resolved.error)
-  return resolved.data
 }
 
 const MEMBER_EVENT_PREFIXES = ['network://', 'member://', 'trust://']
@@ -72,7 +64,7 @@ export function useNetworkSnapshot(enabled = true) {
   return useQuery({
     queryKey: networkQueryKeys.snapshot,
     queryFn: (): Promise<NetworkSnapshot> =>
-      unwrapNandi(client.getNetworkSnapshot()),
+      client.getNetworkSnapshot().then(unwrapResult),
     enabled,
   })
 }
@@ -85,7 +77,7 @@ export function useMemberName(instanceId: string | null): string | null {
   const snapshot = useQuery({
     queryKey: networkQueryKeys.snapshot,
     queryFn: (): Promise<NetworkSnapshot> =>
-      unwrapNandi(client.getNetworkSnapshot()),
+      client.getNetworkSnapshot().then(unwrapResult),
     enabled: false,
   })
   if (instanceId === null) return null
@@ -98,7 +90,7 @@ export function useRefreshNetwork() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (): Promise<NetworkSnapshot> =>
-      unwrapNandi(client.refreshNetwork()),
+      client.refreshNetwork().then(unwrapResult),
     onSuccess: snapshot =>
       queryClient.setQueryData(networkQueryKeys.snapshot, snapshot),
   })
