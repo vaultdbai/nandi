@@ -3,7 +3,7 @@
  * github.com repository Nandi uses — the GitHub connector, Backup, team
  * and capability registries, marketplace sources, and publishing.
  */
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   useMutation,
   useQuery,
@@ -15,6 +15,7 @@ import type { DeviceFlowState, GithubSignIn } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 import { logger } from '@/lib/logger'
 import { connectorsQueryKeys } from './useConnectors'
+import { useDevicePoll } from './useDevicePoll'
 
 export const githubSignInQueryKeys = {
   all: ['github', 'sign-in'] as const,
@@ -48,27 +49,24 @@ export function useGithubSignInFlow() {
   const [state, setState] = useState<GithubSignInFlow>({ phase: 'idle' })
 
   const flow = state.phase === 'waiting' ? state.flow : null
-  useEffect(() => {
-    if (!flow) return
-    let cancelled = false
-    const timer = window.setInterval(
-      async () => {
-        const result = await client.pollGithubSignIn()
-        if (cancelled) return
-        if (result.status === 'error') {
-          setState({ phase: 'error', message: result.error })
-        } else if (result.data.signedIn) {
-          setState({ phase: 'idle' })
-          invalidateSignIn(queryClient, result.data)
-        }
-      },
-      Math.max(flow.interval, 1) * 1000
-    )
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [flow, queryClient])
+  const intervalMs = Math.max(flow?.interval ?? 1, 1) * 1000
+  useDevicePoll({
+    session: flow,
+    delayMs: intervalMs,
+    poll: () => client.pollGithubSignIn(),
+    onPolled: result => {
+      if (result.status === 'error') {
+        setState({ phase: 'error', message: result.error })
+        return null
+      }
+      if (result.data.signedIn) {
+        setState({ phase: 'idle' })
+        invalidateSignIn(queryClient, result.data)
+        return null
+      }
+      return intervalMs
+    },
+  })
 
   const start = async () => {
     const result = await client.startGithubSignIn()

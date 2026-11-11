@@ -19,6 +19,7 @@ import {
   type Result,
   type SignInProblem,
 } from '@/lib/tauri-bindings'
+import { useDevicePoll } from './useDevicePoll'
 
 export const emailKeys = {
   status: ['email', 'status'] as const,
@@ -132,41 +133,39 @@ export function useSignInFlow(
     latest.current = { poll, queryKey }
   })
 
-  useEffect(() => {
-    if (!flow) return
-    let cancelled = false
-    const timer = window.setInterval(
-      async () => {
-        const result = await latest.current.poll()
-        if (cancelled) return
-        if (result.status === 'error') {
-          setState({
-            phase: 'failed',
-            problem: {
-              kind: 'other',
-              detail: result.error,
-              adminConsentUrl: null,
-            },
-          })
-          return
-        }
-        const polled = result.data
-        if (polled.phase === 'connected') {
-          setState({ phase: 'connected' })
-          void queryClient.invalidateQueries({
-            queryKey: latest.current.queryKey,
-          })
-        } else if (polled.phase === 'failed' && polled.problem) {
-          setState({ phase: 'failed', problem: polled.problem })
-        }
-      },
-      Math.max(flow.interval * 1000, POLL_MS)
-    )
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [flow, id, queryClient])
+  const intervalMs = Math.max((flow?.interval ?? 0) * 1000, POLL_MS)
+  useDevicePoll({
+    // A new flow, or another account's, starts a new poll
+    session: flow ? `${id}:${flow.deviceCode}` : null,
+    delayMs: intervalMs,
+    poll: () => latest.current.poll(),
+    onPolled: result => {
+      if (result.status === 'error') {
+        setState({
+          phase: 'failed',
+          problem: {
+            kind: 'other',
+            detail: result.error,
+            adminConsentUrl: null,
+          },
+        })
+        return null
+      }
+      const polled = result.data
+      if (polled.phase === 'connected') {
+        setState({ phase: 'connected' })
+        void queryClient.invalidateQueries({
+          queryKey: latest.current.queryKey,
+        })
+        return null
+      }
+      if (polled.phase === 'failed' && polled.problem) {
+        setState({ phase: 'failed', problem: polled.problem })
+        return null
+      }
+      return intervalMs
+    },
+  })
 
   const start = async () => {
     const result = await startSignIn()
