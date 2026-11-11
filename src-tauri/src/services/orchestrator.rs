@@ -1161,11 +1161,12 @@ async fn pause_statuses(
         .iter()
         .map(|name| pause_call_id(run_id, step_index, name))
         .collect();
+    let run = run_id.to_string();
     let statuses = bus
         .db
         .call(move |conn| {
             ids.iter()
-                .map(|id| Ok(db::approval_for_call(conn, id)?.map(|a| a.status)))
+                .map(|id| Ok(db::approval_for_call(conn, &run, id)?.map(|a| a.status)))
                 .collect::<rusqlite::Result<Vec<_>>>()
         })
         .await?;
@@ -1986,11 +1987,11 @@ async fn access_gate(
                 args: serde_json::to_value(&request).map_err(|e| e.to_string())?,
                 requires_approval: true,
             };
-            let call_id = access_call.id.clone();
+            let (run_id, call_id) = (ctx.run_id.clone(), access_call.id.clone());
             let approval = deps
                 .bus
                 .db
-                .call(move |conn| db::approval_for_call(conn, &call_id))
+                .call(move |conn| db::approval_for_call(conn, &run_id, &call_id))
                 .await?;
             match approval.map(|a| a.status) {
                 None => {
@@ -2006,6 +2007,28 @@ async fn access_gate(
             }
         }
     }
+}
+
+/// Where `call` stands with `approval`, the one found for its run and call
+/// ID. An approval is for one tool: a call reusing the ID for another tool
+/// is refused, never run on someone else's yes.
+fn approval_status(
+    approval: Option<&db::ApprovalRow>,
+    call: &PlannedCall,
+) -> Option<ApprovalStatus> {
+    approval.map(|approval| {
+        if approval.tool == call.tool {
+            approval.status
+        } else {
+            log::warn!(
+                "Call {} asks for '{}' but its approval was for '{}': refused",
+                call.id,
+                call.tool,
+                approval.tool
+            );
+            ApprovalStatus::Rejected
+        }
+    })
 }
 
 /// Runs one planned call if it's ready. Returns `false` if the run is now
@@ -2135,12 +2158,12 @@ async fn run_call(
         && call.tool != tool_search::TOOL_SEARCH_NAME
         && call.tool != a2a::tool::ASK_REQUESTER
     {
-        let call_id = call.id.clone();
+        let (run_id, call_id) = (ctx.run_id.clone(), call.id.clone());
         let approval = bus
             .db
-            .call(move |conn| db::approval_for_call(conn, &call_id))
+            .call(move |conn| db::approval_for_call(conn, &run_id, &call_id))
             .await?;
-        match approval.map(|a| a.status) {
+        match approval_status(approval.as_ref(), call) {
             None => {
                 bus.approval_request(ctx, call).await?;
                 // The person finishes a hand-over in the browser: show it
@@ -2207,7 +2230,8 @@ async fn run_call(
             Some(state) if ctx.agent_id == CHIEF_OF_STAFF => {
                 // A know-me card may have edited the proposal before the
                 // confirm: the approval's arguments are the confirmed ones
-                let args = inbox::tool::confirmed_args(&state, &call.id, &call.args).await;
+                let args =
+                    inbox::tool::confirmed_args(&state, &ctx.run_id, &call.id, &call.args).await;
                 inbox::tool::call(&state, &ctx.conversation_id, &call.tool, &args).await
             }
             _ => ToolOutcome {
@@ -3004,6 +3028,61 @@ pilots: { allow: [] }
 }
 
 #[cfg(test)]
+mod approval_tests {
+    use super::*;
+    use crate::db::ApprovalRow;
+
+    fn approval(tool: &str, status: ApprovalStatus) -> ApprovalRow {
+        ApprovalRow {
+            id: "ap1".into(),
+            agent_id: "a".into(),
+            run_id: "r1".into(),
+            message_id: "ap1".into(),
+            tool_call_id: "call_0".into(),
+            tool: tool.into(),
+            args: serde_json::json!({}),
+            status,
+            created_at: 0,
+            expires_at: None,
+            decided_by: None,
+        }
+    }
+
+    #[test]
+    fn an_approval_only_lets_the_tool_it_was_for_run() {
+        let call = PlannedCall {
+            id: "call_0".into(),
+            tool: "shell".into(),
+            args: serde_json::json!({"cmd": "rm -rf ."}),
+            requires_approval: true,
+        };
+        // (the approval found for the call, where the call stands)
+        let cases = [
+            (None, None),
+            (
+                Some(approval("shell", ApprovalStatus::Approved)),
+                Some(ApprovalStatus::Approved),
+            ),
+            (
+                Some(approval("shell", ApprovalStatus::Pending)),
+                Some(ApprovalStatus::Pending),
+            ),
+            (
+                Some(approval("read_file", ApprovalStatus::Approved)),
+                Some(ApprovalStatus::Rejected),
+            ),
+        ];
+        for (found, expected) in cases {
+            assert_eq!(
+                approval_status(found.as_ref(), &call),
+                expected,
+                "{found:?}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod middleware_tests {
     use super::*;
     use crate::db::ApprovalRow;
@@ -3242,11 +3321,11 @@ mod middleware_tests {
     }
 
     async fn pause_approval(state: &AppState, run_id: &str) -> ApprovalRow {
-        let id = pause_call_id(run_id, 0, "pause_first");
+        let (run, id) = (run_id.to_string(), pause_call_id(run_id, 0, "pause_first"));
         state
             .bus()
             .db
-            .call(move |c| db::approval_for_call(c, &id))
+            .call(move |c| db::approval_for_call(c, &run, &id))
             .await
             .unwrap()
             .expect("an approval for the pause")

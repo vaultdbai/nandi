@@ -1326,7 +1326,7 @@ pub mod tests {
 
         let approval = bus
             .db
-            .call(|conn| db::approval_for_call(conn, "c1"))
+            .call(|conn| db::approval_for_call(conn, "r1", "c1"))
             .await
             .unwrap()
             .unwrap();

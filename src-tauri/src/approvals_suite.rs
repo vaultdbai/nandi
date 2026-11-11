@@ -383,6 +383,7 @@ No shell.
             .contains("Tool 'shell' is not available: a policy doesn't allow it"),
         "the model got the refusal: {detail}"
     );
+    let run = run_id.clone();
     let calls = state
         .db()
         .call(move |conn| crate::db::list_run_messages(conn, &run_id))
@@ -397,7 +398,7 @@ No shell.
     let id = shell_call.clone();
     let approval = state
         .db()
-        .call(move |conn| crate::db::approval_for_call(conn, &id))
+        .call(move |conn| crate::db::approval_for_call(conn, &run, &id))
         .await
         .unwrap();
     assert!(approval.is_none(), "nobody was asked: {approval:?}");

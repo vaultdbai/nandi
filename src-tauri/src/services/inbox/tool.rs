@@ -80,11 +80,11 @@ pub fn gate(calls: &mut [PlannedCall]) {
 /// The arguments a confirmed call runs with: the approval's, which a
 /// know-me card may have edited before the person confirmed it; else the
 /// model's
-pub async fn confirmed_args(state: &AppState, call_id: &str, args: &Value) -> Value {
-    let id = call_id.to_string();
+pub async fn confirmed_args(state: &AppState, run_id: &str, call_id: &str, args: &Value) -> Value {
+    let (run, id) = (run_id.to_string(), call_id.to_string());
     state
         .db()
-        .call(move |conn| crate::db::approval_for_call(conn, &id))
+        .call(move |conn| crate::db::approval_for_call(conn, &run, &id))
         .await
         .ok()
         .flatten()

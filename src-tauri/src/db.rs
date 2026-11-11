@@ -1999,13 +1999,19 @@ pub fn get_approval(conn: &Connection, id: &str) -> rusqlite::Result<Option<Appr
     .optional()
 }
 
+/// The approval of tool call `tool_call_id` in run `run_id`. A provider's
+/// call IDs are only unique within its answer (a local server may number
+/// every answer's calls `call_0`, `call_1`), so never one of another run.
 pub fn approval_for_call(
     conn: &Connection,
+    run_id: &str,
     tool_call_id: &str,
 ) -> rusqlite::Result<Option<ApprovalRow>> {
     conn.query_row(
-        &format!("SELECT {APPROVAL_COLUMNS} FROM approvals WHERE tool_call_id = ?1"),
-        [tool_call_id],
+        &format!(
+            "SELECT {APPROVAL_COLUMNS} FROM approvals WHERE run_id = ?1 AND tool_call_id = ?2"
+        ),
+        [run_id, tool_call_id],
         approval_row,
     )
     .optional()
@@ -2625,9 +2631,11 @@ pub(crate) mod tests {
         assert_eq!(pending.conversation_id, conversation);
         assert_eq!(pending.expires_at, Some(5_000.0));
         assert_eq!(
-            approval_for_call(&conn, "call1").unwrap().unwrap().id,
+            approval_for_call(&conn, "r1", "call1").unwrap().unwrap().id,
             "ap1"
         );
+        // Another run's call with the same provider ID isn't approved by it
+        assert!(approval_for_call(&conn, "r2", "call1").unwrap().is_none());
         // Overdue once its deadline has passed
         assert!(overdue_approvals(&conn, 4_999).unwrap().is_empty());
         assert_eq!(overdue_approvals(&conn, 5_000).unwrap()[0].id, "ap1");
