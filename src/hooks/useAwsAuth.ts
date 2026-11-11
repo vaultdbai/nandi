@@ -39,8 +39,7 @@ function useAwsEvents() {
     const subscription = client.subscribe(event => {
       if (
         event.event === 'aws://profile_changed' ||
-        event.event === 'aws://credentials_expired' ||
-        event.event === 'nandi://resync'
+        event.event === 'aws://credentials_expired'
       ) {
         void queryClient.invalidateQueries({ queryKey: awsQueryKeys.all })
       }

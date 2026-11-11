@@ -22,8 +22,7 @@ function useBedrockEvents() {
     const subscription = client.subscribe(event => {
       if (
         event.event === 'bedrock://models_refreshed' ||
-        event.event === 'bedrock://gateway_status' ||
-        event.event === 'nandi://resync'
+        event.event === 'bedrock://gateway_status'
       ) {
         void queryClient.invalidateQueries({ queryKey: bedrockQueryKeys.all })
       }

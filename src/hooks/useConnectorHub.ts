@@ -30,7 +30,6 @@ const EVENT_KEYS: Record<string, readonly (readonly string[])[]> = {
   'grants://changed': [hubKeys.grants],
   'workspace://changed': [hubKeys.workspace, hubKeys.grants],
   'connectors://changed': [hubKeys.registry],
-  'nandi://resync': [hubKeys.grants, hubKeys.workspace, hubKeys.registry],
 }
 
 function useHubEvents() {

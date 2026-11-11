@@ -24,8 +24,7 @@ function useSessionEvents() {
     const subscription = client.subscribe(event => {
       if (
         event.event === 'harness://session_started' ||
-        event.event === 'harness://session_ended' ||
-        event.event === 'nandi://resync'
+        event.event === 'harness://session_ended'
       ) {
         void queryClient.invalidateQueries({
           queryKey: harnessSessionKeys.all,

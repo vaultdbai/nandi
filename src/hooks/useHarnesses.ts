@@ -28,8 +28,7 @@ function useHarnessEvents() {
     const subscription = client.subscribe(event => {
       if (
         event.event === 'harness://detected' ||
-        event.event === 'harness://health_changed' ||
-        event.event === 'nandi://resync'
+        event.event === 'harness://health_changed'
       ) {
         void queryClient.invalidateQueries({ queryKey: harnessQueryKeys.all })
       }

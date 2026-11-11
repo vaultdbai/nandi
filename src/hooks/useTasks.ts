@@ -97,7 +97,6 @@ export function applyTaskEvent(queryClient: QueryClient, event: NandiEvent) {
     case 'task://timed_out':
     case 'task://clarification_requested':
     case 'task://clarification_answered':
-    case 'nandi://resync':
       void queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
       break
   }

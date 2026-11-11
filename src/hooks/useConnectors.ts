@@ -79,10 +79,7 @@ function useConnectorEvents() {
         void queryClient.invalidateQueries({
           queryKey: connectorsQueryKeys.list,
         })
-      } else if (
-        event.event === 'connectors://changed' ||
-        event.event === 'nandi://resync'
-      ) {
+      } else if (event.event === 'connectors://changed') {
         void queryClient.invalidateQueries({
           queryKey: connectorsQueryKeys.all,
         })

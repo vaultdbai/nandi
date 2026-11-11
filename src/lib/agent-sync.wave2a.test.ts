@@ -101,8 +101,12 @@ describe('agent-sync: wave-2A network events', () => {
 
   it('resync invalidates every query', () => {
     handleNandiEvent({ event: 'nandi://resync', payload: { missed: 1 } })
-    // No filter: all queries, whatever their key
-    expect(invalidate).toHaveBeenCalledWith()
+    // One call with no filter covers every query, so hooks of the main
+    // window need no resync handling of their own
+    const everything = invalidate.mock.calls.filter(
+      (call: unknown[]) => call.length === 0
+    )
+    expect(everything).toHaveLength(1)
   })
 })
 

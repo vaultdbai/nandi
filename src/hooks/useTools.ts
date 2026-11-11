@@ -24,8 +24,7 @@ function useToolEvents() {
     const subscription = client.subscribe(event => {
       if (
         event.event === 'tool://catalog_changed' ||
-        event.event === 'tool://usage_recorded' ||
-        event.event === 'nandi://resync'
+        event.event === 'tool://usage_recorded'
       ) {
         void queryClient.invalidateQueries({ queryKey: toolQueryKeys.all })
       }
