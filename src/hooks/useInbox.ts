@@ -5,7 +5,6 @@
  * waiting for the user's OK), and recent failures not dismissed.
  * Kept live by the events of each source; approvals by `agent://approval_*`.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNow } from '@/components/agents/task-utils'
 import { buildInbox, inboxBadgeCount } from '@/components/inbox/inbox-model'
 import { useChiefOfStaffDigest } from '@/hooks/useChiefOfStaffDigest'
@@ -17,7 +16,7 @@ import { useManualSteps, useWork, workKeys } from '@/hooks/useWork'
 import { client, type NandiEventName } from '@/lib/client'
 import { useInvalidateOn } from '@/hooks/useInvalidateOn'
 import { useAgents } from '@/hooks/useAgents'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 export const inboxKeys = {
   approvals: ['approvals', 'pending'] as const,
@@ -36,10 +35,9 @@ const APPROVAL_EVENTS: readonly NandiEventName[] = [
 export function useAllPendingApprovals() {
   useInvalidateOn(APPROVAL_EVENTS, inboxKeys.approvals)
 
-  return useQuery({
-    queryKey: inboxKeys.approvals,
-    queryFn: async () => unwrapResult(await client.listPendingApprovals()),
-  })
+  return useClientQuery(inboxKeys.approvals, () =>
+    client.listPendingApprovals()
+  )
 }
 
 const HOLD_EVENTS: readonly NandiEventName[] = [
@@ -51,17 +49,13 @@ const HOLD_EVENTS: readonly NandiEventName[] = [
 export function useGatewayHolds() {
   useInvalidateOn(HOLD_EVENTS, inboxKeys.holds)
 
-  return useQuery({
-    queryKey: inboxKeys.holds,
-    queryFn: async () => unwrapResult(await client.listGatewayHolds()),
-  })
+  return useClientQuery(inboxKeys.holds, () => client.listGatewayHolds())
 }
 
 /** Approve (it goes on) or decline (it's refused) a held request */
 export function useDecideGatewayHold() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
+  return useClientMutation(
+    ({
       taskId,
       approve,
       note = null,
@@ -70,10 +64,9 @@ export function useDecideGatewayHold() {
       approve: boolean
       /** Goes back to them: a refusal's reason, a condition */
       note?: string | null
-    }) => unwrapResult(await client.decideGatewayHold(taskId, approve, note)),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: inboxKeys.holds }),
-  })
+    }) => client.decideGatewayHold(taskId, approve, note),
+    { invalidates: inboxKeys.holds }
+  )
 }
 
 const ASSIGNMENT_EVENTS: readonly NandiEventName[] = [
@@ -85,17 +78,15 @@ const ASSIGNMENT_EVENTS: readonly NandiEventName[] = [
 export function useGatewayAssignments() {
   useInvalidateOn(ASSIGNMENT_EVENTS, inboxKeys.assignments)
 
-  return useQuery({
-    queryKey: inboxKeys.assignments,
-    queryFn: async () => unwrapResult(await client.listGatewayAssignments()),
-  })
+  return useClientQuery(inboxKeys.assignments, () =>
+    client.listGatewayAssignments()
+  )
 }
 
 /** Done (the requester gets the note) or Decline an assignment */
 export function useCloseGatewayAssignment() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
+  return useClientMutation(
+    ({
       taskId,
       done,
       note,
@@ -103,10 +94,9 @@ export function useCloseGatewayAssignment() {
       taskId: string
       done: boolean
       note: string | null
-    }) => unwrapResult(await client.closeGatewayAssignment(taskId, done, note)),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: inboxKeys.assignments }),
-  })
+    }) => client.closeGatewayAssignment(taskId, done, note),
+    { invalidates: inboxKeys.assignments }
+  )
 }
 
 const RETURN_EVENTS: readonly NandiEventName[] = ['request://returned']
@@ -115,38 +105,27 @@ const RETURN_EVENTS: readonly NandiEventName[] = ['request://returned']
 export function useRequestReturns() {
   useInvalidateOn(RETURN_EVENTS, inboxKeys.returns)
 
-  return useQuery({
-    queryKey: inboxKeys.returns,
-    queryFn: async () => unwrapResult(await client.listRequestReturns()),
-  })
+  return useClientQuery(inboxKeys.returns, () => client.listRequestReturns())
 }
 
 /** Takes a returned request out of the Inbox */
 export function useDismissRequestReturn() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (taskId: string) =>
-      unwrapResult(await client.dismissRequestReturn(taskId)),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: inboxKeys.returns }),
-  })
+  return useClientMutation(
+    (taskId: string) => client.dismissRequestReturn(taskId),
+    {
+      invalidates: inboxKeys.returns,
+    }
+  )
 }
 
 function useDismissedWork() {
-  return useQuery({
-    queryKey: inboxKeys.dismissed,
-    queryFn: async () => unwrapResult(await client.listDismissedWork()),
-  })
+  return useClientQuery(inboxKeys.dismissed, () => client.listDismissedWork())
 }
 
 /** Hides a failure from the Inbox; it stays in Recent and history */
 export function useDismissWork() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (id: string) =>
-      unwrapResult(await client.dismissWork(id)),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: inboxKeys.dismissed }),
+  return useClientMutation((id: string) => client.dismissWork(id), {
+    invalidates: inboxKeys.dismissed,
   })
 }
 

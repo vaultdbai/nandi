@@ -3,11 +3,11 @@
  * month's entries (`list_decisions`). Local files only, no relay. A
  * decision made elsewhere in the app shows up on the next refetch.
  */
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData } from '@tanstack/react-query'
 import { client, type NandiEventName } from '@/lib/client'
 import { useInvalidateOn } from '@/hooks/useInvalidateOn'
 import type { DecisionFilter } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 
 export const decisionKeys = {
   all: ['decisions'] as const,
@@ -28,21 +28,19 @@ const DECISION_EVENTS: readonly NandiEventName[] = [
 
 export function useDecisionMonths() {
   useInvalidateOn(DECISION_EVENTS, decisionKeys.all)
-  return useQuery({
-    queryKey: decisionKeys.months,
-    queryFn: async () => unwrapResult(await client.listDecisionMonths()),
-  })
+  return useClientQuery(decisionKeys.months, () => client.listDecisionMonths())
 }
 
 export function useDecisions(
   month: string | null,
   filter: DecisionFilter | null
 ) {
-  return useQuery({
-    queryKey: decisionKeys.list(month ?? '', filter),
-    queryFn: async () =>
-      unwrapResult(await client.listDecisions(month ?? '', filter)),
-    enabled: month !== null,
-    placeholderData: keepPreviousData,
-  })
+  return useClientQuery(
+    decisionKeys.list(month ?? '', filter),
+    () => client.listDecisions(month ?? '', filter),
+    {
+      enabled: month !== null,
+      placeholderData: keepPreviousData,
+    }
+  )
 }

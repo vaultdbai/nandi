@@ -2,11 +2,11 @@
  * The Chief of Staff's digest: what it did since the user last looked.
  * Refetches on `request://updated` (any Request change, and after mark-seen).
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client, type NandiEventName } from '@/lib/client'
 import { useInvalidateOn } from '@/hooks/useInvalidateOn'
-import { unwrapResult } from '@/lib/tauri-bindings'
 import { requestQueryKeys } from '@/hooks/useRequests'
+import { useClientQuery, useClientMutation } from '@/hooks/useClientQuery'
 
 export const digestKeys = {
   all: ['chief-of-staff', 'digest'] as const,
@@ -16,53 +16,46 @@ const DIGEST_EVENTS: readonly NandiEventName[] = ['request://updated']
 
 export function useChiefOfStaffDigest() {
   useInvalidateOn(DIGEST_EVENTS, digestKeys.all)
-  return useQuery({
-    queryKey: digestKeys.all,
-    queryFn: async () => unwrapResult(await client.getChiefOfStaffDigest()),
-  })
+  return useClientQuery(digestKeys.all, () => client.getChiefOfStaffDigest())
 }
 
 export function useApproveQueuedWork() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (queueId: string) =>
-      unwrapResult(await client.approveQueuedWork(queueId)),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: digestKeys.all }),
-  })
+  return useClientMutation(
+    (queueId: string) => client.approveQueuedWork(queueId),
+    {
+      invalidates: digestKeys.all,
+    }
+  )
 }
 
 export function useDismissQueuedWork() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (queueId: string) =>
-      unwrapResult(await client.dismissQueuedWork(queueId)),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: digestKeys.all }),
-  })
+  return useClientMutation(
+    (queueId: string) => client.dismissQueuedWork(queueId),
+    {
+      invalidates: digestKeys.all,
+    }
+  )
 }
 
 /** "Mark done" on a step of a local Request that waits on the user */
 export function useCompleteWaitingStep() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (target: { requestId: string; position: number }) =>
-      unwrapResult(
-        await client.completeRequestStep(target.requestId, target.position)
-      ),
-    onSettled: () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: digestKeys.all }),
-        queryClient.invalidateQueries({ queryKey: requestQueryKeys.all }),
-      ]),
-  })
+  return useClientMutation(
+    (target: { requestId: string; position: number }) =>
+      client.completeRequestStep(target.requestId, target.position),
+    {
+      onSettled: () =>
+        Promise.all([
+          queryClient.invalidateQueries({ queryKey: digestKeys.all }),
+          queryClient.invalidateQueries({ queryKey: requestQueryKeys.all }),
+        ]),
+    }
+  )
 }
 
 export function useMarkDigestSeen() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async () =>
-      unwrapResult(await client.markChiefOfStaffDigestSeen()),
+  return useClientMutation(() => client.markChiefOfStaffDigestSeen(), {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: digestKeys.all }),
   })

@@ -5,10 +5,9 @@
  * been decided (an approval, a hold, an assignment, a manual step or a
  * Request changed).
  */
-import { useQuery } from '@tanstack/react-query'
 import { client, type NandiEventName } from '@/lib/client'
 import { useInvalidateOn } from '@/hooks/useInvalidateOn'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 
 export const inboxThreadKeys = {
   detail: (conversationId: string) =>
@@ -26,10 +25,11 @@ const THREAD_EVENTS: readonly NandiEventName[] = [
 
 export function useInboxThread(conversationId: string) {
   useInvalidateOn(THREAD_EVENTS, inboxThreadKeys.detail(conversationId))
-  return useQuery({
-    queryKey: inboxThreadKeys.detail(conversationId),
-    queryFn: async () =>
-      unwrapResult(await client.openInboxThread(conversationId)),
-    retry: false,
-  })
+  return useClientQuery(
+    inboxThreadKeys.detail(conversationId),
+    () => client.openInboxThread(conversationId),
+    {
+      retry: false,
+    }
+  )
 }
