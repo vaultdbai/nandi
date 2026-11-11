@@ -11,7 +11,7 @@
 //! | secured, a token kept for it       | Reuses it (joined before, then disconnected)                   |
 //! | secured, a join code               | Enrolls once (`POST /relay/enroll`), saves the token, connects |
 //! | secured, no code                   | [`JoinOutcome::CodeNeeded`]                                    |
-//! | public (`public: true`)            | [`JoinOutcome::SignInNeeded`]: join it by signing in           |
+//! | public (`public: true`)            | [`JoinOutcome::PublicRelay`]: join it with the connected email |
 //!
 //! The join code is the one the user typed, or the build's own
 //! ([`super::BuiltInRelay`]) for the build's relay. A typed code is kept in
@@ -70,9 +70,9 @@ pub enum JoinOutcome {
     Removed { message: String },
     /// The relay doesn't take enrollments (no join code set up there)
     NoEnrollment,
-    /// A public relay: people join it by signing in, not with a code
-    /// ("Join the public relay", [`super::public`])
-    SignInNeeded,
+    /// A public relay: Nandis join it with their connected email, not with
+    /// a code ("Join the public relay", [`super::public`])
+    PublicRelay,
     /// Any other refusal, in the relay's words
     Refused { message: String },
 }
@@ -117,7 +117,7 @@ pub async fn join_relay(
         });
     }
     if health.public {
-        return Ok(JoinOutcome::SignInNeeded);
+        return Ok(JoinOutcome::PublicRelay);
     }
     let health = health.relay;
     let token = if health.auth == "open" {
@@ -185,7 +185,7 @@ fn keep_join_code(state: &AppState, relay: &str, code: &str) {
 }
 
 /// A relay's `GET /health`: the protocol's fields, and whether it is a
-/// public relay and whom it signs in with
+/// public relay and whose ID tokens it accepts
 #[derive(Debug, Clone, Deserialize)]
 pub(super) struct RelayHealthReport {
     #[serde(flatten)]
@@ -193,7 +193,7 @@ pub(super) struct RelayHealthReport {
     #[serde(default)]
     pub public: bool,
     #[serde(default)]
-    pub signin: Vec<String>,
+    pub identity: Vec<String>,
 }
 
 /// `GET <relay host>/health`, or why it isn't a relay we can join

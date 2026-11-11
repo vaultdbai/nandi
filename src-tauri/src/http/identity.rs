@@ -13,6 +13,8 @@ pub fn api() -> Router<AppState> {
     Router::new()
         // Returns `IdentityStatus`
         .route("/identity/status", get(status))
+        // Returns `VerifiedIdentity | null`
+        .route("/identity/verified", get(verified))
         // Body `{"name": "..."}`
         .route("/identity/display-name", put(display_name))
         // Body `{"slug": "..."}`
@@ -72,6 +74,10 @@ struct NameBody {
 struct SlugBody {
     #[serde(default)]
     slug: String,
+}
+
+async fn verified(State(state): State<AppState>) -> impl IntoResponse {
+    ApiResult(Ok::<_, String>(crate::services::identity::identity(&state)))
 }
 
 async fn status(State(state): State<AppState>) -> impl IntoResponse {

@@ -137,8 +137,8 @@ tempfile = "3"
 # The relay server (vaultdbai/nandi-relay, BUSL-1.1), for the relay client's
 # integration tests only: the app never links it (see
 # docs/developer/rust-architecture.md). The `[patch]` below uses a sibling
-# checkout at `../nandi-relay`
-nandi-relay = { git = "https://github.com/vaultdbai/nandi-relay", branch = "main" }
+# checkout at `../nandi-relay`. `testing`: its fake identity provider
+nandi-relay = { git = "https://github.com/vaultdbai/nandi-relay", branch = "main", features = ["testing"] }
 
 [patch."https://github.com/vaultdbai/nandi-relay"]
 nandi-relay = { path = "../../nandi-relay" }

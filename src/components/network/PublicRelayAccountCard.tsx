@@ -1,6 +1,6 @@
 /**
- * Network › Connection on the public relay: the account this Nandi signed
- * in with (provider and name), the account's Nandis, the free limits and
+ * Network › Connection on the public relay: the email this Nandi joined
+ * as (its connected mailbox), the account's Nandis, the free limits and
  * today's usage with when it resets, and a note that on a public relay
  * you see only the people you share a group with. While the relay doesn't
  * answer it names the account as kept, calmly.
@@ -12,7 +12,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { usePublicRelayAccount } from '@/hooks/useRelay'
 import { formatResetTime } from '@/lib/format-time'
 import { useNavigationStore } from '@/store/navigation-store'
-import { providerKey } from './public-relay-model'
 
 export function PublicRelayAccountCard() {
   const { t, i18n } = useTranslation()
@@ -37,11 +36,8 @@ export function PublicRelayAccountCard() {
         </p>
       ) : view.kind === 'unavailable' ? (
         <>
-          <p className="text-sm" data-testid="public-relay-signed-in">
-            {t('publicRelay.account.signedIn', {
-              name: view.display,
-              provider: t(providerKey(view.provider)),
-            })}
+          <p className="text-sm" data-testid="public-relay-joined-as">
+            {t('publicRelay.account.joinedAs', { email: view.email })}
           </p>
           <p className="text-sm text-muted-foreground">
             {t('publicRelay.account.unavailable')}
@@ -49,11 +45,8 @@ export function PublicRelayAccountCard() {
         </>
       ) : (
         <>
-          <p className="text-sm" data-testid="public-relay-signed-in">
-            {t('publicRelay.account.signedIn', {
-              name: view.account.display,
-              provider: t(providerKey(view.account.provider)),
-            })}
+          <p className="text-sm" data-testid="public-relay-joined-as">
+            {t('publicRelay.account.joinedAs', { email: view.account.email })}
           </p>
           <div className="grid gap-1">
             <h3 className="text-xs text-muted-foreground">

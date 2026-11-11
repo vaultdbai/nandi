@@ -9,7 +9,7 @@
 //! - `unavailable`: [`RelayUnavailable`], the typed "not connected" answer
 //!   of every person-to-person action
 //! - `join`: joining a company relay (a join code); `public`: joining the
-//!   public relay (signing in); `limits`: a relay's limits per person
+//!   public relay (joining with the connected email); `limits`: a relay's limits per person
 //! - `device_keys`: this instance's own keys (made on first relay use, kept
 //!   in the OS keyring), sent at enrollment and registration
 //! - `opened`: person-to-person traffic as the app sees it, with content

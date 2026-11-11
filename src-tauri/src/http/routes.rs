@@ -124,16 +124,6 @@ pub fn api() -> Router<AppState> {
         .route("/free-trial", put(set_free_trial))
         // Returns `TrialAccount` (the gateway's `GET /v1/trial`)
         .route("/free-trial/account", get(free_trial_account))
-        // Returns `TrialSignInStart`
-        .route(
-            "/free-trial/sign-in/{provider}/start",
-            post(start_free_trial_sign_in),
-        )
-        // Body `{ signinId }`; returns `TrialSignInPoll`
-        .route(
-            "/free-trial/sign-in/{provider}/poll",
-            post(poll_free_trial_sign_in),
-        )
         .route("/egress/status", get(egress_status))
         .route("/egress/aws-credentials", put(set_aws_credentials))
         .route("/egress/aws-region", put(set_aws_region))
@@ -608,27 +598,6 @@ async fn set_free_trial(
 
 async fn free_trial_account(State(state): State<AppState>) -> impl IntoResponse {
     ApiResult(llm_keys::get_free_trial_account(&state).await)
-}
-
-async fn start_free_trial_sign_in(
-    State(state): State<AppState>,
-    Path(provider): Path<crate::services::llm_trial::TrialSignInProvider>,
-) -> impl IntoResponse {
-    ApiResult(llm_keys::start_free_trial_sign_in(&state, provider).await)
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TrialSignInPollBody {
-    signin_id: String,
-}
-
-async fn poll_free_trial_sign_in(
-    State(state): State<AppState>,
-    Path(provider): Path<crate::services::llm_trial::TrialSignInProvider>,
-    Json(body): Json<TrialSignInPollBody>,
-) -> impl IntoResponse {
-    ApiResult(llm_keys::poll_free_trial_sign_in(&state, provider, body.signin_id).await)
 }
 
 // --- Egress ----------------------------------------------------------------

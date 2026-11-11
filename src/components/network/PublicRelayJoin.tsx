@@ -1,83 +1,76 @@
 /**
  * "Join the public relay", shared by onboarding and Network › Connection:
- * asks whether the public relay can be joined now, offers its sign-in
- * providers, then shows the code to enter and "Open sign-in page" while
- * it polls every `interval` seconds, and says when this Nandi is linked
- * and connecting. An unreachable relay is a calm line, never a blocker.
- * The token never reaches the UI.
+ * asks whether the public relay can be joined now and joins with this
+ * Nandi's connected email in one click. Without a connected email it says
+ * to connect Outlook or Gmail in Settings › Email (with the way there).
+ * An unreachable relay is a calm line, never a blocker. The token never
+ * reaches the UI.
  */
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ExternalLink } from 'lucide-react'
+import { CheckCircle2, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { client } from '@/lib/client'
-import type { RelaySignInProvider } from '@/lib/bindings'
 import { relayQueryKeys, usePublicRelayOffer } from '@/hooks/useRelay'
-import {
-  afterPoll,
-  afterStart,
-  CHOOSE,
-  offeredProviders,
-  providerKey,
-  type SignInState,
-} from './public-relay-model'
+import { useNavigationStore } from '@/store/navigation-store'
+import { afterJoin, IDLE, type JoinState } from './public-relay-model'
 
-/** The clock the sign-in's expiry is read against */
-const now = () => Date.now()
+/** Settings › Email, where a mailbox is connected */
+function openEmailSettings() {
+  useNavigationStore.getState().navigate({ kind: 'settings', section: 'email' })
+}
+
+function NeedsEmail({ detail }: { detail?: string }) {
+  const { t } = useTranslation()
+  return (
+    <div className="space-y-2" data-testid="public-relay-needs-email">
+      <p className="text-sm text-muted-foreground">
+        {t('publicRelay.needsEmail')}
+      </p>
+      {detail && (
+        <p dir="auto" className="text-xs break-words text-muted-foreground">
+          {detail}
+        </p>
+      )}
+      <Button size="sm" variant="outline" onClick={openEmailSettings}>
+        <Mail aria-hidden />
+        {t('publicRelay.openEmail')}
+      </Button>
+    </div>
+  )
+}
 
 export function PublicRelayJoin({
   onLinked,
 }: {
-  /** Called once the relay linked this Nandi (`relay`: its URL) */
+  /** Called once this Nandi joined (`relay`: its URL) */
   onLinked?: (relay: string) => void
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const offer = usePublicRelayOffer()
-  const [state, setState] = useState<SignInState>(CHOOSE)
+  const [state, setState] = useState<JoinState>(IDLE)
 
-  // Asks again every `interval` seconds while waiting
-  useEffect(() => {
-    if (state.phase !== 'waiting') return
-    const timer = setTimeout(() => {
-      void (async () => {
-        const result = await client.pollPublicRelaySignIn(
-          state.provider,
-          state.signinId
-        )
-        const next =
-          result.status === 'error'
-            ? ({
-                phase: 'failed',
-                failure: { key: 'publicRelay.failed', detail: result.error },
-              } satisfies SignInState)
-            : afterPoll(state, result.data, now())
-        setState(next)
-        if (next.phase === 'linked') {
-          await queryClient.invalidateQueries({ queryKey: relayQueryKeys.all })
-          onLinked?.(next.relay)
-        }
-      })()
-    }, state.interval * 1000)
-    return () => clearTimeout(timer)
-  }, [state, queryClient, onLinked])
-
-  const start = async (provider: RelaySignInProvider) => {
-    setState({ phase: 'starting', provider })
-    const result = await client.startPublicRelaySignIn(provider)
-    setState(
+  const join = async () => {
+    setState({ phase: 'joining' })
+    const result = await client.joinPublicRelay()
+    const next: JoinState =
       result.status === 'error'
         ? {
             phase: 'failed',
             failure: { key: 'publicRelay.failed', detail: result.error },
           }
-        : afterStart(provider, result.data, now())
-    )
+        : afterJoin(result.data)
+    setState(next)
+    if (next.phase === 'joined') {
+      await queryClient.invalidateQueries({ queryKey: relayQueryKeys.all })
+      onLinked?.(next.relay)
+    }
   }
 
-  if (state.phase === 'linked')
+  if (state.phase === 'joined')
     return (
       <p
         role="status"
@@ -85,12 +78,11 @@ export function PublicRelayJoin({
         className="flex items-center gap-1 text-sm text-success"
       >
         <CheckCircle2 aria-hidden className="size-4 shrink-0" />
-        {t('publicRelay.linked', {
-          name: state.display,
-          provider: t(providerKey(state.provider)),
-        })}
+        {t('publicRelay.joined', { email: state.email })}
       </p>
     )
+
+  if (state.phase === 'needsEmail') return <NeedsEmail detail={state.message} />
 
   if (offer.isPending)
     return (
@@ -104,6 +96,8 @@ export function PublicRelayJoin({
     )
 
   const data = offer.data
+  if (data?.kind === 'needsEmail') return <NeedsEmail />
+
   if (offer.isError || !data || data.kind !== 'ready')
     return (
       <div className="space-y-2" data-testid="public-relay-unreachable">
@@ -124,71 +118,25 @@ export function PublicRelayJoin({
       </div>
     )
 
-  if (state.phase === 'waiting')
-    return (
-      <div
-        className="flex flex-col gap-2 rounded-md border p-3 text-sm"
-        data-testid="public-relay-waiting"
-      >
-        <p>
-          {t('publicRelay.enterCode', {
-            provider: t(providerKey(state.provider)),
-          })}
-        </p>
-        <code
-          dir="ltr"
-          className="self-start rounded bg-muted px-2 py-1 font-mono text-lg tracking-wider select-all"
-          data-testid="public-relay-user-code"
-        >
-          {state.userCode}
-        </code>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            onClick={() => void client.openExternal(state.page)}
-          >
-            <ExternalLink aria-hidden />
-            {t('publicRelay.openPage')}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setState(CHOOSE)}>
-            {t('publicRelay.cancel')}
-          </Button>
-        </div>
-        <p
-          role="status"
-          className="flex items-center gap-2 text-xs text-muted-foreground"
-        >
-          <Spinner />
-          {state.retrying
-            ? t('publicRelay.retrying')
-            : t('publicRelay.waiting')}
-        </p>
-      </div>
-    )
-
-  const providers = offeredProviders(data.providers)
   return (
-    <div className="flex flex-col gap-2" data-testid="public-relay-providers">
+    <div className="flex flex-col gap-2" data-testid="public-relay-join">
       <p className="text-xs text-muted-foreground">
         {t('publicRelay.limitsNote')}
       </p>
-      <div className="flex flex-wrap gap-2">
-        {providers.map(provider => (
-          <Button
-            key={provider}
-            size="sm"
-            variant="outline"
-            disabled={state.phase === 'starting'}
-            onClick={() => void start(provider)}
-          >
-            {state.phase === 'starting' && state.provider === provider && (
-              <Spinner />
-            )}
-            {t('publicRelay.signInWith', {
-              provider: t(providerKey(provider)),
-            })}
-          </Button>
-        ))}
+      <p dir="auto" className="text-sm">
+        {t('publicRelay.joinAs', { email: data.email })}
+      </p>
+      <div>
+        <Button
+          size="sm"
+          disabled={state.phase === 'joining'}
+          onClick={() => void join()}
+        >
+          {state.phase === 'joining' && <Spinner />}
+          {state.phase === 'joining'
+            ? t('publicRelay.joining')
+            : t('publicRelay.join')}
+        </Button>
       </div>
       {state.phase === 'failed' && (
         <div

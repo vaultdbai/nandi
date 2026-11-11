@@ -10,12 +10,37 @@ import {
   type QueryClient,
 } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type { IdentityStatus } from '@/lib/bindings'
+import type { IdentityStatus, VerifiedIdentity } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
 export const identityQueryKeys = {
   all: ['identity'] as const,
   status: ['identity', 'status'] as const,
+  verified: ['identity', 'verified'] as const,
+}
+
+/**
+ * This Nandi's person, locked from the first mailbox connected (read-only;
+ * `null` before any). Refreshed when a mailbox connects.
+ */
+export function useVerifiedIdentity() {
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    const subscription = client.subscribe(event => {
+      if (event.event === 'email://changed') {
+        void queryClient.invalidateQueries({
+          queryKey: identityQueryKeys.verified,
+        })
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [queryClient])
+
+  return useQuery<VerifiedIdentity | null>({
+    queryKey: identityQueryKeys.verified,
+    queryFn: async () => unwrapResult(await client.getVerifiedIdentity()),
+  })
 }
 
 export function useIdentity() {

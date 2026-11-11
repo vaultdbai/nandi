@@ -3,12 +3,13 @@
 //! and counts each person's tokens. The app holds no key.
 //!
 //! Every request is signed with this instance's device key
-//! (`relay::device_keys`, the same pair the relay pins): four headers,
-//! `X-Nandi-Instance`, `X-Nandi-Key`, `X-Nandi-Time` (epoch ms) and
+//! (`relay::device_keys`, the same pair the relay pins): five headers,
+//! `X-Nandi-Instance`, `X-Nandi-Key`, `X-Nandi-Machine` (this computer's
+//! salted hash, `identity::machine_id`), `X-Nandi-Time` (epoch ms) and
 //! `X-Nandi-Signature` over [`signing_string`]:
 //!
 //! ```text
-//! nandi-trial-v1\n<METHOD>\n<path>\n<instance>\n<time>\n<hex sha256(body)>
+//! nandi-trial-v2\n<METHOD>\n<path>\n<instance>\n<machine>\n<time>\n<hex sha256(body)>
 //! ```
 //!
 //! The body is serialized once, and those exact bytes are hashed, signed
@@ -41,16 +42,18 @@ pub const GATEWAY_URL_ENV: &str = "NANDI_TRIAL_GATEWAY_URL";
 
 pub const INSTANCE_HEADER: &str = "x-nandi-instance";
 pub const KEY_HEADER: &str = "x-nandi-key";
+pub const MACHINE_HEADER: &str = "x-nandi-machine";
 pub const TIME_HEADER: &str = "x-nandi-time";
 pub const SIGNATURE_HEADER: &str = "x-nandi-signature";
 /// The first line of every signing string
-const SIGNING_PREFIX: &str = "nandi-trial-v1";
+const SIGNING_PREFIX: &str = "nandi-trial-v2";
 
 /// The longest `Retry-After` a trial call waits out before trying again
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(10);
 
 pub const CHAT_PATH: &str = "/v1/chat/completions";
 pub const TRIAL_PATH: &str = "/v1/trial";
+pub const LINK_PATH: &str = "/v1/link";
 
 /// What to do instead of the trial
 pub const OWN_MODEL_HINT: &str = "Add your own key (Anthropic, OpenAI, or DeepSeek) in Settings › Models & runtimes, sign in to Claude Code (`claude`), or run a local model with Ollama.";
@@ -75,74 +78,44 @@ fn body_hash(body: &[u8]) -> String {
 }
 
 /// What the device key signs for one request
-pub fn signing_string(method: &str, path: &str, instance: &str, time: i64, body: &[u8]) -> String {
+pub fn signing_string(
+    method: &str,
+    path: &str,
+    instance: &str,
+    machine: &str,
+    time: i64,
+    body: &[u8],
+) -> String {
     let hash = body_hash(body);
-    format!("{SIGNING_PREFIX}\n{method}\n{path}\n{instance}\n{time}\n{hash}")
-}
-
-/// A sign-in provider the gateway may offer for linking devices
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-pub enum TrialSignInProvider {
-    Github,
-    Google,
-    Microsoft,
-}
-
-impl TrialSignInProvider {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Github => "github",
-            Self::Google => "google",
-            Self::Microsoft => "microsoft",
-        }
-    }
+    format!("{SIGNING_PREFIX}\n{method}\n{path}\n{instance}\n{machine}\n{time}\n{hash}")
 }
 
 /// `GET /v1/trial`: the person's allowance as the gateway counts it
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TrialAccount {
-    /// `github:583231` once someone signed in on this device, else none
+    /// `google:<sub>` once this computer is linked to an email, else none
     pub account: Option<String>,
+    /// The linked email
+    #[serde(default)]
+    pub email: Option<String>,
     pub used: u32,
     pub limit: u32,
     /// The trial is paused for everyone (its daily cap), until UTC midnight
     #[serde(default)]
     pub paused: bool,
-    /// The sign-in providers the gateway offers (`github`, ...)
-    #[serde(default)]
-    pub sign_in: Vec<String>,
 }
 
-/// `POST /v1/signin/<provider>/start`
+/// `POST /v1/link`: the person this computer's trial is now linked to
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
-pub struct TrialSignInStart {
-    pub signin_id: String,
-    /// The code the person types on the provider's page
-    pub user_code: String,
-    pub verification_uri: String,
-    pub expires_in: u32,
-    /// Seconds between polls
-    pub interval: u32,
-}
-
-/// `POST /v1/signin/<provider>/poll`
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(tag = "status", rename_all = "snake_case")]
-pub enum TrialSignInPoll {
-    /// Keep polling every `interval` seconds
-    Pending { interval: u32 },
-    /// Keep polling, at the new `interval`
-    SlowDown { interval: u32 },
-    /// Done: this device shares the person's allowance
-    Linked {
-        account: String,
-        display: String,
-        used: u32,
-        limit: u32,
-    },
+pub struct TrialLink {
+    pub account: String,
+    pub email: String,
+    #[serde(default)]
+    pub name: String,
+    pub used: u32,
+    pub limit: u32,
 }
 
 /// The gateway's `{"error": {...}}` and `Retry-After`
@@ -167,6 +140,8 @@ pub enum GatewayError {
     Response(String),
     /// This device's keys can't be read
     Keys(String),
+    /// This computer's machine ID can't be read
+    Machine(String),
 }
 
 impl GatewayError {
@@ -220,6 +195,11 @@ impl GatewayError {
                     "The free trial needs this device's keys, which can't be read: {detail}"
                 );
             }
+            Self::Machine(detail) => {
+                return format!(
+                    "The free trial counts tokens per computer, and this computer's ID can't be read: {detail}"
+                );
+            }
             Self::Api(failure) => (failure.code.as_str(), failure.message.as_str()),
         };
         let wait = self.retry_after().map(wait_words);
@@ -252,13 +232,15 @@ impl GatewayError {
                 wait.unwrap_or_else(|| "shortly".to_string())
             ),
             "upstream_error" => format!("The free trial's model refused the request: {message}"),
-            "signin_expired" => "The sign-in code expired. Start again.".to_string(),
-            "signin_denied" => "The sign-in was cancelled on the provider's page.".to_string(),
-            "already_linked" => "This computer is already linked to another account. A computer stays with the first account that signed in on it.".to_string(),
-            "provider_not_supported" => "That sign-in isn't available yet.".to_string(),
+            "machine_mismatch" => format!(
+                "The free trial knows this Nandi from another computer (its data was copied here). The trial can't be used from this install: {OWN_MODEL_HINT}"
+            ),
+            "already_linked" => "This computer's free trial is linked to another email. A computer stays with the first email linked on it.".to_string(),
+            "id_token_invalid" | "id_token_expired" => "The free trial couldn't confirm your connected email. Reconnect it in Settings › Email.".to_string(),
+            "email_unverified" => "Your email provider hasn't verified this address, so the free trial can't be linked to it.".to_string(),
+            "identity_unavailable" | "link_unavailable" => "The free trial can't link to your email right now. It still works on this computer; it links again later.".to_string(),
             // bad_signature, replayed, model_not_allowed, bad_request,
-            // signin_unavailable, signin_not_found, internal: the
-            // gateway's sentence says it
+            // internal: the gateway's sentence says it
             _ => format!("The free trial refused the call ({code}): {message}"),
         }
     }
@@ -273,7 +255,7 @@ fn wait_words(seconds: u64) -> String {
     }
 }
 
-/// Short calls (status, sign-in): a tighter deadline than model calls
+/// Short calls (status, linking): a tighter deadline than model calls
 fn control_client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
@@ -295,6 +277,8 @@ fn local_now_ms() -> i64 {
 pub struct GatewayClient {
     base_url: String,
     instance: String,
+    /// This computer's salted hash (`identity::machine_id`, the trial's)
+    machine: String,
     keys: DeviceKeys,
     /// Server clock minus ours, learned from `stale_time`
     offset_ms: AtomicI64,
@@ -303,10 +287,11 @@ pub struct GatewayClient {
 }
 
 impl GatewayClient {
-    pub fn new(base_url: String, instance: String, keys: DeviceKeys) -> Self {
+    pub fn new(base_url: String, instance: String, machine: String, keys: DeviceKeys) -> Self {
         Self {
             base_url,
             instance,
+            machine,
             keys,
             offset_ms: AtomicI64::new(0),
             last_ms: AtomicI64::new(0),
@@ -326,13 +311,14 @@ impl GatewayClient {
         now.max(previous + 1)
     }
 
-    /// The four signing headers for `method path` with `body`
+    /// The five signing headers for `method path` with `body`
     pub fn headers(&self, method: &str, path: &str, body: &[u8]) -> Vec<(&'static str, String)> {
         let time = self.next_time();
-        let message = signing_string(method, path, &self.instance, time, body);
+        let message = signing_string(method, path, &self.instance, &self.machine, time, body);
         vec![
             (INSTANCE_HEADER, self.instance.clone()),
             (KEY_HEADER, self.keys.public_keys().signing.clone()),
+            (MACHINE_HEADER, self.machine.clone()),
             (TIME_HEADER, time.to_string()),
             (SIGNATURE_HEADER, self.keys.sign(message.as_bytes())),
         ]
@@ -456,25 +442,11 @@ impl GatewayClient {
         self.json(reqwest::Method::GET, TRIAL_PATH, b"").await
     }
 
-    /// `POST /v1/signin/<provider>/start`
-    pub async fn sign_in_start(
-        &self,
-        provider: TrialSignInProvider,
-    ) -> Result<TrialSignInStart, GatewayError> {
-        let path = format!("/v1/signin/{}/start", provider.as_str());
-        self.json(reqwest::Method::POST, &path, b"{}").await
-    }
-
-    /// `POST /v1/signin/<provider>/poll`
-    pub async fn sign_in_poll(
-        &self,
-        provider: TrialSignInProvider,
-        signin_id: &str,
-    ) -> Result<TrialSignInPoll, GatewayError> {
-        let path = format!("/v1/signin/{}/poll", provider.as_str());
-        let body = serde_json::to_vec(&serde_json::json!({ "signinId": signin_id }))
+    /// `POST /v1/link` with the connected mailbox's ID token
+    pub async fn link(&self, id_token: &str) -> Result<TrialLink, GatewayError> {
+        let body = serde_json::to_vec(&serde_json::json!({ "idToken": id_token }))
             .map_err(|e| GatewayError::Response(e.to_string()))?;
-        self.json(reqwest::Method::POST, &path, &body).await
+        self.json(reqwest::Method::POST, LINK_PATH, &body).await
     }
 }
 

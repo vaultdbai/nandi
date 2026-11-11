@@ -3,9 +3,7 @@
 use tauri::State;
 
 pub use crate::services::relay::join::{JoinOutcome, RelayInvite};
-pub use crate::services::relay::public::{
-    PublicRelayAccount, PublicRelayOffer, PublicSignInPoll, PublicSignInStart, RelaySignInProvider,
-};
+pub use crate::services::relay::public::{PublicRelayAccount, PublicRelayJoin, PublicRelayOffer};
 pub use crate::services::relay::{RelayPeer, RelayStatus};
 
 use crate::services::domain::AgentCard;
@@ -44,7 +42,7 @@ pub async fn get_relay_invite(state: State<'_, AppState>) -> Result<Option<Relay
     relay::join::relay_invite(&state)
 }
 
-/// "Join the public relay": whether it can be joined now, and with whom
+/// "Join the public relay": whether it can be joined now, and as whom
 #[tauri::command]
 #[specta::specta]
 pub async fn get_public_relay_offer(
@@ -53,29 +51,15 @@ pub async fn get_public_relay_offer(
     Ok(relay::public::offer(&state).await)
 }
 
-/// Starts signing this Nandi in to the public relay with `provider`
+/// Joins the public relay with this Nandi's connected email; on `joined`
+/// the app keeps the token and connects
 #[tauri::command]
 #[specta::specta]
-pub async fn start_public_relay_sign_in(
-    state: State<'_, AppState>,
-    provider: RelaySignInProvider,
-) -> Result<PublicSignInStart, String> {
-    relay::public::start_sign_in(&state, provider).await
+pub async fn join_public_relay(state: State<'_, AppState>) -> Result<PublicRelayJoin, String> {
+    relay::public::join(&state).await
 }
 
-/// Whether the person approved the sign-in (poll every `interval` s); on
-/// `linked` the app keeps the token and connects
-#[tauri::command]
-#[specta::specta]
-pub async fn poll_public_relay_sign_in(
-    state: State<'_, AppState>,
-    provider: RelaySignInProvider,
-    signin_id: String,
-) -> Result<PublicSignInPoll, String> {
-    relay::public::poll_sign_in(&state, provider, &signin_id).await
-}
-
-/// The public-relay account this Nandi is signed in with (the Account card)
+/// The public-relay account this Nandi joined as (the Account card)
 #[tauri::command]
 #[specta::specta]
 pub async fn get_public_relay_account(

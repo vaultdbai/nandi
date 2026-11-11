@@ -58,6 +58,34 @@ describe('SettingsView', () => {
     })
   })
 
+  it('Account shows the locked email read-only', async () => {
+    Object.assign(commands, {
+      getVerifiedIdentity: ok({
+        provider: 'gmail',
+        email: 'ada@example.com',
+        name: 'Ada Lovelace',
+        lockedAt: 1,
+      }),
+    })
+    render(<SettingsView view={{ kind: 'settings', section: 'account' }} />)
+    const email = await screen.findByTestId('verified-email')
+    expect(email).toHaveTextContent('ada@example.com')
+    expect(email).toHaveTextContent('Ada Lovelace')
+    expect(email).toHaveTextContent('From Gmail')
+    // Not a field: nothing to edit
+    expect(screen.queryByDisplayValue('ada@example.com')).toBeNull()
+  })
+
+  it('Account says when no email is connected yet', async () => {
+    Object.assign(commands, { getVerifiedIdentity: ok(null) })
+    render(<SettingsView view={{ kind: 'settings', section: 'account' }} />)
+    expect(
+      await screen.findByText(
+        'No email connected yet. Connect Outlook or Gmail in Settings › Email.'
+      )
+    ).toBeInTheDocument()
+  })
+
   it('puts Nandi’s model, the coding agents and the keys on one page', () => {
     render(<SettingsView view={{ kind: 'settings', section: 'models' }} />)
     for (const group of [

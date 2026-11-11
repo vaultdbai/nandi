@@ -541,28 +541,6 @@ async getFreeTrialAccount() : Promise<Result<TrialAccount, string>> {
 }
 },
 /**
- * Starts linking this computer's free trial to a person's account
- */
-async startFreeTrialSignIn(provider: TrialSignInProvider) : Promise<Result<TrialSignInStart, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("start_free_trial_sign_in", { provider }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Whether the person finished signing in (poll every `interval` seconds)
- */
-async pollFreeTrialSignIn(provider: TrialSignInProvider, signinId: string) : Promise<Result<TrialSignInPoll, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("poll_free_trial_sign_in", { provider, signinId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
  * Checks a key (`None`: the stored one) without storing it
  */
 async testLlmKey(provider: KeyedProvider, apiKey: string | null) : Promise<Result<LlmKeyTest, string>> {
@@ -1409,7 +1387,7 @@ async getRelayInvite() : Promise<Result<RelayInvite | null, string>> {
 }
 },
 /**
- * "Join the public relay": whether it can be joined now, and with whom
+ * "Join the public relay": whether it can be joined now, and as whom
  */
 async getPublicRelayOffer() : Promise<Result<PublicRelayOffer, string>> {
     try {
@@ -1420,30 +1398,19 @@ async getPublicRelayOffer() : Promise<Result<PublicRelayOffer, string>> {
 }
 },
 /**
- * Starts signing this Nandi in to the public relay with `provider`
+ * Joins the public relay with this Nandi's connected email; on `joined`
+ * the app keeps the token and connects
  */
-async startPublicRelaySignIn(provider: RelaySignInProvider) : Promise<Result<PublicSignInStart, string>> {
+async joinPublicRelay() : Promise<Result<PublicRelayJoin, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("start_public_relay_sign_in", { provider }) };
+    return { status: "ok", data: await TAURI_INVOKE("join_public_relay") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
 /**
- * Whether the person approved the sign-in (poll every `interval` s); on
- * `linked` the app keeps the token and connects
- */
-async pollPublicRelaySignIn(provider: RelaySignInProvider, signinId: string) : Promise<Result<PublicSignInPoll, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("poll_public_relay_sign_in", { provider, signinId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * The public-relay account this Nandi is signed in with (the Account card)
+ * The public-relay account this Nandi joined as (the Account card)
  */
 async getPublicRelayAccount() : Promise<Result<PublicRelayAccount, string>> {
     try {
@@ -2241,6 +2208,18 @@ async setAgentMemoryEnabled(agentId: string, enabled: boolean) : Promise<Result<
 async getIdentityStatus() : Promise<Result<IdentityStatus, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_identity_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * This Nandi's person, locked from the first mailbox connected (shown
+ * read-only); `None` before any
+ */
+async getVerifiedIdentity() : Promise<Result<VerifiedIdentity | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_verified_identity") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -4061,13 +4040,13 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
-export const DAILY_LIMIT = "daily_limit" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
 export const NO_SHARED_GROUP = "no_shared_group" as const;
+export const DAILY_LIMIT = "daily_limit" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 
 /** user-defined types **/
 
@@ -6604,10 +6583,10 @@ export type JoinOutcome =
  */
 { kind: "noEnrollment" } | 
 /**
- * A public relay: people join it by signing in, not with a code
- * ("Join the public relay", [`super::public`])
+ * A public relay: Nandis join it with their connected email, not with
+ * a code ("Join the public relay", [`super::public`])
  */
-{ kind: "signInNeeded" } | 
+{ kind: "publicRelay" } | 
 /**
  * Any other refusal, in the relay's words
  */
@@ -7413,14 +7392,32 @@ avgDurationMs: number | null }
  */
 export type PublicRelayAccount = 
 /**
- * The relay in use isn't a public relay this Nandi signed in to
+ * The relay in use isn't a public relay this Nandi joined
  */
 { kind: "notPublic" } | 
 /**
- * Signed in, but the relay didn't give the account now: what this
- * Nandi kept
+ * Joined, but the relay didn't give the account now: what this Nandi
+ * kept
  */
-{ kind: "unavailable"; relay: string; account: string; provider: RelaySignInProvider; display: string; detail: string } | { kind: "account"; relay: string; thisInstance: string; account: RelayAccount }
+{ kind: "unavailable"; relay: string; account: string; email: string; name: string; detail: string } | { kind: "account"; relay: string; thisInstance: string; account: RelayAccount }
+/**
+ * Joining the public relay
+ */
+export type PublicRelayJoin = 
+/**
+ * Joined: the token is kept and the app is connecting to `relay`
+ */
+{ kind: "joined"; relay: string; account: string; email: string; name: string } | 
+/**
+ * This Nandi has no connected email to join with (or its mailbox
+ * needs connecting again): `message` says what to do
+ */
+{ kind: "needsEmail"; message: string } | { kind: "refused"; refusal: PublicRelayRefusal; message: string } | 
+/**
+ * The relay (or the mail provider) didn't answer; trying again may
+ * work
+ */
+{ kind: "unreachable"; detail: string }
 /**
  * Whether the public relay can be joined now, and how
  */
@@ -7430,9 +7427,14 @@ export type PublicRelayOffer =
  */
 { kind: "none" } | 
 /**
- * Sign in with one of `providers` to join
+ * "Join the public relay" as `email`, this Nandi's identity
  */
-{ kind: "ready"; relay: string; providers: RelaySignInProvider[] } | 
+{ kind: "ready"; relay: string; email: string } | 
+/**
+ * No email is connected: connect Outlook or Gmail in Settings › Email
+ * first
+ */
+{ kind: "needsEmail"; relay: string } | 
 /**
  * It didn't answer (offline, or not live yet), or not as a public
  * relay: join later from Network › Connection
@@ -7451,25 +7453,21 @@ export type PublicRelayRefusal =
  */
 "notPublic" | 
 /**
- * `provider_not_supported`
+ * `id_token_invalid`: the relay didn't accept the mailbox's ID token
  */
-"providerNotSupported" | 
+"idTokenInvalid" | 
 /**
- * `signin_unavailable`: the provider is down
+ * `id_token_expired`
  */
-"signinUnavailable" | 
+"idTokenExpired" | 
 /**
- * `signin_not_found`: no such sign-in is waiting
+ * `email_unverified`: the provider hasn't verified the email
  */
-"signinNotFound" | 
+"emailUnverified" | 
 /**
- * `signin_expired`: the code expired
+ * `identity_unavailable`: the relay can't check sign-ins right now
  */
-"signinExpired" | 
-/**
- * `signin_denied`: cancelled on the provider's page
- */
-"signinDenied" | 
+"identityUnavailable" | 
 /**
  * `account_suspended`
  */
@@ -7479,7 +7477,7 @@ export type PublicRelayRefusal =
  */
 "revoked" | 
 /**
- * `already_linked`: this Nandi is another account's
+ * `already_linked`: this Nandi joined with another email
  */
 "alreadyLinked" | 
 /**
@@ -7491,13 +7489,13 @@ export type PublicRelayRefusal =
  */
 "deviceLimit" | 
 /**
+ * `machine_limit`: this computer joined its most Nandis or accounts
+ */
+"machineLimit" | 
+/**
  * `signup_limit`: too many new accounts from this network today
  */
 "signupLimit" | 
-/**
- * `signin_limit`: too many sign-ins waiting from this network
- */
-"signinLimit" | 
 /**
  * `invalid_request`
  */
@@ -7514,39 +7512,6 @@ export type PublicRelayRefusal =
  * Anything else, in the relay's words
  */
 "other"
-/**
- * One poll of a sign-in
- */
-export type PublicSignInPoll = 
-/**
- * Not approved yet: ask again in `interval` seconds
- */
-{ kind: "pending"; interval: number } | 
-/**
- * Asked too soon: ask again in `interval` seconds
- */
-{ kind: "slowDown"; interval: number } | 
-/**
- * Signed in: the token is kept and the app is connecting to `relay`
- */
-{ kind: "linked"; relay: string; account: string; provider: RelaySignInProvider; display: string } | { kind: "refused"; refusal: PublicRelayRefusal; message: string } | 
-/**
- * The relay didn't answer this time; asking again may work
- */
-{ kind: "unreachable"; detail: string }
-/**
- * Starting a sign-in
- */
-export type PublicSignInStart = 
-/**
- * Show `user_code` and open `verification_uri`; poll every `interval`
- * seconds for up to `expires_in`
- */
-{ kind: "started"; signinId: string; provider: RelaySignInProvider; userCode: string; verificationUri: string; verificationUriComplete: string | null; expiresIn: number; interval: number } | { kind: "refused"; refusal: PublicRelayRefusal; message: string } | 
-/**
- * The relay didn't answer
- */
-{ kind: "unreachable"; detail: string }
 /**
  * Publishing one of the user's own agents to a registry.
  */
@@ -7782,9 +7747,17 @@ export type RegistryKind =
  */
 export type RelayAccount = { 
 /**
- * `github:583231`, `google:<sub>`, `microsoft:<tid>.<oid>`
+ * `google:<sub>`, `microsoft:<tid>.<oid>`
  */
-account: string; provider: RelaySignInProvider; display: string; createdAt: number; 
+account: string; 
+/**
+ * `google` or `microsoft`
+ */
+provider: string; 
+/**
+ * The verified email the account was locked to
+ */
+email: string; name: string; createdAt: number; 
 /**
  * The instance IDs of this account's Nandis
  */
@@ -7859,10 +7832,6 @@ export type RelaySealRefused = { fromInstance: string; taskId: string;
  */
 error: string }
 /**
- * Who a person signs in to the public relay with
- */
-export type RelaySignInProvider = "github" | "google" | "microsoft"
-/**
  * Connection state; also the `relay://status` payload.
  */
 export type RelayStatus = { 
@@ -7920,7 +7889,7 @@ enabled: boolean;
  */
 secured: boolean; 
 /**
- * Our relay is a public one: anyone can sign in, so the choice
+ * Our relay is a public one: anyone with an email can join, so the choice
  * doesn't apply
  */
 public?: boolean }
@@ -8978,49 +8947,17 @@ error: string | null }
  */
 export type TrialAccount = { 
 /**
- * `github:583231` once someone signed in on this device, else none
+ * `google:<sub>` once this computer is linked to an email, else none
  */
-account: string | null; used: number; limit: number; 
+account: string | null; 
+/**
+ * The linked email
+ */
+email?: string | null; used: number; limit: number; 
 /**
  * The trial is paused for everyone (its daily cap), until UTC midnight
  */
-paused?: boolean; 
-/**
- * The sign-in providers the gateway offers (`github`, ...)
- */
-signIn?: string[] }
-/**
- * `POST /v1/signin/<provider>/poll`
- */
-export type TrialSignInPoll = 
-/**
- * Keep polling every `interval` seconds
- */
-{ status: "pending"; interval: number } | 
-/**
- * Keep polling, at the new `interval`
- */
-{ status: "slow_down"; interval: number } | 
-/**
- * Done: this device shares the person's allowance
- */
-{ status: "linked"; account: string; display: string; used: number; limit: number }
-/**
- * A sign-in provider the gateway may offer for linking devices
- */
-export type TrialSignInProvider = "github" | "google" | "microsoft"
-/**
- * `POST /v1/signin/<provider>/start`
- */
-export type TrialSignInStart = { signinId: string; 
-/**
- * The code the person types on the provider's page
- */
-userCode: string; verificationUri: string; expiresIn: number; 
-/**
- * Seconds between polls
- */
-interval: number }
+paused?: boolean }
 /**
  * The trial's state for Settings
  */
@@ -9216,6 +9153,22 @@ export type Verdict = "clean" |
  * Can't be approved, only dismissed
  */
 "blocked"
+/**
+ * This Nandi's person, from the first mailbox connected
+ */
+export type VerifiedIdentity = { 
+/**
+ * The mailbox it came from
+ */
+provider: MailProvider; 
+/**
+ * Verified, lowercase
+ */
+email: string; name?: string | null; 
+/**
+ * When it was locked (ms since the epoch)
+ */
+lockedAt: number }
 /**
  * A release of an agent's source.
  */

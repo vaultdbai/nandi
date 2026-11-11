@@ -40,6 +40,10 @@ pub struct NandiConfig {
     /// are in the keychain)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<crate::services::workspace::WorkspaceSettings>,
+    /// This Nandi's person, locked from the first mailbox connected
+    /// (`services::identity`); never edited in the UI
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<crate::services::identity::VerifiedIdentity>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }

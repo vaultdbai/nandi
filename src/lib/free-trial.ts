@@ -1,12 +1,8 @@
 /**
- * The free trial card's model: what to say about the tokens, and which
- * sign-in buttons to show. Pure, so it's tested without the UI.
+ * The free trial card's model: what to say about the tokens, and whom the
+ * trial is linked to. Pure, so it's tested without the UI.
  */
-import type {
-  TrialAccount,
-  TrialSignInProvider,
-  TrialStatus,
-} from '@/lib/bindings'
+import type { TrialAccount, TrialStatus } from '@/lib/bindings'
 
 export interface TrialMessage {
   /** Under `models.trial.` */
@@ -49,22 +45,12 @@ export function trialUsedUp(
   return account ? account.used >= account.limit : trial.usedUp
 }
 
-/** The sign-in providers shown, in order */
-export const TRIAL_SIGN_IN_PROVIDERS: readonly TrialSignInProvider[] = [
-  'github',
-  'google',
-  'microsoft',
-]
+/** Whom the trial is linked to: the connected email, or this computer */
+export type TrialLinkLine =
+  { key: 'linked'; email: string } | { key: 'perComputer' }
 
-/**
- * Each provider and whether the gateway offers it now (`signIn` from
- * `GET /v1/trial`); the others show as "coming soon"
- */
-export function signInOptions(
-  offered: readonly string[]
-): { provider: TrialSignInProvider; available: boolean }[] {
-  return TRIAL_SIGN_IN_PROVIDERS.map(provider => ({
-    provider,
-    available: offered.includes(provider),
-  }))
+export function trialLinkLine(account: TrialAccount): TrialLinkLine {
+  return account.account && account.email
+    ? { key: 'linked', email: account.email }
+    : { key: 'perComputer' }
 }

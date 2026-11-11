@@ -432,25 +432,7 @@ pub async fn set_free_trial(state: &AppState, enabled: bool) -> Result<DefaultMo
 
 /// The free trial's allowance as the gateway counts it (`GET /v1/trial`)
 pub async fn get_free_trial_account(state: &AppState) -> Result<llm_trial::TrialAccount, String> {
-    llm_trial::account(state.secrets()).await
-}
-
-/// Starts signing in to link this computer's free trial to a person's
-/// account (the provider's device flow): a code to type on its page
-pub async fn start_free_trial_sign_in(
-    state: &AppState,
-    provider: llm_trial::TrialSignInProvider,
-) -> Result<llm_trial::TrialSignInStart, String> {
-    llm_trial::sign_in_start(state.secrets(), provider).await
-}
-
-/// Whether the person finished signing in (poll every `interval` seconds)
-pub async fn poll_free_trial_sign_in(
-    state: &AppState,
-    provider: llm_trial::TrialSignInProvider,
-    signin_id: String,
-) -> Result<llm_trial::TrialSignInPoll, String> {
-    llm_trial::sign_in_poll(state.secrets(), provider, &signin_id).await
+    llm_trial::account(state).await
 }
 
 /// The model to make the default when the trial is turned off: the one

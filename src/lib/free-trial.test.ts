@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TrialAccount, TrialStatus } from '@/lib/bindings'
-import { signInOptions, trialMessage, trialUsedUp } from './free-trial'
+import { trialLinkLine, trialMessage, trialUsedUp } from './free-trial'
 
 const trial = (overrides: Partial<TrialStatus> = {}): TrialStatus => ({
   enabled: true,
@@ -13,10 +13,10 @@ const trial = (overrides: Partial<TrialStatus> = {}): TrialStatus => ({
 
 const account = (overrides: Partial<TrialAccount> = {}): TrialAccount => ({
   account: null,
+  email: null,
   used: 0,
   limit: 100_000,
   paused: false,
-  signIn: ['github'],
   ...overrides,
 })
 
@@ -57,12 +57,10 @@ describe('the free trial card', () => {
     )
   })
 
-  it('offers only the providers the gateway has', () => {
-    expect(signInOptions(['github'])).toEqual([
-      { provider: 'github', available: true },
-      { provider: 'google', available: false },
-      { provider: 'microsoft', available: false },
-    ])
-    expect(signInOptions([]).every(o => !o.available)).toBe(true)
+  it('names the linked email, else counts per computer', () => {
+    expect(
+      trialLinkLine(account({ account: 'google:1', email: 'ada@example.com' }))
+    ).toEqual({ key: 'linked', email: 'ada@example.com' })
+    expect(trialLinkLine(account())).toEqual({ key: 'perComputer' })
   })
 })

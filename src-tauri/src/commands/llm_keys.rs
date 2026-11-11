@@ -3,9 +3,7 @@
 use tauri::State;
 
 use crate::services::llm_keys::{self, KeyedProvider, LlmKeyStatus};
-use crate::services::llm_trial::{
-    TrialAccount, TrialSignInPoll, TrialSignInProvider, TrialSignInStart,
-};
+use crate::services::llm_trial::TrialAccount;
 use crate::services::AppState;
 
 #[tauri::command]
@@ -86,25 +84,4 @@ pub async fn set_free_trial(
 #[specta::specta]
 pub async fn get_free_trial_account(state: State<'_, AppState>) -> Result<TrialAccount, String> {
     llm_keys::get_free_trial_account(&state).await
-}
-
-/// Starts linking this computer's free trial to a person's account
-#[tauri::command]
-#[specta::specta]
-pub async fn start_free_trial_sign_in(
-    state: State<'_, AppState>,
-    provider: TrialSignInProvider,
-) -> Result<TrialSignInStart, String> {
-    llm_keys::start_free_trial_sign_in(&state, provider).await
-}
-
-/// Whether the person finished signing in (poll every `interval` seconds)
-#[tauri::command]
-#[specta::specta]
-pub async fn poll_free_trial_sign_in(
-    state: State<'_, AppState>,
-    provider: TrialSignInProvider,
-    signin_id: String,
-) -> Result<TrialSignInPoll, String> {
-    llm_keys::poll_free_trial_sign_in(&state, provider, signin_id).await
 }

@@ -3,10 +3,12 @@
 //!
 //! The DeepSeek key lives only on the gateway ([`gateway`]); the app
 //! signs each call with this instance's device key and holds no key and no
-//! counter. The gateway gives each person 100,000 tokens (one device, or
-//! all of a person's devices once they sign in to link them) and is the
-//! only count: Settings shows what `GET /v1/trial` says. Like every model
-//! call the trial runs only on the host and never enters a container.
+//! counter. The gateway gives each computer 100,000 tokens (shared by the
+//! Nandis on it) and, once linked to the person's connected email
+//! ([`link`], with the mailbox's ID token; no sign-in), one 100,000 across
+//! all their computers. It is the only count: Settings shows what `GET
+//! /v1/trial` says. Like every model call the trial runs only on the host
+//! and never enters a container.
 //!
 //! The trial has three [`TrialMode`]s, kept in the keychain. It starts in
 //! `Auto`: calls use it only when the user has nothing of their own
@@ -35,12 +37,11 @@ use specta::Type;
 use tokio::sync::mpsc;
 
 use crate::llm::{LlmRequest, LlmResponse};
+use crate::services::identity::{self, machine_id};
 use crate::services::secrets::Secrets;
+use crate::services::AppState;
 
-pub use gateway::{
-    GatewayClient, GatewayError, TrialAccount, TrialSignInPoll, TrialSignInProvider,
-    TrialSignInStart,
-};
+pub use gateway::{GatewayClient, GatewayError, TrialAccount, TrialLink};
 
 /// The one model the trial runs (the cheapest DeepSeek model)
 pub const TRIAL_MODEL: &str = "deepseek:deepseek-flash";
@@ -126,9 +127,12 @@ impl Trial {
         }
         let keys = crate::services::relay::device_keys::load_or_create(secrets)
             .map_err(GatewayError::Keys)?;
+        let machine =
+            machine_id::this_machine(machine_id::Service::Trial).map_err(GatewayError::Machine)?;
         let client = Arc::new(GatewayClient::new(
             self.base_url.clone(),
             self.instance.clone(),
+            machine,
             keys,
         ));
         Ok(self.client.get_or_init(|| client).clone())
@@ -379,10 +383,18 @@ pub async fn chat(
     result.map_err(|e| e.user_message())
 }
 
-/// `GET /v1/trial`: the allowance as the gateway counts it, for Settings
-pub async fn account(secrets: &Secrets) -> Result<TrialAccount, String> {
-    let (trial, client) = require(secrets)?;
-    let result = client.account().await;
+/// `GET /v1/trial`: the allowance as the gateway counts it, for Settings.
+/// Not linked yet while an email is connected: links first.
+pub async fn account(state: &AppState) -> Result<TrialAccount, String> {
+    let (trial, client) = require(state.secrets())?;
+    let mut result = client.account().await;
+    let unlinked = matches!(&result, Ok(account) if account.account.is_none());
+    if unlinked && identity::identity(state).is_some() {
+        match link_with(state, &trial, &client).await {
+            Ok(_) => result = client.account().await,
+            Err(e) => log::info!("Free trial not linked to the email yet: {e}"),
+        }
+    }
     match &result {
         Ok(account) => trial.note_account(account),
         Err(_) => trial.note(&result),
@@ -390,30 +402,42 @@ pub async fn account(secrets: &Secrets) -> Result<TrialAccount, String> {
     result.map_err(|e| e.user_message())
 }
 
-/// Starts linking this device to a person's account (device flow)
-pub async fn sign_in_start(
-    secrets: &Secrets,
-    provider: TrialSignInProvider,
-) -> Result<TrialSignInStart, String> {
-    let (_, client) = require(secrets)?;
-    client
-        .sign_in_start(provider)
-        .await
-        .map_err(|e| e.user_message())
+/// Links this computer's trial to the person's connected email (the
+/// mailbox's fresh ID token). Linking again is a no-op at the gateway.
+pub async fn link(state: &AppState) -> Result<TrialLink, String> {
+    let (trial, client) = require(state.secrets())?;
+    link_with(state, &trial, &client).await
 }
 
-/// Asks whether the person finished signing in on the provider's page
-pub async fn sign_in_poll(
-    secrets: &Secrets,
-    provider: TrialSignInProvider,
-    signin_id: &str,
-) -> Result<TrialSignInPoll, String> {
-    let (trial, client) = require(secrets)?;
-    let result = client.sign_in_poll(provider, signin_id).await;
-    if let Ok(TrialSignInPoll::Linked { used, limit, .. }) = &result {
-        trial.health().used_up = used >= limit;
+async fn link_with(
+    state: &AppState,
+    trial: &Trial,
+    client: &GatewayClient,
+) -> Result<TrialLink, String> {
+    let (id_token, _) = identity::fresh_id_token(state)
+        .await
+        .map_err(|e| e.message())?;
+    let linked = client.link(&id_token).await.map_err(|e| e.user_message())?;
+    trial.health().used_up = linked.used >= linked.limit;
+    Ok(linked)
+}
+
+/// Links in the background (after a mailbox connected); a miss is tried
+/// again the next time Settings reads the trial
+pub fn link_soon(state: &AppState) {
+    if trial().is_none() {
+        return;
     }
-    result.map_err(|e| e.user_message())
+    let state = state.clone();
+    tokio::spawn(async move {
+        match link(&state).await {
+            Ok(linked) => log::info!(
+                "Free trial linked to the connected email ({})",
+                linked.account
+            ),
+            Err(e) => log::info!("Free trial not linked to the email yet: {e}"),
+        }
+    });
 }
 
 /// Keeps the default model from before the trial was turned on

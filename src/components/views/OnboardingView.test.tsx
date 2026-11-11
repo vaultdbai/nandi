@@ -523,14 +523,14 @@ describe('OnboardingView', () => {
         }),
       })
 
-    it('offers the public relay with its sign-in providers', async () => {
+    it('offers the public relay with the connected email', async () => {
       const user = userEvent.setup()
       withPublic()
       Object.assign(commands, {
         getPublicRelayOffer: ok({
           kind: 'ready',
           relay: PUBLIC,
-          providers: ['github', 'google', 'microsoft'],
+          email: 'ada@example.com',
         }),
       })
       render(<OnboardingView />)
@@ -541,13 +541,11 @@ describe('OnboardingView', () => {
         screen.getByLabelText("Join my team's network")
       ).toBeInTheDocument()
       await user.click(screen.getByLabelText('Join the public relay'))
-      for (const provider of ['GitHub', 'Google', 'Microsoft'])
-        expect(
-          await screen.findByRole('button', {
-            name: `Sign in with ${provider}`,
-          })
-        ).toBeInTheDocument()
-      // Continue never waits on it: no sign-in, no relay
+      expect(
+        await screen.findByText(/You join as ada@example.com/)
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Sign in with/ })).toBeNull()
+      // Continue never waits on it: nothing joined, no relay
       await user.click(screen.getByRole('button', { name: 'Continue' }))
       await screen.findByText('Pick some agents to start with')
       expect(mocks().joinRelay).not.toHaveBeenCalled()
@@ -582,45 +580,32 @@ describe('OnboardingView', () => {
       expect(mocks().setRelayUrl).not.toHaveBeenCalled()
     })
 
-    it('signs in to the public relay and continues connected', async () => {
+    it('joins the public relay with the connected email and continues connected', async () => {
       const user = userEvent.setup()
       withPublic()
       Object.assign(commands, {
         getPublicRelayOffer: ok({
           kind: 'ready',
           relay: PUBLIC,
-          providers: ['github'],
+          email: 'octocat@example.com',
         }),
-        startPublicRelaySignIn: ok({
-          kind: 'started',
-          signinId: 's-1',
-          provider: 'github',
-          userCode: 'WDJB-MJHT',
-          verificationUri: 'https://github.com/login/device',
-          verificationUriComplete: null,
-          expiresIn: 900,
-          interval: 1,
-        }),
-        pollPublicRelaySignIn: ok({
-          kind: 'linked',
+        joinPublicRelay: ok({
+          kind: 'joined',
           relay: PUBLIC,
-          account: 'github:583231',
-          provider: 'github',
-          display: 'octocat',
+          account: 'google:583231',
+          email: 'octocat@example.com',
+          name: 'Octo Cat',
         }),
       })
       render(<OnboardingView />)
       await toNetwork(user)
       await user.click(screen.getByLabelText('Join the public relay'))
       await user.click(
-        await screen.findByRole('button', { name: 'Sign in with GitHub' })
+        await screen.findByRole('button', { name: 'Join the public relay' })
       )
       expect(
-        await screen.findByTestId('public-relay-user-code')
-      ).toHaveTextContent('WDJB-MJHT')
-      expect(
         await screen.findByText(
-          'Signed in: Nandi is connected to the public relay.',
+          'Joined: Nandi is connected to the public relay.',
           {},
           { timeout: 4000 }
         )
@@ -638,14 +623,14 @@ describe('OnboardingView', () => {
       ).toBeNull()
     })
 
-    it('keeps the public relay signed in to before', async () => {
+    it('keeps the public relay joined before', async () => {
       const user = userEvent.setup()
       withPublic(`${PUBLIC}?token=abc`)
       render(<OnboardingView />)
       await toNetwork(user)
       expect(screen.getByLabelText('Join the public relay')).toBeChecked()
       expect(
-        screen.getByText('Signed in: Nandi is connected to the public relay.')
+        screen.getByText('Joined: Nandi is connected to the public relay.')
       ).toBeInTheDocument()
     })
 

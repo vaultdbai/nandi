@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
 import { ExternalLink, TriangleAlert } from 'lucide-react'
@@ -52,10 +52,9 @@ import type {
   KeyedProvider,
   LlmKeyTest,
   TrialAccount,
-  TrialSignInProvider,
   TrialStatus,
 } from '@/lib/bindings'
-import { signInOptions, trialMessage, trialUsedUp } from '@/lib/free-trial'
+import { trialLinkLine, trialMessage, trialUsedUp } from '@/lib/free-trial'
 import { SettingsField } from './shared/SettingsComponents'
 
 /**
@@ -104,9 +103,9 @@ export function ProviderKeys() {
 }
 
 /**
- * The free tokens: Nandi's trial gateway counts them (100,000 per person,
- * shared by all their computers once they sign in). Shows what's left, a
- * switch, and sign-in to link this computer. They turn off by themselves
+ * The free tokens: Nandi's trial gateway counts them (100,000 per
+ * computer, shared by all of a person's computers once linked to their
+ * connected email). Shows what's left, a switch, and whom it's linked to. They turn off by themselves
  * once the user has a model of their own, and can be turned back on while
  * any are left.
  */
@@ -156,152 +155,26 @@ function FreeTrialField({ trial }: { trial: TrialStatus }) {
           />
         </span>
       </div>
-      {account.data && <TrialSignIn account={account.data} />}
+      {account.data && <TrialLink account={account.data} />}
     </SettingsField>
   )
 }
 
-/** A sign-in in progress: the code to type, and how often to ask */
-interface PendingSignIn {
-  provider: TrialSignInProvider
-  signinId: string
-  userCode: string
-  verificationUri: string
-  interval: number
-}
-
 /**
- * "Sign in to keep your trial on all your computers": the provider's
- * device flow. Start shows a code and opens the provider's page; the app
- * asks every `interval` seconds until it's linked. Providers the gateway
- * doesn't offer yet show as coming soon.
+ * Whose trial this is: "Linked to <email>" once the gateway linked this
+ * computer to the connected email, else a line saying the tokens count per
+ * computer and how linking happens (connecting Outlook or Gmail). No
+ * sign-in: the app links by itself.
  */
-function TrialSignIn({ account }: { account: TrialAccount }) {
+function TrialLink({ account }: { account: TrialAccount }) {
   const { t } = useTranslation()
-  const queryClient = useQueryClient()
-  const [pending, setPending] = useState<PendingSignIn | null>(null)
-  const [starting, setStarting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [linked, setLinked] = useState<string | null>(null)
-
-  // Asks again every `interval` seconds while a sign-in is pending
-  useEffect(() => {
-    if (!pending) return
-    const timer = setTimeout(() => {
-      void (async () => {
-        const result = await client.pollFreeTrialSignIn(
-          pending.provider,
-          pending.signinId
-        )
-        if (result.status === 'error') {
-          setPending(null)
-          setError(result.error)
-          return
-        }
-        const poll = result.data
-        if (poll.status === 'linked') {
-          setPending(null)
-          setLinked(poll.display)
-          toast.success(t('models.trial.signIn.linked', { name: poll.display }))
-          await queryClient.invalidateQueries({
-            queryKey: llmKeyStatusQueryKey,
-          })
-          return
-        }
-        setPending({ ...pending, interval: poll.interval })
-      })()
-    }, pending.interval * 1000)
-    return () => clearTimeout(timer)
-  }, [pending, queryClient, t])
-
-  const start = async (provider: TrialSignInProvider) => {
-    setError(null)
-    setStarting(true)
-    const result = await client.startFreeTrialSignIn(provider)
-    setStarting(false)
-    if (result.status === 'error') {
-      setError(result.error)
-      return
-    }
-    setPending({ provider, ...result.data })
-    void client.openExternal(result.data.verificationUri)
-  }
-
-  if (linked || account.account) {
-    return (
-      <p
-        className="text-sm text-muted-foreground"
-        data-testid="free-trial-account"
-      >
-        {t('models.trial.signIn.signedIn', {
-          name: linked ?? account.account,
-        })}
-      </p>
-    )
-  }
-
+  const line = trialLinkLine(account)
   return (
-    <div className="flex flex-col gap-2" data-testid="free-trial-sign-in">
-      <p className="text-sm text-muted-foreground">
-        {t('models.trial.signIn.prompt')}
-      </p>
-      {pending ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
-          <span>
-            {t('models.trial.signIn.enterCode', {
-              provider: t(`models.trial.signIn.provider.${pending.provider}`),
-            })}
-          </span>
-          <code
-            dir="ltr"
-            className="rounded bg-muted px-2 py-0.5 font-mono text-base tracking-wider"
-            data-testid="free-trial-user-code"
-          >
-            {pending.userCode}
-          </code>
-          <Spinner />
-          <Button
-            size="sm"
-            variant="link"
-            className="h-auto p-0"
-            onClick={() => void client.openExternal(pending.verificationUri)}
-          >
-            {t('models.trial.signIn.openAgain')}
-            <ExternalLink aria-hidden className="size-3" />
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setPending(null)}>
-            {t('models.trial.signIn.cancel')}
-          </Button>
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {signInOptions(account.signIn ?? []).map(
-            ({ provider, available }) => (
-              <Button
-                key={provider}
-                size="sm"
-                variant="outline"
-                disabled={!available || starting}
-                onClick={() => void start(provider)}
-              >
-                {available
-                  ? t('models.trial.signIn.with', {
-                      provider: t(`models.trial.signIn.provider.${provider}`),
-                    })
-                  : t('models.trial.signIn.comingSoon', {
-                      provider: t(`models.trial.signIn.provider.${provider}`),
-                    })}
-              </Button>
-            )
-          )}
-        </div>
-      )}
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-    </div>
+    <p className="text-sm text-muted-foreground" data-testid="free-trial-link">
+      {line.key === 'linked'
+        ? t('models.trial.link.linked', { email: line.email })
+        : t('models.trial.link.perComputer')}
+    </p>
   )
 }
 

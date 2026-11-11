@@ -173,7 +173,7 @@ describe('ConnectionView', () => {
       getPublicRelayOffer: ok({
         kind: 'ready',
         relay: PUBLIC,
-        providers: ['github', 'microsoft'],
+        email: 'ada@example.com',
       }),
     })
     const user = userEvent.setup()
@@ -186,7 +186,7 @@ describe('ConnectionView', () => {
       screen.getByRole('button', { name: 'Join the public relay' })
     )
     expect(
-      await screen.findByRole('button', { name: 'Sign in with Microsoft' })
+      await screen.findByText(/You join as ada@example.com/)
     ).toBeInTheDocument()
   })
 
@@ -205,9 +205,10 @@ describe('ConnectionView', () => {
         relay: PUBLIC,
         thisInstance: 'ada-laptop-1a2b3c4d',
         account: {
-          account: 'github:583231',
-          provider: 'github',
-          display: 'octocat',
+          account: 'google:583231',
+          provider: 'google',
+          email: 'octocat@example.com',
+          name: 'Octo Cat',
           createdAt: 1,
           instances: ['ada-laptop-1a2b3c4d', 'ada-desktop-9f8e7d6c'],
           limits: {
@@ -223,8 +224,8 @@ describe('ConnectionView', () => {
     render(<ConnectionView />)
     const card = await screen.findByTestId('public-relay-account')
     expect(
-      await screen.findByTestId('public-relay-signed-in')
-    ).toHaveTextContent('Signed in as octocat with GitHub')
+      await screen.findByTestId('public-relay-joined-as')
+    ).toHaveTextContent('Joined as octocat@example.com')
     expect(screen.getByTestId('public-relay-nandis')).toHaveTextContent(
       'ada-desktop-9f8e7d6c'
     )
@@ -261,15 +262,15 @@ describe('ConnectionView', () => {
         kind: 'unavailable',
         relay: PUBLIC,
         account: 'google:1',
-        provider: 'google',
-        display: 'Grace',
+        email: 'grace@example.com',
+        name: 'Grace',
         detail: "Couldn't reach it",
       }),
     })
     render(<ConnectionView />)
     expect(
-      await screen.findByTestId('public-relay-signed-in')
-    ).toHaveTextContent('Signed in as Grace with Google')
+      await screen.findByTestId('public-relay-joined-as')
+    ).toHaveTextContent('Joined as grace@example.com')
     expect(screen.getByTestId('public-relay-account')).toHaveTextContent(
       "Your account's details show when the public relay answers."
     )

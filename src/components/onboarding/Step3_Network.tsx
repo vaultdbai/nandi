@@ -43,8 +43,8 @@ export interface Step3NetworkProps {
 
 /**
  * Onboarding step 3 (optional): the network to join. Nothing joins until
- * the user says so. "Join the public relay" signs in (GitHub, Google or
- * Microsoft) and connects once linked; it never holds Continue up, and an
+ * the user says so. "Join the public relay" joins with the connected
+ * email and connects once joined; it never holds Continue up, and an
  * unreachable relay just says to join later. For a company relay, "Join"
  * or Continue joins it, enrolling with the join code where the relay needs
  * one (the build's own code for the build's relay). A failed join says

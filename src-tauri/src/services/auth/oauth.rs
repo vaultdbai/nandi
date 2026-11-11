@@ -19,6 +19,11 @@
 //! token. When the provider refuses the refresh, the answer is
 //! [`TokenError::NeedsSignIn`] and the feature asks the user to sign in
 //! again.
+//!
+//! A sign-in that asked for `openid` also keeps the provider's OpenID
+//! Connect ID token; [`fresh_id_token`] hands out one that's still valid
+//! (renewing the sign-in when it isn't), for proving who the person is to
+//! VaultDB.ai's services (`services::identity`).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -126,6 +131,9 @@ struct StoredToken {
     expires_at: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     token_type: Option<String>,
+    /// The OpenID Connect ID token, when the sign-in asked for `openid`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    id_token: Option<String>,
 }
 
 impl StoredToken {
@@ -159,6 +167,55 @@ pub fn stored_access_token(entry: &str, secrets: &Secrets) -> Option<String> {
     load_token(entry, secrets)
         .filter(|t| t.is_fresh(unix_now()))
         .map(|t| t.access_token)
+}
+
+/// The claims of an ID token (its middle part). Read without checking the
+/// signature: the token came straight from the provider's token endpoint
+/// over TLS (OpenID Connect Core 3.1.3.7); the services it's sent to check
+/// it fully.
+pub fn id_token_claims(token: &str) -> Option<serde_json::Value> {
+    let payload = token.split('.').nth(1)?;
+    let bytes = URL_SAFE_NO_PAD.decode(payload.trim_end_matches('=')).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// The ID token the sign-in at keyring `entry` keeps, valid or not
+pub fn stored_id_token(entry: &str, secrets: &Secrets) -> Option<String> {
+    load_token(entry, secrets)?
+        .id_token
+        .filter(|token| !token.is_empty())
+}
+
+/// Seconds an ID token must still be valid to be handed out
+const ID_TOKEN_MARGIN_SECS: u64 = 300;
+
+fn id_token_is_fresh(token: &str, now: u64) -> bool {
+    id_token_claims(token)
+        .and_then(|claims| claims.get("exp").and_then(serde_json::Value::as_u64))
+        .is_some_and(|exp| now + ID_TOKEN_MARGIN_SECS < exp)
+}
+
+/// An ID token for the sign-in at keyring `entry` that's valid for a few
+/// minutes more: the kept one, else one from renewing the sign-in
+pub async fn fresh_id_token(
+    entry: &str,
+    provider: &OAuthProvider,
+    secrets: &Secrets,
+) -> Result<String, TokenError> {
+    if let Some(token) = stored_id_token(entry, secrets) {
+        if id_token_is_fresh(&token, unix_now()) {
+            return Ok(token);
+        }
+    }
+    refresh(entry, provider, secrets).await?;
+    stored_id_token(entry, secrets)
+        .filter(|token| id_token_is_fresh(token, unix_now()))
+        .ok_or_else(|| {
+            TokenError::NeedsSignIn(format!(
+                "The {} sign-in gave no ID token; connect it again",
+                provider.name
+            ))
+        })
 }
 
 /// Deletes the sign-in at keyring `entry` (signing out)
@@ -210,6 +267,7 @@ struct TokenResponse {
     refresh_token: Option<String>,
     expires_in: Option<u64>,
     token_type: Option<String>,
+    id_token: Option<String>,
     error: Option<String>,
     error_description: Option<String>,
     interval: Option<u64>,
@@ -256,6 +314,7 @@ fn interpret(response: TokenResponse) -> Result<TokenPoll, String> {
             refresh_token: response.refresh_token,
             expires_at: response.expires_in.map(|s| unix_now() + s),
             token_type: response.token_type,
+            id_token: response.id_token.filter(|t| !t.is_empty()),
         }));
     }
     match response.error.as_deref() {
@@ -349,6 +408,9 @@ pub async fn refresh(
         Ok(TokenPoll::Token(mut token)) => {
             if token.refresh_token.is_none() {
                 token.refresh_token = Some(refresh_token);
+            }
+            if token.id_token.is_none() {
+                token.id_token = stored.id_token;
             }
             store_token(entry, &token, secrets).map_err(TokenError::Unavailable)?;
             log::info!("Renewed the {} sign-in", provider.name);
@@ -914,10 +976,61 @@ mod tests {
                 refresh_token: refresh.map(str::to_string),
                 expires_at,
                 token_type: None,
+                id_token: None,
             },
             secrets,
         )
         .unwrap();
+    }
+
+    /// An unsigned ID token expiring at `exp`
+    fn id_token(exp: u64) -> String {
+        let claims = URL_SAFE_NO_PAD.encode(json!({"sub": "1", "exp": exp}).to_string());
+        format!("eyJhbGciOiJSUzI1NiJ9.{claims}.c2ln")
+    }
+
+    #[tokio::test]
+    async fn a_fresh_id_token_is_kept_and_an_old_one_renewed() {
+        let captured: Captured = Arc::default();
+        let renewed = id_token(unix_now() + 3600);
+        let base = serve(token_router(
+            captured.clone(),
+            json!({"access_token": "new", "expires_in": 3600, "id_token": renewed}),
+        ))
+        .await;
+        let secrets = Secrets::in_memory();
+        // No ID token kept at all, and the refresh brings one
+        stored(&secrets, "old", Some("ref-1"), Some(unix_now() + 3600));
+        let provider = mock_provider(&base, true);
+        assert_eq!(
+            fresh_id_token(ENTRY, &provider, &secrets).await.unwrap(),
+            renewed
+        );
+        assert_eq!(lock(&captured).len(), 1);
+        // Kept and valid: no call
+        assert_eq!(
+            fresh_id_token(ENTRY, &provider, &secrets).await.unwrap(),
+            renewed
+        );
+        assert_eq!(lock(&captured).len(), 1);
+        assert_eq!(id_token_claims(&renewed).unwrap()["sub"], json!("1"));
+        assert!(!id_token_is_fresh(&id_token(unix_now() + 60), unix_now()));
+    }
+
+    #[tokio::test]
+    async fn a_renewal_without_an_id_token_needs_a_new_sign_in() {
+        let captured: Captured = Arc::default();
+        let base = serve(token_router(
+            captured,
+            json!({"access_token": "new", "expires_in": 3600}),
+        ))
+        .await;
+        let secrets = Secrets::in_memory();
+        stored(&secrets, "old", Some("ref-1"), Some(unix_now() + 3600));
+        let error = fresh_id_token(ENTRY, &mock_provider(&base, true), &secrets)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, TokenError::NeedsSignIn(ref r) if r.contains("ID token")));
     }
 
     #[tokio::test]

@@ -103,9 +103,6 @@ import type {
   HelpAnswer,
   HelpTopic,
   TrialAccount,
-  TrialSignInPoll,
-  TrialSignInProvider,
-  TrialSignInStart,
   OllamaStatus,
   OnboardingStep,
   MarketplaceFilter,
@@ -127,11 +124,10 @@ import type {
   RelayStatus,
   JoinOutcome,
   PublicRelayAccount,
+  PublicRelayJoin,
   PublicRelayOffer,
-  PublicSignInPoll,
-  PublicSignInStart,
   RelayInvite,
-  RelaySignInProvider,
+  VerifiedIdentity,
   RepoStatus,
   Result,
   RunDetail,
@@ -368,14 +364,6 @@ export interface NandiClient {
   /** The free trial's allowance as Nandi's trial gateway counts it */
   getFreeTrialAccount(): Promise<Result<TrialAccount, string>>
   /** Starts linking this computer's free trial to a person's account */
-  startFreeTrialSignIn(
-    provider: TrialSignInProvider
-  ): Promise<Result<TrialSignInStart, string>>
-  /** Whether the person finished signing in (poll every `interval` s) */
-  pollFreeTrialSignIn(
-    provider: TrialSignInProvider,
-    signinId: string
-  ): Promise<Result<TrialSignInPoll, string>>
   /** Every topic of the built-in help guide (no model needed) */
   helpTopics(): Promise<Result<HelpTopic[], string>>
   /** The built-in help guide's answer to `text` */
@@ -659,21 +647,14 @@ export interface NandiClient {
   ): Promise<Result<JoinOutcome, string>>
   /** What "Copy invite message" passes on (`null`: no relay in use) */
   getRelayInvite(): Promise<Result<RelayInvite | null, string>>
-  /** "Join the public relay": whether it can be joined now, and with whom */
+  /** "Join the public relay": whether it can be joined now, and as whom */
   getPublicRelayOffer(): Promise<Result<PublicRelayOffer, string>>
-  /** Starts signing this Nandi in to the public relay with `provider` */
-  startPublicRelaySignIn(
-    provider: RelaySignInProvider
-  ): Promise<Result<PublicSignInStart, string>>
   /**
-   * Whether the person approved the sign-in (poll every `interval` s); on
-   * `linked` the core keeps the token and connects
+   * Joins the public relay with this Nandi's connected email; on `joined`
+   * the core keeps the token and connects
    */
-  pollPublicRelaySignIn(
-    provider: RelaySignInProvider,
-    signinId: string
-  ): Promise<Result<PublicSignInPoll, string>>
-  /** The public-relay account this Nandi is signed in with */
+  joinPublicRelay(): Promise<Result<PublicRelayJoin, string>>
+  /** The public-relay account this Nandi joined as */
   getPublicRelayAccount(): Promise<Result<PublicRelayAccount, string>>
   /** Agents online at the relay, optionally only those serving `capability` */
   listOnlineAgents(
@@ -851,6 +832,11 @@ export interface NandiClient {
 
   // Identity: display name + user slug in `~/.nandi/repo/NANDI.md`
   getIdentityStatus(): Promise<Result<IdentityStatus, string>>
+  /**
+   * This Nandi's person, locked from the first mailbox connected (`null`
+   * before any); never editable
+   */
+  getVerifiedIdentity(): Promise<Result<VerifiedIdentity | null, string>>
   setDisplayName(name: string): Promise<Result<null, string>>
   setUserSlug(slug: string): Promise<Result<null, string>>
   /** Where first-run setup is, so a relaunch resumes there */

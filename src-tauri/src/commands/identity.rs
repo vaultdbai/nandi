@@ -5,6 +5,7 @@ use tauri::State;
 
 pub use crate::services::auth::github::GithubSignIn;
 pub use crate::services::auth::IdentityStatus;
+pub use crate::services::identity::VerifiedIdentity;
 
 use crate::services::auth;
 use crate::services::auth::oauth::DeviceFlowState;
@@ -14,6 +15,16 @@ use crate::services::AppState;
 #[specta::specta]
 pub async fn get_identity_status(state: State<'_, AppState>) -> Result<IdentityStatus, String> {
     auth::get_identity_status(&state).await
+}
+
+/// This Nandi's person, locked from the first mailbox connected (shown
+/// read-only); `None` before any
+#[tauri::command]
+#[specta::specta]
+pub async fn get_verified_identity(
+    state: State<'_, AppState>,
+) -> Result<Option<VerifiedIdentity>, String> {
+    Ok(crate::services::identity::identity(&state))
 }
 
 #[tauri::command]

@@ -1,96 +1,37 @@
 //! Joining the public relay: the real `nandi-relay` (dev-dependency) in
-//! public mode on 127.0.0.1:0, signing in against a fake GitHub device
-//! flow, plus a relay address nothing answers on.
+//! public mode on 127.0.0.1:0, trusting its fake identity provider
+//! (`nandi_relay::testing::FakeIdp`), with a Gmail mailbox "connected"
+//! (its ID token in the keychain), plus a relay address nothing answers on.
 
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::extract::State;
-use axum::http::HeaderMap;
-use axum::routing::{get, post};
-use axum::{Json, Router};
 use nandi_relay::accounts::PublicConfig;
-use nandi_relay::{serve_with, GitHubConfig, Limits, RelayServerConfig, SignInConfig};
-use serde_json::{json, Value};
+use nandi_relay::testing::FakeIdp;
+use nandi_relay::{serve_with, Limits, RelayServerConfig};
+use serde_json::json;
 
 use super::*;
 use crate::services::domain::group::POLICY_TEMPLATE;
+use crate::services::email::settings::EmailAccount;
+use crate::services::email::{EmailSettings, MailProvider};
 use crate::services::groups::Groups;
+use crate::services::identity::VerifiedIdentity;
 use crate::services::relay::join::{join_relay, JoinOutcome};
 use crate::services::relay::{get_relay_status, instance_token, limits, BuiltInRelay};
 use crate::services::team::trust;
 use crate::utils::nandi_config;
 
 const SECRET: &[u8] = b"public-secret";
+const EMAIL: &str = "ada@example.com";
 
 fn local() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 0))
 }
 
-/// What the fake GitHub answers next
-#[derive(Default)]
-struct Fake {
-    /// Polls answered `authorization_pending` before the approval
-    pending: u32,
-    denied: bool,
-}
-
-type Shared = Arc<Mutex<Fake>>;
-
-async fn device_code() -> Json<Value> {
-    Json(json!({
-        "device_code": "dc-1", "user_code": "WDJB-MJHT",
-        "verification_uri": "https://github.test/login/device",
-        "expires_in": 900, "interval": 1
-    }))
-}
-
-async fn access_token(State(fake): State<Shared>, body: String) -> Json<Value> {
-    assert!(body.contains("device_code=dc-1"), "{body}");
-    let mut fake = fake.lock().unwrap();
-    if fake.denied {
-        return Json(json!({ "error": "access_denied" }));
-    }
-    if fake.pending > 0 {
-        fake.pending -= 1;
-        return Json(json!({ "error": "authorization_pending" }));
-    }
-    Json(json!({ "access_token": "gho_583231", "token_type": "bearer" }))
-}
-
-async fn user(headers: HeaderMap) -> Json<Value> {
-    assert_eq!(headers["authorization"], "Bearer gho_583231");
-    Json(json!({ "id": 583_231, "login": "octocat" }))
-}
-
-async fn listen(router: Router) -> SocketAddr {
-    let listener = tokio::net::TcpListener::bind(local()).await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-    addr
-}
-
-/// A public relay offering GitHub sign-in (the fake), with `limits`
-async fn public_relay(fake: &Shared, limits: Limits) -> String {
-    let github = listen(
-        Router::new()
-            .route("/login/device/code", post(device_code))
-            .route("/login/oauth/access_token", post(access_token))
-            .route("/user", get(user))
-            .with_state(fake.clone()),
-    )
-    .await;
-    let base = format!("http://{github}");
-    let mut config = PublicConfig::new(SignInConfig {
-        github: Some(GitHubConfig {
-            client_id: "gh-client".into(),
-            web_url: base.clone(),
-            api_url: base,
-        }),
-        google: None,
-        microsoft: None,
-    });
+/// A public relay trusting `idp`, with `limits`
+async fn public_relay(idp: &FakeIdp, limits: Limits) -> String {
+    let mut config = PublicConfig::new(idp.identity_config());
     config.signups_per_ip = 0;
     let relay = serve_with(
         local(),
@@ -101,6 +42,38 @@ async fn public_relay(fake: &Shared, limits: Limits) -> String {
     .await
     .unwrap();
     format!("ws://{relay}/relay")
+}
+
+/// As if Gmail `email` were connected: the account, its sign-in (with
+/// `id_token`) in the keychain, and the locked identity
+fn connect_gmail(state: &AppState, email: &str, id_token: &str) {
+    let account = EmailAccount {
+        provider: MailProvider::Gmail,
+        email: email.to_string(),
+        name: Some("Ada".into()),
+        profile: Default::default(),
+        paused: false,
+    };
+    let identity = VerifiedIdentity {
+        provider: MailProvider::Gmail,
+        email: email.to_string(),
+        name: Some("Ada".into()),
+        locked_at: 1.0,
+    };
+    nandi_config::update_in(state.nandi_dir(), move |config| {
+        config
+            .email
+            .get_or_insert_with(EmailSettings::default)
+            .accounts
+            .push(account);
+        config.identity = Some(identity);
+    })
+    .unwrap();
+    let token = json!({ "access_token": "ya29", "refresh_token": "r", "id_token": id_token });
+    state
+        .secrets()
+        .set(&MailProvider::Gmail.token_entry(), &token.to_string())
+        .unwrap();
 }
 
 /// A relay address nothing answers on: a port that was free a moment ago
@@ -132,65 +105,33 @@ async fn connected(state: &AppState) -> bool {
     eventually(async || get_relay_status(state).await.unwrap().connected).await
 }
 
-/// Starts a GitHub sign-in: its ID and interval
-async fn started(state: &AppState) -> (String, u32) {
-    match start_sign_in(state, RelaySignInProvider::Github)
-        .await
-        .unwrap()
-    {
-        PublicSignInStart::Started {
-            signin_id,
-            provider,
-            user_code,
-            verification_uri,
-            interval,
-            expires_in,
-            ..
-        } => {
-            assert_eq!(provider, RelaySignInProvider::Github);
-            assert_eq!(user_code, "WDJB-MJHT");
-            assert_eq!(verification_uri, "https://github.test/login/device");
-            assert_eq!(expires_in, 900);
-            (signin_id, interval)
-        }
-        other => panic!("not started: {other:?}"),
-    }
-}
-
-/// Polls as the UI does, every `interval` seconds, until it isn't pending:
-/// the answer, and whether a pending or slow_down came first
-async fn polled(state: &AppState, signin_id: &str, mut interval: u32) -> (PublicSignInPoll, bool) {
-    let mut waited = false;
-    for _ in 0..10 {
-        tokio::time::sleep(Duration::from_secs(u64::from(interval))).await;
-        match poll_sign_in(state, RelaySignInProvider::Github, signin_id)
-            .await
-            .unwrap()
-        {
-            PublicSignInPoll::Pending { interval: next }
-            | PublicSignInPoll::SlowDown { interval: next } => {
-                waited = true;
-                interval = next;
-            }
-            other => return (other, waited),
-        }
-    }
-    panic!("still pending");
-}
-
 #[tokio::test]
-async fn signing_in_links_this_nandi_keeps_the_token_and_connects() {
-    let fake = Shared::default();
-    fake.lock().unwrap().pending = 1;
-    let relay = public_relay(&fake, Limits::public()).await;
+async fn joining_with_the_connected_email_keeps_the_token_and_connects() {
+    let idp = FakeIdp::start().await;
+    let relay = public_relay(&idp, Limits::public()).await;
     let state = app_with_public(&relay);
 
-    // The offer: the providers the relay lists
+    // No email yet: the offer and a join both say to connect one
+    assert_eq!(
+        offer(&state).await,
+        PublicRelayOffer::NeedsEmail {
+            relay: relay.clone()
+        }
+    );
+    match join(&state).await.unwrap() {
+        PublicRelayJoin::NeedsEmail { message } => {
+            assert!(message.contains("Settings › Email"), "{message}")
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(instance_token(state.db()).is_none());
+
+    connect_gmail(&state, EMAIL, &idp.google("1099", EMAIL, "Ada Lovelace"));
     assert_eq!(
         offer(&state).await,
         PublicRelayOffer::Ready {
             relay: relay.clone(),
-            providers: vec![RelaySignInProvider::Github],
+            email: EMAIL.into(),
         }
     );
     let status = get_relay_status(&state).await.unwrap();
@@ -201,23 +142,13 @@ async fn signing_in_links_this_nandi_keeps_the_token_and_connects() {
         PublicRelayAccount::NotPublic
     );
 
-    let (signin_id, interval) = started(&state).await;
-    // Not approved yet; asked again at once, the relay says to slow down
-    let poll = async || {
-        poll_sign_in(&state, RelaySignInProvider::Github, &signin_id)
-            .await
-            .unwrap()
-    };
-    assert_eq!(poll().await, PublicSignInPoll::Pending { interval: 1 });
-    assert_eq!(poll().await, PublicSignInPoll::SlowDown { interval: 1 });
-    let (answer, _) = polled(&state, &signin_id, interval).await;
     assert_eq!(
-        answer,
-        PublicSignInPoll::Linked {
+        join(&state).await.unwrap(),
+        PublicRelayJoin::Joined {
             relay: relay.clone(),
-            account: "github:583231".into(),
-            provider: RelaySignInProvider::Github,
-            display: "octocat".into(),
+            account: "google:1099".into(),
+            email: EMAIL.into(),
+            name: "Ada Lovelace".into(),
         }
     );
 
@@ -237,7 +168,7 @@ async fn signing_in_links_this_nandi_keeps_the_token_and_connects() {
         Some(crate::services::relay::RelayVisibility::Groups)
     );
 
-    // Anyone can sign in there: relay trust doesn't apply
+    // Anyone with an email can join there: relay trust doesn't apply
     assert!(on_public_relay(state.db()));
     assert!(!trust::on_a_secured_relay(state.db()));
     let relay_trust = trust::relay_trust(state.db());
@@ -253,10 +184,10 @@ async fn signing_in_links_this_nandi_keeps_the_token_and_connects() {
         } => {
             assert_eq!(shown, relay);
             assert_eq!(this_instance, instance_id);
-            assert_eq!(account.account, "github:583231");
-            assert_eq!(account.provider, RelaySignInProvider::Github);
-            assert_eq!(account.display, "octocat");
-            assert_eq!(account.instances, [instance_id.clone()]);
+            assert_eq!(account.account, "google:1099");
+            assert_eq!(account.provider, "google");
+            assert_eq!(account.email, EMAIL);
+            assert_eq!(account.instances, std::slice::from_ref(&instance_id));
             assert_eq!(
                 account.limits,
                 RelayLimits {
@@ -272,48 +203,29 @@ async fn signing_in_links_this_nandi_keeps_the_token_and_connects() {
         other => panic!("no account: {other:?}"),
     }
 
-    // A company-relay join of the same address says to sign in instead
+    // A company-relay join of the same address says to join it this way
     assert_eq!(
         join_relay(&state, &relay, Some("code")).await.unwrap(),
-        JoinOutcome::SignInNeeded
+        JoinOutcome::PublicRelay
     );
     state.shutdown();
 }
 
 #[tokio::test]
 async fn refusals_come_back_typed_and_change_nothing() {
-    let fake = Shared::default();
-    fake.lock().unwrap().denied = true;
-    let relay = public_relay(&fake, Limits::public()).await;
+    let idp = FakeIdp::start().await;
+    let relay = public_relay(&idp, Limits::public()).await;
     let state = app_with_public(&relay);
-
-    // A provider the relay doesn't offer
-    match start_sign_in(&state, RelaySignInProvider::Google)
-        .await
-        .unwrap()
-    {
-        PublicSignInStart::Refused { refusal, .. } => {
-            assert_eq!(refusal, PublicRelayRefusal::ProviderNotSupported)
-        }
-        other => panic!("{other:?}"),
-    }
-    // A sign-in nobody started
-    match poll_sign_in(&state, RelaySignInProvider::Github, "nope")
-        .await
-        .unwrap()
-    {
-        PublicSignInPoll::Refused { refusal, message } => {
-            assert_eq!(refusal, PublicRelayRefusal::SigninNotFound);
+    // A token for another app (not the relay's audience)
+    let foreign = idp.sign(json!({
+        "iss": "https://accounts.google.com", "aud": "another-app", "sub": "1",
+        "email": EMAIL, "email_verified": true, "exp": FakeIdp::in_an_hour(),
+    }));
+    connect_gmail(&state, EMAIL, &foreign);
+    match join(&state).await.unwrap() {
+        PublicRelayJoin::Refused { refusal, message } => {
+            assert_eq!(refusal, PublicRelayRefusal::IdTokenInvalid);
             assert!(!message.is_empty());
-        }
-        other => panic!("{other:?}"),
-    }
-    // Cancelled on GitHub's page
-    let (signin_id, interval) = started(&state).await;
-    let (answer, _) = polled(&state, &signin_id, interval).await;
-    match answer {
-        PublicSignInPoll::Refused { refusal, .. } => {
-            assert_eq!(refusal, PublicRelayRefusal::SigninDenied)
         }
         other => panic!("{other:?}"),
     }
@@ -324,25 +236,45 @@ async fn refusals_come_back_typed_and_change_nothing() {
     state.shutdown();
 }
 
+#[tokio::test]
+async fn a_disconnected_mailbox_needs_connecting_again() {
+    let idp = FakeIdp::start().await;
+    let relay = public_relay(&idp, Limits::public()).await;
+    let state = app_with_public(&relay);
+    connect_gmail(&state, EMAIL, &idp.google("1099", EMAIL, ""));
+    // The mailbox is gone, the identity stays locked
+    nandi_config::update_in(state.nandi_dir(), |config| {
+        config.email = None;
+    })
+    .unwrap();
+    match join(&state).await.unwrap() {
+        PublicRelayJoin::NeedsEmail { message } => {
+            assert!(message.contains(EMAIL), "{message}")
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(instance_token(state.db()).is_none());
+    state.shutdown();
+}
+
 #[test]
 fn every_refusal_code_has_its_kind() {
     for (code, refusal) in [
         ("not_public", PublicRelayRefusal::NotPublic),
+        ("id_token_invalid", PublicRelayRefusal::IdTokenInvalid),
+        ("id_token_expired", PublicRelayRefusal::IdTokenExpired),
+        ("email_unverified", PublicRelayRefusal::EmailUnverified),
         (
-            "provider_not_supported",
-            PublicRelayRefusal::ProviderNotSupported,
+            "identity_unavailable",
+            PublicRelayRefusal::IdentityUnavailable,
         ),
-        ("signin_unavailable", PublicRelayRefusal::SigninUnavailable),
-        ("signin_not_found", PublicRelayRefusal::SigninNotFound),
-        ("signin_expired", PublicRelayRefusal::SigninExpired),
-        ("signin_denied", PublicRelayRefusal::SigninDenied),
         ("account_suspended", PublicRelayRefusal::AccountSuspended),
         ("revoked", PublicRelayRefusal::Revoked),
         ("already_linked", PublicRelayRefusal::AlreadyLinked),
         ("key_mismatch", PublicRelayRefusal::KeyMismatch),
         ("device_limit", PublicRelayRefusal::DeviceLimit),
+        ("machine_limit", PublicRelayRefusal::MachineLimit),
         ("signup_limit", PublicRelayRefusal::SignupLimit),
-        ("signin_limit", PublicRelayRefusal::SigninLimit),
         ("invalid_request", PublicRelayRefusal::InvalidRequest),
         ("unauthorized", PublicRelayRefusal::Unauthorized),
         ("no_account", PublicRelayRefusal::NoAccount),
@@ -356,22 +288,11 @@ fn every_refusal_code_has_its_kind() {
 async fn an_unreachable_public_relay_answers_calmly_and_quickly() {
     let relay = nobody_there();
     let state = app_with_public(&relay);
+    connect_gmail(&state, EMAIL, "unused");
     let started = std::time::Instant::now();
     assert!(matches!(
         offer(&state).await,
         PublicRelayOffer::Unreachable { relay: shown, .. } if shown == relay
-    ));
-    assert!(matches!(
-        start_sign_in(&state, RelaySignInProvider::Github)
-            .await
-            .unwrap(),
-        PublicSignInStart::Unreachable { .. }
-    ));
-    assert!(matches!(
-        poll_sign_in(&state, RelaySignInProvider::Github, "x")
-            .await
-            .unwrap(),
-        PublicSignInPoll::Unreachable { .. }
     ));
     assert!(started.elapsed() < Duration::from_secs(10));
     assert_eq!(get_relay_status(&state).await.unwrap().relay_url, None);
@@ -389,9 +310,9 @@ async fn an_unreachable_public_relay_answers_calmly_and_quickly() {
 
 #[tokio::test]
 async fn past_the_daily_limit_a_group_change_says_when_it_resets() {
-    let fake = Shared::default();
+    let idp = FakeIdp::start().await;
     let relay = public_relay(
-        &fake,
+        &idp,
         Limits {
             messages_per_day: Some(1),
             ..Limits::public()
@@ -399,11 +320,11 @@ async fn past_the_daily_limit_a_group_change_says_when_it_resets() {
     )
     .await;
     let state = app_with_public(&relay);
-    let (signin_id, interval) = started(&state).await;
-    let (answer, _) = polled(&state, &signin_id, interval).await;
+    connect_gmail(&state, EMAIL, &idp.google("1099", EMAIL, ""));
+    let joined = join(&state).await.unwrap();
     assert!(
-        matches!(answer, PublicSignInPoll::Linked { .. }),
-        "{answer:?}"
+        matches!(joined, PublicRelayJoin::Joined { .. }),
+        "{joined:?}"
     );
     assert!(connected(&state).await, "never connected");
 

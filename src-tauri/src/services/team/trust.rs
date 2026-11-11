@@ -99,12 +99,12 @@ pub fn trusted_by_relay(db: &Db, instance_id: &str) -> bool {
 /// Whether our relay connection carries an instance token (from
 /// `NANDI_RELAY_URL` or the saved one): the relay needs a secret, so only
 /// instances the company enrolled are on it. Not a public relay: anyone
-/// who signs in is on that one, so trust stays one by one there.
+/// who joins with an email is on that one, so trust stays one by one there.
 pub fn on_a_secured_relay(db: &Db) -> bool {
     crate::services::relay::instance_token(db).is_some() && !on_a_public_relay(db)
 }
 
-/// Whether our relay token is from signing in to a public relay
+/// Whether our relay token is from joining a public relay
 pub fn on_a_public_relay(db: &Db) -> bool {
     crate::services::relay::public::on_public_relay(db)
 }
@@ -142,7 +142,7 @@ pub struct RelayTrust {
     pub enabled: bool,
     /// Our relay needs a token, so the choice applies
     pub secured: bool,
-    /// Our relay is a public one: anyone can sign in, so the choice
+    /// Our relay is a public one: anyone with an email can join, so the choice
     /// doesn't apply
     #[serde(default)]
     pub public: bool,

@@ -166,10 +166,6 @@ export const webClient: NandiClient = {
   setDefaultModel: model => request('PUT', '/default-model', { model }),
   setFreeTrial: enabled => request('PUT', '/free-trial', { enabled }),
   getFreeTrialAccount: () => request('GET', '/free-trial/account'),
-  startFreeTrialSignIn: provider =>
-    request('POST', `/free-trial/sign-in/${provider}/start`),
-  pollFreeTrialSignIn: (provider, signinId) =>
-    request('POST', `/free-trial/sign-in/${provider}/poll`, { signinId }),
   helpTopics: () => request('GET', '/help/topics'),
   helpAnswer: text => request('POST', '/help/answer', { text }),
   testLlmKey: (provider, apiKey) =>
@@ -352,10 +348,7 @@ export const webClient: NandiClient = {
     request('POST', '/relay/join', { url, joinCode }),
   getRelayInvite: () => request('GET', '/relay/invite'),
   getPublicRelayOffer: () => request('GET', '/relay/public'),
-  startPublicRelaySignIn: provider =>
-    request('POST', `/relay/public/sign-in/${provider}/start`),
-  pollPublicRelaySignIn: (provider, signinId) =>
-    request('POST', `/relay/public/sign-in/${provider}/poll`, { signinId }),
+  joinPublicRelay: () => request('POST', '/relay/public/join'),
   getPublicRelayAccount: () => request('GET', '/relay/public/account'),
   listOnlineAgents: capability =>
     request('GET', `/relay/agents${query({ capability })}`),
@@ -466,6 +459,7 @@ export const webClient: NandiClient = {
     request('PUT', `/agents/${id(agentId)}/memory-enabled`, { enabled }),
 
   getIdentityStatus: () => request('GET', '/identity/status'),
+  getVerifiedIdentity: () => request('GET', '/identity/verified'),
   setDisplayName: name => request('PUT', '/identity/display-name', { name }),
   setUserSlug: slug => request('PUT', '/identity/user-slug', { slug }),
   setOnboardingStep: step =>

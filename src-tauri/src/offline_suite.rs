@@ -620,7 +620,7 @@ async fn with_no_relay_onboarding_completes_with_not_now() {
 }
 
 /// Choosing "Join the public relay" while it can't be reached: the offer
-/// and the sign-in answer calmly at once, nothing is saved, onboarding
+/// and joining answer calmly at once, nothing is saved, onboarding
 /// completes, and everything local works the same
 #[tokio::test]
 async fn an_unreachable_public_relay_never_blocks_onboarding() {
@@ -632,15 +632,9 @@ async fn an_unreachable_public_relay_never_blocks_onboarding() {
 
     let offer = get(&router, "relay/public").await;
     assert_eq!(offer["kind"], "unreachable", "{offer}");
-    let sign_in = post(&router, "relay/public/sign-in/github/start", Value::Null).await;
-    assert_eq!(sign_in["kind"], "unreachable", "{sign_in}");
-    let poll = post(
-        &router,
-        "relay/public/sign-in/github/poll",
-        json!({ "signinId": "s-1" }),
-    )
-    .await;
-    assert_eq!(poll["kind"], "unreachable", "{poll}");
+    // No email connected: joining says to connect one, at once
+    let joined = post(&router, "relay/public/join", Value::Null).await;
+    assert_eq!(joined["kind"], "needsEmail", "{joined}");
     // No account to show
     let account = get(&router, "relay/public/account").await;
     assert_eq!(account["kind"], "notPublic", "{account}");

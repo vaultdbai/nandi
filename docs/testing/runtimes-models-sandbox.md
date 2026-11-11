@@ -588,15 +588,15 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - **Needs relay:** no
 - **Status:** Shipped
 
-### MD-22 — Sign in to keep the free trial on all your computers
+### MD-22 — Free tokens linked to the connected email (no sign-in)
 
-- **What:** The Free tokens card offers "Sign in with GitHub" (the providers `GET /v1/trial` lists in `signIn`); Google and Microsoft show as "(coming soon)", disabled, until the gateway offers them. Start shows a code ("Enter this code on GitHub: WDJB-MJHT"), opens the verification page, and polls every `interval` seconds (`slow_down` raises it) until linked: "Signed in as <name>. Your free tokens now follow you." The device then shares the person's 100,000 tokens; its earlier usage counts toward them. Errors stop polling with a sentence (code expired, cancelled on GitHub, already linked to another account).
-- **Where:** `LlmKeysSection.tsx` (`TrialSignIn`), `lib/free-trial.ts` (`signInOptions`), `llm_trial/gateway.rs` (`sign_in_start`, `sign_in_poll`), commands `start_free_trial_sign_in`, `poll_free_trial_sign_in`; HTTP `POST /api/free-trial/sign-in/{provider}/start` and `/poll` (body `{ signinId }`).
-- **Preconditions:** A gateway with `NANDI_TRIAL_GITHUB_CLIENT_ID` set; no account linked on this device.
-- **Steps:** 1. Open the card, click Sign in with GitHub. 2. Enter the code on github.com/login/device and approve. 3. On a second computer, sign in with the same GitHub account.
-- **Expected:** 1. The code and a spinner; the browser opens. 2. "Signed in as <login>"; the card shows the account. 3. Both cards show the same used/limit.
-- **Edge / negative cases:** Cancel stops polling; letting the code expire shows "The sign-in code expired. Start again."; a device already linked to someone else shows the already-linked message.
-- **Automation:** Covered by: `gateway_tests.rs` (`signing_in_polls_until_linked`, `sign_in_errors_stop_with_a_clear_message`), `LlmKeysSection.test.tsx` ('signs in with GitHub…', 'stops polling…', 'shows the linked account'), `free-trial.test.ts` | Layer: unit | Gap: the real GitHub device flow is manual.
+- **What:** The free tokens count per computer (all Nandis on it share them). There is no sign-in button: once Outlook or Gmail is connected, the trial links itself to that email (in the background after connecting, and whenever the card finds the computer unlinked), and the card says "Linked to <email>: your free tokens are shared by all your computers."; until then "These free tokens count for this computer. Connect Outlook or Gmail in Settings › Email to share them across your computers." Linking sends a fresh ID token of the identity's mailbox to the gateway (`POST /v1/link`); every call carries the machine hash (the trial's salt), signed. The computer's earlier usage counts toward the person.
+- **Where:** `LlmKeysSection.tsx` (`TrialLink`), `lib/free-trial.ts` (`trialLinkLine`), `llm_trial/mod.rs` (`account`, `link`, `link_soon`), `llm_trial/gateway.rs` (`link`, the `X-Nandi-Machine` header, `nandi-trial-v2`), `email/mod.rs` (`connect` calls `link_soon`).
+- **Preconditions:** A gateway with `NANDI_TRIAL_GOOGLE_CLIENT_ID` / `NANDI_TRIAL_MICROSOFT_CLIENT_ID` set to the build's mail client IDs.
+- **Steps:** 1. Fresh home, no email: open the card. 2. Connect Gmail in Settings › Email, reopen the card. 3. On a second computer, connect the same email.
+- **Expected:** 1. The per-computer line, no sign-in buttons. 2. "Linked to <email>". 3. Both cards show the same used/limit.
+- **Edge / negative cases:** a computer already linked to another email shows "This computer's free trial is linked to another email…"; a Nandi copied to another computer gets the machine-mismatch sentence; a mailbox that can't give an ID token leaves the trial working per computer.
+- **Automation:** Covered by: `gateway_tests.rs` (`linking_sends_the_id_token`, `the_signing_string_matches_the_gateway`, `every_error_code_has_a_clear_message`), `LlmKeysSection.test.tsx` ('says the tokens count per computer…', 'shows the linked email'), `free-trial.test.ts`, trial-gateway `tests/gateway.rs` | Layer: unit | Gap: the live gateway with real ID tokens is manual.
 - **Needs relay:** no
 - **Status:** Shipped
 

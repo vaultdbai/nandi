@@ -81,7 +81,7 @@ mod tests {
         })
         .await;
 
-        assert_eq!(months(&state).unwrap(), [month.clone()]);
+        assert_eq!(months(&state).unwrap(), std::slice::from_ref(&month));
         let all = list(&state, month.clone(), None).await.unwrap();
         assert_eq!(all.len(), 3);
         assert!(all.windows(2).all(|w| w[0].at >= w[1].at));

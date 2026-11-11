@@ -90,9 +90,17 @@ fn verify(seen: &Seen) -> Result<i64, String> {
     };
     let instance = header(INSTANCE_HEADER)?;
     let key = header(KEY_HEADER)?;
+    let machine = header(MACHINE_HEADER)?;
     let time: i64 = header(TIME_HEADER)?.parse().map_err(|_| "time")?;
     let signature = header(SIGNATURE_HEADER)?;
-    let message = signing_string(&seen.method, &seen.path, &instance, time, &seen.body);
+    let message = signing_string(
+        &seen.method,
+        &seen.path,
+        &instance,
+        &machine,
+        time,
+        &seen.body,
+    );
     let keys = PublicKeys {
         signing: key,
         sealing: String::new(),
@@ -164,10 +172,14 @@ fn answer(scripted: Scripted) -> Response {
     response
 }
 
+/// A machine hash as the app sends it
+const MACHINE: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
 fn client(url: &str) -> GatewayClient {
     GatewayClient::new(
         url.to_string(),
         "alice-laptop-1a2b".into(),
+        MACHINE.into(),
         DeviceKeys::generate().unwrap(),
     )
 }
@@ -198,10 +210,11 @@ async fn chat(client: &GatewayClient) -> Result<LlmResponse, GatewayError> {
 
 #[test]
 fn the_signing_string_matches_the_gateway() {
-    // The gateway's own golden string (trial-gateway `auth.rs`)
+    // The gateway's own test vector (trial-gateway `auth.rs`, README)
     assert_eq!(
-        signing_string("POST", "/v1/chat/completions", "i1", 42, b""),
-        "nandi-trial-v1\nPOST\n/v1/chat/completions\ni1\n42\n\
+        signing_string("POST", "/v1/chat/completions", "i1", MACHINE, 42, b""),
+        "nandi-trial-v2\nPOST\n/v1/chat/completions\ni1\n\
+         0000000000000000000000000000000000000000000000000000000000000000\n42\n\
          e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     );
     assert_eq!(
@@ -209,11 +222,14 @@ fn the_signing_string_matches_the_gateway() {
             "GET",
             "/v1/trial",
             "alice-laptop-1a2b",
+            MACHINE,
             1_800_000_000_000,
             b"{}"
         ),
-        "nandi-trial-v1\nGET\n/v1/trial\nalice-laptop-1a2b\n1800000000000\n\
-         44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        format!(
+            "nandi-trial-v2\nGET\n/v1/trial\nalice-laptop-1a2b\n{MACHINE}\n1800000000000\n\
+             44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        )
     );
 }
 
@@ -233,6 +249,7 @@ fn headers_carry_a_signature_the_gateway_verifies() {
     };
     assert!(verify(&seen).is_ok());
     assert_eq!(map[INSTANCE_HEADER], "alice-laptop-1a2b");
+    assert_eq!(map[MACHINE_HEADER], MACHINE);
     // Another body (or path) doesn't verify
     let tampered = Seen {
         body: b"{\"a\":2}".to_vec(),
@@ -246,7 +263,7 @@ fn signed_times_only_go_up() {
     let client = client("http://unused");
     let times: Vec<i64> = (0..50)
         .map(|_| {
-            client.headers("GET", TRIAL_PATH, b"")[2]
+            client.headers("GET", TRIAL_PATH, b"")[3]
                 .1
                 .parse::<i64>()
                 .unwrap()
@@ -383,19 +400,19 @@ async fn a_stale_clock_is_corrected_by_the_servers_and_signed_again() {
 #[tokio::test]
 async fn the_status_route_reads_the_allowance() {
     let (url, fake) = fake_gateway(vec![ok_json(json!({
-        "account": "github:583231", "used": 61234, "limit": 100000,
-        "model": "deepseek-flash", "paused": false, "signIn": ["github"]
+        "account": "google:583231", "email": "ada@example.com", "used": 61234,
+        "limit": 100000, "model": "deepseek-flash", "paused": false
     }))])
     .await;
     let account = client(&url).account().await.unwrap();
     assert_eq!(
         account,
         TrialAccount {
-            account: Some("github:583231".into()),
+            account: Some("google:583231".into()),
+            email: Some("ada@example.com".into()),
             used: 61_234,
             limit: 100_000,
             paused: false,
-            sign_in: vec!["github".into()],
         }
     );
     let fake = fake.lock().unwrap();
@@ -405,72 +422,34 @@ async fn the_status_route_reads_the_allowance() {
 }
 
 #[tokio::test]
-async fn signing_in_polls_until_linked() {
+async fn linking_sends_the_id_token() {
     let (url, fake) = fake_gateway(vec![
         ok_json(json!({
-            "signinId": "9f2c", "userCode": "WDJB-MJHT",
-            "verificationUri": "https://github.com/login/device", "expiresIn": 900, "interval": 5
-        })),
-        ok_json(json!({ "status": "pending", "interval": 5 })),
-        ok_json(json!({ "status": "slow_down", "interval": 10 })),
-        ok_json(json!({
-            "status": "linked", "account": "github:583231", "display": "alice",
+            "account": "google:583231", "email": "ada@example.com", "name": "Ada",
             "used": 61234, "limit": 100000
         })),
+        error(401, "id_token_expired", None, json!({})),
     ])
     .await;
     let client = client(&url);
-    let start = client
-        .sign_in_start(TrialSignInProvider::Github)
-        .await
-        .unwrap();
-    assert_eq!(start.user_code, "WDJB-MJHT");
-    assert_eq!(start.interval, 5);
-    let github = TrialSignInProvider::Github;
     assert_eq!(
-        client.sign_in_poll(github, &start.signin_id).await.unwrap(),
-        TrialSignInPoll::Pending { interval: 5 }
-    );
-    assert_eq!(
-        client.sign_in_poll(github, &start.signin_id).await.unwrap(),
-        TrialSignInPoll::SlowDown { interval: 10 }
-    );
-    assert_eq!(
-        client.sign_in_poll(github, &start.signin_id).await.unwrap(),
-        TrialSignInPoll::Linked {
-            account: "github:583231".into(),
-            display: "alice".into(),
+        client.link("eyJ.id.token").await.unwrap(),
+        TrialLink {
+            account: "google:583231".into(),
+            email: "ada@example.com".into(),
+            name: "Ada".into(),
             used: 61_234,
             limit: 100_000,
         }
     );
+    let expired = client.link("eyJ.old.token").await.unwrap_err();
+    assert!(expired.user_message().contains("Settings › Email"));
     let fake = fake.lock().unwrap();
-    assert_eq!(fake.seen[0].path, "/v1/signin/github/start");
-    assert_eq!(fake.seen[0].body, b"{}");
-    assert_eq!(fake.seen[1].path, "/v1/signin/github/poll");
-    let poll: serde_json::Value = serde_json::from_slice(&fake.seen[1].body).unwrap();
-    assert_eq!(poll["signinId"], "9f2c");
-}
-
-#[tokio::test]
-async fn sign_in_errors_stop_with_a_clear_message() {
-    let (url, _) = fake_gateway(vec![
-        error(410, "signin_expired", None, json!({})),
-        error(501, "provider_not_supported", None, json!({})),
-    ])
-    .await;
-    let client = client(&url);
-    let expired = client
-        .sign_in_poll(TrialSignInProvider::Github, "9f2c")
-        .await
-        .unwrap_err();
-    assert!(expired.user_message().contains("expired"));
-    let google = client
-        .sign_in_start(TrialSignInProvider::Google)
-        .await
-        .unwrap_err();
-    assert_eq!(google.code(), Some("provider_not_supported"));
-    assert!(google.user_message().contains("isn't available yet"));
+    assert_eq!(fake.seen[0].method, "POST");
+    assert_eq!(fake.seen[0].path, LINK_PATH);
+    let body: serde_json::Value = serde_json::from_slice(&fake.seen[0].body).unwrap();
+    assert_eq!(body, json!({ "idToken": "eyJ.id.token" }));
+    assert!(verify(&fake.seen[0]).is_ok());
 }
 
 #[test]
@@ -491,8 +470,11 @@ fn every_error_code_has_a_clear_message() {
         ("key_mismatch", None, json!({}), "other keys"),
         ("upstream_busy", Some(5), json!({}), "busy"),
         ("upstream_error", None, json!({}), "refused the request"),
-        ("signin_denied", None, json!({}), "cancelled"),
-        ("already_linked", None, json!({}), "another account"),
+        ("machine_mismatch", None, json!({}), "another computer"),
+        ("already_linked", None, json!({}), "another email"),
+        ("id_token_invalid", None, json!({}), "Settings › Email"),
+        ("email_unverified", None, json!({}), "verified"),
+        ("link_unavailable", None, json!({}), "links again later"),
         ("bad_signature", None, json!({}), "bad_signature"),
     ];
     for (code, retry_after, extra, expected) in cases {

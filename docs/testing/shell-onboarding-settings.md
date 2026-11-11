@@ -1342,6 +1342,17 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - There is no automated check that all four locale files have the same keys.
   - There are no tests for `services/recovery.rs`, `validate_filename`, the ErrorBoundary, the native menu, or ThemeProvider.
 
+### ST-34 — Account: your email (the locked identity), read-only
+
+- **What:** Settings › Account starts with **Your email**: "This Nandi's identity is the mailbox you connected first. The public relay and the free trial know you by it. It can't be changed here." and the email, the name and "From Gmail/Outlook". It's text, not a field. Before any mailbox: "No email connected yet. Connect Outlook or Gmail in Settings › Email." The identity is locked from the first mailbox's sign-in (its ID token: Gmail's verified `email`, Outlook's `preferred_username`); connecting another mailbox later doesn't change it.
+- **Where:** `services/identity/mod.rs` (`lock_from_mail`, `identity`), `email/mod.rs` (`connect`), `config.json` `identity`, command `get_verified_identity`, HTTP `GET /api/identity/verified`, UI `components/settings/sections/AccountSection.tsx` (`VerifiedEmail`), `hooks/useIdentity.ts` (`useVerifiedIdentity`).
+- **Preconditions:** none.
+- **Steps:** 1. Fresh home: open Settings › Account. 2. Connect Gmail in Settings › Email, reopen Account. 3. Connect Outlook too.
+- **Expected:** 1. The "No email connected yet" line. 2. The Gmail address, read-only. 3. Still the Gmail address.
+- **Automation:** Covered by: `identity/mod.rs` tests (claims), `auth/oauth.rs` (`a_fresh_id_token_is_kept_and_an_old_one_renewed`), `identity/machine_id.rs` (hashes per OS, salts), `SettingsView.test.tsx` ('Account shows the locked email read-only', 'Account says when no email is connected yet') | Layer: unit | Gap: real Microsoft and Google ID tokens are manual.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ### SH-35 — Home: connect your email to-do
 
 - **What:** With no mailbox connected (skipped at setup, or disconnected later), Home shows a card "Connect your email so Chief of Staff can keep your notes." with **Connect Outlook** and **Connect Gmail** (each provider this build can connect) and **Email settings**. Connecting signs in from the card. The card goes away once a mailbox is connected; while the other provider is still free, one quiet line says "You can also connect <name>." with **Email settings**. Nothing shows when both are connected or the build can connect neither.

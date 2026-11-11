@@ -64,9 +64,6 @@ export const tauriClient: NandiClient = {
   setDefaultModel: model => commands.setDefaultModel(model),
   setFreeTrial: enabled => commands.setFreeTrial(enabled),
   getFreeTrialAccount: () => commands.getFreeTrialAccount(),
-  startFreeTrialSignIn: provider => commands.startFreeTrialSignIn(provider),
-  pollFreeTrialSignIn: (provider, signinId) =>
-    commands.pollFreeTrialSignIn(provider, signinId),
   helpTopics: () => commands.helpTopics(),
   helpAnswer: text => commands.helpAnswer(text),
   testLlmKey: (provider, apiKey) => commands.testLlmKey(provider, apiKey),
@@ -203,9 +200,7 @@ export const tauriClient: NandiClient = {
   joinRelay: (url, joinCode) => commands.joinRelay(url, joinCode),
   getRelayInvite: () => commands.getRelayInvite(),
   getPublicRelayOffer: () => commands.getPublicRelayOffer(),
-  startPublicRelaySignIn: provider => commands.startPublicRelaySignIn(provider),
-  pollPublicRelaySignIn: (provider, signinId) =>
-    commands.pollPublicRelaySignIn(provider, signinId),
+  joinPublicRelay: () => commands.joinPublicRelay(),
   getPublicRelayAccount: () => commands.getPublicRelayAccount(),
   listOnlineAgents: capability => commands.listOnlineAgents(capability),
   testRelayConnection: url => commands.testRelayConnection(url),
@@ -285,6 +280,7 @@ export const tauriClient: NandiClient = {
     commands.setAgentMemoryEnabled(agentId, enabled),
 
   getIdentityStatus: () => commands.getIdentityStatus(),
+  getVerifiedIdentity: () => commands.getVerifiedIdentity(),
   setDisplayName: name => commands.setDisplayName(name),
   setUserSlug: slug => commands.setUserSlug(slug),
   setOnboardingStep: step => commands.setOnboardingStep(step),

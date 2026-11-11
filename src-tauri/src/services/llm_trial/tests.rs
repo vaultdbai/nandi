@@ -97,11 +97,11 @@ fn used_up_on_the_gateway_stops_the_trial_and_it_cannot_be_turned_on() {
 
     // The gateway's count is the authority: tokens left again, usable again
     trial.note_account(&TrialAccount {
-        account: Some("github:1".into()),
+        account: Some("google:1".into()),
+        email: Some("ada@example.com".into()),
         used: 10,
         limit: 100_000,
         paused: false,
-        sign_in: vec!["github".into()],
     });
     assert!(available_with(Some(&trial), &secrets));
 }
@@ -141,10 +141,10 @@ fn a_paused_answer_from_the_status_route_is_rechecked_later() {
     let trial = trial();
     trial.note_account(&TrialAccount {
         account: None,
+        email: None,
         used: 0,
         limit: 100_000,
         paused: true,
-        sign_in: vec![],
     });
     assert!(!available_with(Some(&trial), &secrets));
     // A turned-off trial isn't explained: the user's choice is the reason

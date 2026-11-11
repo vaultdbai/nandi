@@ -1,156 +1,49 @@
 import { describe, expect, it } from 'vitest'
-import {
-  afterPoll,
-  afterStart,
-  CHOOSE,
-  offeredProviders,
-  onPublicRelay,
-  refusalKey,
-  type SignInState,
-} from './public-relay-model'
+import { afterJoin, onPublicRelay, refusalKey } from './public-relay-model'
 import { relayStatusFixture } from './network-fixtures'
 
-const NOW = 1_000_000
-
-const started = afterStart(
-  'github',
-  {
-    kind: 'started',
-    signinId: 's-1',
-    provider: 'github',
-    userCode: 'WDJB-MJHT',
-    verificationUri: 'https://github.com/login/device',
-    verificationUriComplete: null,
-    expiresIn: 900,
-    interval: 5,
-  },
-  NOW
-)
-
-describe('public relay sign-in', () => {
-  it('starts waiting with the code, the page and the interval', () => {
-    expect(started).toEqual({
-      phase: 'waiting',
-      provider: 'github',
-      signinId: 's-1',
-      userCode: 'WDJB-MJHT',
-      page: 'https://github.com/login/device',
-      interval: 5,
-      expiresAt: NOW + 900_000,
-      retrying: false,
-    })
-    // The page with the code filled in, when the provider has one
-    const complete = afterStart(
-      'microsoft',
-      {
-        kind: 'started',
-        signinId: 's-2',
-        provider: 'microsoft',
-        userCode: 'ABC',
-        verificationUri: 'https://microsoft.com/devicelogin',
-        verificationUriComplete: 'https://microsoft.com/devicelogin?code=ABC',
-        expiresIn: 600,
-        interval: 0,
-      },
-      NOW
-    )
-    expect(complete).toMatchObject({
-      page: 'https://microsoft.com/devicelogin?code=ABC',
-      interval: 1,
+describe('joining the public relay', () => {
+  it('ends joined with the email', () => {
+    expect(
+      afterJoin({
+        kind: 'joined',
+        relay: 'wss://relay.vaultdb.ai/relay',
+        account: 'google:1099',
+        email: 'ada@example.com',
+        name: 'Ada',
+      })
+    ).toEqual({
+      phase: 'joined',
+      email: 'ada@example.com',
+      relay: 'wss://relay.vaultdb.ai/relay',
     })
   })
 
-  it('says why a start failed', () => {
+  it('asks for an email when there is none to join with', () => {
     expect(
-      afterStart(
-        'google',
-        { kind: 'refused', refusal: 'signinLimit', message: 'Too many' },
-        NOW
-      )
+      afterJoin({ kind: 'needsEmail', message: 'Connect ada@example.com' })
+    ).toEqual({ phase: 'needsEmail', message: 'Connect ada@example.com' })
+  })
+
+  it('names refusals and an unreachable relay calmly', () => {
+    expect(
+      afterJoin({
+        kind: 'refused',
+        refusal: 'machineLimit',
+        message: 'One computer joins at most 5 Nandis',
+      })
     ).toEqual({
       phase: 'failed',
-      failure: { key: 'publicRelay.refusal.signinLimit', detail: 'Too many' },
+      failure: {
+        key: 'publicRelay.refusal.machineLimit',
+        detail: 'One computer joins at most 5 Nandis',
+      },
     })
-    expect(
-      afterStart('github', { kind: 'unreachable', detail: 'refused' }, NOW)
-    ).toEqual({
+    expect(afterJoin({ kind: 'unreachable', detail: 'refused' })).toEqual({
       phase: 'failed',
       failure: { key: 'publicRelay.unreachable', detail: 'refused' },
     })
-  })
-
-  it('keeps waiting at the interval the relay asks for', () => {
-    expect(afterPoll(started, { kind: 'pending', interval: 5 }, NOW)).toEqual(
-      started
-    )
-    expect(
-      afterPoll(started, { kind: 'slowDown', interval: 10 }, NOW)
-    ).toMatchObject({ phase: 'waiting', interval: 10 })
-  })
-
-  it('rides out a relay that missed one poll, until the code expires', () => {
-    const retrying = afterPoll(
-      started,
-      { kind: 'unreachable', detail: 'reset' },
-      NOW
-    )
-    expect(retrying).toMatchObject({ phase: 'waiting', retrying: true })
-    expect(
-      afterPoll(retrying, { kind: 'pending', interval: 5 }, NOW)
-    ).toMatchObject({ retrying: false })
-    const late = NOW + 900_000
-    for (const poll of [
-      { kind: 'pending', interval: 5 },
-      { kind: 'unreachable', detail: 'reset' },
-    ] as const)
-      expect(afterPoll(started, poll, late)).toEqual({
-        phase: 'failed',
-        failure: { key: 'publicRelay.refusal.signinExpired', detail: null },
-      })
-  })
-
-  it('ends linked, or with the refusal', () => {
-    expect(
-      afterPoll(
-        started,
-        {
-          kind: 'linked',
-          relay: 'wss://relay.vaultdb.ai/relay',
-          account: 'github:1',
-          provider: 'github',
-          display: 'octocat',
-        },
-        NOW
-      )
-    ).toEqual({
-      phase: 'linked',
-      provider: 'github',
-      display: 'octocat',
-      relay: 'wss://relay.vaultdb.ai/relay',
-    })
-    expect(
-      afterPoll(
-        started,
-        { kind: 'refused', refusal: 'signinDenied', message: 'Cancelled' },
-        NOW
-      )
-    ).toEqual({
-      phase: 'failed',
-      failure: { key: 'publicRelay.refusal.signinDenied', detail: 'Cancelled' },
-    })
-    // Only a waiting sign-in moves
-    const choosing: SignInState = CHOOSE
-    expect(afterPoll(choosing, { kind: 'pending', interval: 5 }, NOW)).toBe(
-      choosing
-    )
-  })
-
-  it('names refusals and orders providers', () => {
     expect(refusalKey('deviceLimit')).toBe('publicRelay.refusal.deviceLimit')
-    expect(offeredProviders(['microsoft', 'github'])).toEqual([
-      'github',
-      'microsoft',
-    ])
   })
 
   it('knows when the relay in use is the public one', () => {

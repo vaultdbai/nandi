@@ -55,8 +55,8 @@ export function joinMessage(outcome: JoinOutcome, url: string): JoinMessage {
       return { ...base, key: 'relay.join.removed', detail: outcome.message }
     case 'noEnrollment':
       return { ...base, key: 'relay.join.noEnrollment' }
-    case 'signInNeeded':
-      return { ...base, key: 'relay.join.signInNeeded' }
+    case 'publicRelay':
+      return { ...base, key: 'relay.join.publicRelay' }
     case 'refused':
       return { ...base, key: 'relay.join.refused', detail: outcome.message }
   }

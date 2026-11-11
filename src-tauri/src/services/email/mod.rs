@@ -444,6 +444,13 @@ pub fn connected(state: &AppState) -> Vec<MailProvider> {
         .collect()
 }
 
+/// The address of the connected `provider` mailbox, if any
+pub fn connected_account(state: &AppState, provider: MailProvider) -> Option<String> {
+    email_settings(state)
+        .account(provider)
+        .map(|account| account.email.clone())
+}
+
 pub async fn status(state: &AppState) -> EmailStatus {
     let email = state.email();
     let setup = email.setup();
@@ -619,6 +626,12 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
         Ok(Ok(_)) => {}
         Ok(Err(e)) => log::warn!("Couldn't note the mailbox owner in My role: {e}"),
         Err(e) => log::warn!("Noting the mailbox owner failed: {e}"),
+    }
+    // The first mailbox is this Nandi's identity; the free trial links to it
+    match crate::services::identity::lock_from_mail(state, provider, now()) {
+        Ok(Some(_)) => crate::services::llm_trial::link_soon(state),
+        Ok(None) => {}
+        Err(e) => log::warn!("Couldn't lock this Nandi's identity: {e}"),
     }
     log::info!("Connected {} for the Chief of Staff", provider.name());
     emit_changed(state);

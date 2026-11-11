@@ -114,11 +114,12 @@ vi.mock('@/lib/tauri-bindings', () => {
       }),
       getFreeTrialAccount: ok({
         account: null,
+        email: null,
         used: 0,
         limit: 100000,
         paused: false,
-        signIn: ['github'],
       }),
+      getVerifiedIdentity: ok(null),
       helpTopics: ok([]),
       helpAnswer: ok({
         topic: null,

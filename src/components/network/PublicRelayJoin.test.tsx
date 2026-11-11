@@ -1,43 +1,115 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { render, screen } from '@/test/test-utils'
 import { commands } from '@/lib/tauri-bindings'
 import { ok } from '@/hooks/useSharedAgents.fixtures'
+import { useNavigationStore } from '@/store/navigation-store'
 import { PublicRelayJoin } from './PublicRelayJoin'
 
 const RELAY = 'wss://relay.vaultdb.ai/relay'
 
-const started = {
-  kind: 'started',
-  signinId: 's-1',
-  provider: 'github',
-  userCode: 'WDJB-MJHT',
-  verificationUri: 'https://github.com/login/device',
-  verificationUriComplete: null,
-  expiresIn: 900,
-  interval: 1,
-}
-
-const ready = (providers = ['github', 'google', 'microsoft']) =>
-  ok({ kind: 'ready', relay: RELAY, providers })
+const ready = () =>
+  ok({ kind: 'ready', relay: RELAY, email: 'ada@example.com' })
 
 describe('PublicRelayJoin', () => {
-  it('offers the providers the relay lists', async () => {
+  beforeEach(() => {
+    useNavigationStore.setState(useNavigationStore.getInitialState())
+  })
+
+  it('joins with the connected email in one click', async () => {
+    const user = userEvent.setup()
+    const onLinked = vi.fn()
+    const join = vi.fn().mockResolvedValue({
+      status: 'ok',
+      data: {
+        kind: 'joined',
+        relay: RELAY,
+        account: 'google:1099',
+        email: 'ada@example.com',
+        name: 'Ada',
+      },
+    })
     Object.assign(commands, {
-      getPublicRelayOffer: ready(['github', 'google']),
+      getPublicRelayOffer: ready(),
+      joinPublicRelay: join,
+    })
+    render(<PublicRelayJoin onLinked={onLinked} />)
+    expect(
+      await screen.findByText(/You join as ada@example.com/)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/500 messages a day/)).toBeInTheDocument()
+    // No sign-in providers to pick
+    expect(screen.queryByRole('button', { name: /Sign in with/ })).toBeNull()
+    await user.click(
+      screen.getByRole('button', { name: 'Join the public relay' })
+    )
+    expect(await screen.findByTestId('public-relay-linked')).toHaveTextContent(
+      'Joined as ada@example.com'
+    )
+    expect(join).toHaveBeenCalledTimes(1)
+    expect(onLinked).toHaveBeenCalledWith(RELAY)
+  })
+
+  it('without a connected email, points to Settings › Email', async () => {
+    const user = userEvent.setup()
+    Object.assign(commands, {
+      getPublicRelayOffer: ok({ kind: 'needsEmail', relay: RELAY }),
     })
     render(<PublicRelayJoin />)
     expect(
-      await screen.findByRole('button', { name: 'Sign in with GitHub' })
+      await screen.findByText(
+        'Connect your Outlook or Gmail in Settings › Email to join groups on the public relay.'
+      )
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Sign in with Google' })
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: 'Sign in with Microsoft' })
+      screen.queryByRole('button', { name: 'Join the public relay' })
     ).toBeNull()
-    expect(screen.getByText(/500 messages a day/)).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', { name: 'Open Settings › Email' })
+    )
+    expect(useNavigationStore.getState().current).toMatchObject({
+      kind: 'settings',
+      section: 'email',
+    })
+  })
+
+  it('a mailbox that needs reconnecting says so', async () => {
+    const user = userEvent.setup()
+    Object.assign(commands, {
+      getPublicRelayOffer: ready(),
+      joinPublicRelay: ok({
+        kind: 'needsEmail',
+        message: 'Connect ada@example.com again in Settings › Email.',
+      }),
+    })
+    render(<PublicRelayJoin />)
+    await user.click(
+      await screen.findByRole('button', { name: 'Join the public relay' })
+    )
+    expect(
+      await screen.findByTestId('public-relay-needs-email')
+    ).toHaveTextContent('Connect ada@example.com again')
+  })
+
+  it('shows a refusal in one calm line with the relay words', async () => {
+    const user = userEvent.setup()
+    Object.assign(commands, {
+      getPublicRelayOffer: ready(),
+      joinPublicRelay: ok({
+        kind: 'refused',
+        refusal: 'machineLimit',
+        message: 'One computer joins at most 5 Nandis to this relay',
+      }),
+    })
+    render(<PublicRelayJoin />)
+    await user.click(
+      await screen.findByRole('button', { name: 'Join the public relay' })
+    )
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(
+      'This computer has joined as many Nandis or accounts as the public relay allows.'
+    )
+    expect(alert).toHaveTextContent('at most 5 Nandis')
   })
 
   it('is calm when the public relay is unreachable, and can try again', async () => {
@@ -50,7 +122,7 @@ describe('PublicRelayJoin', () => {
       })
       .mockResolvedValueOnce({
         status: 'ok',
-        data: { kind: 'ready', relay: RELAY, providers: ['github'] },
+        data: { kind: 'ready', relay: RELAY, email: 'ada@example.com' },
       })
     Object.assign(commands, { getPublicRelayOffer: offer })
     render(<PublicRelayJoin />)
@@ -61,99 +133,7 @@ describe('PublicRelayJoin', () => {
     expect(screen.queryByRole('alert')).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     expect(
-      await screen.findByRole('button', { name: 'Sign in with GitHub' })
+      await screen.findByRole('button', { name: 'Join the public relay' })
     ).toBeInTheDocument()
-  })
-
-  it('shows the code, opens the page, polls and ends signed in', async () => {
-    const user = userEvent.setup()
-    const onLinked = vi.fn()
-    const poll = vi
-      .fn()
-      .mockResolvedValueOnce({
-        status: 'ok',
-        data: { kind: 'pending', interval: 1 },
-      })
-      .mockResolvedValueOnce({
-        status: 'ok',
-        data: {
-          kind: 'linked',
-          relay: RELAY,
-          account: 'github:583231',
-          provider: 'github',
-          display: 'octocat',
-        },
-      })
-    Object.assign(commands, {
-      getPublicRelayOffer: ready(),
-      startPublicRelaySignIn: ok(started),
-      pollPublicRelaySignIn: poll,
-    })
-    render(<PublicRelayJoin onLinked={onLinked} />)
-    await user.click(
-      await screen.findByRole('button', { name: 'Sign in with GitHub' })
-    )
-    expect(
-      await screen.findByTestId('public-relay-user-code')
-    ).toHaveTextContent('WDJB-MJHT')
-    expect(screen.getByTestId('public-relay-waiting')).toHaveTextContent(
-      'Waiting for you to approve'
-    )
-    // Nothing opens until asked
-    expect(openUrl).not.toHaveBeenCalledWith('https://github.com/login/device')
-    await user.click(screen.getByRole('button', { name: 'Open sign-in page' }))
-    expect(openUrl).toHaveBeenCalledWith('https://github.com/login/device')
-
-    expect(
-      await screen.findByTestId('public-relay-linked', {}, { timeout: 4000 })
-    ).toHaveTextContent('Signed in as octocat with GitHub')
-    expect(poll).toHaveBeenCalledTimes(2)
-    expect(poll).toHaveBeenCalledWith('github', 's-1')
-    expect(onLinked).toHaveBeenCalledWith(RELAY)
-  })
-
-  it('says why the relay refused, and offers the providers again', async () => {
-    const user = userEvent.setup()
-    Object.assign(commands, {
-      getPublicRelayOffer: ready(['github']),
-      startPublicRelaySignIn: ok({
-        kind: 'refused',
-        refusal: 'deviceLimit',
-        message: 'An account links at most 10 Nandis on this relay',
-      }),
-    })
-    render(<PublicRelayJoin />)
-    await user.click(
-      await screen.findByRole('button', { name: 'Sign in with GitHub' })
-    )
-    const failed = await screen.findByTestId('public-relay-failed')
-    expect(failed).toHaveTextContent(
-      'This account links as many Nandis as the public relay allows.'
-    )
-    expect(failed).toHaveTextContent('at most 10 Nandis')
-    expect(
-      screen.getByRole('button', { name: 'Sign in with GitHub' })
-    ).toBeEnabled()
-  })
-
-  it('keeps waiting through a poll the relay missed', async () => {
-    const user = userEvent.setup()
-    Object.assign(commands, {
-      getPublicRelayOffer: ready(['github']),
-      startPublicRelaySignIn: ok(started),
-      pollPublicRelaySignIn: ok({ kind: 'unreachable', detail: 'reset' }),
-    })
-    render(<PublicRelayJoin />)
-    await user.click(
-      await screen.findByRole('button', { name: 'Sign in with GitHub' })
-    )
-    expect(
-      await screen.findByText(
-        "The relay didn't answer just now; still waiting…",
-        {},
-        { timeout: 3000 }
-      )
-    ).toBeInTheDocument()
-    expect(screen.getByTestId('public-relay-user-code')).toBeInTheDocument()
   })
 })

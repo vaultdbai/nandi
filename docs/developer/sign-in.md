@@ -75,11 +75,12 @@ gateway (`https://trial.vaultdb.ai`, private repo
 (`services::llm_trial`). **The app holds no key**: nothing is baked into
 builds, no CI secret, no fallback.
 
-- **Allowance:** 100,000 tokens (input + output) per person on
-  `deepseek:deepseek-flash` only. A device nobody signed in on counts as
-  one person; signing in links devices so they share one allowance. The
-  gateway is the only counter: the app keeps none, and Settings shows
-  what `GET /v1/trial` says (`get_free_trial_account`).
+- **Allowance:** 100,000 tokens (input + output) per computer on
+  `deepseek:deepseek-flash` only, shared by the Nandis on it (the machine
+  hash, `identity::machine_id`). Once linked to the person's connected
+  email, all their computers share one 100,000. The gateway is the only
+  counter: the app keeps none, and Settings shows what `GET /v1/trial`
+  says (`get_free_trial_account`).
 - **Last resort:** `llm_keys::usable_model` tries the user's own keys and
   sign-ins first. The trial runs only when nothing else works, only on
   the host, never in a container.
@@ -102,11 +103,12 @@ builds, no CI secret, no fallback.
 Each request carries `X-Nandi-Instance` (the instance ID),
 `X-Nandi-Key` (the device's Ed25519 public key, `relay::device_keys`, made
 on first use and pinned by the gateway like the relay pins it),
-`X-Nandi-Time` (epoch ms) and `X-Nandi-Signature`
-(`DeviceKeys::sign`) over:
+`X-Nandi-Machine` (this computer's salted hash, `identity::machine_id`,
+the trial's salt; pinned with the key), `X-Nandi-Time` (epoch ms) and
+`X-Nandi-Signature` (`DeviceKeys::sign`) over:
 
 ```text
-nandi-trial-v1\n<METHOD>\n<path>\n<instance>\n<time>\n<hex sha256(body)>
+nandi-trial-v2\n<METHOD>\n<path>\n<instance>\n<machine>\n<time>\n<hex sha256(body)>
 ```
 
 The body is serialized once and those bytes are hashed, signed and sent.
@@ -125,22 +127,53 @@ gateway's own golden string.
   `stale_time` adjusts the clock by `serverTime` and signs again once.
 - `GatewayError::user_message` turns each code into a sentence with what
   to do (used up, not enough left, paused until about when, rate limited,
-  too many devices, clock, key mismatch, model busy or refused).
+  too many devices, clock, key or machine mismatch, model busy or
+  refused, linking).
 - What the gateway last said is kept in memory (`Trial::note`): used up,
   paused until `Retry-After`, unreachable for a minute. While any holds
   the trial isn't offered, `effectiveModel` is `null`, and the Ask box
   answers from the help guide (`machine-readiness.md`) without waiting on
   a timeout.
 
-### Linking devices (sign-in)
+### Linking computers (no sign-in)
 
-`POST /v1/signin/<provider>/start` returns a user code and a
-verification URL; the app opens it and polls `/poll` every `interval`
-seconds (`pending`, `slow_down`, `linked`, or an error that stops it).
-The provider's device code stays on the gateway. Settings shows a button
-for each provider `GET /v1/trial` lists in `signIn` (GitHub today);
-Google and Microsoft show as "coming soon" until the gateway offers them
-(it answers `provider_not_supported`).
+There is no sign-in button. When a mailbox connects, the free trial
+links to the person in the background (`llm_trial::link_soon`), and
+`get_free_trial_account` links first whenever it finds the computer
+unlinked while an email is connected. Linking is `POST /v1/link
+{idToken}` with a fresh ID token of the identity's mailbox
+(`identity::fresh_id_token`); the gateway checks it and moves the
+computer's usage to the person once. Settings shows "Linked to <email>",
+or that the tokens count for this computer until an email is connected.
+
+## This Nandi's identity (the connected email)
+
+`services::identity` (no sign-in screens anywhere):
+
+- **Captured at connect:** the mail sign-in asks for `openid email
+profile`, so its token endpoint returns an ID token, kept with the
+  sign-in in the keychain (`oauth::StoredToken.id_token`; a refresh
+  replaces it). `email::connect` calls `identity::lock_from_mail`: the
+  verified email (Gmail: `email` with `email_verified`; Outlook:
+  `preferred_username`, the UPN or personal sign-in address, never
+  Microsoft's settable `email` claim) and the name.
+- **Locked:** the first one stays in `config.json` `identity`
+  (`VerifiedIdentity {provider, email, name, lockedAt}`); connecting
+  another mailbox later doesn't change it. Settings › Account shows it
+  read-only (`get_verified_identity`).
+- **Proved once per service:** the public relay's join and the trial's
+  link send `identity::fresh_id_token` (the kept ID token while it has 5
+  minutes left, else one from renewing the mail sign-in; it must still
+  name the locked email). The service checks it against the provider's
+  keys, audience = the build's mail client ID, and pins the device key
+  to the email; after that the key alone proves the person.
+- **Machine ID** (`identity::machine_id`): Windows `MachineGuid`, macOS
+  `IOPlatformUUID`, Linux `/etc/machine-id` (or `/var/lib/dbus/
+machine-id`), sent only as `hex(SHA-256("nandi-machine-v1\n<salt>\n<id>"))`
+  with salt `nandi-relay` or `nandi-trial`, so the two services' hashes
+  of one computer can't be matched. The relay caps Nandis and accounts
+  per computer with it; the gateway counts free tokens per computer.
+  Both keep it only as an HMAC under a key of their own.
 
 ## What the UI shows
 

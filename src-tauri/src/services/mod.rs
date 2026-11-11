@@ -58,6 +58,7 @@ pub mod gateway;
 pub mod harness;
 pub mod help;
 pub mod history;
+pub mod identity;
 pub mod images;
 pub mod inbox;
 pub mod intake;

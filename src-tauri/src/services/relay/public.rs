@@ -1,17 +1,18 @@
 //! The public relay: VaultDB.ai's relay for people without a company relay
 //! ("Join the public relay" in onboarding and Network › Connection).
 //!
-//! People join it by signing in with GitHub, Google or Microsoft (the
-//! relay runs the OAuth device flow), not with a join code. One account,
-//! several Nandis; the relay pins each Nandi's device keys at its first
-//! sign-in, as `/relay/enroll` does.
+//! There is no sign-in. A Nandi joins with the identity its person
+//! connected: the Outlook or Gmail mailbox locked as this Nandi's identity
+//! (`services::identity`). The app sends a fresh ID token of that mailbox
+//! once; the relay checks it, locks the email to this Nandi's device keys
+//! and issues the instance token. From then on the pinned keys alone prove
+//! the person. Without a connected email the public relay can't be joined
+//! ([`PublicRelayOffer::NeedsEmail`]).
 //!
 //! | Step | Here | At the relay |
 //! | --- | --- | --- |
-//! | Offer | [`offer`] | `GET /health`: `public`, `signin` (the providers) |
-//! | Start | [`start_sign_in`] | `POST /relay/signin/{provider}/start` with this instance's ID and public keys → a user code and a page |
-//! | Poll | [`poll_sign_in`] | `POST /relay/signin/{provider}/poll` every `interval` s → `pending`, `slow_down` or `linked` |
-//! | Linked | the token is kept exactly like an enrolled one, and the app connects | |
+//! | Offer | [`offer`] | `GET /health`: `public`, `identity` (whose ID tokens it accepts) |
+//! | Join | [`join`] | `POST /relay/public/join` with this instance's ID, public keys, the ID token and the machine hash (`identity::machine_id`, the relay's salt) → the token, kept exactly like an enrolled one; the app connects |
 //! | Account | [`account`] | `GET /relay/account?instanceId=` with the token as bearer |
 //!
 //! Which relay: [`super::BuiltInRelay::public_url`], `NANDI_PUBLIC_RELAY_URL`
@@ -20,7 +21,7 @@
 //! [`PublicRelayOffer::Unreachable`], and the rest of Nandi works the same.
 //!
 //! What the app keeps: the token in `relay_state` (as enrolling does) and,
-//! next to it, the account it was linked to ([`RELAY_ACCOUNT_KEY`]), so the
+//! next to it, the account it joined as ([`RELAY_ACCOUNT_KEY`]), so the
 //! Connection view can name it while the relay is away and relay trust
 //! knows not to trust everyone on a public relay
 //! ([`on_public_relay`]). Never the token in the UI or the logs.
@@ -40,6 +41,7 @@ use super::{
 };
 use crate::db::Db;
 use crate::model::Timestamp;
+use crate::services::identity::{self, machine_id, NoIdToken};
 use crate::services::network;
 use crate::services::AppState;
 
@@ -49,12 +51,12 @@ pub const PUBLIC_RELAY_URL: &str = "wss://relay.vaultdb.ai/relay";
 /// Points the app at another public relay (staging, tests)
 pub const PUBLIC_RELAY_URL_ENV: &str = "NANDI_PUBLIC_RELAY_URL";
 
-/// `relay_state` key: the account this Nandi signed in to the relay with
-/// (`{"relay", "account", "provider", "display"}`)
+/// `relay_state` key: the account this Nandi joined the relay as
+/// (`{"relay", "account", "email", "name"}`)
 pub const RELAY_ACCOUNT_KEY: &str = "relay_account";
 
-/// How long a sign-in call to the relay may take (it asks the provider)
-const SIGNIN_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long joining may take (the relay may fetch the provider's keys)
+const JOIN_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// How long the account may take
 const ACCOUNT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -68,46 +70,17 @@ pub fn public_relay_url() -> String {
         .unwrap_or_else(|| PUBLIC_RELAY_URL.to_string())
 }
 
-/// Who a person signs in to the public relay with
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-pub enum RelaySignInProvider {
-    Github,
-    Google,
-    Microsoft,
-}
-
-impl RelaySignInProvider {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Github => "github",
-            Self::Google => "google",
-            Self::Microsoft => "microsoft",
-        }
-    }
-
-    /// `None` for a provider this app doesn't know
-    pub fn parse(name: &str) -> Option<Self> {
-        match name.trim() {
-            "github" => Some(Self::Github),
-            "google" => Some(Self::Google),
-            "microsoft" => Some(Self::Microsoft),
-            _ => None,
-        }
-    }
-}
-
 /// Whether the public relay can be joined now, and how
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PublicRelayOffer {
     /// This app offers no public relay
     None,
-    /// Sign in with one of `providers` to join
-    Ready {
-        relay: String,
-        providers: Vec<RelaySignInProvider>,
-    },
+    /// "Join the public relay" as `email`, this Nandi's identity
+    Ready { relay: String, email: String },
+    /// No email is connected: connect Outlook or Gmail in Settings › Email
+    /// first
+    NeedsEmail { relay: String },
     /// It didn't answer (offline, or not live yet), or not as a public
     /// relay: join later from Network › Connection
     Unreachable { relay: String, detail: String },
@@ -126,30 +99,28 @@ pub enum PublicRelayOffer {
 pub enum PublicRelayRefusal {
     /// `not_public`: the relay isn't a public one
     NotPublic,
-    /// `provider_not_supported`
-    ProviderNotSupported,
-    /// `signin_unavailable`: the provider is down
-    SigninUnavailable,
-    /// `signin_not_found`: no such sign-in is waiting
-    SigninNotFound,
-    /// `signin_expired`: the code expired
-    SigninExpired,
-    /// `signin_denied`: cancelled on the provider's page
-    SigninDenied,
+    /// `id_token_invalid`: the relay didn't accept the mailbox's ID token
+    IdTokenInvalid,
+    /// `id_token_expired`
+    IdTokenExpired,
+    /// `email_unverified`: the provider hasn't verified the email
+    EmailUnverified,
+    /// `identity_unavailable`: the relay can't check sign-ins right now
+    IdentityUnavailable,
     /// `account_suspended`
     AccountSuspended,
     /// `revoked`: the operator removed this Nandi
     Revoked,
-    /// `already_linked`: this Nandi is another account's
+    /// `already_linked`: this Nandi joined with another email
     AlreadyLinked,
     /// `key_mismatch`: the relay pinned other keys for this Nandi
     KeyMismatch,
     /// `device_limit`: the account links its most Nandis already
     DeviceLimit,
+    /// `machine_limit`: this computer joined its most Nandis or accounts
+    MachineLimit,
     /// `signup_limit`: too many new accounts from this network today
     SignupLimit,
-    /// `signin_limit`: too many sign-ins waiting from this network
-    SigninLimit,
     /// `invalid_request`
     InvalidRequest,
     /// `unauthorized`: the token didn't work
@@ -164,18 +135,17 @@ impl PublicRelayRefusal {
     pub fn from_code(code: &str) -> Self {
         match code {
             "not_public" => Self::NotPublic,
-            "provider_not_supported" => Self::ProviderNotSupported,
-            "signin_unavailable" => Self::SigninUnavailable,
-            "signin_not_found" => Self::SigninNotFound,
-            "signin_expired" => Self::SigninExpired,
-            "signin_denied" => Self::SigninDenied,
+            "id_token_invalid" => Self::IdTokenInvalid,
+            "id_token_expired" => Self::IdTokenExpired,
+            "email_unverified" => Self::EmailUnverified,
+            "identity_unavailable" => Self::IdentityUnavailable,
             "account_suspended" => Self::AccountSuspended,
             "revoked" => Self::Revoked,
             "already_linked" => Self::AlreadyLinked,
             "key_mismatch" => Self::KeyMismatch,
             "device_limit" => Self::DeviceLimit,
+            "machine_limit" => Self::MachineLimit,
             "signup_limit" => Self::SignupLimit,
-            "signin_limit" => Self::SigninLimit,
             "invalid_request" => Self::InvalidRequest,
             "unauthorized" => Self::Unauthorized,
             "no_account" => Self::NoAccount,
@@ -184,53 +154,27 @@ impl PublicRelayRefusal {
     }
 }
 
-/// Starting a sign-in
+/// Joining the public relay
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
-pub enum PublicSignInStart {
-    /// Show `user_code` and open `verification_uri`; poll every `interval`
-    /// seconds for up to `expires_in`
-    #[serde(rename_all = "camelCase")]
-    Started {
-        signin_id: String,
-        provider: RelaySignInProvider,
-        user_code: String,
-        verification_uri: String,
-        /// The page with the code filled in, when the provider has one
-        verification_uri_complete: Option<String>,
-        expires_in: u32,
-        interval: u32,
+pub enum PublicRelayJoin {
+    /// Joined: the token is kept and the app is connecting to `relay`
+    Joined {
+        relay: String,
+        account: String,
+        email: String,
+        name: String,
     },
+    /// This Nandi has no connected email to join with (or its mailbox
+    /// needs connecting again): `message` says what to do
+    NeedsEmail { message: String },
     Refused {
         refusal: PublicRelayRefusal,
         /// The relay's words
         message: String,
     },
-    /// The relay didn't answer
-    Unreachable { detail: String },
-}
-
-/// One poll of a sign-in
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum PublicSignInPoll {
-    /// Not approved yet: ask again in `interval` seconds
-    Pending { interval: u32 },
-    /// Asked too soon: ask again in `interval` seconds
-    SlowDown { interval: u32 },
-    /// Signed in: the token is kept and the app is connecting to `relay`
-    Linked {
-        relay: String,
-        account: String,
-        provider: RelaySignInProvider,
-        /// The account's name at the provider (their login or name)
-        display: String,
-    },
-    Refused {
-        refusal: PublicRelayRefusal,
-        message: String,
-    },
-    /// The relay didn't answer this time; asking again may work
+    /// The relay (or the mail provider) didn't answer; trying again may
+    /// work
     Unreachable { detail: String },
 }
 
@@ -239,10 +183,13 @@ pub enum PublicSignInPoll {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RelayAccount {
-    /// `github:583231`, `google:<sub>`, `microsoft:<tid>.<oid>`
+    /// `google:<sub>`, `microsoft:<tid>.<oid>`
     pub account: String,
-    pub provider: RelaySignInProvider,
-    pub display: String,
+    /// `google` or `microsoft`
+    pub provider: String,
+    /// The verified email the account was locked to
+    pub email: String,
+    pub name: String,
     pub created_at: Timestamp,
     /// The instance IDs of this account's Nandis
     pub instances: Vec<String>,
@@ -274,15 +221,15 @@ pub struct RelayUsage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum PublicRelayAccount {
-    /// The relay in use isn't a public relay this Nandi signed in to
+    /// The relay in use isn't a public relay this Nandi joined
     NotPublic,
-    /// Signed in, but the relay didn't give the account now: what this
-    /// Nandi kept
+    /// Joined, but the relay didn't give the account now: what this Nandi
+    /// kept
     Unavailable {
         relay: String,
         account: String,
-        provider: RelaySignInProvider,
-        display: String,
+        email: String,
+        name: String,
         detail: String,
     },
     #[serde(rename_all = "camelCase")]
@@ -300,12 +247,12 @@ pub enum PublicRelayAccount {
 struct KeptAccount {
     relay: String,
     account: String,
-    provider: RelaySignInProvider,
-    display: String,
+    email: String,
+    name: String,
 }
 
 /// The account kept for the relay this Nandi's token is for, if that is a
-/// public relay it signed in to
+/// public relay it joined
 fn kept_account(db: &Db) -> Option<KeptAccount> {
     let kept = read_state::<KeptAccount>(db, RELAY_ACCOUNT_KEY)
         .ok()
@@ -316,8 +263,9 @@ fn kept_account(db: &Db) -> Option<KeptAccount> {
     (kept.relay == token_relay).then_some(kept)
 }
 
-/// Whether this Nandi's relay token is from signing in to a public relay:
-/// anyone can sign in there, so its members aren't trusted as a company's
+/// Whether this Nandi's relay token is from joining a public relay: anyone
+/// with an email can join there, so its members aren't trusted as a
+/// company's
 /// ([`crate::services::team::trust::on_a_secured_relay`])
 pub fn on_public_relay(db: &Db) -> bool {
     kept_account(db).is_some()
@@ -328,8 +276,9 @@ pub async fn offer(state: &AppState) -> PublicRelayOffer {
     let Some(relay) = state.built_in_relay().public_url().map(str::to_string) else {
         return PublicRelayOffer::None;
     };
+    let email = identity::identity(state).map(|locked| locked.email);
     match health(&relay).await {
-        Ok(report) => offer_from(relay, &report),
+        Ok(report) => offer_from(relay, &report, email),
         Err(outcome) => PublicRelayOffer::Unreachable {
             detail: match outcome {
                 super::join::JoinOutcome::Unreachable { detail } => detail,
@@ -340,7 +289,11 @@ pub async fn offer(state: &AppState) -> PublicRelayOffer {
     }
 }
 
-fn offer_from(relay: String, report: &RelayHealthReport) -> PublicRelayOffer {
+fn offer_from(
+    relay: String,
+    report: &RelayHealthReport,
+    email: Option<String>,
+) -> PublicRelayOffer {
     if report.relay.protocol_version != PROTOCOL_VERSION {
         return PublicRelayOffer::VersionMismatch {
             relay,
@@ -354,109 +307,74 @@ fn offer_from(relay: String, report: &RelayHealthReport) -> PublicRelayOffer {
             relay,
         };
     }
-    let providers: Vec<RelaySignInProvider> = report
-        .signin
-        .iter()
-        .filter_map(|name| RelaySignInProvider::parse(name))
-        .collect();
-    if providers.is_empty() {
+    if report.identity.is_empty() {
         return PublicRelayOffer::Unreachable {
-            detail: format!("{relay} offers no sign-in this app knows"),
+            detail: format!("{relay} accepts no Outlook or Gmail sign-in"),
             relay,
         };
     }
-    PublicRelayOffer::Ready { relay, providers }
-}
-
-/// Starts signing this Nandi in to the public relay with `provider`. `Err`
-/// only when something local fails (the instance ID, this device's keys)
-pub async fn start_sign_in(
-    state: &AppState,
-    provider: RelaySignInProvider,
-) -> Result<PublicSignInStart, String> {
-    let Some(relay) = state.built_in_relay().public_url() else {
-        return Ok(PublicSignInStart::Unreachable {
-            detail: "This build offers no public relay".to_string(),
-        });
-    };
-    let instance_id = network::local_instance_id(state.db())?;
-    // First relay use: this device's keys, which the relay pins
-    let keys = DeviceKeyring::new(state.secrets().clone()).public_keys()?;
-    let endpoint = endpoint(relay, &format!("/signin/{}/start", provider.as_str()))?;
-    let body = serde_json::json!({ "instanceId": instance_id, "publicKeys": keys });
-    Ok(match call(endpoint, &body).await {
-        Answer::Unreachable(detail) => PublicSignInStart::Unreachable { detail },
-        Answer::Refused { refusal, message } => PublicSignInStart::Refused { refusal, message },
-        Answer::Ok(body) => match serde_json::from_value::<Started>(body) {
-            Ok(started) => PublicSignInStart::Started {
-                signin_id: started.signin_id,
-                provider,
-                user_code: started.user_code,
-                verification_uri: started.verification_uri,
-                verification_uri_complete: started.verification_uri_complete,
-                expires_in: started.expires_in,
-                interval: started.interval.max(1),
-            },
-            Err(e) => PublicSignInStart::Unreachable {
-                detail: format!("The relay's answer wasn't a sign-in: {e}"),
-            },
-        },
-    })
-}
-
-/// Asks the relay whether the person approved the sign-in. On `linked`
-/// the token is kept exactly like an enrolled one and the app connects.
-/// `Err` only when saving fails locally.
-pub async fn poll_sign_in(
-    state: &AppState,
-    provider: RelaySignInProvider,
-    signin_id: &str,
-) -> Result<PublicSignInPoll, String> {
-    let Some(relay) = state.built_in_relay().public_url().map(str::to_string) else {
-        return Ok(PublicSignInPoll::Unreachable {
-            detail: "This build offers no public relay".to_string(),
-        });
-    };
-    let endpoint = endpoint(&relay, &format!("/signin/{}/poll", provider.as_str()))?;
-    let body = serde_json::json!({ "signinId": signin_id.trim() });
-    let polled = match call(endpoint, &body).await {
-        Answer::Unreachable(detail) => return Ok(PublicSignInPoll::Unreachable { detail }),
-        Answer::Refused { refusal, message } => {
-            return Ok(PublicSignInPoll::Refused { refusal, message })
-        }
-        Answer::Ok(body) => body,
-    };
-    let unexpected = |e: String| PublicSignInPoll::Unreachable {
-        detail: format!("The relay's answer wasn't a sign-in poll: {e}"),
-    };
-    match polled["status"].as_str() {
-        Some("pending") => Ok(PublicSignInPoll::Pending {
-            interval: interval_of(&polled),
-        }),
-        Some("slow_down") => Ok(PublicSignInPoll::SlowDown {
-            interval: interval_of(&polled),
-        }),
-        Some("linked") => match serde_json::from_value::<Linked>(polled) {
-            Ok(linked) => link(state, relay, provider, linked).await,
-            Err(e) => Ok(unexpected(e.to_string())),
-        },
-        other => Ok(unexpected(format!("status {other:?}"))),
+    match email {
+        Some(email) => PublicRelayOffer::Ready { relay, email },
+        None => PublicRelayOffer::NeedsEmail { relay },
     }
 }
 
-/// The relay linked this Nandi to an account: keep its token as enrolling
-/// would, remember the account, and connect
-async fn link(
-    state: &AppState,
-    relay: String,
-    provider: RelaySignInProvider,
-    linked: Linked,
-) -> Result<PublicSignInPoll, String> {
+/// Joins this Nandi to the public relay with its identity's ID token. On
+/// `joined` the token is kept exactly like an enrolled one and the app
+/// connects. `Err` only when something local fails (the instance ID, this
+/// device's keys, saving).
+pub async fn join(state: &AppState) -> Result<PublicRelayJoin, String> {
+    let Some(relay) = state.built_in_relay().public_url().map(str::to_string) else {
+        return Ok(PublicRelayJoin::Unreachable {
+            detail: "This build offers no public relay".to_string(),
+        });
+    };
+    let id_token = match identity::fresh_id_token(state).await {
+        Ok((token, _)) => token,
+        Err(NoIdToken::Unavailable(detail)) => return Ok(PublicRelayJoin::Unreachable { detail }),
+        Err(NoIdToken::NoEmail) => {
+            return Ok(PublicRelayJoin::NeedsEmail {
+                message: format!(
+                    "{} to join groups on the public relay.",
+                    identity::CONNECT_EMAIL_HINT
+                ),
+            })
+        }
+        Err(problem) => {
+            return Ok(PublicRelayJoin::NeedsEmail {
+                message: problem.message(),
+            })
+        }
+    };
+    let machine_hash = machine_id::this_machine(machine_id::Service::Relay)?;
     let instance_id = network::local_instance_id(state.db())?;
-    if linked.instance_id != instance_id || linked.token.trim().is_empty() {
-        return Ok(PublicSignInPoll::Refused {
+    // First relay use: this device's keys, which the relay pins
+    let keys = DeviceKeyring::new(state.secrets().clone()).public_keys()?;
+    let endpoint = endpoint(&relay, "/public/join")?;
+    let body = serde_json::json!({
+        "instanceId": instance_id,
+        "publicKeys": keys,
+        "idToken": id_token,
+        "machineHash": machine_hash,
+    });
+    let joined = match call(endpoint, &body).await {
+        Answer::Unreachable(detail) => return Ok(PublicRelayJoin::Unreachable { detail }),
+        Answer::Refused { refusal, message } => {
+            return Ok(PublicRelayJoin::Refused { refusal, message })
+        }
+        Answer::Ok(body) => match serde_json::from_value::<Joined>(body) {
+            Ok(joined) => joined,
+            Err(e) => {
+                return Ok(PublicRelayJoin::Unreachable {
+                    detail: format!("The relay's answer wasn't a join: {e}"),
+                })
+            }
+        },
+    };
+    if joined.instance_id != instance_id || joined.token.trim().is_empty() {
+        return Ok(PublicRelayJoin::Refused {
             refusal: PublicRelayRefusal::Other,
-            message: "The relay linked another Nandi than this one".to_string(),
+            message: "The relay joined another Nandi than this one".to_string(),
         });
     }
     let (base, _) = split_token(&relay);
@@ -465,18 +383,18 @@ async fn link(
         RELAY_ACCOUNT_KEY,
         &KeptAccount {
             relay: base.clone(),
-            account: linked.account.clone(),
-            provider,
-            display: linked.display.clone(),
+            account: joined.account.clone(),
+            email: joined.email.clone(),
+            name: joined.name.clone(),
         },
     )?;
-    set_relay_url(state, &with_token(&base, Some(&linked.token))).await?;
-    log::info!("Signed in to the public relay {base}");
-    Ok(PublicSignInPoll::Linked {
+    set_relay_url(state, &with_token(&base, Some(&joined.token))).await?;
+    log::info!("Joined the public relay {base}");
+    Ok(PublicRelayJoin::Joined {
         relay: base,
-        account: linked.account,
-        provider,
-        display: linked.display,
+        account: joined.account,
+        email: joined.email,
+        name: joined.name,
     })
 }
 
@@ -492,8 +410,8 @@ pub async fn account(state: &AppState) -> Result<PublicRelayAccount, String> {
     let unavailable = |detail: String| PublicRelayAccount::Unavailable {
         relay: kept.relay.clone(),
         account: kept.account.clone(),
-        provider: kept.provider,
-        display: kept.display.clone(),
+        email: kept.email.clone(),
+        name: kept.name.clone(),
         detail,
     };
     let Some(token) = saved_token_for(state.db(), &kept.relay)? else {
@@ -532,36 +450,17 @@ pub async fn account(state: &AppState) -> Result<PublicRelayAccount, String> {
 // The relay's HTTP API
 // ---------------------------------------------------------------------------
 
-/// `POST /relay/signin/{provider}/start`'s answer
+/// `POST /relay/public/join`'s answer
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Started {
-    signin_id: String,
-    user_code: String,
-    verification_uri: String,
-    #[serde(default)]
-    verification_uri_complete: Option<String>,
-    expires_in: u32,
-    interval: u32,
-}
-
-/// `{"status": "linked", ...}`
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Linked {
+struct Joined {
     instance_id: String,
     token: String,
     account: String,
     #[serde(default)]
-    display: String,
-}
-
-fn interval_of(body: &serde_json::Value) -> u32 {
-    body["interval"]
-        .as_u64()
-        .and_then(|interval| u32::try_from(interval).ok())
-        .unwrap_or(5)
-        .max(1)
+    email: String,
+    #[serde(default)]
+    name: String,
 }
 
 /// What the relay answered
@@ -579,7 +478,7 @@ enum Answer {
 async fn call(endpoint: reqwest::Url, body: &serde_json::Value) -> Answer {
     let response = reqwest::Client::new()
         .post(endpoint.as_str())
-        .timeout(SIGNIN_TIMEOUT)
+        .timeout(JOIN_TIMEOUT)
         .json(body)
         .send()
         .await;
@@ -595,8 +494,8 @@ async fn read_answer(endpoint: &reqwest::Url, response: reqwest::Response) -> An
     if status.is_success() {
         return Answer::Ok(body);
     }
-    // The relay's own refusals carry a code (a provider that is down is
-    // `signin_unavailable`, a 502); anything else didn't come from it
+    // The relay's own refusals carry a code (keys it can't fetch are
+    // `identity_unavailable`, a 502); anything else didn't come from it
     match body["code"].as_str() {
         Some(code) => Answer::Refused {
             refusal: PublicRelayRefusal::from_code(code),

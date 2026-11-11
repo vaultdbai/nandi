@@ -127,7 +127,7 @@ Agents think with a model from a provider you choose. Keys go into your OS keych
 - **Ollama**: if it's running on this computer, pick one of its models. No key needed.
 - **Amazon Bedrock** works through the Claude Code runtime; set it up later under **Settings › Models & runtimes** and **Settings › Cloud credentials**.
 
-**Free tokens:** Nandi gives each person 100,000 free tokens on DeepSeek Flash, so you can start without a key. They switch off once you set up your own model. While some are left, you can turn them back on in **Settings › Models › Free tokens**. **Sign in with GitHub** there to keep your trial on all your computers: they then share one 100,000. The trial needs the internet; it may pause for the day when everyone together has used the day's share.
+**Free tokens:** Nandi gives each computer 100,000 free tokens on DeepSeek Flash, so you can start without a key. They switch off once you set up your own model. While some are left, you can turn them back on in **Settings › Models › Free tokens**. Once you connect Outlook or Gmail (**Settings › Email**), the trial links to that email by itself ("Linked to …") and all your computers share one 100,000. There's no sign-in. The trial needs the internet; it may pause for the day when everyone together has used the day's share.
 
 **Help without a model:** with no model at all (offline, no key, free tokens used up), Nandi still helps with the basics. Ask it how to install Docker, connect a model, join a relay, or what agents, groups and the Inbox are, and it answers from its built-in help, with buttons to the right screen. **How?** next to "No model connected" and "Agents need Docker to act" opens the same help.
 
@@ -141,7 +141,7 @@ Pick the mailboxes Chief of Staff should read, **Outlook**, **Gmail** or both, a
 
 ### 4. Work with other people? (optional)
 
-**Not now** keeps everything on this computer, and nothing connects. **Join the public relay** signs you in to VaultDB.ai's relay with GitHub, Google or Microsoft (see [Join the public relay](#join-the-public-relay)); if it can't be reached right now, Nandi says so and you can join later. **Join the Nandi network** (when your Nandi comes with one) or **Join my team's network** (the relay's address and its join code, or **Paste invite**) joins a relay when you click **Join** or **Continue**; nothing joins, and no seat is taken, before that. If joining doesn't work, Nandi says why and **Continue anyway** goes on without a network. **Let others send requests to my Nandi** is off until you tick it; even then, a request only gets through once an agent accepts requests and you trust the person asking. You can do all of this later in **Network**.
+**Not now** keeps everything on this computer, and nothing connects. **Join the public relay** joins VaultDB.ai's relay with the email you connected in the Email step (see [Join the public relay](#join-the-public-relay)); if it can't be reached right now, Nandi says so and you can join later. **Join the Nandi network** (when your Nandi comes with one) or **Join my team's network** (the relay's address and its join code, or **Paste invite**) joins a relay when you click **Join** or **Continue**; nothing joins, and no seat is taken, before that. If joining doesn't work, Nandi says why and **Continue anyway** goes on without a network. **Let others send requests to my Nandi** is off until you tick it; even then, a request only gets through once an agent accepts requests and you trust the person asking. You can do all of this later in **Network**.
 
 ### 5. Starter packs
 
@@ -716,7 +716,7 @@ Both lists group agents by owner ("Alice · Agents: 3"). Click the arrow next to
 
 ### Everyone on your company's relay is trusted
 
-On a relay that needs a token (your company's own), only people the company enrolled can join. So Nandi trusts them: their requests come straight in, without marking each one **Trusted peer**. You can still pause or block anyone, and work assigned to you still waits for your approval in your Inbox. To trust people one by one instead, turn off **Trust everyone on this relay** in Network › Connection. On an open relay (started with `--open`) and on the public relay (anyone can sign in there), trust stays one by one.
+On a relay that needs a token (your company's own), only people the company enrolled can join. So Nandi trusts them: their requests come straight in, without marking each one **Trusted peer**. You can still pause or block anyone, and work assigned to you still waits for your approval in your Inbox. To trust people one by one instead, turn off **Trust everyone on this relay** in Network › Connection. On an open relay (started with `--open`) and on the public relay (anyone with an email can join there), trust stays one by one.
 
 ### Trust requests
 
@@ -805,27 +805,24 @@ A relay with no sign-in (`--open`) needs no join code: leave the field empty.
 
 ### Join the public relay
 
-No company relay? VaultDB.ai runs a public relay. You join it by signing in, not with a join code, in setup or in **Network › Connection › Join the public relay**:
+No company relay? VaultDB.ai runs a public relay. There's no sign-in and no join code: you join with the Outlook or Gmail you connected (**Settings › Email**), in setup or in **Network › Connection › Join the public relay**. Nandi shows the email you'll join as; click **Join the public relay** and it connects. Without a connected email, it says "Connect your Outlook or Gmail in Settings › Email to join groups on the public relay", with a button there.
 
-1. Pick **Sign in with GitHub**, **Google** or **Microsoft**.
-2. Nandi shows a short code. Click **Open sign-in page**, enter the code there and approve.
-3. Nandi notices on its own, says "Signed in as …" and connects.
+Your Nandis with the same email are one account (your laptop and your desktop). It's free for up to 10 groups, 50 people per group and 500 messages a day, counted across all your Nandis. On the public relay you see only the people you share a group with, so create a group or ask for an invite (**Network › Groups**).
 
-One account works for several Nandis (your laptop and your desktop): sign in with the same account on each. It's free for up to 10 groups, 50 people per group and 500 messages a day, counted across all your Nandis. On the public relay you see only the people you share a group with, so create a group or ask for an invite (**Network › Groups**).
+On Network › Connection the **Public relay account** card shows the email you joined as, your account's Nandis, your limits and today's usage, and when the day's count resets. Past the day's messages, Nandi says so where you tried ("You can send again from …"); anything already under way keeps going, and you can still leave a group.
 
-On Network › Connection the **Public relay account** card shows who you're signed in as, your account's Nandis, your limits and today's usage, and when the day's count resets. Past the day's messages, Nandi says so where you tried ("You can send again from …"); anything already under way keeps going, and you can still leave a group.
+If the public relay can't be reached, Nandi says so calmly and everything on your computer keeps working; join later. If joining doesn't work, Nandi says why:
 
-If the public relay can't be reached, Nandi says so calmly and everything on your computer keeps working; join later. If signing in doesn't work, Nandi says why:
+| Nandi says                                               | What to do                                                 |
+| -------------------------------------------------------- | ---------------------------------------------------------- |
+| The public relay couldn't confirm your email             | Reconnect your mailbox in Settings › Email, then try again |
+| This Nandi joined the public relay with another email    | It stays with that email                                   |
+| This account links as many Nandis as … allows            | Use one of the Nandis already joined                       |
+| This computer has joined as many Nandis or accounts as … | Use a Nandi already joined on this computer                |
+| The public relay has other keys for this Nandi           | You reinstalled Nandi: write to support@vaultdb.ai         |
+| This account is suspended on the public relay            | Write to support@vaultdb.ai if you think that's a mistake  |
 
-| Nandi says                                      | What to do                                                 |
-| ----------------------------------------------- | ---------------------------------------------------------- |
-| The code expired before it was approved         | Start again, and approve within the time shown on the page |
-| The sign-in was cancelled                       | Start again when you're ready                              |
-| This Nandi is linked to another account         | Sign in with that account                                  |
-| This account links as many Nandis as … allows   | Use one of the Nandis already linked                       |
-| Too many sign-ins are waiting from your network | Finish one or let it expire, then try again                |
-| The public relay has other keys for this Nandi  | You reinstalled Nandi: write to support@vaultdb.ai         |
-| This account is suspended on the public relay   | Write to support@vaultdb.ai if you think that's a mistake  |
+**Your email and this computer (privacy).** The first mailbox you connect is this Nandi's identity; **Settings › Account** shows it, and it can't be changed there. When you join the public relay or the free trial links, Nandi sends that mailbox's sign-in proof (an ID token from Microsoft or Google) once; VaultDB.ai's service checks it and remembers your email with this Nandi's key, never your mail or your password. Nandi also sends a **scrambled ID of this computer**: a one-way hash of your system's machine ID, salted differently for the relay and for the trial so the two can't be matched, never the ID itself. It's used to count free tokens per computer and to limit how many Nandis one computer can join to the public relay. The services keep it, and your network address, only in a further scrambled form.
 
 Below it, **Make this Nandi reachable** is a checklist of everything others need before they can send you work: connected to a relay, listed, confirmed by the relay, agents that take requests by name, who may call you, approvals, and what you show others. Each row that isn't done has one button that fixes it. **How networking works** (top right, on every Network tab) explains the terms; dotted words have a one-line tooltip. Your device ID is under **Details**.
 
