@@ -1652,22 +1652,14 @@ pub fn runs_since(conn: &Connection, since_ms: i64) -> rusqlite::Result<Vec<RunS
     rows.collect()
 }
 
-/// Runs left `running` by a previous process can't continue: their
-/// in-memory step died with it. Marks them failed and returns them.
-pub fn fail_interrupted_runs(conn: &Connection) -> rusqlite::Result<Vec<RunSummary>> {
+/// Every run left `running`. At startup these are the runs a previous
+/// process died in the middle of (see `EventBus::fail_interrupted_runs`).
+pub fn running_runs(conn: &Connection) -> rusqlite::Result<Vec<RunSummary>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {RUN_COLUMNS} FROM runs WHERE status = 'running'"
     ))?;
-    let runs: Vec<RunSummary> = stmt.query_map([], run_row)?.collect::<Result<_, _>>()?;
-    for run in &runs {
-        set_run_status(
-            conn,
-            &run.id,
-            RunStatus::Failed,
-            Some("Interrupted: the app was closed while this run was in progress."),
-        )?;
-    }
-    Ok(runs)
+    let rows = stmt.query_map([], run_row)?;
+    rows.collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -2406,24 +2398,25 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn tracks_active_runs_and_interrupted_runs() {
+    fn tracks_active_and_running_runs() {
         let db = Db::in_memory();
         let conn = db.conn().unwrap();
         let conversation = start_run(&conn, "a", "r1");
+        let running = |conn: &Connection| -> Vec<String> {
+            running_runs(conn)
+                .unwrap()
+                .into_iter()
+                .map(|r| r.id)
+                .collect()
+        };
 
         assert_eq!(active_run(&conn, &conversation).unwrap().unwrap().id, "r1");
+        assert_eq!(running(&conn), ["r1"]);
         set_run_status(&conn, "r1", RunStatus::AwaitingApproval, None).unwrap();
-        assert!(
-            fail_interrupted_runs(&conn).unwrap().is_empty(),
-            "awaiting runs survive restarts"
-        );
+        assert!(running(&conn).is_empty(), "awaiting runs survive restarts");
 
-        set_run_status(&conn, "r1", RunStatus::Running, None).unwrap();
-        let failed = fail_interrupted_runs(&conn).unwrap();
-        assert_eq!(failed.len(), 1);
-        let run = get_run(&conn, "r1").unwrap().unwrap();
-        assert_eq!(run.status, RunStatus::Failed);
-        assert!(run.ended_at.is_some());
+        set_run_status(&conn, "r1", RunStatus::Failed, None).unwrap();
+        assert!(running(&conn).is_empty());
         assert!(active_run(&conn, &conversation).unwrap().is_none());
     }
 
@@ -2581,7 +2574,7 @@ pub(crate) mod tests {
         assert_eq!(run.status, RunStatus::Queued);
         assert!(run.ended_at.is_none());
         assert!(active_agent_run(&conn, "a").unwrap().is_none());
-        assert!(fail_interrupted_runs(&conn).unwrap().is_empty());
+        assert!(running_runs(&conn).unwrap().is_empty());
 
         let started = start_queued_run(&conn, "r1").unwrap().unwrap();
         assert_eq!(started.status, RunStatus::Running);

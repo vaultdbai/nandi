@@ -141,7 +141,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::audit::AuditStore;
-use crate::db::{self, Db};
+use crate::db::Db;
 use crate::model::STUDIO_AGENT_ID;
 use crate::runtime::ProxyTokens;
 use crate::utils::nandi_config;
@@ -275,9 +275,9 @@ impl AppState {
     }
 
     /// Sets up `~/.nandi/repo` if needed, opens `~/.nandi/local/state.db`,
-    /// recovers interrupted runs, loads the repo files (bringing the SQLite
-    /// projection up to date), and starts one orchestrator per agent (and
-    /// Studio) and the file watcher.
+    /// loads the repo files (bringing the SQLite projection up to date),
+    /// fails the runs a previous process left running, and starts one
+    /// orchestrator per agent (and Studio) and the file watcher.
     pub fn start(config: Config) -> Result<Self, String> {
         let layout = repo_bootstrap::install_layout()?;
         if let Err(e) = repo_bootstrap::bootstrap(&layout) {
@@ -294,17 +294,6 @@ impl AppState {
             Ok(id) => llm_trial::init(id),
             Err(e) => log::warn!("No free trial without an instance ID: {e}"),
         }
-        match db
-            .conn()
-            .and_then(|conn| db::fail_interrupted_runs(&conn).map_err(|e| e.to_string()))
-        {
-            Ok(runs) if !runs.is_empty() => {
-                log::warn!("Marked {} interrupted runs as failed", runs.len());
-            }
-            Ok(_) => {}
-            Err(e) => log::error!("Failed to recover interrupted runs: {e}"),
-        }
-
         let state = Self::build(db, config, layout);
         match state.store().load() {
             Ok(stats) => log::info!(
@@ -313,6 +302,16 @@ impl AppState {
                 stats.workflows
             ),
             Err(e) => log::error!("Failed to project the repo files: {e}"),
+        }
+        // After the load, so the closing records carry agent names
+        let store = state.store().clone();
+        match state
+            .bus()
+            .fail_interrupted_runs(|agent_id| orchestrator::display_name(&store, agent_id))
+        {
+            Ok(0) => {}
+            Ok(count) => log::warn!("Marked {count} interrupted runs as failed"),
+            Err(e) => log::error!("Failed to recover interrupted runs: {e}"),
         }
         let agent_ids: Vec<String> = state
             .store()
@@ -982,7 +981,9 @@ impl AppState {
         &self.0.live
     }
 
-    /// Stops every orchestrator. Persisted runs resume on next launch.
+    /// Stops every orchestrator. Queued runs and runs waiting on an
+    /// approval carry on at the next launch; a run still `running` is
+    /// failed then (`EventBus::fail_interrupted_runs`).
     pub fn shutdown(&self) {
         self.live().stop();
         if let Some(watcher) = self

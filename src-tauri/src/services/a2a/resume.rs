@@ -6,8 +6,8 @@
 //! to_state` and the reason `task_state::RESUMED_REASON` (the state
 //! machine has no self-transitions, so the row's state doesn't change).
 //! Provider side: the interrupted run was failed at boot
-//! (`db::fail_interrupted_runs`); the task runs again as a new turn from
-//! the wire task stored with it, and its result goes back once the relay
+//! (`EventBus::fail_interrupted_runs`); the task runs again as a new turn
+//! from the wire task stored with it, and its result goes back once the relay
 //! is connected. A provider row without one can't be rerun and ends.
 //! Requester side: results arrive through the handlers `listen`
 //! registered; queued tasks flush.

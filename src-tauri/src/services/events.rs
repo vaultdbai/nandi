@@ -429,6 +429,21 @@ impl Outbox {
     }
 }
 
+/// The error a run gets when the app closed while it was running.
+const INTERRUPTED: &str = "Interrupted: the app was closed while this run was in progress.";
+
+/// Runs `write` in one immediate transaction and returns what it queued.
+fn transact<T, F>(conn: &mut Connection, write: F) -> rusqlite::Result<(T, Outbox)>
+where
+    F: FnOnce(&Connection, &mut Outbox) -> rusqlite::Result<T>,
+{
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let mut outbox = Outbox::default();
+    let value = write(&tx, &mut outbox)?;
+    tx.commit()?;
+    Ok((value, outbox))
+}
+
 #[derive(Clone)]
 pub struct EventBus {
     pub db: Db,
@@ -446,21 +461,28 @@ impl EventBus {
         T: Send + 'static,
         F: FnOnce(&Connection, &mut Outbox) -> rusqlite::Result<T> + Send + 'static,
     {
-        let (value, outbox) = self
-            .db
-            .call(move |conn| {
-                let tx =
-                    conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-                let mut outbox = Outbox::default();
-                let value = write(&tx, &mut outbox)?;
-                tx.commit()?;
-                Ok((value, outbox))
-            })
-            .await?;
+        let (value, outbox) = self.db.call(move |conn| transact(conn, write)).await?;
+        self.emit(outbox);
+        Ok(value)
+    }
+
+    /// [`Self::commit`] on the calling thread, for startup work that runs
+    /// before anything else uses the database.
+    fn commit_now<T, F>(&self, write: F) -> Result<T, String>
+    where
+        F: FnOnce(&Connection, &mut Outbox) -> rusqlite::Result<T>,
+    {
+        let mut conn = self.db.conn()?;
+        let (value, outbox) =
+            transact(&mut conn, write).map_err(|e| format!("Database error: {e}"))?;
+        self.emit(outbox);
+        Ok(value)
+    }
+
+    fn emit(&self, outbox: Outbox) {
         for (name, payload) in outbox.0 {
             self.sink.emit_json(name, payload);
         }
-        Ok(value)
     }
 
     /// Records `event` in the run's log (`run_events`) and emits it, for
@@ -932,8 +954,8 @@ impl EventBus {
         .await
     }
 
-    /// Ends a run. Failure adds an error message and an attention item;
-    /// any approvals still pending expire.
+    /// Ends a run (see [`close_run`]), then the sites and browser pages it
+    /// had for its lifetime.
     pub async fn turn_done(
         &self,
         ctx: &RunContext,
@@ -942,135 +964,38 @@ impl EventBus {
     ) -> Result<(), String> {
         let (run_id, agent_id) = (ctx.run_id.clone(), ctx.agent_id.clone());
         let ctx = ctx.clone();
-        self.commit(move |conn, outbox| {
-            for approval in db::pending_approvals_for_run(conn, &ctx.run_id)? {
-                db::set_approval_status(conn, &approval, ApprovalStatus::Expired)?;
-                outbox.record(
-                    conn,
-                    &ctx.run_id,
-                    &AgentApprovalResolved {
-                        agent_id: ctx.agent_id.clone(),
-                        conversation_id: ctx.conversation_id.clone(),
-                        run_id: ctx.run_id.clone(),
-                        approval_id: approval.id.clone(),
-                        status: ApprovalStatus::Expired,
-                    },
-                )?;
-                outbox.push(&DashboardAttention::Remove {
-                    item_id: approval.id,
-                });
-            }
-
-            let messages = db::list_run_messages(conn, &ctx.run_id)?;
-
-            // Close tool calls the run was in the middle of
-            for message in messages.iter().filter(|m| m.role == role::TOOL_CALL) {
-                let Ok(meta) = serde_json::from_value::<ToolCallMeta>(message.metadata.clone())
-                else {
-                    continue;
-                };
-                if meta.status != ToolCallStatus::Running {
-                    continue;
-                }
-                let result = "Stopped before it finished.".to_string();
-                db::update_message_metadata(
-                    conn,
-                    &message.id,
-                    ToolCallMeta {
-                        status: ToolCallStatus::Done,
-                        result: Some(result.clone()),
-                        is_error: true,
-                        ..meta
-                    },
-                )?;
-                outbox.record(
-                    conn,
-                    &ctx.run_id,
-                    &AgentToolResult {
-                        agent_id: ctx.agent_id.clone(),
-                        conversation_id: ctx.conversation_id.clone(),
-                        run_id: ctx.run_id.clone(),
-                        message_id: message.id.clone(),
-                        result,
-                        is_error: true,
-                    },
-                )?;
-            }
-
-            let user_message_id = messages
-                .iter()
-                .find(|m| m.role == role::USER)
-                .map(|m| m.id.clone())
-                .unwrap_or_default();
-            let final_message = messages.iter().rev().find(|m| m.role == role::ASSISTANT);
-
-            let summary = match (&error, final_message) {
-                (Some(error), _) => Some(error.clone()),
-                (None, Some(message)) if status == RunStatus::Completed => {
-                    Some(truncate(&message.content, 280))
-                }
-                _ => None,
-            };
-            let run = db::set_run_status(conn, &ctx.run_id, status, summary.as_deref())?;
-
-            if let Some(error) = &error {
-                let message = MessageRow::new(
-                    format!("error-{}", ctx.run_id),
-                    &ctx.conversation_id,
-                    Some(&ctx.run_id),
-                    role::ERROR,
-                    error.clone(),
-                    serde_json::json!({}),
-                );
-                db::insert_message(conn, &message)?;
-                outbox.record(
-                    conn,
-                    &ctx.run_id,
-                    &AgentMessageAdded {
-                        agent_id: ctx.agent_id.clone(),
-                        conversation_id: ctx.conversation_id.clone(),
-                        message: message.to_chat(),
-                    },
-                )?;
-                if let Some(run) = &run {
-                    outbox.push(&DashboardAttention::Upsert {
-                        item: error_attention(&ctx, run, Some(message.id)),
-                    });
-                }
-            }
-            if let Some(run) = run.clone() {
-                outbox.record(conn, &ctx.run_id, &run_updated(&ctx, run))?;
-            }
-            outbox.record(
-                conn,
-                &ctx.run_id,
-                &AgentTurnDone {
-                    agent_id: ctx.agent_id.clone(),
-                    conversation_id: ctx.conversation_id.clone(),
-                    run_id: ctx.run_id.clone(),
-                    status,
-                    user_message_id,
-                    final_message_id: final_message.map(|m| m.id.clone()),
-                    error: error.clone(),
-                },
-            )?;
-
-            let action = match status {
-                RunStatus::Completed => ActivityAction::Completed,
-                RunStatus::Cancelled => ActivityAction::Cancelled,
-                _ => ActivityAction::Failed,
-            };
-            let subject = run.as_ref().map(|r| r.input.clone()).unwrap_or_default();
-            outbox.activity(activity(&ctx, action, &subject));
-            outbox.queue_changed(conn, &ctx.agent_id)
-        })
-        .await?;
+        self.commit(move |conn, outbox| close_run(conn, outbox, &ctx, status, error))
+            .await?;
         // Sites a person allowed once in this run end with it
         crate::services::pilots::sites::end_run(&run_id);
         // So do its browser pages (the profile stays): the run plan's
         // safety net when the agent didn't close them
         crate::services::pilots::browser::close_pages(&agent_id).await;
         Ok(())
+    }
+
+    /// Runs left `running` by a previous process can't continue: their
+    /// in-memory step died with it. Fails each one the way `turn_done`
+    /// would, all in one transaction, and returns how many there were.
+    /// Called once at startup, before any orchestrator runs.
+    pub fn fail_interrupted_runs(
+        &self,
+        agent_name: impl Fn(&str) -> String,
+    ) -> Result<usize, String> {
+        self.commit_now(|conn, outbox| {
+            let runs = db::running_runs(conn)?;
+            for run in &runs {
+                let ctx = RunContext {
+                    agent_id: run.agent_id.clone(),
+                    agent_name: agent_name(&run.agent_id),
+                    conversation_id: run.conversation_id.clone(),
+                    run_id: run.id.clone(),
+                };
+                let error = Some(INTERRUPTED.to_string());
+                close_run(conn, outbox, &ctx, RunStatus::Failed, error)?;
+            }
+            Ok(runs.len())
+        })
     }
 
     /// Re-announces pending approvals (e.g. after a restart). Idempotent.
@@ -1103,6 +1028,138 @@ impl EventBus {
         })
         .await
     }
+}
+
+/// Closes a run in the caller's transaction: pending approvals expire,
+/// tool calls it was in the middle of end as errors, the run gets its
+/// status, and `agent://turn_done` is recorded. Failure adds an error
+/// message and an attention item.
+fn close_run(
+    conn: &Connection,
+    outbox: &mut Outbox,
+    ctx: &RunContext,
+    status: RunStatus,
+    error: Option<String>,
+) -> rusqlite::Result<()> {
+    for approval in db::pending_approvals_for_run(conn, &ctx.run_id)? {
+        db::set_approval_status(conn, &approval, ApprovalStatus::Expired)?;
+        outbox.record(
+            conn,
+            &ctx.run_id,
+            &AgentApprovalResolved {
+                agent_id: ctx.agent_id.clone(),
+                conversation_id: ctx.conversation_id.clone(),
+                run_id: ctx.run_id.clone(),
+                approval_id: approval.id.clone(),
+                status: ApprovalStatus::Expired,
+            },
+        )?;
+        outbox.push(&DashboardAttention::Remove {
+            item_id: approval.id,
+        });
+    }
+
+    let messages = db::list_run_messages(conn, &ctx.run_id)?;
+
+    // Close tool calls the run was in the middle of
+    for message in messages.iter().filter(|m| m.role == role::TOOL_CALL) {
+        let Ok(meta) = serde_json::from_value::<ToolCallMeta>(message.metadata.clone()) else {
+            continue;
+        };
+        if meta.status != ToolCallStatus::Running {
+            continue;
+        }
+        let result = "Stopped before it finished.".to_string();
+        db::update_message_metadata(
+            conn,
+            &message.id,
+            ToolCallMeta {
+                status: ToolCallStatus::Done,
+                result: Some(result.clone()),
+                is_error: true,
+                ..meta
+            },
+        )?;
+        outbox.record(
+            conn,
+            &ctx.run_id,
+            &AgentToolResult {
+                agent_id: ctx.agent_id.clone(),
+                conversation_id: ctx.conversation_id.clone(),
+                run_id: ctx.run_id.clone(),
+                message_id: message.id.clone(),
+                result,
+                is_error: true,
+            },
+        )?;
+    }
+
+    let user_message_id = messages
+        .iter()
+        .find(|m| m.role == role::USER)
+        .map(|m| m.id.clone())
+        .unwrap_or_default();
+    let final_message = messages.iter().rev().find(|m| m.role == role::ASSISTANT);
+
+    let summary = match (&error, final_message) {
+        (Some(error), _) => Some(error.clone()),
+        (None, Some(message)) if status == RunStatus::Completed => {
+            Some(truncate(&message.content, 280))
+        }
+        _ => None,
+    };
+    let run = db::set_run_status(conn, &ctx.run_id, status, summary.as_deref())?;
+
+    if let Some(error) = &error {
+        let message = MessageRow::new(
+            format!("error-{}", ctx.run_id),
+            &ctx.conversation_id,
+            Some(&ctx.run_id),
+            role::ERROR,
+            error.clone(),
+            serde_json::json!({}),
+        );
+        db::insert_message(conn, &message)?;
+        outbox.record(
+            conn,
+            &ctx.run_id,
+            &AgentMessageAdded {
+                agent_id: ctx.agent_id.clone(),
+                conversation_id: ctx.conversation_id.clone(),
+                message: message.to_chat(),
+            },
+        )?;
+        if let Some(run) = &run {
+            outbox.push(&DashboardAttention::Upsert {
+                item: error_attention(ctx, run, Some(message.id)),
+            });
+        }
+    }
+    if let Some(run) = run.clone() {
+        outbox.record(conn, &ctx.run_id, &run_updated(ctx, run))?;
+    }
+    outbox.record(
+        conn,
+        &ctx.run_id,
+        &AgentTurnDone {
+            agent_id: ctx.agent_id.clone(),
+            conversation_id: ctx.conversation_id.clone(),
+            run_id: ctx.run_id.clone(),
+            status,
+            user_message_id,
+            final_message_id: final_message.map(|m| m.id.clone()),
+            error: error.clone(),
+        },
+    )?;
+
+    let action = match status {
+        RunStatus::Completed => ActivityAction::Completed,
+        RunStatus::Cancelled => ActivityAction::Cancelled,
+        _ => ActivityAction::Failed,
+    };
+    let subject = run.as_ref().map(|r| r.input.clone()).unwrap_or_default();
+    outbox.activity(activity(ctx, action, &subject));
+    outbox.queue_changed(conn, &ctx.agent_id)
 }
 
 fn run_updated(ctx: &RunContext, run: RunSummary) -> AgentRunUpdated {
@@ -1387,6 +1444,53 @@ pub mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(run.summary.as_deref(), Some("boom"));
+    }
+
+    #[tokio::test]
+    async fn interrupted_runs_close_like_a_failed_turn() {
+        let (bus, sink) = bus();
+        let ctx = started(&bus, "r1").await;
+        let call = db::PlannedCall {
+            id: "c1".into(),
+            tool: "shell".into(),
+            args: serde_json::json!({}),
+            requires_approval: false,
+        };
+        bus.tool_call(&ctx, &call).await.unwrap();
+        sink.take();
+
+        assert_eq!(bus.fail_interrupted_runs(|_| "Writer".into()), Ok(1));
+
+        let events = sink.take();
+        let done = events.iter().find(|e| e.0 == "agent://turn_done").unwrap();
+        assert_eq!(done.1["status"], "failed");
+        assert_eq!(done.1["error"], INTERRUPTED);
+        let (run, messages, logged) = bus
+            .db
+            .call(|conn| {
+                Ok((
+                    db::get_run(conn, "r1")?.unwrap(),
+                    db::list_run_messages(conn, "r1")?,
+                    db::list_agent_events(conn, "writer", 20)?,
+                ))
+            })
+            .await
+            .unwrap();
+        assert_eq!(run.status, RunStatus::Failed);
+        assert_eq!(run.summary.as_deref(), Some(INTERRUPTED));
+        let tool_call = messages.iter().find(|m| m.id == "c1").unwrap();
+        let meta: ToolCallMeta = serde_json::from_value(tool_call.metadata.clone()).unwrap();
+        assert_eq!(meta.status, ToolCallStatus::Done);
+        assert!(meta.is_error);
+        assert!(messages.iter().any(|m| m.role == role::ERROR));
+        let kinds: Vec<_> = logged.iter().map(|e| e.kind.as_str()).collect();
+        assert!(kinds.contains(&"agent://tool_result"));
+        assert!(kinds.contains(&"agent://turn_done"));
+
+        assert_eq!(
+            bus.fail_interrupted_runs(|_| unreachable!("no run is left running")),
+            Ok(0)
+        );
     }
 
     #[test]
