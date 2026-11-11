@@ -3,13 +3,9 @@
  * month's entries (`list_decisions`). Local files only, no relay. A
  * decision made elsewhere in the app shows up on the next refetch.
  */
-import { useEffect } from 'react'
-import {
-  keepPreviousData,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
-import { client } from '@/lib/client'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { client, type NandiEventName } from '@/lib/client'
+import { useInvalidateOn } from '@/hooks/useInvalidateOn'
 import type { DecisionFilter } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
@@ -21,25 +17,17 @@ export const decisionKeys = {
 }
 
 /** Events after which a decision may have been written */
-const DECISION_EVENTS = new Set([
+const DECISION_EVENTS: readonly NandiEventName[] = [
   'agent://approval_resolved',
   'gateway://hold_changed',
   'gateway://assignment_changed',
   'workflow://manual_step_completed',
   'request://updated',
   'request://returned',
-  'nandi://resync',
-])
+]
 
 export function useDecisionMonths() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const subscription = client.subscribe(event => {
-      if (!DECISION_EVENTS.has(event.event)) return
-      void queryClient.invalidateQueries({ queryKey: decisionKeys.all })
-    })
-    return () => subscription.unsubscribe()
-  }, [queryClient])
+  useInvalidateOn(DECISION_EVENTS, decisionKeys.all)
   return useQuery({
     queryKey: decisionKeys.months,
     queryFn: async () => unwrapResult(await client.listDecisionMonths()),

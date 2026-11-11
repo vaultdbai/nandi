@@ -5,7 +5,8 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { client } from '@/lib/client'
+import { client, type NandiEventName } from '@/lib/client'
+import { useInvalidateOn } from '@/hooks/useInvalidateOn'
 import { logger } from '@/lib/logger'
 import {
   unwrapResult,
@@ -25,18 +26,10 @@ export const emailKeys = {
   status: ['email', 'status'] as const,
 }
 
-const EMAIL_EVENTS = new Set(['email://changed', 'nandi://resync'])
+const EMAIL_EVENTS: readonly NandiEventName[] = ['email://changed']
 
 export function useEmailStatus() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const subscription = client.subscribe(event => {
-      if (EMAIL_EVENTS.has(event.event)) {
-        void queryClient.invalidateQueries({ queryKey: emailKeys.status })
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [queryClient])
+  useInvalidateOn(EMAIL_EVENTS, emailKeys.status)
   return useQuery({
     queryKey: emailKeys.status,
     queryFn: async () => unwrapResult(await client.getEmailStatus()),

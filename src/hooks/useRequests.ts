@@ -3,9 +3,9 @@
  * the core from the task tables. Kept live by the events that change a
  * task, its child run, or its work item.
  */
-import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { client } from '@/lib/client'
+import { client, type NandiEventName } from '@/lib/client'
+import { useInvalidateOn } from '@/hooks/useInvalidateOn'
 import type { Request } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
@@ -16,7 +16,7 @@ export const requestQueryKeys = {
 }
 
 /** Events after which a Request may look different */
-const REQUEST_EVENTS = new Set([
+export const REQUEST_EVENTS: readonly NandiEventName[] = [
   'task://state_changed',
   'task://progress',
   'task://timed_out',
@@ -30,25 +30,11 @@ const REQUEST_EVENTS = new Set([
   'agent://turn_done',
   'agent://approval_request',
   'agent://approval_resolved',
-  'nandi://resync',
   'request://updated',
-])
-
-/** Whether `event` can change a Request (exported for tests) */
-export function changesRequests(event: string): boolean {
-  return REQUEST_EVENTS.has(event)
-}
+]
 
 export function useRequest(id: string) {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const subscription = client.subscribe(event => {
-      if (changesRequests(event.event)) {
-        void queryClient.invalidateQueries({ queryKey: requestQueryKeys.all })
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [queryClient])
+  useInvalidateOn(REQUEST_EVENTS, requestQueryKeys.all)
 
   return useQuery<Request>({
     queryKey: requestQueryKeys.detail(id),

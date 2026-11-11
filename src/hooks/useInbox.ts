@@ -5,7 +5,6 @@
  * waiting for the user's OK), and recent failures not dismissed.
  * Kept live by the events of each source; approvals by `agent://approval_*`.
  */
-import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNow } from '@/components/agents/task-utils'
 import { buildInbox, inboxBadgeCount } from '@/components/inbox/inbox-model'
@@ -15,7 +14,8 @@ import { useKnowMe } from '@/hooks/useKnowMe'
 import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
 import { useTrustRequests } from '@/hooks/useTrustRequests'
 import { useManualSteps, useWork, workKeys } from '@/hooks/useWork'
-import { client } from '@/lib/client'
+import { client, type NandiEventName } from '@/lib/client'
+import { useInvalidateOn } from '@/hooks/useInvalidateOn'
 import { useAgents } from '@/hooks/useAgents'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
@@ -27,23 +27,14 @@ export const inboxKeys = {
   returns: ['delegation', 'returns'] as const,
 }
 
-const APPROVAL_EVENTS = new Set([
+const APPROVAL_EVENTS: readonly NandiEventName[] = [
   'agent://approval_request',
   'agent://approval_resolved',
-  'nandi://resync',
-])
+]
 
 /** Every agent's pending tool approvals (the agent store has one agent's) */
 export function useAllPendingApprovals() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const subscription = client.subscribe(event => {
-      if (APPROVAL_EVENTS.has(event.event)) {
-        void queryClient.invalidateQueries({ queryKey: inboxKeys.approvals })
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [queryClient])
+  useInvalidateOn(APPROVAL_EVENTS, inboxKeys.approvals)
 
   return useQuery({
     queryKey: inboxKeys.approvals,
@@ -51,23 +42,14 @@ export function useAllPendingApprovals() {
   })
 }
 
-const HOLD_EVENTS = new Set([
+const HOLD_EVENTS: readonly NandiEventName[] = [
   'gateway://hold_changed',
   'task://state_changed',
-  'nandi://resync',
-])
+]
 
 /** Other Nandis' requests waiting for the owner's approval (task 5) */
 export function useGatewayHolds() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const subscription = client.subscribe(event => {
-      if (HOLD_EVENTS.has(event.event)) {
-        void queryClient.invalidateQueries({ queryKey: inboxKeys.holds })
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [queryClient])
+  useInvalidateOn(HOLD_EVENTS, inboxKeys.holds)
 
   return useQuery({
     queryKey: inboxKeys.holds,
@@ -94,25 +76,14 @@ export function useDecideGatewayHold() {
   })
 }
 
-const ASSIGNMENT_EVENTS = new Set([
+const ASSIGNMENT_EVENTS: readonly NandiEventName[] = [
   'gateway://assignment_changed',
   'task://state_changed',
-  'nandi://resync',
-])
+]
 
 /** Work other people assigned to the owner, open until Done or Decline */
 export function useGatewayAssignments() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const subscription = client.subscribe(event => {
-      if (ASSIGNMENT_EVENTS.has(event.event)) {
-        void queryClient.invalidateQueries({
-          queryKey: inboxKeys.assignments,
-        })
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [queryClient])
+  useInvalidateOn(ASSIGNMENT_EVENTS, inboxKeys.assignments)
 
   return useQuery({
     queryKey: inboxKeys.assignments,
@@ -138,19 +109,11 @@ export function useCloseGatewayAssignment() {
   })
 }
 
-const RETURN_EVENTS = new Set(['request://returned', 'nandi://resync'])
+const RETURN_EVENTS: readonly NandiEventName[] = ['request://returned']
 
 /** Requests the user sent that came back while nobody watched */
 export function useRequestReturns() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const subscription = client.subscribe(event => {
-      if (RETURN_EVENTS.has(event.event)) {
-        void queryClient.invalidateQueries({ queryKey: inboxKeys.returns })
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [queryClient])
+  useInvalidateOn(RETURN_EVENTS, inboxKeys.returns)
 
   return useQuery({
     queryKey: inboxKeys.returns,

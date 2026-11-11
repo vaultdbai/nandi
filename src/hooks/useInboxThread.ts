@@ -5,9 +5,9 @@
  * been decided (an approval, a hold, an assignment, a manual step or a
  * Request changed).
  */
-import { useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { client } from '@/lib/client'
+import { useQuery } from '@tanstack/react-query'
+import { client, type NandiEventName } from '@/lib/client'
+import { useInvalidateOn } from '@/hooks/useInvalidateOn'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
 export const inboxThreadKeys = {
@@ -15,27 +15,17 @@ export const inboxThreadKeys = {
     ['inbox', 'thread', conversationId] as const,
 }
 
-const THREAD_EVENTS = new Set([
+const THREAD_EVENTS: readonly NandiEventName[] = [
   'agent://approval_resolved',
   'gateway://hold_changed',
   'gateway://assignment_changed',
   'workflow://manual_step_completed',
   'request://updated',
   'request://returned',
-  'nandi://resync',
-])
+]
 
 export function useInboxThread(conversationId: string) {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const subscription = client.subscribe(event => {
-      if (!THREAD_EVENTS.has(event.event)) return
-      void queryClient.invalidateQueries({
-        queryKey: inboxThreadKeys.detail(conversationId),
-      })
-    })
-    return () => subscription.unsubscribe()
-  }, [queryClient, conversationId])
+  useInvalidateOn(THREAD_EVENTS, inboxThreadKeys.detail(conversationId))
   return useQuery({
     queryKey: inboxThreadKeys.detail(conversationId),
     queryFn: async () =>

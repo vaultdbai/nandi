@@ -2,9 +2,9 @@
  * The optional git remote: status, configure, push, pull. Kept live by
  * `remote://*` events. Pushes only ever go to `<prefix>/<slug>`.
  */
-import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { client } from '@/lib/client'
+import { client, type NandiEventName } from '@/lib/client'
+import { useInvalidateOn } from '@/hooks/useInvalidateOn'
 import type { RemoteCredential, RemoteStatus } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
@@ -15,13 +15,14 @@ export const remoteQueryKeys = {
   branches: ['remote', 'branches'] as const,
 }
 
-const REMOTE_EVENTS = new Set<string>([
+const REMOTE_EVENTS: readonly NandiEventName[] = [
   'remote://status_changed',
   'remote://push_completed',
   'remote://pull_completed',
   'remote://error',
-  'nandi://resync',
-])
+]
+
+const IDENTITY_EVENTS: readonly NandiEventName[] = ['identity://changed']
 
 export interface ConfigureRemoteInput {
   url: string
@@ -32,21 +33,9 @@ export interface ConfigureRemoteInput {
 }
 
 export function useRemoteStatus() {
-  const queryClient = useQueryClient()
-
-  useEffect(() => {
-    const subscription = client.subscribe(event => {
-      if (REMOTE_EVENTS.has(event.event)) {
-        void queryClient.invalidateQueries({ queryKey: remoteQueryKeys.all })
-      } else if (event.event === 'identity://changed') {
-        // The slug names the target branch
-        void queryClient.invalidateQueries({
-          queryKey: remoteQueryKeys.status,
-        })
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [queryClient])
+  useInvalidateOn(REMOTE_EVENTS, remoteQueryKeys.all)
+  // The slug names the target branch
+  useInvalidateOn(IDENTITY_EVENTS, remoteQueryKeys.status)
 
   return useQuery<RemoteStatus>({
     queryKey: remoteQueryKeys.status,

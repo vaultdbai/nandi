@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Blocker, BlockerKind, Request } from '@/lib/bindings'
-import { changesRequests } from '@/hooks/useRequests'
+import { REQUEST_EVENTS } from '@/hooks/useRequests'
 import {
   askOf,
   bannerActions,
@@ -126,16 +126,17 @@ describe('steps', () => {
 })
 
 describe('live updates', () => {
-  it('refreshes on the events that change a Request', () => {
-    for (const event of [
-      'task://state_changed',
-      'task://progress',
-      'work://item_updated',
-      'agent://approval_resolved',
-    ]) {
-      expect(changesRequests(event)).toBe(true)
-    }
-    expect(changesRequests('repo://agent-updated')).toBe(false)
+  it.each([
+    'task://state_changed',
+    'task://progress',
+    'work://item_updated',
+    'agent://approval_resolved',
+  ])('refreshes on %s', event => {
+    expect(REQUEST_EVENTS).toContain(event)
+  })
+
+  it('ignores events that cannot change a Request', () => {
+    expect(REQUEST_EVENTS).not.toContain('repo://file_changed')
   })
 })
 

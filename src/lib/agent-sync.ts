@@ -18,7 +18,7 @@ import { runsQueryKeys } from '@/hooks/useRuns'
 import { sharedQueryKeys } from '@/hooks/useSharedAgents'
 import i18n from '@/i18n/config'
 import { logger } from '@/lib/logger'
-import { applyLiveChange, FILE_BACKED_KEYS } from '@/lib/live-changes'
+import { applyLiveChange } from '@/lib/live-changes'
 import { notify } from '@/lib/notifications'
 import { queryClient } from '@/lib/query-client'
 import { toastError } from '@/lib/toast-error'
@@ -534,35 +534,8 @@ async function resyncAll() {
   const studioConversations = conversations.filter(
     id => !id.startsWith('agent:')
   )
-  void queryClient.invalidateQueries({ queryKey: ['agents'] })
-  void queryClient.invalidateQueries({ queryKey: ['workflows'] })
-  void queryClient.invalidateQueries({ queryKey: ['workflow'] })
-  void queryClient.invalidateQueries({ queryKey: ['triggers'] })
-  void queryClient.invalidateQueries({ queryKey: ['trigger'] })
-  void queryClient.invalidateQueries({ queryKey: ['triggerFires'] })
-  void queryClient.invalidateQueries({ queryKey: ['marketplace'] })
-  void queryClient.invalidateQueries({ queryKey: runsQueryKeys.all })
-  void queryClient.invalidateQueries({ queryKey: auditQueryKeys.all })
-  void queryClient.invalidateQueries({ queryKey: ['git'] })
-  void queryClient.invalidateQueries({ queryKey: ['git-status'] })
-  void queryClient.invalidateQueries({ queryKey: ['agent-definition'] })
-  void queryClient.invalidateQueries({ queryKey: agentPoliciesQueryKeys.all })
-  void queryClient.invalidateQueries({ queryKey: policiesQueryKeys.all })
-  void queryClient.invalidateQueries({ queryKey: ['pilots'] })
-  void queryClient.invalidateQueries({ queryKey: ['pilotStatus'] })
-  void queryClient.invalidateQueries({ queryKey: ['connectors'] })
-  void queryClient.invalidateQueries({ queryKey: ['connectorStatus'] })
-  // Wave 2A: the network views (relay, teams, delegation, capabilities)
-  // and the shared views that cut across them
-  // My notes, settings, packs, NANDI.md and the recent changes
-  for (const queryKey of FILE_BACKED_KEYS) {
-    void queryClient.invalidateQueries({ queryKey })
-  }
-  void queryClient.invalidateQueries({ queryKey: ['relay'] })
-  void queryClient.invalidateQueries({ queryKey: ['teams'] })
-  void queryClient.invalidateQueries({ queryKey: ['delegation'] })
-  void queryClient.invalidateQueries({ queryKey: ['capabilities'] })
-  void queryClient.invalidateQueries({ queryKey: sharedQueryKeys.all })
+  // Every query: a missed event could have changed any of them
+  void queryClient.invalidateQueries()
   await Promise.all([
     bootSnapshots(),
     ...studioConversations.map(loadConversation),

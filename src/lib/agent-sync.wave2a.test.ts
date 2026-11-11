@@ -99,18 +99,10 @@ describe('agent-sync: wave-2A network events', () => {
     expect(keys).toContainEqual(['shared'])
   })
 
-  it('resync invalidates the network and shared queries', () => {
+  it('resync invalidates every query', () => {
     handleNandiEvent({ event: 'nandi://resync', payload: { missed: 1 } })
-    const keys = invalidated(invalidate)
-    for (const key of [
-      ['relay'],
-      ['teams'],
-      ['delegation'],
-      ['capabilities'],
-      ['shared'],
-    ]) {
-      expect(keys).toContainEqual(key)
-    }
+    // No filter: all queries, whatever their key
+    expect(invalidate).toHaveBeenCalledWith()
   })
 })
 

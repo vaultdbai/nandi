@@ -6,14 +6,14 @@
  * Question IDs are `r<round>-q<n>` (the provider's `ask_requester` tool
  * numbers them), so the round can be read off a pending question.
  */
-import { useEffect } from 'react'
 import {
   useMutation,
   useQuery,
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query'
-import { client } from '@/lib/client'
+import { client, type NandiEventName } from '@/lib/client'
+import { useInvalidateOn } from '@/hooks/useInvalidateOn'
 import type {
   ClarificationPolicy,
   ClarificationResponse,
@@ -40,11 +40,11 @@ export const clarificationQueryKeys = {
   policy: (agentId: string) => ['clarification', 'policy', agentId] as const,
 }
 
-const INVALIDATING_EVENTS = new Set<string>([
+const INVALIDATING_EVENTS: readonly NandiEventName[] = [
   'task://clarification_requested',
   'task://clarification_answered',
   'task://state_changed',
-])
+]
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -94,17 +94,7 @@ export function formatRemaining(ms: number): string {
 
 /** Keeps clarification queries current from task events */
 export function useClarificationEvents() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const subscription = client.subscribe(event => {
-      if (INVALIDATING_EVENTS.has(event.event)) {
-        void queryClient.invalidateQueries({
-          queryKey: clarificationQueryKeys.pending,
-        })
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [queryClient])
+  useInvalidateOn(INVALIDATING_EVENTS, clarificationQueryKeys.pending)
 }
 
 /** Questions waiting for the user, optionally for one task */
