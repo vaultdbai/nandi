@@ -1,3 +1,4 @@
+import type * as TauriBindings from '@/lib/tauri-bindings'
 import '@testing-library/jest-dom'
 import { vi } from 'vitest'
 import type * as TauriCore from '@tauri-apps/api/core'
@@ -49,7 +50,9 @@ vi.mock('@tauri-apps/plugin-updater', () => ({
 }))
 
 // Mock typed Tauri bindings (tauri-specta generated)
-vi.mock('@/lib/tauri-bindings', () => {
+vi.mock('@/lib/tauri-bindings', async importOriginal => {
+  // The real `unwrapResult`, so tests see the errors the app throws
+  const { unwrapResult } = await importOriginal<typeof TauriBindings>()
   const ok = (data: unknown) =>
     vi.fn().mockResolvedValue({ status: 'ok', data })
   return {
@@ -293,9 +296,6 @@ vi.mock('@/lib/tauri-bindings', () => {
       }),
       repoGitStatus: ok({ branch: 'main', ahead: 0, behind: 0, files: [] }),
     },
-    unwrapResult: vi.fn((result: { status: string; data?: unknown }) => {
-      if (result.status === 'ok') return result.data
-      throw result
-    }),
+    unwrapResult,
   }
 })

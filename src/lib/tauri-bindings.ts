@@ -129,7 +129,9 @@ export type {
 } from './bindings'
 
 /**
- * Helper to unwrap a Result type, throwing on error
+ * Helper to unwrap a Result type, throwing on error. A string error (every
+ * command's) becomes an `Error`, so `error.message` works wherever it is
+ * read; any other error is thrown as it is.
  */
 export function unwrapResult<T, E>(
   result: { status: 'ok'; data: T } | { status: 'error'; error: E }
@@ -137,5 +139,7 @@ export function unwrapResult<T, E>(
   if (result.status === 'ok') {
     return result.data
   }
-  throw result.error
+  throw typeof result.error === 'string'
+    ? new Error(result.error)
+    : result.error
 }

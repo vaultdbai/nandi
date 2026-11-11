@@ -12,9 +12,10 @@ export const queryClient = new QueryClient({
       // Keep data in cache for 10 minutes
       gcTime: 1000 * 60 * 10,
     },
+    // Mutations never retry: approving, sending and starting are not
+    // safe to repeat, so a failure is shown and the person decides
     mutations: {
-      // Retry failed mutations 1 time
-      retry: 1,
+      retry: false,
     },
   },
 })

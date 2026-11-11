@@ -149,8 +149,6 @@ describe('Settings › Sources: capabilities', () => {
       'https://gitlab.com/team/caps.git'
     )
     await userEvent.click(screen.getByRole('button', { name: 'Add registry' }))
-    // The test setup's `unwrapResult` throws the whole result, not the
-    // core's string, so only the alert itself is checked
     const form = screen.getByRole('form', { name: 'Add registry' })
     expect(await within(form).findByRole('alert')).toBeInTheDocument()
     expect(screen.getByLabelText('Git URL or folder')).toHaveValue(
