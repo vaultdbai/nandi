@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import bindingsSource from '@/lib/bindings.ts?raw'
 import { CORE_EVENT_NAMES } from './events'
+
+/** The wire names the generated events object maps, e.g. knowmeChanged: "knowme://changed" */
+const GENERATED_EVENT_NAMES = [
+  ...bindingsSource.matchAll(/^\w+: "([a-z]+:\/\/[a-z_]+)",?$/gm),
+].map(match => match[1])
 
 /** Tauri refuses to emit any other name, and the event is lost */
 const TAURI_EVENT_NAME = /^[A-Za-z0-9\-/:_]+$/
@@ -75,6 +81,13 @@ describe('CORE_EVENT_NAMES', () => {
     const bad = CORE_EVENT_NAMES.filter(name => !TAURI_EVENT_NAME.test(name))
     expect(bad).toEqual([])
     expect(TAURI_EVENT_NAME.test('repo://agent.created')).toBe(false)
+  })
+
+  it('subscribes to every event the bindings declare', () => {
+    expect(GENERATED_EVENT_NAMES.length).toBeGreaterThan(50)
+    expect(
+      GENERATED_EVENT_NAMES.filter(n => !CORE_EVENT_NAMES.includes(n as never))
+    ).toEqual([])
   })
 
   it('has no duplicates', () => {
