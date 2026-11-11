@@ -1264,7 +1264,7 @@ async fn group_calls_are_answered_by_request_id_and_fail_on_disconnect() {
         })
         .await
         .unwrap_err();
-    assert!(left.contains("Disconnected"), "{left}");
+    assert!(RelayUnavailable::is(&left), "{left}");
     assert!(started.elapsed() < Duration::from_secs(4));
 }
 

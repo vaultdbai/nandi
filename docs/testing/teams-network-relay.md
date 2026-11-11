@@ -1349,7 +1349,8 @@ Notes that apply to the whole section:
 - **Edge / negative cases:**
   - A configured relay that is reconnecting keeps a question or an assignment to someone in the outbox (RL-43) instead of refusing it.
   - The team inbox (holds, assignments) decides locally; answers go out when the relay is back.
-- **Automation:** Covered by: `relay/unavailable.rs` tests, `offline_suite.rs` (`with_no_relay_person_to_person_answers_not_connected`), `friendly-error.test.ts`, `NetworkView.test.tsx`, `MemberProfileView.test.tsx` | Layer: unit + api | Gap: no UI test for Sharing's line or the Call dialog.
+  - A call already waiting when the connection drops, when the relay forgets our registration (`not_registered`), or that never sees us registered answers `RelayUnavailable` too. A relay that is connected but slow still answers "The relay didn't … within 5s".
+- **Automation:** Covered by: `relay/unavailable.rs` tests, `relay/client.rs` (`a_call_the_connection_lets_down_is_relay_unavailable`, `a_connection_that_never_registers_is_relay_unavailable`), `offline_suite.rs` (`with_no_relay_person_to_person_answers_not_connected`), `friendly-error.test.ts`, `NetworkView.test.tsx`, `MemberProfileView.test.tsx` | Layer: unit + api | Gap: no UI test for Sharing's line or the Call dialog.
 - **Needs relay:** no
 - **Status:** Shipped
 

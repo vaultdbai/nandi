@@ -420,7 +420,7 @@ impl Inner {
             .ok_or_else(|| String::from(super::RelayUnavailable))?;
         outbound
             .send(message)
-            .map_err(|_| "The relay connection closed".to_string())
+            .map_err(|_| String::from(super::RelayUnavailable))
     }
 
     fn token(&self) -> String {
@@ -528,7 +528,7 @@ impl Inner {
         })?;
         match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
             Ok(Ok(keys)) => Ok(keys),
-            Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
             Err(_) => Err(format!(
                 "The relay didn't answer for {instance}'s keys within {}s",
                 REQUEST_TIMEOUT.as_secs()
@@ -930,7 +930,7 @@ impl Inner {
         match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
             Ok(Ok(Ok(held))) => Ok(Submitted { held }),
             Ok(Ok(Err(e))) => Err(e),
-            Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
             Err(_) => {
                 self.lock().waiting_acks.remove(&task.id);
                 Err(format!(
@@ -951,7 +951,7 @@ impl Inner {
         }
         match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
             Ok(Ok(answer)) => answer,
-            Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
             Err(_) => {
                 self.lock().waiting_reassign.remove(task_id);
                 Err(format!(
@@ -1036,7 +1036,7 @@ impl Inner {
             shared.state = RelayConnectionState::Reconnecting;
             shared.reason = Some("Lost the relay connection".to_string());
             for waiter in shared.waiting_registered.drain(..) {
-                let _ = waiter.send(Err("Disconnected from the relay".to_string()));
+                let _ = waiter.send(Err(super::RelayUnavailable.into()));
             }
             shared.waiting_queries.clear();
             shared.waiting_directory.clear();
@@ -1046,10 +1046,10 @@ impl Inner {
             shared.waiting_groups.clear();
             shared.waiting_keys.clear();
             for (_, waiter) in shared.waiting_acks.drain() {
-                let _ = waiter.send(Err("Disconnected from the relay".to_string()));
+                let _ = waiter.send(Err(super::RelayUnavailable.into()));
             }
             for (_, waiter) in shared.waiting_reassign.drain() {
-                let _ = waiter.send(Err("Disconnected from the relay".to_string()));
+                let _ = waiter.send(Err(super::RelayUnavailable.into()));
             }
         }
         self.emit_status();
@@ -1205,10 +1205,10 @@ impl Inner {
                     shared.waiting_groups.clear();
                     shared.waiting_keys.clear();
                     for (_, waiter) in shared.waiting_acks.drain() {
-                        let _ = waiter.send(Err(message.clone()));
+                        let _ = waiter.send(Err(super::RelayUnavailable.into()));
                     }
                     for (_, waiter) in shared.waiting_reassign.drain() {
-                        let _ = waiter.send(Err(message.clone()));
+                        let _ = waiter.send(Err(super::RelayUnavailable.into()));
                     }
                 }
             }
@@ -1286,7 +1286,7 @@ impl Inner {
         }
         match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
             Ok(Ok(outcome)) => Ok(outcome),
-            Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
             Err(_) => {
                 self.lock().waiting_groups.remove(&request_id);
                 Err(format!(
@@ -1315,8 +1315,9 @@ impl Inner {
         };
         match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
             Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
-            Err(_) => Err("Not registered with the relay yet".to_string()),
+            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
+            // Connected but still not registered: as good as not connected
+            Err(_) => Err(super::RelayUnavailable.into()),
         }
     }
 
@@ -1338,7 +1339,7 @@ impl Inner {
         self.send(message)?;
         match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
             Ok(Ok(cards)) => Ok(cards),
-            Ok(Err(_)) => Err("The relay didn't answer the query".to_string()),
+            Ok(Err(_)) => Err(super::RelayUnavailable.into()),
             Err(_) => Err(format!(
                 "The relay didn't answer within {}s",
                 REQUEST_TIMEOUT.as_secs()
@@ -1660,11 +1661,11 @@ impl RelayClient for WsRelayClient {
                 shared.waiting_registered.push(tx);
                 outbound
                     .send(message)
-                    .map_err(|_| "The relay connection closed".to_string())?;
+                    .map_err(|_| String::from(super::RelayUnavailable))?;
             }
             match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
                 Ok(Ok(result)) => result,
-                Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+                Ok(Err(_)) => Err(super::RelayUnavailable.into()),
                 Err(_) => Err(format!(
                     "The relay didn't confirm the registration within {}s",
                     REQUEST_TIMEOUT.as_secs()
@@ -1941,7 +1942,7 @@ impl RelayClient for WsRelayClient {
                 .send(RelayMessage::QueryDirectory { since: None })?;
             match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
                 Ok(Ok(members)) => Ok(members),
-                Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+                Ok(Err(_)) => Err(super::RelayUnavailable.into()),
                 Err(_) => Err(format!(
                     "The relay didn't list its members within {}s",
                     REQUEST_TIMEOUT.as_secs()
@@ -1971,7 +1972,7 @@ impl RelayClient for WsRelayClient {
             })?;
             match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
                 Ok(Ok(found)) => Ok(found),
-                Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+                Ok(Err(_)) => Err(super::RelayUnavailable.into()),
                 Err(_) => Err(format!(
                     "The relay didn't search within {}s",
                     REQUEST_TIMEOUT.as_secs()
@@ -2026,7 +2027,7 @@ impl RelayClient for WsRelayClient {
             }
             match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
                 Ok(Ok(plan)) => Ok(plan),
-                Ok(Err(_)) => Err("Disconnected from the relay".to_string()),
+                Ok(Err(_)) => Err(super::RelayUnavailable.into()),
                 Err(_) => {
                     self.inner.lock().waiting_routes.remove(&query_id);
                     Err(format!(
@@ -2077,7 +2078,7 @@ impl RelayClient for WsRelayClient {
             self.inner.send(message)?;
             match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
                 Ok(Ok(providers)) => Ok(providers),
-                Ok(Err(_)) => Err("The relay didn't answer the presence query".to_string()),
+                Ok(Err(_)) => Err(super::RelayUnavailable.into()),
                 Err(_) => Err(format!(
                     "The relay didn't answer within {}s",
                     REQUEST_TIMEOUT.as_secs()
@@ -2160,6 +2161,68 @@ mod tests {
         assert_eq!(client.status().relay_url, None);
         assert_eq!(client.status().state, RelayConnectionState::Disconnected);
         assert_eq!(client.status().reason, None);
+    }
+
+    /// A client with an open socket (its frames go to the receiver), as
+    /// registered as `registered` says
+    fn open_client(registered: bool) -> (WsRelayClient, mpsc::UnboundedReceiver<RelayMessage>) {
+        let client = WsRelayClient::new(None, "i1");
+        let (outbound, sent) = mpsc::unbounded_channel();
+        let mut shared = client.inner.lock();
+        shared.outbound = Some(outbound);
+        shared.registered = registered;
+        drop(shared);
+        (client, sent)
+    }
+
+    /// How the connection lets a waiting call down
+    enum LetDown {
+        /// The socket closes
+        Disconnect,
+        /// The relay forgot our registration
+        NotRegistered,
+    }
+
+    #[tokio::test]
+    async fn a_call_the_connection_lets_down_is_relay_unavailable() {
+        for let_down in [LetDown::Disconnect, LetDown::NotRegistered] {
+            let (client, mut sent) = open_client(true);
+            let inner = client.inner.clone();
+            let call = tokio::spawn(async move { client.query_directory().await });
+            sent.recv().await.unwrap();
+
+            match let_down {
+                LetDown::Disconnect => {
+                    let generation = inner.lock().generation;
+                    inner.on_disconnected(generation);
+                }
+                LetDown::NotRegistered => {
+                    let error = RelayMessage::Error {
+                        code: "not_registered".into(),
+                        message: "Register first".into(),
+                    };
+                    inner.handle_incoming(&error.to_json().unwrap());
+                }
+            }
+
+            let error = call.await.unwrap().unwrap_err();
+            assert!(super::super::RelayUnavailable::is(&error), "{error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_connection_that_never_registers_is_relay_unavailable() {
+        let (client, _sent) = open_client(false);
+        let inner = client.inner.clone();
+        let call = tokio::spawn(async move { client.query_directory().await });
+        while inner.lock().waiting_registered.is_empty() {
+            tokio::task::yield_now().await;
+        }
+        let generation = inner.lock().generation;
+        inner.on_disconnected(generation);
+
+        let error = call.await.unwrap().unwrap_err();
+        assert!(super::super::RelayUnavailable::is(&error), "{error}");
     }
 
     #[test]
