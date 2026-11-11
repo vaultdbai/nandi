@@ -141,21 +141,6 @@ export function callersOf(
   return [...callers].sort()
 }
 
-/** A readable message from whatever a query or mutation threw */
-export function errorMessage(error: unknown): string {
-  if (typeof error === 'string') return error
-  if (error instanceof Error) return error.message
-  if (
-    error !== null &&
-    typeof error === 'object' &&
-    'error' in error &&
-    typeof error.error === 'string'
-  ) {
-    return error.error
-  }
-  return String(error)
-}
-
 /** Puts a changed row first, replacing its older copy */
 export function upsertRow(rows: TaskResult[], row: TaskResult): TaskResult[] {
   return [row, ...rows.filter(r => r.taskId !== row.taskId)]

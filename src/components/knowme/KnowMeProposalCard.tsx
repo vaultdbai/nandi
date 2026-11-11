@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useConfirmKnowMeProposal, useKnowMe } from '@/hooks/useKnowMe'
 import type { GroupRef, KnowMeProposal } from '@/lib/bindings'
 import { cn } from '@/lib/utils'
@@ -64,7 +64,7 @@ export function KnowMeProposalCard({
       { approvalId, proposal },
       {
         onError: error => {
-          toast.error(errorMessage(error))
+          toast.error(rawError(error))
           setSubmitting(false)
         },
       }

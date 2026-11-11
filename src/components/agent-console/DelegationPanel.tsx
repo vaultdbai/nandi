@@ -30,7 +30,6 @@ import { Switch } from '@/components/ui/switch'
 import {
   agentIdOf,
   callersOf,
-  errorMessage,
   ownCard,
   providersByCapability,
   useAgentDelegation,
@@ -39,6 +38,7 @@ import {
   useSetAgentDelegation,
   useTrustRules,
 } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import type {
   AgentDelegationSettings,
   DelegationOverride,
@@ -72,7 +72,7 @@ export function DelegationPanel({
   if (settings.isError) {
     return (
       <p role="alert" className="p-4 text-xs text-destructive">
-        {errorMessage(settings.error)}
+        {rawError(settings.error)}
       </p>
     )
   }
@@ -84,7 +84,7 @@ export function DelegationPanel({
       {
         onError: error =>
           toast.error(
-            t('delegation.panel.saveFailed', { error: errorMessage(error) })
+            t('delegation.panel.saveFailed', { error: rawError(error) })
           ),
       }
     )
@@ -359,7 +359,7 @@ function CanCall({
       {providers.isError && (
         <p className="text-xs text-muted-foreground">
           {t('delegation.panel.canCallUnavailable', {
-            error: errorMessage(providers.error),
+            error: rawError(providers.error),
           })}
         </p>
       )}

@@ -14,7 +14,7 @@ import {
   useBedrockModels,
   useRefreshBedrockModels,
 } from '@/hooks/useBedrockModels'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import type { BedrockModel } from '@/lib/bindings'
 
 function label(model: BedrockModel, t: (key: string) => string): string {
@@ -95,7 +95,7 @@ export function BedrockModelSelector({
       </NativeSelect>
       {(models.error || refresh.error) && (
         <p className="text-xs text-destructive">
-          {errorMessage(refresh.error ?? models.error)}
+          {rawError(refresh.error ?? models.error)}
         </p>
       )}
     </div>

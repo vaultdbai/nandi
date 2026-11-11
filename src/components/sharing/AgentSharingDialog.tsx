@@ -18,11 +18,8 @@ import {
   useSetRelaySharing,
   useToggleTeamShare,
 } from '@/hooks/useAgentSharing'
-import {
-  errorMessage,
-  ownCard,
-  useAvailableProviders,
-} from '@/hooks/useDelegation'
+import { ownCard, useAvailableProviders } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { formatRelativeTime } from '@/lib/format-time'
 import { MANAGE_TEAMS, useNavigationStore } from '@/store/navigation-store'
 import type { AgentInfo } from '@/types/agent'
@@ -184,7 +181,7 @@ function SharingBody({
                                   ? 'teams.error.share'
                                   : 'teams.error.unshare'
                               ),
-                              { description: errorMessage(error) }
+                              { description: rawError(error) }
                             ),
                         }
                       )
@@ -214,7 +211,7 @@ function SharingBody({
               setRelay.mutate(on, {
                 onError: error =>
                   toast.error(t('agentMenu.relayError'), {
-                    description: errorMessage(error),
+                    description: rawError(error),
                   }),
               })
             }

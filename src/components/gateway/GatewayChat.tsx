@@ -13,7 +13,7 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { WorkingDots } from '@/components/agent-console/WorkingDots'
 import { Textarea } from '@/components/ui/textarea'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useGatewayChat } from '@/hooks/useGateway'
 import { cn } from '@/lib/utils'
 
@@ -117,7 +117,7 @@ export function GatewayChat() {
         {chat.isError && (
           <Alert variant="destructive">
             <AlertTitle>{t('gateway.chat.failed')}</AlertTitle>
-            <AlertDescription>{errorMessage(chat.error)}</AlertDescription>
+            <AlertDescription>{rawError(chat.error)}</AlertDescription>
           </Alert>
         )}
         <form className="grid gap-2" onSubmit={handleSubmit}>

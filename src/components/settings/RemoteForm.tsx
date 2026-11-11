@@ -33,7 +33,7 @@ import {
 } from './remote-form-model'
 import { GithubSignInPanel } from '@/components/github/GithubSignInPanel'
 import { isGithubUrl } from '@/components/github/github-url'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useConfigureRemote } from '@/hooks/useRemote'
 
 const CREDENTIAL_KINDS: CredentialKind[] = [
@@ -263,7 +263,7 @@ export function RemoteForm({
         slug: slug || null,
       })
     } catch (error) {
-      toast.error(t('remote.form.saveFailed', { error: errorMessage(error) }))
+      toast.error(t('remote.form.saveFailed', { error: rawError(error) }))
       return
     }
     if (andTest) {

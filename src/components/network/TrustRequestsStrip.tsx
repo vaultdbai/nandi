@@ -15,7 +15,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import {
   requesterName,
   useRespondTrustRequest,
@@ -84,7 +84,7 @@ function TrustRequestItem({ request }: { request: TrustRequest }) {
               { name }
             )
           ),
-        onError: error => toast.error(errorMessage(error)),
+        onError: error => toast.error(rawError(error)),
       }
     )
 

@@ -4,7 +4,6 @@ import {
   agentIdOf,
   callersOf,
   counterpart,
-  errorMessage,
   filterHistory,
   historyFacets,
   ownCard,
@@ -145,11 +144,5 @@ describe('delegation helpers', () => {
       ['b', 'failed'],
       ['a', 'completed'],
     ])
-  })
-
-  it('reads error messages from any thrown shape', () => {
-    expect(errorMessage('plain')).toBe('plain')
-    expect(errorMessage(new Error('boom'))).toBe('boom')
-    expect(errorMessage({ status: 'error', error: 'nope' })).toBe('nope')
   })
 })

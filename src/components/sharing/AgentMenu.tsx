@@ -39,7 +39,7 @@ import {
   useSetRelaySharing,
   useToggleTeamShare,
 } from '@/hooks/useAgentSharing'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { openAgentInStudio } from '@/lib/ask'
 import { cn } from '@/lib/utils'
 import {
@@ -217,7 +217,7 @@ function AgentMenuItems({
                           ),
                         onError: error =>
                           toast.error(t('teams.error.unshare'), {
-                            description: errorMessage(error),
+                            description: rawError(error),
                           }),
                       }
                     )
@@ -243,7 +243,7 @@ function AgentMenuItems({
               toast.success(t('agentMenu.relayOff', { name: agent.name })),
             onError: error =>
               toast.error(t('agentMenu.relayError'), {
-                description: errorMessage(error),
+                description: rawError(error),
               }),
           })
         }}
@@ -290,7 +290,7 @@ function ConfirmShare({
           onSuccess: result => toastShared(result, agent.name, share.name),
           onError: error =>
             toast.error(t('teams.error.share'), {
-              description: errorMessage(error),
+              description: rawError(error),
             }),
         }
       )
@@ -300,7 +300,7 @@ function ConfirmShare({
           toast.success(t('agentMenu.relayOn', { name: agent.name })),
         onError: error =>
           toast.error(t('agentMenu.relayError'), {
-            description: errorMessage(error),
+            description: rawError(error),
           }),
       })
     }

@@ -18,7 +18,7 @@ import {
   useCapabilityEvents,
   useCapabilityListings,
 } from '@/hooks/useCapabilities'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import type { CapabilityDefinition, JsonValue } from '@/lib/bindings'
 import { useNavigationStore } from '@/store/navigation-store'
 import { ViewHeader } from './ViewHeader'
@@ -91,9 +91,7 @@ export function CapabilityDetailView({
         <ViewHeader title={capabilityId} leading={back} />
         <p className="p-6 text-sm text-destructive">
           {t('capabilities.loadError', {
-            error: capability.error
-              ? errorMessage(capability.error)
-              : capabilityId,
+            error: capability.error ? rawError(capability.error) : capabilityId,
           })}
         </p>
       </div>

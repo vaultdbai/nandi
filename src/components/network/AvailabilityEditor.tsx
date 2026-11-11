@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useSetGatewayManifest } from '@/hooks/useGateway'
 import { useNetworkSnapshot } from '@/hooks/useNetwork'
 import { useOwnInstanceId } from '@/hooks/useRelay'
@@ -45,7 +45,7 @@ export function AvailabilityEditor({
       { ...manifest, availability: availabilityOf(choice) },
       {
         onSuccess: () => toast.success(t('network.availability.saved')),
-        onError: error => toast.error(errorMessage(error)),
+        onError: error => toast.error(rawError(error)),
       }
     )
 

@@ -30,7 +30,7 @@ import {
   validateSlug,
 } from '@/components/onboarding/identity-model'
 import type { IdentityStatus } from '@/lib/bindings'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useEmailStatus } from '@/hooks/useEmail'
 import {
   useIdentity,
@@ -56,7 +56,7 @@ export function IdentitySection() {
     return (
       <p role="alert" className="text-sm text-destructive">
         {t('remote.identity.loadFailed', {
-          error: errorMessage(identity.error),
+          error: rawError(identity.error),
         })}
       </p>
     )
@@ -91,9 +91,7 @@ function IdentityForm({ identity }: { identity: IdentityStatus }) {
       if (slugChanged) await saveSlug.mutateAsync(slug)
       toast.success(t('remote.identity.saved'))
     } catch (error) {
-      toast.error(
-        t('remote.identity.saveFailed', { error: errorMessage(error) })
-      )
+      toast.error(t('remote.identity.saveFailed', { error: rawError(error) }))
     }
   }
 

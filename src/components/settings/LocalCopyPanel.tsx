@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { client } from '@/lib/client'
+import { rawError } from '@/lib/friendly-error'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
 const repoStatusQueryKey = ['repo', 'status'] as const
@@ -36,7 +37,7 @@ export function LocalCopyPanel() {
     return (
       <div className="flex flex-col items-start gap-2 p-2 text-sm">
         <p role="alert" className="text-destructive">
-          {errorMessage(status.error)}
+          {rawError(status.error)}
         </p>
         <Button
           variant="outline"
@@ -104,12 +105,4 @@ export function LocalCopyPanel() {
       </section>
     </div>
   )
-}
-
-/** `unwrapResult` throws the error `Result` itself */
-function errorMessage(error: unknown): string {
-  if (error && typeof error === 'object' && 'error' in error) {
-    return String((error as { error: unknown }).error)
-  }
-  return String(error)
 }

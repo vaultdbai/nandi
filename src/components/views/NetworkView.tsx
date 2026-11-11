@@ -38,7 +38,7 @@ import {
 import { useCopyInvite, useRelay } from '@/hooks/useRelay'
 import { useTeamRoster } from '@/hooks/useTeamRoster'
 import { useTeams } from '@/hooks/useTeams'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import type { NetworkMember, Team } from '@/lib/bindings'
 import { toastPersonError } from '@/lib/toast-error'
 import {
@@ -97,9 +97,7 @@ export function NetworkView({ team }: { team?: string }) {
     refresh.mutate(undefined, {
       onError: error =>
         toastPersonError(error, failure =>
-          toast.error(
-            t('network.refreshFailed', { error: errorMessage(failure) })
-          )
+          toast.error(t('network.refreshFailed', { error: rawError(failure) }))
         ),
     })
 

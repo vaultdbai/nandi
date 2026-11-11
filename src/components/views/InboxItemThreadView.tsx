@@ -9,7 +9,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useInbox } from '@/hooks/useInbox'
 import { useInboxThread } from '@/hooks/useInboxThread'
 import { sendInboxMessage } from '@/lib/agent-actions'
@@ -46,7 +46,7 @@ export function InboxItemThreadView({
       <Empty className="h-full">
         <EmptyHeader>
           <EmptyTitle>{t('inboxThread.loadError.title')}</EmptyTitle>
-          <EmptyDescription>{errorMessage(thread.error)}</EmptyDescription>
+          <EmptyDescription>{rawError(thread.error)}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )

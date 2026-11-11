@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import {
   useAwsCli,
   useAwsCredentials,
@@ -200,7 +200,7 @@ export function AwsAuthPanel() {
       )}
       {(profiles.error || credentials.error) && (
         <p className="text-sm text-destructive">
-          {errorMessage(profiles.error ?? credentials.error)}
+          {rawError(profiles.error ?? credentials.error)}
         </p>
       )}
 

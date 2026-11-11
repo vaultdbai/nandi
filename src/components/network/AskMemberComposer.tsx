@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
-import { errorMessage, useDelegateTask } from '@/hooks/useDelegation'
+import { useDelegateTask } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useRelayConnected } from '@/hooks/useRelay'
 import type { GatewayCard } from '@/lib/bindings'
 import { errorKind, isRelayUnavailable } from '@/lib/friendly-error'
@@ -70,7 +71,7 @@ export function AskMemberComposer({
       if (isRelayUnavailable(error)) setRelayRefused(true)
       // Past the public relay's messages a day: calmly, with the reset
       else if (errorKind(error) === 'dailyLimit') toast(plainError(error))
-      else toast.error(t('members.ask.failed', { error: errorMessage(error) }))
+      else toast.error(t('members.ask.failed', { error: rawError(error) }))
     }
   }
 

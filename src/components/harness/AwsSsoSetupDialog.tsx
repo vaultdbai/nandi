@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Spinner } from '@/components/ui/spinner'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import {
   useFinishSsoSetup,
   useSsoSetup,
@@ -136,7 +136,7 @@ export function AwsSsoSetupDialog({
             </div>
             {start.error && (
               <p role="alert" className="text-sm text-destructive">
-                {errorMessage(start.error)}
+                {rawError(start.error)}
               </p>
             )}
             <DialogFooter>
@@ -187,7 +187,7 @@ export function AwsSsoSetupDialog({
           <div className="flex flex-col gap-3 text-sm">
             <p className="flex items-center gap-2 text-destructive">
               <CircleX className="size-4" />
-              {setup.data?.error ?? errorMessage(setup.error)}
+              {setup.data?.error ?? rawError(setup.error)}
             </p>
             <DialogFooter>
               <Button variant="outline" onClick={() => close(false)}>
@@ -364,7 +364,7 @@ function PickRole({
       </div>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
-          {errorMessage(error)}
+          {rawError(error)}
         </p>
       ) : null}
       <p className="text-xs text-muted-foreground">

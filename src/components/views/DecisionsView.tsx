@@ -28,7 +28,7 @@ import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useDecisionMonths, useDecisions } from '@/hooks/useDecisions'
 import type { DecisionRecord } from '@/lib/bindings'
 import { cn } from '@/lib/utils'
@@ -86,7 +86,7 @@ export function DecisionsView() {
             <Skeleton className="h-24 w-full" />
           ) : months.isError ? (
             <p role="alert" className="text-sm text-destructive">
-              {t('decisions.loadError', { error: errorMessage(months.error) })}
+              {t('decisions.loadError', { error: rawError(months.error) })}
             </p>
           ) : !month ? (
             <Empty className="border" data-testid="decisions-empty">
@@ -149,7 +149,7 @@ export function DecisionsView() {
               {decisions.isError ? (
                 <p role="alert" className="text-sm text-destructive">
                   {t('decisions.loadError', {
-                    error: errorMessage(decisions.error),
+                    error: rawError(decisions.error),
                   })}
                 </p>
               ) : !decisions.data ? (

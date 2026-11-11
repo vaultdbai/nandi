@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useSsoLogin } from '@/hooks/useAwsAuth'
 import { client } from '@/lib/client'
 
@@ -49,7 +49,7 @@ export function SsoLoginDialog({
         </DialogHeader>
         <div className="flex flex-col gap-3 text-sm" data-testid="sso-login">
           {error ? (
-            <p className="text-destructive">{errorMessage(error)}</p>
+            <p className="text-destructive">{rawError(error)}</p>
           ) : status === 'pending' ? (
             <p className="flex items-center gap-2">
               <Spinner />

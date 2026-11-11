@@ -7,7 +7,7 @@ import {
   useLitellmGateway,
   useSetLitellmGateway,
 } from '@/hooks/useBedrockModels'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 
 /**
  * Whether the LiteLLM gateway runs, for which Bedrock model and where,
@@ -45,7 +45,7 @@ export function LitellmGatewayStatus() {
         )}
         {(gateway.error || setGateway.error) && (
           <p className="text-xs text-destructive">
-            {errorMessage(setGateway.error ?? gateway.error)}
+            {rawError(setGateway.error ?? gateway.error)}
           </p>
         )}
       </div>

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCapabilityProviderBreakdown } from '@/hooks/useCapabilityEvidence'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import type { CapabilityProviderStats, ProviderKind } from '@/lib/bindings'
 import { cn } from '@/lib/utils'
 import { useNavigationStore, type View } from '@/store/navigation-store'
@@ -68,7 +68,7 @@ export function ProviderBreakdownTable({
   if (breakdown.error) {
     return (
       <p className="text-sm text-destructive">
-        {t('capabilities.loadError', { error: errorMessage(breakdown.error) })}
+        {t('capabilities.loadError', { error: rawError(breakdown.error) })}
       </p>
     )
   }

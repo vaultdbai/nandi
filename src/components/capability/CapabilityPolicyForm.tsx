@@ -8,7 +8,7 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { useSaveCapability } from '@/hooks/useCapabilities'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import type {
   CapabilityDefinition,
   CapabilityPolicy,
@@ -87,9 +87,7 @@ export function CapabilityPolicyForm({
       {
         onSuccess: () => toast.success(t('capabilities.policy.saved')),
         onError: error =>
-          toast.error(
-            t('capabilities.saveFailed', { error: errorMessage(error) })
-          ),
+          toast.error(t('capabilities.saveFailed', { error: rawError(error) })),
       }
     )
 

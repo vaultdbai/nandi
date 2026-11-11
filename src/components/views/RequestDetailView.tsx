@@ -34,7 +34,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { errorKind } from '@/lib/friendly-error'
 import { plainError } from '@/lib/toast-error'
 import {
@@ -78,7 +78,7 @@ export function RequestDetailView({
 
   if (request.isPending) return <RequestSkeleton />
   if (request.isError) {
-    const message = errorMessage(request.error)
+    const message = rawError(request.error)
     const missing = message.includes('not found')
     return (
       <Empty className="h-full">
@@ -194,7 +194,7 @@ function RequestPage({
                     useNavigationStore
                       .getState()
                       .navigate({ kind: 'request', requestId: id }),
-                  onError: error => toast.error(errorMessage(error)),
+                  onError: error => toast.error(rawError(error)),
                 })
               }
             >
@@ -287,7 +287,7 @@ function RequestPage({
                         const position = localStepPosition(step)
                         if (position === null) return
                         completeStep.mutate(position, {
-                          onError: error => toast.error(errorMessage(error)),
+                          onError: error => toast.error(rawError(error)),
                         })
                       }
                     : undefined

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { ClarificationPolicyEditor } from '@/components/agent-console/ClarificationPolicyEditor'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import {
   useClarificationPolicy,
   useSetClarificationPolicy,
@@ -66,7 +66,7 @@ export function AgentDelegationTab({ agentId }: AgentDelegationTabProps) {
       {saved.isError && (
         <Alert variant="destructive">
           <AlertTitle>{t('tasks.policy.loadFailed')}</AlertTitle>
-          <AlertDescription>{errorMessage(saved.error)}</AlertDescription>
+          <AlertDescription>{rawError(saved.error)}</AlertDescription>
         </Alert>
       )}
 
@@ -81,7 +81,7 @@ export function AgentDelegationTab({ agentId }: AgentDelegationTabProps) {
           {save.isError && (
             <Alert variant="destructive">
               <AlertTitle>{t('tasks.policy.saveFailed')}</AlertTitle>
-              <AlertDescription>{errorMessage(save.error)}</AlertDescription>
+              <AlertDescription>{rawError(save.error)}</AlertDescription>
             </Alert>
           )}
           <div className="flex items-center justify-end gap-2">

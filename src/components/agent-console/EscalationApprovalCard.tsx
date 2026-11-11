@@ -17,7 +17,7 @@ import {
   remainingMs,
   useRespondToClarification,
 } from '@/hooks/useClarifications'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 
 export interface EscalationApprovalCardProps {
   clarification: PendingClarification
@@ -166,7 +166,7 @@ export function EscalationApprovalCard({
 
       {respond.error && (
         <p role="alert" className="text-xs text-destructive">
-          {errorMessage(respond.error)}
+          {rawError(respond.error)}
         </p>
       )}
 

@@ -50,7 +50,7 @@ import { unwrapResult } from '@/lib/tauri-bindings'
 import { cn } from '@/lib/utils'
 import { RemoteForm } from './RemoteForm'
 import { RemoteStatusCard } from './RemoteStatusCard'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useIdentity } from '@/hooks/useIdentity'
 import {
   useClearRemote,
@@ -78,7 +78,7 @@ export function RemoteSection() {
   if (status.isError) {
     return (
       <p role="alert" className="text-sm text-destructive">
-        {t('remote.loadFailed', { error: errorMessage(status.error) })}
+        {t('remote.loadFailed', { error: rawError(status.error) })}
       </p>
     )
   }
@@ -132,7 +132,7 @@ function ConfiguredRemote({
     test.mutate(undefined, {
       onSuccess: () => toast.success(t('remote.testOk')),
       onError: error =>
-        toast.error(t('remote.testFailed', { error: errorMessage(error) })),
+        toast.error(t('remote.testFailed', { error: rawError(error) })),
     })
 
   const runPush = (overwrite: boolean) =>
@@ -151,7 +151,7 @@ function ConfiguredRemote({
         )
       },
       onError: error =>
-        toast.error(t('remote.pushFailed', { error: errorMessage(error) })),
+        toast.error(t('remote.pushFailed', { error: rawError(error) })),
     })
 
   const runPull = () =>
@@ -165,7 +165,7 @@ function ConfiguredRemote({
         toast.success(t('remote.pulled', { count: result.pulledCommits }))
       },
       onError: error =>
-        toast.error(t('remote.pullFailed', { error: errorMessage(error) })),
+        toast.error(t('remote.pullFailed', { error: rawError(error) })),
     })
 
   const remove = () =>
@@ -175,7 +175,7 @@ function ConfiguredRemote({
         toast.success(t('remote.removed'))
       },
       onError: error =>
-        toast.error(t('remote.removeFailed', { error: errorMessage(error) })),
+        toast.error(t('remote.removeFailed', { error: rawError(error) })),
     })
 
   const conflictedFiles =
@@ -447,7 +447,7 @@ function BranchBrowser({
       {branches.isError && (
         <p role="alert" className="text-xs text-destructive">
           {t('remote.branches.loadFailed', {
-            error: errorMessage(branches.error),
+            error: rawError(branches.error),
           })}
         </p>
       )}

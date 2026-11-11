@@ -18,7 +18,7 @@ import {
   useBedrockModels,
   useSetLitellmGateway,
 } from '@/hooks/useBedrockModels'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import {
   useDetectHarnesses,
   useHarnesses,
@@ -67,13 +67,13 @@ export function RuntimesPanel() {
 
   const runDetect = () =>
     detect.mutate(undefined, {
-      onError: error => toast.error(errorMessage(error)),
+      onError: error => toast.error(rawError(error)),
     })
 
   const runTest = (harness: HarnessInfo) =>
     test.mutate(harness.id, {
       onSuccess: result => setTests(all => ({ ...all, [harness.id]: result })),
-      onError: error => toast.error(errorMessage(error)),
+      onError: error => toast.error(rawError(error)),
     })
 
   const list = harnesses.data ?? []
@@ -95,7 +95,7 @@ export function RuntimesPanel() {
       {harnesses.error && (
         <p role="alert" className="text-sm text-destructive">
           {t('harness.detectFailed', {
-            error: errorMessage(harnesses.error),
+            error: rawError(harnesses.error),
           })}
         </p>
       )}
@@ -203,7 +203,7 @@ function BedrockGateway() {
             disabled={setGateway.isPending}
             onClick={() =>
               setGateway.mutate(selected.id, {
-                onError: error => toast.error(errorMessage(error)),
+                onError: error => toast.error(rawError(error)),
               })
             }
           >

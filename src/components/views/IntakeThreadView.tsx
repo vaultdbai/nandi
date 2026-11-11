@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAlwaysAllow } from '@/hooks/useAutoApproveRules'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useIntakeThread } from '@/hooks/useIntakeThread'
 import { useQueueDecisions } from '@/hooks/useQueueDecisions'
 import { useCompleteRequestStep, useRequest } from '@/hooks/useRequests'
@@ -66,7 +66,7 @@ export function IntakeThreadView({
       <Empty className="h-full">
         <EmptyHeader>
           <EmptyTitle>{t('intakeThread.loadError.title')}</EmptyTitle>
-          <EmptyDescription>{errorMessage(thread.error)}</EmptyDescription>
+          <EmptyDescription>{rawError(thread.error)}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -234,7 +234,7 @@ function RequestCard({
                 const position = localStepPosition(step)
                 if (position === null) return
                 completeStep.mutate(position, {
-                  onError: error => toast.error(errorMessage(error)),
+                  onError: error => toast.error(rawError(error)),
                 })
               }
             : undefined

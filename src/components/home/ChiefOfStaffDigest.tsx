@@ -12,7 +12,7 @@ import {
   useMarkDigestSeen,
 } from '@/hooks/useChiefOfStaffDigest'
 import { useAlwaysAllow } from '@/hooks/useAutoApproveRules'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useQueueDecisions } from '@/hooks/useQueueDecisions'
 import { useViewOpener } from '@/hooks/useViewOpener'
 import { cn } from '@/lib/utils'
@@ -82,7 +82,7 @@ export function ChiefOfStaffDigest() {
           }),
         onError: error =>
           toast.error(t('home.chiefOfStaffDigest.markDone.failed'), {
-            description: errorMessage(error),
+            description: rawError(error),
           }),
       }
     )

@@ -19,7 +19,7 @@ import {
   useCapability,
   useTransferCapabilityOwnership,
 } from '@/hooks/useCapabilities'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useNetworkSnapshot } from '@/hooks/useNetwork'
 import type { CapabilityOwner, NetworkMember } from '@/lib/bindings'
 
@@ -82,9 +82,7 @@ export function TransferOwnershipDialog({
       )
       close(false)
     } catch (error) {
-      toast.error(
-        t('capabilities.transfer.failed', { error: errorMessage(error) })
-      )
+      toast.error(t('capabilities.transfer.failed', { error: rawError(error) }))
     }
   }
 

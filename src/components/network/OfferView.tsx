@@ -37,7 +37,7 @@ import { GatewayChat } from '@/components/gateway/GatewayChat'
 import { TellNandiAboutYou } from '@/components/knowme/TellNandiAboutYou'
 import { useAgents } from '@/hooks/useAgents'
 import { capabilityQueryKeys } from '@/hooks/useCapabilities'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useGatewayManifest, useSetGatewayManifest } from '@/hooks/useGateway'
 import type { GatewayManifest } from '@/lib/bindings'
 import { client } from '@/lib/client'
@@ -84,7 +84,7 @@ export function OfferView() {
 
   if (manifest.error) {
     return (
-      <p className="text-sm text-destructive">{errorMessage(manifest.error)}</p>
+      <p className="text-sm text-destructive">{rawError(manifest.error)}</p>
     )
   }
   if (!manifest.data || !served) return <Skeleton className="h-64 w-full" />
@@ -354,7 +354,7 @@ function OfferEditor({
           })
           onDone()
         },
-        onError: error => toast.error(errorMessage(error)),
+        onError: error => toast.error(rawError(error)),
       }
     )
   }

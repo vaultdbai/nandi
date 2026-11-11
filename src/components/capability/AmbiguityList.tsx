@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import {
   useCapabilityAmbiguities,
   usePromoteAmbiguity,
@@ -49,7 +49,7 @@ export function AmbiguityList({
         onError: error =>
           toast.error(
             t('capabilities.ambiguities.promoteFailed', {
-              error: errorMessage(error),
+              error: rawError(error),
             })
           ),
       }
@@ -60,7 +60,7 @@ export function AmbiguityList({
     return (
       <p className="text-sm text-destructive">
         {t('capabilities.loadError', {
-          error: errorMessage(ambiguities.error),
+          error: rawError(ambiguities.error),
         })}
       </p>
     )

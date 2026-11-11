@@ -8,6 +8,7 @@ import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { MemoryEntry } from '@/lib/bindings'
+import { unwrapResult } from '@/lib/tauri-bindings'
 
 /** Everything memory-related lives under `['agentMemory']` */
 export const agentMemoryQueryKeys = {
@@ -15,14 +16,6 @@ export const agentMemoryQueryKeys = {
   agent: (agentId: string) => ['agentMemory', agentId] as const,
   entries: (agentId: string) => ['agentMemory', agentId, 'entries'] as const,
   enabled: (agentId: string) => ['agentMemory', agentId, 'enabled'] as const,
-}
-
-/** Errors as `Error`s, so the UI can show `error.message` */
-function unwrap<T>(
-  result: { status: 'ok'; data: T } | { status: 'error'; error: string }
-): T {
-  if (result.status === 'error') throw new Error(result.error)
-  return result.data
 }
 
 /** Refetches the agent's memory when a file in its folder changes */
@@ -51,7 +44,7 @@ export function useAgentMemoryEntries(agentId: string | undefined) {
   useMemoryFileEvents(agentId)
   return useQuery({
     queryKey: agentMemoryQueryKeys.entries(id),
-    queryFn: async () => unwrap(await client.loadAgentMemory(id)),
+    queryFn: async () => unwrapResult(await client.loadAgentMemory(id)),
     enabled: Boolean(agentId),
   })
 }
@@ -64,7 +57,7 @@ export function useAgentMemory(agentId: string | undefined) {
   const entries = useAgentMemoryEntries(agentId)
   const enabled = useQuery({
     queryKey: agentMemoryQueryKeys.enabled(id),
-    queryFn: async () => unwrap(await client.getAgentMemoryEnabled(id)),
+    queryFn: async () => unwrapResult(await client.getAgentMemoryEnabled(id)),
     enabled: Boolean(agentId),
   })
 
@@ -80,12 +73,12 @@ export function useAgentMemory(agentId: string | undefined) {
     }: {
       index: number
       content: string
-    }) => unwrap(await client.updateAgentMemory(id, index, content)),
+    }) => unwrapResult(await client.updateAgentMemory(id, index, content)),
     onSettled: invalidate,
   })
   const remove = useMutation({
     mutationFn: async (index: number) =>
-      unwrap(await client.deleteAgentMemory(id, index)),
+      unwrapResult(await client.deleteAgentMemory(id, index)),
     // Gone from the list at once; the refetch confirms
     onMutate: async index => {
       const key = agentMemoryQueryKeys.entries(id)
@@ -110,14 +103,14 @@ export function useAgentMemory(agentId: string | undefined) {
     onSettled: invalidate,
   })
   const refresh = useMutation({
-    mutationFn: async () => unwrap(await client.refreshAgentMemory(id)),
+    mutationFn: async () => unwrapResult(await client.refreshAgentMemory(id)),
     onSuccess: memory =>
       queryClient.setQueryData(agentMemoryQueryKeys.entries(id), memory),
     onSettled: invalidate,
   })
   const setEnabled = useMutation({
     mutationFn: async (value: boolean) =>
-      unwrap(await client.setAgentMemoryEnabled(id, value)),
+      unwrapResult(await client.setAgentMemoryEnabled(id, value)),
     onMutate: value => {
       queryClient.setQueryData(agentMemoryQueryKeys.enabled(id), value)
     },

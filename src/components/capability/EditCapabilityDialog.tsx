@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 import { useSaveCapability } from '@/hooks/useCapabilities'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import type { CapabilityDefinition } from '@/lib/bindings'
 
 /** "a, b,, c " → ["a", "b", "c"] */
@@ -67,9 +67,7 @@ export function EditCapabilityDialog({
           onOpenChange(false)
         },
         onError: error =>
-          toast.error(
-            t('capabilities.saveFailed', { error: errorMessage(error) })
-          ),
+          toast.error(t('capabilities.saveFailed', { error: rawError(error) })),
       }
     )
 

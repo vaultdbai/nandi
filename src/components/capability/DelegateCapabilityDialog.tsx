@@ -13,7 +13,8 @@ import {
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
-import { errorMessage, useDelegateTask } from '@/hooks/useDelegation'
+import { useDelegateTask } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { toastPersonError } from '@/lib/toast-error'
 import { useNavigationStore } from '@/store/navigation-store'
 
@@ -54,7 +55,7 @@ export function DelegateCapabilityDialog({
     } catch (error) {
       toastPersonError(error, failure =>
         toast.error(
-          t('capabilities.delegate.failed', { error: errorMessage(failure) })
+          t('capabilities.delegate.failed', { error: rawError(failure) })
         )
       )
     }

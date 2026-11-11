@@ -12,7 +12,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useSaveKeyProfile } from '@/hooks/useAwsAuth'
 import { profileNameError, regionError } from './aws-setup-model'
 
@@ -156,7 +156,7 @@ export function AwsKeysDialog({
           </div>
           {save.error && (
             <p role="alert" className="text-sm text-destructive">
-              {errorMessage(save.error)}
+              {rawError(save.error)}
             </p>
           )}
           <DialogFooter>

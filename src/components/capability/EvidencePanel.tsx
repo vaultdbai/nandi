@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Skeleton } from '@/components/ui/skeleton'
 import { RunChart } from '@/components/agent-console/RunChart'
 import { useCapabilityEvidence } from '@/hooks/useCapabilityEvidence'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { AmbiguityList } from './AmbiguityList'
 import {
   formatDuration,
@@ -46,7 +46,7 @@ export function EvidencePanel({
   if (month.error) {
     return (
       <p className="text-sm text-destructive">
-        {t('capabilities.loadError', { error: errorMessage(month.error) })}
+        {t('capabilities.loadError', { error: rawError(month.error) })}
       </p>
     )
   }

@@ -39,7 +39,7 @@ import {
 } from '@/components/onboarding/identity-model'
 import { useNetworkHealth } from '@/hooks/useNetworkHealth'
 import { ReachabilityChecklist } from '@/components/network/ReachabilityChecklist'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useGatewayManifest, useSetGatewayManifest } from '@/hooks/useGateway'
 import {
   useCopyInvite,
@@ -137,7 +137,7 @@ function RelayCard({
         toast.success(t('relay.url.cleared'))
       },
       onError: error =>
-        toast.error(t('relay.url.error'), { description: errorMessage(error) }),
+        toast.error(t('relay.url.error'), { description: rawError(error) }),
     })
 
   const submit = () => {
@@ -156,7 +156,7 @@ function RelayCard({
         },
         onError: error =>
           toast.error(t('relay.url.error'), {
-            description: errorMessage(error),
+            description: rawError(error),
           }),
       }
     )
@@ -410,7 +410,7 @@ function RelayTrustCard({ hasRelay }: { hasRelay: boolean }) {
     onSuccess: next => queryClient.setQueryData(RELAY_TRUST_KEY, next),
     onError: error =>
       toast.error(t('network.connection.relayTrust.error'), {
-        description: errorMessage(error),
+        description: rawError(error),
       }),
   })
   if (!trust.data) return null
@@ -558,7 +558,7 @@ function ConnectionDetails({ status }: { status: RelayStatus | undefined }) {
                       federation: { ...manifest.data.federation, enabled },
                     },
                     {
-                      onError: error => toast.error(errorMessage(error)),
+                      onError: error => toast.error(rawError(error)),
                     }
                   )
                 }

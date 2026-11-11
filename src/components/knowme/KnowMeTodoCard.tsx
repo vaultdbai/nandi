@@ -3,7 +3,7 @@ import { HeartHandshake } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import { useKnowMeTodo } from '@/hooks/useKnowMe'
 import type { KnowMeTodoAction } from '@/lib/bindings'
 
@@ -18,7 +18,7 @@ export function KnowMeTodoCard({ recheck }: { recheck: boolean }) {
   const act = (action: KnowMeTodoAction) =>
     todo.mutate(action, {
       onSuccess: () => toast.success(t(`knowMe.todo.${action}Done`)),
-      onError: error => toast.error(errorMessage(error)),
+      onError: error => toast.error(rawError(error)),
     })
 
   return (

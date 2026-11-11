@@ -28,7 +28,7 @@ import { Term } from '@/components/network/NetworkHelp'
 import { OfferView } from '@/components/network/OfferView'
 import { RelayConnectNotice } from '@/components/network/RelayConnectNotice'
 import { TrustRequestsStrip } from '@/components/network/TrustRequestsStrip'
-import { errorMessage } from '@/hooks/useDelegation'
+import { rawError } from '@/lib/friendly-error'
 import {
   incomingFilterOf,
   useGatewayCallers,
@@ -128,7 +128,7 @@ function CallersPanel({ view }: { view: CallersView }) {
   const removeCaller = useRemoveCallerPolicy()
   const nameOf = useMemberNames()
   const trusted = manifest.data?.federation.trustedPeers.length ?? 0
-  const onError = (error: unknown) => toast.error(errorMessage(error))
+  const onError = (error: unknown) => toast.error(rawError(error))
 
   return (
     <section className="flex flex-col gap-4" aria-labelledby="callers-title">

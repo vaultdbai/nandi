@@ -7,24 +7,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { PlaybookInput } from '@/lib/bindings'
+import { unwrapResult } from '@/lib/tauri-bindings'
 
 export const playbooksQueryKeys = {
   agent: (agentId: string) =>
     ['agent-definition', agentId, 'playbooks'] as const,
 }
 
-/** Errors as `Error`s, so the UI can show `error.message` */
-function unwrap<T>(
-  result: { status: 'ok'; data: T } | { status: 'error'; error: string }
-): T {
-  if (result.status === 'error') throw new Error(result.error)
-  return result.data
-}
-
 export function usePlaybooks(agentId: string) {
   return useQuery({
     queryKey: playbooksQueryKeys.agent(agentId),
-    queryFn: async () => unwrap(await client.agentPlaybooks(agentId)),
+    queryFn: async () => unwrapResult(await client.agentPlaybooks(agentId)),
   })
 }
 
@@ -46,7 +39,7 @@ export function useSavePlaybook(agentId: string) {
       input: PlaybookInput
       previous: string | null
     }) =>
-      unwrap(
+      unwrapResult(
         await client.saveAgentPlaybook(agentId, args.input, args.previous)
       ),
     onSuccess: invalidate,
@@ -57,7 +50,7 @@ export function useDeletePlaybook(agentId: string) {
   const invalidate = useInvalidatePlaybooks(agentId)
   return useMutation({
     mutationFn: async (name: string) =>
-      unwrap(await client.deleteAgentPlaybook(agentId, name)),
+      unwrapResult(await client.deleteAgentPlaybook(agentId, name)),
     onSuccess: invalidate,
   })
 }
