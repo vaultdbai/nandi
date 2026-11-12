@@ -56,7 +56,6 @@ pub mod relay;
 pub mod relay_capabilities;
 pub mod remote;
 pub mod repo;
-pub mod requests;
 pub mod runs;
 pub mod shared;
 pub mod snapshots;

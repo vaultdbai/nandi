@@ -9,6 +9,7 @@ import type { NandiEvent } from './events'
 import { createEventBus } from './event-bus'
 import { marketplaceQuery } from './marketplace-filter'
 import type { NandiClient } from './types'
+import { withCommands } from './with-commands'
 
 const NOT_SUPPORTED = 'Not supported in the browser. Use the Nandi desktop app.'
 const RECONNECT_MIN_MS = 1_000
@@ -121,7 +122,7 @@ const socketEvents = createEventBus(emit => {
   }
 })
 
-export const webClient: NandiClient = {
+export const webClient: NandiClient = withCommands({
   transport: 'web',
   supports: { attachments: false },
 
@@ -541,38 +542,6 @@ export const webClient: NandiClient = {
   getTaskMessages: taskId => request('GET', `/tasks/${id(taskId)}/messages`),
   getEtaEstimate: (capability, providerAgent) =>
     request('GET', `/eta/${id(capability)}${query({ providerAgent })}`),
-  getRequest: requestId => request('GET', `/requests/${id(requestId)}`),
-  requestForRun: runId => request('GET', `/runs/${id(runId)}/request`),
-  retryTask: requestId => request('POST', `/requests/${id(requestId)}/retry`),
-  startRequest: (plan, text) => request('POST', '/requests', { plan, text }),
-  completeRequestStep: (requestId, position) =>
-    request('POST', `/requests/${id(requestId)}/steps/${position}/complete`),
-  getChiefOfStaffDigest: () => request('GET', '/chief-of-staff/digest'),
-  markChiefOfStaffDigestSeen: () =>
-    request('POST', '/chief-of-staff/digest/seen'),
-  approveQueuedWork: queueId =>
-    request('POST', `/chief-of-staff/queue/${id(queueId)}/approve`),
-  dismissQueuedWork: queueId =>
-    request('POST', `/chief-of-staff/queue/${id(queueId)}/dismiss`),
-  getAutoApproveRules: () => request('GET', '/chief-of-staff/auto-approve'),
-  setAutoApproveRules: rules =>
-    request('PUT', '/chief-of-staff/auto-approve', rules),
-  getIntakeThread: conversationId =>
-    request('GET', `/chief-of-staff/threads/${id(conversationId)}`),
-  sendIntakeMessage: (conversationId, text, clientMessageId) =>
-    request('POST', `/chief-of-staff/threads/${id(conversationId)}/messages`, {
-      text,
-      clientMessageId,
-    }),
-  openInboxThread: conversationId =>
-    request('POST', `/inbox/threads/${id(conversationId)}`),
-  sendInboxMessage: (conversationId, text, clientMessageId) =>
-    request('POST', `/inbox/threads/${id(conversationId)}/messages`, {
-      text,
-      clientMessageId,
-    }),
-  cancelRequest: requestId =>
-    request('POST', `/requests/${id(requestId)}/cancel`),
   listDecisionMonths: () => request('GET', '/decisions/months'),
   getKnowMe: () => request('GET', '/know-me'),
   knowMeTodo: action => request('POST', '/know-me/todo', { action }),
@@ -591,10 +560,6 @@ export const webClient: NandiClient = {
   mascotGet: () => request('GET', '/mascot'),
   mascotSet: name => request('PUT', '/mascot', { name }),
   mascotPhrase: input => request('POST', '/mascot/phrase', { input }),
-  rerunRequest: requestId =>
-    request('POST', `/requests/${id(requestId)}/rerun`),
-  draftWorkflowFromRequest: requestId =>
-    request('POST', `/requests/${id(requestId)}/workflow-draft`),
 
   respondToClarification: ({ taskId, round, answers }) =>
     request('POST', `/delegation/${id(taskId)}/clarify`, { round, answers }),
@@ -909,4 +874,4 @@ export const webClient: NandiClient = {
   },
 
   subscribe: handler => socketEvents.subscribe(handler),
-}
+})

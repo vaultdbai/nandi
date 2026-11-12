@@ -7,6 +7,7 @@ import { CORE_EVENT_NAMES, type NandiEvent } from './events'
 import { createEventBus } from './event-bus'
 import { marketplaceFilter } from './marketplace-filter'
 import type { NandiClient } from './types'
+import { withCommands } from './with-commands'
 
 /** One `listen()` per core event, shared by every subscriber */
 const coreEvents = createEventBus(emit => {
@@ -23,7 +24,7 @@ const coreEvents = createEventBus(emit => {
   }
 })
 
-export const tauriClient: NandiClient = {
+export const tauriClient: NandiClient = withCommands({
   transport: 'tauri',
   supports: { attachments: true },
 
@@ -323,26 +324,6 @@ export const tauriClient: NandiClient = {
   getTaskMessages: taskId => commands.getTaskMessages(taskId),
   getEtaEstimate: (capability, providerAgent) =>
     commands.getEtaEstimate(capability, providerAgent),
-  getRequest: id => commands.getRequest(id),
-  requestForRun: runId => commands.requestForRun(runId),
-  retryTask: id => commands.retryTask(id),
-  startRequest: (plan, text) => commands.startRequest(plan, text),
-  completeRequestStep: (id, position) =>
-    commands.completeRequestStep(id, position),
-  getChiefOfStaffDigest: () => commands.getChiefOfStaffDigest(),
-  markChiefOfStaffDigestSeen: () => commands.markChiefOfStaffDigestSeen(),
-  approveQueuedWork: queueId => commands.approveQueuedWork(queueId),
-  dismissQueuedWork: queueId => commands.dismissQueuedWork(queueId),
-  getAutoApproveRules: () => commands.getAutoApproveRules(),
-  setAutoApproveRules: rules => commands.setAutoApproveRules(rules),
-  getIntakeThread: conversationId => commands.getIntakeThread(conversationId),
-  sendIntakeMessage: (conversationId, text, clientMessageId) =>
-    commands.sendIntakeMessage(conversationId, text, clientMessageId),
-  openInboxThread: conversationId => commands.openInboxThread(conversationId),
-  sendInboxMessage: (conversationId, text, clientMessageId) =>
-    commands.sendInboxMessage(conversationId, text, clientMessageId),
-  cancelRequest: id => commands.cancelRequest(id),
-  rerunRequest: id => commands.rerunRequest(id),
   listDecisionMonths: () => commands.listDecisionMonths(),
   getKnowMe: () => commands.getKnowMe(),
   knowMeTodo: action => commands.knowMeTodo(action),
@@ -352,7 +333,6 @@ export const tauriClient: NandiClient = {
   mascotGet: () => commands.mascotGet(),
   mascotSet: name => commands.mascotSet(name),
   mascotPhrase: input => commands.mascotPhrase(input),
-  draftWorkflowFromRequest: id => commands.draftWorkflowFromRequest(id),
 
   respondToClarification: response => commands.respondToClarification(response),
   escalateClarification: (taskId, questionId) =>
@@ -561,4 +541,4 @@ export const tauriClient: NandiClient = {
   openExternal: url => openUrl(url),
 
   subscribe: handler => coreEvents.subscribe(handler),
-}
+})

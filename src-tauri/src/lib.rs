@@ -26,6 +26,7 @@ mod mcp_client;
 mod model;
 #[cfg(test)]
 mod offline_suite;
+mod rpc;
 mod runtime;
 #[cfg(test)]
 mod sandbox_suite;

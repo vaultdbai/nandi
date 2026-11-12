@@ -49,8 +49,8 @@ mod policies;
 mod relay;
 mod remote;
 mod repo;
-mod requests;
 mod routes;
+mod rpc;
 mod shared;
 mod static_files;
 mod studio;
@@ -85,6 +85,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
         .nest(
             "/api",
             routes::api()
+                .merge(rpc::api())
                 .merge(marketplace::api())
                 .merge(decisions::api())
                 .merge(knowme::api())
@@ -115,7 +116,6 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(identity::api())
                 .merge(remote::api())
                 .merge(tasks::api())
-                .merge(requests::api())
                 .merge(delegation_clarification::api())
                 .merge(gateway::api())
                 .merge(network::api())
@@ -431,9 +431,6 @@ mod tests {
             ("GET", "/api/tasks/t1/status"),
             ("GET", "/api/tasks/t1/events"),
             ("GET", "/api/tasks/t1/messages"),
-            ("GET", "/api/requests/t1"),
-            ("POST", "/api/requests/t1/retry"),
-            ("GET", "/api/runs/r1/request"),
             ("GET", "/api/eta/summarize"),
             ("POST", "/api/delegation/t1/clarify"),
             ("POST", "/api/delegation/t1/escalate/q1"),
@@ -595,6 +592,30 @@ mod tests {
             assert_ne!(response.status(), StatusCode::NOT_FOUND, "{method} {uri}");
             assert!(is_json(&response), "{method} {uri}: {}", response.status());
         }
+        state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn rpc_runs_a_command_with_camel_case_arguments() {
+        let (state, app) = app();
+        let call = |name: &str, body: &str| {
+            app.clone()
+                .oneshot(authed("POST", &format!("/api/rpc/{name}"), body))
+        };
+
+        let found = call("request_for_run", r#"{"runId":"r1"}"#).await.unwrap();
+        assert_eq!(found.status(), StatusCode::OK);
+        assert_eq!(json(found).await, serde_json::Value::Null);
+
+        let missing_arg = call("request_for_run", "{}").await.unwrap();
+        assert_eq!(missing_arg.status(), StatusCode::BAD_REQUEST);
+        assert!(json(missing_arg).await["error"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid arguments for request_for_run"));
+
+        let unknown = call("nope", "{}").await.unwrap();
+        assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
         state.shutdown();
     }
 

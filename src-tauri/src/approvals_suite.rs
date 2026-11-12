@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use crate::offline_suite::{boot, call, canned, get, post, until};
+use crate::offline_suite::{boot, call, canned, get, post, rpc, until};
 use crate::services::builtin_agents::CHIEF_OF_STAFF;
 use crate::services::intake::{self, Gate, GroupSay, TeamTask};
 use crate::services::relay::BuiltInRelay;
@@ -460,12 +460,17 @@ async fn a_decision_in_an_inbox_chat_is_recorded_with_the_chat() {
         }),
     )
     .await;
-    let thread = format!("inbox%3Aapproval%3A{id}");
-    post(&router, &format!("inbox/threads/{thread}"), Value::Null).await;
-    post(
+    let thread = format!("inbox:approval:{id}");
+    rpc(
         &router,
-        &format!("inbox/threads/{thread}/messages"),
-        json!({ "text": "Approve it, only this once" }),
+        "open_inbox_thread",
+        json!({ "conversationId": thread }),
+    )
+    .await;
+    rpc(
+        &router,
+        "send_inbox_message",
+        json!({ "conversationId": thread, "text": "Approve it, only this once" }),
     )
     .await;
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -568,9 +573,9 @@ async fn auto_approvals_are_recorded_as_such() {
     };
     let (status, body) = call(
         &router,
-        "PUT",
-        "chief-of-staff/auto-approve",
-        serde_json::to_value(vec![rule]).unwrap(),
+        "POST",
+        "rpc/set_auto_approve_rules",
+        json!({ "rules": [rule] }),
     )
     .await;
     assert_eq!(status, axum::http::StatusCode::OK, "{body}");
@@ -601,12 +606,8 @@ async fn auto_approvals_are_recorded_as_such() {
         panic!("a group that asks first holds the task");
     };
     assert!(!decisions(&state).contains(&format!("`{item}`")));
-    post(
-        &router,
-        &format!("chief-of-staff/queue/{item}/approve"),
-        Value::Null,
-    )
-    .await;
+    rpc(&router, "approve_queued_work", json!({ "id": item })).await;
+
     assert_eq!(gate(&state, &team_task("task-3", ask)), Gate::Go);
     let by_you = recorded(&state, "intake", &item).await;
     assert!(by_you.contains(&you(&state)), "{by_you}");

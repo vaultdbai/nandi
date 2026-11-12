@@ -777,7 +777,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-01 — Request page header and states
 
 - **What:** One page per Request (gateway/delegation task chain or local ask), opened by any of its task ids: back button, title, Watch in companion (while running), Save as workflow and Do this again (local), Stop (running/waiting), a line with direction ("From <member> · Incoming" / "To <member> · Outgoing" / "On this Nandi"), start time, elapsed time (ticks live), status, "step n of m". Loading skeleton; "This request no longer exists" with "Back to the dashboard"; a load error shows "Couldn't load this request" with "Try again".
-- **Where:** Links from Home items, Inbox, Run Detail "Part of", delegation thread, gateway rows, Ask; view kind `request`; `src/components/views/RequestDetailView.tsx`; command `get_request`; HTTP `GET /api/requests/{id}`.
+- **Where:** Links from Home items, Inbox, Run Detail "Part of", delegation thread, gateway rows, Ask; view kind `request`; `src/components/views/RequestDetailView.tsx`; command `get_request`; HTTP `POST /api/rpc/get_request`.
 - **Preconditions:** A delegated task or local ask.
 - **Steps:** Open a Request; open a bogus id.
 - **Expected:** Header renders with display names, not device ids; bogus id shows "This request no longer exists".
@@ -837,7 +837,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-06 — Stop a Request
 
 - **What:** Stop asks first ("Stop this request?": "<member> is told to stop." for delegations, "The work in progress stops." for local asks; "Keep it" backs out), then cancels the task (`cancel_task`) or the local Request and everything its running steps started (agent turns, workflow runs, tasks).
-- **Where:** Request header → Stop; `RequestDetailView.tsx`; commands `cancel_task`, `cancel_request`; HTTP `POST /api/requests/{id}/cancel`, `POST /api/tasks/{id}/cancel`.
+- **Where:** Request header → Stop; `RequestDetailView.tsx`; commands `cancel_task`, `cancel_request`; HTTP `POST /api/rpc/cancel_request`, `POST /api/tasks/{id}/cancel`.
 - **Preconditions:** A running Request.
 - **Steps:** Stop → Keep it; Stop → confirm.
 - **Expected:** Toast "Stopped"; status cancelled; linked runs cancelled.
@@ -849,7 +849,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-07 — Retry a failed outgoing request (attempt n+1)
 
 - **What:** "Try next provider" (banner) or Retry (Inbox) creates a new attempt linked through `previous_attempt_id` (next provider) instead of an unlinked delegation; the page shows both attempts.
-- **Where:** Banner "Try next provider"; Inbox failed row Retry; command `retry_task`; HTTP `POST /api/requests/{id}/retry`; `requests/mod.rs` (`retry_task`).
+- **Where:** Banner "Try next provider"; Inbox failed row Retry; command `retry_task`; HTTP `POST /api/rpc/retry_task`; `requests/mod.rs` (`retry_task`).
 - **Preconditions:** A timed-out or failed outgoing delegation.
 - **Steps:** Click "Try next provider" on the Request page.
 - **Expected:** New attempt appears under the peer step.
@@ -880,7 +880,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-10 — An action ask becomes a Request
 
 - **What:** An approved plan from Ask (or a plan that only points at people/manual steps, which starts without asking) is saved as a Request (`requests`, `request_steps`) and carried out by the backend; the app navigates to its page with toast "Started. Follow it on its page.".
-- **Where:** Ask box anywhere (the Ask page, Home, workflow run view); `src/components/ask/AskBox.tsx` (`startPlan`, `planNeedsApproval`); command `start_request`; HTTP `POST /api/requests`; `src-tauri/src/services/requests/local.rs` (`start_request`).
+- **Where:** Ask box anywhere (the Ask page, Home, workflow run view); `src/components/ask/AskBox.tsx` (`startPlan`, `planNeedsApproval`); command `start_request`; HTTP `POST /api/rpc/start_request`; `src-tauri/src/services/requests/local.rs` (`start_request`).
 - **Preconditions:** A model; agents/workflows to act on.
 - **Steps:** 1. Ask "have <agent> summarize X then run workflow Y". 2. Approve the plan.
 - **Expected:** Request page opens with linked steps; `request://updated` events.
@@ -904,7 +904,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-12 — Mark a waiting step done (local Request)
 
 - **What:** Steps of kind "ask a person" or "manual" wait for the user; the Steps tab offers **Mark done**, which completes it and lets the Request continue.
-- **Where:** Request → Steps; command `complete_request_step`; HTTP `POST /api/requests/{id}/steps/{position}/complete`.
+- **Where:** Request → Steps; command `complete_request_step`; HTTP `POST /api/rpc/complete_request_step`.
 - **Preconditions:** A local Request with a human/manual step.
 - **Steps:** Click **Mark done** on the waiting step.
 - **Expected:** Step Done; next step starts.
@@ -916,7 +916,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-13 — Do this again
 
 - **What:** For an ended local Request, **Do this again** re-runs the same plan as a new Request and opens it.
-- **Where:** Request header; command `rerun_request`; HTTP `POST /api/requests/{id}/rerun`.
+- **Where:** Request header; command `rerun_request`; HTTP `POST /api/rpc/rerun_request`.
 - **Preconditions:** An ended local Request.
 - **Steps:** Click Do this again.
 - **Expected:** New Request id, same steps, page navigates to it.
@@ -928,7 +928,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-14 — Save a Request as a workflow
 
 - **What:** **Save as workflow** drafts YAML from the Request's plan (agent steps carry the label and ask text; other steps become manual steps), shows it for editing, and saves through `createWorkflow` (domain validation).
-- **Where:** Request header; `src/components/requests/SaveAsWorkflowDialog.tsx`; command `draft_workflow_from_request`; HTTP `POST /api/requests/{id}/workflow-draft`; `local.rs` (`workflow_yaml`).
+- **Where:** Request header; `src/components/requests/SaveAsWorkflowDialog.tsx`; command `draft_workflow_from_request`; HTTP `POST /api/rpc/draft_workflow_from_request`; `local.rs` (`workflow_yaml`).
 - **Preconditions:** A local Request.
 - **Steps:** Click Save as workflow; edit the name; Save.
 - **Expected:** File in `.nandi/workflows/`; the workflow validates and runs.
@@ -1089,7 +1089,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-29 — Chief of Staff acts on what arrives and shows Since you were away
 
 - **What:** Work that arrives from outside (email, calendar) is screened for phishing and malware signs and waits in a queue for your approval. **Approve** starts a Request, or adds the news to work already running instead of starting a second Request. Chats start work directly. Home shows a "Waiting for your OK" section at the top of the card (screening verdict, reasons, sender, **Approve** and **Dismiss**), and the card shows a "Since you were away" card (titled "What your Chief of Staff did" before the first "Got it") with a summary line and one row per item the Chief of Staff acted on: needs you, started, updated (with the news) or finished (done, failed, cancelled), the source (email, calendar, chat) and the time. A row opens its Request. **Got it** marks the digest seen and clears every row except the needs-you ones.
-- **Where:** Home (`ChiefOfStaffDigest.tsx`, `digest-model.ts`, `useChiefOfStaffDigest.ts`), commands `get_chief_of_staff_digest`, `mark_chief_of_staff_digest_seen`, `approve_queued_work`, `dismiss_queued_work`, event `request://updated`; HTTP `GET /api/chief-of-staff/digest`, `POST /api/chief-of-staff/digest/seen`, `POST /api/chief-of-staff/queue/{id}/approve`, `POST /api/chief-of-staff/queue/{id}/dismiss`.
+- **Where:** Home (`ChiefOfStaffDigest.tsx`, `digest-model.ts`, `useChiefOfStaffDigest.ts`), commands `get_chief_of_staff_digest`, `mark_chief_of_staff_digest_seen`, `approve_queued_work`, `dismiss_queued_work`, event `request://updated`; HTTP `POST /api/rpc/{command}`.
 - **Preconditions:** A mailbox connected (Settings › Email), a model that works, a second account to send mail from.
 - **Steps:**
   1. Send yourself a mail from another account: "Your power bill of $84 is due on Friday".
@@ -1161,7 +1161,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-32 — Auto-approve rules
 
 - **What:** Rules let some screened items through without a click. Settings › Auto-approve lists the rules (a domain such as `chase.com`, an email address, or a teammate), each with its actions as checkboxes (mail: start work, add news; teammate: run their requests), and **Add rule**. Screening still runs first: only a clean item passes, a suspicious one waits, a blocked one is refused. A mail rule only matches mail whose sender passed the sender check (DMARC), and a domain covers its subdomains. An item a rule approves is noted in its thread ("Approved automatically (mail from chase.com)"), shows in "Since you were away", and is in the decisions file as decided by the rule (`auto-approve rule (mail from chase.com)`, PO-14). On a queued clean email item, **Always allow mail from <domain>** adds a domain rule with the item's action, after a confirm. The form explains a missing action, a bad address or domain and a full list (100) before saving; the core's answer shows as a toast. Teammate rules need the relay; mail rules don't.
-- **Where:** `AutoApproveSection.tsx`, `auto-approve-model.ts`, `useAutoApproveRules.ts`, `QueueRowView.tsx` (`AlwaysAllowDialog`), `services/intake/rules.rs`, `dmarc_verified` in `services/email/mail.rs`, `get_auto_approve_rules`, `set_auto_approve_rules`, `GET`/`PUT /api/chief-of-staff/auto-approve`.
+- **Where:** `AutoApproveSection.tsx`, `auto-approve-model.ts`, `useAutoApproveRules.ts`, `QueueRowView.tsx` (`AlwaysAllowDialog`), `services/intake/rules.rs`, `dmarc_verified` in `services/email/mail.rs`, `get_auto_approve_rules`, `set_auto_approve_rules`, `POST /api/rpc/get_auto_approve_rules|set_auto_approve_rules`.
 - **Preconditions:** Email connected, and a test sender whose mail passes DMARC (a second domain to send from as well). Teammate rules: a relay with a teammate.
 - **Steps:**
   1. Open Settings › Auto-approve. Read the explanation and the empty state.
@@ -1214,7 +1214,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-34 — Every Inbox item opens as an Ask chat
 
 - **What:** Opening an Inbox line (Home, the Inbox page or the work tray) opens that item's chat with the Chief of Staff: a conversation `inbox:<kind>:<id>` made the first time it's opened (an intake item keeps its `intake:<id>` thread, RQ-31). The item's card sits on top with its buttons as shortcuts, the conversation below, and the ask box in chat mode at the bottom. The Chief of Staff gets the item and what's being decided as untrusted `<task-data>`, so the user can ask "why?", "what did they send?", "what happens if I refuse?", or answer in their own words. Once the item no longer waits, the top says "Nothing is left to decide here" and the chat stays.
-- **Where:** `src/components/views/InboxItemThreadView.tsx`, `ChiefOfStaffThread.tsx`, `src/hooks/useInboxThread.ts`, `inbox-model.ts` (`inboxThreadId`, `inboxItemView`), `tray-model.ts` (`inboxTrayRow`); view `inbox-thread`; commands `open_inbox_thread`, `send_inbox_message`; HTTP `POST /api/inbox/threads/{id}`, `POST /api/inbox/threads/{id}/messages`; `src-tauri/src/services/inbox/thread.rs`, `item.rs`.
+- **Where:** `src/components/views/InboxItemThreadView.tsx`, `ChiefOfStaffThread.tsx`, `src/hooks/useInboxThread.ts`, `inbox-model.ts` (`inboxThreadId`, `inboxItemView`), `tray-model.ts` (`inboxTrayRow`); view `inbox-thread`; commands `open_inbox_thread`, `send_inbox_message`; HTTP `POST /api/rpc/open_inbox_thread|send_inbox_message`; `src-tauri/src/services/inbox/thread.rs`, `item.rs`.
 - **Preconditions:** A model; an item waiting (for example an agent with `requires_approval: [shell]` asking to run a command, or someone's `ask-me` held for approval).
 - **Steps:**
   1. Open Home and click the item's line.

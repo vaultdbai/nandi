@@ -167,6 +167,11 @@ pub(crate) async fn post(router: &Router, uri: &str, body: Value) -> Value {
     answer
 }
 
+/// Runs a command over `POST /api/rpc/{name}`; its arguments are a JSON object
+pub(crate) async fn rpc(router: &Router, name: &str, args: Value) -> Value {
+    post(router, &format!("rpc/{name}"), args).await
+}
+
 /// Polls `GET uri` until `done` holds (up to 10s)
 pub(crate) async fn until(router: &Router, uri: &str, done: impl Fn(&Value) -> bool) -> Value {
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -421,9 +426,14 @@ async fn an_inbox_item_opens_as_a_chat(state: &AppState, router: &Router) {
     })
     .await;
     let id = pending[0]["id"].as_str().unwrap().to_string();
-    let thread = format!("inbox%3Aapproval%3A{id}");
+    let thread = format!("inbox:approval:{id}");
 
-    let opened = post(router, &format!("inbox/threads/{thread}"), Value::Null).await;
+    let opened = rpc(
+        router,
+        "open_inbox_thread",
+        json!({ "conversationId": thread }),
+    )
+    .await;
     assert_eq!(opened["kind"], "approval", "{opened}");
     assert_eq!(opened["waiting"], true, "{opened}");
     assert_eq!(opened["tools"], json!(["inbox_approve", "inbox_refuse"]));
@@ -437,7 +447,12 @@ async fn an_inbox_item_opens_as_a_chat(state: &AppState, router: &Router) {
     // The run takes the decision a moment later: then nothing waits
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        let thread = post(router, &format!("inbox/threads/{thread}"), Value::Null).await;
+        let thread = rpc(
+            router,
+            "open_inbox_thread",
+            json!({ "conversationId": thread }),
+        )
+        .await;
         if thread["waiting"] == false {
             break;
         }
@@ -483,7 +498,12 @@ async fn with_no_relay_getting_to_know_you_works() {
     crate::services::knowme::start(&state).await.unwrap();
     assert_eq!(get(&router, "know-me").await["todoOpen"], true);
 
-    let opened = post(&router, "inbox/threads/inbox%3AknowMe%3Ayou", Value::Null).await;
+    let opened = rpc(
+        &router,
+        "open_inbox_thread",
+        json!({ "conversationId": "inbox:knowMe:you" }),
+    )
+    .await;
     assert_eq!(opened["kind"], "knowMe", "{opened}");
     assert_eq!(opened["tools"], json!(["knowme_propose"]));
 

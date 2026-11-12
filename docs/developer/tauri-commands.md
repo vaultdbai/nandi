@@ -98,14 +98,23 @@ const handleSave = async () => {
 
 ## Adding New Commands
 
-### 1. Define the Rust command
+### 1. Declare the command
+
+A service call that takes `&AppState` and returns `Result<T, String>` is one line in `src-tauri/src/rpc/<module>.rs` (see `rpc/mod.rs`):
 
 ```rust
-// src-tauri/src/lib.rs
+super::commands! {
+    /// One Request with its Steps
+    fn get_request(state, id: String) -> Request => requests::get_request(&state, id).await;
+}
+```
 
+It serves Tauri IPC and `POST /api/rpc/get_request` alike. A new module also adds its `RPC` table to `TABLES` in `rpc/mod.rs`. Commands that need the `AppHandle`, a window or a typed error are written by hand:
+
+```rust
 #[tauri::command]
-#[specta::specta]  // Add this attribute
-pub async fn my_new_command(arg: String) -> Result<MyType, String> {
+#[specta::specta]
+pub async fn my_new_command(app: AppHandle, arg: String) -> Result<MyType, String> {
     // implementation
 }
 ```

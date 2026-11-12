@@ -187,7 +187,7 @@ the email or calendar check (and any outside source added later:
 `tool::from_outside`), `work_start` and `work_update` don't act. The item
 is screened, saved in `intake_queue` and waits for the user's approval
 (`approve_queued_work`, `dismiss_queued_work`,
-`POST /api/chief-of-staff/queue/{id}/approve|dismiss`). Approving starts
+`POST /api/rpc/approve_queued_work|dismiss_queued_work`). Approving starts
 the work or adds the news. In the user's own chat the tools act at once:
 the user is there.
 
@@ -216,7 +216,7 @@ queue item survives a restart: the resumed task finds its decision.
 the local setting `intake.autoApprove` (`AutoApproveRule`: an ID, a
 `RuleMatch` and the `IntakeAction`s it allows), read and replaced with
 `get_auto_approve_rules` / `set_auto_approve_rules`
-(`GET`/`PUT /api/chief-of-staff/auto-approve`). The core validates the whole
+(`POST /api/rpc/{command}`). The core validates the whole
 list on save (`services/intake/rules.rs`): at least one action per rule, a
 valid address, a bare domain like `chase.com`, a teammate picked, at most 100. Rules run after screening, never instead of it: only a clean item
 can match; suspicious items still queue and blocked ones are still refused.
@@ -242,7 +242,7 @@ planned when it's queued (`tool::plan_for`), so the user approves who does
 it, and Approve starts that plan.
 
 The user chats in the thread (`send_intake_message`,
-`POST /api/chief-of-staff/threads/{id}/messages`; the page loads
+`POST /api/rpc/send_intake_message`; the page loads
 `get_intake_thread` and the conversation): draft a reply, hand it to an
 agent, add what's missing. The orchestrator gives those turns the task
 (`thread::prompt`, inside `<task-data>`, untrusted). Work the Chief of
@@ -309,7 +309,7 @@ domains are never lookalikes.
   `chiefOfStaff` (`tool::source_of` reads the run); the ask box and Studio
   stay `me`.
 - **Since you were away** (`requests/digest.rs`, `get_chief_of_staff_digest`,
-  `GET /api/chief-of-staff/digest`): the queue waiting for approval, then
+  `POST /api/rpc/get_chief_of_staff_digest`): the queue waiting for approval, then
   Requests the Chief of Staff started, news it added and work that finished
   since the user last looked (`mark_chief_of_staff_digest_seen`). Work
   waiting on the user stays until it's done. Home shows it under the email
@@ -422,7 +422,7 @@ place.
 **One thread per item.** The conversation `inbox:<kind>:<id>` (`/` and `%`
 escaped in two-part IDs: `<run>/<step>`, `<task>/<question>`) is the Chief
 of Staff's, made the first time the item is opened (`open_inbox_thread`,
-`POST /api/inbox/threads/{id}`); an intake item keeps its `intake:<id>`
+`POST /api/rpc/open_inbox_thread`); an intake item keeps its `intake:<id>`
 thread. `inboxThreadId` (TypeScript) and `InboxItemRef` (Rust) name it the
 same way. The page puts the item's card on top (its buttons are the
 shortcuts), the conversation below, and the ask box in chat mode

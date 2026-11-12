@@ -12,10 +12,8 @@ import type {
   GroupView,
   GroupsOverview,
   InviteRequest,
-  AutoApproveRule,
   RelayTrust,
   RequestReturn,
-  ActionPlan,
   MascotInfo,
   DecisionFilter,
   KnowMeProposal,
@@ -60,9 +58,6 @@ import type {
   BackfillRange,
   EmailSettingsInput,
   EmailSignInPoll,
-  ChiefOfStaffDigest,
-  InboxThread,
-  IntakeThread,
   EmailStatus,
   MailProvider,
   AccessChoice,
@@ -182,7 +177,6 @@ import type {
   TaskFilter,
   TaskMessage,
   TaskRecord,
-  Request,
   TaskStatusReport,
   TeamRoster,
   TrustRelationship,
@@ -238,7 +232,21 @@ import type {
   PendingManualStep,
   RepoLlmConfigStatus,
 } from '@/lib/bindings'
+import type { commands } from '@/lib/bindings'
 import type { NandiEvent } from './events'
+
+/**
+ * The generated commands. Ones declared with `rpc::commands!` in Rust work
+ * on both transports as they are (see `invoke.ts`)
+ */
+type Commands = typeof commands
+
+/**
+ * The client: the generated commands, with the hand-written methods taking
+ * the place of any command of the same name
+ */
+export type NandiClient = Omit<Commands, keyof HandWrittenClient> &
+  HandWrittenClient
 
 export interface Subscription {
   /**
@@ -249,7 +257,11 @@ export interface Subscription {
   unsubscribe: () => void
 }
 
-export interface NandiClient {
+/**
+ * What each transport writes by hand: desktop-only calls, `subscribe`, and
+ * commands not yet declared with `rpc::commands!`
+ */
+export interface HandWrittenClient {
   /** `tauri` (desktop webview) or `web` (browser) */
   readonly transport: 'tauri' | 'web'
   /** Features that need the desktop app */
@@ -879,49 +891,6 @@ export interface NandiClient {
     providerAgent: string | null
   ): Promise<Result<EtaEstimate, string>>
 
-  // Requests (v1): one unit of work with its Steps; `id` is any task ID in it
-  getRequest(id: string): Promise<Result<Request, string>>
-  /** The Request a run is part of, if any */
-  requestForRun(runId: string): Promise<Result<string | null, string>>
-  /** A failed outgoing Request on the next provider (attempt n + 1) */
-  retryTask(id: string): Promise<Result<Request, string>>
-  /** Saves an ask's approved plan as a Request and starts it (its ID) */
-  startRequest(plan: ActionPlan, text: string): Promise<Result<string, string>>
-  /** Marks a step of a local Request that waits on the user done */
-  /** What the Chief of Staff did since the user last looked */
-  getChiefOfStaffDigest(): Promise<Result<ChiefOfStaffDigest, string>>
-  /** The user has seen the digest; needs-you items stay */
-  markChiefOfStaffDigestSeen(): Promise<Result<null, string>>
-  /** Starts (or adds to) the Request a screened item waits to become (its ID) */
-  approveQueuedWork(id: string): Promise<Result<string, string>>
-  /** Drops a queued item without acting on it */
-  dismissQueuedWork(id: string): Promise<Result<null, string>>
-  /** The rules that let clean items through without a click */
-  getAutoApproveRules(): Promise<Result<AutoApproveRule[], string>>
-  /** Replaces the list; the core checks each rule and answers with why not */
-  setAutoApproveRules(rules: AutoApproveRule[]): Promise<Result<null, string>>
-  /** One intake item's Chief of Staff thread: its items and Requests */
-  getIntakeThread(conversationId: string): Promise<Result<IntakeThread, string>>
-  /** A message to the Chief of Staff in an intake thread (a turn) */
-  sendIntakeMessage(
-    conversationId: string,
-    text: string,
-    clientMessageId: string | null
-  ): Promise<Result<SendMessageResult, string>>
-  /** An Inbox item's Ask chat, made the first time it's opened */
-  openInboxThread(conversationId: string): Promise<Result<InboxThread, string>>
-  /** A message to the Chief of Staff in an Inbox item's chat (a turn) */
-  sendInboxMessage(
-    conversationId: string,
-    text: string,
-    clientMessageId: string | null
-  ): Promise<Result<SendMessageResult, string>>
-  completeRequestStep(
-    id: string,
-    position: number
-  ): Promise<Result<null, string>>
-  /** Stops a local Request and what its steps started */
-  cancelRequest(id: string): Promise<Result<null, string>>
   // Decisions (Home › Decisions)
   /** The months that have decisions (`2026-11`), newest first */
   listDecisionMonths(): Promise<Result<string[], string>>
@@ -947,10 +916,6 @@ export interface NandiClient {
   mascotSet(name: string | null): Promise<Result<MascotInfo, string>>
   /** The bull's reply to the hidden phrase (`null` for anything else) */
   mascotPhrase(input: string): Promise<Result<PhraseResponse | null, string>>
-  /** Do this again: the same plan as a new Request (its ID) */
-  rerunRequest(id: string): Promise<Result<string, string>>
-  /** Save as workflow: a workflow file drafted from a Request's plan */
-  draftWorkflowFromRequest(id: string): Promise<Result<string, string>>
 
   // Clarification
   respondToClarification(

@@ -17,7 +17,7 @@ The same Nandi core serves two transports: Tauri IPC for the desktop webview, an
 ## Rules
 
 - **`services/` and `http/` never import Tauri.** Services take `&AppState`; `AppState::start(Config)` is called by both `lib.rs` (desktop) and `headless.rs`.
-- **Commands and routes are thin.** Business logic lives in a service; add the command and the route as one-line adapters over it.
+- **One declaration per command.** Business logic lives in a service. Declare the command once with `rpc::commands!` in `src-tauri/src/rpc/<module>.rs`: one line gives the Tauri command (desktop) and `POST /api/rpc/{name}` (web). Register it in `bindings.rs` and run `pnpm run rust:bindings`; the UI then calls `client.<camelName>` on both transports. Commands that need the `AppHandle`, a window or a typed error stay hand-written in `commands/` with a route in `http/`. Modules not yet moved to `rpc/` still use that older pair.
 - **The UI never calls `invoke()`/`listen()` for data.** Use `client` from `@/lib/client`. Desktop-only chrome (windows, menus, updater, companion window, OS plugins) is gated by `isDesktop()`.
 - **Paths never come from a client.** The native file picker runs in the Tauri adapter (`commands/attachments.rs`) and stages files; clients only hold attachment IDs. The web client reports attachments as unsupported.
 - **Secrets** use the `keyring` crate via `services::secrets`, under the app identifier (`services::APP_IDENTIFIER`, checked against `tauri.conf.json` by a test).
@@ -48,7 +48,9 @@ Release builds on Windows have no console of their own: when started from a term
 
 ## REST routes
 
-`/api/agents` (GET, POST) · `/api/agents/{id}` (DELETE) · `/api/agents/{id}/start|stop|restart|messages|approve|cancel` (POST) · `/api/agents/{id}/queue|current` (GET) · `/api/queue/{runId}/cancel` (POST) · `/api/queue/{runId}/priority` (POST `{ priority }`) · `/api/triggers…` (see [Triggers](./triggers.md#api)) · `/api/snapshots/agent/{id}` · `/api/snapshots/dashboard?dayStart=` · `/api/runs/{id}` · `/api/workflows` · `/api/studio/conversations` (GET, POST) · `/api/studio/conversations/{id}/messages` (POST) · `/api/conversations/{id}` · `/api/attachments/{id}` (DELETE) · `/api/preferences` (GET, PUT) · `/api/llm-keys` (GET) · `/api/llm-keys/{provider}` (PUT) · `/api/emergency-data/{name}` (GET, PUT) · `/api/emergency-data/cleanup` (POST).
+`POST /api/rpc/{name}` runs any command declared with `rpc::commands!`. The JSON body is its arguments with camelCase keys, as over IPC: `POST /api/rpc/request_for_run {"runId": "r1"}`. Unknown names are `404`. The generated `commands` reach it through `src/lib/client/invoke.ts`.
+
+The hand-written routes: `/api/agents` (GET, POST) · `/api/agents/{id}` (DELETE) · `/api/agents/{id}/start|stop|restart|messages|approve|cancel` (POST) · `/api/agents/{id}/queue|current` (GET) · `/api/queue/{runId}/cancel` (POST) · `/api/queue/{runId}/priority` (POST `{ priority }`) · `/api/triggers…` (see [Triggers](./triggers.md#api)) · `/api/snapshots/agent/{id}` · `/api/snapshots/dashboard?dayStart=` · `/api/runs/{id}` · `/api/workflows` · `/api/studio/conversations` (GET, POST) · `/api/studio/conversations/{id}/messages` (POST) · `/api/conversations/{id}` · `/api/attachments/{id}` (DELETE) · `/api/preferences` (GET, PUT) · `/api/llm-keys` (GET) · `/api/llm-keys/{provider}` (PUT) · `/api/emergency-data/{name}` (GET, PUT) · `/api/emergency-data/cleanup` (POST).
 
 Errors are `400 {"error": "…"}` with the same messages the IPC commands return; auth failures are `401`.
 
