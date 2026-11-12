@@ -163,7 +163,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **What:** List agents and packs from all configured registries merged by ID (highest `latest_version` wins; tie → earlier registry), with filters (query, tags, verifiedOnly, installedOnly, refresh); detail per agent/pack; ranked catalog search (installed and available).
 - **Where:** Commands `list_available_packs`, `list_marketplace_packs`, `list_available_agents`, `get_agent_detail`, `get_pack_detail`, `list_installed`, `search_marketplace` (`commands/marketplace.rs`, `commands/marketplace_search.rs`). HTTP `GET /api/marketplace/packs`, `/packs/{id}/detail`, `/agents`, `/agents/{id}/detail`, `/installed`, `/search?q=`. `services/marketplace/registry.rs`, `search.rs`. The command palette also searches marketplace entries (`services/palette.rs`).
 - **Preconditions:** Registry reachable or cached.
-- **Steps:** 1. `GET /api/marketplace/agents?query=paper`. 2. `GET /api/marketplace/search?q=review`. 3. `GET /api/marketplace/installed`.
+- **Steps:** 1. `GET /api/marketplace/agents?query=paper`. 2. `POST /api/rpc/search_marketplace` `{"query":"review"}`. 3. `GET /api/marketplace/installed`.
 - **Expected:** JSON lists; `verified` set per entry; search hits ranked.
 - **Edge / negative cases:** Bad entry in an index is skipped with a log line; hostile paths (`..`), option-like refs, non-https asset URLs rejected by `manifest.rs` validation.
 - **Automation:** Covered by: Rust `services/marketplace/manifest.rs` (7), `search.rs` (7), `registry.rs` (4) tests | Layer: api | Gap: `search_marketplace` and `list_installed` have no UI consumer (API/palette only).
@@ -818,7 +818,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-05 — Artifact editor: open, forms, raw file, validation
 
 - **What:** Right pane tabs Capability, Agent, Workflow, Policy (incl. NANDI.md as "gateway"), Tool (read-only catalog with Disabled badges). Choose an existing artifact or enter a New ID → Create (capability/policy/NANDI.md load as starter templates). Field forms edit the raw file line by line (comments survive); a raw file editor; live validation ("Valid: this will save as it is." / "Not valid yet, so it can't be saved:" with warnings such as unknown tools, model without key, missing agents); "Unsaved" badge.
-- **Where:** `src/components/studio/ArtifactTabs.tsx`, `ArtifactEditor.tsx`, `AgentForm.tsx`, `WorkflowForm.tsx`, `CapabilityForm.tsx`, `PolicyForm.tsx`, `src/lib/yaml-fields.ts`; commands `list_policies` (`GET /api/policies`, `src/hooks/usePolicies.ts`), `load_artifact` (`POST /api/studio/load`), `validate_artifact` (`POST /api/studio/validate`), `set_studio_open_artifact` (`POST /api/studio/open`); `services/studio/artifact_loader.rs`, `validate.rs`.
+- **Where:** `src/components/studio/ArtifactTabs.tsx`, `ArtifactEditor.tsx`, `AgentForm.tsx`, `WorkflowForm.tsx`, `CapabilityForm.tsx`, `PolicyForm.tsx`, `src/lib/yaml-fields.ts`; commands `list_policies` (`POST /api/rpc/list_policies`, `src/hooks/usePolicies.ts`), `load_artifact` (`POST /api/studio/load`), `validate_artifact` (`POST /api/studio/validate`), `set_studio_open_artifact` (`POST /api/studio/open`); `services/studio/artifact_loader.rs`, `validate.rs`.
 - **Preconditions:** None.
 - **Steps:** 1. Ask → right pane Agent tab → choose an agent in the dropdown. 2. Change the Model field to `bad`. 3. Fix it.
 - **Expected:** Unsaved badge; validation error then valid; Save disabled while invalid.

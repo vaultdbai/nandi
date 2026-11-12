@@ -4060,12 +4060,12 @@ workspaceChanged: "workspace://changed"
 /** user-defined constants **/
 
 export const SEAL_REFUSED = "seal_refused" as const;
-export const NO_SHARED_GROUP = "no_shared_group" as const;
+export const DAILY_LIMIT = "daily_limit" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const NO_SHARED_GROUP = "no_shared_group" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const DAILY_LIMIT = "daily_limit" as const;
 
 /** user-defined types **/
 

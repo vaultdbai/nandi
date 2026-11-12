@@ -33,8 +33,6 @@ import type {
   AgentOverview,
   AgentManifest,
   AgentPilotPermission,
-  AgentPolicies,
-  AnalysisResponse,
   AppliedUpdate,
   AgentSnapshot,
   AppPreferences,
@@ -93,14 +91,10 @@ import type {
   OllamaStatus,
   OnboardingStep,
   MarketplaceFilter,
-  MarketplaceSearchHit,
   PackDetail,
   PackManifest,
-  PaletteActionOutcome,
-  PaletteResult,
   PilotDefinition,
   PilotStatus,
-  PolicySummary,
   PublishAgentInput,
   PublishResult,
   QueueEntry,
@@ -137,7 +131,6 @@ import type {
   TrustRule,
   UpdateAvailable,
   Workflow,
-  WorkflowGraph,
   WorkflowSummary,
   CallerPolicy,
   ClarificationPolicy,
@@ -219,7 +212,6 @@ import type {
   ReassignCandidate,
   ManualStepCompletion,
   PendingManualStep,
-  RepoLlmConfigStatus,
 } from '@/lib/bindings'
 import type { commands } from '@/lib/bindings'
 import type { NandiEvent } from './events'
@@ -577,10 +569,6 @@ export interface HandWrittenClient {
   agentPilotPermissions(
     agentId: string
   ): Promise<Result<AgentPilotPermission[], string>>
-  /** The policies over an agent and what each changed, or why it can't run */
-  agentPolicies(agentId: string): Promise<Result<AgentPolicies, string>>
-  /** Every policy in the repo by id and name, broken ones included */
-  listPolicies(): Promise<Result<PolicySummary[], string>>
 
   // Runs across every agent, and the audit logs (wave 1, Track C)
   /** Newest first */
@@ -730,26 +718,10 @@ export interface HandWrittenClient {
   // Wave 2B redesign
 
   // Run detail + analysis (Track A)
-  /** Answers `question` from the run's own record, citing sources */
-  analyzeRun(
-    runId: string,
-    question: string
-  ): Promise<Result<AnalysisResponse, string>>
-  /** A short markdown summary of the run (cached) */
-  summarizeRun(runId: string): Promise<Result<string, string>>
 
   // Workflow builder (Track B)
-  getWorkflowGraph(workflowId: string): Promise<Result<WorkflowGraph, string>>
-  /** Saves the workflow's YAML; returns the reloaded workflow */
-  saveWorkflowYaml(
-    workflowId: string,
-    yaml: string
-  ): Promise<Result<Workflow, string>>
 
   // Marketplace (Track C)
-  searchMarketplace(
-    query: string
-  ): Promise<Result<MarketplaceSearchHit[], string>>
 
   // Companion (Track D). Window control needs the desktop app.
   /** `dayStart`: local midnight, epoch ms */
@@ -801,12 +773,6 @@ export interface HandWrittenClient {
   companionFocusRequest(requestId: string): Promise<Result<null, string>>
 
   // Command palette (Track E)
-  /** `>`-prefixed queries search actions only */
-  searchPalette(query: string): Promise<Result<PaletteResult[], string>>
-  executePaletteAction(
-    actionId: string,
-    args: JsonValue
-  ): Promise<Result<PaletteActionOutcome, string>>
 
   // Wave final
 
@@ -1269,8 +1235,6 @@ export interface HandWrittenClient {
   ): Promise<Result<null, string>>
   listPendingManualSteps(): Promise<Result<PendingManualStep[], string>>
   // Wave EF: `.nandi/llm.yaml`
-  getRepoLlmConfig(): Promise<Result<RepoLlmConfigStatus, string>>
-  reloadRepoLlmConfig(): Promise<Result<RepoLlmConfigStatus, string>>
 
   /** Opens `url` in the system browser */
   openExternal(url: string): Promise<void>

@@ -364,8 +364,6 @@ export const webClient: NandiClient = withCommands({
     }),
   clearBrowserProfile: (agentId, pilotId) =>
     request('DELETE', `/agents/${id(agentId)}/pilots/${id(pilotId)}/profile`),
-  agentPolicies: agentId => request('GET', `/agents/${id(agentId)}/policies`),
-  listPolicies: () => request('GET', '/policies'),
 
   listAllRuns: (filters, limit, offset) =>
     request('GET', `/runs${query({ ...filters, limit, offset })}`),
@@ -448,17 +446,6 @@ export const webClient: NandiClient = withCommands({
   setTrustPolicy: (requester, providerAgent, policy) =>
     request('PUT', '/trust/policies', { requester, providerAgent, policy }),
 
-  analyzeRun: (runId, question) =>
-    request('POST', `/runs/${id(runId)}/analyze`, { question }),
-  summarizeRun: runId => request('GET', `/runs/${id(runId)}/summary`),
-
-  getWorkflowGraph: workflowId =>
-    request('GET', `/workflows/${id(workflowId)}/graph`),
-  saveWorkflowYaml: (workflowId, yaml) =>
-    request('PUT', `/workflows/${id(workflowId)}/yaml`, { yaml }),
-
-  searchMarketplace: q => request('GET', `/marketplace/search${query({ q })}`),
-
   getCompanionSnapshot: dayStart =>
     request('GET', `/companion/snapshot${query({ dayStart })}`),
   toggleCompanionWindow: () =>
@@ -495,10 +482,6 @@ export const webClient: NandiClient = withCommands({
   // The web build's companion lives in the page (`watchInCompanion`)
   companionFocusRequest: () =>
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
-
-  searchPalette: q => request('GET', `/palette/search${query({ q })}`),
-  executePaletteAction: (actionId, args) =>
-    request('POST', `/palette/actions/${id(actionId)}`, { args }),
 
   getIdentityStatus: () => request('GET', '/identity/status'),
   getVerifiedIdentity: () => request('GET', '/identity/verified'),
@@ -821,8 +804,6 @@ export const webClient: NandiClient = withCommands({
       completion
     ),
   listPendingManualSteps: () => request('GET', '/workflows/manual-steps'),
-  getRepoLlmConfig: () => request('GET', '/config/llm'),
-  reloadRepoLlmConfig: () => request('POST', '/config/llm/reload'),
 
   openExternal: url => {
     window.open(url, '_blank', 'noopener,noreferrer')

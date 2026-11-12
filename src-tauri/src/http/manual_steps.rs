@@ -128,7 +128,7 @@ steps:
         let state = AppState::for_tests(vec![]);
         let app = api()
             .merge(super::super::network::api())
-            .merge(super::super::config::api())
+            .merge(super::super::rpc::api())
             .merge(super::super::tasks::api())
             .with_state(state.clone());
 
@@ -148,10 +148,10 @@ steps:
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["trust"]["delegationsPaused"], true);
 
-        let (status, body) = call(&app, "GET", "/config/llm", "").await;
+        let (status, body) = call(&app, "POST", "/rpc/get_repo_llm_config", "{}").await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["found"], false);
-        let (status, body) = call(&app, "POST", "/config/llm/reload", "").await;
+        let (status, body) = call(&app, "POST", "/rpc/reload_repo_llm_config", "{}").await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert!(body["syncedAt"].is_number());
 

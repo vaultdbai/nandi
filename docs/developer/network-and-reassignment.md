@@ -26,7 +26,7 @@ src-tauri/src/services/
 | `pause_delegations_from_member`                        | `POST /api/members/{instance}/delegations/pause`                                     |
 | `reassign_task`, `list_reassign_candidates`            | `POST /api/tasks/{id}/reassign`, `GET /api/tasks/{id}/reassign-candidates`           |
 | `complete_manual_step`, `list_pending_manual_steps`    | `POST /api/workflows/{run}/steps/{step}/complete`, `GET /api/workflows/manual-steps` |
-| `get_repo_llm_config`, `reload_repo_llm_config`        | `GET /api/config/llm`, `POST /api/config/llm/reload`                                 |
+| `get_repo_llm_config`, `reload_repo_llm_config`        | `POST /api/rpc/get_repo_llm_config`, `POST /api/rpc/reload_repo_llm_config`          |
 
 The wave spec named the member commands `get_member_profile`,
 `block_agent`, and `pause_delegations`; those already existed from wave

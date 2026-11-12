@@ -728,7 +728,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### SH-21 — Command palette: open, search, open results
 
 - **What:** Cmd/Ctrl+K toggles the palette, even from inside inputs. Shift and Alt variants are ignored. Typing searches agents, workflows, runs, packages, tools and actions on the server (debounced 150 ms) plus the local commands. Results are grouped (Ask, Actions, Agents, Workflows, Runs, Packages, Tools) and ranked: exact, prefix, word prefix, contains, then description. A run ranks below its agent. Keys: Up, Down, Home, End, Enter, Esc. Choosing an entity opens its view.
-- **Where:** `src/components/palette/CommandPalette.tsx`, `PaletteResult.tsx`, `palette-items.ts`, `src/hooks/usePalette.ts`; `search_palette` (`src-tauri/src/commands/palette.rs`, `services/palette.rs`); `GET /api/palette/search?q=`.
+- **Where:** `src/components/palette/CommandPalette.tsx`, `PaletteResult.tsx`, `palette-items.ts`, `src/hooks/usePalette.ts`; `search_palette` (`src-tauri/src/commands/palette.rs`, `services/palette.rs`); `POST /api/rpc/search_palette` `{query}`.
 - **Preconditions:** Some agents and workflows.
 - **Steps:**
   1. Press Ctrl+K and type the start of an agent's name.
@@ -795,7 +795,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
   The outcome may show a success toast and navigate.
 
-- **Where:** `services/palette.rs` (`actions()`, `VIEWS`, `execute_palette_action`), `execute_palette_action` command, `POST /api/palette/actions/{action_id}` (body `{args}`).
+- **Where:** `services/palette.rs` (`actions()`, `VIEWS`, `execute_palette_action`), `execute_palette_action` command, `POST /api/rpc/execute_palette_action` `{actionId, args}` (body `{args}`).
 - **Preconditions:** Docker for pause and resume. A workflow.
 - **Steps:**
   1. Type ">run" and choose "Run <workflow name>".

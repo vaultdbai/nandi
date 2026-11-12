@@ -73,12 +73,18 @@ macro_rules! commands {
 }
 pub(crate) use commands;
 
+pub mod analysis;
+pub mod config;
 pub mod decisions;
 pub mod knowme;
+pub mod marketplace_search;
 pub mod mascot;
 pub mod memory;
 pub mod notes;
+pub mod palette;
+pub mod policies;
 pub mod requests;
+pub mod workflow_builder;
 
 /// What an RPC call returns: the command's JSON result, or its error text
 pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, String>> + Send>>;
@@ -88,12 +94,18 @@ pub type Handler = fn(AppState, Value) -> RpcFuture;
 
 /// Every module's `RPC` table. A new module adds its table here.
 const TABLES: &[&[(&str, Handler)]] = &[
+    analysis::RPC,
+    config::RPC,
     decisions::RPC,
     knowme::RPC,
+    marketplace_search::RPC,
     mascot::RPC,
     memory::RPC,
     notes::RPC,
+    palette::RPC,
+    policies::RPC,
     requests::RPC,
+    workflow_builder::RPC,
 ];
 
 /// Every command name with its handler

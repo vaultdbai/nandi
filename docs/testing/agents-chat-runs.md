@@ -1145,7 +1145,7 @@ Shared preconditions used below:
 ### RN-08 — Run summary and questions (analysis)
 
 - **What:** The **Summary** tab (second, after Overview) generates a cached summary on first open (three short paragraphs plus key risks); then free-text questions answered only from the run's own record (events, messages, artifacts), each answer with cited sources (`[event:12]`, `[message:<id>]`) shown as a list; uncited IDs are dropped. Answers are cached per run and normalized question in `local_settings`; active runs aren't cached ("Saved answer" badge on reuse). Without a key: "Add an API key in Settings to use run analysis." with **Open Settings**, which opens Settings › Models & runtimes. An ask box sits under every tab; sending from any tab opens **Summary**, where the answers collect. The summary is not generated until Summary is opened.
-- **Where:** `src/components/agent-console/RunSummary.tsx` (`RunSummaryTab`, `RunAskBox`), `RunDetailView.tsx`; `analyze_run`, `summarize_run` (`commands/analysis.rs`, `services/run_analysis.rs`); HTTP `POST /api/runs/{id}/analyze` `{question}`, `GET /api/runs/{id}/summary`.
+- **Where:** `src/components/agent-console/RunSummary.tsx` (`RunSummaryTab`, `RunAskBox`), `RunDetailView.tsx`; `analyze_run`, `summarize_run` (`commands/analysis.rs`, `services/run_analysis.rs`); HTTP `POST /api/rpc/analyze_run` `{question}`, `POST /api/rpc/summarize_run`.
 - **Preconditions:** Model key; a finished run.
 - **Steps:** On the Files tab, ask "why did step 3 fail?"; ask the same with different case/spacing.
 - **Expected:** Summary opens with the answer and its sources; long citation ids wrap and the page keeps its width; the second ask is served from cache.

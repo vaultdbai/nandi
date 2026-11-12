@@ -543,7 +543,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-18 — Team LLM config (`.nandi/llm.yaml`) and Enterprise config panel
 
 - **What:** A team repo can carry `.nandi/llm.yaml` (providers bedrock/azure/litellm/anthropic/openai/ollama, routing default/fallbacks, no secrets); precedence env (`NANDI_LLM_PROVIDER`, `NANDI_LLM_MODEL`) > repo > local; harness agents take its provider/model, native agents its native default model. Advanced shows what's in effect, with Sync.
-- **Where:** Settings → Models & runtimes → Advanced → Enterprise config. `src/components/preferences/EnterpriseConfigSection.tsx`, `services/config/repo_config.rs`, `commands/config.rs` (`get_repo_llm_config`, `reload_repo_llm_config`). HTTP `GET /api/config/llm`, `POST /api/config/llm/reload`. Event `config://repo_llm_changed`.
+- **Where:** Settings → Models & runtimes → Advanced → Enterprise config. `src/components/preferences/EnterpriseConfigSection.tsx`, `services/config/repo_config.rs`, `commands/config.rs` (`get_repo_llm_config`, `reload_repo_llm_config`). HTTP `POST /api/rpc/get_repo_llm_config`, `POST /api/rpc/reload_repo_llm_config`. Event `config://repo_llm_changed`.
 - **Preconditions:** A repo with `.nandi/llm.yaml`.
 - **Steps:** 1. Add the file with `default: bedrock-primary`. 2. Click Sync. 3. Break the YAML, Sync. 4. Set `NANDI_LLM_MODEL=ollama:llama3`, restart.
 - **Expected:** 2. Toast "Enterprise config synced", effective values shown, `repo_config_cache` row. 3. Toast "The repo's .nandi/llm.yaml has a problem". 4. Default model for calls is `ollama:llama3`. File changes on disk are picked up by mtime without Sync.

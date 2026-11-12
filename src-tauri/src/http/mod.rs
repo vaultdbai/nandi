@@ -6,7 +6,6 @@
 //! with an explicit `--server`.
 
 mod access;
-mod analysis;
 // Wave CD (see docs/developer/interaction-layer.md)
 mod ask;
 pub mod auth;
@@ -19,7 +18,6 @@ mod capability;
 mod capability_registries;
 mod companion;
 // Wave EF
-mod config;
 mod connectors;
 mod delegation;
 // Wave final
@@ -36,11 +34,8 @@ mod live;
 mod machine;
 mod manual_steps;
 mod marketplace;
-mod marketplace_search;
 mod network;
-mod palette;
 mod pilots;
-mod policies;
 mod relay;
 mod remote;
 mod repo;
@@ -55,7 +50,6 @@ mod teams_roster;
 mod tools;
 mod triggers;
 mod work;
-mod workflow_builder;
 mod workspace;
 pub mod ws;
 
@@ -85,7 +79,6 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(triggers::api())
                 .merge(repo::api())
                 .merge(pilots::api())
-                .merge(policies::api())
                 .merge(connectors::api())
                 .merge(images::api())
                 .merge(machine::api())
@@ -97,11 +90,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(teams::api())
                 .merge(shared::api())
                 // Wave 2B redesign
-                .merge(analysis::api())
-                .merge(workflow_builder::api())
-                .merge(marketplace_search::api())
                 .merge(companion::api())
-                .merge(palette::api())
                 // Wave final
                 // Wave final, network-first
                 .merge(identity::api())
@@ -130,8 +119,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(studio::api())
                 .merge(work::api())
                 // Wave EF (see docs/developer/network-and-reassignment.md)
-                .merge(manual_steps::api())
-                .merge(config::api()),
+                .merge(manual_steps::api()),
         )
         .route("/ws", get(ws::handler))
         .fallback(static_files::handler)
@@ -355,18 +343,11 @@ mod tests {
     async fn wave_2b_redesign_routes_are_mounted() {
         let (state, app) = app();
         for (method, uri) in [
-            ("POST", "/api/runs/r1/analyze"),
-            ("GET", "/api/runs/r1/summary"),
-            ("GET", "/api/workflows/w1/graph"),
-            ("PUT", "/api/workflows/w1/yaml"),
-            ("GET", "/api/marketplace/search?q=x"),
             ("GET", "/api/companion/snapshot?dayStart=0"),
             ("POST", "/api/companion/toggle"),
             ("POST", "/api/companion/pin"),
             ("POST", "/api/companion/messages"),
             ("POST", "/api/companion/notify"),
-            ("GET", "/api/palette/search?q=x"),
-            ("POST", "/api/palette/actions/open_view"),
         ] {
             // JSON (501 while stubbed, or the track's answer); unmatched
             // paths fall through to the frontend's HTML instead

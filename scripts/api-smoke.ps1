@@ -19,12 +19,12 @@ $ErrorActionPreference = 'Stop'
 $Routes = @(
     'agents', 'agents/overviews', 'approvals/pending', 'ask/history', 'aws/cli', 'aws/profiles',
     'bedrock/gateway', 'bedrock/models', 'capabilities', 'capabilities/declared',
-    'capability-registries', 'companion/snapshot', 'config/llm', 'connectors', 'default-model',
+    'capability-registries', 'companion/snapshot', 'connectors', 'default-model',
     'delegation/history', 'delegation/pending-clarifications', 'delegation/providers',
     'egress/status', 'gateway/callers', 'gateway/config', 'gateway/holds', 'gateway/manifest',
     'gateway/status', 'harnesses', 'harness-sessions', 'identity/status', 'llm-keys',
-    'marketplace/agents', 'marketplace/installed', 'marketplace/packs', 'marketplace/search',
-    'marketplace/updates', 'network/snapshot', 'ollama', 'palette/search', 'pilots',
+    'marketplace/agents', 'marketplace/installed', 'marketplace/packs',
+    'marketplace/updates', 'network/snapshot', 'ollama', 'pilots',
     'preferences', 'relay/agents', 'relay/status', 'remote/status', 'repo/git/status',
     'repo/status', 'runs', 'shared/by-me', 'shared/capabilities', 'shared/with-me',
     'studio/push-targets', 'tasks', 'teams', 'tools', 'tools/usage', 'triggers',
@@ -32,7 +32,7 @@ $Routes = @(
     'workflows/manual-steps',
     # Commands without arguments: `POST /api/rpc/{name}` with `{}`
     'rpc:get_auto_approve_rules', 'rpc:get_chief_of_staff_digest', 'rpc:get_know_me',
-    'rpc:get_my_notes', 'rpc:list_decision_months', 'rpc:list_note_suggestions', 'rpc:mascot_get'
+    'rpc:get_my_notes', 'rpc:get_repo_llm_config', 'rpc:list_decision_months', 'rpc:list_note_suggestions', 'rpc:mascot_get'
 )
 
 if (-not (Test-Path $Binary)) {

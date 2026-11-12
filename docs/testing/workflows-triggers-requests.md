@@ -147,7 +147,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-10 — Graph tab (workflow canvas)
 
 - **What:** A React Flow canvas with one node per step laid out top to bottom, "sequence" edges between consecutive steps and "data" edges for `{{step.output}}` references, and live per-node status from the latest run ("Pending", "Running", "Waiting for your approval", "Waiting on a person", "Success", "Failed", "Skipped"). Nodes aren't draggable. A screen-reader list describes the dependencies.
-- **Where:** Workflow → Graph tab; `src/components/workflow-builder/WorkflowCanvas.tsx`, `graph-model.ts` (`layoutGraph`, `applyWorkflowEvent`), `useWorkflowGraph.ts`; command `get_workflow_graph` (`src-tauri/src/commands/workflow_builder.rs`, `src-tauri/src/services/workflow_graph.rs` `build_graph`); HTTP `GET /api/workflows/{id}/graph`.
+- **Where:** Workflow → Graph tab; `src/components/workflow-builder/WorkflowCanvas.tsx`, `graph-model.ts` (`layoutGraph`, `applyWorkflowEvent`), `useWorkflowGraph.ts`; command `get_workflow_graph` (`src-tauri/src/commands/workflow_builder.rs`, `src-tauri/src/services/workflow_graph.rs` `build_graph`); HTTP `POST /api/rpc/get_workflow_graph`.
 - **Preconditions:** A workflow with a data reference.
 - **Steps:** 1. Open Graph. 2. Run the workflow and watch nodes. 3. Let it fail at a step.
 - **Expected:** Edges match the YAML; nodes change status live from `workflow://*` events; steps after a failure show as skipped once the run ended.
@@ -171,7 +171,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-12 — Edit a step from the panel
 
 - **What:** "Edit step" lets the user change an agent step's agent (picker by name), "What to tell the agent", and "Ask me first" (requires_approval) and save with "Save step"; the YAML file is rewritten (description and manual steps kept). If a run is going, a note says "A run is going. Your change applies to the next run." Manual steps aren't editable here ("A person does this step. Change its instructions in Ask.").
-- **Where:** Workflow → Graph → node → Edit step; `StepDetailsPanel.tsx` (`EditStep`), `graph-model.ts` (`workflowYamlWithStep`), command `save_workflow_yaml`; HTTP `PUT /api/workflows/{id}/yaml`.
+- **Where:** Workflow → Graph → node → Edit step; `StepDetailsPanel.tsx` (`EditStep`), `graph-model.ts` (`workflowYamlWithStep`), command `save_workflow_yaml`; HTTP `POST /api/rpc/save_workflow_yaml`.
 - **Preconditions:** A workflow and two agents.
 - **Steps:** 1. Click **Edit step**; change the agent and "What to tell the agent", and tick "Ask me first". 2. Click **Save step**. 3. Open the Configuration tab.
 - **Expected:** "Saved" check appears; YAML shows the new values and `requires_approval: true`; the graph refreshes.
@@ -419,7 +419,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-29 — Workflow HTTP and command API
 
 - **What:** Headless access to workflows: list, get (definition + last 20 runs + source), create from YAML, templates, run, approve, graph, save YAML, manual steps.
-- **Where:** `src-tauri/src/http/routes.rs` (`GET/POST /api/workflows`, `GET /api/workflows/{id}`, `POST /api/workflows/{id}/run`, `GET/POST /api/workflow-templates`, `POST /api/workflow-runs/{id}/approve`), `src-tauri/src/http/workflow_builder.rs` (`GET /api/workflows/{id}/graph`, `PUT /api/workflows/{id}/yaml`), `src-tauri/src/http/manual_steps.rs`.
+- **Where:** `src-tauri/src/http/routes.rs` (`GET/POST /api/workflows`, `GET /api/workflows/{id}`, `POST /api/workflows/{id}/run`, `GET/POST /api/workflow-templates`, `POST /api/workflow-runs/{id}/approve`), `src-tauri/src/http/workflow_builder.rs` (`POST /api/rpc/get_workflow_graph`, `POST /api/rpc/save_workflow_yaml`), `src-tauri/src/http/manual_steps.rs`.
 - **Preconditions:** Web token (non-receiver routes require it).
 - **Steps:** Exercise each route with valid and invalid bodies.
 - **Expected:** JSON matching the Tauri commands; invalid bodies → 4xx with message.

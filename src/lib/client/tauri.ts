@@ -186,8 +186,6 @@ export const tauriClient: NandiClient = withCommands({
     commands.addPilotSecret(agentId, pilotId, name, value),
   clearBrowserProfile: (agentId, pilotId) =>
     commands.clearBrowserProfile(agentId, pilotId),
-  agentPolicies: agentId => commands.agentPolicies(agentId),
-  listPolicies: () => commands.listPolicies(),
 
   listAllRuns: (filters, limit, offset) =>
     commands.listAllRuns(filters, limit, offset),
@@ -251,15 +249,6 @@ export const tauriClient: NandiClient = withCommands({
   setTrustPolicy: (requester, providerAgent, policy) =>
     commands.setTrustPolicy(requester, providerAgent, policy),
 
-  analyzeRun: (runId, question) => commands.analyzeRun(runId, question),
-  summarizeRun: runId => commands.summarizeRun(runId),
-
-  getWorkflowGraph: workflowId => commands.getWorkflowGraph(workflowId),
-  saveWorkflowYaml: (workflowId, yaml) =>
-    commands.saveWorkflowYaml(workflowId, yaml),
-
-  searchMarketplace: query => commands.searchMarketplace(query),
-
   getCompanionSnapshot: dayStart => commands.getCompanionSnapshot(dayStart),
   toggleCompanionWindow: () => commands.toggleCompanionWindow(),
   quitNandi: () => commands.quitNandi(),
@@ -281,10 +270,6 @@ export const tauriClient: NandiClient = withCommands({
   setCompanionNotifyResults: notify =>
     commands.setCompanionNotifyResults(notify),
   companionFocusRequest: requestId => commands.companionFocusRequest(requestId),
-
-  searchPalette: query => commands.searchPalette(query),
-  executePaletteAction: (actionId, args) =>
-    commands.executePaletteAction(actionId, args),
 
   getIdentityStatus: () => commands.getIdentityStatus(),
   getVerifiedIdentity: () => commands.getVerifiedIdentity(),
@@ -508,8 +493,6 @@ export const tauriClient: NandiClient = withCommands({
   completeManualStep: (runId, stepId, completion) =>
     commands.completeManualStep(runId, stepId, completion),
   listPendingManualSteps: () => commands.listPendingManualSteps(),
-  getRepoLlmConfig: () => commands.getRepoLlmConfig(),
-  reloadRepoLlmConfig: () => commands.reloadRepoLlmConfig(),
 
   openExternal: url => openUrl(url),
 
