@@ -14,13 +14,6 @@ import type {
   InviteRequest,
   RelayTrust,
   RequestReturn,
-  MascotInfo,
-  DecisionFilter,
-  KnowMeProposal,
-  KnowMeStatus,
-  KnowMeTodoAction,
-  DecisionRecord,
-  PhraseResponse,
   AddRegistryInput,
   AgentCard,
   AgentConnectorChoice,
@@ -70,7 +63,6 @@ import type {
   PublishConnectorInput,
   PublishConnectorResult,
   ScaffoldConnectorInput,
-  Suggestion,
   WorkspaceStatus,
   ConsentStatus,
   ConversationSnapshot,
@@ -102,7 +94,6 @@ import type {
   OnboardingStep,
   MarketplaceFilter,
   MarketplaceSearchHit,
-  MemoryEntry,
   PackDetail,
   PackManifest,
   PaletteActionOutcome,
@@ -157,8 +148,6 @@ import type {
   GatewayStatus,
   GatewayAssignment,
   LiveChange,
-  MyNotes,
-  NoteFile,
   RefreshReport,
   GatewayHold,
   GatewayUsage,
@@ -821,25 +810,6 @@ export interface HandWrittenClient {
 
   // Wave final
 
-  // Agent memory (Track C)
-  loadAgentMemory(agentId: string): Promise<Result<MemoryEntry[], string>>
-  updateAgentMemory(
-    agentId: string,
-    index: number,
-    content: string
-  ): Promise<Result<null, string>>
-  deleteAgentMemory(
-    agentId: string,
-    index: number
-  ): Promise<Result<null, string>>
-  /** Re-extracts from the latest run; returns the whole memory */
-  refreshAgentMemory(agentId: string): Promise<Result<MemoryEntry[], string>>
-  getAgentMemoryEnabled(agentId: string): Promise<Result<boolean, string>>
-  setAgentMemoryEnabled(
-    agentId: string,
-    enabled: boolean
-  ): Promise<Result<null, string>>
-
   // Local-identity freeze
 
   // Identity: display name + user slug in `~/.nandi/repo/NANDI.md`
@@ -891,32 +861,6 @@ export interface HandWrittenClient {
     providerAgent: string | null
   ): Promise<Result<EtaEstimate, string>>
 
-  // Decisions (Home › Decisions)
-  /** The months that have decisions (`2026-11`), newest first */
-  listDecisionMonths(): Promise<Result<string[], string>>
-  /** One month's decisions, newest first, narrowed by the filter */
-  listDecisions(
-    month: string,
-    filter: DecisionFilter | null
-  ): Promise<Result<DecisionRecord[], string>>
-  // Getting to know you (`services::knowme`)
-  /** The know-me to-do, the groups I'm in and the latest confirmed changes */
-  getKnowMe(): Promise<Result<KnowMeStatus, string>>
-  /** The to-do's Later (back in a week) or Skip (back in a month) */
-  knowMeTodo(action: KnowMeTodoAction): Promise<Result<KnowMeStatus, string>>
-  /** Confirms a know-me proposal card, as the person edited it */
-  confirmKnowMeProposal(
-    approvalId: string,
-    proposal: KnowMeProposal
-  ): Promise<Result<null, string>>
-  // The mascot (Nandi rename)
-  /** The bull's name */
-  mascotGet(): Promise<Result<MascotInfo, string>>
-  /** Renames the bull (`null`: back to Nandi) */
-  mascotSet(name: string | null): Promise<Result<MascotInfo, string>>
-  /** The bull's reply to the hidden phrase (`null` for anything else) */
-  mascotPhrase(input: string): Promise<Result<PhraseResponse | null, string>>
-
   // Clarification
   respondToClarification(
     response: ClarificationResponse
@@ -948,14 +892,6 @@ export interface HandWrittenClient {
     approve: boolean,
     note: string | null
   ): Promise<Result<GatewayHold, string>>
-  // My notes (the folder Chief of Staff keeps)
-  /** The notes folder and its notes; creates and shares it on first use */
-  getMyNotes(): Promise<Result<MyNotes, string>>
-  readNote(name: string): Promise<Result<string, string>>
-  saveNote(name: string, content: string): Promise<Result<NoteFile, string>>
-  deleteNote(name: string): Promise<Result<null, string>>
-  /** Lets agents update the notes (without asking each time), or not */
-  setNotesAgentsCanWrite(allow: boolean): Promise<Result<MyNotes, string>>
   // Live UI (`services::live`)
   /** The latest file changes, newest first: who changed what */
   listRecentChanges(): Promise<Result<LiveChange[], string>>
@@ -1044,13 +980,6 @@ export interface HandWrittenClient {
   ): Promise<Result<WorkspaceStatus, string>>
   checkCalendarNow(): Promise<Result<WorkspaceStatus, string>>
   setCalendarInterval(minutes: number): Promise<Result<WorkspaceStatus, string>>
-  /** Open `- [ ]` lines of the Chief of Staff's suggestions.md */
-  listNoteSuggestions(): Promise<Result<Suggestion[], string>>
-  /** Accept (tick) or dismiss (remove); returns the suggestion's text */
-  answerNoteSuggestion(
-    id: string,
-    accept: boolean
-  ): Promise<Result<string, string>>
   /** Work assigned to the owner that's still open, soonest due first */
   listGatewayAssignments(): Promise<Result<GatewayAssignment[], string>>
   /** Done (the requester gets the note) or Decline an assignment */

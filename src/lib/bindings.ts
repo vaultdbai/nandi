@@ -1869,6 +1869,9 @@ async executePaletteAction(actionId: string, args: JsonValue) : Promise<Result<P
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * An agent's memory entries
+ */
 async loadAgentMemory(agentId: string) : Promise<Result<MemoryEntry[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("load_agent_memory", { agentId }) };
@@ -1877,6 +1880,9 @@ async loadAgentMemory(agentId: string) : Promise<Result<MemoryEntry[], string>> 
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Replaces one memory entry
+ */
 async updateAgentMemory(agentId: string, index: number, content: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("update_agent_memory", { agentId, index, content }) };
@@ -1885,6 +1891,9 @@ async updateAgentMemory(agentId: string, index: number, content: string) : Promi
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Deletes one memory entry
+ */
 async deleteAgentMemory(agentId: string, index: number) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("delete_agent_memory", { agentId, index }) };
@@ -1915,6 +1924,9 @@ async getMyNotes() : Promise<Result<MyNotes, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * One note's text
+ */
 async readNote(name: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("read_note", { name }) };
@@ -1934,6 +1946,9 @@ async saveNote(name: string, content: string) : Promise<Result<NoteFile, string>
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Deletes a note
+ */
 async deleteNote(name: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("delete_note", { name }) };
@@ -2187,6 +2202,9 @@ async answerAccessRequest(approvalId: string, choice: AccessChoice, subdomains: 
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Whether the agent keeps a memory
+ */
 async getAgentMemoryEnabled(agentId: string) : Promise<Result<boolean, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_agent_memory_enabled", { agentId }) };
@@ -4041,13 +4059,13 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const DAILY_LIMIT = "daily_limit" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
+export const NO_SHARED_GROUP = "no_shared_group" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const NO_SHARED_GROUP = "no_shared_group" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const DAILY_LIMIT = "daily_limit" as const;
 
 /** user-defined types **/
 

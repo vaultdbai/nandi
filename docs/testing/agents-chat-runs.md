@@ -326,7 +326,7 @@ Shared preconditions used below:
 - **Where:**
   - `src/components/notes/` (`MyNotesView.tsx`, `MarkdownEditor.tsx`, `notes-model.ts`), `src/hooks/useNotes.ts`, navigation kind `notes`.
   - `services/notes.rs` (`NotesFolder`, `check_name`, `folder`, `my_notes`, `set_agents_can_write`, `is_notes_write`), `services/connectors.rs` (`shared_folder`, `share_folder`), `orchestrator.rs` (approval exemption).
-  - Commands `get_my_notes`, `read_note`, `save_note`, `delete_note`, `set_notes_agents_can_write`. HTTP `GET /api/notes`, `GET/PUT/DELETE /api/notes/file?name=…`, `PUT /api/notes/agents-can-write {"allow"}`. The folder is watched: every change arrives as `live://changed` (DT-43).
+  - Commands `get_my_notes`, `read_note`, `save_note`, `delete_note`, `set_notes_agents_can_write`. HTTP `POST /api/rpc/{command}`. The folder is watched: every change arrives as `live://changed` (DT-43).
 - **Preconditions:** None: Chief of Staff comes with Nandi (AG-30).
 - **Steps:**
   1. Open My notes.
@@ -619,7 +619,7 @@ Shared preconditions used below:
 ### AG-22 — Agent memory panel
 
 - **What:** The entries of the agent's `memory.md`, newest first, with timestamp and a "Run xxxxxxxx" link to the source run; edit (textarea, Save/Cancel) and delete per entry; **Refresh from session** re-runs extraction on the latest run; **Disable memory for this agent** writes `memory_disabled: true` to skill.md ("Memory is off: the agent neither reads nor adds entries.").
-- **Where:** Agent page → Settings → Advanced. `src/components/agent-console/AgentMemoryPanel.tsx`; commands `load_agent_memory`, `update_agent_memory`, `delete_agent_memory`, `refresh_agent_memory`, `get_agent_memory_enabled`, `set_agent_memory_enabled` (`src-tauri/src/commands/memory.rs`); HTTP `GET /api/agents/{id}/memory`, `PUT|DELETE /api/agents/{id}/memory/{index}`, `POST /api/agents/{id}/memory/refresh`, `GET|PUT /api/agents/{id}/memory-enabled`.
+- **Where:** Agent page → Settings → Advanced. `src/components/agent-console/AgentMemoryPanel.tsx`; commands `load_agent_memory`, `update_agent_memory`, `delete_agent_memory`, `refresh_agent_memory`, `get_agent_memory_enabled`, `set_agent_memory_enabled` (`src-tauri/src/rpc/memory.rs`); HTTP `POST /api/rpc/{command}`.
 - **Preconditions:** A model key (for refresh); an agent with a few runs.
 - **Steps:**
   1. Hand-edit `memory.md` to add an entry; open the panel.

@@ -1,5 +1,5 @@
 # API smoke test: starts Nandi headless on a throwaway home and calls every
-# parameterless GET route of the HTTP API (docs/testing, RL-26). Your real
+# parameterless GET route and command (`rpc:` rows) of the HTTP API (docs/testing, RL-26). Your real
 # ~/.nandi is never used. The OS keyring is shared, so saved provider keys
 # are visible to the test instance (read only).
 #
@@ -24,12 +24,15 @@ $Routes = @(
     'egress/status', 'gateway/callers', 'gateway/config', 'gateway/holds', 'gateway/manifest',
     'gateway/status', 'harnesses', 'harness-sessions', 'identity/status', 'llm-keys',
     'marketplace/agents', 'marketplace/installed', 'marketplace/packs', 'marketplace/search',
-    'marketplace/updates', 'mascot', 'network/snapshot', 'ollama', 'palette/search', 'pilots',
+    'marketplace/updates', 'network/snapshot', 'ollama', 'palette/search', 'pilots',
     'preferences', 'relay/agents', 'relay/status', 'remote/status', 'repo/git/status',
     'repo/status', 'runs', 'shared/by-me', 'shared/capabilities', 'shared/with-me',
     'studio/push-targets', 'tasks', 'teams', 'tools', 'tools/usage', 'triggers',
     'trust/policies', 'trust/requests', 'work', 'work/dismissed', 'workflows',
-    'workflows/manual-steps'
+    'workflows/manual-steps',
+    # Commands without arguments: `POST /api/rpc/{name}` with `{}`
+    'rpc:get_auto_approve_rules', 'rpc:get_chief_of_staff_digest', 'rpc:get_know_me',
+    'rpc:get_my_notes', 'rpc:list_decision_months', 'rpc:list_note_suggestions', 'rpc:mascot_get'
 )
 
 if (-not (Test-Path $Binary)) {
@@ -67,7 +70,12 @@ try {
     $failed = 0
     foreach ($route in $Routes) {
         try {
-            $response = Invoke-WebRequest "http://127.0.0.1:$Port/api/$route" -Headers $headers -UseBasicParsing -TimeoutSec 60
+            $response = if ($route.StartsWith('rpc:')) {
+                Invoke-WebRequest "http://127.0.0.1:$Port/api/rpc/$($route.Substring(4))" -Method Post -Body '{}' `
+                    -ContentType 'application/json' -Headers $headers -UseBasicParsing -TimeoutSec 60
+            } else {
+                Invoke-WebRequest "http://127.0.0.1:$Port/api/$route" -Headers $headers -UseBasicParsing -TimeoutSec 60
+            }
             Write-Output ("{0}  {1}" -f $response.StatusCode, $route)
         } catch {
             $code = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }

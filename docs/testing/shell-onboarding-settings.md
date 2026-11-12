@@ -965,7 +965,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### SH-34 — Mascot hidden phrase
 
 - **What:** A hidden phrase gets a one-line reply from the bull, and never an action. It works in the palette (Enter), the companion's input and the CLI. The UI shows the line as a toast and the bull's `done` pose. The phrase is stored only as a hash.
-- **Where:** `services/mascot.rs` (`handle_phrase`, `PHRASES`), `mascot_phrase` command, `POST /api/mascot/phrase` `{input}`, `src/hooks/useMascot.ts` (`handlePhrase`), `src/lib/mascot.ts` (`isMascotPhrase`).
+- **Where:** `services/mascot.rs` (`handle_phrase`, `PHRASES`), `mascot_phrase` command, `POST /api/rpc/mascot_phrase` `{input}`, `src/hooks/useMascot.ts` (`handlePhrase`), `src/lib/mascot.ts` (`isMascotPhrase`).
 - **Preconditions:** Knowing the phrase (see the tests).
 - **Steps:**
   1. Open the palette, type the phrase and press Enter.
@@ -1280,7 +1280,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ST-29 — Rename the mascot
 
 - **What:** Settings › Appearance › Mascot sets the bull's name (1–24 characters: letters, digits, spaces, `-`, `'` or `.`, starting with a letter or digit). "Rename" shows the toast "The bull is now called <name>." "Back to Nandi" appears when the name is not the default. The name is shared with the CLI (`config.json` `mascot_name`).
-- **Where:** `src/components/preferences/RenameMascot.tsx`, `useMascot` (`useRenameMascot`), `mascot_get` and `mascot_set` (`src-tauri/src/commands/mascot.rs`); `GET` and `PUT /api/mascot` `{name}` (null resets).
+- **Where:** `src/components/preferences/RenameMascot.tsx`, `useMascot` (`useRenameMascot`), `mascot_get` and `mascot_set` (`src-tauri/src/rpc/mascot.rs`); `POST /api/rpc/mascot_get|mascot_set` `{name}` (null resets).
 - **Preconditions:** None.
 - **Steps:**
   1. Enter "Gauri" and click Rename.

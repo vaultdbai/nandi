@@ -286,16 +286,6 @@ export const tauriClient: NandiClient = withCommands({
   executePaletteAction: (actionId, args) =>
     commands.executePaletteAction(actionId, args),
 
-  loadAgentMemory: agentId => commands.loadAgentMemory(agentId),
-  updateAgentMemory: (agentId, index, content) =>
-    commands.updateAgentMemory(agentId, index, content),
-  deleteAgentMemory: (agentId, index) =>
-    commands.deleteAgentMemory(agentId, index),
-  refreshAgentMemory: agentId => commands.refreshAgentMemory(agentId),
-  getAgentMemoryEnabled: agentId => commands.getAgentMemoryEnabled(agentId),
-  setAgentMemoryEnabled: (agentId, enabled) =>
-    commands.setAgentMemoryEnabled(agentId, enabled),
-
   getIdentityStatus: () => commands.getIdentityStatus(),
   getVerifiedIdentity: () => commands.getVerifiedIdentity(),
   setDisplayName: name => commands.setDisplayName(name),
@@ -324,15 +314,6 @@ export const tauriClient: NandiClient = withCommands({
   getTaskMessages: taskId => commands.getTaskMessages(taskId),
   getEtaEstimate: (capability, providerAgent) =>
     commands.getEtaEstimate(capability, providerAgent),
-  listDecisionMonths: () => commands.listDecisionMonths(),
-  getKnowMe: () => commands.getKnowMe(),
-  knowMeTodo: action => commands.knowMeTodo(action),
-  confirmKnowMeProposal: (approvalId, proposal) =>
-    commands.confirmKnowMeProposal(approvalId, proposal),
-  listDecisions: (month, filter) => commands.listDecisions(month, filter),
-  mascotGet: () => commands.mascotGet(),
-  mascotSet: name => commands.mascotSet(name),
-  mascotPhrase: input => commands.mascotPhrase(input),
 
   respondToClarification: response => commands.respondToClarification(response),
   escalateClarification: (taskId, questionId) =>
@@ -348,11 +329,6 @@ export const tauriClient: NandiClient = withCommands({
   decideGatewayHold: (taskId, approve, note) =>
     commands.decideGatewayHold(taskId, approve, note),
   listGatewayAssignments: () => commands.listGatewayAssignments(),
-  getMyNotes: () => commands.getMyNotes(),
-  readNote: name => commands.readNote(name),
-  saveNote: (name, content) => commands.saveNote(name, content),
-  deleteNote: name => commands.deleteNote(name),
-  setNotesAgentsCanWrite: allow => commands.setNotesAgentsCanWrite(allow),
   listRecentChanges: () => commands.listRecentChanges(),
   refreshFromDisk: () => commands.refreshFromDisk(),
   getEmailStatus: () => commands.getEmailStatus(),
@@ -386,9 +362,6 @@ export const tauriClient: NandiClient = withCommands({
   disconnectWorkspace: kind => commands.disconnectWorkspace(kind),
   checkCalendarNow: () => commands.checkCalendarNow(),
   setCalendarInterval: minutes => commands.setCalendarInterval(minutes),
-  listNoteSuggestions: () => commands.listNoteSuggestions(),
-  answerNoteSuggestion: (id, accept) =>
-    commands.answerNoteSuggestion(id, accept),
   closeGatewayAssignment: (taskId, done, note) =>
     commands.closeGatewayAssignment(taskId, done, note),
   getGatewayConfig: () => commands.getGatewayConfig(),

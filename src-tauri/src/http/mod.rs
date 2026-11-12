@@ -21,9 +21,7 @@ mod companion;
 // Wave EF
 mod config;
 mod connectors;
-mod decisions;
 mod delegation;
-mod knowme;
 // Wave final
 mod delegation_clarification;
 mod email;
@@ -39,10 +37,7 @@ mod machine;
 mod manual_steps;
 mod marketplace;
 mod marketplace_search;
-mod mascot;
-mod memory;
 mod network;
-mod notes;
 mod palette;
 mod pilots;
 mod policies;
@@ -87,9 +82,6 @@ pub fn router(state: AppState, token: WebToken) -> Router {
             routes::api()
                 .merge(rpc::api())
                 .merge(marketplace::api())
-                .merge(decisions::api())
-                .merge(knowme::api())
-                .merge(mascot::api())
                 .merge(triggers::api())
                 .merge(repo::api())
                 .merge(pilots::api())
@@ -111,7 +103,6 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(companion::api())
                 .merge(palette::api())
                 // Wave final
-                .merge(memory::api())
                 // Wave final, network-first
                 .merge(identity::api())
                 .merge(remote::api())
@@ -119,7 +110,6 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(delegation_clarification::api())
                 .merge(gateway::api())
                 .merge(network::api())
-                .merge(notes::api())
                 .merge(live::api())
                 .merge(email::api())
                 .merge(workspace::api())
@@ -394,12 +384,6 @@ mod tests {
     async fn wave_final_routes_are_mounted() {
         let (state, app) = app();
         for (method, uri) in [
-            ("GET", "/api/agents/a1/memory"),
-            ("PUT", "/api/agents/a1/memory/0"),
-            ("DELETE", "/api/agents/a1/memory/0"),
-            ("POST", "/api/agents/a1/memory/refresh"),
-            ("GET", "/api/agents/a1/memory-enabled"),
-            ("PUT", "/api/agents/a1/memory-enabled"),
             // Network-first
             ("GET", "/api/remote/status"),
             ("PUT", "/api/remote/config"),

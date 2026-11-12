@@ -106,7 +106,7 @@ connectors: { forbid: [gmail, 'tracker:write'], ask: ['outlook*'] }
 | `remove_connector`, `scaffold_connector`, `publish_connector`         | `POST /api/connectors/{id}/remove`, `/connectors/scaffold`, `/publish`             |
 | `get_workspace_status`, `start/poll_workspace_sign_in`                | `GET /api/workspace`, `POST /api/workspace/{kind}/sign-in(/poll)`                  |
 | `disconnect_workspace`, `check_calendar_now`, `set_calendar_interval` | `DELETE /api/workspace/{kind}`, `POST …/calendar/check`, `PUT …/calendar/interval` |
-| `list_note_suggestions`, `answer_note_suggestion`                     | `GET /api/notes/suggestions`, `POST /api/notes/suggestions/{id}`                   |
+| `list_note_suggestions`, `answer_note_suggestion`                     | `POST /api/rpc/{command}`                                                          |
 
 Events: `grants://changed`, `workspace://changed`, `connectors://changed`.
 

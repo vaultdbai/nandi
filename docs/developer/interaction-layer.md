@@ -487,8 +487,7 @@ The chat's text stays in `state.db`.
 **Reading the audit back.** Home › Decisions (`DecisionsView`, view `decisions`; the Inbox's
 "Past decisions" link opens it too) lists those files: a month picker, a Kind
 and a Decision filter and a text search, newest first, read-only.
-`list_decision_months` and `list_decisions` (`GET /api/decisions/months`,
-`GET /api/decisions`) go through `services::inbox::decisions`, which reads
+`list_decision_months` and `list_decisions` (`POST /api/rpc/{command}`) go through `services::inbox::decisions`, which reads
 the files with `repos::decision_repo` and `domain::decision::parse_month`
 and marks which entries' chats still exist in `state.db` (`chatExists`);
 the page links those to their `inbox-thread` / `intake-thread` view and

@@ -63,8 +63,8 @@ macro_rules! commands {
                             let name = stringify!($name);
                             format!("Invalid arguments for {name}: {e}")
                         })?;
-                        let ok: $ok = $call?;
-                        serde_json::to_value(ok).map_err(|e| e.to_string())
+                        let result: Result<$ok, String> = $call;
+                        serde_json::to_value(result?).map_err(|e| e.to_string())
                     })
                 },
             ),
@@ -73,6 +73,11 @@ macro_rules! commands {
 }
 pub(crate) use commands;
 
+pub mod decisions;
+pub mod knowme;
+pub mod mascot;
+pub mod memory;
+pub mod notes;
 pub mod requests;
 
 /// What an RPC call returns: the command's JSON result, or its error text
@@ -82,7 +87,14 @@ pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, String>> + Send>>
 pub type Handler = fn(AppState, Value) -> RpcFuture;
 
 /// Every module's `RPC` table. A new module adds its table here.
-const TABLES: &[&[(&str, Handler)]] = &[requests::RPC];
+const TABLES: &[&[(&str, Handler)]] = &[
+    decisions::RPC,
+    knowme::RPC,
+    mascot::RPC,
+    memory::RPC,
+    notes::RPC,
+    requests::RPC,
+];
 
 /// Every command name with its handler
 fn all() -> impl Iterator<Item = &'static (&'static str, Handler)> {

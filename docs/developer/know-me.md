@@ -10,7 +10,7 @@ Code: `src-tauri/src/services/knowme/` (`mod.rs` service, `cadence.rs`, `proposa
 2. **The chat.** The to-do opens the one standing Inbox thread `inbox:knowMe:you` (`InboxItemRef::KnowMe`), a Chief of Staff conversation like any Inbox item's. "Tell Nandi about you" in Network › Sharing › What you offer (`TellNandiAboutYou`) opens the same chat any time, and lists the latest confirmed changes.
 3. **The questions** are content, not code: the Chief of Staff's `know-me` playbook (`resources/builtin-agents/chief-of-staff/skills/know-me.md`) says what to ask first, which two or three follow-ups are worth asking (only where the answer changes what Nandi does), and that health, family and money come up only after the person raises them. The thread prompt (`inbox::thread`, `KNOW_ME_GUIDANCE`) gives the card's current state as untrusted `<task-data>` (`item::know_me`: name, description, responsibilities, sharing switches, profile text, served capabilities, groups) and points at the playbook.
 4. **The proposal.** In that thread only, the Chief of Staff is offered `knowme_propose` (`DecisionTool::Propose`). Like every Inbox decision tool it is forced to wait (`inbox::tool::gate`), and its card isn't an Inbox line.
-5. **The card** (`KnowMeProposalCard`, shown by `ApprovalRequestCard` for `knowme_propose`) lists each change, editable: text, work or personal, "On my card" for work, "Private" or one group for personal, removable notes, offered capabilities and suggestions. **Confirm** calls `confirm_know_me_proposal` (`POST /api/know-me/proposals/{approval_id}/confirm`): the edited proposal is checked, written into the approval's arguments (`db::set_approval_args`), and the approval is approved. **Refuse** is the normal reject: nothing is written.
+5. **The card** (`KnowMeProposalCard`, shown by `ApprovalRequestCard` for `knowme_propose`) lists each change, editable: text, work or personal, "On my card" for work, "Private" or one group for personal, removable notes, offered capabilities and suggestions. **Confirm** calls `confirm_know_me_proposal` (`POST /api/rpc/confirm_know_me_proposal`): the edited proposal is checked, written into the approval's arguments (`db::set_approval_args`), and the approval is approved. **Refuse** is the normal reject: nothing is written.
 6. **On confirm** the dispatcher runs the call with the approval's arguments (`inbox::tool::confirmed_args`), so the edits count, then `knowme::apply`: NANDI.md through the gateway service (`GatewayService::save_manifest`, which re-registers the card), My notes through `notes::save_note`, the decision through `inbox::audit::record` (kind `knowMe`, item `you`, the chat named), and the to-do closes (`Cadence::answered`).
 
 ## The proposal
@@ -71,10 +71,10 @@ The to-do stays; the chat needs a model to answer. The built-in help guide has a
 
 ## Commands and events
 
-| Command                    | HTTP                                                | Does                                    |
-| -------------------------- | --------------------------------------------------- | --------------------------------------- |
-| `get_know_me`              | `GET /api/know-me`                                  | `KnowMeStatus`: to-do, groups, recent   |
-| `know_me_todo`             | `POST /api/know-me/todo` `{action}`                 | Later or Skip                           |
-| `confirm_know_me_proposal` | `POST /api/know-me/proposals/{approval_id}/confirm` | confirms a card with the person's edits |
+| Command                    | HTTP                                                              | Does                                    |
+| -------------------------- | ----------------------------------------------------------------- | --------------------------------------- |
+| `get_know_me`              | `POST /api/rpc/get_know_me`                                       | `KnowMeStatus`: to-do, groups, recent   |
+| `know_me_todo`             | `POST /api/rpc/know_me_todo` `{action}`                           | Later or Skip                           |
+| `confirm_know_me_proposal` | `POST /api/rpc/confirm_know_me_proposal` `{approvalId, proposal}` | confirms a card with the person's edits |
 
 `knowme://changed` (`KnowMeChanged`) fires when the to-do or the answers change; `useKnowMe` refetches on it.

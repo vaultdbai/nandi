@@ -52,7 +52,6 @@ const SCREEN_ROUTES: &[&str] = &[
     "companion/snapshot",
     "config/llm",
     "connectors",
-    "decisions/months",
     "default-model",
     "delegation/history",
     "delegation/pending-clarifications",
@@ -68,10 +67,8 @@ const SCREEN_ROUTES: &[&str] = &[
     "gateway/manifest",
     "gateway/status",
     "identity/status",
-    "know-me",
     "llm-keys",
     "marketplace/installed",
-    "mascot",
     "network/snapshot",
     "palette/search",
     "pilots",
@@ -97,6 +94,18 @@ const SCREEN_ROUTES: &[&str] = &[
     "work/dismissed",
     "workflows",
     "workflows/manual-steps",
+];
+
+/// The commands without arguments behind every screen, over `/api/rpc`.
+/// The rest of `scripts/api-smoke.ps1` (its `rpc:` rows).
+const SCREEN_COMMANDS: &[&str] = &[
+    "get_auto_approve_rules",
+    "get_chief_of_staff_digest",
+    "get_know_me",
+    "get_my_notes",
+    "list_decision_months",
+    "list_note_suggestions",
+    "mascot_get",
 ];
 
 /// A core with no relay of its own: `built_in` is what the build ships
@@ -203,6 +212,9 @@ pub(crate) async fn canned(state: &AppState, script: Value) {
 async fn every_screen_answers(router: &Router) {
     for route in SCREEN_ROUTES {
         get(router, route).await;
+    }
+    for command in SCREEN_COMMANDS {
+        rpc(router, command, json!({})).await;
     }
 }
 
@@ -496,7 +508,10 @@ async fn with_no_relay_getting_to_know_you_works() {
     .await
     .unwrap();
     crate::services::knowme::start(&state).await.unwrap();
-    assert_eq!(get(&router, "know-me").await["todoOpen"], true);
+    assert_eq!(
+        rpc(&router, "get_know_me", json!({})).await["todoOpen"],
+        true
+    );
 
     let opened = rpc(
         &router,
@@ -525,10 +540,10 @@ async fn with_no_relay_getting_to_know_you_works() {
     let private =
         std::fs::read_to_string(notes.path().join("private").join("about-me.md")).unwrap();
     assert!(private.contains("- Grandma's medicines"), "{private}");
-    let status = get(&router, "know-me").await;
+    let status = rpc(&router, "get_know_me", json!({})).await;
     assert_eq!(status["todoOpen"], false, "{status}");
     assert_eq!(status["recent"][0]["kind"], "knowMe", "{status}");
-    let later = post(&router, "know-me/todo", json!({ "action": "later" })).await;
+    let later = rpc(&router, "know_me_todo", json!({ "action": "later" })).await;
     assert_eq!(later["todoOpen"], false, "{later}");
 }
 

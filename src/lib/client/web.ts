@@ -500,18 +500,6 @@ export const webClient: NandiClient = withCommands({
   executePaletteAction: (actionId, args) =>
     request('POST', `/palette/actions/${id(actionId)}`, { args }),
 
-  loadAgentMemory: agentId => request('GET', `/agents/${id(agentId)}/memory`),
-  updateAgentMemory: (agentId, index, content) =>
-    request('PUT', `/agents/${id(agentId)}/memory/${index}`, { content }),
-  deleteAgentMemory: (agentId, index) =>
-    request('DELETE', `/agents/${id(agentId)}/memory/${index}`),
-  refreshAgentMemory: agentId =>
-    request('POST', `/agents/${id(agentId)}/memory/refresh`),
-  getAgentMemoryEnabled: agentId =>
-    request('GET', `/agents/${id(agentId)}/memory-enabled`),
-  setAgentMemoryEnabled: (agentId, enabled) =>
-    request('PUT', `/agents/${id(agentId)}/memory-enabled`, { enabled }),
-
   getIdentityStatus: () => request('GET', '/identity/status'),
   getVerifiedIdentity: () => request('GET', '/identity/verified'),
   setDisplayName: name => request('PUT', '/identity/display-name', { name }),
@@ -542,24 +530,6 @@ export const webClient: NandiClient = withCommands({
   getTaskMessages: taskId => request('GET', `/tasks/${id(taskId)}/messages`),
   getEtaEstimate: (capability, providerAgent) =>
     request('GET', `/eta/${id(capability)}${query({ providerAgent })}`),
-  listDecisionMonths: () => request('GET', '/decisions/months'),
-  getKnowMe: () => request('GET', '/know-me'),
-  knowMeTodo: action => request('POST', '/know-me/todo', { action }),
-  confirmKnowMeProposal: (approvalId, proposal) =>
-    request('POST', `/know-me/proposals/${id(approvalId)}/confirm`, proposal),
-  listDecisions: (month, filter) =>
-    request(
-      'GET',
-      `/decisions${query({
-        month,
-        kind: filter?.kind ?? undefined,
-        decision: filter?.decision ?? undefined,
-        search: filter?.search ?? undefined,
-      })}`
-    ),
-  mascotGet: () => request('GET', '/mascot'),
-  mascotSet: name => request('PUT', '/mascot', { name }),
-  mascotPhrase: input => request('POST', '/mascot/phrase', { input }),
 
   respondToClarification: ({ taskId, round, answers }) =>
     request('POST', `/delegation/${id(taskId)}/clarify`, { round, answers }),
@@ -581,17 +551,6 @@ export const webClient: NandiClient = withCommands({
       note,
     }),
   listGatewayAssignments: () => request('GET', '/gateway/assignments'),
-  getMyNotes: () => request('GET', '/notes'),
-  readNote: name =>
-    request('GET', `/notes/file?name=${encodeURIComponent(name)}`),
-  saveNote: (name, content) =>
-    request('PUT', `/notes/file?name=${encodeURIComponent(name)}`, {
-      content,
-    }),
-  deleteNote: name =>
-    request('DELETE', `/notes/file?name=${encodeURIComponent(name)}`),
-  setNotesAgentsCanWrite: allow =>
-    request('PUT', '/notes/agents-can-write', { allow }),
   listRecentChanges: () => request('GET', '/changes'),
   refreshFromDisk: () => request('POST', '/changes/refresh'),
   getEmailStatus: () => request('GET', '/email'),
@@ -655,9 +614,6 @@ export const webClient: NandiClient = withCommands({
   checkCalendarNow: () => request('POST', '/workspace/calendar/check'),
   setCalendarInterval: minutes =>
     request('PUT', '/workspace/calendar/interval', { minutes }),
-  listNoteSuggestions: () => request('GET', '/notes/suggestions'),
-  answerNoteSuggestion: (suggestionId, accept) =>
-    request('POST', `/notes/suggestions/${id(suggestionId)}`, { accept }),
   closeGatewayAssignment: (taskId, done, note) =>
     request(
       'POST',
