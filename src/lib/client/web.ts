@@ -389,11 +389,6 @@ export const webClient: NandiClient = withCommands({
   connectorStatus: connectorId =>
     request('GET', `/connectors/${id(connectorId)}/status`),
 
-  findAgentsByCapability: capability =>
-    request('GET', `/capabilities/${id(capability)}/agents`),
-  listDeclaredCapabilities: () => request('GET', '/capabilities/declared'),
-  getAgentCard: agentId => request('GET', `/agents/${id(agentId)}/card`),
-
   getRelayStatus: () => request('GET', '/relay/status'),
   setRelayUrl: url => request('PUT', '/relay/url', { url }),
   joinRelay: (url, joinCode) =>
@@ -430,21 +425,6 @@ export const webClient: NandiClient = withCommands({
     request('POST', `/teams/${id(teamId)}/agents/${id(agentId)}`),
   unshareAgent: (teamId, agentId) =>
     request('DELETE', `/teams/${id(teamId)}/agents/${id(agentId)}`),
-
-  listAgentsSharedWithMe: () => request('GET', '/shared/with-me'),
-  listAgentsSharedByMe: () => request('GET', '/shared/by-me'),
-  listCapabilityProviders: capability =>
-    request(
-      'GET',
-      capability === null
-        ? '/shared/capabilities'
-        : `/shared/capabilities?capability=${encodeURIComponent(capability)}`
-    ),
-  setProviderPin: (capability, cardId) =>
-    request('PUT', '/shared/pins', { capability, cardId }),
-  listTrustPolicies: () => request('GET', '/trust/policies'),
-  setTrustPolicy: (requester, providerAgent, policy) =>
-    request('PUT', '/trust/policies', { requester, providerAgent, policy }),
 
   getCompanionSnapshot: dayStart =>
     request('GET', `/companion/snapshot${query({ dayStart })}`),
@@ -693,25 +673,6 @@ export const webClient: NandiClient = withCommands({
       `/capabilities/${id(capabilityId)}/ambiguities/${id(clusterId)}/promote`
     ),
 
-  listTools: () => request('GET', '/tools'),
-  getTool: toolId => request('GET', `/tools/${id(toolId)}`),
-  setToolEnabled: (toolId, enabled) =>
-    request('PUT', `/tools/${id(toolId)}/enabled`, { enabled }),
-  getToolUsageStats: () => request('GET', '/tools/usage'),
-
-  listCapabilityRegistries: () => request('GET', '/capability-registries'),
-  addCapabilityRegistry: (url, kind, branchPrefix, userSlug) =>
-    request('POST', '/capability-registries', {
-      url,
-      kind,
-      branchPrefix,
-      userSlug,
-    }),
-  removeCapabilityRegistry: url =>
-    request('DELETE', `/capability-registries${query({ url })}`),
-  syncCapabilityRegistry: url =>
-    request('POST', '/capability-registries/sync', { url }),
-
   // The relay connection lives in the core; no browser route for this yet
   queryCapabilityPresence: () =>
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
@@ -725,18 +686,6 @@ export const webClient: NandiClient = withCommands({
     request('PUT', '/harnesses/default', { harnessId, model }),
   clearHarnessDefault: () => request('DELETE', '/harnesses/default'),
   getHarnessDefault: () => request('GET', '/harnesses/default'),
-
-  listHarnessSessions: (agentId, limit) =>
-    request('GET', `/harness-sessions${query({ agentId, limit })}`),
-  getHarnessSession: sessionId =>
-    request('GET', `/harness-sessions/${id(sessionId)}`),
-  getHarnessEvents: (sessionId, afterSeq) =>
-    request(
-      'GET',
-      `/harness-sessions/${id(sessionId)}/events${query({ afterSeq })}`
-    ),
-  killHarnessSession: sessionId =>
-    request('DELETE', `/harness-sessions/${id(sessionId)}`),
 
   detectAwsCli: () => request('GET', '/aws/cli'),
   listAwsProfiles: () => request('GET', '/aws/profiles'),
@@ -776,19 +725,9 @@ export const webClient: NandiClient = withCommands({
   validateArtifact: (artifact, content) =>
     request('POST', '/studio/validate', { artifact, content }),
 
-  listWork: stateFilter =>
-    request('GET', `/work${query({ state: stateFilter })}`),
-  getWorkItem: workId => request('GET', `/work/${id(workId)}`),
-  pauseWork: workId => request('POST', `/work/${id(workId)}/pause`),
-  resumeWork: workId => request('POST', `/work/${id(workId)}/resume`),
-  cancelWork: workId => request('POST', `/work/${id(workId)}/cancel`),
-  rateWork: (workId, rating) =>
-    request('POST', `/work/${id(workId)}/rating`, { rating }),
-  dismissWork: workId => request('POST', `/work/${id(workId)}/dismiss`),
   listRequestReturns: () => request('GET', '/delegation/returns'),
   dismissRequestReturn: taskId =>
     request('POST', `/delegation/returns/${id(taskId)}/dismiss`),
-  listDismissedWork: () => request('GET', '/work/dismissed'),
 
   reassignTask: ({ taskId, newProviderInstance, reason }) =>
     request('POST', `/tasks/${id(taskId)}/reassign`, {

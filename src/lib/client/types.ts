@@ -118,8 +118,6 @@ import type {
   RunSummary,
   SavedTrigger,
   SendMessageResult,
-  SharedAgent,
-  CapabilityProviders,
   StudioConversationSummary,
   TaskResult,
   Team,
@@ -127,8 +125,6 @@ import type {
   Trigger,
   TriggerFire,
   TriggerInput,
-  TrustPolicy,
-  TrustRule,
   UpdateAvailable,
   Workflow,
   WorkflowSummary,
@@ -173,12 +169,7 @@ import type {
   CapabilityOwner,
   CapabilityProvider,
   CapabilityProviderStats,
-  CapabilityRegistry,
   InstancePresence,
-  RegistryKind,
-  SyncResult,
-  ToolEntry,
-  ToolUsageStats,
   AwsCliInfo,
   AwsProfile,
   KeyProfileInput,
@@ -189,10 +180,8 @@ import type {
   BedrockModel,
   CredentialStatus,
   HarnessDefault,
-  HarnessEventRecord,
   HarnessHealth,
   HarnessInfo,
-  HarnessSessionSummary,
   HarnessTestResult,
   LitellmGatewayStatus,
   SsoLoginResult,
@@ -206,8 +195,6 @@ import type {
   EditPreview,
   PushTargetOption,
   ArtifactValidation,
-  WorkItem,
-  WorkState,
   ReassignRequest,
   ReassignCandidate,
   ManualStepCompletion,
@@ -614,13 +601,6 @@ export interface HandWrittenClient {
   // Wave 2A: teams, sharing, and delegation
 
   // Agent cards + capability index (Track A)
-  /** Local agents serving `capability` */
-  findAgentsByCapability(
-    capability: string
-  ): Promise<Result<AgentCard[], string>>
-  /** Every capability a local agent serves */
-  listDeclaredCapabilities(): Promise<Result<string[], string>>
-  getAgentCard(agentId: string): Promise<Result<AgentCard, string>>
 
   // Relay + presence (Track B)
   getRelayStatus(): Promise<Result<RelayStatus, string>>
@@ -694,26 +674,6 @@ export interface HandWrittenClient {
   unshareAgent(teamId: string, agentId: string): Promise<Result<null, string>>
 
   // Shared views + trust (Track E)
-  /** From my teams' registries and the relay */
-  listAgentsSharedWithMe(): Promise<Result<SharedAgent[], string>>
-  /** Mine that accept delegation or are shared to a team */
-  listAgentsSharedByMe(): Promise<Result<SharedAgent[], string>>
-  /** Per capability: who serves it, ranked, and my pin (`null`: all) */
-  listCapabilityProviders(
-    capability: string | null
-  ): Promise<Result<CapabilityProviders[], string>>
-  /** Pins a provider card for a capability; `null` unpins */
-  setProviderPin(
-    capability: string,
-    cardId: string | null
-  ): Promise<Result<null, string>>
-  listTrustPolicies(): Promise<Result<TrustRule[], string>>
-  /** `requester`: a card ID or `*`; `providerAgent`: a local agent ID */
-  setTrustPolicy(
-    requester: string,
-    providerAgent: string,
-    policy: TrustPolicy
-  ): Promise<Result<null, string>>
 
   // Wave 2B redesign
 
@@ -1089,25 +1049,8 @@ export interface HandWrittenClient {
   ): Promise<Result<CapabilityDefinition, string>>
 
   // Wave A: the unified tool catalog
-  listTools(): Promise<Result<ToolEntry[], string>>
-  getTool(toolId: string): Promise<Result<ToolEntry, string>>
-  setToolEnabled(
-    toolId: string,
-    enabled: boolean
-  ): Promise<Result<ToolEntry, string>>
-  getToolUsageStats(): Promise<Result<ToolUsageStats[], string>>
 
   // Wave A: capability registries (not the marketplace registries)
-  listCapabilityRegistries(): Promise<Result<CapabilityRegistry[], string>>
-  /** `kind`: `null` detects it from the URL */
-  addCapabilityRegistry(
-    url: string,
-    kind: RegistryKind | null,
-    branchPrefix: string | null,
-    userSlug: string | null
-  ): Promise<Result<CapabilityRegistry, string>>
-  removeCapabilityRegistry(url: string): Promise<Result<null, string>>
-  syncCapabilityRegistry(url: string): Promise<Result<SyncResult, string>>
 
   // Wave A: capability presence on the relay
   /** `*` for every capability */
@@ -1128,20 +1071,6 @@ export interface HandWrittenClient {
   ): Promise<Result<HarnessDefault, string>>
   clearHarnessDefault(): Promise<Result<null, string>>
   getHarnessDefault(): Promise<Result<HarnessDefault | null, string>>
-
-  /** Newest first; `limit`: `null` is 100 */
-  listHarnessSessions(
-    agentId: string | null,
-    limit: number | null
-  ): Promise<Result<HarnessSessionSummary[], string>>
-  getHarnessSession(
-    sessionId: string
-  ): Promise<Result<HarnessSessionSummary, string>>
-  getHarnessEvents(
-    sessionId: string,
-    afterSeq: number | null
-  ): Promise<Result<HarnessEventRecord[], string>>
-  killHarnessSession(sessionId: string): Promise<Result<null, string>>
 
   // Wave B: AWS auth, read from the user's own AWS config (never key material)
   detectAwsCli(): Promise<Result<AwsCliInfo, string>>
@@ -1207,19 +1136,9 @@ export interface HandWrittenClient {
   ): Promise<Result<ArtifactValidation, string>>
 
   // Wave CD: work in flight
-  listWork(stateFilter: WorkState | null): Promise<Result<WorkItem[], string>>
-  getWorkItem(id: string): Promise<Result<WorkItem, string>>
-  pauseWork(id: string): Promise<Result<null, string>>
-  resumeWork(id: string): Promise<Result<null, string>>
-  cancelWork(id: string): Promise<Result<null, string>>
-  /** 1–5, finished delegated tasks */
-  rateWork(id: string, rating: number): Promise<Result<null, string>>
-  /** Hides a failed item from the Inbox (it stays in history) */
-  dismissWork(id: string): Promise<Result<null, string>>
   /** Requests that came back while nobody watched, not yet dismissed */
   listRequestReturns(): Promise<Result<RequestReturn[], string>>
   dismissRequestReturn(taskId: string): Promise<Result<null, string>>
-  listDismissedWork(): Promise<Result<string[], string>>
 
   // Wave EF: supervisor reassignment
   /** Hands a task we're serving to a teammate; returns our row */

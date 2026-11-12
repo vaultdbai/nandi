@@ -744,7 +744,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-20 — Capability sources (registries)
 
 - **What:** Subscribe to git repos whose `capabilities/` (or `.nandi/capabilities/`) folder is merged read-only into the capability index. Add with URL or folder, kind (auto-detect / GitHub / GitLab / Local / Git), optional branch prefix and user slug (follows `<prefix>/<slug>`). Synced on add, on demand, every 6 h; never pushed to. Rows show count, synced time/commit and skipped files; Remove deletes the local clone.
-- **Where:** Settings › Sources (kind Capabilities). `src/components/capability/AddCapabilitySourceForm.tsx`, `SourcesSection.tsx`; commands `list_capability_registries`, `add_capability_registry`, `remove_capability_registry`, `sync_capability_registry` (`commands/capability_registries.rs`); HTTP `GET/POST/DELETE /api/capability-registries`, `POST /api/capability-registries/sync {url}`; `services/capability/registry.rs`, `git_sync.rs`. Clones in `~/.nandi/local/cache/capability-registries/<hash>/`.
+- **Where:** Settings › Sources (kind Capabilities). `src/components/capability/AddCapabilitySourceForm.tsx`, `SourcesSection.tsx`; commands `list_capability_registries`, `add_capability_registry`, `remove_capability_registry`, `sync_capability_registry` (`commands/capability_registries.rs`); HTTP `POST /api/rpc/list_capability_registries|add_capability_registry|remove_capability_registry`, `POST /api/rpc/sync_capability_registry {url}`; `services/capability/registry.rs`, `git_sync.rs`. Clones in `~/.nandi/local/cache/capability-registries/<hash>/`.
 - **Preconditions:** A git repo with capability YAMLs.
 - **Steps:** 1. Add. 2. Sync now. 3. Remove.
 - **Expected:** Capabilities appear in Discover; local definitions override a registry's same ID; a second registry defining the same ID is reported, not merged.
@@ -756,7 +756,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-21 — Local capability lookups and agent cards
 
 - **What:** APIs to list capabilities local agents declare, find local agents serving a capability, fetch an agent's card (used by Network › Offer), and query the relay for providers of a capability (`*` for all).
-- **Where:** Commands `list_declared_capabilities`, `find_agents_by_capability`, `get_agent_card` (`commands/capability.rs`; HTTP `GET /api/capabilities/declared`, `/api/capabilities/{id}/agents`, `/api/agents/{agent_id}/card`); `query_capability_presence` (`commands/relay_capabilities.rs`, Tauri only).
+- **Where:** Commands `list_declared_capabilities`, `find_agents_by_capability`, `get_agent_card` (`commands/capability.rs`; HTTP `POST /api/rpc/list_declared_capabilities`, `find_agents_by_capability`, `get_agent_card`); `query_capability_presence` (`commands/relay_capabilities.rs`, Tauri only).
 - **Preconditions:** Agents with `serves:`/`provides:`; relay connected for presence.
 - **Steps:** Call each endpoint.
 - **Expected:** JSON arrays / card.

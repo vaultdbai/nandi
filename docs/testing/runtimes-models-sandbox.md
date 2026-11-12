@@ -105,7 +105,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-07 — Built-in tool catalog and On/Off switch
 
 - **What:** The tool catalog lists built-in tools (`shell`, `read_file`, `write_file`, `list_dir`, delegation), connector and pilot tools; a built-in tool can be switched off (confirmation asked, agents lose it) and on; usage stats are available.
-- **Where:** Library → Browse, Tools filter (On/Off switch in `src/components/library/LibraryItemAction.tsx`); `src/hooks/useTools.ts`; `src-tauri/src/commands/tools.rs` (`list_tools`, `get_tool`, `set_tool_enabled`, `get_tool_usage_stats`), `src-tauri/src/services/tools/` (`builtin.rs`, `catalog.rs`). HTTP `GET /api/tools`, `GET /api/tools/usage`, `GET /api/tools/{id}`, `PUT /api/tools/{id}/enabled`. Event `tool://catalog_changed`.
+- **Where:** Library → Browse, Tools filter (On/Off switch in `src/components/library/LibraryItemAction.tsx`); `src/hooks/useTools.ts`; `src-tauri/src/commands/tools.rs` (`list_tools`, `get_tool`, `set_tool_enabled`, `get_tool_usage_stats`), `src-tauri/src/services/tools/` (`builtin.rs`, `catalog.rs`). HTTP `POST /api/rpc/list_tools`, `get_tool_usage_stats`, `get_tool`, `set_tool_enabled`. Event `tool://catalog_changed`.
 - **Preconditions:** None.
 - **Steps:** 1. Open Library, filter to Tools, find "Run shell commands" (`shell`). 2. Switch it Off, click Switch off. 3. Restart the app. 4. Switch it On.
 - **Expected:** Off opens "Switch off Run shell commands?" ("Agents that use … won't be able to until you switch it back on."). After Off, `tool_catalog.enabled = 0` and survives a catalog rebuild and restart; On needs no confirmation. Delegation tool has `requires_approval: true` by default.
@@ -259,7 +259,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - **What:** ACP updates are written as native steps (`agent://token`, `agent://tool_call`, `agent://tool_result`) so chat, history and run details render them; usage and `runs.runtime` are recorded; up to 5,000 events per session are stored.
 - **Where:** `services/harness/event_translation.rs` (`TurnTranslator`), `services/harness/evidence.rs` (`session_started`, `record_event`, `session_ended`, `attribute_run`), tables `harness_sessions`, `harness_events`.
 - **Preconditions:** A completed harness run.
-- **Steps:** 1. Open the run's detail view. 2. `GET /api/harness-sessions/{id}/events`.
+- **Steps:** 1. Open the run's detail view. 2. `POST /api/rpc/get_harness_events`.
 - **Expected:** Text, thinking and tool calls appear in the run timeline; `runs.runtime` = the CLI id; session row has input/output tokens.
 - **Edge / negative cases:** event cap reached; thinking blocks.
 - **Automation:** Covered by: `event_translation.rs`, `evidence.rs` tests | Layer: api | Gap: none.
@@ -269,7 +269,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-21 — Recent harness sessions list and Stop
 
 - **What:** Advanced shows recent harness sessions (below Enterprise config) with status (Starting, Running, Finished, Failed, Stopped) and token counts ("N in / M out tokens"); Stop kills a live session (CLI and container stop, run fails).
-- **Where:** Settings → Models & runtimes → Advanced (sessions list). `src/components/harness/HarnessSessionList.tsx`, `commands/harness_sessions.rs` (`list_harness_sessions`, `get_harness_session`, `get_harness_events`, `kill_harness_session`). HTTP `GET /api/harness-sessions`, `GET|DELETE /api/harness-sessions/{id}`, `GET /api/harness-sessions/{id}/events`.
+- **Where:** Settings → Models & runtimes → Advanced (sessions list). `src/components/harness/HarnessSessionList.tsx`, `commands/harness_sessions.rs` (`list_harness_sessions`, `get_harness_session`, `get_harness_events`, `kill_harness_session`). HTTP `POST /api/rpc/list_harness_sessions`, `get_harness_session|kill_harness_session`, `POST /api/rpc/get_harness_events`.
 - **Preconditions:** At least one harness run.
 - **Steps:** 1. Start a long harness run. 2. Open Settings › Models & runtimes, expand Advanced, click Stop on the running session.
 - **Expected:** Row goes to Stopped; run fails; container gone. Empty state: "No harness sessions yet".

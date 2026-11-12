@@ -2,17 +2,17 @@ use tauri_specta::{collect_commands, collect_events, Builder};
 
 pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::commands::{
-        access, agents, ask, attachments, audit, aws_auth, bedrock, capabilities, capability,
-        capability_registries, chat, companion, connectors, delegation, delegation_clarification,
-        docker, egress, email, gateway, groups, harness_sessions, harnesses, help, identity,
-        images, live, llm_keys, machine, manual_steps, marketplace, network, notifications, pilots,
-        preferences, queue, reassign, recovery, relay, relay_capabilities, remote, repo, runs,
-        shared, snapshots, studio, tasks, teams, teams_roster, tools, triggers, work, workflows,
-        workspace,
+        access, agents, ask, attachments, audit, aws_auth, bedrock, capabilities, chat, companion,
+        connectors, delegation, delegation_clarification, docker, egress, email, gateway, groups,
+        harnesses, help, identity, images, live, llm_keys, machine, manual_steps, marketplace,
+        network, notifications, pilots, preferences, queue, reassign, recovery, relay,
+        relay_capabilities, remote, repo, runs, snapshots, studio, tasks, teams, teams_roster,
+        triggers, workflows, workspace,
     };
     use crate::rpc::{
-        analysis, config, decisions, knowme, marketplace_search, mascot, memory, notes, palette,
-        policies, requests, workflow_builder,
+        analysis, capability, capability_registries, config, decisions, harness_sessions, knowme,
+        marketplace_search, mascot, memory, notes, palette, policies, requests, shared, tools,
+        work, workflow_builder,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;

@@ -74,8 +74,11 @@ macro_rules! commands {
 pub(crate) use commands;
 
 pub mod analysis;
+pub mod capability;
+pub mod capability_registries;
 pub mod config;
 pub mod decisions;
+pub mod harness_sessions;
 pub mod knowme;
 pub mod marketplace_search;
 pub mod mascot;
@@ -84,6 +87,9 @@ pub mod notes;
 pub mod palette;
 pub mod policies;
 pub mod requests;
+pub mod shared;
+pub mod tools;
+pub mod work;
 pub mod workflow_builder;
 
 /// What an RPC call returns: the command's JSON result, or its error text
@@ -95,8 +101,11 @@ pub type Handler = fn(AppState, Value) -> RpcFuture;
 /// Every module's `RPC` table. A new module adds its table here.
 const TABLES: &[&[(&str, Handler)]] = &[
     analysis::RPC,
+    capability::RPC,
+    capability_registries::RPC,
     config::RPC,
     decisions::RPC,
+    harness_sessions::RPC,
     knowme::RPC,
     marketplace_search::RPC,
     mascot::RPC,
@@ -105,6 +114,9 @@ const TABLES: &[&[(&str, Handler)]] = &[
     palette::RPC,
     policies::RPC,
     requests::RPC,
+    shared::RPC,
+    tools::RPC,
+    work::RPC,
     workflow_builder::RPC,
 ];
 

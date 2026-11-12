@@ -18,21 +18,23 @@ $ErrorActionPreference = 'Stop'
 
 $Routes = @(
     'agents', 'agents/overviews', 'approvals/pending', 'ask/history', 'aws/cli', 'aws/profiles',
-    'bedrock/gateway', 'bedrock/models', 'capabilities', 'capabilities/declared',
-    'capability-registries', 'companion/snapshot', 'connectors', 'default-model',
-    'delegation/history', 'delegation/pending-clarifications', 'delegation/providers',
-    'egress/status', 'gateway/callers', 'gateway/config', 'gateway/holds', 'gateway/manifest',
-    'gateway/status', 'harnesses', 'harness-sessions', 'identity/status', 'llm-keys',
-    'marketplace/agents', 'marketplace/installed', 'marketplace/packs',
-    'marketplace/updates', 'network/snapshot', 'ollama', 'pilots',
-    'preferences', 'relay/agents', 'relay/status', 'remote/status', 'repo/git/status',
-    'repo/status', 'runs', 'shared/by-me', 'shared/capabilities', 'shared/with-me',
-    'studio/push-targets', 'tasks', 'teams', 'tools', 'tools/usage', 'triggers',
-    'trust/policies', 'trust/requests', 'work', 'work/dismissed', 'workflows',
+    'bedrock/gateway', 'bedrock/models', 'capabilities', 'companion/snapshot', 'connectors',
+    'default-model', 'delegation/history', 'delegation/pending-clarifications',
+    'delegation/providers', 'egress/status', 'gateway/callers', 'gateway/config',
+    'gateway/holds', 'gateway/manifest', 'gateway/status', 'harnesses', 'identity/status',
+    'llm-keys', 'marketplace/agents', 'marketplace/installed', 'marketplace/packs',
+    'marketplace/updates', 'network/snapshot', 'ollama', 'pilots', 'preferences',
+    'relay/agents', 'relay/status', 'remote/status', 'repo/git/status', 'repo/status', 'runs',
+    'studio/push-targets', 'tasks', 'teams', 'triggers', 'trust/requests', 'workflows',
     'workflows/manual-steps',
     # Commands without arguments: `POST /api/rpc/{name}` with `{}`
     'rpc:get_auto_approve_rules', 'rpc:get_chief_of_staff_digest', 'rpc:get_know_me',
-    'rpc:get_my_notes', 'rpc:get_repo_llm_config', 'rpc:list_decision_months', 'rpc:list_note_suggestions', 'rpc:mascot_get'
+    'rpc:get_my_notes', 'rpc:get_repo_llm_config', 'rpc:get_tool_usage_stats',
+    'rpc:list_agents_shared_by_me', 'rpc:list_agents_shared_with_me',
+    'rpc:list_capability_providers', 'rpc:list_capability_registries',
+    'rpc:list_decision_months', 'rpc:list_declared_capabilities', 'rpc:list_dismissed_work',
+    'rpc:list_harness_sessions', 'rpc:list_note_suggestions', 'rpc:list_tools',
+    'rpc:list_trust_policies', 'rpc:list_work', 'rpc:mascot_get'
 )
 
 if (-not (Test-Path $Binary)) {

@@ -205,11 +205,6 @@ export const tauriClient: NandiClient = withCommands({
     commands.setConnectorSecret(id, key, value),
   connectorStatus: id => commands.connectorStatus(id),
 
-  findAgentsByCapability: capability =>
-    commands.findAgentsByCapability(capability),
-  listDeclaredCapabilities: () => commands.listDeclaredCapabilities(),
-  getAgentCard: agentId => commands.getAgentCard(agentId),
-
   getRelayStatus: () => commands.getRelayStatus(),
   setRelayUrl: url => commands.setRelayUrl(url),
   joinRelay: (url, joinCode) => commands.joinRelay(url, joinCode),
@@ -238,16 +233,6 @@ export const tauriClient: NandiClient = withCommands({
   syncTeamRegistry: teamId => commands.syncTeamRegistry(teamId),
   shareAgent: (teamId, agentId) => commands.shareAgent(teamId, agentId),
   unshareAgent: (teamId, agentId) => commands.unshareAgent(teamId, agentId),
-
-  listAgentsSharedWithMe: () => commands.listAgentsSharedWithMe(),
-  listAgentsSharedByMe: () => commands.listAgentsSharedByMe(),
-  listCapabilityProviders: capability =>
-    commands.listCapabilityProviders(capability),
-  setProviderPin: (capability, cardId) =>
-    commands.setProviderPin(capability, cardId),
-  listTrustPolicies: () => commands.listTrustPolicies(),
-  setTrustPolicy: (requester, providerAgent, policy) =>
-    commands.setTrustPolicy(requester, providerAgent, policy),
 
   getCompanionSnapshot: dayStart => commands.getCompanionSnapshot(dayStart),
   toggleCompanionWindow: () => commands.toggleCompanionWindow(),
@@ -414,17 +399,6 @@ export const tauriClient: NandiClient = withCommands({
   promoteAmbiguityToSchema: (id, clusterId) =>
     commands.promoteAmbiguityToSchema(id, clusterId),
 
-  listTools: () => commands.listTools(),
-  getTool: toolId => commands.getTool(toolId),
-  setToolEnabled: (toolId, enabled) => commands.setToolEnabled(toolId, enabled),
-  getToolUsageStats: () => commands.getToolUsageStats(),
-
-  listCapabilityRegistries: () => commands.listCapabilityRegistries(),
-  addCapabilityRegistry: (url, kind, branchPrefix, userSlug) =>
-    commands.addCapabilityRegistry(url, kind, branchPrefix, userSlug),
-  removeCapabilityRegistry: url => commands.removeCapabilityRegistry(url),
-  syncCapabilityRegistry: url => commands.syncCapabilityRegistry(url),
-
   queryCapabilityPresence: capabilityId =>
     commands.queryCapabilityPresence(capabilityId),
 
@@ -436,13 +410,6 @@ export const tauriClient: NandiClient = withCommands({
     commands.setHarnessDefault(harnessId, model),
   clearHarnessDefault: () => commands.clearHarnessDefault(),
   getHarnessDefault: () => commands.getHarnessDefault(),
-
-  listHarnessSessions: (agentId, limit) =>
-    commands.listHarnessSessions(agentId, limit),
-  getHarnessSession: sessionId => commands.getHarnessSession(sessionId),
-  getHarnessEvents: (sessionId, afterSeq) =>
-    commands.getHarnessEvents(sessionId, afterSeq),
-  killHarnessSession: sessionId => commands.killHarnessSession(sessionId),
 
   detectAwsCli: () => commands.detectAwsCli(),
   listAwsProfiles: () => commands.listAwsProfiles(),
@@ -477,16 +444,8 @@ export const tauriClient: NandiClient = withCommands({
   validateArtifact: (artifact, content) =>
     commands.validateArtifact(artifact, content),
 
-  listWork: stateFilter => commands.listWork(stateFilter),
-  getWorkItem: workId => commands.getWorkItem(workId),
-  pauseWork: workId => commands.pauseWork(workId),
-  resumeWork: workId => commands.resumeWork(workId),
-  cancelWork: workId => commands.cancelWork(workId),
-  rateWork: (workId, rating) => commands.rateWork(workId, rating),
-  dismissWork: workId => commands.dismissWork(workId),
   listRequestReturns: () => commands.listRequestReturns(),
   dismissRequestReturn: taskId => commands.dismissRequestReturn(taskId),
-  listDismissedWork: () => commands.listDismissedWork(),
 
   reassignTask: request => commands.reassignTask(request),
   listReassignCandidates: taskId => commands.listReassignCandidates(taskId),

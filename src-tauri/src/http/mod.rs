@@ -13,9 +13,7 @@ pub mod auth;
 mod aws_auth;
 mod bedrock;
 mod capabilities;
-mod capability;
 // Wave A
-mod capability_registries;
 mod companion;
 // Wave EF
 mod connectors;
@@ -25,7 +23,6 @@ mod delegation_clarification;
 mod email;
 mod gateway;
 mod groups;
-mod harness_sessions;
 mod harnesses;
 mod help;
 mod identity;
@@ -41,15 +38,12 @@ mod remote;
 mod repo;
 mod routes;
 mod rpc;
-mod shared;
 mod static_files;
 mod studio;
 mod tasks;
 mod teams;
 mod teams_roster;
-mod tools;
 mod triggers;
-mod work;
 mod workspace;
 pub mod ws;
 
@@ -84,11 +78,9 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(machine::api())
                 .merge(help::api())
                 // Wave 2A
-                .merge(capability::api())
                 .merge(relay::api())
                 .merge(delegation::api())
                 .merge(teams::api())
-                .merge(shared::api())
                 // Wave 2B redesign
                 .merge(companion::api())
                 // Wave final
@@ -107,17 +99,13 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(groups::api())
                 // Wave A
                 .merge(capabilities::api())
-                .merge(tools::api())
-                .merge(capability_registries::api())
                 // Wave B
                 .merge(harnesses::api())
-                .merge(harness_sessions::api())
                 .merge(aws_auth::api())
                 .merge(bedrock::api())
                 // Wave CD (see docs/developer/interaction-layer.md)
                 .merge(ask::api())
                 .merge(studio::api())
-                .merge(work::api())
                 // Wave EF (see docs/developer/network-and-reassignment.md)
                 .merge(manual_steps::api()),
         )
@@ -290,8 +278,6 @@ mod tests {
         let (state, app) = app();
         for (method, uri) in [
             ("GET", "/api/capabilities"),
-            ("GET", "/api/capabilities/summarize/agents"),
-            ("GET", "/api/agents/a/card"),
             ("GET", "/api/relay/status"),
             ("PUT", "/api/relay/url"),
             ("POST", "/api/relay/join"),
@@ -316,10 +302,6 @@ mod tests {
             ("POST", "/api/teams/org/sync"),
             ("POST", "/api/teams/org/agents/a"),
             ("DELETE", "/api/teams/org/agents/a"),
-            ("GET", "/api/shared/with-me"),
-            ("GET", "/api/shared/by-me"),
-            ("GET", "/api/trust/policies"),
-            ("PUT", "/api/trust/policies"),
         ] {
             // Every route answers JSON (success or error); unmatched paths
             // fall through to the frontend's HTML instead.
@@ -443,7 +425,6 @@ mod tests {
             "owner":{"kind":"user","id":"ada","displayName":"Ada"},
             "createdAt":null,"updatedAt":null}"#;
         let owner = r#"{"newOwner":{"kind":"user","id":"bob","displayName":"Bob"}}"#;
-        let registry = r#"{"url":"https://example.com/caps.git"}"#;
         for (method, uri, body) in [
             ("GET", "/api/capabilities", "{}"),
             ("POST", "/api/capabilities", definition),
@@ -456,24 +437,6 @@ mod tests {
             ("GET", "/api/capabilities/c1/evidence?windowDays=7", "{}"),
             ("GET", "/api/capabilities/c1/ambiguities", "{}"),
             ("POST", "/api/capabilities/c1/ambiguities/k1/promote", "{}"),
-            ("GET", "/api/capabilities/declared", "{}"),
-            ("GET", "/api/capabilities/c1/agents", "{}"),
-            ("GET", "/api/tools", "{}"),
-            ("GET", "/api/tools/usage", "{}"),
-            ("GET", "/api/tools/builtin.shell", "{}"),
-            (
-                "PUT",
-                "/api/tools/builtin.shell/enabled",
-                r#"{"enabled":false}"#,
-            ),
-            ("GET", "/api/capability-registries", "{}"),
-            ("POST", "/api/capability-registries", registry),
-            (
-                "DELETE",
-                "/api/capability-registries?url=https%3A%2F%2Fexample.com%2Fcaps.git",
-                "{}",
-            ),
-            ("POST", "/api/capability-registries/sync", registry),
         ] {
             // JSON (501 while stubbed, or the track's answer)
             let response = app
@@ -502,10 +465,6 @@ mod tests {
             ("DELETE", "/api/harnesses/default", "{}"),
             ("GET", "/api/harnesses/nope/health", "{}"),
             ("POST", "/api/harnesses/nope/test", "{}"),
-            ("GET", "/api/harness-sessions?limit=5", "{}"),
-            ("GET", "/api/harness-sessions/s1", "{}"),
-            ("GET", "/api/harness-sessions/s1/events?afterSeq=0", "{}"),
-            ("DELETE", "/api/harness-sessions/s1", "{}"),
             ("GET", "/api/aws/bedrock-api-key", "{}"),
             ("GET", "/api/aws/sso/login/l1", "{}"),
             ("GET", "/api/bedrock/gateway", "{}"),
@@ -539,13 +498,6 @@ mod tests {
                 "/api/studio/validate",
                 r#"{"artifact":{"kind":"agent","id":"a"},"content":"---\nmodel: x\n---\n"}"#,
             ),
-            ("GET", "/api/work", "{}"),
-            ("GET", "/api/work/w1", "{}"),
-            ("POST", "/api/work/w1/pause", "{}"),
-            ("POST", "/api/work/w1/resume", "{}"),
-            ("POST", "/api/work/w1/cancel", "{}"),
-            ("GET", "/api/work/dismissed", "{}"),
-            ("POST", "/api/work/w1/dismiss", "{}"),
             ("GET", "/api/approvals/pending", "{}"),
         ] {
             // JSON (501 while stubbed, or the track's answer)

@@ -371,7 +371,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-27 — Workflow run project view (pause, resume, cancel)
 
 - **What:** Opening a workflow run shows a project page: title, state badge, owner, started, ETA; **Pause** (active), **Resume** (paused runs only), **Cancel** (active or waiting); progress bar "n/m"; next-action line ("Approve Post review for PR Reviewer", "Writer is working on Accounts": agent names and step IDs as words, never raw IDs; a manual step shows its instructions); the graph; a Timeline (run started, step started/done/failed/rejected, run ended); "Coming up" with estimated times or "needs approval"; and an Ask box scoped to the workflow. Pause stops between steps; Cancel stops for good and cancels the step's agent turn.
-- **Where:** Workflow → Runs → Open, Overview recent runs, Home Running/Recent, Inbox failed row; view kind `work-item`; `src/components/work/WorkflowProjectView.tsx`, `src/lib/work.ts`; commands `get_work_item`, `pause_work`, `resume_work`, `cancel_work`; HTTP `GET /api/work/{id}`, `POST /api/work/{id}/pause|resume|cancel`.
+- **Where:** Workflow → Runs → Open, Overview recent runs, Home Running/Recent, Inbox failed row; view kind `work-item`; `src/components/work/WorkflowProjectView.tsx`, `src/lib/work.ts`; commands `get_work_item`, `pause_work`, `resume_work`, `cancel_work`; HTTP `POST /api/rpc/get_work_item`, `pause_work|resume_work|cancel_work`.
 - **Preconditions:** A run with several steps.
 - **Steps:** 1. Open a running run. 2. Pause; wait for the current step to finish. 3. Resume. 4. Cancel.
 - **Expected:** Pause → state "Waiting on you" with "Paused: resume when you're ready", next step doesn't start; Resume continues; Cancel → Cancelled, running agent turn cancelled, `work://item_updated` emitted.
@@ -735,7 +735,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **What:** Agent runs started by trigger firings (last 24 h, up to 100 fires) appear as Work items of kind `trigger` in their run's state; a workflow firing appears as its workflow run.
 - **Where:** `src-tauri/src/services/work/mod.rs` (`trigger_items`, `from_trigger_fire`); shown on Home Running/Recent.
 - **Preconditions:** An agent-target trigger that fired.
-- **Steps:** Fire it; call `GET /api/work`.
+- **Steps:** Fire it; call `POST /api/rpc/list_work`.
 - **Expected:** An item with kind `trigger`, the trigger name as title, state matching the agent run.
 - **Edge / negative cases:** Fires without a run id are skipped.
 - **Automation:** Covered by: `a_trigger_firing_is_a_work_item_in_its_runs_state` (`work/tests.rs`) | Layer: unit | Gap: none.
@@ -825,7 +825,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-05 — Result first and rating
 
 - **What:** A done Request shows its result block at the top; an outgoing delegation can be rated 1–5 stars once ("How did <member> do?") (stored as requester evidence).
-- **Where:** Request page; `RequestDetailView.tsx` (`ResultBlock`); command `rate_work`; HTTP `POST /api/work/{id}/rating`.
+- **Where:** Request page; `RequestDetailView.tsx` (`ResultBlock`); command `rate_work`; HTTP `POST /api/rpc/rate_work`.
 - **Preconditions:** A completed outgoing delegation.
 - **Steps:** Click 4 stars.
 - **Expected:** the stars show the rating; `capability_evidence.user_rating = 4`.
@@ -942,9 +942,9 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-15 — Work items API
 
 - **What:** `list_work` returns workflow runs in flight or from the last 24 h, agent runs started by trigger firings, outgoing top-level delegated tasks, and local Requests (items their steps started are folded into them), newest first, optionally filtered by state (active, waiting, done, failed, cancelled). Each item has kind, title, state, owner, progress, next action (with `reason_kind` and target ids), rating.
-- **Where:** commands `list_work`, `get_work_item` (`src-tauri/src/commands/work.rs`); HTTP `GET /api/work`, `GET /api/work/{id}`; `src-tauri/src/services/work/mod.rs`; consumed by Home Running/Recent and the Inbox; `work://item_added|updated|removed` events.
+- **Where:** commands `list_work`, `get_work_item` (`src-tauri/src/commands/work.rs`); HTTP `POST /api/rpc/list_work`, `POST /api/rpc/get_work_item`; `src-tauri/src/services/work/mod.rs`; consumed by Home Running/Recent and the Inbox; `work://item_added|updated|removed` events.
 - **Preconditions:** Some recent work.
-- **Steps:** Call `GET /api/work` and `GET /api/work?state=waiting`.
+- **Steps:** Call `POST /api/rpc/list_work` and `list_work {"stateFilter":"waiting"}`.
 - **Expected:** Items as described; gateway sub-tasks hidden under their parent.
 - **Edge / negative cases:** Unknown id → "No work item '<id>'".
 - **Automation:** Covered by: `work_lists_active_waiting_and_recent_done` (`work/tests.rs`) | Layer: api | Gap: none.
@@ -1050,7 +1050,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-24 — Failed items: Retry and Dismiss
 
 - **What:** Failures from the last 24 h appear after waiting items (not counted in the badge) with **Dismiss** (hidden from the Inbox, kept in history; remembered in `work_preferences`) and **Retry** (a workflow run asks first, "Run <title> again?", since every step runs again; a delegation retries as a new attempt). The title opens the item.
-- **Where:** `Inbox.tsx` (`FailedRow`); commands `dismiss_work`, `list_dismissed_work`, `run_workflow`, `retry_task`; HTTP `POST /api/work/{id}/dismiss`, `GET /api/work/dismissed`.
+- **Where:** `Inbox.tsx` (`FailedRow`); commands `dismiss_work`, `list_dismissed_work`, `run_workflow`, `retry_task`; HTTP `POST /api/rpc/dismiss_work`, `list_dismissed_work`.
 - **Preconditions:** A failed workflow run and a failed delegation.
 - **Steps:** Dismiss one; Retry the other (confirm for workflow).
 - **Expected:** Dismissed row gone and stays gone after restart; retry starts new work.
