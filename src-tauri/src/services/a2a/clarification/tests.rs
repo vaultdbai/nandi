@@ -16,7 +16,7 @@ use crate::services::a2a::tool;
 use crate::services::a2a::{Task, TaskResult};
 use crate::services::domain::AgentId;
 use crate::services::events::tests::RecordingSink;
-use crate::services::relay::client_api::Handler;
+use crate::services::relay::client_api::{Handler, StoringHandler};
 use crate::services::relay::protocol::{TaskAssigned, TaskCompleted, TaskFailed};
 use crate::services::relay::RelayStatus;
 
@@ -91,7 +91,7 @@ impl RelayClient for PeerRelay {
         Box::pin(async { Ok(()) })
     }
 
-    fn on_task_assigned(&self, _: Handler<TaskAssigned>) -> BoxFuture<'_, ()> {
+    fn on_task_assigned(&self, _: StoringHandler<TaskAssigned>) -> BoxFuture<'_, ()> {
         Box::pin(async {})
     }
 

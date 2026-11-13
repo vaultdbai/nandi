@@ -631,20 +631,27 @@ impl Executor {
             .is_some_and(|row| row.state == TaskState::InputRequired)
     }
 
-    /// Runs `task` and returns its result. `inbound`: the task came from
-    /// another instance, so this side records its own history row and
-    /// `tasks` row.
-    pub async fn execute(&self, task: &Task, inbound: bool) -> TaskResult {
-        self.run_task(task, inbound, false).await
+    /// Runs a local `task` and returns its result
+    pub async fn execute(&self, task: &Task) -> TaskResult {
+        self.run_task(task, false).await
     }
 
-    /// An inbound task whose `tasks` row survived a restart: runs it again
-    /// from where the row is (see `resume`)
-    pub async fn execute_resumed(&self, task: &Task) -> TaskResult {
-        self.run_task(task, true, true).await
+    /// Takes an inbound `task` over: its provider row (with the wire task,
+    /// so a restart can run it again), `Delivered`, `TaskDelivered`. Done
+    /// before the relay's mail is acked; `Err` when the row couldn't be
+    /// written, and the relay brings the task again.
+    pub async fn store_inbound(&self, task: &Task) -> Result<(), String> {
+        ProviderLife::new(&self.deps, task).store().await
     }
 
-    async fn run_task(&self, task: &Task, inbound: bool, resumed: bool) -> TaskResult {
+    /// Runs an inbound task whose row is stored ([`Self::store_inbound`], or kept
+    /// over a restart, see `resume`) from where the row is. This side
+    /// records its own history row too.
+    pub async fn execute_inbound(&self, task: &Task) -> TaskResult {
+        self.run_task(task, true).await
+    }
+
+    async fn run_task(&self, task: &Task, inbound: bool) -> TaskResult {
         let owner = &self.deps.owner().github_handle;
         let requester_owner = &task.requester.owner.github_handle;
         let mut result = TaskResult {
@@ -674,7 +681,6 @@ impl Executor {
         }
         let life = inbound.then(|| ProviderLife::new(&self.deps, task));
         if let Some(life) = &life {
-            life.begin(resumed).await;
             // Screened, and held for the owner's approval unless trusted
             if let Some(refusal) = self.intake(task, life).await {
                 life.reject(&refusal).await;
@@ -1066,18 +1072,10 @@ impl<'a> ProviderLife<'a> {
         }
     }
 
-    /// New: the row (with the wire task), `Delivered`, `TaskDelivered`.
-    /// Resumed: the row is already there.
-    async fn begin(&self, resumed: bool) {
-        if resumed {
-            return;
-        }
+    /// The row (with the wire task), `Delivered`, `TaskDelivered`
+    async fn store(&self) -> Result<(), String> {
         let record = TaskRecord::provider(self.task, &self.deps.instance_id);
-        if let Err(e) = task::create(&self.deps.db, &self.deps.bus, &record, Some(self.task)).await
-        {
-            log::warn!("Task {}: {e}", self.task.id);
-            return;
-        }
+        task::create(&self.deps.db, &self.deps.bus, &record, Some(self.task)).await?;
         self.step(
             TaskState::Delivered,
             Change::reason("assigned by the relay").at(TaskStage::Admit),
@@ -1087,6 +1085,7 @@ impl<'a> ProviderLife<'a> {
             task_id: self.task.id.clone(),
         })
         .await;
+        Ok(())
     }
 
     async fn reject(&self, refusal: &Refusal) {
@@ -1392,7 +1391,8 @@ fn parse_reply(reply: &str) -> Value {
 }
 
 /// Runs the tasks the relay assigns to this instance and sends each result
-/// back. Holds the executor weakly: the relay outlives neither.
+/// back. A task is stored before the relay's mail is acked, then run in the
+/// background. Holds the executor weakly: the relay outlives neither.
 pub async fn register(executor: &Arc<Executor>, relay: &Arc<dyn RelayClient>) {
     let executor: Weak<Executor> = Arc::downgrade(executor);
     let sender: Weak<dyn RelayClient> = Arc::downgrade(relay);
@@ -1401,27 +1401,47 @@ pub async fn register(executor: &Arc<Executor>, relay: &Arc<dyn RelayClient>) {
         .on_task_assigned(Box::new(move |assigned: TaskAssigned| {
             let task = assigned.task;
             let (executor, sender) = (executor.clone(), sender.clone());
-            runtime.spawn(async move {
+            let runtime = runtime.clone();
+            Box::pin(async move {
                 let Some(executor) = executor.upgrade() else {
-                    return;
+                    return false;
                 };
                 // Sent again (a delivery the relay sent before our ack): a
                 // running task isn't run twice, a finished one answers again
-                let Some(_handling) = Handling::claim(&executor.deps.instance_id, &task.id) else {
+                let Some(handling) = Handling::claim(&executor.deps.instance_id, &task.id) else {
                     log::info!("Task {}: delivered twice; already on it", task.id);
-                    return;
+                    return true;
                 };
                 let db = executor.deps.db.clone();
-                let result = match task::get_row(&db, &task.id).await.ok().flatten() {
-                    Some(row) if !row.state.is_terminal() => return,
-                    Some(_) => match history::get(&db, &task.id).await {
-                        Ok(Some(done)) => done,
-                        _ => return,
-                    },
-                    None => executor.execute(&task, true).await,
+                let finished = match task::get_row(&db, &task.id).await.ok().flatten() {
+                    // Running, or resumed after a restart
+                    Some(row) if !row.state.is_terminal() => return true,
+                    Some(_) => true,
+                    None => {
+                        if let Err(e) = executor.store_inbound(&task).await {
+                            log::warn!(
+                                "Task {}: not taken, the relay sends it again: {e}",
+                                task.id
+                            );
+                            return false;
+                        }
+                        false
+                    }
                 };
-                result_outbox::send(&db, sender.upgrade().as_ref(), result).await;
-            });
+                runtime.spawn(async move {
+                    let _handling = handling;
+                    let result = if finished {
+                        match history::get(&db, &task.id).await {
+                            Ok(Some(done)) => done,
+                            _ => return,
+                        }
+                    } else {
+                        executor.execute_inbound(&task).await
+                    };
+                    result_outbox::send(&db, sender.upgrade().as_ref(), result).await;
+                });
+                true
+            })
         }))
         .await;
 }

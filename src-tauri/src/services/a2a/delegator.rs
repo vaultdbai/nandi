@@ -472,7 +472,7 @@ impl Delegator {
             let (status, error) = if local && lasting {
                 self.assign_locally(&task, &mut result).await
             } else if local {
-                let provided = self.executor.execute(&task, false).await;
+                let provided = self.executor.execute(&task).await;
                 result.output = provided.output;
                 result.tokens_in = provided.tokens_in;
                 result.tokens_out = provided.tokens_out;
@@ -587,7 +587,7 @@ impl Delegator {
         let mut events = self.deps.broadcast.subscribe();
         let mut work = {
             let (executor, task) = (self.executor.clone(), task.clone());
-            tokio::spawn(async move { executor.execute(&task, false).await })
+            tokio::spawn(async move { executor.execute(&task).await })
         };
         let kept = tokio::time::timeout(assignment::ACCEPT_WINDOW, async {
             loop {

@@ -146,6 +146,13 @@ impl Seen {
         }
     }
 
+    fn remove(&mut self, sealed_for: &SealedFor) {
+        let key = Self::key(sealed_for);
+        if self.keys.remove(&key) {
+            self.order.retain(|kept| kept != &key);
+        }
+    }
+
     fn key(sealed_for: &SealedFor) -> (String, String, u64) {
         (
             sealed_for.task_id.clone(),
@@ -322,6 +329,12 @@ impl Sealer {
             Opening::Opened((note, _)) => Opening::Opened(Some(note.text)),
             Opening::Duplicate => Opening::Duplicate,
         })
+    }
+
+    /// Forgets that `envelope` was opened: a delivery we couldn't keep
+    /// opens again when it comes again
+    pub fn forget(&self, envelope: &Envelope) {
+        self.lock_seen().remove(&envelope.sealed_for);
     }
 
     fn lock_seen(&self) -> std::sync::MutexGuard<'_, Seen> {

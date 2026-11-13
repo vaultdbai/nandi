@@ -27,7 +27,7 @@ use crate::model::{ApprovalDecision, RunStatus};
 use crate::services::chat;
 use crate::services::domain::{Agent, AgentId};
 use crate::services::events::tests::RecordingSink;
-use crate::services::relay::client_api::{Handler, Submitted};
+use crate::services::relay::client_api::{Handler, StoringHandler, Submitted};
 use crate::services::relay::protocol::{
     PeerDelivery, PeerMessage, TaskAssigned, TaskCompleted, TaskFailed, TaskRefused,
     ALL_CAPABILITIES,
@@ -291,11 +291,11 @@ impl Hub {
             .unwrap()
             .push(task_id.to_string());
         for handler in provider.assigned.lock().unwrap().iter() {
-            handler(TaskAssigned {
+            tokio::spawn(handler(TaskAssigned {
                 task_id: task_id.to_string(),
                 provider_instance: provider.instance.clone(),
                 task: opened.clone(),
-            });
+            }));
         }
     }
 
@@ -378,7 +378,7 @@ pub(crate) struct MockRelay {
     instance: String,
     hub: Arc<Hub>,
     cards: Mutex<Vec<AgentCard>>,
-    assigned: Mutex<Vec<Handler<TaskAssigned>>>,
+    assigned: Mutex<Vec<StoringHandler<TaskAssigned>>>,
     completed: Mutex<Vec<Handler<TaskCompleted>>>,
     failed: Mutex<Vec<Handler<TaskFailed>>>,
     peer: Mutex<Vec<Handler<PeerDelivery>>>,
@@ -617,7 +617,7 @@ impl RelayClient for MockRelay {
         })
     }
 
-    fn on_task_assigned(&self, handler: Handler<TaskAssigned>) -> BoxFuture<'_, ()> {
+    fn on_task_assigned(&self, handler: StoringHandler<TaskAssigned>) -> BoxFuture<'_, ()> {
         self.assigned.lock().unwrap().push(handler);
         Box::pin(async {})
     }
@@ -3208,7 +3208,7 @@ async fn a_task_waiting_for_an_answer_doesnt_time_out() {
     };
 
     // Not waiting: the timeout fires
-    let timed_out = delegator.executor().execute(&task("plain"), false).await;
+    let timed_out = delegator.executor().execute(&task("plain")).await;
     assert_eq!(timed_out.status, TaskStatus::TimedOut);
 
     // Its row is `InputRequired` (the requester's human is answering)
@@ -3235,7 +3235,7 @@ async fn a_task_waiting_for_an_answer_doesnt_time_out() {
     .await
     .unwrap()
     .unwrap();
-    let done = delegator.executor().execute(&waiting, false).await;
+    let done = delegator.executor().execute(&waiting).await;
     assert_eq!(done.status, TaskStatus::Completed, "{:?}", done.error);
     state.shutdown();
 }

@@ -7,6 +7,7 @@
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -17,7 +18,10 @@ use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
 use tokio_tungstenite::tungstenite::Message;
 
 use super::client::{ClientOptions, WsRelayClient};
-use super::protocol::{PeerDelivery, PeerMessage, RelayMessage, TaskCompleted, TaskFailed};
+use super::client_api::stored_at_once;
+use super::protocol::{
+    PeerDelivery, PeerMessage, RelayMessage, TaskAssigned, TaskCompleted, TaskFailed,
+};
 use super::sealing::{PeerKeyBook, PEER_KEY_MISSING, SEAL_REFUSED};
 use super::{RelayClient, RelaySealRefused};
 use crate::db::Db;
@@ -217,7 +221,7 @@ impl Member {
         let sink = member.tasks.clone();
         member
             .client
-            .on_task_assigned(Box::new(move |assigned| {
+            .on_task_assigned(stored_at_once(move |assigned: TaskAssigned| {
                 sink.lock().unwrap().push(assigned.task)
             }))
             .await;
@@ -583,6 +587,50 @@ async fn a_task_whose_keys_the_relay_didnt_answer_for_isnt_acked_and_comes_again
     bob.client.register(cards).await.unwrap();
     assert_eq!(bob.task().await.input, task.input);
     assert!(bob.refusals().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_task_not_stored_isnt_acked_and_comes_again() {
+    let relay = serve_with(
+        "127.0.0.1:0".parse().unwrap(),
+        RelayServerConfig::new(SECRET.to_vec()),
+    )
+    .await
+    .unwrap();
+    let tap = Tap::new(relay).await;
+    let cards = vec![card("bob", "writer", "write")];
+    let bob = Member::join(&tap, "bob", cards.clone(), ClientOptions::default()).await;
+    // Bob's store fails the first time it's handed the task
+    let handed = Arc::new(AtomicU32::new(0));
+    let count = handed.clone();
+    bob.client
+        .on_task_assigned(Box::new(move |_| {
+            let stored = count.fetch_add(1, Ordering::SeqCst) > 0;
+            Box::pin(async move { stored })
+        }))
+        .await;
+    let ada = Member::join(&tap, "ada", Vec::new(), ClientOptions::default()).await;
+    ada.client
+        .delegate_task(&request("t1", "ada", "bob/writer"), &[])
+        .await
+        .unwrap();
+    wait(|| (handed.load(Ordering::SeqCst) == 1).then_some(())).await;
+
+    // Not acked: each time Bob is back, it comes again until it's stored
+    let back = || async {
+        bob.client.connect("", "bob").await.unwrap();
+        let token = issue_instance_token(SECRET, "bob");
+        bob.client
+            .connect(&format!("ws://{}/relay?token={token}", tap.addr), "bob")
+            .await
+            .unwrap();
+        bob.client.register(cards.clone()).await.unwrap();
+    };
+    back().await;
+    wait(|| (handed.load(Ordering::SeqCst) == 2).then_some(())).await;
+    back().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(handed.load(Ordering::SeqCst), 2, "acked once stored");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

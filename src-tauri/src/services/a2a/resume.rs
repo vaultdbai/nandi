@@ -58,7 +58,7 @@ impl TaskService {
             };
             let service = self.clone();
             self.runtime().spawn(async move {
-                let result = service.executor.execute_resumed(&request).await;
+                let result = service.executor.execute_inbound(&request).await;
                 result_outbox::send(service.db(), service.relay(), result).await;
             });
         }

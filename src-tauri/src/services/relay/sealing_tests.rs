@@ -82,6 +82,24 @@ fn result_of(task: &Task) -> TaskResult {
 }
 
 #[test]
+fn a_task_forgotten_after_opening_opens_again() {
+    let (ada, bob) = (sealer("ada"), sealer("bob"));
+    let task = task("t1", "bob/writer");
+    let sealed = sealed_task(&ada, &task, ("bob", &bob));
+    opened(bob.open_task(sealed.clone(), ada.public_keys()).unwrap());
+    // Not kept (its row wasn't stored): the relay's next delivery opens
+    bob.forget(&sealed.envelope);
+    assert_eq!(
+        opened(bob.open_task(sealed.clone(), ada.public_keys()).unwrap()),
+        task
+    );
+    assert_eq!(
+        bob.open_task(sealed, ada.public_keys()).unwrap(),
+        Opening::Duplicate
+    );
+}
+
+#[test]
 fn a_task_and_its_result_open_only_for_their_recipient() {
     let (ada, bob, eve) = (sealer("ada"), sealer("bob"), sealer("eve"));
     let task = task("t1", "bob/writer");

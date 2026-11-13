@@ -12,7 +12,7 @@ use super::*;
 use crate::services::a2a::{Task, TaskResult};
 use crate::services::domain::group::POLICY_TEMPLATE;
 use crate::services::domain::AgentCard;
-use crate::services::relay::client_api::{Handler, Submitted};
+use crate::services::relay::client_api::{Handler, StoringHandler, Submitted};
 use crate::services::relay::protocol::{TaskAssigned, TaskCompleted, TaskFailed};
 use crate::services::relay::RelayStatus;
 use crate::services::repos::{RepoLayout, Repos};
@@ -175,7 +175,7 @@ impl RelayClient for FakeRelay {
     fn send_result(&self, _: TaskResult) -> BoxFuture<'_, Result<(), String>> {
         Box::pin(async { Ok(()) })
     }
-    fn on_task_assigned(&self, _: Handler<TaskAssigned>) -> BoxFuture<'_, ()> {
+    fn on_task_assigned(&self, _: StoringHandler<TaskAssigned>) -> BoxFuture<'_, ()> {
         Box::pin(async {})
     }
     fn on_task_completed(&self, _: Handler<TaskCompleted>) -> BoxFuture<'_, ()> {

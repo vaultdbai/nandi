@@ -19,6 +19,21 @@ use nandi_protocol::{GroupChange, GroupOp, GroupOutcome, PublicKeys};
 
 pub type Handler<T> = Box<dyn Fn(T) + Send + Sync>;
 
+/// A handler that takes a delivery over. Its future answers once the
+/// delivery is safe here (stored, or known already): only then does the
+/// client ack it. `false` leaves it at the relay, to come again.
+pub type StoringHandler<T> = Box<dyn Fn(T) -> BoxFuture<'static, bool> + Send + Sync>;
+
+/// A [`StoringHandler`] for a test that only watches deliveries: each is
+/// safe as soon as it's seen
+#[cfg(test)]
+pub fn stored_at_once<T>(watch: impl Fn(T) + Send + Sync + 'static) -> StoringHandler<T> {
+    Box::new(move |delivery| {
+        watch(delivery);
+        Box::pin(async { true })
+    })
+}
+
 /// The relay's answer to a people search
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PeopleSearch {
@@ -92,7 +107,9 @@ pub trait RelayClient: Send + Sync {
     /// result it won't take with a refusal ([`Self::on_task_refused`]).
     fn send_result(&self, result: TaskResult) -> BoxFuture<'_, Result<(), String>>;
 
-    fn on_task_assigned(&self, handler: Handler<TaskAssigned>) -> BoxFuture<'_, ()>;
+    /// Provider side: tasks for us. One is acked once the handler stored
+    /// it.
+    fn on_task_assigned(&self, handler: StoringHandler<TaskAssigned>) -> BoxFuture<'_, ()>;
 
     fn on_task_completed(&self, handler: Handler<TaskCompleted>) -> BoxFuture<'_, ()>;
 

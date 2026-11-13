@@ -11,7 +11,8 @@ use serde_json::json;
 use tokio_tungstenite::tungstenite::Message;
 
 use super::client::{ClientOptions, WsRelayClient};
-use super::protocol::{RelayMessage, TaskCompleted};
+use super::client_api::stored_at_once;
+use super::protocol::{RelayMessage, TaskAssigned, TaskCompleted};
 use super::RelayClient;
 use super::*;
 use crate::services::a2a::{DelegationDirection, Task, TaskResult, TaskStatus};
@@ -206,7 +207,7 @@ async fn tasks_are_routed_to_the_provider_and_back() {
     // The provider answers every task it is assigned
     let (task_tx, mut task_rx) = tokio::sync::mpsc::unbounded_channel::<Task>();
     provider
-        .on_task_assigned(Box::new(move |assigned| {
+        .on_task_assigned(stored_at_once(move |assigned: TaskAssigned| {
             let _ = task_tx.send(assigned.task);
         }))
         .await;
@@ -292,7 +293,7 @@ async fn tasks_reach_a_gateway_only_instance() {
     let assigned: Arc<Mutex<Vec<String>>> = Arc::default();
     let sink = assigned.clone();
     provider
-        .on_task_assigned(Box::new(move |a| {
+        .on_task_assigned(stored_at_once(move |a: TaskAssigned| {
             sink.lock().unwrap().push(a.task.target);
         }))
         .await;

@@ -81,7 +81,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
 
 use super::client_api::Submitted;
-use super::client_api::{GroupSignal, Handler, PeopleSearch, RelayClient};
+use super::client_api::{GroupSignal, Handler, PeopleSearch, RelayClient, StoringHandler};
 use super::protocol::{
     CapabilityPresence, DutyDelivery, DutyState, InstancePresence, MemberRecord, PeerDelivery,
     PeerMessage, RelayMessage, ResealRequest, RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted,
@@ -165,7 +165,7 @@ struct Inbound {
 
 #[derive(Default)]
 struct Handlers {
-    assigned: Vec<Arc<Handler<TaskAssigned>>>,
+    assigned: Vec<Arc<StoringHandler<TaskAssigned>>>,
     completed: Vec<Arc<Handler<TaskCompleted>>>,
     failed: Vec<Arc<Handler<TaskFailed>>>,
     peer: Vec<Arc<Handler<PeerDelivery>>>,
@@ -632,9 +632,10 @@ impl Inner {
     }
 
     /// Opens one delivery, hands it to the handlers and acks it once it's
-    /// settled: opened, a duplicate, or refused for good. One with no
-    /// handler yet, or whose author's keys the relay didn't answer for,
-    /// isn't acked: the next `InboxSync` brings it again.
+    /// settled: opened (a task: and stored), a duplicate, or refused for
+    /// good. One with no handler yet, a task a handler couldn't store, or
+    /// one whose author's keys the relay didn't answer for, isn't acked:
+    /// the next `InboxSync` brings it again.
     async fn open_inbound(&self, inbound: Inbound) {
         let sealer = match self.sealer() {
             Ok(sealer) => sealer,
@@ -646,8 +647,10 @@ impl Inner {
             wire::Delivery::Task { task: sealed } => {
                 let (task_id, requester) =
                     (sealed.id.clone(), sealed.requester.instance_id.clone());
+                let envelope = sealed.envelope.clone();
                 let handlers = self.handlers().assigned.clone();
-                if !handlers.is_empty() {
+                let mut stored = !handlers.is_empty();
+                if stored {
                     let opened = match self.author_keys(&requester, &task_id).await {
                         Ok(keys) => sealer.open_task(sealed, &keys),
                         Err(KeysError::Refused(e)) => Err(e),
@@ -660,11 +663,14 @@ impl Inner {
                             task,
                         };
                         for handler in handlers.iter() {
-                            handler(assigned.clone());
+                            stored &= handler(assigned.clone()).await;
                         }
                     }
                 }
-                !handlers.is_empty()
+                if !stored {
+                    sealer.forget(&envelope);
+                }
+                stored
             }
             wire::Delivery::Result { result } => {
                 let task_id = result.task_id.clone();
@@ -1664,7 +1670,7 @@ impl RelayClient for WsRelayClient {
         .boxed()
     }
 
-    fn on_task_assigned(&self, handler: Handler<TaskAssigned>) -> BoxFuture<'_, ()> {
+    fn on_task_assigned(&self, handler: StoringHandler<TaskAssigned>) -> BoxFuture<'_, ()> {
         self.inner.handlers().assigned.push(Arc::new(handler));
         self.inner.sync_inbox();
         async {}.boxed()
