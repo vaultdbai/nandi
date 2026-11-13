@@ -5,7 +5,6 @@
 //! Binds `127.0.0.1:0` (a random free port) by default; `0.0.0.0` only
 //! with an explicit `--server`.
 
-mod access;
 // Wave CD (see docs/developer/interaction-layer.md)
 mod ask;
 pub mod auth;
@@ -19,17 +18,14 @@ mod companion;
 mod connectors;
 mod delegation;
 // Wave final
-mod delegation_clarification;
 mod email;
 mod gateway;
 mod groups;
 mod harnesses;
-mod identity;
 mod machine;
 mod marketplace;
 mod pilots;
 mod relay;
-mod remote;
 mod repo;
 mod routes;
 mod rpc;
@@ -37,7 +33,6 @@ mod static_files;
 mod studio;
 mod teams;
 mod triggers;
-mod workspace;
 pub mod ws;
 
 use std::net::SocketAddr;
@@ -76,13 +71,8 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(companion::api())
                 // Wave final
                 // Wave final, network-first
-                .merge(identity::api())
-                .merge(remote::api())
-                .merge(delegation_clarification::api())
                 .merge(gateway::api())
                 .merge(email::api())
-                .merge(workspace::api())
-                .merge(access::api())
                 .merge(groups::api())
                 // Wave A
                 .merge(capabilities::api())
@@ -333,22 +323,6 @@ mod tests {
         let (state, app) = app();
         for (method, uri) in [
             // Network-first
-            ("GET", "/api/remote/status"),
-            ("PUT", "/api/remote/config"),
-            ("DELETE", "/api/remote"),
-            ("POST", "/api/remote/test"),
-            ("POST", "/api/remote/push"),
-            ("POST", "/api/remote/pull"),
-            ("GET", "/api/remote/branches"),
-            ("GET", "/api/identity/status"),
-            ("GET", "/api/identity/verified"),
-            ("PUT", "/api/identity/display-name"),
-            ("PUT", "/api/identity/user-slug"),
-            ("PUT", "/api/identity/onboarding-step"),
-            ("GET", "/api/github/sign-in"),
-            ("DELETE", "/api/github/sign-in"),
-            ("POST", "/api/github/sign-in/start"),
-            ("POST", "/api/github/sign-in/poll"),
             ("PUT", "/api/connectors/github/secret"),
             ("PUT", "/api/connectors/filesystem/config"),
             ("POST", "/api/triggers/cron-preview"),
@@ -357,9 +331,6 @@ mod tests {
             ("POST", "/api/runs/r1/file"),
             ("POST", "/api/llm-keys/anthropic/test"),
             ("GET", "/api/ollama"),
-            ("POST", "/api/delegation/t1/clarify"),
-            ("POST", "/api/delegation/t1/escalate/q1"),
-            ("GET", "/api/delegation/pending-clarifications"),
             ("GET", "/api/gateway/status"),
             ("GET", "/api/gateway/config"),
             ("PUT", "/api/gateway/config"),
@@ -374,7 +345,6 @@ mod tests {
             ("POST", "/api/gateway/holds/t1/decide"),
             ("GET", "/api/gateway/assignments"),
             ("POST", "/api/gateway/assignments/t1/close"),
-            ("GET", "/api/agents/a1/clarification-policy"),
         ] {
             // JSON (501 while stubbed, or the track's answer)
             let response = app

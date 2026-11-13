@@ -6,14 +6,14 @@ Identity stays local (`NANDI.md`); this sign-in only supplies a credential.
 
 ## Pieces
 
-| Piece                           | Where                                                                                                                   |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Provider, token lookup, status  | `src-tauri/src/services/auth/github.rs`                                                                                 |
-| Device flow (shared with email) | `src-tauri/src/services/auth/oauth.rs` (`OAuthFlows`, keyed by keyring entry)                                           |
-| Flow in progress                | `AppState::github_sign_in_flows()`                                                                                      |
-| Tauri commands                  | `commands/identity.rs`: `get_github_sign_in`, `start_github_sign_in`, `poll_github_sign_in`, `sign_out_github`          |
-| HTTP routes                     | `http/identity.rs`: `GET/DELETE /api/github/sign-in`, `POST /api/github/sign-in/start`, `POST /api/github/sign-in/poll` |
-| UI                              | `src/components/github/GithubSignInPanel.tsx`, `src/hooks/useGithubSignIn.ts`                                           |
+| Piece                           | Where                                                                                                     |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Provider, token lookup, status  | `src-tauri/src/services/auth/github.rs`                                                                   |
+| Device flow (shared with email) | `src-tauri/src/services/auth/oauth.rs` (`OAuthFlows`, keyed by keyring entry)                             |
+| Flow in progress                | `AppState::github_sign_in_flows()`                                                                        |
+| Tauri commands                  | `rpc/identity.rs`: `get_github_sign_in`, `start_github_sign_in`, `poll_github_sign_in`, `sign_out_github` |
+| HTTP routes                     | `POST /api/rpc/{command}` for each command above                                                          |
+| UI                              | `src/components/github/GithubSignInPanel.tsx`, `src/hooks/useGithubSignIn.ts`                             |
 
 ## Where the token is used
 

@@ -591,7 +591,7 @@ Shared preconditions used below:
 ### AG-20 — Settings tab: Clarification policy
 
 - **What:** Under Sharing, "Clarifications": the agent's clarification policy as requester: "Let providers ask questions" (switch), "Rounds of questions per task: N" (slider 0–5), "Answer automatically" topics, "Always ask me" topics (tag inputs, de-duplicated), "Answer within (seconds)" (10–86,400). Defaults: allow, 2 rounds, no topics, 300 s. **Reset** and **Save policy** apply to this policy only; "Saved to the agent's skill.md" appears after saving. Stored as `clarification:` in skill.md.
-- **Where:** `src/components/agents/AgentDelegationTab.tsx`, `src/components/agent-console/ClarificationPolicyEditor.tsx`; commands `get_clarification_policy` / `set_clarification_policy` (`src-tauri/src/commands/delegation_clarification.rs`).
+- **Where:** `src/components/agents/AgentDelegationTab.tsx`, `src/components/agent-console/ClarificationPolicyEditor.tsx`; commands `get_clarification_policy` / `set_clarification_policy` (`src-tauri/src/rpc/delegation_clarification.rs`).
 - **Preconditions:** A local agent.
 - **Steps:**
   1. Set rounds to 3, add "formatting" under Answer automatically, set Answer within to 600; click Save policy.

@@ -13,7 +13,7 @@
 
 use serde_json::{json, Value};
 
-use crate::offline_suite::{boot, canned, get, post, until};
+use crate::offline_suite::{boot, canned, get, post, rpc, until};
 use crate::services::domain::EntityKind;
 use crate::services::egress::capabilities::Capabilities;
 use crate::services::pilots::sites;
@@ -91,13 +91,9 @@ async fn pending_site(router: &axum::Router) -> Value {
         .unwrap()
 }
 
-async fn answer(router: &axum::Router, request: &Value, body: Value) {
-    post(
-        router,
-        &format!("access-requests/{}", request["id"].as_str().unwrap()),
-        body,
-    )
-    .await;
+async fn answer(router: &axum::Router, request: &Value, choice: &str, subdomains: bool) {
+    let args = json!({ "approvalId": request["id"], "choice": choice, "subdomains": subdomains });
+    rpc(router, "answer_access_request", args).await;
 }
 
 async fn finished(router: &axum::Router, run_id: &str) -> Value {
@@ -139,7 +135,7 @@ async fn allow_once_opens_the_site_for_this_run_only() {
     assert_eq!(args["site"]["reason"], "Check the order status");
     assert_eq!(args["site"]["canSave"], true);
 
-    answer(&router, &request, json!({ "choice": "allowOnce" })).await;
+    answer(&router, &request, "allowOnce", false).await;
     let detail = finished(&router, &run_id).await;
     assert_eq!(detail["run"]["status"], "completed", "{detail}");
     assert!(
@@ -161,12 +157,7 @@ async fn always_allow_saves_the_site_to_the_agent() {
     let (state, router) = start("https://shop.example.org/").await;
     let (run_id, _) = run(&router).await;
     let request = pending_site(&router).await;
-    answer(
-        &router,
-        &request,
-        json!({ "choice": "allowSaved", "subdomains": true }),
-    )
-    .await;
+    answer(&router, &request, "allowSaved", true).await;
     let detail = finished(&router, &run_id).await;
     assert_eq!(detail["run"]["status"], "completed", "{detail}");
     assert_eq!(
@@ -186,7 +177,7 @@ async fn dont_allow_fails_the_call() {
     let (state, router) = start("https://shop.example.org/").await;
     let (run_id, _) = run(&router).await;
     let request = pending_site(&router).await;
-    answer(&router, &request, json!({ "choice": "deny" })).await;
+    answer(&router, &request, "deny", false).await;
     let detail = finished(&router, &run_id).await;
     assert_eq!(detail["run"]["status"], "completed", "{detail}");
     let text = detail.to_string();
@@ -204,13 +195,9 @@ async fn a_site_is_never_allowed_for_this_computer_only() {
     let (state, router) = start("https://shop.example.org/").await;
     run(&router).await;
     let request = pending_site(&router).await;
-    let (status, body) = crate::offline_suite::call(
-        &router,
-        "POST",
-        &format!("access-requests/{}", request["id"].as_str().unwrap()),
-        json!({ "choice": "allowLocal" }),
-    )
-    .await;
+    let args = json!({ "approvalId": request["id"], "choice": "allowLocal", "subdomains": false });
+    let (status, body) =
+        crate::offline_suite::call(&router, "POST", "rpc/answer_access_request", args).await;
     assert_ne!(status, axum::http::StatusCode::OK, "{body}");
     state.shutdown();
 }

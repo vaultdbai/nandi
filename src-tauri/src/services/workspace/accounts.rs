@@ -112,10 +112,6 @@ impl AccountKind {
         }
     }
 
-    pub fn of_id(id: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|kind| kind.id() == id)
-    }
-
     /// The account whose item IDs start `<id>:`
     pub fn of_item_id(item: &str) -> Option<(Self, &str)> {
         Self::ALL.into_iter().find_map(|kind| {
@@ -175,9 +171,8 @@ mod tests {
     }
 
     #[test]
-    fn ids_round_trip_and_name_their_items() {
+    fn ids_name_their_connectors_and_items() {
         for kind in AccountKind::ALL {
-            assert_eq!(AccountKind::of_id(kind.id()), Some(kind));
             assert!(crate::services::connectors::is_account_connector(kind.id()));
         }
         assert_eq!(

@@ -264,7 +264,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-18 — Configure the remote (URL, credential, branch prefix)
 
 - **What:** Saves any git URL (`https://`, `http://`, `ssh://`, `git://`, `file://`, scp-like `user@host:path`, or a local repo path) with an optional credential (None, Token, SSH key, Username + password) and a branch prefix (default `nandi`). Pushes go to `<prefix>/<slug>`. The URL/prefix/slug (no secret) go to `config.json` `remote`; a URL containing a password is refused. Onboarding has no remote step; the form lives only in Settings › Backup.
-- **Where:** `src/components/settings/RemoteForm.tsx` (`RemoteFields`), `remote-form-model.ts` (`validateRemoteUrl`, `toCredential`); Tauri `configure_remote`; `PUT /api/remote/config` `{url, credential?, prefix?, slug?}`; `services/remote/mod.rs` (`configure`, `validate_git_url`).
+- **Where:** `src/components/settings/RemoteForm.tsx` (`RemoteFields`), `remote-form-model.ts` (`validateRemoteUrl`, `toCredential`); Tauri `configure_remote`; `POST /api/rpc/configure_remote` `{url, credential?, prefix?, slug?}`; `services/remote/mod.rs` (`configure`, `validate_git_url`).
 - **Preconditions:** A reachable git repo (a local bare repo works: `git init --bare D:\tmp\backup.git`).
 - **Steps:**
   1. In Settings › Backup, enter `file:///D:/tmp/backup.git` (or a path) as Repository URL, Credential None, click **Save**.
@@ -283,7 +283,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **What:** The credential is sent once and stored as JSON under keychain user `nandi.remote.credential`; long tokens are chunked (`.count` + `.0..n-1`) because the Windows Credential Manager caps a blob at 2560 bytes. It is never returned to clients, never put in URLs or git config; status only says `hasCredentials` and the kind.
 - **Where:** `services/remote/credentials.rs` (`save`, `load`, `clear`), `services/remote/git_ops.rs` (`callbacks`: token as password of `x-access-token`, user/pass, SSH key file, else SSH agent / credential helper).
 - **Preconditions:** A private remote needing a token (e.g. GitHub PAT, 1500+ chars for chunk test).
-- **Steps:** Configure with a token; inspect `config.json` and `GET /api/remote/status`; restart and push.
+- **Steps:** Configure with a token; inspect `config.json` and `POST /api/rpc/get_remote_status`; restart and push.
 - **Expected:** No token in `config.json`, status, logs or `.git/config`; push works after restart.
 - **Edge / negative cases:** Credential kind none clears it; unreadable entry treated as none and logged.
 - **Automation:** Covered by: `services/remote/credentials.rs` `round_trips_a_short_credential`, `chunks_a_long_token_and_reassembles_it`, `a_none_kind_clears` | Layer: unit; manual on Windows for real chunking | Gap: none.
@@ -293,7 +293,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-20 — Remote status card
 
 - **What:** Shows URL, Reachable/Unreachable (read live; last fetched state when offline), branch, ahead/behind counts, last push and last pull times (relative, or "Never"), and credential kind.
-- **Where:** `src/components/settings/RemoteStatusCard.tsx`; Tauri `get_remote_status`; `GET /api/remote/status`; `services/remote/git_ops.rs` (`status`).
+- **Where:** `src/components/settings/RemoteStatusCard.tsx`; Tauri `get_remote_status`; `POST /api/rpc/get_remote_status`; `services/remote/git_ops.rs` (`status`).
 - **Preconditions:** Remote configured.
 - **Steps:** Open Settings › Backup; make a local change and commit; disconnect network and reload.
 - **Expected:** Ahead count increments after commit; offline shows "Unreachable" without an error page.
@@ -305,7 +305,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-21 — Test connection
 
 - **What:** Fetches the remote's branches with the stored credential and reports success or the error.
-- **Where:** **Test connection** button; Tauri `test_remote_connection`; `POST /api/remote/test`.
+- **Where:** **Test connection** button; Tauri `test_remote_connection`; `POST /api/rpc/test_remote_connection`.
 - **Preconditions:** Remote configured.
 - **Steps:** Click **Test connection**; then point the remote at a bad URL and repeat.
 - **Expected:** Toast "The remote is reachable."; on failure toast "Connection failed: {error}" (`remote.testFailed`) (no credential in the message) and a `remote://error` event.
@@ -317,7 +317,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-22 — Back up now (push)
 
 - **What:** After a confirmation dialog ("Back up now?" naming branch and remote), commits any uncommitted files first (so the push carries what's on disk, including NANDI.md), then pushes HEAD to `refs/heads/<prefix>/<slug>` fast-forward only. Records `lastPushAt`/`lastPushCommit` in `config.json`; emits `remote://push_completed` and `remote://status_changed`.
-- **Where:** **Back up now** button; Tauri `push_to_remote(overwrite)`; `POST /api/remote/push` `{overwrite?}`; `services/remote/mod.rs` (`push`), `git_ops.rs` (`commit_local_changes`, `push`).
+- **Where:** **Back up now** button; Tauri `push_to_remote(overwrite)`; `POST /api/rpc/push_to_remote` `{overwrite?}`; `services/remote/mod.rs` (`push`), `git_ops.rs` (`commit_local_changes`, `push`).
 - **Preconditions:** Remote configured.
 - **Steps:** Edit an agent; click **Back up now** › confirm; `git ls-remote <remote>`.
 - **Expected:** Toast "Pushed N commit(s) to nandi/<slug>."; remote has the branch; local working tree clean; no other branch changed.
@@ -331,7 +331,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **What:** Every push is checked by `assert_pushable_branch`: refuses `main`, `master`, `main/...`, `master/...`, blank names, anything outside `<prefix>/`, or a prefix that is itself protected. No flag or config overrides it.
 - **Where:** `services/remote/mod.rs` (`assert_pushable_branch`).
 - **Preconditions:** None.
-- **Steps:** `PUT /api/remote/config` with `prefix: "main"`; hand-edit `config.json` `remote.branchPrefix` to `master` and call `POST /api/remote/push`.
+- **Steps:** `POST /api/rpc/configure_remote` with `prefix: "main"`; hand-edit `config.json` `remote.branchPrefix` to `master` and call `POST /api/rpc/push_to_remote`.
 - **Expected:** Both refused with an error; the remote is untouched.
 - **Edge / negative cases:** `slug` containing `/..`; prefix with trailing slash.
 - **Automation:** Covered by: `services/remote/mod.rs` `protects_main_and_master_with_no_way_around`; `git_ops.rs` `push_refuses_protected_branches_before_touching_the_remote` | Layer: unit | Gap: none.
@@ -353,7 +353,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-25 — Restore from remote (pull)
 
 - **What:** Pulls only the user's own target branch. If the local repo has uncommitted files, a dialog warns "N file(s) on this computer have changes that aren't backed up". Local changes are committed first; then fast-forward, else a 3-way merge. A fresh install (only the initial commit) adopts the remote's history and layout, keeping local-only files such as NANDI.md. After commits arrive, every entity is re-scanned with `changed_by: git`. Records `lastPullAt`; emits `remote://pull_completed`.
-- **Where:** **Restore from remote** button; Tauri `pull_from_remote`; `POST /api/remote/pull`; `services/remote/mod.rs` (`pull`), `git_ops.rs` (`pull`, fresh-install adopt).
+- **Where:** **Restore from remote** button; Tauri `pull_from_remote`; `POST /api/rpc/pull_from_remote`; `services/remote/mod.rs` (`pull`), `git_ops.rs` (`pull`, fresh-install adopt).
 - **Preconditions:** Remote with the user's branch containing extra agents (e.g. pushed from a second home).
 - **Steps:** On a second `NANDI_HOME`, configure the same remote and slug, click **Restore from remote**.
 - **Expected:** Toast "Pulled N commit(s)."; the remote's agents/workflows appear without restart.
@@ -377,7 +377,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-27 — Remote branch browser
 
 - **What:** Lists every branch on the remote, highlights the user's own ("Your branch") with an enabled **Pull into local**; other branches' button is disabled with "Only your own branch can be pulled".
-- **Where:** `RemoteSection.tsx` (`BranchBrowser`); Tauri `list_remote_branches`; `GET /api/remote/branches`.
+- **Where:** `RemoteSection.tsx` (`BranchBrowser`); Tauri `list_remote_branches`; `POST /api/rpc/list_remote_branches`.
 - **Preconditions:** Remote with several branches.
 - **Steps:** Open Settings › Backup › "Branches on the remote"; hover a teammate's branch **Pull into local**.
 - **Expected:** Sorted list, own branch badged; empty remote shows "No branches yet."
@@ -389,7 +389,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-28 — Change or remove the remote
 
 - **What:** **Change remote** opens the form inline (Save/Cancel). **Remove remote** asks "Remove the remote?"; confirming removes the managed git remote and its tracking refs, forgets the keychain credential and the `config.json` entry; the local repo and remote repository are untouched.
-- **Where:** `RemoteSection.tsx`; Tauri `configure_remote`, `clear_remote`; `DELETE /api/remote`.
+- **Where:** `RemoteSection.tsx`; Tauri `configure_remote`, `clear_remote`; `POST /api/rpc/clear_remote`.
 - **Preconditions:** Remote configured.
 - **Steps:** Change URL and save; then Remove › confirm.
 - **Expected:** Toast "Remote removed. Your local repo is unchanged."; empty state returns; `git remote` in `HOME/repo` no longer lists the Nandi-managed remote (user's own `origin` untouched); keychain entry gone.

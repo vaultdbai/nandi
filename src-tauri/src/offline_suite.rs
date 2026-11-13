@@ -51,25 +51,20 @@ const SCREEN_ROUTES: &[&str] = &[
     "connectors",
     "default-model",
     "delegation/history",
-    "delegation/pending-clarifications",
     "delegation/providers",
     "delegation/returns",
     "email",
-    "connector-grants",
-    "workspace",
     "gateway/callers",
     "gateway/config",
     "gateway/holds",
     "gateway/manifest",
     "gateway/status",
-    "identity/status",
     "llm-keys",
     "marketplace/installed",
     "pilots",
     "preferences",
     "relay/agents",
     "relay/status",
-    "remote/status",
     "repo/git/status",
     "repo/status",
     "studio/push-targets",
@@ -84,16 +79,21 @@ const SCREEN_COMMANDS: &[&str] = &[
     "get_auto_approve_rules",
     "get_chief_of_staff_digest",
     "get_egress_status",
+    "get_identity_status",
     "get_know_me",
     "get_my_notes",
     "get_network_snapshot",
+    "get_pending_clarifications",
+    "get_remote_status",
     "get_repo_llm_config",
     "get_tool_usage_stats",
+    "get_workspace_status",
     "help_topics",
     "list_agents_shared_by_me",
     "list_agents_shared_with_me",
     "list_capability_providers",
     "list_capability_registries",
+    "list_connector_grants",
     "list_decision_months",
     "list_declared_capabilities",
     "list_dismissed_work",
@@ -618,32 +618,16 @@ fn unreachable_public_relay() -> BuiltInRelay {
 /// network step: nothing on it touches a relay
 async fn onboarding_completes(router: &Router) {
     for step in ["name", "model", "computer", "network", "packs"] {
-        let (status, body) = call(
-            router,
-            "PUT",
-            "identity/onboarding-step",
-            json!({ "step": step }),
-        )
-        .await;
-        assert_eq!(status, StatusCode::OK, "{step}: {body}");
+        rpc(router, "set_onboarding_step", json!({ "step": step })).await;
     }
-    let (status, body) = call(
+    rpc(
         router,
-        "PUT",
-        "identity/display-name",
+        "set_display_name",
         json!({ "name": "Ada Lovelace" }),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    let (status, body) = call(
-        router,
-        "PUT",
-        "identity/onboarding-step",
-        json!({ "step": "done" }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    let identity = get(router, "identity/status").await;
+    rpc(router, "set_onboarding_step", json!({ "step": "done" })).await;
+    let identity = rpc(router, "get_identity_status", json!({})).await;
     assert_eq!(identity["onboarded"], true, "{identity}");
     assert_eq!(identity["onboardingStep"], "done", "{identity}");
 }

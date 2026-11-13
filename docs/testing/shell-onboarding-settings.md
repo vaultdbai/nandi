@@ -9,7 +9,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ON-01 — First-run gate (AuthGate)
 
 - **What:** At launch the app reads the local identity. It shows a spinner, then either onboarding or the workspace. If the identity can't be read it "fails open": the app opens anyway and the error is logged.
-- **Where:** `src/components/layout/AuthGate.tsx`, `src/components/onboarding/identity-model.ts` (`needsOnboarding`), `src-tauri/src/commands/identity.rs` (`get_identity_status`), `src-tauri/src/services/auth/mod.rs`; `GET /api/identity/status`.
+- **Where:** `src/components/layout/AuthGate.tsx`, `src/components/onboarding/identity-model.ts` (`needsOnboarding`), `src-tauri/src/rpc/identity.rs` (`get_identity_status`), `src-tauri/src/services/auth/mod.rs`; `POST /api/rpc/get_identity_status`.
 - **Preconditions:** None.
 - **Steps:**
   1. Start with a fresh `NANDI_HOME` (no `NANDI.md`) and launch the app.
@@ -86,7 +86,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ON-02 — Onboarding steps, step indicator and resume
 
 - **What:** First-run setup has six steps: Email (skippable), Name, Model, Computer (recommended, skippable, ON-16), Network, Agents (starter packs). Every step after Email has **Back** (Name goes back to Email). The heading says "A few quick steps. You can change all of this later." (no count). A numbered indicator shows done steps with a check; the wizard keeps one width on every step and the step labels wrap rather than cut off ("Na…"), in every language including Arabic. The step reached is saved per Nandi home, so quitting midway resumes there. A resumed setup offers "Skip the rest of setup".
-- **Where:** `src/components/views/OnboardingView.tsx` (`StepIndicator`), `identity-model.ts` (`ONBOARDING_STEPS`, `resumeStep`), `set_onboarding_step` (`PUT /api/identity/onboarding-step`, body `{"step":"model"}`). Stored in `local_settings` key `onboarding.step` in `~/.nandi/local/state.db`.
+- **Where:** `src/components/views/OnboardingView.tsx` (`StepIndicator`), `identity-model.ts` (`ONBOARDING_STEPS`, `resumeStep`), `set_onboarding_step` (`POST /api/rpc/set_onboarding_step`, body `{"step":"model"}`). Stored in `local_settings` key `onboarding.step` in `~/.nandi/local/state.db`.
 - **Preconditions:** A home that is not onboarded.
 - **Steps:**
   1. Complete the Email and Name steps and go to Model.
@@ -98,7 +98,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - (3) The step becomes `done` and the app opens on Home.
 - **Edge / negative cases:**
   - A failed step save is only logged ("Onboarding: saving the step failed"). Setup continues.
-  - `PUT /api/identity/onboarding-step` without `step` returns 400 "Body needs a \"step\"".
+  - `POST /api/rpc/set_onboarding_step` without `step` returns 400 "Body needs a \"step\"".
   - An unknown stored value counts as unset.
 - **Automation:** Covered by: `src/components/views/OnboardingView.test.tsx` ('shows six steps, Email first', 'opens where an interrupted setup stopped', 'renders nothing on a home that finished setup'), `identity-model.test.ts`, Rust `onboarding_step_is_remembered_per_home` | Layer: api + unit | Gap: none significant.
 - **Needs relay:** no
@@ -133,12 +133,12 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ON-04 — Saving the identity (NANDI.md)
 
 - **What:** Continue on step 1 writes, in order, the step, the display name and the slug. The core creates `NANDI.md` from the template if it is missing. It changes only the identity keys in the frontmatter (`display_name`, `owner.display_name`, `user_slug`, and `name` while it is still the default) and replaces the file atomically. It emits `identity://changed`. If a remote is configured, its `user_slug` follows.
-- **Where:** `set_display_name` and `set_user_slug` (`src-tauri/src/commands/identity.rs`); `PUT /api/identity/display-name` `{name}` and `PUT /api/identity/user-slug` `{slug}`; `services/auth/mod.rs` (`validate_display_name`, `validate_slug`, `validate_slug_for`, `sync_remote_slug`).
+- **Where:** `set_display_name` and `set_user_slug` (`src-tauri/src/rpc/identity.rs`); `POST /api/rpc/set_display_name` `{name}` and `POST /api/rpc/set_user_slug` `{slug}`; `services/auth/mod.rs` (`validate_display_name`, `validate_slug`, `validate_slug_for`, `sync_remote_slug`).
 - **Preconditions:** None.
 - **Steps:**
   1. Finish step 1 as "Ada Lovelace".
   2. Open `~/.nandi/repo/NANDI.md`.
-  3. Call `PUT /api/identity/user-slug` with `{"slug":"A"}`.
+  3. Call `POST /api/rpc/set_user_slug` with `{"slug":"A"}`.
 - **Expected:**
   - (2) The frontmatter has `display_name: Ada Lovelace` and `user_slug: ada-lovelace`. Other keys and the Markdown body are unchanged.
   - (3) An error: "'A' isn't a valid user slug: use 2–32 lowercase letters…".
@@ -147,7 +147,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   - A name with control characters is refused.
   - Frontmatter that doesn't parse is never overwritten.
   - A save failure shows the toast "Couldn't save: …" and stays on step 1.
-- **Automation:** Covered by: Rust tests in `services/auth/mod.rs` (`creates_nandi_md_from_the_template`, `set_display_name_preserves_the_rest_of_nandi_md`, `set_user_slug_writes_and_invalid_frontmatter_is_never_overwritten`, `validates_slugs`, `validates_display_names`), `OnboardingView.test.tsx` ('stays on the name step when saving fails'), `http/mod.rs` (`wave_final_routes_are_mounted`: the `/api/identity/*` routes answer) | Layer: api | Gap: no test of what the identity routes do over HTTP.
+- **Automation:** Covered by: Rust tests in `services/auth/mod.rs` (`creates_nandi_md_from_the_template`, `set_display_name_preserves_the_rest_of_nandi_md`, `set_user_slug_writes_and_invalid_frontmatter_is_never_overwritten`, `validates_slugs`, `validates_display_names`), `OnboardingView.test.tsx` ('stays on the name step when saving fails'), `offline_suite.rs` (`with_no_relay_onboarding_completes_with_not_now`: the identity commands over `/api/rpc`) | Layer: api
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -1104,7 +1104,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ST-32 — Account: sign in with GitHub (one token for every github.com repository)
 
 - **What:** Settings › Account › GitHub has **Sign in with GitHub**. It shows a code ("Enter this code on the GitHub page that opened:"), opens `https://github.com/login/device`, and waits ("Waiting for GitHub…", with Cancel). Once approved it shows "Signed in to GitHub as @login." with **Sign out**. The same panel (without Sign out) appears wherever a github.com repository is chosen: Library › GitHub › Setup, Settings › Backup when the credential is **GitHub sign-in** (offered only for `https://github.com/...` addresses), Add source with "Use my GitHub sign-in", the Create team dialog for a github.com registry URL, and Publish. The token is used for: the GitHub connector (after a pasted token, before the GitHub CLI), Backup push/pull/test, team registry sync and push, capability registry sync, marketplace sources with "Use my GitHub sign-in", creating a community source, and publishing. It is never sent to non-github.com addresses, and SSH addresses keep using SSH keys.
-- **Where:** `src-tauri/src/services/auth/github.rs`, `commands/identity.rs` (`get_github_sign_in`, `start_github_sign_in`, `poll_github_sign_in`, `sign_out_github`), `/api/github/sign-in*`, `src/components/github/GithubSignInPanel.tsx`, `src/hooks/useGithubSignIn.ts`. Token: keychain entry `nandi.github.token`; login: `github_login` in `~/.nandi/config.json`.
+- **Where:** `src-tauri/src/services/auth/github.rs`, `rpc/identity.rs` (`get_github_sign_in`, `start_github_sign_in`, `poll_github_sign_in`, `sign_out_github`), `POST /api/rpc/{command}`, `src/components/github/GithubSignInPanel.tsx`, `src/hooks/useGithubSignIn.ts`. Token: keychain entry `nandi.github.token`; login: `github_login` in `~/.nandi/config.json`.
 - **Preconditions:** The Nandi OAuth App (or one set with `NANDI_GITHUB_CLIENT_ID` at build time) has "Enable Device Flow" on.
 - **Steps:**
   1. Settings › Account → **Sign in with GitHub**; enter the code on github.com and approve.
@@ -1326,7 +1326,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Userguide steps still use the removed flow.** `docs/userguide/quickstart.md:56` and `docs/userguide/userguide.md:294,622` tell users to use "Sync now" in the account menu. Backup is now Settings › Backup, and "Back up now".
 - **Entra ID sign-in is documented but not in the app.** `docs/developer/entra-setup.md` and `docs/userguide/userguide.md:504-506` describe Settings → Entra ID, Microsoft sign-in and "Sync from Entra ID" (the `docs/developer/README.md` index now marks it v2). No Settings section, command or UI exists for it. Only leftovers remain (for example in `db.rs` and `harness/gateway.rs`).
 - **Untranslated text.** The Windows window-control aria labels are hard-coded English.
-- **Minor code-comment mismatch.** `src-tauri/src/commands/remote.rs` says the default branch prefix is `nandi`. The code default is `nandi` (`DEFAULT_BRANCH_PREFIX`).
+- **Minor code-comment mismatch.** `src-tauri/src/rpc/remote.rs` says the default branch prefix is `nandi`. The code default is `nandi` (`DEFAULT_BRANCH_PREFIX`).
 - **Custom themes** (`docs/tasks-todo/task-x-custom-themes.md`): not built. This covers theme files in `.nandi/themes/`, the editor in Settings › Appearance, import/export, sharing, and density and font scale. Only the seven built-in palettes exist.
 - **Models and runtimes, Wave A leftover** (`docs/tasks-todo/task-x-models-and-runtimes.md`): a model picker per CLI runtime saved with `setHarnessDefault(id, model)`. Wave C, pulling prebuilt images from GHCR, is also not built.
 - **Mascot as the assistant's name** (`docs/tasks-todo/task-x-nandi-alias.md`): not built. Ask's prompt, the companion, notifications, the CLI and i18n would use the mascot name; the setting would move to "Your assistant's name"; and "@alias" mentions plus extra aliases would be added.
@@ -1345,7 +1345,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ST-34 — Account: your email (the locked identity), read-only
 
 - **What:** Settings › Account starts with **Your email**: "This Nandi's identity is the mailbox you connected first. The public relay and the free trial know you by it. It can't be changed here." and the email, the name and "From Gmail/Outlook". It's text, not a field. Before any mailbox: "No email connected yet. Connect Outlook or Gmail in Settings › Email." The identity is locked from the first mailbox's sign-in (its ID token: Gmail's verified `email`, Outlook's `preferred_username`); connecting another mailbox later doesn't change it.
-- **Where:** `services/identity/mod.rs` (`lock_from_mail`, `identity`), `email/mod.rs` (`connect`), `config.json` `identity`, command `get_verified_identity`, HTTP `GET /api/identity/verified`, UI `components/settings/sections/AccountSection.tsx` (`VerifiedEmail`), `hooks/useIdentity.ts` (`useVerifiedIdentity`).
+- **Where:** `services/identity/mod.rs` (`lock_from_mail`, `identity`), `email/mod.rs` (`connect`), `config.json` `identity`, command `get_verified_identity`, HTTP `POST /api/rpc/get_verified_identity`, UI `components/settings/sections/AccountSection.tsx` (`VerifiedEmail`), `hooks/useIdentity.ts` (`useVerifiedIdentity`).
 - **Preconditions:** none.
 - **Steps:** 1. Fresh home: open Settings › Account. 2. Connect Gmail in Settings › Email, reopen Account. 3. Connect Outlook too.
 - **Expected:** 1. The "No email connected yet" line. 2. The Gmail address, read-only. 3. Still the Gmail address.

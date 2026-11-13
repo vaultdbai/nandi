@@ -115,15 +115,18 @@ macro_rules! commands {
 }
 pub(crate) use commands;
 
+pub mod access;
 pub mod analysis;
 pub mod audit;
 pub mod capability;
 pub mod capability_registries;
 pub mod config;
 pub mod decisions;
+pub mod delegation_clarification;
 pub mod egress;
 pub mod harness_sessions;
 pub mod help;
+pub mod identity;
 pub mod images;
 pub mod knowme;
 pub mod live;
@@ -138,6 +141,7 @@ pub mod policies;
 pub mod queue;
 pub mod reassign;
 pub mod relay_capabilities;
+pub mod remote;
 pub mod requests;
 pub mod runs;
 pub mod shared;
@@ -146,6 +150,7 @@ pub mod teams_roster;
 pub mod tools;
 pub mod work;
 pub mod workflow_builder;
+pub mod workspace;
 
 /// What an RPC call returns: the command's JSON result, or its error text
 pub type RpcFuture = Pin<Box<dyn Future<Output = Result<Value, String>> + Send>>;
@@ -155,15 +160,18 @@ pub type Handler = fn(AppState, Value) -> RpcFuture;
 
 /// Every module's `RPC` table. A new module adds its table here.
 const TABLES: &[&[(&str, Handler)]] = &[
+    access::RPC,
     analysis::RPC,
     audit::RPC,
     capability::RPC,
     capability_registries::RPC,
     config::RPC,
     decisions::RPC,
+    delegation_clarification::RPC,
     egress::RPC,
     harness_sessions::RPC,
     help::RPC,
+    identity::RPC,
     images::RPC,
     knowme::RPC,
     live::RPC,
@@ -178,6 +186,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     queue::RPC,
     reassign::RPC,
     relay_capabilities::RPC,
+    remote::RPC,
     requests::RPC,
     runs::RPC,
     shared::RPC,
@@ -186,6 +195,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     tools::RPC,
     work::RPC,
     workflow_builder::RPC,
+    workspace::RPC,
 ];
 
 /// Every command name with its handler

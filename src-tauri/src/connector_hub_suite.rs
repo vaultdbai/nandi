@@ -15,7 +15,7 @@
 
 use serde_json::{json, Value};
 
-use crate::offline_suite::{boot, call, canned, get, post, until};
+use crate::offline_suite::{boot, call, canned, get, post, rpc, until};
 use crate::services::relay::BuiltInRelay;
 
 const TRACKER_MD_TOOL: &str = "tracker__list_issues";
@@ -211,7 +211,7 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
         .unwrap();
     assert_eq!(tracker["package"]["registry"], registry_url, "{tracker}");
     assert!(
-        get(&b, "connector-grants")
+        rpc(&b, "list_connector_grants", json!({}))
             .await
             .as_array()
             .unwrap()
@@ -237,10 +237,10 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
     assert_eq!(request["args"]["access"], "read");
     assert_eq!(request["args"]["connectors"][0]["name"], "Issue tracker");
     assert_eq!(request["args"]["details"][0], "Issues in your projects");
-    post(
+    rpc(
         &b,
-        &format!("access-requests/{}", request["id"].as_str().unwrap()),
-        json!({ "choice": "allowSaved" }),
+        "answer_access_request",
+        json!({ "approvalId": request["id"], "choice": "allowSaved", "subdomains": false }),
     )
     .await;
     let detail = tool_result(&b, &run_id).await;
@@ -248,7 +248,7 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
     assert!(text.contains("Login is slow"), "the call ran: {text}");
     // On the record: the request carries the choice and who made it
     assert!(text.contains("allowSaved"), "{text}");
-    let grants = get(&b, "connector-grants").await;
+    let grants = rpc(&b, "list_connector_grants", json!({})).await;
     assert_eq!(
         grants,
         json!([{ "agent": "triager", "connector": "tracker", "access": "read", "scope": "saved" }])
@@ -264,8 +264,8 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
     assert_eq!(detail["run"]["status"], "completed", "{detail}");
 
     // --- 4. Remove the grant: the next call asks again; Don't allow ------
-    post(&b, "connector-grants/revoke", grants[0].clone()).await;
-    assert!(get(&b, "connector-grants")
+    rpc(&b, "revoke_connector_access", json!({ "grant": grants[0] })).await;
+    assert!(rpc(&b, "list_connector_grants", json!({}))
         .await
         .as_array()
         .unwrap()
@@ -276,10 +276,10 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
         "asks again: {detail}"
     );
     let request = pending_access(&b).await;
-    post(
+    rpc(
         &b,
-        &format!("access-requests/{}", request["id"].as_str().unwrap()),
-        json!({ "choice": "deny" }),
+        "answer_access_request",
+        json!({ "approvalId": request["id"], "choice": "deny", "subdomains": false }),
     )
     .await;
     let detail = tool_result(&b, &run_id).await;
@@ -346,16 +346,16 @@ async fn allow_once_lasts_for_the_run_only() {
     .await;
     let (run_id, _) = run(&router, "triager", "What's open?").await;
     let request = pending_access(&router).await;
-    post(
+    rpc(
         &router,
-        &format!("access-requests/{}", request["id"].as_str().unwrap()),
-        json!({ "choice": "allowOnce" }),
+        "answer_access_request",
+        json!({ "approvalId": request["id"], "choice": "allowOnce", "subdomains": false }),
     )
     .await;
     let detail = tool_result(&router, &run_id).await;
     assert!(detail.to_string().contains("Login is slow"), "{detail}");
     assert!(
-        get(&router, "connector-grants")
+        rpc(&router, "list_connector_grants", json!({}))
             .await
             .as_array()
             .unwrap()

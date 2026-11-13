@@ -9,7 +9,7 @@
 
 use serde_json::{json, Value};
 
-use crate::offline_suite::{boot, call, post};
+use crate::offline_suite::{boot, call, post, rpc};
 use crate::services::domain::EntityKind;
 use crate::services::relay::BuiltInRelay;
 use crate::services::AppState;
@@ -149,9 +149,9 @@ async fn no_secret_reaches_the_repo_or_its_history() {
 
     // Settings › Backup: the remote's token
     let remote_token = "glpat-dt04-remote-token-0123456789";
-    put(
+    rpc(
         &router,
-        "remote/config",
+        "configure_remote",
         json!({
             "url": "https://git.example.com/acme/agents.git",
             "credential": { "kind": "token", "token": remote_token },

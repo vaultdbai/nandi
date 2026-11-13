@@ -233,34 +233,6 @@ export const tauriClient: NandiClient = withCommands({
     commands.setCompanionNotifyResults(notify),
   companionFocusRequest: requestId => commands.companionFocusRequest(requestId),
 
-  getIdentityStatus: () => commands.getIdentityStatus(),
-  getVerifiedIdentity: () => commands.getVerifiedIdentity(),
-  setDisplayName: name => commands.setDisplayName(name),
-  setUserSlug: slug => commands.setUserSlug(slug),
-  setOnboardingStep: step => commands.setOnboardingStep(step),
-
-  getGithubSignIn: () => commands.getGithubSignIn(),
-  startGithubSignIn: () => commands.startGithubSignIn(),
-  pollGithubSignIn: () => commands.pollGithubSignIn(),
-  signOutGithub: () => commands.signOutGithub(),
-
-  getRemoteStatus: () => commands.getRemoteStatus(),
-  configureRemote: (url, credential, prefix, slug) =>
-    commands.configureRemote(url, credential, prefix, slug),
-  clearRemote: () => commands.clearRemote(),
-  testRemoteConnection: () => commands.testRemoteConnection(),
-  pushToRemote: overwrite => commands.pushToRemote(overwrite),
-  pullFromRemote: () => commands.pullFromRemote(),
-  listRemoteBranches: () => commands.listRemoteBranches(),
-
-  respondToClarification: response => commands.respondToClarification(response),
-  escalateClarification: (taskId, questionId) =>
-    commands.escalateClarification(taskId, questionId),
-  getPendingClarifications: () => commands.getPendingClarifications(),
-  getClarificationPolicy: agentId => commands.getClarificationPolicy(agentId),
-  setClarificationPolicy: (agentId, policy) =>
-    commands.setClarificationPolicy(agentId, policy),
-
   getGatewayStatus: () => commands.getGatewayStatus(),
   makeGatewayReachable: () => commands.makeGatewayReachable(),
   listGatewayHolds: () => commands.listGatewayHolds(),
@@ -278,12 +250,6 @@ export const tauriClient: NandiClient = withCommands({
   setEmailBackfill: (provider, action) =>
     commands.setEmailBackfill(provider, action),
   estimateEmailBackfill: range => commands.estimateEmailBackfill(range),
-  listConnectorGrants: () => commands.listConnectorGrants(),
-  grantConnectorAccess: (agentId, connectorId, access, scope) =>
-    commands.grantConnectorAccess(agentId, connectorId, access, scope),
-  revokeConnectorAccess: grant => commands.revokeConnectorAccess(grant),
-  answerAccessRequest: (approvalId, choice, subdomains = false) =>
-    commands.answerAccessRequest(approvalId, choice, subdomains),
   listRegistryConnectors: refresh => commands.listRegistryConnectors(refresh),
   getConnectorConsent: (registryUrl, connectorId) =>
     commands.getConnectorConsent(registryUrl, connectorId),
@@ -292,12 +258,6 @@ export const tauriClient: NandiClient = withCommands({
   removeConnector: id => commands.removeConnector(id),
   scaffoldConnector: input => commands.scaffoldConnector(input),
   publishConnector: input => commands.publishConnector(input),
-  getWorkspaceStatus: () => commands.getWorkspaceStatus(),
-  startWorkspaceSignIn: kind => commands.startWorkspaceSignIn(kind),
-  pollWorkspaceSignIn: kind => commands.pollWorkspaceSignIn(kind),
-  disconnectWorkspace: kind => commands.disconnectWorkspace(kind),
-  checkCalendarNow: () => commands.checkCalendarNow(),
-  setCalendarInterval: minutes => commands.setCalendarInterval(minutes),
   closeGatewayAssignment: (taskId, done, note) =>
     commands.closeGatewayAssignment(taskId, done, note),
   getGatewayConfig: () => commands.getGatewayConfig(),

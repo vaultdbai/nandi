@@ -45,17 +45,11 @@ import type {
   EmailSignInPoll,
   EmailStatus,
   MailProvider,
-  AccessChoice,
-  AccountKind,
   ConnectorConsent,
   ConnectorEntry,
-  GrantAccess,
-  GrantInfo,
-  GrantScope,
   PublishConnectorInput,
   PublishConnectorResult,
   ScaffoldConnectorInput,
-  WorkspaceStatus,
   ConsentStatus,
   ConversationSnapshot,
   CreateAgentInput,
@@ -79,7 +73,6 @@ import type {
   DefaultModelStatus,
   TrialAccount,
   OllamaStatus,
-  OnboardingStep,
   MarketplaceFilter,
   PackDetail,
   PackManifest,
@@ -96,7 +89,6 @@ import type {
   PublicRelayJoin,
   PublicRelayOffer,
   RelayInvite,
-  VerifiedIdentity,
   RepoStatus,
   Result,
   RunDetail,
@@ -114,22 +106,13 @@ import type {
   Workflow,
   WorkflowSummary,
   CallerPolicy,
-  ClarificationPolicy,
-  ClarificationResponse,
   GatewayConfig,
   GatewayManifest,
   GatewayStatus,
   GatewayAssignment,
   GatewayHold,
   GatewayUsage,
-  IdentityStatus,
-  GithubSignIn,
-  PendingClarification,
   PendingApproval,
-  PullResult,
-  PushResult,
-  RemoteCredential,
-  RemoteStatus,
   ShareResult,
   AmbiguityCluster,
   CapabilityDefinition,
@@ -659,59 +642,14 @@ export interface HandWrittenClient {
   // Local-identity freeze
 
   // Identity: display name + user slug in `~/.nandi/repo/NANDI.md`
-  getIdentityStatus(): Promise<Result<IdentityStatus, string>>
-  /**
-   * This Nandi's person, locked from the first mailbox connected (`null`
-   * before any); never editable
-   */
-  getVerifiedIdentity(): Promise<Result<VerifiedIdentity | null, string>>
-  setDisplayName(name: string): Promise<Result<null, string>>
-  setUserSlug(slug: string): Promise<Result<null, string>>
-  /** Where first-run setup is, so a relaunch resumes there */
-  setOnboardingStep(step: OnboardingStep): Promise<Result<null, string>>
 
   // GitHub sign-in: one token for every github.com repository
-  getGithubSignIn(): Promise<Result<GithubSignIn, string>>
-  /** Show `userCode` and open `verificationUri` */
-  startGithubSignIn(): Promise<Result<DeviceFlowState, string>>
-  /** Asks GitHub once; `signedIn` once the user approved */
-  pollGithubSignIn(): Promise<Result<GithubSignIn, string>>
-  signOutGithub(): Promise<Result<GithubSignIn, string>>
 
   // Optional git remote for the agents repo
-  getRemoteStatus(): Promise<Result<RemoteStatus, string>>
-  configureRemote(
-    url: string,
-    credential: RemoteCredential | null,
-    prefix: string | null,
-    slug: string | null
-  ): Promise<Result<RemoteStatus, string>>
-  clearRemote(): Promise<Result<null, string>>
-  testRemoteConnection(): Promise<Result<null, string>>
-  pushToRemote(overwrite: boolean): Promise<Result<PushResult, string>>
-  pullFromRemote(): Promise<Result<PullResult, string>>
-  listRemoteBranches(): Promise<Result<string[], string>>
 
   // Task lifecycle
 
   // Clarification
-  respondToClarification(
-    response: ClarificationResponse
-  ): Promise<Result<null, string>>
-  escalateClarification(
-    taskId: string,
-    questionId: string
-  ): Promise<Result<null, string>>
-  getPendingClarifications(): Promise<Result<PendingClarification[], string>>
-  /** The requester agent's policy (skill.md `clarification:`) */
-  getClarificationPolicy(
-    agentId: string
-  ): Promise<Result<ClarificationPolicy, string>>
-  /** Returns the policy as saved (bounded, topics de-duplicated) */
-  setClarificationPolicy(
-    agentId: string,
-    policy: ClarificationPolicy
-  ): Promise<Result<ClarificationPolicy, string>>
 
   // Gateway agent
   getGatewayStatus(): Promise<Result<GatewayStatus, string>>
@@ -758,24 +696,6 @@ export interface HandWrittenClient {
     range: BackfillRange
   ): Promise<Result<BackfillEstimate[], string>>
   // Connector hub: grants, registry connectors, calendars and files
-  /** Every connector grant, saved and this computer's */
-  listConnectorGrants(): Promise<Result<GrantInfo[], string>>
-  grantConnectorAccess(
-    agentId: string,
-    connectorId: string,
-    access: GrantAccess,
-    scope: GrantScope
-  ): Promise<Result<null, string>>
-  revokeConnectorAccess(grant: GrantInfo): Promise<Result<null, string>>
-  /**
-   * Answers a `connector_access` approval. `subdomains`: a site request's
-   * grant covers the site's subdomains too
-   */
-  answerAccessRequest(
-    approvalId: string,
-    choice: AccessChoice,
-    subdomains?: boolean
-  ): Promise<Result<null, string>>
   /** Connectors listed in the configured registries */
   listRegistryConnectors(
     refresh: boolean
@@ -796,19 +716,6 @@ export interface HandWrittenClient {
   publishConnector(
     input: PublishConnectorInput
   ): Promise<Result<PublishConnectorResult, string>>
-  /** Calendars and drives (read-only), and the calendar check */
-  getWorkspaceStatus(): Promise<Result<WorkspaceStatus, string>>
-  startWorkspaceSignIn(
-    kind: AccountKind
-  ): Promise<Result<DeviceFlowState, string>>
-  pollWorkspaceSignIn(
-    kind: AccountKind
-  ): Promise<Result<EmailSignInPoll, string>>
-  disconnectWorkspace(
-    kind: AccountKind
-  ): Promise<Result<WorkspaceStatus, string>>
-  checkCalendarNow(): Promise<Result<WorkspaceStatus, string>>
-  setCalendarInterval(minutes: number): Promise<Result<WorkspaceStatus, string>>
   /** Work assigned to the owner that's still open, soonest due first */
   listGatewayAssignments(): Promise<Result<GatewayAssignment[], string>>
   /** Done (the requester gets the note) or Decline an assignment */

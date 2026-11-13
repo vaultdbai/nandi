@@ -4,7 +4,7 @@
  * HttpOnly cookie (set when the page was opened with `?token=`).
  */
 
-import type { AccountKind, Result } from '@/lib/bindings'
+import type { Result } from '@/lib/bindings'
 import type { NandiEvent } from './events'
 import { createEventBus } from './event-bus'
 import { marketplaceQuery } from './marketplace-filter'
@@ -49,14 +49,6 @@ async function request<T, E = string>(
 }
 
 const id = encodeURIComponent
-
-/** Workspace routes use the connector id, the commands the `AccountKind` */
-const WORKSPACE_ROUTE_IDS: Record<AccountKind, string> = {
-  outlookCalendar: 'outlook-calendar',
-  googleCalendar: 'google-calendar',
-  oneDrive: 'onedrive',
-  googleDrive: 'google-drive',
-}
 
 /** `?a=1&b=x` from the set values (`null`/`undefined` are left out) */
 function query(
@@ -440,38 +432,6 @@ export const webClient: NandiClient = withCommands({
   companionFocusRequest: () =>
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
 
-  getIdentityStatus: () => request('GET', '/identity/status'),
-  getVerifiedIdentity: () => request('GET', '/identity/verified'),
-  setDisplayName: name => request('PUT', '/identity/display-name', { name }),
-  setUserSlug: slug => request('PUT', '/identity/user-slug', { slug }),
-  setOnboardingStep: step =>
-    request('PUT', '/identity/onboarding-step', { step }),
-
-  getGithubSignIn: () => request('GET', '/github/sign-in'),
-  startGithubSignIn: () => request('POST', '/github/sign-in/start'),
-  pollGithubSignIn: () => request('POST', '/github/sign-in/poll'),
-  signOutGithub: () => request('DELETE', '/github/sign-in'),
-
-  getRemoteStatus: () => request('GET', '/remote/status'),
-  configureRemote: (url, credential, prefix, slug) =>
-    request('PUT', '/remote/config', { url, credential, prefix, slug }),
-  clearRemote: () => request('DELETE', '/remote'),
-  testRemoteConnection: () => request('POST', '/remote/test'),
-  pushToRemote: overwrite => request('POST', '/remote/push', { overwrite }),
-  pullFromRemote: () => request('POST', '/remote/pull'),
-  listRemoteBranches: () => request('GET', '/remote/branches'),
-
-  respondToClarification: ({ taskId, round, answers }) =>
-    request('POST', `/delegation/${id(taskId)}/clarify`, { round, answers }),
-  escalateClarification: (taskId, questionId) =>
-    request('POST', `/delegation/${id(taskId)}/escalate/${id(questionId)}`),
-  getPendingClarifications: () =>
-    request('GET', '/delegation/pending-clarifications'),
-  getClarificationPolicy: agentId =>
-    request('GET', `/agents/${id(agentId)}/clarification-policy`),
-  setClarificationPolicy: (agentId, policy) =>
-    request('PUT', `/agents/${id(agentId)}/clarification-policy`, policy),
-
   getGatewayStatus: () => request('GET', '/gateway/status'),
   makeGatewayReachable: () => request('POST', '/gateway/reachable'),
   listGatewayHolds: () => request('GET', '/gateway/holds'),
@@ -500,21 +460,6 @@ export const webClient: NandiClient = withCommands({
     }),
   estimateEmailBackfill: range =>
     request('POST', '/email/backfill/estimate', { range }),
-  listConnectorGrants: () => request('GET', '/connector-grants'),
-  grantConnectorAccess: (agentId, connectorId, access, scope) =>
-    request('POST', '/connector-grants', {
-      agentId,
-      connectorId,
-      access,
-      scope,
-    }),
-  revokeConnectorAccess: grant =>
-    request('POST', '/connector-grants/revoke', grant),
-  answerAccessRequest: (approvalId, choice, subdomains = false) =>
-    request('POST', `/access-requests/${id(approvalId)}`, {
-      choice,
-      subdomains,
-    }),
   listRegistryConnectors: refresh =>
     request('GET', `/registry-connectors?refresh=${refresh}`),
   getConnectorConsent: (registryUrl, connectorId) =>
@@ -532,16 +477,6 @@ export const webClient: NandiClient = withCommands({
     request('POST', `/connectors/${id(connectorId)}/remove`),
   scaffoldConnector: input => request('POST', '/connectors/scaffold', input),
   publishConnector: input => request('POST', '/connectors/publish', input),
-  getWorkspaceStatus: () => request('GET', '/workspace'),
-  startWorkspaceSignIn: kind =>
-    request('POST', `/workspace/${WORKSPACE_ROUTE_IDS[kind]}/sign-in`),
-  pollWorkspaceSignIn: kind =>
-    request('POST', `/workspace/${WORKSPACE_ROUTE_IDS[kind]}/sign-in/poll`),
-  disconnectWorkspace: kind =>
-    request('DELETE', `/workspace/${WORKSPACE_ROUTE_IDS[kind]}`),
-  checkCalendarNow: () => request('POST', '/workspace/calendar/check'),
-  setCalendarInterval: minutes =>
-    request('PUT', '/workspace/calendar/interval', { minutes }),
   closeGatewayAssignment: (taskId, done, note) =>
     request(
       'POST',

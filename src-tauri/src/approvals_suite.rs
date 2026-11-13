@@ -234,10 +234,10 @@ async fn approvals_and_refusals_are_on_the_record() {
     assert_eq!(detail["run"]["status"], "awaitingApproval", "{detail}");
     let request = pending(&router, "triager", "connector_access").await;
     let request_id = request["id"].as_str().unwrap().to_string();
-    post(
+    rpc(
         &router,
-        &format!("access-requests/{request_id}"),
-        json!({ "choice": "deny" }),
+        "answer_access_request",
+        json!({ "approvalId": request_id, "choice": "deny", "subdomains": false }),
     )
     .await;
     let detail = finished(&router, &run_id).await;
