@@ -54,65 +54,31 @@ describe('webClient', () => {
     vi.useRealTimers()
   })
 
-  it('maps calls onto REST routes with JSON bodies', async () => {
-    respond(200, { runId: 'r1', messageId: 'm1', conversationTitle: null })
-
-    const result = await webClient.sendMessage('writer', 'hi', ['a1'], 'm1')
-
-    expect(result).toEqual({
-      status: 'ok',
-      data: { runId: 'r1', messageId: 'm1', conversationTitle: null },
-    })
+  it('calls the emergency-data routes and returns errors as IPC does', async () => {
+    respond(200, null)
+    await webClient.saveEmergencyData('draft/1', { a: 1 })
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('/api/agents/writer/messages')
-    expect(init.method).toBe('POST')
+    expect(url).toBe('/api/emergency-data/draft%2F1')
+    expect(init.method).toBe('PUT')
     expect(init.credentials).toBe('same-origin')
-    expect(JSON.parse(String(init.body))).toEqual({
-      text: 'hi',
-      attachments: ['a1'],
-      clientMessageId: 'm1',
-    })
-  })
+    expect(JSON.parse(String(init.body))).toEqual({ a: 1 })
 
-  it('scopes approvals by agent and encodes path segments', async () => {
-    respond(200, null)
-    await webClient.approveAction('@studio', 'ap/1', 'approved')
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/agents/%40studio/approve')
-  })
-
-  it('answers a hand-over by its approval', async () => {
-    respond(200, null)
-    await webClient.answerHandOver('ap/1', {
-      outcome: 'changed',
-      finalText: 'Final words',
-    })
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('/api/approvals/ap%2F1/hand-over')
-    expect(JSON.parse(String(init.body))).toEqual({
-      outcome: 'changed',
-      finalText: 'Final words',
-    })
-  })
-
-  it('returns errors in the same shape as IPC', async () => {
-    respond(400, { error: 'Agent not found' })
-    expect(await webClient.getAgentSnapshot('ghost')).toEqual({
+    respond(400, { error: { type: 'FileNotFound' } })
+    expect(await webClient.loadEmergencyData('ghost')).toEqual({
       status: 'error',
-      error: 'Agent not found',
+      error: { type: 'FileNotFound' },
     })
 
     fetchMock.mockRejectedValueOnce(new TypeError('offline'))
-    const offline = await webClient.listAgents()
+    const offline = await webClient.cleanupOldRecoveryFiles()
     expect(offline.status).toBe('error')
   })
 
-  it('unwraps container ids and refuses native file picking', async () => {
-    respond(200, { containerId: 'c1' })
-    expect(await webClient.startAgent('writer')).toEqual({
-      status: 'ok',
-      data: 'c1',
-    })
+  it('refuses what needs the desktop app', async () => {
     expect((await webClient.pickAttachments('file')).status).toBe('error')
+    expect((await webClient.openRunFile('r1', 'a.txt', false)).status).toBe(
+      'error'
+    )
     expect(webClient.supports.attachments).toBe(false)
   })
 

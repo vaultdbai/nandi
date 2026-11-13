@@ -9,7 +9,7 @@
 
 use serde_json::json;
 
-use crate::offline_suite::{boot, post, rpc};
+use crate::offline_suite::{boot, rpc};
 use crate::services::domain::EntityKind;
 use crate::services::relay::BuiltInRelay;
 use crate::services::AppState;
@@ -124,10 +124,10 @@ async fn no_secret_reaches_the_repo_or_its_history() {
     secrets.push(("site password", site_password.into()));
 
     // A workflow, and a webhook trigger with its generated secret
-    post(
+    rpc(
         &router,
-        "workflows",
-        json!({ "yaml": "id: dt04-flow\nname: DT-04 flow\nsteps:\n  - id: shop\n    agent: shopper\n    input: \"Check the order\"\n" }),
+        "create_workflow",
+        json!({ "input": { "yaml": "id: dt04-flow\nname: DT-04 flow\nsteps:\n  - id: shop\n    agent: shopper\n    input: \"Check the order\"\n" } }),
     )
     .await;
     let saved = rpc(

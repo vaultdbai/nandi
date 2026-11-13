@@ -1,18 +1,12 @@
-//! Web transport: REST (`/api/*`), events (`/ws`), and the frontend (`/`),
-//! all behind token auth. A thin adapter over `services/`, like the Tauri
-//! commands. No Tauri types here.
+//! Web transport: commands (`POST /api/rpc/{name}`), the trigger receivers,
+//! emergency data, events (`/ws`) and the frontend (`/`), all behind token
+//! auth. A thin adapter over `rpc/` and `services/`. No Tauri types here.
 //!
 //! Binds `127.0.0.1:0` (a random free port) by default; `0.0.0.0` only
 //! with an explicit `--server`.
 
-// Wave CD (see docs/developer/interaction-layer.md)
 pub mod auth;
-// Wave B
-// Wave A
-mod companion;
-// Wave EF
-// Wave final
-mod routes;
+mod recovery;
 mod rpc;
 mod static_files;
 mod triggers;
@@ -21,11 +15,9 @@ pub mod ws;
 use std::net::SocketAddr;
 
 use axum::extract::DefaultBodyLimit;
-use axum::http::StatusCode;
 use axum::middleware;
-use axum::response::IntoResponse;
 use axum::routing::get;
-use axum::{Json, Router};
+use axum::Router;
 
 use crate::services::AppState;
 use auth::WebToken;
@@ -38,29 +30,13 @@ pub fn router(state: AppState, token: WebToken) -> Router {
     Router::new()
         .nest(
             "/api",
-            routes::api()
-                .merge(rpc::api())
-                .merge(triggers::api())
-                // Wave 2A
-                // Wave 2B redesign
-                .merge(companion::api()), // Wave final
-                                          // Wave final, network-first, // Wave A
-                                          // Wave B, // Wave CD (see docs/developer/interaction-layer.md),
+            rpc::api().merge(triggers::api()).merge(recovery::api()),
         )
         .route("/ws", get(ws::handler))
         .fallback(static_files::handler)
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .layer(middleware::from_fn_with_state(token, auth::require_token))
         .with_state(state)
-}
-
-/// `501 {"error": "not implemented"}`: a frozen route its track hasn't
-/// implemented yet.
-async fn not_implemented() -> impl IntoResponse {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(serde_json::json!({ "error": crate::services::redesign::NOT_IMPLEMENTED })),
-    )
 }
 
 /// Binds and starts serving in the background. Records the bound port in
@@ -128,12 +104,13 @@ mod tests {
     #[tokio::test]
     async fn rejects_requests_without_a_valid_token() {
         let (_, app) = app();
+        let rpc = |uri: &str| Request::post(uri).body(Body::from("{}")).unwrap();
         for request in [
-            get("/api/workflows"),
-            get("/api/workflows?token=wrong"),
-            Request::get("/api/workflows")
+            rpc("/api/rpc/get_workflows"),
+            rpc("/api/rpc/get_workflows?token=wrong"),
+            Request::post("/api/rpc/get_workflows")
                 .header(header::AUTHORIZATION, "Bearer wrong")
-                .body(Body::empty())
+                .body(Body::from("{}"))
                 .unwrap(),
             get("/"),
         ] {
@@ -160,55 +137,15 @@ mod tests {
         let cookie_value = cookie.split(';').next().unwrap().to_string();
         let response = app
             .oneshot(
-                Request::get("/api/workflows")
+                Request::post("/api/rpc/get_workflows")
                     .header(header::COOKIE, cookie_value)
-                    .body(Body::empty())
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from("{}"))
                     .unwrap(),
             )
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn routes_map_onto_services() {
-        let (state, app) = app();
-
-        let created = app
-            .clone()
-            .oneshot(authed("POST", "/api/studio/conversations", ""))
-            .await
-            .unwrap();
-        assert_eq!(created.status(), StatusCode::OK);
-        let id = json(created).await["id"].as_str().unwrap().to_string();
-
-        let sent = app
-            .clone()
-            .oneshot(authed(
-                "POST",
-                &format!("/api/studio/conversations/{id}/messages"),
-                r#"{"text":"hello"}"#,
-            ))
-            .await
-            .unwrap();
-        assert_eq!(sent.status(), StatusCode::OK);
-        assert!(json(sent).await["runId"].is_string());
-
-        let list = app
-            .clone()
-            .oneshot(authed("GET", "/api/studio/conversations", ""))
-            .await
-            .unwrap();
-        assert_eq!(json(list).await[0]["title"], "hello");
-
-        let dashboard = app
-            .clone()
-            .oneshot(authed("GET", "/api/snapshots/dashboard?dayStart=0", ""))
-            .await
-            .unwrap();
-        assert_eq!(dashboard.status(), StatusCode::OK);
-        assert!(json(dashboard).await["stats"]["runsToday"].is_number());
-        state.shutdown();
     }
 
     #[tokio::test]
@@ -220,46 +157,6 @@ mod tests {
             .await
             .unwrap();
         assert!(!is_json(&missing));
-        state.shutdown();
-    }
-
-    #[tokio::test]
-    async fn wave_2b_redesign_routes_are_mounted() {
-        let (state, app) = app();
-        for (method, uri) in [
-            ("GET", "/api/companion/snapshot?dayStart=0"),
-            ("POST", "/api/companion/toggle"),
-            ("POST", "/api/companion/pin"),
-            ("POST", "/api/companion/messages"),
-            ("POST", "/api/companion/notify"),
-        ] {
-            // JSON (501 while stubbed, or the track's answer); unmatched
-            // paths fall through to the frontend's HTML instead
-            let response = app
-                .clone()
-                .oneshot(authed(method, uri, "{}"))
-                .await
-                .unwrap();
-            assert!(is_json(&response), "{method} {uri}: {}", response.status());
-        }
-        state.shutdown();
-    }
-
-    #[tokio::test]
-    async fn wave_final_routes_are_mounted() {
-        let (state, app) = app();
-        for (method, uri) in [
-            ("GET", "/api/workflow-templates"),
-            ("POST", "/api/runs/r1/file"),
-        ] {
-            // JSON (501 while stubbed, or the track's answer)
-            let response = app
-                .clone()
-                .oneshot(authed(method, uri, "{}"))
-                .await
-                .unwrap();
-            assert!(is_json(&response), "{method} {uri}: {}", response.status());
-        }
         state.shutdown();
     }
 
@@ -316,7 +213,7 @@ mod tests {
                 "/api/rpc/validate_artifact",
                 r#"{"artifact":{"kind":"agent","id":"a"},"content":"---\nmodel: x\n---\n"}"#,
             ),
-            ("GET", "/api/approvals/pending", "{}"),
+            ("POST", "/api/rpc/list_pending_approvals", "{}"),
         ] {
             // JSON (501 while stubbed, or the track's answer)
             let response = app
@@ -360,8 +257,8 @@ mod tests {
         let response = app
             .oneshot(authed(
                 "POST",
-                "/api/agents/..%2Fetc/messages",
-                r#"{"text":"x"}"#,
+                "/api/rpc/send_message",
+                r#"{"agentId":"../etc","text":"x","attachments":[],"clientMessageId":null}"#,
             ))
             .await
             .unwrap();

@@ -36,21 +36,11 @@ const TOKEN: &str = "offline-token-0123456789abcdef0123456789";
 /// How long any one read may take: nothing may wait on a relay
 const READ_BUDGET: Duration = Duration::from_secs(5);
 
-/// The parameterless GET routes behind every screen (`scripts/api-smoke.ps1`),
-/// minus the ones that read another service on purpose: the starter-pack
-/// registry on GitHub (`marketplace/*`; local folders are tested below),
-/// AWS and Bedrock, and the coding-agent CLIs on this machine. None of
-/// those is the relay.
-const SCREEN_ROUTES: &[&str] = &[
-    "agents",
-    "agents/overviews",
-    "approvals/pending",
-    "companion/snapshot",
-    "workflows",
-];
-
-/// The commands without arguments behind every screen, over `/api/rpc`.
-/// The rest of `scripts/api-smoke.ps1` (its `rpc:` rows).
+/// The commands without arguments behind every screen, over `/api/rpc`
+/// (`scripts/api-smoke.ps1`), minus the ones that read another service on
+/// purpose: the starter-pack registry on GitHub (local folders are tested
+/// below), AWS and Bedrock, and the coding-agent CLIs on this machine. None
+/// of those is the relay.
 const SCREEN_COMMANDS: &[&str] = &[
     "get_auto_approve_rules",
     "get_chief_of_staff_digest",
@@ -69,9 +59,12 @@ const SCREEN_COMMANDS: &[&str] = &[
     "get_relay_status",
     "get_remote_status",
     "get_repo_llm_config",
+    "get_studio_conversations",
     "get_tool_usage_stats",
+    "get_workflows",
     "get_workspace_status",
     "help_topics",
+    "list_agents",
     "list_agents_shared_by_me",
     "list_agents_shared_with_me",
     "list_ask_history",
@@ -89,6 +82,7 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_installed",
     "list_note_suggestions",
     "list_online_agents",
+    "list_pending_approvals",
     "list_pending_manual_steps",
     "list_pilots",
     "list_push_targets",
@@ -101,6 +95,7 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_trust_policies",
     "list_trust_requests",
     "list_work",
+    "list_workflow_templates",
     "load_preferences",
     "mascot_get",
     "repo_git_status",
@@ -164,35 +159,27 @@ pub(crate) async fn call(
     (status, body)
 }
 
-pub(crate) async fn get(router: &Router, uri: &str) -> Value {
-    let (status, body) = call(router, "GET", uri, Value::Null).await;
-    assert_eq!(status, StatusCode::OK, "GET /api/{uri}: {body}");
-    body
-}
-
-pub(crate) async fn post(router: &Router, uri: &str, body: Value) -> Value {
-    let (status, answer) = call(router, "POST", uri, body).await;
-    assert_eq!(status, StatusCode::OK, "POST /api/{uri}: {answer}");
+/// Runs a command over `POST /api/rpc/{name}`; its arguments are a JSON object
+pub(crate) async fn rpc(router: &Router, name: &str, args: Value) -> Value {
+    let (status, answer) = call(router, "POST", &format!("rpc/{name}"), args).await;
+    assert_eq!(status, StatusCode::OK, "{name}: {answer}");
     answer
 }
 
-/// Runs a command over `POST /api/rpc/{name}`; its arguments are a JSON object
-pub(crate) async fn rpc(router: &Router, name: &str, args: Value) -> Value {
-    post(router, &format!("rpc/{name}"), args).await
-}
-
-/// Polls `GET uri` until `done` holds (up to 10s)
-pub(crate) async fn until(router: &Router, uri: &str, done: impl Fn(&Value) -> bool) -> Value {
+/// Runs the command `name` until `done` holds for its answer (up to 10s)
+pub(crate) async fn until(
+    router: &Router,
+    name: &str,
+    args: Value,
+    done: impl Fn(&Value) -> bool,
+) -> Value {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        let body = get(router, uri).await;
+        let body = rpc(router, name, args.clone()).await;
         if done(&body) {
             return body;
         }
-        assert!(
-            Instant::now() < deadline,
-            "GET /api/{uri} never got there: {body}"
-        );
+        assert!(Instant::now() < deadline, "{name} never got there: {body}");
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
@@ -210,12 +197,13 @@ pub(crate) async fn canned(state: &AppState, script: Value) {
 }
 
 async fn every_screen_answers(router: &Router) {
-    for route in SCREEN_ROUTES {
-        get(router, route).await;
-    }
     for command in SCREEN_COMMANDS {
         rpc(router, command, json!({})).await;
     }
+    // The ones that take the local midnight
+    rpc(router, "list_agent_overviews", json!({ "todayStart": 0 })).await;
+    rpc(router, "get_companion_snapshot", json!({ "dayStart": 0 })).await;
+    rpc(router, "get_dashboard_snapshot", json!({ "dayStart": 0 })).await;
     // The run history's first page, with no filters
     let first_page = json!({ "filters": {}, "limit": 50, "offset": 0 });
     rpc(router, "list_all_runs", first_page).await;
@@ -264,36 +252,39 @@ async fn an_agent_runs_and_its_request_is_approved(state: &AppState, router: &Ro
     let mut script = crate::engine::default_script();
     script["tokenDelayMs"] = json!(0);
     canned(state, script).await;
-    post(
+    rpc(
         router,
-        "agents",
-        json!({ "id": "offline-assistant", "name": "Offline Assistant" }),
+        "create_agent",
+        json!({ "input": { "id": "offline-assistant", "name": "Offline Assistant" } }),
     )
     .await;
-    let sent = post(
+    let sent = rpc(
         router,
-        "agents/offline-assistant/messages",
-        json!({ "text": "How long is the report?" }),
+        "send_message",
+        json!({ "agentId": "offline-assistant", "text": "How long is the report?", "attachments": [], "clientMessageId": null }),
     )
     .await;
     let run_id = sent["runId"].as_str().expect("a run ID").to_string();
 
-    let pending = until(router, "approvals/pending", |body| {
+    let pending = until(router, "list_pending_approvals", json!({}), |body| {
         body.as_array().is_some_and(|list| !list.is_empty())
     })
     .await;
     let approval = &pending[0];
     assert_eq!(approval["agentId"], "offline-assistant");
-    post(
+    rpc(
         router,
-        "agents/offline-assistant/approve",
-        json!({ "approvalId": approval["id"], "decision": "approved" }),
+        "approve_action",
+        json!({ "agentId": "offline-assistant", "approvalId": approval["id"], "decision": "approved" }),
     )
     .await;
 
-    let detail = until(router, &format!("runs/{run_id}"), |body| {
-        body["run"]["status"] != "running" && body["run"]["status"] != "awaitingApproval"
-    })
+    let detail = until(
+        router,
+        "get_run_detail",
+        json!({ "runId": run_id }),
+        |body| body["run"]["status"] != "running" && body["run"]["status"] != "awaitingApproval",
+    )
     .await;
     assert_eq!(detail["run"]["status"], "completed", "{detail}");
 }
@@ -306,20 +297,30 @@ async fn a_workflow_runs(state: &AppState, router: &Router) {
     )
     .await;
     for id in ["offline-researcher", "offline-writer"] {
-        post(router, "agents", json!({ "id": id, "name": id })).await;
+        rpc(
+            router,
+            "create_agent",
+            json!({ "input": { "id": id, "name": id } }),
+        )
+        .await;
     }
-    post(
+    rpc(
         router,
-        "workflows",
-        json!({ "yaml": "id: offline-brief\nname: Offline brief\nsteps:\n  - id: research\n    agent: offline-researcher\n    input: \"Gather the notes\"\n  - id: write\n    agent: offline-writer\n    input: \"Write up: {{research.output}}\"\n" }),
+        "create_workflow",
+        json!({ "input": { "yaml": "id: offline-brief\nname: Offline brief\nsteps:\n  - id: research\n    agent: offline-researcher\n    input: \"Gather the notes\"\n  - id: write\n    agent: offline-writer\n    input: \"Write up: {{research.output}}\"\n" } }),
     )
     .await;
-    post(router, "workflows/offline-brief/run", Value::Null).await;
-    let workflow = until(router, "workflows/offline-brief", |body| {
-        body["runs"][0]["status"]
-            .as_str()
-            .is_some_and(|status| status != "running")
-    })
+    rpc(router, "run_workflow", json!({ "id": "offline-brief" })).await;
+    let workflow = until(
+        router,
+        "get_workflow",
+        json!({ "id": "offline-brief" }),
+        |body| {
+            body["runs"][0]["status"]
+                .as_str()
+                .is_some_and(|status| status != "running")
+        },
+    )
     .await;
     let run = &workflow["runs"][0];
     assert_eq!(run["status"], "completed", "{run}");
@@ -346,7 +347,7 @@ async fn a_starter_pack_installs_from_a_local_folder(router: &Router) {
         .find(|item| item["id"] == "offline-pack")
         .unwrap_or_else(|| panic!("not listed as installed: {items}"));
     assert_eq!(pack["signatureVerified"], false, "{pack}");
-    let agents = get(router, "agents").await;
+    let agents = rpc(router, "list_agents", json!({})).await;
     assert!(
         agents
             .as_array()
@@ -424,19 +425,19 @@ async fn an_inbox_item_opens_as_a_chat(state: &AppState, router: &Router) {
     let mut script = crate::engine::default_script();
     script["tokenDelayMs"] = json!(0);
     canned(state, script).await;
-    post(
+    rpc(
         router,
-        "agents",
-        json!({ "id": "offline-assistant", "name": "Offline Assistant" }),
+        "create_agent",
+        json!({ "input": { "id": "offline-assistant", "name": "Offline Assistant" } }),
     )
     .await;
-    post(
+    rpc(
         router,
-        "agents/offline-assistant/messages",
-        json!({ "text": "How long is the report?" }),
+        "send_message",
+        json!({ "agentId": "offline-assistant", "text": "How long is the report?", "attachments": [], "clientMessageId": null }),
     )
     .await;
-    let pending = until(router, "approvals/pending", |body| {
+    let pending = until(router, "list_pending_approvals", json!({}), |body| {
         body.as_array().is_some_and(|list| !list.is_empty())
     })
     .await;
@@ -453,10 +454,10 @@ async fn an_inbox_item_opens_as_a_chat(state: &AppState, router: &Router) {
     assert_eq!(opened["waiting"], true, "{opened}");
     assert_eq!(opened["tools"], json!(["inbox_approve", "inbox_refuse"]));
 
-    post(
+    rpc(
         router,
-        "agents/offline-assistant/approve",
-        json!({ "approvalId": id, "decision": "approved" }),
+        "approve_action",
+        json!({ "agentId": "offline-assistant", "approvalId": id, "decision": "approved" }),
     )
     .await;
     // The run takes the decision a moment later: then nothing waits

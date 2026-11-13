@@ -38,9 +38,3 @@ pub async fn pick_attachments(
         .collect();
     attachments::stage_picked_files(paths).await
 }
-
-#[tauri::command]
-#[specta::specta]
-pub async fn discard_attachment(id: String) -> Result<(), String> {
-    attachments::discard_attachment(id).await
-}

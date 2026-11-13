@@ -1,5 +1,5 @@
 # API smoke test: starts Nandi headless on a throwaway home and calls every
-# parameterless GET route and command (`rpc:` rows) of the HTTP API (docs/testing, RL-26). Your real
+# command without arguments over the HTTP API (docs/testing, RL-26). Your real
 # ~/.nandi is never used. The OS keyring is shared, so saved provider keys
 # are visible to the test instance (read only).
 #
@@ -16,29 +16,27 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$Routes = @(
-    'agents', 'agents/overviews', 'approvals/pending', 'companion/snapshot', 'workflows',
-    # Commands without arguments: `POST /api/rpc/{name}` with `{}`
-    'rpc:check_for_updates', 'rpc:detect_aws_cli', 'rpc:detect_ollama',
-    'rpc:get_auto_approve_rules', 'rpc:get_chief_of_staff_digest', 'rpc:get_default_model',
-    'rpc:get_egress_status', 'rpc:get_email_status', 'rpc:get_gateway_config',
-    'rpc:get_gateway_manifest', 'rpc:get_gateway_status', 'rpc:get_identity_status',
-    'rpc:get_know_me', 'rpc:get_litellm_gateway_status', 'rpc:get_llm_key_status',
-    'rpc:get_my_notes', 'rpc:get_network_snapshot', 'rpc:get_pending_clarifications',
-    'rpc:get_relay_status', 'rpc:get_remote_status', 'rpc:get_repo_llm_config',
-    'rpc:get_tool_usage_stats', 'rpc:get_workspace_status', 'rpc:help_topics',
-    'rpc:list_agents_shared_by_me', 'rpc:list_agents_shared_with_me', 'rpc:list_ask_history',
-    'rpc:list_available_packs', 'rpc:list_aws_profiles', 'rpc:list_bedrock_models',
-    'rpc:list_capabilities', 'rpc:list_capability_providers', 'rpc:list_capability_registries',
-    'rpc:list_connector_grants', 'rpc:list_connectors', 'rpc:list_decision_months',
-    'rpc:list_declared_capabilities', 'rpc:list_dismissed_work', 'rpc:list_gateway_callers',
-    'rpc:list_gateway_holds', 'rpc:list_groups', 'rpc:list_harness_sessions',
-    'rpc:list_harnesses', 'rpc:list_installed', 'rpc:list_note_suggestions',
-    'rpc:list_online_agents', 'rpc:list_pending_manual_steps', 'rpc:list_pilots',
-    'rpc:list_push_targets', 'rpc:list_recent_changes', 'rpc:list_request_returns',
-    'rpc:list_tasks', 'rpc:list_teams', 'rpc:list_tools', 'rpc:list_triggers',
-    'rpc:list_trust_policies', 'rpc:list_trust_requests', 'rpc:list_work',
-    'rpc:load_preferences', 'rpc:mascot_get', 'rpc:repo_git_status', 'rpc:repo_status'
+# Commands without arguments, each sent as `POST /api/rpc/{name}` with `{}`
+$Commands = @(
+    'check_for_updates', 'detect_aws_cli', 'detect_ollama', 'get_auto_approve_rules',
+    'get_chief_of_staff_digest', 'get_default_model', 'get_egress_status',
+    'get_email_status', 'get_gateway_config', 'get_gateway_manifest', 'get_gateway_status',
+    'get_identity_status', 'get_know_me', 'get_litellm_gateway_status',
+    'get_llm_key_status', 'get_my_notes', 'get_network_snapshot',
+    'get_pending_clarifications', 'get_relay_status', 'get_remote_status',
+    'get_repo_llm_config', 'get_studio_conversations', 'get_tool_usage_stats',
+    'get_workflows', 'get_workspace_status', 'help_topics', 'list_agents',
+    'list_agents_shared_by_me', 'list_agents_shared_with_me', 'list_ask_history',
+    'list_available_packs', 'list_aws_profiles', 'list_bedrock_models', 'list_capabilities',
+    'list_capability_providers', 'list_capability_registries', 'list_connector_grants',
+    'list_connectors', 'list_decision_months', 'list_declared_capabilities',
+    'list_dismissed_work', 'list_gateway_callers', 'list_gateway_holds', 'list_groups',
+    'list_harness_sessions', 'list_harnesses', 'list_installed', 'list_note_suggestions',
+    'list_online_agents', 'list_pending_approvals', 'list_pending_manual_steps',
+    'list_pilots', 'list_push_targets', 'list_recent_changes', 'list_request_returns',
+    'list_tasks', 'list_teams', 'list_tools', 'list_triggers', 'list_trust_policies',
+    'list_trust_requests', 'list_work', 'list_workflow_templates', 'load_preferences',
+    'mascot_get', 'repo_git_status', 'repo_status'
 )
 
 if (-not (Test-Path $Binary)) {
@@ -74,23 +72,20 @@ try {
 
     $headers = @{ Authorization = "Bearer $((Get-Content $tokenFile -Raw).Trim())" }
     $failed = 0
-    foreach ($route in $Routes) {
+    foreach ($command in $Commands) {
         try {
-            $response = if ($route.StartsWith('rpc:')) {
-                Invoke-WebRequest "http://127.0.0.1:$Port/api/rpc/$($route.Substring(4))" -Method Post -Body '{}' `
-                    -ContentType 'application/json' -Headers $headers -UseBasicParsing -TimeoutSec 60
-            } else {
-                Invoke-WebRequest "http://127.0.0.1:$Port/api/$route" -Headers $headers -UseBasicParsing -TimeoutSec 60
-            }
-            Write-Output ("{0}  {1}" -f $response.StatusCode, $route)
+            $response = Invoke-WebRequest "http://127.0.0.1:$Port/api/rpc/$command" -Method Post -Body '{}' `
+                -ContentType 'application/json' -Headers $headers -UseBasicParsing -TimeoutSec 60
+            Write-Output ("{0}  {1}" -f $response.StatusCode, $command)
         } catch {
             $code = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
-            Write-Output ("{0}  {1}  <-- FAIL" -f $code, $route)
+            Write-Output ("{0}  {1}  <-- FAIL" -f $code, $command)
             $failed++
         }
     }
     try {
-        Invoke-WebRequest "http://127.0.0.1:$Port/api/agents" -UseBasicParsing -TimeoutSec 5 | Out-Null
+        Invoke-WebRequest "http://127.0.0.1:$Port/api/rpc/list_agents" -Method Post -Body '{}' `
+            -ContentType 'application/json' -UseBasicParsing -TimeoutSec 5 | Out-Null
         Write-Output 'Without a token the API answered: FAIL (expected 401)'
         $failed++
     } catch {
@@ -98,7 +93,7 @@ try {
     }
 
     Write-Output ''
-    Write-Output ("{0} of {1} routes answered 200." -f ($Routes.Count - $failed), $Routes.Count)
+    Write-Output ("{0} of {1} commands answered 200." -f ($Commands.Count - $failed), $Commands.Count)
     if ($failed -gt 0) { exit 1 }
 } finally {
     Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue

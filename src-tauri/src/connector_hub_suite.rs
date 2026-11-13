@@ -15,7 +15,7 @@
 
 use serde_json::{json, Value};
 
-use crate::offline_suite::{boot, call, canned, post, rpc, until};
+use crate::offline_suite::{boot, call, canned, rpc, until};
 use crate::services::relay::BuiltInRelay;
 
 const TRACKER_MD_TOOL: &str = "tracker__list_issues";
@@ -40,22 +40,25 @@ fn script() -> Value {
 
 /// Sends a chat message and waits for the run to settle (done or paused)
 async fn run(router: &axum::Router, agent: &str, text: &str) -> (String, Value) {
-    let sent = post(
+    let sent = rpc(
         router,
-        &format!("agents/{agent}/messages"),
-        json!({ "text": text }),
+        "send_message",
+        json!({ "agentId": agent, "text": text, "attachments": [], "clientMessageId": null }),
     )
     .await;
     let run_id = sent["runId"].as_str().expect("a run ID").to_string();
-    let detail = until(router, &format!("runs/{run_id}"), |body| {
-        body["run"]["status"] != "running" && body["run"]["status"] != "queued"
-    })
+    let detail = until(
+        router,
+        "get_run_detail",
+        json!({ "runId": run_id }),
+        |body| body["run"]["status"] != "running" && body["run"]["status"] != "queued",
+    )
     .await;
     (run_id, detail)
 }
 
 async fn pending_access(router: &axum::Router) -> Value {
-    let pending = until(router, "approvals/pending", |body| {
+    let pending = until(router, "list_pending_approvals", json!({}), |body| {
         body.as_array()
             .is_some_and(|list| list.iter().any(|a| a["tool"] == "connector_access"))
     })
@@ -71,9 +74,12 @@ async fn pending_access(router: &axum::Router) -> Value {
 
 /// The tool result the model got for the connector call in `run_id`
 async fn tool_result(router: &axum::Router, run_id: &str) -> Value {
-    let detail = until(router, &format!("runs/{run_id}"), |body| {
-        body["run"]["status"] == "completed" || body["run"]["status"] == "failed"
-    })
+    let detail = until(
+        router,
+        "get_run_detail",
+        json!({ "runId": run_id }),
+        |body| body["run"]["status"] == "completed" || body["run"]["status"] == "failed",
+    )
     .await;
     assert_eq!(detail["run"]["status"], "completed", "{detail}");
     detail
@@ -221,7 +227,12 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
 
     // --- 3. An ungranted call pauses; Allow for this agent (saved) -------
     canned(&state_b, script()).await;
-    post(&b, "agents", json!({ "id": "triager", "name": "Triager" })).await;
+    rpc(
+        &b,
+        "create_agent",
+        json!({ "input": { "id": "triager", "name": "Triager" } }),
+    )
+    .await;
     let (status, body) = call(
         &b,
         "POST",
@@ -331,10 +342,10 @@ async fn allow_once_lasts_for_the_run_only() {
     )
     .await;
     canned(&state, script()).await;
-    post(
+    rpc(
         &router,
-        "agents",
-        json!({ "id": "triager", "name": "Triager" }),
+        "create_agent",
+        json!({ "input": { "id": "triager", "name": "Triager" } }),
     )
     .await;
     call(

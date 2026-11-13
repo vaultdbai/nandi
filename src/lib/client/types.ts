@@ -11,30 +11,12 @@ import type {
   Playbook,
   PlaybookInput,
   AgentInfo,
-  AgentOverview,
-  AgentSnapshot,
-  ApprovalDecision,
   AttachmentInfo,
   AttachmentKind,
-  CompanionSnapshot,
-  ConversationSnapshot,
-  CreateAgentInput,
-  CreateWorkflowInput,
-  TemplateWorkflowInput,
-  WorkflowTemplate,
-  DashboardSnapshot,
   GitStatus,
-  HandOverAnswer,
   JsonValue,
   RecoveryError,
   Result,
-  RunDetail,
-  RunPlan,
-  SendMessageResult,
-  StudioConversationSummary,
-  Workflow,
-  WorkflowSummary,
-  PendingApproval,
 } from '@/lib/bindings'
 import type { commands } from '@/lib/bindings'
 import type { NandiEvent } from './events'
@@ -75,45 +57,8 @@ export interface HandWrittenClient {
   }
 
   // Agents
-  listAgents(): Promise<Result<AgentInfo[], string>>
-  /** Each agent's setup and last seven days; `todayStart`: local midnight */
-  listAgentOverviews(
-    todayStart: number
-  ): Promise<Result<AgentOverview[], string>>
-  createAgent(input: CreateAgentInput): Promise<Result<AgentInfo, string>>
-  /** Starts the runtime container; returns its ID */
-  startAgent(agentId: string): Promise<Result<string, string>>
-  stopAgent(agentId: string): Promise<Result<null, string>>
-  restartAgent(agentId: string): Promise<Result<string, string>>
-  deleteAgent(agentId: string): Promise<Result<null, string>>
 
   // Chat
-  sendMessage(
-    agentId: string,
-    text: string,
-    attachments: string[],
-    clientMessageId: string | null
-  ): Promise<Result<SendMessageResult, string>>
-  sendStudioMessage(
-    conversationId: string,
-    text: string,
-    attachments: string[],
-    clientMessageId: string | null
-  ): Promise<Result<SendMessageResult, string>>
-  createStudioConversation(): Promise<Result<StudioConversationSummary, string>>
-  approveAction(
-    agentId: string,
-    approvalId: string,
-    decision: ApprovalDecision
-  ): Promise<Result<null, string>>
-  /** Answers a browser hand-over (`pilots::handover`), whichever agent's */
-  answerHandOver(
-    approvalId: string,
-    answer: HandOverAnswer
-  ): Promise<Result<null, string>>
-  /** Every agent's pending tool approvals, oldest first */
-  listPendingApprovals(): Promise<Result<PendingApproval[], string>>
-  cancelTurn(agentId: string, turnId: string): Promise<Result<null, string>>
 
   // Queue: one turn per agent; other requests wait, lowest priority first
 
@@ -121,41 +66,14 @@ export interface HandWrittenClient {
   pickAttachments(
     kind: AttachmentKind
   ): Promise<Result<AttachmentInfo[], string>>
-  discardAttachment(id: string): Promise<Result<null, string>>
 
   // Snapshots
-  getAgentSnapshot(agentId: string): Promise<Result<AgentSnapshot, string>>
-  /** `dayStart`: local midnight (ms), for "Runs Today" */
-  getDashboardSnapshot(
-    dayStart: number
-  ): Promise<Result<DashboardSnapshot, string>>
-  getRunDetail(runId: string): Promise<Result<RunDetail, string>>
-  /** The host path of a file the run touched, `null` if it isn't there */
-  resolveRunFile(
-    runId: string,
-    path: string
-  ): Promise<Result<string | null, string>>
-  /** The run's step-by-step plan, `null` when it has none */
-  getRunPlan(runId: string): Promise<Result<RunPlan | null, string>>
-  /**
-   * One of the run's screenshots (`browser/<run>/…`) as a `data:` URL, for
-   * its plan card; `null` once it's gone
-   */
-  getRunScreenshot(
-    runId: string,
-    path: string
-  ): Promise<Result<string | null, string>>
   /** Opens it (or shows it in the file manager); desktop only */
   openRunFile(
     runId: string,
     path: string,
     reveal: boolean
   ): Promise<Result<null, string>>
-  getWorkflows(): Promise<Result<WorkflowSummary[], string>>
-  getStudioConversations(): Promise<Result<StudioConversationSummary[], string>>
-  getConversation(
-    conversationId: string
-  ): Promise<Result<ConversationSnapshot, string>>
 
   // Settings
   saveEmergencyData(
@@ -168,23 +86,6 @@ export interface HandWrittenClient {
   // Egress
 
   // Workflows (listing is `getWorkflows`)
-  getWorkflow(id: string): Promise<Result<Workflow, string>>
-  /** Saves a YAML workflow as `workflows/{id}.yaml` in the agents repo */
-  createWorkflow(input: CreateWorkflowInput): Promise<Result<Workflow, string>>
-  /** The bundled templates for "New workflow › From a template" */
-  listWorkflowTemplates(): Promise<Result<WorkflowTemplate[], string>>
-  /** Builds a template with the chosen agents and saves it */
-  createWorkflowFromTemplate(
-    input: TemplateWorkflowInput
-  ): Promise<Result<Workflow, string>>
-  /** Returns the new run's ID */
-  runWorkflow(id: string): Promise<Result<string, string>>
-  /** Resolves a step paused by `requires_approval` */
-  approveWorkflowStep(
-    runId: string,
-    stepId: string,
-    decision: ApprovalDecision
-  ): Promise<Result<null, string>>
 
   // Triggers (rules that start runs on schedules, files, webhooks, devices,
   // and Nandi's own events). A secret is only ever returned on create,
@@ -261,10 +162,6 @@ export interface HandWrittenClient {
   // Marketplace (Track C)
 
   // Companion (Track D). Window control needs the desktop app.
-  /** `dayStart`: local midnight, epoch ms */
-  getCompanionSnapshot(
-    dayStart: number
-  ): Promise<Result<CompanionSnapshot, string>>
   toggleCompanionWindow(): Promise<Result<null, string>>
   /** Quits the desktop app (the companion's way out) */
   quitNandi(): Promise<void>
@@ -274,19 +171,7 @@ export interface HandWrittenClient {
   ): Promise<Result<null, string>>
   /** The bison on the desktop (desktop only) */
   setCompanionBubble(bubble: boolean): Promise<Result<null, string>>
-  /** Start Nandi with only the bison (desktop only) */
-  setCompanionStartBisonOnly(on: boolean): Promise<Result<null, string>>
   setCompanionPinned(pinned: boolean): Promise<Result<null, string>>
-  /** `scopeRequestId` pins the conversation to a Request (`null` clears it) */
-  sendCompanionMessage(
-    text: string,
-    conversationId: string | null,
-    scopeRequestId: string | null
-  ): Promise<Result<SendMessageResult, string>>
-  /** "Notify me" (OS notifications for approvals and questions) */
-  setCompanionNotify(notify: boolean): Promise<Result<null, string>>
-  /** "Notify me when requests come back" */
-  setCompanionNotifyResults(notify: boolean): Promise<Result<null, string>>
   /** Watch in companion: shows it with the Request pinned (desktop only) */
   companionFocusRequest(requestId: string): Promise<Result<null, string>>
 

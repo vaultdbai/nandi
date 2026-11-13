@@ -56,9 +56,6 @@ use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow, WindowEvent,
 };
 
-pub use crate::services::companion::CompanionSnapshot;
-
-use crate::services::chat::SendMessageResult;
 use crate::services::companion::{self, Corner, CornerPlace};
 use crate::services::AppState;
 
@@ -476,16 +473,6 @@ async fn toggle(app: &AppHandle) -> Result<(), String> {
     }
 }
 
-/// `day_start`: local midnight, epoch milliseconds
-#[tauri::command]
-#[specta::specta]
-pub async fn get_companion_snapshot(
-    state: State<'_, AppState>,
-    day_start: f64,
-) -> Result<CompanionSnapshot, String> {
-    companion::get_companion_snapshot(&state, day_start).await
-}
-
 /// Shows (and focuses) the companion if hidden or behind other windows,
 /// hides it if it's shown and focused
 #[tauri::command]
@@ -542,17 +529,6 @@ pub async fn place_companion(app: AppHandle, shape: String) -> Result<(), String
     Ok(())
 }
 
-/// Start Nandi with only the bison (the main window hidden until opened
-/// from the companion)
-#[tauri::command]
-#[specta::specta]
-pub async fn set_companion_start_bison_only(
-    state: State<'_, AppState>,
-    on: bool,
-) -> Result<(), String> {
-    companion::set_start_bison_only(&state, on).await
-}
-
 /// The bison on the desktop: on shows it (on top, in its corner); off
 /// hides the window, which the hotkey then brings back
 #[tauri::command]
@@ -588,42 +564,6 @@ pub async fn set_companion_pinned(
     window(&app)?;
     apply_pinned(&app).await;
     Ok(())
-}
-
-/// A companion chat turn: Studio (grounded by its tools), scoped to a
-/// Request when `scope_request_id` is set; "@Agent …" asks that agent
-#[tauri::command]
-#[specta::specta]
-pub async fn send_companion_message(
-    state: State<'_, AppState>,
-    text: String,
-    conversation_id: Option<String>,
-    scope_request_id: Option<String>,
-) -> Result<SendMessageResult, String> {
-    companion::send_companion_message(
-        &state,
-        &text,
-        conversation_id.as_deref(),
-        scope_request_id.as_deref(),
-    )
-    .await
-}
-
-/// "Notify me": OS notifications for approvals and questions
-#[tauri::command]
-#[specta::specta]
-pub async fn set_companion_notify(state: State<'_, AppState>, notify: bool) -> Result<(), String> {
-    companion::set_notify(&state, notify).await
-}
-
-/// "Notify me when requests come back"
-#[tauri::command]
-#[specta::specta]
-pub async fn set_companion_notify_results(
-    state: State<'_, AppState>,
-    notify: bool,
-) -> Result<(), String> {
-    companion::set_notify_results(&state, notify).await
 }
 
 /// `companion://focus_request`: the companion pins a Request at the top

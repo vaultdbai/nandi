@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use crate::offline_suite::{boot, call, canned, get, post, rpc, until};
+use crate::offline_suite::{boot, call, canned, rpc, until};
 use crate::services::builtin_agents::CHIEF_OF_STAFF;
 use crate::services::intake::{self, Gate, GroupSay, TeamTask};
 use crate::services::relay::BuiltInRelay;
@@ -76,30 +76,36 @@ fn you(state: &AppState) -> String {
 
 /// Sends a chat message and waits for the run to settle (done or paused)
 async fn run(router: &axum::Router, agent: &str, text: &str) -> (String, Value) {
-    let sent = post(
+    let sent = rpc(
         router,
-        &format!("agents/{agent}/messages"),
-        json!({ "text": text }),
+        "send_message",
+        json!({ "agentId": agent, "text": text, "attachments": [], "clientMessageId": null }),
     )
     .await;
     let run_id = sent["runId"].as_str().expect("a run ID").to_string();
-    let detail = until(router, &format!("runs/{run_id}"), |body| {
-        body["run"]["status"] != "running" && body["run"]["status"] != "queued"
-    })
+    let detail = until(
+        router,
+        "get_run_detail",
+        json!({ "runId": run_id }),
+        |body| body["run"]["status"] != "running" && body["run"]["status"] != "queued",
+    )
     .await;
     (run_id, detail)
 }
 
 async fn finished(router: &axum::Router, run_id: &str) -> Value {
-    until(router, &format!("runs/{run_id}"), |body| {
-        body["run"]["status"] == "completed" || body["run"]["status"] == "failed"
-    })
+    until(
+        router,
+        "get_run_detail",
+        json!({ "runId": run_id }),
+        |body| body["run"]["status"] == "completed" || body["run"]["status"] == "failed",
+    )
     .await
 }
 
 /// The pending approval of `agent`'s `tool`
 async fn pending(router: &axum::Router, agent: &str, tool: &str) -> Value {
-    let list = until(router, "approvals/pending", |body| {
+    let list = until(router, "list_pending_approvals", json!({}), |body| {
         body.as_array().is_some_and(|list| {
             list.iter()
                 .any(|a| a["agentId"] == agent && a["tool"] == tool)
@@ -157,10 +163,10 @@ async fn triager_with_tracker(router: &axum::Router) {
         } }),
     )
     .await;
-    post(
+    rpc(
         router,
-        "agents",
-        json!({ "id": "triager", "name": "Triager" }),
+        "create_agent",
+        json!({ "input": { "id": "triager", "name": "Triager" } }),
     )
     .await;
     let (status, body) = call(
@@ -187,20 +193,20 @@ async fn approvals_and_refusals_are_on_the_record() {
 
     // CH-08: the shell call waits; approved, the run finishes
     shell_script(&state).await;
-    post(
+    rpc(
         &router,
-        "agents",
-        json!({ "id": "approver", "name": "Approver" }),
+        "create_agent",
+        json!({ "input": { "id": "approver", "name": "Approver" } }),
     )
     .await;
     let (run_id, detail) = run(&router, "approver", "How long is the report?").await;
     assert_eq!(detail["run"]["status"], "awaitingApproval", "{detail}");
     let approval = pending(&router, "approver", "shell").await;
     let id = approval["id"].as_str().unwrap().to_string();
-    post(
+    rpc(
         &router,
-        "agents/approver/approve",
-        json!({ "approvalId": id, "decision": "approved" }),
+        "approve_action",
+        json!({ "agentId": "approver", "approvalId": id, "decision": "approved" }),
     )
     .await;
     let detail = finished(&router, &run_id).await;
@@ -219,8 +225,8 @@ async fn approvals_and_refusals_are_on_the_record() {
     let (status, body) = call(
         &router,
         "POST",
-        "agents/approver/approve",
-        json!({ "approvalId": id, "decision": "rejected" }),
+        "rpc/approve_action",
+        json!({ "agentId": "approver", "approvalId": id, "decision": "rejected" }),
     )
     .await;
     assert_ne!(status, axum::http::StatusCode::OK, "{body}");
@@ -356,10 +362,10 @@ async fn a_denied_tool_is_refused_without_asking_first() {
         }),
     )
     .await;
-    post(
+    rpc(
         &router,
-        "agents",
-        json!({ "id": "counter", "name": "Counter" }),
+        "create_agent",
+        json!({ "input": { "id": "counter", "name": "Counter" } }),
     )
     .await;
     write_policy(
@@ -402,7 +408,7 @@ No shell.
         .await
         .unwrap();
     assert!(approval.is_none(), "nobody was asked: {approval:?}");
-    let pending = get(&router, "approvals/pending").await;
+    let pending = rpc(&router, "list_pending_approvals", json!({})).await;
     assert_eq!(pending, json!([]), "no approval card");
     let denied = recorded(&state, "policy", &shell_call).await;
     assert!(
@@ -431,10 +437,10 @@ async fn a_decision_in_an_inbox_chat_is_recorded_with_the_chat() {
     crate::services::builtin_agents::seed(state.store().layout()).unwrap();
     state.store().load().unwrap();
     shell_script(&state).await;
-    post(
+    rpc(
         &router,
-        "agents",
-        json!({ "id": "approver", "name": "Approver" }),
+        "create_agent",
+        json!({ "input": { "id": "approver", "name": "Approver" } }),
     )
     .await;
     let (run_id, _) = run(&router, "approver", "How long is the report?").await;
@@ -488,16 +494,16 @@ async fn a_decision_in_an_inbox_chat_is_recorded_with_the_chat() {
     };
     // The sentence decided nothing, and the confirm isn't an Inbox item
     assert!(!decisions(&state).contains(&format!("`{id}`")));
-    let listed = get(&router, "approvals/pending").await;
+    let listed = rpc(&router, "list_pending_approvals", json!({})).await;
     assert!(
         !listed.to_string().contains(&confirm.id),
         "the confirm stays in its chat: {listed}"
     );
 
-    post(
+    rpc(
         &router,
-        &format!("agents/{CHIEF_OF_STAFF}/approve"),
-        json!({ "approvalId": confirm.id, "decision": "approved" }),
+        "approve_action",
+        json!({ "agentId": CHIEF_OF_STAFF, "approvalId": confirm.id, "decision": "approved" }),
     )
     .await;
     let detail = finished(&router, &run_id).await;
@@ -622,10 +628,10 @@ async fn auto_approvals_are_recorded_as_such() {
 async fn a_crashing_orchestrator_restarts_up_to_the_cap() {
     let (state, router) = boot(BuiltInRelay::default());
     shell_script(&state).await;
-    post(
+    rpc(
         &router,
-        "agents",
-        json!({ "id": "crasher", "name": "Crasher" }),
+        "create_agent",
+        json!({ "input": { "id": "crasher", "name": "Crasher" } }),
     )
     .await;
     let (run_id, _) = run(&router, "crasher", "How long is the report?").await;
@@ -665,10 +671,10 @@ async fn a_crashing_orchestrator_restarts_up_to_the_cap() {
     // again and the run finishes
     let still = pending(&router, "crasher", "shell").await;
     assert_eq!(still["id"], approval["id"]);
-    post(
+    rpc(
         &router,
-        "agents/crasher/approve",
-        json!({ "approvalId": approval["id"], "decision": "approved" }),
+        "approve_action",
+        json!({ "agentId": "crasher", "approvalId": approval["id"], "decision": "approved" }),
     )
     .await;
     let detail = finished(&router, &run_id).await;

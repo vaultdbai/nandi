@@ -5,6 +5,7 @@
  */
 
 import type { Result } from '@/lib/bindings'
+import { commands } from '@/lib/tauri-bindings'
 import type { NandiEvent } from './events'
 import { createEventBus } from './event-bus'
 import type { NandiClient } from './types'
@@ -117,86 +118,12 @@ export const webClient: NandiClient = withCommands({
   transport: 'web',
   supports: { attachments: false },
 
-  listAgents: () => request('GET', '/agents'),
-  listAgentOverviews: todayStart =>
-    request('GET', `/agents/overviews${query({ todayStart })}`),
-  createAgent: input => request('POST', '/agents', input),
-  startAgent: async agentId => {
-    const result = await request<{ containerId: string }>(
-      'POST',
-      `/agents/${id(agentId)}/start`
-    )
-    return result.status === 'ok'
-      ? { status: 'ok', data: result.data.containerId }
-      : result
-  },
-  stopAgent: agentId => request('POST', `/agents/${id(agentId)}/stop`),
-  restartAgent: async agentId => {
-    const result = await request<{ containerId: string }>(
-      'POST',
-      `/agents/${id(agentId)}/restart`
-    )
-    return result.status === 'ok'
-      ? { status: 'ok', data: result.data.containerId }
-      : result
-  },
-  deleteAgent: agentId => request('DELETE', `/agents/${id(agentId)}`),
-
-  sendMessage: (agentId, text, attachments, clientMessageId) =>
-    request('POST', `/agents/${id(agentId)}/messages`, {
-      text,
-      attachments,
-      clientMessageId,
-    }),
-  sendStudioMessage: (conversationId, text, attachments, clientMessageId) =>
-    request('POST', `/studio/conversations/${id(conversationId)}/messages`, {
-      text,
-      attachments,
-      clientMessageId,
-    }),
-  createStudioConversation: () => request('POST', '/studio/conversations'),
-  approveAction: (agentId, approvalId, decision) =>
-    request('POST', `/agents/${id(agentId)}/approve`, { approvalId, decision }),
-  answerHandOver: (approvalId, answer) =>
-    request('POST', `/approvals/${id(approvalId)}/hand-over`, answer),
-  listPendingApprovals: () => request('GET', '/approvals/pending'),
-  cancelTurn: (agentId, turnId) =>
-    request('POST', `/agents/${id(agentId)}/cancel`, { turnId }),
-
   // The native picker would open on the host, not in this browser
   pickAttachments: () =>
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
-  discardAttachment: attachmentId =>
-    request('DELETE', `/attachments/${id(attachmentId)}`),
 
-  getAgentSnapshot: agentId =>
-    request('GET', `/snapshots/agent/${id(agentId)}`),
-  getDashboardSnapshot: dayStart =>
-    request('GET', `/snapshots/dashboard?dayStart=${dayStart}`),
-  getRunDetail: runId => request('GET', `/runs/${id(runId)}`),
-  resolveRunFile: (runId, path) =>
-    request('POST', `/runs/${id(runId)}/file`, { path }),
-  getRunPlan: runId => request('GET', `/runs/${id(runId)}/plan`),
-  getRunScreenshot: (runId, path) =>
-    request('POST', `/runs/${id(runId)}/screenshot`, { path }),
   // It would open on the host, not in this browser
   openRunFile: () => Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
-  getWorkflows: () => request('GET', '/workflows'),
-  getWorkflow: workflowId => request('GET', `/workflows/${id(workflowId)}`),
-  createWorkflow: input => request('POST', '/workflows', input),
-  runWorkflow: workflowId =>
-    request('POST', `/workflows/${id(workflowId)}/run`),
-  listWorkflowTemplates: () => request('GET', '/workflow-templates'),
-  createWorkflowFromTemplate: input =>
-    request('POST', '/workflow-templates', input),
-  approveWorkflowStep: (runId, stepId, decision) =>
-    request('POST', `/workflow-runs/${id(runId)}/approve`, {
-      stepId,
-      decision,
-    }),
-  getStudioConversations: () => request('GET', '/studio/conversations'),
-  getConversation: conversationId =>
-    request('GET', `/conversations/${id(conversationId)}`),
 
   saveEmergencyData: (filename, data) =>
     request('PUT', `/emergency-data/${id(filename)}`, data),
@@ -233,8 +160,6 @@ export const webClient: NandiClient = withCommands({
 
   // The route still names the field `githubOrg`; it carries the registry URL
 
-  getCompanionSnapshot: dayStart =>
-    request('GET', `/companion/snapshot${query({ dayStart })}`),
   toggleCompanionWindow: () =>
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
   // The server keeps running; a browser tab has nothing to quit
@@ -243,19 +168,8 @@ export const webClient: NandiClient = withCommands({
   placeCompanion: () => Promise.resolve({ status: 'ok', data: null }),
   setCompanionBubble: () =>
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
-  setCompanionStartBisonOnly: () =>
-    Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
-  setCompanionPinned: pinned => request('POST', '/companion/pin', { pinned }),
-  sendCompanionMessage: (text, conversationId, scopeRequestId) =>
-    request('POST', '/companion/messages', {
-      text,
-      conversationId,
-      scopeRequestId,
-    }),
-  setCompanionNotify: notify =>
-    request('POST', '/companion/notify', { notify }),
-  setCompanionNotifyResults: notify =>
-    request('POST', '/companion/notify-results', { notify }),
+  // Saves the preference; there is no window to keep on top
+  setCompanionPinned: pinned => commands.saveCompanionPinned(pinned),
   // The web build's companion lives in the page (`watchInCompanion`)
   companionFocusRequest: () =>
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),

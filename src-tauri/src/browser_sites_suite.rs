@@ -13,7 +13,7 @@
 
 use serde_json::{json, Value};
 
-use crate::offline_suite::{boot, canned, get, post, rpc, until};
+use crate::offline_suite::{boot, canned, rpc, until};
 use crate::services::domain::EntityKind;
 use crate::services::egress::capabilities::Capabilities;
 use crate::services::pilots::sites;
@@ -62,22 +62,25 @@ async fn start(url: &str) -> (AppState, axum::Router) {
 
 /// Sends a message and waits for the run to settle (done or paused)
 async fn run(router: &axum::Router) -> (String, Value) {
-    let sent = post(
+    let sent = rpc(
         router,
-        &format!("agents/{AGENT}/messages"),
-        json!({ "text": "Where's my order?" }),
+        "send_message",
+        json!({ "agentId": AGENT, "text": "Where's my order?", "attachments": [], "clientMessageId": null }),
     )
     .await;
     let run_id = sent["runId"].as_str().expect("a run ID").to_string();
-    let detail = until(router, &format!("runs/{run_id}"), |body| {
-        body["run"]["status"] != "running" && body["run"]["status"] != "queued"
-    })
+    let detail = until(
+        router,
+        "get_run_detail",
+        json!({ "runId": run_id }),
+        |body| body["run"]["status"] != "running" && body["run"]["status"] != "queued",
+    )
     .await;
     (run_id, detail)
 }
 
 async fn pending_site(router: &axum::Router) -> Value {
-    let pending = until(router, "approvals/pending", |body| {
+    let pending = until(router, "list_pending_approvals", json!({}), |body| {
         body.as_array()
             .is_some_and(|list| list.iter().any(|a| a["tool"] == "connector_access"))
     })
@@ -97,9 +100,12 @@ async fn answer(router: &axum::Router, request: &Value, choice: &str, subdomains
 }
 
 async fn finished(router: &axum::Router, run_id: &str) -> Value {
-    until(router, &format!("runs/{run_id}"), |body| {
-        body["run"]["status"] == "completed" || body["run"]["status"] == "failed"
-    })
+    until(
+        router,
+        "get_run_detail",
+        json!({ "runId": run_id }),
+        |body| body["run"]["status"] == "completed" || body["run"]["status"] == "failed",
+    )
     .await
 }
 
@@ -216,7 +222,7 @@ async fn allowed_sites_and_never_asked_targets_dont_prompt() {
         let (state, router) = start(url).await;
         let (_, detail) = run(&router).await;
         assert_eq!(detail["run"]["status"], "completed", "{url}: {detail}");
-        let pending = get(&router, "approvals/pending").await;
+        let pending = rpc(&router, "list_pending_approvals", json!({})).await;
         assert!(pending.as_array().unwrap().is_empty(), "{url}: {pending}");
         state.shutdown();
     }

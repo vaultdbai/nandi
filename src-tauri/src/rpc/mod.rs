@@ -116,14 +116,18 @@ macro_rules! commands {
 pub(crate) use commands;
 
 pub mod access;
+pub mod agents;
 pub mod analysis;
 pub mod ask;
+pub mod attachments;
 pub mod audit;
 pub mod aws_auth;
 pub mod bedrock;
 pub mod capability;
 pub mod capability_definitions;
 pub mod capability_registries;
+pub mod chat;
+pub mod companion;
 pub mod config;
 pub mod connectors;
 pub mod containers;
@@ -163,6 +167,7 @@ pub mod repo;
 pub mod requests;
 pub mod runs;
 pub mod shared;
+pub mod snapshots;
 pub mod studio;
 pub mod tasks;
 pub mod teams;
@@ -171,6 +176,7 @@ pub mod tools;
 pub mod triggers;
 pub mod work;
 pub mod workflow_builder;
+pub mod workflows;
 pub mod workspace;
 
 /// What an RPC call returns: the command's JSON result, or its error text
@@ -182,14 +188,18 @@ pub type Handler = fn(AppState, Value) -> RpcFuture;
 /// Every module's `RPC` table. A new module adds its table here.
 const TABLES: &[&[(&str, Handler)]] = &[
     access::RPC,
+    agents::RPC,
     analysis::RPC,
     ask::RPC,
+    attachments::RPC,
     audit::RPC,
     aws_auth::RPC,
     bedrock::RPC,
     capability::RPC,
     capability_definitions::RPC,
     capability_registries::RPC,
+    chat::RPC,
+    companion::RPC,
     config::RPC,
     connectors::RPC,
     containers::RPC,
@@ -229,6 +239,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     requests::RPC,
     runs::RPC,
     shared::RPC,
+    snapshots::RPC,
     studio::RPC,
     tasks::RPC,
     teams::RPC,
@@ -237,6 +248,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     triggers::RPC,
     work::RPC,
     workflow_builder::RPC,
+    workflows::RPC,
     workspace::RPC,
 ];
 

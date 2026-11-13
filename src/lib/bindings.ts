@@ -100,6 +100,9 @@ async createAgent(input: CreateAgentInput) : Promise<Result<AgentInfo, string>> 
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Starts the agent's runtime container; returns its ID
+ */
 async startAgent(agentId: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("start_agent", { agentId }) };
@@ -116,6 +119,9 @@ async stopAgent(agentId: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Restarts the agent's runtime container; returns its ID
+ */
 async restartAgent(agentId: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("restart_agent", { agentId }) };
@@ -396,6 +402,9 @@ async getAgentSnapshot(agentId: string) : Promise<Result<AgentSnapshot, string>>
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * `day_start`: local midnight (ms), for "Runs Today"
+ */
 async getDashboardSnapshot(dayStart: number) : Promise<Result<DashboardSnapshot, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_dashboard_snapshot", { dayStart }) };
@@ -609,6 +618,9 @@ async getWorkflow(id: string) : Promise<Result<Workflow, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Saves a YAML workflow as `workflows/{id}.yaml` in the agents repo
+ */
 async createWorkflow(input: CreateWorkflowInput) : Promise<Result<Workflow, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("create_workflow", { input }) };
@@ -618,7 +630,7 @@ async createWorkflow(input: CreateWorkflowInput) : Promise<Result<Workflow, stri
 }
 },
 /**
- * Returns the new run's ID.
+ * Returns the new run's ID
  */
 async runWorkflow(id: string) : Promise<Result<string, string>> {
     try {
@@ -639,6 +651,9 @@ async listWorkflowTemplates() : Promise<Result<WorkflowTemplate[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Builds a template with the chosen agents and saves it
+ */
 async createWorkflowFromTemplate(input: TemplateWorkflowInput) : Promise<Result<Workflow, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("create_workflow_from_template", { input }) };
@@ -647,6 +662,9 @@ async createWorkflowFromTemplate(input: TemplateWorkflowInput) : Promise<Result<
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Resolves a step paused by `requires_approval`
+ */
 async approveWorkflowStep(runId: string, stepId: string, decision: ApprovalDecision) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("approve_workflow_step", { runId, stepId, decision }) };
@@ -1783,6 +1801,18 @@ async setCompanionBubble(bubble: boolean) : Promise<Result<null, string>> {
 async setCompanionStartBisonOnly(on: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_companion_start_bison_only", { on }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Saves the "keep on top" preference only. The desktop's
+ * `set_companion_pinned` also applies it to the window.
+ */
+async saveCompanionPinned(pinned: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_companion_pinned", { pinned }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -4059,13 +4089,13 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const NO_SHARED_GROUP = "no_shared_group" as const;
 export const DAILY_LIMIT = "daily_limit" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
 
 /** user-defined types **/
 

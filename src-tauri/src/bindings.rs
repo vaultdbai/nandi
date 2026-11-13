@@ -1,17 +1,16 @@
 use tauri_specta::{collect_commands, collect_events, Builder};
 
 pub fn generate_bindings() -> Builder<tauri::Wry> {
-    use crate::commands::{
-        agents, attachments, chat, companion, notifications, recovery, snapshots, workflows,
-    };
+    use crate::commands;
     use crate::rpc::{
-        access, analysis, ask, audit, aws_auth, bedrock, capability, capability_definitions,
-        capability_registries, config, connectors, containers, decisions, delegation,
-        delegation_clarification, egress, email, gateway, groups, harness_sessions, harnesses,
-        help, identity, images, knowme, live, llm_keys, machine, manual_steps, marketplace,
-        marketplace_search, mascot, memory, network, notes, palette, pilots, policies, preferences,
-        queue, reassign, relay, relay_capabilities, remote, repo, requests, runs, shared, studio,
-        tasks, teams, teams_roster, tools, triggers, work, workflow_builder, workspace,
+        access, agents, analysis, ask, attachments, audit, aws_auth, bedrock, capability,
+        capability_definitions, capability_registries, chat, companion, config, connectors,
+        containers, decisions, delegation, delegation_clarification, egress, email, gateway,
+        groups, harness_sessions, harnesses, help, identity, images, knowme, live, llm_keys,
+        machine, manual_steps, marketplace, marketplace_search, mascot, memory, network, notes,
+        palette, pilots, policies, preferences, queue, reassign, relay, relay_capabilities, remote,
+        repo, requests, runs, shared, snapshots, studio, tasks, teams, teams_roster, tools,
+        triggers, work, workflow_builder, workflows, workspace,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;
@@ -55,10 +54,10 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         .commands(collect_commands![
             preferences::load_preferences,
             preferences::save_preferences,
-            notifications::send_native_notification,
-            recovery::save_emergency_data,
-            recovery::load_emergency_data,
-            recovery::cleanup_old_recovery_files,
+            commands::notifications::send_native_notification,
+            commands::recovery::save_emergency_data,
+            commands::recovery::load_emergency_data,
+            commands::recovery::cleanup_old_recovery_files,
             containers::list_containers,
             agents::list_agents,
             agents::list_agent_overviews,
@@ -90,7 +89,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             queue::get_current_turn,
             queue::cancel_queued_run,
             queue::reprioritize_queued_run,
-            attachments::pick_attachments,
+            commands::attachments::pick_attachments,
             attachments::discard_attachment,
             snapshots::get_agent_snapshot,
             snapshots::get_dashboard_snapshot,
@@ -98,7 +97,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             snapshots::resolve_run_file,
             snapshots::get_run_plan,
             snapshots::get_run_screenshot,
-            snapshots::open_run_file,
+            commands::snapshots::open_run_file,
             snapshots::get_workflows,
             snapshots::get_studio_conversations,
             snapshots::get_conversation,
@@ -232,16 +231,17 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             workflow_builder::save_workflow_yaml,
             marketplace_search::search_marketplace,
             companion::get_companion_snapshot,
-            companion::toggle_companion_window,
-            companion::quit_nandi,
-            companion::place_companion,
-            companion::set_companion_bubble,
+            commands::companion::toggle_companion_window,
+            commands::companion::quit_nandi,
+            commands::companion::place_companion,
+            commands::companion::set_companion_bubble,
             companion::set_companion_start_bison_only,
-            companion::set_companion_pinned,
+            companion::save_companion_pinned,
+            commands::companion::set_companion_pinned,
             companion::send_companion_message,
             companion::set_companion_notify,
             companion::set_companion_notify_results,
-            companion::companion_focus_request,
+            commands::companion::companion_focus_request,
             palette::search_palette,
             palette::execute_palette_action,
             // Wave final
