@@ -8,15 +8,10 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use serde_json::Value;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::Mutex;
 
 use crate::utils::nandi_config;
 
 pub const FILE_NAME: &str = "connectors.log";
-
-/// Serializes appends so concurrent entries never interleave.
-static WRITE_LOCK: Mutex<()> = Mutex::const_new(());
 
 /// Shaped like `audit::AuditEntry`, so the audit log viewer can read it.
 #[derive(Debug, Serialize)]
@@ -69,8 +64,7 @@ impl AuditSink {
         nandi_config::logs_dir().ok().map(|dir| dir.join(FILE_NAME))
     }
 
-    /// Appends one entry. Failures are logged, not returned: an unwritable
-    /// audit log must not break the call being audited.
+    /// Appends one entry (see `audit::append`).
     pub async fn record(
         &self,
         agent_id: &str,
@@ -90,35 +84,10 @@ impl AuditSink {
             outcome,
             duration_ms,
         };
-        let Some(path) = self.path() else {
-            return;
-        };
-        if let Err(e) = append(&path, &entry).await {
-            log::error!("Failed to write the connector audit log: {e}");
+        if let Some(path) = self.path() {
+            crate::audit::append(path, &entry).await;
         }
     }
-}
-
-async fn append(path: &std::path::Path, entry: &impl Serialize) -> Result<(), String> {
-    let mut line = serde_json::to_string(entry).map_err(|e| e.to_string())?;
-    line.push('\n');
-    let _guard = WRITE_LOCK.lock().await;
-    if let Some(dir) = path.parent() {
-        tokio::fs::create_dir_all(dir)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    let mut file = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .await
-        .map_err(|e| e.to_string())?;
-    file.write_all(line.as_bytes())
-        .await
-        .map_err(|e| e.to_string())?;
-    // tokio writes in the background; make sure the line is on disk
-    file.flush().await.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

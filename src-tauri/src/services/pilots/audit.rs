@@ -9,8 +9,6 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::Serialize;
 use serde_json::Value;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::Mutex;
 
 use crate::utils::nandi_config;
 
@@ -19,7 +17,6 @@ pub const REDACTED: &str = "[redacted]";
 
 static SECRET_KEY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)password|token|secret|key").expect("valid regex"));
-static WRITE_LOCK: Mutex<()> = Mutex::const_new(());
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,35 +72,16 @@ pub fn redact(value: &Value) -> Value {
     }
 }
 
-/// Appends `entry`. Failures are logged: an unwritable log must not break
-/// the call being audited.
+/// Appends `entry` (see `audit::append`).
 pub async fn record(entry: &PilotAuditEntry) {
     // Tests must not write to the real ~/.nandi
     if cfg!(test) {
         return;
     }
-    if let Err(e) = append(entry).await {
-        log::error!("Failed to write {FILE_NAME}: {e}");
+    match nandi_config::logs_dir() {
+        Ok(dir) => crate::audit::append(dir.join(FILE_NAME), entry).await,
+        Err(e) => log::error!("Audit degraded: no folder for {FILE_NAME}: {e}"),
     }
-}
-
-async fn append(entry: &PilotAuditEntry) -> Result<(), String> {
-    let mut line = serde_json::to_string(entry).map_err(|e| e.to_string())?;
-    line.push('\n');
-    let dir = nandi_config::logs_dir()?;
-    let _guard = WRITE_LOCK.lock().await;
-    tokio::fs::create_dir_all(&dir)
-        .await
-        .map_err(|e| e.to_string())?;
-    let mut file = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(dir.join(FILE_NAME))
-        .await
-        .map_err(|e| e.to_string())?;
-    file.write_all(line.as_bytes())
-        .await
-        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

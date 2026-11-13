@@ -3,6 +3,7 @@ import { client } from '@/lib/client'
 import {
   unwrapResult,
   type AuditEntry,
+  type AuditHealth,
   type JsonValue,
 } from '@/lib/tauri-bindings'
 import type { AuditLogTab } from '@/store/navigation-store'
@@ -41,6 +42,7 @@ export const auditQueryKeys = {
   kind: (kind: AuditKind) => ['auditLog', kind] as const,
   page: (kind: AuditKind, limit: number, offset: number) =>
     ['auditLog', kind, limit, offset] as const,
+  health: (kind: AuditKind) => ['auditLog', kind, 'health'] as const,
 }
 
 /** Field names whose (non-numeric) values are secrets */
@@ -113,6 +115,23 @@ export function useAuditLog(
       ),
     placeholderData: keepPreviousData,
   })
+}
+
+/**
+ * Whether the `kind` log is degraded: entries that failed to write this
+ * session, or a hash chain broken by an edited, removed or moved line.
+ * Refreshed with the log (it shares `auditQueryKeys.kind`).
+ */
+export function useAuditHealth(kind: AuditKind) {
+  return useQuery({
+    queryKey: auditQueryKeys.health(kind),
+    queryFn: async () => unwrapResult(await client.getAuditHealth(kind)),
+  })
+}
+
+/** Lost entries or a broken chain: the log can't be trusted as complete */
+export function isAuditDegraded(health: AuditHealth): boolean {
+  return health.lostEntries > 0 || health.chain.state === 'broken'
 }
 
 /** Every entry of the `kind` log (up to `max`), newest first, redacted. */

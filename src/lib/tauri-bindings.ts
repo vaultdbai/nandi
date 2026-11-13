@@ -96,6 +96,7 @@ export type {
   AgentDefinitionCapabilities,
   AgentDefinitionInput,
   AuditEntry,
+  AuditHealth,
   ConnectorChanged,
   ConnectorInfo,
   BackfillAction,

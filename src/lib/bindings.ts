@@ -1103,6 +1103,18 @@ async listAuditLog(logKind: string, limit: number, offset: number) : Promise<Res
 }
 },
 /**
+ * Whether the `log_kind` log is degraded: entries lost this session or
+ * a broken hash chain
+ */
+async getAuditHealth(logKind: string) : Promise<Result<AuditHealth, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_audit_health", { logKind }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * The months that have decisions (`2026-11`), newest first
  */
 async listDecisionMonths() : Promise<Result<string[], string>> {
@@ -4757,6 +4769,16 @@ kind: string; agentId: string | null; tool: string | null;
  * Arguments with secrets and content removed
  */
 argsRedacted: JsonValue | null; outcome: string; durationMs: number | null }
+/**
+ * A log's state for the Logs view: what failed to write this session, and
+ * whether the file is intact. Lost entries or a broken chain mean the
+ * audit is degraded.
+ */
+export type AuditHealth = { 
+/**
+ * Entries that failed to write since Nandi started
+ */
+lostEntries: number; lastError: string | null; chain: ChainCheck }
 export type AuthKind = "none" | "api_key" | "oauth" | "device_code"
 export type AuthSpec = { kind: AuthKind; 
 /**
@@ -5152,6 +5174,19 @@ export type CapabilitySource =
  */
 "network"
 export type CatalogWorkflow = { id: string; name: string; description: string }
+/**
+ * Whether a log's lines are all there, as written.
+ */
+export type ChainCheck = 
+/**
+ * Every line chains to the one before it
+ */
+{ state: "intact"; lines: number } | 
+/**
+ * `line` (1-based) doesn't follow the line before it: that line or the
+ * one before was edited, removed or moved
+ */
+{ state: "broken"; line: number; reason: string }
 /**
  * What kind of thing changed
  */

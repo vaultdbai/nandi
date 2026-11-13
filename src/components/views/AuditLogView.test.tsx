@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor, within } from '@/test/test-utils'
 import i18n from '@/i18n/config'
 import { commands } from '@/lib/tauri-bindings'
-import type { AuditEntry } from '@/lib/tauri-bindings'
+import type { AuditEntry, AuditHealth } from '@/lib/tauri-bindings'
 import { useNavigationStore } from '@/store/navigation-store'
 import { T0 } from '@/test/fixtures'
 import { AuditLogView } from './AuditLogView'
@@ -24,12 +24,19 @@ function entry(i: number, overrides: Partial<AuditEntry> = {}): AuditEntry {
   }
 }
 
+const healthy: AuditHealth = {
+  lostEntries: 0,
+  lastError: null,
+  chain: { state: 'intact', lines: 3 },
+}
+
 const rows = () =>
   within(screen.getByRole('table')).getAllByRole('row').slice(1)
 
 describe('AuditLogView', () => {
   beforeEach(() => {
     useNavigationStore.setState(useNavigationStore.getInitialState())
+    commands.getAuditHealth = vi.fn(async () => ok(healthy))
     commands.listAuditLog = vi.fn(async (kind: string) =>
       ok(
         kind === 'llm'
@@ -44,6 +51,37 @@ describe('AuditLogView', () => {
           : []
       )
     )
+  })
+
+  it('says nothing about an intact log', async () => {
+    render(<AuditLogView tab="llm" />)
+
+    expect(await screen.findByText('model-0')).toBeInTheDocument()
+    expect(commands.getAuditHealth).toHaveBeenCalledWith('llm')
+    expect(screen.queryByText(t('audit.degraded.title'))).toBeNull()
+  })
+
+  it('warns when entries were lost or the chain is broken', async () => {
+    commands.getAuditHealth = vi.fn(async () =>
+      ok<AuditHealth>({
+        lostEntries: 2,
+        lastError: 'disk full',
+        chain: { state: 'broken', line: 7, reason: 'edited' },
+      })
+    )
+    render(<AuditLogView tab="llm" />)
+
+    expect(
+      await screen.findByText(t('audit.degraded.title'))
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        i18n.t('audit.degraded.lost', { count: 2, error: 'disk full' })
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(i18n.t('audit.degraded.broken', { line: 7 }))
+    ).toBeInTheDocument()
   })
 
   it('reads the tab’s log, newest first, with secrets redacted', async () => {

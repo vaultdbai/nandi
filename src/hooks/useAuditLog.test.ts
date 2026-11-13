@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import { commands } from '@/lib/tauri-bindings'
-import type { AuditEntry } from '@/lib/tauri-bindings'
+import type { AuditEntry, AuditHealth } from '@/lib/tauri-bindings'
 import {
   entriesToJsonl,
   fetchAuditLog,
+  isAuditDegraded,
   matchesAuditSearch,
   REDACTED,
   redactEntry,
@@ -147,5 +148,29 @@ describe('raw log download', () => {
       ['egress', 500, 0],
       ['egress', 500, 500],
     ])
+  })
+})
+
+describe('isAuditDegraded', () => {
+  const intact = { state: 'intact', lines: 4 } as const
+  const broken = { state: 'broken', line: 2, reason: 'edited' } as const
+  it.each<[string, AuditHealth, boolean]>([
+    [
+      'an intact log',
+      { lostEntries: 0, lastError: null, chain: intact },
+      false,
+    ],
+    [
+      'lost entries',
+      { lostEntries: 1, lastError: 'disk full', chain: intact },
+      true,
+    ],
+    [
+      'a broken chain',
+      { lostEntries: 0, lastError: null, chain: broken },
+      true,
+    ],
+  ])('%s', (_case, health, degraded) => {
+    expect(isAuditDegraded(health)).toBe(degraded)
   })
 })

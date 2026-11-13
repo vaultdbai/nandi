@@ -8,8 +8,10 @@ import {
   RefreshCw,
   ScrollText,
   Search,
+  TriangleAlert,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,7 +32,9 @@ import {
   auditQueryKeys,
   entriesToJsonl,
   fetchAuditLog,
+  isAuditDegraded,
   matchesAuditSearch,
+  useAuditHealth,
   useAuditLog,
   type AuditColumn,
   type AuditKind,
@@ -107,6 +111,34 @@ export function AuditLogView({ tab = 'llm' }: AuditLogViewProps) {
         </TabsContent>
       ))}
     </Tabs>
+  )
+}
+
+/** Says when the log can't be trusted as complete; nothing while it can */
+function AuditDegradedNotice({ kind }: { kind: AuditKind }) {
+  const { t } = useTranslation()
+  const { data: health } = useAuditHealth(kind)
+  if (!health || !isAuditDegraded(health)) return null
+  const { chain, lostEntries, lastError } = health
+
+  return (
+    <Alert variant="destructive">
+      <TriangleAlert />
+      <AlertTitle>{t('audit.degraded.title')}</AlertTitle>
+      <AlertDescription>
+        {lostEntries > 0 && (
+          <p>
+            {t('audit.degraded.lost', {
+              count: lostEntries,
+              error: lastError ?? '',
+            })}
+          </p>
+        )}
+        {chain.state === 'broken' && (
+          <p>{t('audit.degraded.broken', { line: chain.line })}</p>
+        )}
+      </AlertDescription>
+    </Alert>
   )
 }
 
@@ -192,6 +224,8 @@ function AuditLogPanel({ kind }: { kind: AuditKind }) {
           {t('audit.download')}
         </Button>
       </div>
+
+      <AuditDegradedNotice kind={kind} />
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

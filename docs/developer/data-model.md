@@ -42,6 +42,8 @@ On every start, `services::migration::bootstrap` opens `~/.nandi/repo`, or creat
 | Secrets (LLM/AWS keys, trigger secrets, remote credential)                    | OS keyring                                            | ❌     | ❌                        |
 | Deleted agents, replaced repos                                                | `~/.nandi/trash/`                                     | ❌     | —                         |
 
+The audit logs in `~/.nandi/local/logs/` (`llm`, `egress`, `triggers`, `pilots`, `connectors`) are plain JSONL written only through `audit::append`. Each line carries `prev_sha256`, the SHA-256 of the line before it (zeros for the first), and each append is fsynced. `audit::chain::verify` finds the first line that doesn't follow the one before it (an edited, removed or moved line). A failed write is counted against its log; the Logs view shows "Audit degraded" for lost entries or a broken chain (`get_audit_health`).
+
 The repo's `.gitignore` (written by the bootstrap) keeps `.nandi/local/`, `*.db*`, `*.log`, `work/`, and Nandi's atomic-write temp files out of commits.
 
 ## Decisions

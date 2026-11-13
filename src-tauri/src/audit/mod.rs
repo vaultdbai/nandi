@@ -1,7 +1,12 @@
 //! Append-only JSON-lines audit logs under `~/.nandi/local/logs/`.
 //!
 //! Entries record *metadata* (who, what, how much) — never prompts, tool
-//! output, API keys, or tokens.
+//! output, API keys, or tokens. Each line is hash-chained to the one before
+//! it and fsynced (see [`chain`]).
+
+mod chain;
+
+pub use chain::{append, AuditHealth};
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -11,13 +16,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use regex::Regex;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
-use tokio::io::AsyncWriteExt;
-use tokio::sync::Mutex;
 
 use crate::utils::nandi_config;
-
-/// Serializes appends so concurrent entries never interleave.
-static WRITE_LOCK: Mutex<()> = Mutex::const_new(());
 
 #[derive(Debug, Clone, Copy)]
 pub enum AuditLog {
@@ -104,17 +104,30 @@ impl AuditStore {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<AuditEntry>, String> {
-        let file_name = log_file_name(kind)?;
-        let dir = match &self.dir {
-            Some(dir) => dir.clone(),
-            None => nandi_config::logs_dir()?,
-        };
-        let path = dir.join(file_name);
+        let (path, file_name) = (self.path(kind)?, log_file_name(kind)?);
         let kind = kind.to_string();
         let limit = limit.min(MAX_AUDIT_PAGE) as usize;
         tokio::task::spawn_blocking(move || read_page(&path, &kind, limit, offset as usize))
             .await
             .map_err(|e| format!("Failed to read the {file_name}: {e}"))?
+    }
+
+    /// Whether the `kind` log is degraded: entries that failed to write
+    /// this session, or a broken hash chain.
+    pub async fn health(&self, kind: &str) -> Result<AuditHealth, String> {
+        let path = self.path(kind)?;
+        tokio::task::spawn_blocking(move || chain::health(&path))
+            .await
+            .map_err(|e| format!("Failed to check the {kind} log: {e}"))?
+    }
+
+    fn path(&self, kind: &str) -> Result<PathBuf, String> {
+        let file_name = log_file_name(kind)?;
+        let dir = match &self.dir {
+            Some(dir) => dir.clone(),
+            None => nandi_config::logs_dir()?,
+        };
+        Ok(dir.join(file_name))
     }
 }
 
@@ -198,6 +211,8 @@ fn parse_line(kind: &str, line: &[u8]) -> Option<AuditEntry> {
 /// Maps one log's own line shape onto `AuditEntry`. Fields that don't map
 /// onto a column stay in `args_redacted`, redacted.
 fn normalize(kind: &str, mut fields: Map<String, Value>) -> Option<AuditEntry> {
+    // The chain is for verifying, not a detail of the entry
+    fields.remove(chain::PREV_FIELD);
     let timestamp = take(&mut fields, &["ts", "timestamp"])?.as_f64()?;
     let mut agent_id = take_string(&mut fields, &["agent_id", "agentId"]);
     let duration_ms = take(&mut fields, &["duration_ms", "durationMs"]).and_then(|v| v.as_f64());
@@ -361,40 +376,21 @@ pub fn now_ms() -> u64 {
         .unwrap_or_default()
 }
 
-/// Appends `entry` as one JSON line. Failures are logged, not returned: an
-/// unwritable audit log must not break the request being audited.
+/// Appends `entry` to `log` in `~/.nandi/local/logs/` (see [`append`]).
 pub async fn record(log: AuditLog, entry: &impl Serialize) {
     // Tests must not write to the real ~/.nandi
     if cfg!(test) {
         return;
     }
-    if let Err(e) = append(log, entry).await {
-        log::error!("Failed to write audit log {}: {e}", log.file_name());
+    match log.path() {
+        Ok(path) => append(path, entry).await,
+        Err(e) => log::error!("Audit degraded: no folder for {}: {e}", log.file_name()),
     }
-}
-
-async fn append(log: AuditLog, entry: &impl Serialize) -> Result<(), String> {
-    let mut line = serde_json::to_string(entry).map_err(|e| e.to_string())?;
-    line.push('\n');
-
-    let dir = nandi_config::logs_dir()?;
-    let _guard = WRITE_LOCK.lock().await;
-    tokio::fs::create_dir_all(&dir)
-        .await
-        .map_err(|e| e.to_string())?;
-    let mut file = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(dir.join(log.file_name()))
-        .await
-        .map_err(|e| e.to_string())?;
-    file.write_all(line.as_bytes())
-        .await
-        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
 mod tests {
+    use super::chain::ChainCheck;
     use super::*;
 
     /// Writes `lines` as the `kind` log in a temporary folder.
@@ -483,6 +479,29 @@ mod tests {
         }
         let error = store.list("../secrets", 10, 0).await.unwrap_err();
         assert!(error.contains("Unknown audit log"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn the_chain_hash_isnt_an_entry_detail_and_health_checks_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(log_file_name("llm").unwrap());
+        append(
+            path.clone(),
+            &json!({ "ts": 1, "model": "m", "status": "ok" }),
+        )
+        .await;
+        append(path, &json!({ "ts": 2, "model": "m", "status": "ok" })).await;
+        let store = AuditStore::with_dir(dir.path().to_path_buf());
+
+        let entries = store.list("llm", 10, 0).await.unwrap();
+        assert_eq!(timestamps(&entries), [2, 1]);
+        assert!(
+            entries.iter().all(|e| e.args_redacted.is_none()),
+            "{entries:?}"
+        );
+        let health = store.health("llm").await.unwrap();
+        assert_eq!(health.chain, ChainCheck::Intact { lines: 2 });
+        assert_eq!(health.lost_entries, 0);
     }
 
     #[tokio::test]
