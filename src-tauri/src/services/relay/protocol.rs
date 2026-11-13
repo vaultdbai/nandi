@@ -8,7 +8,7 @@
 
 pub use super::opened::{
     DutyDelivery, DutyState, PeerDelivery, PeerMessage, ResealRequest, TaskAssigned, TaskCompleted,
-    TaskEvent, TaskFailed,
+    TaskEvent, TaskFailed, TaskRefused,
 };
 pub use nandi_protocol::directory::{MemberRecord, PeopleMatch, ASK_ME};
 pub use nandi_protocol::duty::DutyDecision;

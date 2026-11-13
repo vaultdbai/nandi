@@ -57,7 +57,7 @@ use crate::model::Timestamp;
 use crate::services::events::{self, EventBus, NandiEvent};
 use crate::services::relay::protocol::{
     PeerDelivery, PeerMessage, ResealRequest, TaskCompleted, TaskEvent as RelayTaskEvent,
-    TaskFailed, ALL_CAPABILITIES,
+    TaskFailed, TaskRefused, ALL_CAPABILITIES,
 };
 use crate::services::relay::{RelayClient, RelayStatus};
 use crate::services::selection::SelectionService;
@@ -844,6 +844,7 @@ enum Inbound {
     Completed(TaskCompleted),
     Failed(TaskFailed),
     Event(RelayTaskEvent),
+    Refused(TaskRefused),
     Reseal(ResealRequest),
 }
 
@@ -942,8 +943,8 @@ impl TaskService {
             .insert(self.deps.instance_id.clone(), Arc::downgrade(self));
     }
 
-    /// Subscribes to lifecycle traffic, results, the relay's task events
-    /// and its reseal requests. No-op without a relay client.
+    /// Subscribes to lifecycle traffic, results, the relay's task events,
+    /// its refusals and its reseal requests. No-op without a relay client.
     pub async fn listen(&self) {
         let Some(relay) = self.relay() else {
             return;
@@ -974,6 +975,12 @@ impl TaskService {
             .await;
         let tx = self.inbound.clone();
         relay
+            .on_task_refused(Box::new(move |refused| {
+                let _ = tx.send(Inbound::Refused(refused));
+            }))
+            .await;
+        let tx = self.inbound.clone();
+        relay
             .on_reseal(Box::new(move |request| {
                 let _ = tx.send(Inbound::Reseal(request));
             }))
@@ -981,7 +988,8 @@ impl TaskService {
     }
 
     /// Restart resume, then the outbox flush (on a timer and whenever the
-    /// relay connects) and heartbeats. Each loop ends with the service.
+    /// relay connects), the result outbox flush (whenever it connects) and
+    /// heartbeats. Each loop ends with the service.
     pub fn start(self: &Arc<Self>) {
         let weak = Arc::downgrade(self);
         let sweep = self.config.sweep_interval;
@@ -1033,6 +1041,7 @@ impl TaskService {
                     break;
                 };
                 service.flush().await;
+                service.flush_results().await;
             }
         });
     }
@@ -1370,6 +1379,7 @@ impl TaskService {
                 .await
             }
             Inbound::Event(event) => self.on_event(event).await,
+            Inbound::Refused(refused) => super::result_outbox::settle(self.db(), &refused).await,
             Inbound::Reseal(request) => super::reassign::reseal(self, request).await,
         };
         if let Err(e) = outcome {

@@ -9,7 +9,7 @@ use futures_util::future::BoxFuture;
 use super::protocol::{
     CapabilityPresence, DutyDelivery, DutyState, InstancePresence, MemberRecord, PeerDelivery,
     PeerMessage, PeopleMatch, ResealRequest, RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted,
-    TaskEvent, TaskFailed,
+    TaskEvent, TaskFailed, TaskRefused,
 };
 use super::RelayStatus;
 use crate::services::a2a::{Task, TaskResult};
@@ -87,7 +87,9 @@ pub trait RelayClient: Send + Sync {
         alternates: &'a [String],
     ) -> BoxFuture<'a, Result<Submitted, String>>;
 
-    /// Provider side: sends a finished task's result back
+    /// Provider side: sends a finished task's result back, once
+    /// registered. `Ok` means only that it went out: the relay answers a
+    /// result it won't take with a refusal ([`Self::on_task_refused`]).
     fn send_result(&self, result: TaskResult) -> BoxFuture<'_, Result<(), String>>;
 
     fn on_task_assigned(&self, handler: Handler<TaskAssigned>) -> BoxFuture<'_, ()>;
@@ -129,6 +131,12 @@ pub trait RelayClient: Send + Sync {
     ) -> BoxFuture<'a, Result<(), String>> {
         let _ = (task, target, by);
         Box::pin(async { Err("Not supported by this relay client".to_string()) })
+    }
+
+    /// The relay refused something we sent about a task
+    fn on_task_refused(&self, handler: Handler<TaskRefused>) -> BoxFuture<'_, ()> {
+        let _ = handler;
+        Box::pin(async {})
     }
 
     /// The relay asks us to reseal a task for a new provider

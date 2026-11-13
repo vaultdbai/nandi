@@ -38,6 +38,7 @@ pub mod tool;
 pub mod eta;
 pub mod failover;
 pub mod queue;
+pub mod result_outbox;
 pub mod resume;
 pub mod task;
 pub mod task_state;

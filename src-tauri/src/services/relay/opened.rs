@@ -143,6 +143,15 @@ pub struct TaskFailed {
     pub error: String,
 }
 
+/// The relay refused something we sent about a task: an `Error` naming
+/// it. `code` says whether it's final (see `nandi_protocol::TASK_ENDED`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaskRefused {
+    pub task_id: String,
+    pub code: String,
+    pub message: String,
+}
+
 /// What the relay did with a task we're a party to (opened: a
 /// reassignment's note is text)
 #[derive(Debug, Clone, PartialEq)]

@@ -1151,6 +1151,7 @@ async fn a_relay_on_another_protocol_version_reads_as_not_connected() {
                     let refusal = RelayMessage::Error {
                         code: VERSION_MISMATCH.into(),
                         message: "This Nandi speaks relay protocol 2 and the relay speaks 3. Update Nandi or the relay so they match.".into(),
+                        task_id: None,
                     };
                     let text = refusal.to_json().unwrap();
                     if socket.send(Message::Text(text.into())).await.is_err() {

@@ -29,7 +29,8 @@ use crate::services::domain::{Agent, AgentId};
 use crate::services::events::tests::RecordingSink;
 use crate::services::relay::client_api::{Handler, Submitted};
 use crate::services::relay::protocol::{
-    PeerDelivery, PeerMessage, TaskAssigned, TaskCompleted, TaskFailed, ALL_CAPABILITIES,
+    PeerDelivery, PeerMessage, TaskAssigned, TaskCompleted, TaskFailed, TaskRefused,
+    ALL_CAPABILITIES,
 };
 use crate::services::relay::sealing::{Opening, Sealer};
 use crate::services::relay::{RelayClient, RelayStatus};
@@ -382,6 +383,7 @@ pub(crate) struct MockRelay {
     failed: Mutex<Vec<Handler<TaskFailed>>>,
     peer: Mutex<Vec<Handler<PeerDelivery>>>,
     events: Mutex<Vec<Handler<crate::services::relay::protocol::TaskEvent>>>,
+    refused: Mutex<Vec<Handler<TaskRefused>>>,
     /// Every `send_peer`: (target, body)
     sent_peer: Mutex<Vec<(String, PeerMessage)>>,
     /// Task IDs this client submitted, in order
@@ -406,6 +408,7 @@ impl MockRelay {
             failed: Mutex::default(),
             peer: Mutex::default(),
             events: Mutex::default(),
+            refused: Mutex::default(),
             sent_peer: Mutex::default(),
             delegated: Mutex::default(),
             delegated_here: Mutex::default(),
@@ -588,11 +591,22 @@ impl RelayClient for MockRelay {
 
     fn send_result(&self, result: TaskResult) -> BoxFuture<'_, Result<(), String>> {
         Box::pin(async move {
-            // The relay knows who asked
-            let requester = self
-                .hub
-                .other_side(&result.task_id, &self.instance)
-                .ok_or("No route back")?;
+            if !self.is_connected() {
+                return Err(crate::services::relay::RelayUnavailable.to_string());
+            }
+            // The relay knows who asked. It has no task once it took its
+            // result, and refuses the same result sent again.
+            let Some(requester) = self.hub.other_side(&result.task_id, &self.instance) else {
+                let refused = TaskRefused {
+                    task_id: result.task_id.clone(),
+                    code: nandi_protocol::TASK_ENDED.into(),
+                    message: format!("Task {} already ended", result.task_id),
+                };
+                for handler in self.refused.lock().unwrap().iter() {
+                    handler(refused.clone());
+                }
+                return Ok(());
+            };
             let report = self
                 .sealer
                 .seal_result(&result, (&requester, &self.hub.keys(&requester)?))?;
@@ -623,6 +637,11 @@ impl RelayClient for MockRelay {
         handler: Handler<crate::services::relay::protocol::TaskEvent>,
     ) -> BoxFuture<'_, ()> {
         self.events.lock().unwrap().push(handler);
+        Box::pin(async {})
+    }
+
+    fn on_task_refused(&self, handler: Handler<TaskRefused>) -> BoxFuture<'_, ()> {
+        self.refused.lock().unwrap().push(handler);
         Box::pin(async {})
     }
 
@@ -2066,6 +2085,50 @@ mod lifecycle_tests {
         }
         assert!(service.flush().await.is_empty(), "nothing left");
         state.shutdown();
+    }
+
+    async fn kept_results(state: &AppState) -> Vec<String> {
+        let results = state.db().call(result_outbox::waiting).await.unwrap();
+        results.into_iter().map(|result| result.task_id).collect()
+    }
+
+    #[tokio::test]
+    async fn a_result_the_relay_missed_goes_on_connect_and_stays_until_the_relay_has_it() {
+        let world = two_instances(SERVES).await;
+        allow(&world);
+        let provider_relay = world._relays.1.clone();
+        provider_relay.set_connected(false);
+        let requester = world.requester.clone();
+        let running = tokio::spawn(async move {
+            requester
+                .run(from_writer("summarize", json!({"text": "hi"})))
+                .await
+        });
+        // Finished with the relay away: the result waits on the provider
+        wait_until("the kept result", || async {
+            !kept_results(&world.provider_state).await.is_empty()
+        })
+        .await;
+
+        provider_relay.set_connected(true);
+        let provider_service = service(&world.provider_state);
+        assert_eq!(provider_service.flush_results().await, 1);
+        let result = running.await.unwrap().unwrap();
+        assert_eq!(result.status, TaskStatus::Completed, "{:?}", result.error);
+        assert_eq!(
+            kept_results(&world.provider_state).await,
+            std::slice::from_ref(&result.task_id),
+            "kept until the relay says it has it"
+        );
+
+        // Sent again on the next connect, the relay answers `task_ended`
+        assert_eq!(provider_service.flush_results().await, 1);
+        wait_until("the dropped result", || async {
+            kept_results(&world.provider_state).await.is_empty()
+        })
+        .await;
+        world.requester_state.shutdown();
+        world.provider_state.shutdown();
     }
 
     #[tokio::test]

@@ -7,22 +7,16 @@
 //! machine has no self-transitions, so the row's state doesn't change).
 //! Provider side: the interrupted run was failed at boot
 //! (`EventBus::fail_interrupted_runs`); the task runs again as a new turn
-//! from the wire task stored with it, and its result goes back once the relay
-//! is connected. A provider row without one can't be rerun and ends.
+//! from the wire task stored with it, and its result goes back through the
+//! result outbox. A provider row without one can't be rerun and ends.
 //! Requester side: results arrive through the handlers `listen`
 //! registered; queued tasks flush.
 
 use std::sync::Arc;
-use std::time::Duration;
 
+use super::result_outbox;
 use super::task::{self, TaskService, TaskState};
 use super::task_state::{self, Change};
-use super::TaskResult;
-use crate::services::relay::RelayClient;
-
-/// How long a resumed result waits for the relay connection
-const SEND_ATTEMPTS: u32 = 60;
-const SEND_RETRY: Duration = Duration::from_secs(5);
 
 impl TaskService {
     /// Resumes in-flight tasks; returns their IDs. Provider reruns go on in
@@ -65,9 +59,7 @@ impl TaskService {
             let service = self.clone();
             self.runtime().spawn(async move {
                 let result = service.executor.execute_resumed(&request).await;
-                if let Some(relay) = service.relay() {
-                    send_when_connected(relay, result).await;
-                }
+                result_outbox::send(service.db(), service.relay(), result).await;
             });
         }
         let flushed = self.flush().await;
@@ -80,21 +72,4 @@ impl TaskService {
         }
         Ok(resumed)
     }
-}
-
-/// Sends a result back, waiting for the relay to (re)connect
-async fn send_when_connected(relay: &Arc<dyn RelayClient>, result: TaskResult) {
-    for _ in 0..SEND_ATTEMPTS {
-        if relay.status().connected {
-            match relay.send_result(result.clone()).await {
-                Ok(()) => return,
-                Err(e) => log::debug!("Resumed task {}: {e}", result.task_id),
-            }
-        }
-        tokio::time::sleep(SEND_RETRY).await;
-    }
-    log::error!(
-        "Couldn't send the result of resumed task {}: the relay stayed disconnected",
-        result.task_id
-    );
 }

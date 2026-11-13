@@ -45,6 +45,7 @@ use tokio::time::Instant;
 use super::delegator::A2aDeps;
 use super::history::{self, Recorder};
 use super::queue::SlotQueue;
+use super::result_outbox;
 use super::task::{self, ReasonKind, Refusal, TaskRecord, TaskStage, TaskState};
 use super::task_state::{self, Change};
 use super::{eta, DelegationDirection, Task, TaskResult, TaskStatus};
@@ -1419,12 +1420,7 @@ pub async fn register(executor: &Arc<Executor>, relay: &Arc<dyn RelayClient>) {
                     },
                     None => executor.execute(&task, true).await,
                 };
-                let Some(relay) = sender.upgrade() else {
-                    return;
-                };
-                if let Err(e) = relay.send_result(result).await {
-                    log::error!("Failed to send the result of task {}: {e}", task.id);
-                }
+                result_outbox::send(&db, sender.upgrade().as_ref(), result).await;
             });
         }))
         .await;

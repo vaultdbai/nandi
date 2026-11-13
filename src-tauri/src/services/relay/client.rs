@@ -85,7 +85,7 @@ use super::client_api::{GroupSignal, Handler, PeopleSearch, RelayClient};
 use super::protocol::{
     CapabilityPresence, DutyDelivery, DutyState, InstancePresence, MemberRecord, PeerDelivery,
     PeerMessage, RelayMessage, ResealRequest, RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted,
-    TaskEvent, TaskFailed, ALL_CAPABILITIES, PROTOCOL_VERSION, VERSION_MISMATCH,
+    TaskEvent, TaskFailed, TaskRefused, ALL_CAPABILITIES, PROTOCOL_VERSION, VERSION_MISMATCH,
 };
 use super::sealing::{self, MemoryKeyBook, Opening, PeerKeyBook, Sealer};
 use super::{
@@ -170,6 +170,7 @@ struct Handlers {
     failed: Vec<Arc<Handler<TaskFailed>>>,
     peer: Vec<Arc<Handler<PeerDelivery>>>,
     events: Vec<Arc<Handler<TaskEvent>>>,
+    refused: Vec<Arc<Handler<TaskRefused>>>,
     reseal: Vec<Arc<Handler<ResealRequest>>>,
     duty: Vec<Arc<Handler<DutyDelivery>>>,
     groups: Vec<Arc<Handler<GroupSignal>>>,
@@ -1165,8 +1166,22 @@ impl Inner {
                         .resolve(&found.instance_id, Ok(found.public_keys));
                 }
             }
-            RelayMessage::Error { code, message } => {
+            RelayMessage::Error {
+                code,
+                message,
+                task_id,
+            } => {
                 log::warn!("Relay error ({code}): {message}");
+                if let Some(task_id) = task_id {
+                    let refused = TaskRefused {
+                        task_id,
+                        code: code.clone(),
+                        message: message.clone(),
+                    };
+                    for handler in self.handlers().refused.clone() {
+                        handler(refused.clone());
+                    }
+                }
                 let mut shared = self.lock();
                 if code == NO_SHARED_GROUP {
                     // A refusal with these words follows
@@ -1634,6 +1649,8 @@ impl RelayClient for WsRelayClient {
 
     fn send_result(&self, result: TaskResult) -> BoxFuture<'_, Result<(), String>> {
         async move {
+            // The relay drops a result from an instance not registered yet
+            self.inner.until_registered().await?;
             let sealer = self.inner.sealer()?;
             let requester = result.requester_agent.split('/').next().unwrap_or_default();
             let keys = self.inner.keys_for(requester).await?;
@@ -1732,6 +1749,11 @@ impl RelayClient for WsRelayClient {
             self.inner.reassign_at_relay(message, &task.id).await
         }
         .boxed()
+    }
+
+    fn on_task_refused(&self, handler: Handler<TaskRefused>) -> BoxFuture<'_, ()> {
+        self.inner.handlers().refused.push(Arc::new(handler));
+        async {}.boxed()
     }
 
     fn on_reseal(&self, handler: Handler<ResealRequest>) -> BoxFuture<'_, ()> {
@@ -2120,6 +2142,7 @@ mod tests {
                     let error = RelayMessage::Error {
                         code: "not_registered".into(),
                         message: "Register first".into(),
+                        task_id: None,
                     };
                     inner.handle_incoming(&error.to_json().unwrap());
                 }
@@ -2143,6 +2166,35 @@ mod tests {
 
         let error = call.await.unwrap().unwrap_err();
         assert!(super::super::RelayUnavailable::is(&error), "{error}");
+    }
+
+    #[tokio::test]
+    async fn only_a_refusal_naming_a_task_reaches_the_refused_handlers() {
+        let (client, _sent) = open_client(true);
+        let refused = Arc::new(Mutex::new(Vec::new()));
+        let seen = refused.clone();
+        client
+            .on_task_refused(Box::new(move |r| seen.lock().unwrap().push(r)))
+            .await;
+        for (code, task_id) in [
+            (nandi_protocol::TASK_ENDED, Some("t1")),
+            ("rate_limited", None),
+        ] {
+            let error = RelayMessage::Error {
+                code: code.into(),
+                message: "No".into(),
+                task_id: task_id.map(Into::into),
+            };
+            client.inner.handle_incoming(&error.to_json().unwrap());
+        }
+        assert_eq!(
+            *refused.lock().unwrap(),
+            [TaskRefused {
+                task_id: "t1".into(),
+                code: nandi_protocol::TASK_ENDED.into(),
+                message: "No".into(),
+            }]
+        );
     }
 
     #[test]

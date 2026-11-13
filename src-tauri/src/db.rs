@@ -415,6 +415,13 @@ CREATE TABLE IF NOT EXISTS task_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_task_messages_task ON task_messages(task_id);
 
+-- Provider side: results kept until the relay has them (a2a::result_outbox)
+CREATE TABLE IF NOT EXISTS result_outbox (
+    task_id TEXT PRIMARY KEY,
+    result  TEXT NOT NULL,
+    kept_at INTEGER NOT NULL
+);
+
 -- Completed task durations, for ETA estimates
 CREATE TABLE IF NOT EXISTS eta_history (
     capability       TEXT NOT NULL,
