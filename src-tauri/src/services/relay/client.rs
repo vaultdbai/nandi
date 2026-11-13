@@ -80,8 +80,8 @@ use futures_util::{FutureExt, SinkExt, StreamExt};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
 
-use super::client_api::Submitted;
 use super::client_api::{GroupSignal, Handler, PeopleSearch, RelayClient, StoringHandler};
+use super::client_api::{Submitted, REFUSED_BY_RELAY, UNANSWERED_BY_RELAY};
 use super::protocol::{
     CapabilityPresence, DutyDelivery, DutyState, InstancePresence, MemberRecord, PeerDelivery,
     PeerMessage, RelayMessage, ResealRequest, RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted,
@@ -993,7 +993,13 @@ impl Inner {
             attempts,
         };
         self.send(message)?;
-        let held = await_reply(rx, "take the task").await?;
+        let held = await_reply(rx, "take the task").await.map_err(|e| {
+            if e.starts_with(REFUSED_BY_RELAY) {
+                e
+            } else {
+                format!("{UNANSWERED_BY_RELAY}{e}")
+            }
+        })?;
         Ok(Submitted { held })
     }
 
@@ -1144,10 +1150,7 @@ impl Inner {
                         }
                         wire::TaskEvent::Refused { task_id, message } => {
                             let said = self.lock().retell(message);
-                            Some((
-                                task_id.clone(),
-                                Err(format!("{}{said}", super::client_api::REFUSED_BY_RELAY)),
-                            ))
+                            Some((task_id.clone(), Err(format!("{REFUSED_BY_RELAY}{said}"))))
                         }
                         _ => None,
                     };

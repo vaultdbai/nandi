@@ -54,6 +54,7 @@ use crate::services::gateway::holds::{GatewayHoldChanged, HoldStatus};
 use crate::services::gateway::GATEWAY_AGENT_ID;
 use crate::services::network;
 use crate::services::orchestrator::Orchestrators;
+use crate::services::relay::client_api::UNANSWERED_BY_RELAY;
 use crate::services::relay::protocol::NoRoute;
 use crate::services::relay::protocol::MAX_CANDIDATES;
 use crate::services::relay::unavailable::{self, RelayUnavailable};
@@ -854,6 +855,13 @@ impl Delegator {
                     "outbox": true,
                 });
                 return (TaskStatus::Running, None);
+            }
+            // It went out but the answer didn't come: the relay may have
+            // it. The row stays `Submitted`, the outbox sends it again
+            // (the relay answers a resend with `accepted`), and the result
+            // is waited for as usual.
+            Err(e) if service.is_some() && e.starts_with(UNANSWERED_BY_RELAY) => {
+                log::info!("Task {}: {e}; the outbox sends it again", task.id);
             }
             Err(e) => {
                 self.pending.forget(&task.id);

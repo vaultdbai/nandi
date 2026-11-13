@@ -393,6 +393,8 @@ pub(crate) struct MockRelay {
     /// Whether this client counts as connected (an outbox test turns it
     /// off)
     connected: std::sync::atomic::AtomicBool,
+    /// The relay takes the next submission but its answer is lost
+    answer_lost: std::sync::atomic::AtomicBool,
     /// This instance's keys, sealing and opening as the real client does
     sealer: Sealer,
 }
@@ -413,6 +415,7 @@ impl MockRelay {
             delegated: Mutex::default(),
             delegated_here: Mutex::default(),
             connected: std::sync::atomic::AtomicBool::new(true),
+            answer_lost: std::sync::atomic::AtomicBool::new(false),
             sealer: Sealer::new(instance, nandi_seal::DeviceKeys::generate().unwrap()),
         });
         hub.relays
@@ -429,6 +432,11 @@ impl MockRelay {
 
     fn is_connected(&self) -> bool {
         self.connected.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn lose_next_answer(&self) {
+        self.answer_lost
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -585,6 +593,15 @@ impl RelayClient for MockRelay {
                     task_id: task.id.clone(),
                 },
             );
+            if self
+                .answer_lost
+                .swap(false, std::sync::atomic::Ordering::SeqCst)
+            {
+                return Err(format!(
+                    "{}The relay didn't take the task within 5s",
+                    crate::services::relay::client_api::UNANSWERED_BY_RELAY
+                ));
+            }
             Ok(Submitted { held })
         })
     }
@@ -2127,6 +2144,54 @@ mod lifecycle_tests {
             kept_results(&world.provider_state).await.is_empty()
         })
         .await;
+        world.requester_state.shutdown();
+        world.provider_state.shutdown();
+    }
+
+    #[tokio::test]
+    async fn a_submission_whose_answer_was_lost_is_sent_again_and_its_result_kept() {
+        let world = two_instances(SERVES).await;
+        allow(&world);
+        let provider = instance(&world.provider_state);
+        world.hub.set_online(&provider, false);
+        world._relays.0.lose_next_answer();
+        let requester = world.requester.clone();
+        let running = tokio::spawn(async move {
+            requester
+                .delegate_to(
+                    &format!("{provider}/papers"),
+                    "summarize",
+                    json!("lost answer"),
+                )
+                .await
+        });
+        wait_until("the submission", || async {
+            !world._relays.0.delegated().is_empty()
+        })
+        .await;
+        // Not abandoned: it waits `Submitted`, and the outbox sends it
+        // again until the relay answers
+        let requester_service = service(&world.requester_state);
+        let resent = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let resent = requester_service.flush().await;
+                if !resent.is_empty() {
+                    break resent;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("the resend");
+
+        world.hub.set_online(&instance(&world.provider_state), true);
+        let result = running.await.unwrap().unwrap();
+        assert_eq!(resent, std::slice::from_ref(&result.task_id));
+        assert_eq!(result.status, TaskStatus::Completed, "{:?}", result.error);
+        assert_eq!(
+            state_of(&world.requester_state, &result.task_id).await,
+            Some(TaskState::Completed)
+        );
         world.requester_state.shutdown();
         world.provider_state.shutdown();
     }

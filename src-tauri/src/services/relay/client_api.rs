@@ -48,8 +48,14 @@ pub struct PeopleSearch {
 }
 
 /// What a submission the relay refused (`TaskEvent::Refused`) answers
-/// with, before the relay's words; any other error means it didn't get there
+/// with, before the relay's words
 pub const REFUSED_BY_RELAY: &str = "The relay refused it: ";
+
+/// What a submission that went out answers with when the relay's answer
+/// didn't come (it timed out, or the connection dropped): the relay may
+/// have it, so it's sent again, never given up. Any other error means it
+/// didn't leave.
+pub const UNANSWERED_BY_RELAY: &str = "The relay hasn't answered: ";
 
 /// The relay took a submission
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,7 +101,8 @@ pub trait RelayClient: Send + Sync {
     /// Sends a signed `SubmitTask`: `task` for its target, then (should
     /// the relay fail it over) each of `alternates` (card IDs) in turn, its
     /// input sealed for each. Answers once the relay took it (held for an
-    /// offline provider counts) or with the relay's refusal.
+    /// offline provider counts), with the relay's refusal
+    /// ([`REFUSED_BY_RELAY`]), or with no answer ([`UNANSWERED_BY_RELAY`]).
     fn delegate_task<'a>(
         &'a self,
         task: &'a Task,
