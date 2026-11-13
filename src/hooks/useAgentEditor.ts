@@ -1,6 +1,6 @@
 /**
  * An agent's definition as stored in its files (gold copy) and saving it
- * back, for the agent page's Settings tab. Saves go through `saveAgent`,
+ * back, for the agent page's Settings tab. Saves go through `repoSaveAgent`,
  * which writes the files; nothing here touches the projection.
  *
  * Also the pure helpers (parsing, validation), so they're testable
@@ -55,7 +55,7 @@ export interface EditorDraft {
   awsProfile: string
 }
 
-/** An agent as `loadEntity('agent', id)` returns it */
+/** An agent as `repoLoadEntity('agent', id)` returns it */
 export interface AgentDefinition {
   id: string
   draft: EditorDraft
@@ -140,7 +140,7 @@ const optional = (value: string): string | null => value.trim() || null
 const clean = (items: string[]) =>
   items.map(item => item.trim()).filter(Boolean)
 
-/** What `saveAgent` takes. Call after `validateDraft` finds no errors. */
+/** What `repoSaveAgent` takes. Call after `validateDraft` finds no errors. */
 export function toDefinitionInput(draft: EditorDraft): AgentDefinitionInput {
   return {
     name: draft.name.trim(),
@@ -266,7 +266,7 @@ async function unwrap<T>(
 const loadDefinition = async (agentId: string) =>
   parseAgentDefinition(
     await unwrap(
-      client.loadEntity('agent', agentId),
+      client.repoLoadEntity('agent', agentId),
       'Failed to load the agent definition'
     )
   )
@@ -298,7 +298,7 @@ export function useSaveAgent(agentId: string) {
   const invalidate = useInvalidateRepo()
   return useMutation({
     mutationFn: (input: AgentDefinitionInput): Promise<AgentInfo> =>
-      unwrap(client.saveAgent(agentId, input), 'Failed to save the agent'),
+      unwrap(client.repoSaveAgent(agentId, input), 'Failed to save the agent'),
     onSuccess: () => invalidate(agentId),
   })
 }
@@ -313,7 +313,7 @@ export function useAllowSite(agentId: string) {
     mutationFn: async (site: string): Promise<AgentInfo> => {
       const { draft } = await loadDefinition(agentId)
       return unwrap(
-        client.saveAgent(
+        client.repoSaveAgent(
           agentId,
           toDefinitionInput({
             ...draft,
@@ -333,7 +333,7 @@ export function useSaveAgentInstructions(agentId: string) {
   return useMutation({
     mutationFn: (instructions: string) =>
       unwrap(
-        client.saveAgentInstructions(agentId, instructions),
+        client.repoSaveAgentInstructions(agentId, instructions),
         'Failed to save the rules'
       ),
     onSuccess: () => invalidate(agentId),
@@ -346,7 +346,7 @@ export function useResetAgentInstructions(agentId: string) {
   return useMutation({
     mutationFn: () =>
       unwrap(
-        client.resetAgentInstructions(agentId),
+        client.repoResetAgentInstructions(agentId),
         'Failed to reset the rules'
       ),
     onSuccess: () => invalidate(agentId),

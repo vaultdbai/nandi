@@ -23,49 +23,15 @@ const coreEvents = createEventBus(emit => {
   }
 })
 
+/** The desktop calls every command as generated, its own ones included */
 export const tauriClient: NandiClient = withCommands({
   transport: 'tauri',
   supports: { attachments: true },
-
-  pickAttachments: kind => commands.pickAttachments(kind),
-
-  openRunFile: (runId, path, reveal) =>
-    commands.openRunFile(runId, path, reveal),
-
-  saveEmergencyData: (filename, data) =>
-    commands.saveEmergencyData(filename, data),
-  loadEmergencyData: filename => commands.loadEmergencyData(filename),
-  cleanupOldRecoveryFiles: () => commands.cleanupOldRecoveryFiles(),
 
   getWebOrigin: async () => {
     const result = await commands.getWebOrigin()
     return result.status === 'ok' ? result.data : null
   },
-
-  // Agents repo, pilots, run history, audit, connectors, and the network
-  saveAgent: (agentId, input) => commands.repoSaveAgent(agentId, input),
-  saveAgentInstructions: (agentId, instructions) =>
-    commands.repoSaveAgentInstructions(agentId, instructions),
-  resetAgentInstructions: agentId =>
-    commands.repoResetAgentInstructions(agentId),
-  agentPlaybooks: agentId => commands.repoAgentPlaybooks(agentId),
-  saveAgentPlaybook: (agentId, input, previous) =>
-    commands.repoSaveAgentPlaybook(agentId, input, previous),
-  deleteAgentPlaybook: (agentId, name) =>
-    commands.repoDeleteAgentPlaybook(agentId, name),
-  loadEntity: (kind, id) => commands.repoLoadEntity(kind, id),
-  gitStatus: () => commands.repoGitStatus(),
-  gitDiff: path => commands.repoGitDiff(path),
-  gitCommit: message => commands.repoGitCommit(message),
-
-  toggleCompanionWindow: () => commands.toggleCompanionWindow(),
-  quitNandi: () => commands.quitNandi(),
-  placeCompanion: shape => commands.placeCompanion(shape),
-  setCompanionBubble: bubble => commands.setCompanionBubble(bubble),
-  setCompanionPinned: pinned => commands.setCompanionPinned(pinned),
-  companionFocusRequest: requestId => commands.companionFocusRequest(requestId),
-
   openExternal: url => openUrl(url),
-
   subscribe: handler => coreEvents.subscribe(handler),
 })

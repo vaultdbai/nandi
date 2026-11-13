@@ -3,7 +3,7 @@
  * may use and which need approval, the hosts it may reach, and its pilots
  * with the capabilities the user granted (each can be switched off here).
  *
- * Capabilities come from the agent's definition (`loadEntity`): the agent
+ * Capabilities come from the agent's definition (`repoLoadEntity`): the agent
  * snapshot doesn't carry them. Grants are machine-local consent, read with
  * `agentPilotPermissions`.
  *

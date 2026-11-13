@@ -21,7 +21,7 @@ export function LocalCopyPanel() {
   // Git is optional for the panel: a repo without commits still shows
   const git = useQuery({
     queryKey: gitStatusQueryKey,
-    queryFn: async () => unwrapResult(await client.gitStatus()),
+    queryFn: async () => unwrapResult(await client.repoGitStatus()),
     retry: false,
   })
 

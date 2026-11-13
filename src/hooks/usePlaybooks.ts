@@ -17,7 +17,7 @@ export const playbooksQueryKeys = {
 export function usePlaybooks(agentId: string) {
   return useQuery({
     queryKey: playbooksQueryKeys.agent(agentId),
-    queryFn: async () => unwrapResult(await client.agentPlaybooks(agentId)),
+    queryFn: async () => unwrapResult(await client.repoAgentPlaybooks(agentId)),
   })
 }
 
@@ -40,7 +40,7 @@ export function useSavePlaybook(agentId: string) {
       previous: string | null
     }) =>
       unwrapResult(
-        await client.saveAgentPlaybook(agentId, args.input, args.previous)
+        await client.repoSaveAgentPlaybook(agentId, args.input, args.previous)
       ),
     onSuccess: invalidate,
   })
@@ -50,7 +50,7 @@ export function useDeletePlaybook(agentId: string) {
   const invalidate = useInvalidatePlaybooks(agentId)
   return useMutation({
     mutationFn: async (name: string) =>
-      unwrapResult(await client.deleteAgentPlaybook(agentId, name)),
+      unwrapResult(await client.repoDeleteAgentPlaybook(agentId, name)),
     onSuccess: invalidate,
   })
 }

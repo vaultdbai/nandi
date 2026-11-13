@@ -8,7 +8,7 @@ import type { Result } from '@/lib/bindings'
 import { commands } from '@/lib/tauri-bindings'
 import type { NandiEvent } from './events'
 import { createEventBus } from './event-bus'
-import type { NandiClient } from './types'
+import type { HandWrittenCommands, NandiClient } from './types'
 import { withCommands } from './with-commands'
 
 const NOT_SUPPORTED = 'Not supported in the browser. Use the Nandi desktop app.'
@@ -18,9 +18,13 @@ const RECONNECT_MAX_MS = 30_000
  * reconnect then triggers a resync */
 const READY_TIMEOUT_MS = 5_000
 
-type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
+type Method = 'GET' | 'POST' | 'PUT'
 
-/** Calls the REST API; errors become `{ status: 'error' }` like IPC. */
+/**
+ * Calls a hand-written route (only emergency data has one; every other
+ * command goes through `invoke.ts`). Errors become `{ status: 'error' }`
+ * like IPC.
+ */
 async function request<T, E = string>(
   method: Method,
   path: string,
@@ -50,17 +54,8 @@ async function request<T, E = string>(
 
 const id = encodeURIComponent
 
-/** `?a=1&b=x` from the set values (`null`/`undefined` are left out) */
-function query(
-  params: Record<string, string | number | null | undefined>
-): string {
-  const search = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== null && value !== undefined) search.set(key, String(value))
-  }
-  const encoded = search.toString()
-  return encoded ? `?${encoded}` : ''
-}
+const notSupported = () =>
+  Promise.resolve({ status: 'error' as const, error: NOT_SUPPORTED })
 
 /**
  * One WebSocket for the page, shared by every subscriber. It reconnects
@@ -114,72 +109,42 @@ const socketEvents = createEventBus(emit => {
   }
 })
 
-export const webClient: NandiClient = withCommands({
-  transport: 'web',
-  supports: { attachments: false },
-
+/** The hand-written commands, answered without the desktop app */
+const handWritten: HandWrittenCommands = {
   // The native picker would open on the host, not in this browser
-  pickAttachments: () =>
-    Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
-
+  pickAttachments: () => notSupported(),
   // It would open on the host, not in this browser
-  openRunFile: () => Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
+  openRunFile: () => notSupported(),
 
+  // Typed errors, so these have their own routes (`http/recovery.rs`)
   saveEmergencyData: (filename, data) =>
     request('PUT', `/emergency-data/${id(filename)}`, data),
   loadEmergencyData: filename =>
     request('GET', `/emergency-data/${id(filename)}`),
   cleanupOldRecoveryFiles: () => request('POST', '/emergency-data/cleanup'),
 
-  // The page is served by the Nandi web server itself
-  getWebOrigin: () => Promise.resolve(location.origin),
-
-  // Agents repo, pilots, run history, audit, connectors, and the network
-  saveAgent: (agentId, input) =>
-    request('POST', `/repo/agents/${id(agentId)}/save`, input),
-  saveAgentInstructions: (agentId, instructions) =>
-    request('POST', `/repo/agents/${id(agentId)}/instructions`, {
-      instructions,
-    }),
-  resetAgentInstructions: agentId =>
-    request('DELETE', `/repo/agents/${id(agentId)}/instructions`),
-  agentPlaybooks: agentId =>
-    request('GET', `/repo/agents/${id(agentId)}/playbooks`),
-  saveAgentPlaybook: (agentId, input, previous) =>
-    request('POST', `/repo/agents/${id(agentId)}/playbooks`, {
-      input,
-      previous,
-    }),
-  deleteAgentPlaybook: (agentId, name) =>
-    request('DELETE', `/repo/agents/${id(agentId)}/playbooks/${id(name)}`),
-  loadEntity: (kind, entityId) =>
-    request('GET', `/repo/entities/${id(kind)}/${id(entityId)}`),
-  gitStatus: () => request('GET', '/repo/git/status'),
-  gitDiff: path => request('GET', `/repo/git/diff${query({ path })}`),
-  gitCommit: message => request('POST', '/repo/git/commit', { message }),
-
-  // The route still names the field `githubOrg`; it carries the registry URL
-
-  toggleCompanionWindow: () =>
-    Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
+  // There is no companion window in a browser
+  toggleCompanionWindow: () => notSupported(),
   // The server keeps running; a browser tab has nothing to quit
   quitNandi: () => Promise.resolve(),
-  // No companion window in a browser
   placeCompanion: () => Promise.resolve({ status: 'ok', data: null }),
-  setCompanionBubble: () =>
-    Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
+  setCompanionBubble: () => notSupported(),
   // Saves the preference; there is no window to keep on top
   setCompanionPinned: pinned => commands.saveCompanionPinned(pinned),
   // The web build's companion lives in the page (`watchInCompanion`)
-  companionFocusRequest: () =>
-    Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
+  companionFocusRequest: () => notSupported(),
+}
 
-  // The relay connection lives in the core; no browser route for this yet
+export const webClient: NandiClient = withCommands({
+  transport: 'web',
+  supports: { attachments: false },
+  ...handWritten,
 
+  // The page is served by the Nandi web server itself
+  getWebOrigin: () => Promise.resolve(location.origin),
   openExternal: url => {
     window.open(url, '_blank', 'noopener,noreferrer')
     return Promise.resolve()
   },
-
   subscribe: handler => socketEvents.subscribe(handler),
 })

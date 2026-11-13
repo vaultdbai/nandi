@@ -517,7 +517,7 @@ function BranchBrowser({
 function useLocalChanges(): number {
   const git = useQuery({
     queryKey: ['repo', 'git-status'],
-    queryFn: async () => unwrapResult(await client.gitStatus()),
+    queryFn: async () => unwrapResult(await client.repoGitStatus()),
     retry: false,
   })
   return git.data?.files.length ?? 0

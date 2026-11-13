@@ -114,7 +114,7 @@ describe('toDefinitionInput', () => {
 })
 
 describe('parseAgentDefinition', () => {
-  it('reads what loadEntity returns', () => {
+  it('reads what repoLoadEntity returns', () => {
     const definition = parseAgentDefinition({
       id: 'writer',
       name: 'Writer',
