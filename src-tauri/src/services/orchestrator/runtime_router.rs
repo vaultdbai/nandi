@@ -410,9 +410,7 @@ pub async fn resolve_runtime(app: &AppState, agent: &Agent) -> RuntimeDecision {
     }
     let harness_id = agent.runtime().as_str().into_owned();
     let config = agent.runtime_config().cloned().unwrap_or_default();
-    let Some(service) = app.harnesses() else {
-        return RuntimeDecision::Unavailable("Harnesses are not available".to_string());
-    };
+    let service = app.harnesses();
     let detected = service
         .detector()
         .stored_one(&harness_id)

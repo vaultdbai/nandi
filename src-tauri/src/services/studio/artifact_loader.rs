@@ -86,7 +86,7 @@ fn registry_text(state: &AppState, artifact: &ArtifactRef) -> Option<String> {
     let ArtifactRef::Capability(id) = artifact else {
         return None;
     };
-    state.capability_registries()?.source_text(id)
+    state.capability_registries().source_text(id)
 }
 
 /// The file (or the registry's, or a starter template), its parsed view,

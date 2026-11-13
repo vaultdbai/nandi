@@ -771,7 +771,6 @@ async fn install_writes_the_gold_copy() {
 #[tokio::test]
 async fn app_state_runs_connectors() {
     let state = AppState::for_tests(vec![]);
-    assert!(state.connectors().is_some());
     install_connector(&state, "filesystem").await.unwrap();
     let dir = tempfile::tempdir().unwrap();
     configure_connector(&state, "filesystem", shared_folder_config(dir.path()))

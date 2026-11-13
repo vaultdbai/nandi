@@ -49,7 +49,7 @@ pub fn fingerprint(state: &AppState) -> Vec<(String, bool)> {
         .iter()
         .map(|decl| {
             let id = decl.id.as_str().to_string();
-            let running = state.connectors().is_some_and(|r| r.is_running(&id));
+            let running = state.connectors().is_running(&id);
             (id, running)
         })
         .collect();

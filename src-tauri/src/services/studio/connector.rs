@@ -137,7 +137,7 @@ async fn discover(
     if let Some(key) = input.api_key.as_ref().filter(|k| !k.trim().is_empty()) {
         state.secrets().set(&package.key_entry(), key.trim())?;
     }
-    let registry = state.connectors().ok_or("Connectors aren't available")?;
+    let registry = state.connectors();
     let tools = registry.discover_tools(&decl, state.secrets()).await?;
     Ok(tools
         .into_iter()

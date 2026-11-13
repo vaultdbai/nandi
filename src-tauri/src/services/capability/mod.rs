@@ -1152,7 +1152,7 @@ pub fn init(state: &AppState) -> Option<Arc<CapabilityService>> {
         CapabilityService::new(state.db().clone(), state.bus().clone(), repo)
             .with_instance_id(instance_id)
             .with_store(state.store().clone())
-            .with_registries(state.capability_registries().cloned())
+            .with_registries(Some(state.capability_registries().clone()))
             .with_tools(state.tools().cloned()),
     );
     state.store().subscribe(Arc::new(ProviderRefresher {

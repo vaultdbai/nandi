@@ -225,12 +225,6 @@ impl PilotRegistry {
     }
 }
 
-fn registry(state: &AppState) -> Result<&Arc<PilotRegistry>, String> {
-    state
-        .pilots()
-        .ok_or_else(|| "Pilots aren't available: the pilot registry isn't initialized".to_string())
-}
-
 // ---------------------------------------------------------------------------
 // Service functions (one per command / route)
 // ---------------------------------------------------------------------------
@@ -243,16 +237,12 @@ pub fn list_pilots() -> Vec<PilotDefinition> {
 /// Runs the pilot's install command. Only ever on the user's request.
 pub async fn install_pilot(state: &AppState, id: &str) -> Result<(), String> {
     let pilot = catalog::find(id)?;
-    let guard = state.pilots().cloned();
-    if let Some(registry) = &guard {
-        if !registry.begin_install(id) {
-            return Err(format!("{} is already being installed", pilot.name));
-        }
+    let registry = state.pilots();
+    if !registry.begin_install(id) {
+        return Err(format!("{} is already being installed", pilot.name));
     }
     let result = install_definition(state.bus(), &pilot).await;
-    if let Some(registry) = &guard {
-        registry.end_install(id);
-    }
+    registry.end_install(id);
     result
 }
 
@@ -273,7 +263,7 @@ pub(crate) async fn install_definition(
 /// Starts the pilot's MCP server and returns its process ID (`0` if a
 /// server was already listening on the pilot's port and Nandi adopted it).
 pub async fn start_pilot(state: &AppState, id: &str) -> Result<u32, String> {
-    let registry = registry(state)?.clone();
+    let registry = state.pilots().clone();
     let pilot = catalog::find(id)?;
     if !installed(state.bus(), &detect::SystemProbe, &pilot).await? {
         return Err(format!("Install {} first", pilot.name));
@@ -367,7 +357,7 @@ pub(crate) async fn installed(
 }
 
 pub async fn stop_pilot(state: &AppState, id: &str) -> Result<(), String> {
-    let registry = registry(state)?.clone();
+    let registry = state.pilots().clone();
     let pilot = catalog::find(id)?;
     stop_definition(state.bus(), &registry, &pilot).await
 }
@@ -396,7 +386,7 @@ pub async fn pilot_status(state: &AppState, id: &str) -> Result<PilotStatus, Str
     let pilot = catalog::find(id)?;
     // Installed some other way counts too (read-only look)
     installed(state.bus(), &detect::SystemProbe, &pilot).await?;
-    status_of(state.db(), state.pilots().map(Arc::as_ref), &pilot.id).await
+    status_of(state.db(), Some(state.pilots().as_ref()), &pilot.id).await
 }
 
 pub(crate) async fn status_of(

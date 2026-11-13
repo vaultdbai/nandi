@@ -32,6 +32,7 @@ pub mod gemini_cli;
 pub mod health_monitor;
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, OptionalExtension};
@@ -802,18 +803,29 @@ pub fn new_adapter(
 /// Builds the service, closes sessions a previous run left open, and (once
 /// per database, outside tests) runs the first detection and starts the
 /// health monitor. Must not block.
-pub fn init(state: &AppState) -> Option<(Arc<HarnessService>, Arc<HarnessDetector>)> {
-    // Tests never probe the real machine: an empty PATH and home
-    let env = if cfg!(test) {
-        let empty = state.app_data_dir().join("harness-test-home");
-        DetectEnv {
-            path: Some(empty.clone().into_os_string()),
-            home: empty,
-            vars: HashMap::new(),
-        }
-    } else {
-        DetectEnv::current()
-    };
+impl HarnessService {
+    /// The service and its detector for this machine. Tests never probe the
+    /// real machine: an empty PATH and home inside `app_data_dir`.
+    pub fn for_app(db: Db, bus: EventBus, app_data_dir: &Path) -> Self {
+        let env = if cfg!(test) {
+            let empty = app_data_dir.join("harness-test-home");
+            DetectEnv {
+                path: Some(empty.clone().into_os_string()),
+                home: empty,
+                vars: HashMap::new(),
+            }
+        } else {
+            DetectEnv::current()
+        };
+        let detector = Arc::new(HarnessDetector::new(db.clone(), env));
+        Self::new(db, bus, detector)
+    }
+}
+
+/// Routes Claude sessions through Bedrock when the repo says so, closes the
+/// sessions a previous process left open, and starts the health monitor.
+/// Must not block.
+pub fn start(state: &AppState) {
     let store = state.store().clone();
     claude_sdk::set_bedrock_route_source(Box::new(move || {
         let repo = crate::services::config::repo_config::harness_defaults(&store);
@@ -822,14 +834,8 @@ pub fn init(state: &AppState) -> Option<(Arc<HarnessService>, Arc<HarnessDetecto
             aws_region: repo.aws_region,
         })
     }));
-    let detector = Arc::new(HarnessDetector::new(state.db().clone(), env));
-    let service = Arc::new(HarnessService::new(
-        state.db().clone(),
-        state.bus().clone(),
-        detector.clone(),
-    ));
     let db = state.db().clone();
-    let background = service.clone();
+    let background = state.harnesses().clone();
     state.runtime().spawn(async move {
         if let Err(e) = evidence::close_orphaned_sessions(&db).await {
             log::warn!("Could not close orphaned harness sessions: {e}");
@@ -850,21 +856,14 @@ pub fn init(state: &AppState) -> Option<(Arc<HarnessService>, Arc<HarnessDetecto
         }
         health_monitor::run(Arc::downgrade(&background)).await;
     });
-    Some((service, detector))
 }
 
 // ---------------------------------------------------------------------------
 // App-facing API (commands and routes)
 // ---------------------------------------------------------------------------
 
-fn service(state: &AppState) -> Result<&Arc<HarnessService>, String> {
-    state
-        .harnesses()
-        .ok_or_else(|| "Harnesses are not available".to_string())
-}
-
 pub async fn list_harnesses(state: &AppState) -> Result<Vec<HarnessInfo>, String> {
-    let mut infos = service(state)?.list().await?;
+    let mut infos = state.harnesses().list().await?;
     infos
         .iter_mut()
         .for_each(|i| with_nandi_keys(state, &i.id, &mut i.health));
@@ -872,7 +871,7 @@ pub async fn list_harnesses(state: &AppState) -> Result<Vec<HarnessInfo>, String
 }
 
 pub async fn detect_harnesses(state: &AppState) -> Result<Vec<HarnessInfo>, String> {
-    let service = service(state)?;
+    let service = state.harnesses();
     let detected = service.detect().await?;
     let mut infos = service.infos(detected).await?;
     infos
@@ -885,7 +884,7 @@ pub async fn get_harness_health(
     state: &AppState,
     harness_id: &str,
 ) -> Result<HarnessHealth, String> {
-    let mut health = service(state)?.health(harness_id).await?;
+    let mut health = state.harnesses().health(harness_id).await?;
     with_nandi_keys(state, harness_id, &mut health);
     Ok(health)
 }
@@ -907,7 +906,7 @@ fn with_nandi_keys(state: &AppState, harness_id: &str, health: &mut HarnessHealt
 }
 
 pub async fn test_harness(state: &AppState, harness_id: &str) -> Result<HarnessTestResult, String> {
-    service(state)?.test(harness_id).await
+    state.harnesses().test(harness_id).await
 }
 
 pub async fn set_harness_default(
@@ -915,15 +914,15 @@ pub async fn set_harness_default(
     harness_id: &str,
     model: Option<String>,
 ) -> Result<HarnessDefault, String> {
-    service(state)?.set_default(harness_id, model).await
+    state.harnesses().set_default(harness_id, model).await
 }
 
 pub async fn clear_harness_default(state: &AppState) -> Result<(), String> {
-    service(state)?.clear_default().await
+    state.harnesses().clear_default().await
 }
 
 pub async fn get_harness_default(state: &AppState) -> Result<Option<HarnessDefault>, String> {
-    service(state)?.default().await
+    state.harnesses().default().await
 }
 
 pub async fn list_harness_sessions(
@@ -931,14 +930,14 @@ pub async fn list_harness_sessions(
     agent_id: Option<String>,
     limit: Option<u32>,
 ) -> Result<Vec<HarnessSessionSummary>, String> {
-    service(state)?.sessions(agent_id, limit).await
+    state.harnesses().sessions(agent_id, limit).await
 }
 
 pub async fn get_harness_session(
     state: &AppState,
     session_id: &str,
 ) -> Result<HarnessSessionSummary, String> {
-    service(state)?.session_by_id(session_id).await
+    state.harnesses().session_by_id(session_id).await
 }
 
 pub async fn get_harness_events(
@@ -946,11 +945,11 @@ pub async fn get_harness_events(
     session_id: &str,
     after_seq: Option<u32>,
 ) -> Result<Vec<HarnessEventRecord>, String> {
-    service(state)?.events(session_id, after_seq).await
+    state.harnesses().events(session_id, after_seq).await
 }
 
 pub async fn kill_harness_session(state: &AppState, session_id: &str) -> Result<(), String> {
-    service(state)?.kill_session(session_id).await
+    state.harnesses().kill_session(session_id).await
 }
 
 #[cfg(test)]

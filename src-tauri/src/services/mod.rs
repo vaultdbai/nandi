@@ -206,9 +206,9 @@ struct Inner {
     live: live::LiveService,
     marketplace: marketplace::Marketplace,
     /// Host-side OS-control MCP servers
-    pilots: Option<Arc<PilotRegistry>>,
+    pilots: Arc<PilotRegistry>,
     /// Runtime MCP connectors
-    connectors: Option<Arc<ConnectorRegistry>>,
+    connectors: Arc<ConnectorRegistry>,
     /// The GitHub sign-in in progress (`auth::github`)
     github_sign_in_flows: auth::oauth::OAuthFlows,
     /// Reading the user's mail for the Chief of Staff
@@ -237,13 +237,11 @@ struct Inner {
     tasks: OnceLock<Arc<a2a::task::TaskService>>,
     clarifications: OnceLock<Arc<a2a::clarification::ClarificationService>>,
     gateway: OnceLock<Arc<gateway::GatewayService>>,
+    capability_registries: Arc<capability::registry::CapabilityRegistryService>,
+    harnesses: Arc<harness::HarnessService>,
     // Wave A: set once by each track's `init` (`init_wave_a`)
     capabilities: OnceLock<Arc<capability::CapabilityService>>,
     tools: OnceLock<Arc<tools::ToolService>>,
-    capability_registries: OnceLock<Arc<capability::registry::CapabilityRegistryService>>,
-    // Wave B: set once by each track's `init` (`init_wave_b`)
-    harnesses: OnceLock<Arc<harness::HarnessService>>,
-    harness_detector: OnceLock<Arc<harness::detection::HarnessDetector>>,
 }
 
 /// Shared handle to everything the services need. Cheap to clone.
@@ -476,6 +474,18 @@ impl AppState {
             bus.clone(),
             config.app_data_dir.join("local").join("gateway"),
         ));
+        let capability_registries = Arc::new(capability::registry::CapabilityRegistryService::new(
+            db.clone(),
+            bus.clone(),
+            config.secrets.clone(),
+            nandi_dir.join("local").join("cache"),
+            Some(store.repos().layout().capabilities_dir()),
+        ));
+        let harnesses = Arc::new(harness::HarnessService::for_app(
+            db.clone(),
+            bus.clone(),
+            &config.app_data_dir,
+        ));
         let ask_llm: Arc<dyn ask::AskLlm> =
             Arc::new(ask::ModelAskLlm::new(config.secrets.clone(), store.clone()));
         Self(Arc::new_cyclic(|inner| Inner {
@@ -492,6 +502,8 @@ impl AppState {
             aws_auth,
             bedrock_models,
             litellm_gateway,
+            capability_registries,
+            harnesses,
             nandi_dir,
             db,
             built_in_relay: config.built_in_relay,
@@ -511,8 +523,8 @@ impl AppState {
             watcher: std::sync::Mutex::new(None),
             live: live::LiveService::new(feed),
             marketplace,
-            pilots: Some(pilots),
-            connectors: Some(connectors),
+            pilots,
+            connectors,
             github_sign_in_flows: Default::default(),
             email: Arc::new(email::EmailService::default()),
             workspace: Arc::new(workspace::WorkspaceService::default()),
@@ -527,9 +539,6 @@ impl AppState {
             gateway: OnceLock::new(),
             capabilities: OnceLock::new(),
             tools: OnceLock::new(),
-            capability_registries: OnceLock::new(),
-            harnesses: OnceLock::new(),
-            harness_detector: OnceLock::new(),
         }))
     }
 
@@ -630,14 +639,14 @@ impl AppState {
         &self.0.store
     }
 
-    /// Host-side pilots (always set)
-    pub fn pilots(&self) -> Option<&Arc<PilotRegistry>> {
-        self.0.pilots.as_ref()
+    /// Host-side pilots
+    pub fn pilots(&self) -> &Arc<PilotRegistry> {
+        &self.0.pilots
     }
 
-    /// Runtime connectors (always set)
-    pub fn connectors(&self) -> Option<&Arc<ConnectorRegistry>> {
-        self.0.connectors.as_ref()
+    /// Runtime connectors
+    pub fn connectors(&self) -> &Arc<ConnectorRegistry> {
+        &self.0.connectors
     }
 
     /// Connector grants: saved in the repo, or on this computer only
@@ -769,12 +778,9 @@ impl AppState {
         self.0.tools.get()
     }
 
-    /// Subscribed capability registries (wave A, Track B)
-    #[allow(dead_code)]
-    pub fn capability_registries(
-        &self,
-    ) -> Option<&Arc<capability::registry::CapabilityRegistryService>> {
-        self.0.capability_registries.get()
+    /// Subscribed capability registries
+    pub fn capability_registries(&self) -> &Arc<capability::registry::CapabilityRegistryService> {
+        &self.0.capability_registries
     }
 
     /// Wave A: each track's `init`, after `init_wave_final`, in dependency
@@ -785,25 +791,16 @@ impl AppState {
         if let Some(service) = tools::init(self) {
             let _ = self.0.tools.set(service);
         }
-        if let Some(service) = capability::registry::init(self) {
-            let _ = self.0.capability_registries.set(service);
-        }
+        capability::registry::start(self);
         if let Some(service) = capability::init(self) {
             let _ = self.0.capabilities.set(service);
         }
         capability::aggregation::start(self);
     }
 
-    /// Harness sessions and adapters (wave B, Tracks A and E)
-    #[allow(dead_code)]
-    pub fn harnesses(&self) -> Option<&Arc<harness::HarnessService>> {
-        self.0.harnesses.get()
-    }
-
-    /// Installed harness CLIs (wave B, Track A)
-    #[allow(dead_code)]
-    pub fn harness_detector(&self) -> Option<&Arc<harness::detection::HarnessDetector>> {
-        self.0.harness_detector.get()
+    /// Harness sessions, adapters and the installed harness CLIs
+    pub fn harnesses(&self) -> &Arc<harness::HarnessService> {
+        &self.0.harnesses
     }
 
     /// AWS auth for Bedrock
@@ -823,10 +820,7 @@ impl AppState {
 
     /// Wave B: each track's `init`, after `init_wave_a`. Must not block.
     fn init_wave_b(&self) {
-        if let Some((service, detector)) = harness::init(self) {
-            let _ = self.0.harness_detector.set(detector);
-            let _ = self.0.harnesses.set(service);
-        }
+        harness::start(self);
         pilots::browser::init(pilots::browser::Host {
             proxy_tokens: self.proxy_tokens().clone(),
             secrets: self.secrets().clone(),
@@ -928,16 +922,15 @@ impl AppState {
         }
         self.triggers().stop();
         self.orchestrators().shutdown_all();
-        if let Some(connectors) = self.connectors().cloned() {
-            let stop = async move { connectors.shutdown_all().await };
-            match tokio::runtime::Handle::try_current() {
-                // Inside a runtime (tests, the HTTP server): don't block it
-                Ok(handle) => {
-                    handle.spawn(stop);
-                }
-                // App exit runs on the main thread
-                Err(_) => tauri::async_runtime::block_on(stop),
+        let connectors = self.connectors().clone();
+        let stop = async move { connectors.shutdown_all().await };
+        match tokio::runtime::Handle::try_current() {
+            // Inside a runtime (tests, the HTTP server): don't block it
+            Ok(handle) => {
+                handle.spawn(stop);
             }
+            // App exit runs on the main thread
+            Err(_) => tauri::async_runtime::block_on(stop),
         }
     }
 }

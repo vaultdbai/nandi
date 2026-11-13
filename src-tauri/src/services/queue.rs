@@ -375,7 +375,7 @@ mod tests {
                 secrets: state.secrets().clone(),
                 runtimes: state.runtimes().clone(),
                 store: state.store().clone(),
-                connectors: state.connectors().cloned(),
+                connectors: Some(state.connectors().clone()),
                 harness: Default::default(),
             },
             tokio::runtime::Handle::current(),

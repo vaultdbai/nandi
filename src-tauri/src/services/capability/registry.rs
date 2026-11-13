@@ -17,7 +17,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use std::time::Duration;
 
 use rusqlite::{params, OptionalExtension};
@@ -745,16 +745,8 @@ fn clean(value: Option<String>) -> Option<String> {
 
 /// Loads the rows, indexes the clones on disk, and starts the 6-hourly
 /// sync (whose first tick is right away, in the background).
-pub fn init(state: &AppState) -> Option<Arc<CapabilityRegistryService>> {
-    let cache_dir = state.nandi_dir().join("local").join("cache");
-    let local_dir = state.store().repos().layout().capabilities_dir();
-    let service = Arc::new(CapabilityRegistryService::new(
-        state.db().clone(),
-        state.bus().clone(),
-        state.secrets().clone(),
-        cache_dir,
-        Some(local_dir),
-    ));
+pub fn start(state: &AppState) {
+    let service = state.capability_registries();
     if let Err(e) = service.load_from_disk() {
         log::warn!("Failed to load capability registries: {e}");
     }
@@ -770,19 +762,12 @@ pub fn init(state: &AppState) -> Option<Arc<CapabilityRegistryService>> {
             }
         }
     });
-    Some(service)
-}
-
-fn service(state: &AppState) -> Result<&Arc<CapabilityRegistryService>, String> {
-    state
-        .capability_registries()
-        .ok_or_else(|| "Capability registries aren't available".to_string())
 }
 
 pub async fn list_capability_registries(
     state: &AppState,
 ) -> Result<Vec<CapabilityRegistry>, String> {
-    service(state)?.list().await
+    state.capability_registries().list().await
 }
 
 /// `kind`: `None` detects it from the URL
@@ -793,21 +778,24 @@ pub async fn add_capability_registry(
     branch_prefix: Option<String>,
     user_slug: Option<String>,
 ) -> Result<CapabilityRegistry, String> {
-    service(state)?
+    state
+        .capability_registries()
         .add_registry(url, kind, branch_prefix, user_slug)
         .await
 }
 
 pub async fn remove_capability_registry(state: &AppState, url: &str) -> Result<(), String> {
-    service(state)?.remove_registry(url).await
+    state.capability_registries().remove_registry(url).await
 }
 
 pub async fn sync_capability_registry(state: &AppState, url: &str) -> Result<SyncResult, String> {
-    service(state)?.sync_registry(url).await
+    state.capability_registries().sync_registry(url).await
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::services::events::tests::RecordingSink;
     use git2::{IndexAddOption, Repository, Signature};

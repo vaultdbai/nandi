@@ -833,9 +833,7 @@ async fn harness_run(deps: &RunDeps, agent_id: &str, run_id: &str) -> Result<boo
             Ok(true)
         }
         RuntimeDecision::Harness(plan) => {
-            let Some(service) = app.harnesses() else {
-                return Ok(false);
-            };
+            let service = app.harnesses();
             match service.get_adapter(&plan.harness_id).await {
                 Ok(adapter) => {
                     runtime_router::execute_harness_run(&deps.bus, service, adapter, &plan, &ctx)
@@ -2805,7 +2803,7 @@ mod connector_tests {
             secrets: state.secrets().clone(),
             runtimes: state.runtimes().clone(),
             store: state.store().clone(),
-            connectors: state.connectors().cloned(),
+            connectors: Some(state.connectors().clone()),
             harness: Default::default(),
         }
     }

@@ -1061,12 +1061,6 @@ pub fn declared_connectors(agent: &domain::Agent) -> Vec<String> {
 // Services (one per command / route)
 // ---------------------------------------------------------------------------
 
-fn registry(state: &AppState) -> Result<&Arc<ConnectorRegistry>, String> {
-    state.connectors().ok_or_else(|| {
-        "Connectors aren't available yet: the connector registry isn't running".to_string()
-    })
-}
-
 fn manifest(state: &AppState) -> ConnectorManifest {
     state.store().read(|repo| repo.connectors().clone())
 }
@@ -1093,7 +1087,7 @@ pub async fn list_connectors(state: &AppState) -> Result<Vec<ConnectorInfo>, Str
     let manifest = manifest(state);
     let mut infos = connector_infos(
         &manifest,
-        state.connectors().map(Arc::as_ref),
+        Some(state.connectors().as_ref()),
         state.secrets(),
     );
     // Packages: what connector.md says, before the server has started
@@ -1151,11 +1145,10 @@ pub async fn install_package(
         .collect();
     connectors.push(decl);
     save_manifest(state, connectors)?;
-    if let Some(registry) = state.connectors() {
-        if registry.is_running(id) {
-            registry.stop(id).await;
-            lock(&registry.stopped).remove(id);
-        }
+    let registry = state.connectors();
+    if registry.is_running(id) {
+        registry.stop(id).await;
+        lock(&registry.stopped).remove(id);
     }
     events::emit(state.bus(), &ConnectorsChanged {});
     log::info!("Installed connector '{id}' {}", package.version);
@@ -1171,10 +1164,9 @@ pub async fn remove_connector(state: &AppState, id: &str) -> Result<(), String> 
         .get(id)
         .cloned()
         .ok_or_else(|| format!("Connector '{id}' isn't installed"))?;
-    if let Some(registry) = state.connectors() {
-        registry.stop(id).await;
-        lock(&registry.stopped).remove(id);
-    }
+    let registry = state.connectors();
+    registry.stop(id).await;
+    lock(&registry.stopped).remove(id);
     let connectors: Vec<ConnectorDecl> = current
         .connectors()
         .iter()
@@ -1358,11 +1350,10 @@ pub async fn configure_connector(
         backup_triggers::sync(state, &settings).await?;
     }
     // The running instance has the old config; restart on next use
-    if let Some(registry) = state.connectors() {
-        if registry.is_running(id) {
-            registry.stop(id).await;
-            lock(&registry.stopped).remove(id);
-        }
+    let registry = state.connectors();
+    if registry.is_running(id) {
+        registry.stop(id).await;
+        lock(&registry.stopped).remove(id);
     }
     events::emit(state.bus(), &ConnectorsChanged {});
     Ok(())
@@ -1476,11 +1467,10 @@ pub async fn declare_connector(
         .collect();
     connectors.push(decl);
     save_manifest(state, connectors)?;
-    if let Some(registry) = state.connectors() {
-        if registry.is_running(id.as_str()) {
-            registry.stop(id.as_str()).await;
-            lock(&registry.stopped).remove(id.as_str());
-        }
+    let registry = state.connectors();
+    if registry.is_running(id.as_str()) {
+        registry.stop(id.as_str()).await;
+        lock(&registry.stopped).remove(id.as_str());
     }
     events::emit(state.bus(), &ConnectorsChanged {});
     log::info!("Declared connector '{id}'");
@@ -1558,7 +1548,7 @@ fn save_manifest(state: &AppState, connectors: Vec<ConnectorDecl>) -> Result<(),
 
 pub async fn start_connector(state: &AppState, id: &str) -> Result<(), String> {
     parse_id(id)?;
-    let registry = registry(state)?;
+    let registry = state.connectors();
     let decl = installed(state, id)?;
     // Missing a secret, a folder, or a sign-in: say what, don't try
     if let Some(hint) = catalog::setup_hint(&decl, state.secrets()) {
@@ -1575,7 +1565,7 @@ pub async fn start_connector(state: &AppState, id: &str) -> Result<(), String> {
 
 pub async fn stop_connector(state: &AppState, id: &str) -> Result<(), String> {
     parse_id(id)?;
-    let registry = registry(state)?;
+    let registry = state.connectors();
     installed(state, id)?;
     registry.stop(id).await;
     emit_status(state, id, registry.cached_status(id, true));
@@ -1589,12 +1579,7 @@ pub async fn connector_status(state: &AppState, id: &str) -> Result<ConnectorSta
     if !is_installed && catalog::builtin(id).is_none() {
         return Err(format!("Unknown connector '{id}'"));
     }
-    let Some(registry) = state.connectors() else {
-        return Ok(ConnectorStatus {
-            installed: is_installed,
-            ..ConnectorStatus::default()
-        });
-    };
+    let registry = state.connectors();
     let before = registry.cached_status(id, is_installed);
     if registry.is_running(id) {
         let _ = registry.check_health(id).await;
