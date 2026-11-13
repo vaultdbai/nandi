@@ -18,7 +18,7 @@ use crate::services::email::{EmailSettings, MailProvider};
 use crate::services::groups::Groups;
 use crate::services::identity::VerifiedIdentity;
 use crate::services::relay::join::{join_relay, JoinOutcome};
-use crate::services::relay::{get_relay_status, instance_token, limits, BuiltInRelay};
+use crate::services::relay::{get_relay_status, has_instance_token, limits, BuiltInRelay};
 use crate::services::team::trust;
 use crate::utils::nandi_config;
 
@@ -124,7 +124,7 @@ async fn joining_with_the_connected_email_keeps_the_token_and_connects() {
         }
         other => panic!("{other:?}"),
     }
-    assert!(instance_token(state.db()).is_none());
+    assert!(!has_instance_token(state.db()));
 
     connect_gmail(&state, EMAIL, &idp.google("1099", EMAIL, "Ada Lovelace"));
     assert_eq!(
@@ -152,8 +152,8 @@ async fn joining_with_the_connected_email_keeps_the_token_and_connects() {
         }
     );
 
-    // Kept exactly like an enrolled token: in relay_state, never config.json
-    assert!(instance_token(state.db()).is_some());
+    // Kept exactly like an enrolled token: in the keyring, never config.json
+    assert!(has_instance_token(state.db()));
     assert_eq!(
         nandi_config::load_from(state.nandi_dir())
             .unwrap()
@@ -231,7 +231,7 @@ async fn refusals_come_back_typed_and_change_nothing() {
     }
     let status = get_relay_status(&state).await.unwrap();
     assert_eq!(status.relay_url, None);
-    assert!(instance_token(state.db()).is_none());
+    assert!(!has_instance_token(state.db()));
     assert!(!on_public_relay(state.db()));
     state.shutdown();
 }
@@ -253,7 +253,7 @@ async fn a_disconnected_mailbox_needs_connecting_again() {
         }
         other => panic!("{other:?}"),
     }
-    assert!(instance_token(state.db()).is_none());
+    assert!(!has_instance_token(state.db()));
     state.shutdown();
 }
 

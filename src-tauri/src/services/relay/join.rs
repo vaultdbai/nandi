@@ -124,7 +124,7 @@ pub async fn join_relay(
         None
     } else if let Some(token) = url_token {
         Some(token)
-    } else if let Some(token) = saved_token_for(state.db(), &base)? {
+    } else if let Some(token) = saved_token_for(state, &base)? {
         Some(token)
     } else {
         let built_in = state.built_in_relay();

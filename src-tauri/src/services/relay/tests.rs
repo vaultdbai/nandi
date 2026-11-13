@@ -464,10 +464,7 @@ async fn relay_urls_are_validated_and_cleared() {
     let state = AppState::for_tests(vec![]);
     assert!(set_relay_url(&state, "http://nope").await.is_err());
     set_relay_url(&state, "").await.unwrap();
-    assert_eq!(
-        resolve_url_in(None, state.nandi_dir(), state.db()).unwrap(),
-        None
-    );
+    assert_eq!(resolve_url_in(None, &state).unwrap(), None);
     state.shutdown();
 }
 
@@ -497,7 +494,7 @@ async fn setting_the_url_connects_and_lists_online_agents() {
     let relay_url = url(addr, &instance_id);
     set_relay_url(&state, &relay_url).await.unwrap();
     assert_eq!(
-        resolve_url_in(None, state.nandi_dir(), state.db()).unwrap(),
+        resolve_url_in(None, &state).unwrap(),
         Some((relay_url.clone(), RelayUrlSource::Config))
     );
     // The token stays out of config.json
@@ -527,16 +524,28 @@ async fn setting_the_url_connects_and_lists_online_agents() {
     state.shutdown();
 }
 
+/// How many `relay_state` rows hold `needle` in their value
+fn state_rows_holding(db: &Db, needle: &str) -> i64 {
+    db.conn()
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM relay_state WHERE instr(value, ?1) > 0",
+            [needle],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
 #[tokio::test]
 async fn the_relay_url_comes_from_the_env_then_config() {
     let state = AppState::for_tests(vec![]);
     let (dir, db) = (state.nandi_dir(), state.db());
-    assert_eq!(resolve_url_in(None, dir, db).unwrap(), None);
+    assert_eq!(resolve_url_in(None, &state).unwrap(), None);
 
-    // The URL goes to config.json, its token to relay_token
-    save_url(dir, db, "ws://old:8787/relay?token=t1").unwrap();
+    // The URL goes to config.json, its token to the keyring
+    save_url(&state, "ws://old:8787/relay?token=t1").unwrap();
     assert_eq!(
-        resolve_url_in(None, dir, db).unwrap(),
+        resolve_url_in(None, &state).unwrap(),
         Some((
             "ws://old:8787/relay?token=t1".to_string(),
             RelayUrlSource::Config
@@ -551,22 +560,21 @@ async fn the_relay_url_comes_from_the_env_then_config() {
         Some("ws://old:8787/relay")
     );
     assert_eq!(
-        read_state::<String>(db, RELAY_TOKEN_KEY)
-            .unwrap()
-            .as_deref(),
+        state.secrets().get(RELAY_TOKEN_ENTRY).unwrap().as_deref(),
         Some("t1")
     );
+    assert_eq!(state_rows_holding(db, "t1"), 0, "never in state.db");
 
     // NANDI_RELAY_URL wins
     assert_eq!(
-        resolve_url_in(Some("ws://env:8787/relay".into()), dir, db).unwrap(),
+        resolve_url_in(Some("ws://env:8787/relay".into()), &state).unwrap(),
         Some(("ws://env:8787/relay".to_string(), RelayUrlSource::Env))
     );
 
     // Saving a URL without a token drops the old token
-    save_url(dir, db, "ws://new:8787/relay").unwrap();
+    save_url(&state, "ws://new:8787/relay").unwrap();
     assert_eq!(
-        resolve_url_in(None, dir, db).unwrap(),
+        resolve_url_in(None, &state).unwrap(),
         Some(("ws://new:8787/relay".to_string(), RelayUrlSource::Config))
     );
     state.shutdown();
@@ -578,9 +586,8 @@ async fn a_build_s_relay_is_only_offered_until_the_user_joins_it() {
         vec![],
         BuiltInRelay::new(Some("wss://demo.nandi.dev/relay"), Some("code")),
     );
-    let (dir, db) = (state.nandi_dir(), state.db());
     // Not used by itself, even with a token kept for it
-    assert_eq!(resolve_url_in(None, dir, db).unwrap(), None);
+    assert_eq!(resolve_url_in(None, &state).unwrap(), None);
     assert_eq!(configured_url(&state), None);
     let status = get_relay_status(&state).await.unwrap();
     assert_eq!(status.relay_url, None);
@@ -590,9 +597,9 @@ async fn a_build_s_relay_is_only_offered_until_the_user_joins_it() {
         Some("wss://demo.nandi.dev/relay")
     );
     // Joined (saved with its token): used, and named as the build's relay
-    save_url(dir, db, "wss://demo.nandi.dev/relay?token=t9").unwrap();
+    save_url(&state, "wss://demo.nandi.dev/relay?token=t9").unwrap();
     assert_eq!(
-        resolve_url_in(None, dir, db).unwrap(),
+        resolve_url_in(None, &state).unwrap(),
         Some((
             "wss://demo.nandi.dev/relay?token=t9".to_string(),
             RelayUrlSource::Config
@@ -606,25 +613,39 @@ async fn a_build_s_relay_is_only_offered_until_the_user_joins_it() {
 #[tokio::test]
 async fn a_token_is_kept_for_its_relay_across_a_disconnect() {
     let state = AppState::for_tests(vec![]);
-    let (dir, db) = (state.nandi_dir(), state.db());
-    save_url(dir, db, "ws://a:8787/relay?token=ta").unwrap();
+    save_url(&state, "ws://a:8787/relay?token=ta").unwrap();
     // Disconnect keeps it, and the same relay gets it back
-    save_url(dir, db, "").unwrap();
-    assert_eq!(resolve_url_in(None, dir, db).unwrap(), None);
-    save_url(dir, db, "ws://a:8787/relay").unwrap();
+    save_url(&state, "").unwrap();
+    assert_eq!(resolve_url_in(None, &state).unwrap(), None);
+    save_url(&state, "ws://a:8787/relay").unwrap();
     assert_eq!(
-        resolve_url_in(None, dir, db).unwrap().unwrap().0,
+        resolve_url_in(None, &state).unwrap().unwrap().0,
         "ws://a:8787/relay?token=ta"
     );
     // Another relay never gets it, and drops it
-    save_url(dir, db, "ws://b:8787/relay").unwrap();
+    save_url(&state, "ws://b:8787/relay").unwrap();
     assert_eq!(
-        resolve_url_in(None, dir, db).unwrap().unwrap().0,
+        resolve_url_in(None, &state).unwrap().unwrap().0,
         "ws://b:8787/relay"
     );
-    save_url(dir, db, "ws://a:8787/relay").unwrap();
+    assert_eq!(state.secrets().get(RELAY_TOKEN_ENTRY).unwrap(), None);
+    save_url(&state, "ws://a:8787/relay").unwrap();
     assert_eq!(
-        resolve_url_in(None, dir, db).unwrap().unwrap().0,
+        resolve_url_in(None, &state).unwrap().unwrap().0,
+        "ws://a:8787/relay"
+    );
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn a_token_missing_from_the_keyring_means_joining_again() {
+    let state = AppState::for_tests(vec![]);
+    save_url(&state, "ws://a:8787/relay?token=ta").unwrap();
+    // A copied state.db, or a keyring that lost the entry: no token, so
+    // the relay is used without one and asks this instance to join again
+    state.secrets().delete(RELAY_TOKEN_ENTRY).unwrap();
+    assert_eq!(
+        resolve_url_in(None, &state).unwrap().unwrap().0,
         "ws://a:8787/relay"
     );
     state.shutdown();

@@ -155,7 +155,7 @@ async fn joining_a_company_relay_with_a_typed_code() {
 
 fn read_token(state: &AppState) -> Option<String> {
     super::super::saved_token_for(
-        state.db(),
+        state,
         &nandi_config::load_from(state.nandi_dir())
             .unwrap()
             .relay_url

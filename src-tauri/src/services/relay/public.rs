@@ -20,8 +20,8 @@
 //! at startup or blocks onboarding: an unreachable relay is a calm
 //! [`PublicRelayOffer::Unreachable`], and the rest of Nandi works the same.
 //!
-//! What the app keeps: the token in `relay_state` (as enrolling does) and,
-//! next to it, the account it joined as ([`RELAY_ACCOUNT_KEY`]), so the
+//! What the app keeps: the token in the keyring (as enrolling does) and,
+//! in `relay_state`, the account it joined as ([`RELAY_ACCOUNT_KEY`]), so the
 //! Connection view can name it while the relay is away and relay trust
 //! knows not to trust everyone on a public relay
 //! ([`on_public_relay`]). Never the token in the UI or the logs.
@@ -414,7 +414,7 @@ pub async fn account(state: &AppState) -> Result<PublicRelayAccount, String> {
         name: kept.name.clone(),
         detail,
     };
-    let Some(token) = saved_token_for(state.db(), &kept.relay)? else {
+    let Some(token) = saved_token_for(state, &kept.relay)? else {
         return Ok(unavailable("No token is kept for this relay".to_string()));
     };
     let instance_id = network::local_instance_id(state.db())?;

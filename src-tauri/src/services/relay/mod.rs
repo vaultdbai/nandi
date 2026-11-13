@@ -24,17 +24,19 @@
 //!
 //! 1. `NANDI_RELAY_URL`, when set (handy for testing two instances)
 //! 2. else `relay_url` in `~/.nandi/config.json` (`NANDI_HOME` moves it), plus
-//!    the instance token from `relay_state` if the relay needs one
+//!    the instance token from the OS keyring if the relay needs one
 //! 3. else nothing: the app doesn't connect. A build's own relay
 //!    ([`BuiltInRelay`]) is only offered: nothing dials it, and nothing
 //!    enrolls there, until the user joins it ([`join::join_relay`]).
 //!    Joining writes the URL to `config.json`, so later launches connect
 //!    on their own.
 //!
-//! The token never goes into `config.json`: a URL saved with `?token=…` is
-//! split, and the token kept in `relay_state` (key `relay_token`, with the
-//! relay it is for under `relay_token_relay`). Disconnecting keeps it, so
-//! joining the same relay again reuses this instance's seat.
+//! The token never goes into `config.json` or `state.db`: a URL saved with
+//! `?token=…` is split, and the token kept in the OS keyring
+//! ([`RELAY_TOKEN_ENTRY`]), with the relay it is for in `relay_state`
+//! (`relay_token_relay`, not a secret). Disconnecting keeps it, so joining
+//! the same relay again reuses this instance's seat. A token missing from
+//! the keyring just means joining again.
 //!
 //! `relay_state` also keeps `online_agents` (every card at the relay as of
 //! the last presence refresh, the fallback while disconnected). See
@@ -62,7 +64,6 @@ mod sealed_tests;
 mod tests;
 
 use std::collections::HashSet;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -92,11 +93,12 @@ use device_keys::DeviceKeyring;
 use nandi_protocol::RelayInstanceInfo;
 use protocol::ALL_CAPABILITIES;
 
-/// `relay_state` key holding the instance token split off the relay URL
-pub const RELAY_TOKEN_KEY: &str = "relay_token";
+/// Keyring entry holding the instance token split off the relay URL: a
+/// bearer credential, so never in `state.db`
+pub const RELAY_TOKEN_ENTRY: &str = "nandi.relay.instance_token";
 
 /// `relay_state` key holding the relay (without its token) that
-/// [`RELAY_TOKEN_KEY`] is for
+/// [`RELAY_TOKEN_ENTRY`] is for
 pub const RELAY_TOKEN_RELAY_KEY: &str = "relay_token_relay";
 
 /// Environment variable overriding the configured relay URL
@@ -450,7 +452,7 @@ pub async fn set_relay_url(state: &AppState, url: &str) -> Result<(), String> {
     }
     // Another relay's agents are not this one's
     delete_state(state.db(), ONLINE_AGENTS_KEY)?;
-    save_url(state.nandi_dir(), state.db(), url)?;
+    save_url(state, url)?;
     let Some(client) = state.relay_client().cloned() else {
         return Ok(());
     };
@@ -738,7 +740,7 @@ pub fn configured_url(state: &AppState) -> Option<String> {
 /// The relay to connect to and where its URL came from (see the module
 /// docs), or `None` when there is none.
 fn resolve_url(state: &AppState) -> Result<Option<(String, RelayUrlSource)>, String> {
-    resolve_url_in(env_url(), state.nandi_dir(), state.db())
+    resolve_url_in(env_url(), state)
 }
 
 /// `NANDI_RELAY_URL`, else the saved URL with this instance's token for
@@ -746,17 +748,16 @@ fn resolve_url(state: &AppState) -> Result<Option<(String, RelayUrlSource)>, Str
 /// used only once the user joined it (which saved it).
 fn resolve_url_in(
     env: Option<String>,
-    nandi_dir: &Path,
-    db: &Db,
+    state: &AppState,
 ) -> Result<Option<(String, RelayUrlSource)>, String> {
     if let Some(url) = env {
         return Ok(Some((url, RelayUrlSource::Env)));
     }
-    let config = nandi_config::load_from(nandi_dir)?;
+    let config = nandi_config::load_from(state.nandi_dir())?;
     let Some(base) = config.relay_url.filter(|url| !url.trim().is_empty()) else {
         return Ok(None);
     };
-    let token = saved_token_for(db, &base)?;
+    let token = saved_token_for(state, &base)?;
     Ok(Some((
         with_token(&base, token.as_deref()),
         RelayUrlSource::Config,
@@ -764,44 +765,48 @@ fn resolve_url_in(
 }
 
 /// The instance token kept for the relay `base` (without a token), if any
-fn saved_token_for(db: &Db, base: &str) -> Result<Option<String>, String> {
-    let relay = read_state::<String>(db, RELAY_TOKEN_RELAY_KEY)?;
+fn saved_token_for(state: &AppState, base: &str) -> Result<Option<String>, String> {
+    let relay = read_state::<String>(state.db(), RELAY_TOKEN_RELAY_KEY)?;
     if relay.as_deref() != Some(base) {
         return Ok(None);
     }
-    read_state::<String>(db, RELAY_TOKEN_KEY)
+    state.secrets().get(RELAY_TOKEN_ENTRY)
 }
 
-/// This instance's relay token: the `?token=` of `NANDI_RELAY_URL` when
-/// that's set (it wins over everything), else the one kept in
-/// `relay_state` (saved with the URL, or from enrolling)
-pub fn instance_token(db: &Db) -> Option<String> {
-    let env = crate::utils::env::var(RELAY_URL_ENV).filter(|url| !url.trim().is_empty());
-    let token = match env {
-        Some(url) => split_token(url.trim()).1,
-        None => read_state::<String>(db, RELAY_TOKEN_KEY).ok().flatten(),
-    };
-    token.filter(|token| !token.trim().is_empty())
+/// Whether this instance has a relay token: the `?token=` of
+/// `NANDI_RELAY_URL` when that's set (it wins over everything), else one
+/// kept for a relay (saved with the URL, or from enrolling). Reads only
+/// `relay_state`, never the token itself.
+pub fn has_instance_token(db: &Db) -> bool {
+    match crate::utils::env::var(RELAY_URL_ENV).filter(|url| !url.trim().is_empty()) {
+        Some(url) => split_token(url.trim())
+            .1
+            .is_some_and(|token| !token.trim().is_empty()),
+        None => read_state::<String>(db, RELAY_TOKEN_RELAY_KEY)
+            .ok()
+            .flatten()
+            .is_some(),
+    }
 }
 
 /// Saves `url` (empty: none): the URL to `config.json`, its token (if any)
-/// to `relay_state` with the relay it is for. Another relay without a token
-/// drops the old token; disconnecting (empty) keeps it, so joining that
-/// relay again reuses this instance's seat.
-fn save_url(nandi_dir: &Path, db: &Db, url: &str) -> Result<(), String> {
+/// to the keyring and the relay it is for to `relay_state`. Another relay
+/// without a token drops the old token; disconnecting (empty) keeps it, so
+/// joining that relay again reuses this instance's seat.
+fn save_url(state: &AppState, url: &str) -> Result<(), String> {
     let (base, token) = split_token(url.trim());
-    nandi_config::update_in(nandi_dir, |config| {
+    nandi_config::update_in(state.nandi_dir(), |config| {
         config.relay_url = Some(base.clone()).filter(|url| !url.is_empty());
     })?;
     match token {
         Some(token) => {
-            write_state(db, RELAY_TOKEN_KEY, &token)?;
-            write_state(db, RELAY_TOKEN_RELAY_KEY, &base)?;
+            state.secrets().set(RELAY_TOKEN_ENTRY, &token)?;
+            write_state(state.db(), RELAY_TOKEN_RELAY_KEY, &base)?;
         }
-        None if base.is_empty() || saved_token_for(db, &base)?.is_some() => {}
+        None if base.is_empty() || saved_token_for(state, &base)?.is_some() => {}
         None => {
-            delete_state(db, RELAY_TOKEN_KEY)?;
-            delete_state(db, RELAY_TOKEN_RELAY_KEY)?;
+            delete_state(state.db(), RELAY_TOKEN_RELAY_KEY)?;
+            state.secrets().delete(RELAY_TOKEN_ENTRY)?;
         }
     }
     Ok(())

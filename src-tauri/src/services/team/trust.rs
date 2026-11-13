@@ -101,7 +101,7 @@ pub fn trusted_by_relay(db: &Db, instance_id: &str) -> bool {
 /// instances the company enrolled are on it. Not a public relay: anyone
 /// who joins with an email is on that one, so trust stays one by one there.
 pub fn on_a_secured_relay(db: &Db) -> bool {
-    crate::services::relay::instance_token(db).is_some() && !on_a_public_relay(db)
+    crate::services::relay::has_instance_token(db) && !on_a_public_relay(db)
 }
 
 /// Whether our relay token is from joining a public relay
@@ -606,26 +606,27 @@ mod tests {
         )
     }
 
-    fn set_token(db: &Db, token: Option<&str>) {
+    /// Whether `relay_state` records a token kept for a relay (the token
+    /// itself is in the keyring)
+    fn keep_token(db: &Db, kept: bool) {
         let conn = db.conn().unwrap();
-        match token {
-            Some(token) => conn
-                .execute(
-                    "INSERT INTO relay_state (key, value) VALUES (?1, ?2)
+        if kept {
+            conn.execute(
+                "INSERT INTO relay_state (key, value) VALUES (?1, ?2)
                      ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                    params![
-                        crate::services::relay::RELAY_TOKEN_KEY,
-                        serde_json::json!(token).to_string()
-                    ],
-                )
-                .unwrap(),
-            None => conn
-                .execute(
-                    "DELETE FROM relay_state WHERE key = ?1",
-                    [crate::services::relay::RELAY_TOKEN_KEY],
-                )
-                .unwrap(),
-        };
+                params![
+                    crate::services::relay::RELAY_TOKEN_RELAY_KEY,
+                    serde_json::json!("ws://relay:8787/relay").to_string()
+                ],
+            )
+            .unwrap();
+        } else {
+            conn.execute(
+                "DELETE FROM relay_state WHERE key = ?1",
+                [crate::services::relay::RELAY_TOKEN_RELAY_KEY],
+            )
+            .unwrap();
+        }
     }
 
     #[test]
@@ -638,7 +639,7 @@ mod tests {
         assert!(!is_trusted(&db, "lena"));
 
         // The company's relay: its members are trusted, strangers aren't
-        set_token(&db, Some("tok"));
+        keep_token(&db, true);
         assert!(is_trusted(&db, "lena"));
         assert!(!is_trusted(&db, "stranger"));
         assert_eq!(
@@ -663,7 +664,7 @@ mod tests {
         )
         .unwrap();
         assert!(is_trusted(&db, "lena"));
-        set_token(&db, None);
+        keep_token(&db, false);
     }
 
     fn peer(handle: &str, name: &str) -> OwnerRef {
