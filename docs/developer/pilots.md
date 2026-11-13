@@ -116,7 +116,7 @@ The arbitrary-code tools (`browser_evaluate`, `browser_run_code_unsafe`) are nev
 | Step      | What happens                                                                                                                                                                                               |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Asking    | Always an approval (`Action::HandOver`; skill.md can't allow it), kept 24 h (`handover::TTL_MS`). `run_call` brings the window forward (`browser::bring_to_front`: the current tab, `browser_tabs select`) |
-| Answering | `answer_hand_over(approval_id, {outcome, finalText})` / `POST /api/approvals/{id}/hand-over`: Done and Changed approve, Skip rejects. `HandOverCard` in every approval surface                             |
+| Answering | `answer_hand_over(approval_id, {outcome, finalText})` / `POST /api/rpc/answer_hand_over`: Done and Changed approve, Skip rejects. `HandOverCard` in every approval surface                                 |
 | Result    | `tools::call` answers it with `handover::result`: what the person did, and the final text for Changed. A plain Approve counts as Done                                                                      |
 
 ✅ Fill the composer, then `browser_hand_over`. ❌ Click Post, press Enter or Ctrl+Enter to send.

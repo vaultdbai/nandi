@@ -14,7 +14,7 @@ Shared preconditions used below:
 ### AG-01 — Agents list page
 
 - **What:** Every agent as one row: avatar, name, live status pill, description (or "Its file can't be loaded right now."), runtime and model (or "In a container" for a CLI runtime), 7-day health cells with run counts, a problem line or "Last run …", the Shared column (`From <publisher>`, Team, Relay, "Team + Relay", or "—") and Accepts requests On/Off. Rows waiting on the user come first, then rows with a problem, then by latest run, then by name.
-- **Where:** Sidebar → Agents. `src/components/views/AgentsListView.tsx`, ordering and labels in `src/components/agents/agent-page-model.ts` (`sortAgents`, `sharedLabel`, `runtimeDetail`, `runtimeName`). Data: `list_agents` and `list_agent_overviews` (`src-tauri/src/commands/agents.rs`, `src-tauri/src/services/agent_overview.rs`). HTTP `GET /api/agents`, `GET /api/agents/overviews?todayStart=<ms>`.
+- **Where:** Sidebar → Agents. `src/components/views/AgentsListView.tsx`, ordering and labels in `src/components/agents/agent-page-model.ts` (`sortAgents`, `sharedLabel`, `runtimeDetail`, `runtimeName`). Data: `list_agents` and `list_agent_overviews` (`src-tauri/src/rpc/agents.rs`, `src-tauri/src/services/agent_overview.rs`). HTTP `POST /api/rpc/list_agents`, `POST /api/rpc/list_agent_overviews` `{todayStart}`.
 - **Preconditions:** At least two agents; one with recent runs.
 - **Steps:**
   1. Open Sidebar → Agents.
@@ -84,7 +84,7 @@ Shared preconditions used below:
 ### AG-05 — New agent dialog (template)
 
 - **What:** Creates an agent from a Name, an optional "What it does" and a "Start from" template (Blank, Researcher, Writer, Helper). The folder ID is derived from the name (lowercase letters, digits, hyphens, max 60 chars, `-2`, `-3` suffix if taken). The agent uses the default model, then its page opens.
-- **Where:** Sidebar → Agents → **New agent**. `src/components/agents/NewAgentDialog.tsx`, `agentIdFrom` in `agent-page-model.ts`; command `create_agent` (`src-tauri/src/commands/agents.rs` → `services/agents.rs::create_agent`); HTTP `POST /api/agents` with `CreateAgentInput { id, name, description?, model?, instructions? }`.
+- **Where:** Sidebar → Agents → **New agent**. `src/components/agents/NewAgentDialog.tsx`, `agentIdFrom` in `agent-page-model.ts`; command `create_agent` (`src-tauri/src/rpc/agents.rs` → `services/agents.rs::create_agent`); HTTP `POST /api/rpc/create_agent` with `input: CreateAgentInput { id, name, description?, model?, instructions? }`.
 - **Preconditions:** None.
 - **Steps:**
   1. Click New agent, enter name "Weekly Report", pick Researcher, click Create agent.
@@ -638,7 +638,7 @@ Shared preconditions used below:
 ### AG-23 — Delete an agent
 
 - **What:** "Delete <name>?" asks the user to type the agent's name ("Type <name> to confirm"), not its ID. The folder moves to the trash (`~/.nandi/trash`), the removal is staged in git, the container and orchestrator stop, `repo://agent-deleted` fires and the Agents list opens with "Deleted <name>". Run history stays in the DB.
-- **Where:** Agent page "⋯" → "Delete agent…", Settings → Danger zone, list row menu. `src/components/agents/DeleteAgentDialog.tsx`; `delete_agent` (`services/agents.rs::delete_agent`, `retire_agent`); HTTP `DELETE /api/agents/{id}`.
+- **Where:** Agent page "⋯" → "Delete agent…", Settings → Danger zone, list row menu. `src/components/agents/DeleteAgentDialog.tsx`; `delete_agent` (`services/agents.rs::delete_agent`, `retire_agent`); HTTP `POST /api/rpc/delete_agent`.
 - **Preconditions:** A local agent.
 - **Steps:**
   1. Open Delete agent…; type the ID instead of the name; then the name; click Delete.
@@ -680,7 +680,7 @@ Shared preconditions used below:
 ### CH-01 — Send a message to an agent
 
 - **What:** The Chat tab's composer (Chat mode) sends text to the agent. The user message appears at once (optimistic, client UUID persisted by Rust); the run starts or is queued. Enter sends; Shift+Enter (or IME composition) is a newline; the box grows to 160 px. Placeholder changes to "Queue a message for <name>…" while a run is going. A missing-model notice (`LlmKeyNotice`) shows above the box when no model is usable.
-- **Where:** Agent page → Chat. `src/components/agent-console/AgentComposer.tsx`, `src/components/ask/AskBox.tsx`, `AskComposer.tsx`; `sendAgentMessage` (`src/lib/agent-actions.ts`); command `send_message` (`commands/chat.rs` → `services/chat.rs::submit`); HTTP `POST /api/agents/{id}/messages`.
+- **Where:** Agent page → Chat. `src/components/agent-console/AgentComposer.tsx`, `src/components/ask/AskBox.tsx`, `AskComposer.tsx`; `sendAgentMessage` (`src/lib/agent-actions.ts`); command `send_message` (`rpc/chat.rs` → `services/chat.rs::submit`); HTTP `POST /api/rpc/send_message`.
 - **Preconditions:** Model key (or canned engine).
 - **Steps:**
   1. Type "hello" and press Enter.
@@ -709,7 +709,7 @@ Shared preconditions used below:
 ### CH-03 — Attachments
 
 - **What:** Attach files or images through the native picker (images filter: png, jpg, jpeg, gif, webp, bmp, svg, heic). Up to 10 per message, 25 MB each. Chips show name and size, with remove (which discards the staged file). Files are staged under `~/.nandi/attachments/staging/<id>` and moved to `~/.nandi/attachments/<runId>/<id>/<name>` when sent. A message may be attachments only (its input is the file names). The webview never passes paths.
-- **Where:** Composer attach buttons. `AskComposer.tsx`, `AttachmentChip.tsx`; commands `pick_attachments`, `discard_attachment` (`commands/attachments.rs`, `services/attachments.rs`); HTTP `DELETE /api/attachments/{id}` (no picker over HTTP).
+- **Where:** Composer attach buttons. `AskComposer.tsx`, `AttachmentChip.tsx`; commands `pick_attachments`, `discard_attachment` (`desktop/attachments.rs`, `rpc/attachments.rs`, `services/attachments.rs`); HTTP `POST /api/rpc/discard_attachment` (no picker over HTTP).
 - **Preconditions:** Desktop app.
 - **Steps:**
   1. Attach two files; remove one; send.
@@ -776,7 +776,7 @@ Shared preconditions used below:
 ### CH-08 — Approval request card and decisions
 
 - **What:** A tool in `requires_approval` suspends the run (`awaiting_approval`, no tokens used) and shows a card: who asks (when shown outside chat), a plain-words summary (e.g. "Run a command: uname -a"; the demo's connector actions read "Post the review on <url>", "Restart the AWS Batch job <id>", "Redeploy the ECS service <service> in <cluster>"; other connector tools "Use <tool> from <connector>"), countdown ("Expires in N min", refreshed every 30 s), a Studio plan preview when the approval starts a Request, raw tool and arguments under **Details**, and **Approve** / **Reject** (Reject asks "Reject this step?" ("The agent won't do it. It carries on without it, or stops if it can't.", with Keep waiting). Decided cards show Approved / Rejected / Expired badges. The same card and decision work in chat, the agent page banner, Overview, Run Detail Approvals, the Inbox and a Request; deciding in one place clears it everywhere (`agent://approval_resolved`).
-- **Where:** `src/components/agent-console/ApprovalRequestCard.tsx`, `decideApproval` (`agent-actions.ts`); command `approve_action` (refused unless the approval belongs to the agent), `list_pending_approvals`; HTTP `POST /api/agents/{id}/approve`, `GET /api/approvals/pending`.
+- **Where:** `src/components/agent-console/ApprovalRequestCard.tsx`, `decideApproval` (`agent-actions.ts`); command `approve_action` (refused unless the approval belongs to the agent), `list_pending_approvals`; HTTP `POST /api/rpc/approve_action`, `POST /api/rpc/list_pending_approvals`.
 - **Preconditions:** Docker + image, model key, `requires_approval: [shell]`.
 - **Steps:**
   1. Ask for a shell command; Approve.
@@ -847,7 +847,7 @@ Shared preconditions used below:
 ### CH-13 — Stop the current turn
 
 - **What:** **Stop** (strip, queue panel, Run Detail) cancels the current run: the child task is aborted (dropping the LLM stream or tool call), its pending approvals expire, the run ends `cancelled` and the queue moves on.
-- **Where:** `cancelTurn` (`agent-actions.ts`); `cancel_turn` (`services/chat.rs`); HTTP `POST /api/agents/{id}/cancel` with body `{"turnId"}`.
+- **Where:** `cancelTurn` (`agent-actions.ts`); `cancel_turn` (`services/chat.rs`); HTTP `POST /api/rpc/cancel_turn` with `{agentId, turnId}`.
 - **Preconditions:** A long-running or approval-blocked run.
 - **Steps:** Click Stop during streaming; then on a run waiting for approval.
 - **Expected:** Streaming stops at once; status Cancelled; approval card Expired; `agent://turn_done` (cancelled).
@@ -1015,7 +1015,7 @@ Shared preconditions used below:
 ### CH-27 — Live sync: snapshots and agent events
 
 - **What:** The UI holds only Rust snapshots plus event deltas. Listeners register once at boot (IPC, or `/ws` for the web client), then snapshots load (`get_agent_snapshot`, `get_conversation`, `get_dashboard_snapshot`, `get_run_detail`, `get_studio_conversations`); events for a conversation mid-load are buffered and replayed. Events (global names, IDs in payload): `agent://token`, `agent://message`, `agent://tool_call`, `agent://tool_result`, `agent://approval_request`, `agent://approval_resolved`, `agent://run`, `agent://turn_done`, `agent://turn_aborted`, `agent://run_compacted`, `agent://tools_loaded`, `agent://queue_changed`, `agent://warning`, `agent://agents_changed`, `dashboard://activity`, `dashboard://attention`. Each is written to SQLite before it's emitted; reducers are idempotent and a gap triggers a snapshot reload.
-- **Where:** `src/lib/agent-sync.ts`, `src/lib/store-reducers.ts`, `src/store/agent-store.ts`; `src-tauri/src/services/events.rs`, `services/snapshots.rs`, `commands/snapshots.rs`; HTTP `GET /api/snapshots/agent/{id}`, `GET /api/conversations/{id}`, `GET /api/snapshots/dashboard?dayStart=`, `GET /api/runs/{id}`, WebSocket `/ws`.
+- **Where:** `src/lib/agent-sync.ts`, `src/lib/store-reducers.ts`, `src/store/agent-store.ts`; `src-tauri/src/services/events.rs`, `services/snapshots.rs`, `rpc/snapshots.rs`; HTTP `POST /api/rpc/get_agent_snapshot`, `get_conversation`, `get_dashboard_snapshot`, `get_run_detail`, WebSocket `/ws`.
 - **Preconditions:** Model key.
 - **Steps:**
   1. Open an agent's chat in the desktop app and the same agent in the web client; send from one.
@@ -1109,7 +1109,7 @@ Shared preconditions used below:
 ### RN-05 — Files tab
 
 - **What:** Files the run touched (from tool arguments and attachments) with operation (read, write, list, shell, attached), path and size; **Open** and **Show in folder** (desktop only) and **Copy path** (everywhere). Paths under `/agent/workdir` or relative resolve to `~/.nandi/local/work/<agent-id>/…`; `..` escapes are refused; a missing file says "That file isn't on this computer anymore".
-- **Where:** `RunDetailTabs.tsx` (`RunFiles`, `FileActions`), `run-detail-model.ts` (`filesTouched`); `resolve_run_file`, `open_run_file` (`commands/snapshots.rs`, `services/snapshots.rs::workdir_file`); HTTP `POST /api/runs/{id}/file` `{ path }`.
+- **Where:** `RunDetailTabs.tsx` (`RunFiles`, `FileActions`), `run-detail-model.ts` (`filesTouched`); `resolve_run_file`, `open_run_file` (`rpc/snapshots.rs`, `services/snapshots.rs::workdir_file`); HTTP `POST /api/rpc/resolve_run_file` `{ runId, path }`.
 - **Preconditions:** Docker + image, model key; a run that wrote a file.
 - **Steps:** Open Files; click Open, Show in folder, Copy path; delete the file on disk and click Open.
 - **Expected:** File opens in its default app; folder revealed; clipboard holds the host path; after deletion the error message above.
@@ -1145,7 +1145,7 @@ Shared preconditions used below:
 ### RN-08 — Run summary and questions (analysis)
 
 - **What:** The **Summary** tab (second, after Overview) generates a cached summary on first open (three short paragraphs plus key risks); then free-text questions answered only from the run's own record (events, messages, artifacts), each answer with cited sources (`[event:12]`, `[message:<id>]`) shown as a list; uncited IDs are dropped. Answers are cached per run and normalized question in `local_settings`; active runs aren't cached ("Saved answer" badge on reuse). Without a key: "Add an API key in Settings to use run analysis." with **Open Settings**, which opens Settings › Models & runtimes. An ask box sits under every tab; sending from any tab opens **Summary**, where the answers collect. The summary is not generated until Summary is opened.
-- **Where:** `src/components/agent-console/RunSummary.tsx` (`RunSummaryTab`, `RunAskBox`), `RunDetailView.tsx`; `analyze_run`, `summarize_run` (`commands/analysis.rs`, `services/run_analysis.rs`); HTTP `POST /api/rpc/analyze_run` `{question}`, `POST /api/rpc/summarize_run`.
+- **Where:** `src/components/agent-console/RunSummary.tsx` (`RunSummaryTab`, `RunAskBox`), `RunDetailView.tsx`; `analyze_run`, `summarize_run` (`rpc/analysis.rs`, `services/run_analysis.rs`); HTTP `POST /api/rpc/analyze_run` `{question}`, `POST /api/rpc/summarize_run`.
 - **Preconditions:** Model key; a finished run.
 - **Steps:** On the Files tab, ask "why did step 3 fail?"; ask the same with different case/spacing.
 - **Expected:** Summary opens with the answer and its sources; long citation ids wrap and the page keeps its width; the second ask is served from cache.

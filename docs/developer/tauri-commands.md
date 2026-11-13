@@ -98,9 +98,11 @@ const handleSave = async () => {
 
 ## Adding New Commands
 
-### 1. Declare the command
+One rule: **declare each command once.** The declaration gives the Tauri command (desktop) and `POST /api/rpc/{name}` (browser), so the transports can't drift.
 
-A service call that takes `&AppState` and returns `Result<T, String>` is one line in `src-tauri/src/rpc/<module>.rs` (see `rpc/mod.rs`):
+### 1. Declare it in one line
+
+Put the logic in a service that takes `&AppState` and returns `Result<T, String>`. Then add one line to `src-tauri/src/rpc/<module>.rs` (the forms are documented in `rpc/mod.rs`):
 
 ```rust
 super::commands! {
@@ -109,7 +111,17 @@ super::commands! {
 }
 ```
 
-It serves Tauri IPC and `POST /api/rpc/get_request` alike. A new module also adds its `RPC` table to `TABLES` in `rpc/mod.rs`. Commands that need the `AppHandle`, a window or a typed error are written by hand:
+A new module also gets `pub mod <module>;` and its `RPC` table in `TABLES` in `rpc/mod.rs`.
+
+| ✅ Do                                              | ❌ Don't                                         |
+| -------------------------------------------------- | ------------------------------------------------ |
+| Validate and check access in the service           | Check arguments in a handler or the client       |
+| One `rpc::commands!` line per command              | A Tauri command plus an HTTP route for one thing |
+| A desktop-only command in `desktop/`, with its why | A hand-written command that could be RPC         |
+
+### 2. Desktop-only commands
+
+A command that needs the `AppHandle`, a window or a typed error is written by hand in `src-tauri/src/desktop/`. Add a row to the table in `desktop/mod.rs` saying why, and its name to `desktop::COMMANDS`:
 
 ```rust
 #[tauri::command]
@@ -119,7 +131,9 @@ pub async fn my_new_command(app: AppHandle, arg: String) -> Result<MyType, Strin
 }
 ```
 
-### 2. Add Type derive to structs
+The browser can't call it, so add it to `HandWrittenCommands` in `src/lib/client/types.ts` and answer it in `src/lib/client/web.ts` (usually "use the desktop app").
+
+### 3. Add Type derive to structs
 
 ```rust
 use specta::Type;
@@ -130,20 +144,11 @@ pub struct MyType {
 }
 ```
 
-### 3. Register in bindings.rs
+### 4. Register in bindings.rs
 
-```rust
-// src-tauri/src/bindings.rs
+Add it to `collect_commands!` in `src-tauri/src/bindings.rs` (`get_request` as `requests::get_request`). A test in `rpc/mod.rs` fails if an RPC command is missing here, or if a generated command is neither RPC nor in `desktop::COMMANDS`.
 
-pub fn generate_bindings() -> Builder<tauri::Wry> {
-    Builder::<tauri::Wry>::new().commands(collect_commands![
-        // ... existing commands
-        crate::my_new_command,  // Add here
-    ])
-}
-```
-
-### 4. Regenerate TypeScript bindings
+### 5. Regenerate TypeScript bindings
 
 ```bash
 pnpm run rust:bindings
@@ -151,32 +156,33 @@ pnpm run rust:bindings
 
 This runs `cargo test export_bindings -- --ignored` which generates `src/lib/bindings.ts`.
 
-### 5. Use in frontend
+### 6. Use in frontend
 
 ```typescript
-import { commands, type MyType } from '@/lib/tauri-bindings'
+import { client } from '@/lib/client'
 
-const result = await commands.myNewCommand('arg')
+const result = await client.getRequest('r1')
 ```
 
-### 6. Commit both files
+The generated commands call `invoke` from `src/lib/client/invoke.ts`: Tauri IPC on the desktop, `POST /api/rpc/{name}` in a browser.
 
-Always commit:
+### 7. Commit both files
 
-- Rust changes (`src-tauri/src/lib.rs`, `src-tauri/src/bindings.rs`)
-- Generated TypeScript (`src/lib/bindings.ts`)
+Always commit the Rust changes and the generated `src/lib/bindings.ts`.
 
 ## File Structure
 
 ```
 src-tauri/src/
-├── lib.rs              # Commands with #[specta::specta]
-├── bindings.rs         # Command registration + export test
-└── Cargo.toml          # specta, tauri-specta dependencies
+├── rpc/                # One line per command (rpc::commands!), both transports
+├── desktop/            # Desktop-only Tauri commands, and why each is
+├── http/               # The web server: /api/rpc, webhooks, emergency data, /ws
+└── bindings.rs         # Command registration + export test
 
 src/lib/
 ├── bindings.ts         # Generated (DO NOT EDIT)
-└── tauri-bindings.ts   # Re-exports with project conventions
+├── tauri-bindings.ts   # Re-exports with project conventions
+└── client/             # The transport, and the web client's hand-written answers
 ```
 
 ## Known Limitations
@@ -230,15 +236,7 @@ vi.mock('@/lib/tauri-bindings', () => ({
 
 ## Available Commands
 
-| Command                   | Parameters                            | Returns                          | Description         |
-| ------------------------- | ------------------------------------- | -------------------------------- | ------------------- |
-| `greet`                   | `name: string`                        | `string`                         | Simple greeting     |
-| `loadPreferences`         | none                                  | `Result<AppPreferences, string>` | Load preferences    |
-| `savePreferences`         | `preferences: AppPreferences`         | `Result<null, string>`           | Save preferences    |
-| `sendNativeNotification`  | `title: string, body: string \| null` | `Result<null, string>`           | System notification |
-| `saveEmergencyData`       | `filename: string, data: JsonValue`   | `Result<null, string>`           | Save recovery data  |
-| `loadEmergencyData`       | `filename: string`                    | `Result<JsonValue, string>`      | Load recovery data  |
-| `cleanupOldRecoveryFiles` | none                                  | `Result<number, string>`         | Cleanup old files   |
+Every command is in the generated `src/lib/bindings.ts`. The RPC ones are the `rpc/` modules; the desktop-only ones are listed in `src-tauri/src/desktop/mod.rs`.
 
 ## Dependencies
 

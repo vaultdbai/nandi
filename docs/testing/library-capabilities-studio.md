@@ -161,7 +161,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### LB-14 — Marketplace listing, detail and search APIs
 
 - **What:** List agents and packs from all configured registries merged by ID (highest `latest_version` wins; tie → earlier registry), with filters (query, tags, verifiedOnly, installedOnly, refresh); detail per agent/pack; ranked catalog search (installed and available).
-- **Where:** Commands `list_available_packs`, `list_marketplace_packs`, `list_available_agents`, `get_agent_detail`, `get_pack_detail`, `list_installed`, `search_marketplace` (`rpc/marketplace.rs`, `commands/marketplace_search.rs`). HTTP `POST /api/rpc/list_marketplace_packs`, `/packs/{id}/detail`, `/agents`, `/agents/{id}/detail`, `/installed`, `/search?q=`. `services/marketplace/registry.rs`, `search.rs`. The command palette also searches marketplace entries (`services/palette.rs`).
+- **Where:** Commands `list_available_packs`, `list_marketplace_packs`, `list_available_agents`, `get_agent_detail`, `get_pack_detail`, `list_installed`, `search_marketplace` (`rpc/marketplace.rs`, `rpc/marketplace_search.rs`). HTTP `POST /api/rpc/list_marketplace_packs`, `/packs/{id}/detail`, `/agents`, `/agents/{id}/detail`, `/installed`, `/search?q=`. `services/marketplace/registry.rs`, `search.rs`. The command palette also searches marketplace entries (`services/palette.rs`).
 - **Preconditions:** Registry reachable or cached.
 - **Steps:** 1. `POST /api/rpc/list_available_agents`. 2. `POST /api/rpc/search_marketplace` `{"query":"review"}`. 3. `POST /api/rpc/list_installed`.
 - **Expected:** JSON lists; `verified` set per entry; search hits ranked.
@@ -622,7 +622,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-36 — Browser hand-over: the agent prepares, a person publishes
 
 - **What:** The visible `browser` pilot offers `browser_hand_over` (Nandi's, not Playwright's). The agent calls it after filling a composer or form. It always waits for the person, whatever skill.md allows: an Inbox item "Your turn: review and post" with the site, summary and draft, waiting up to 24 hours (not 1), and Nandi brings the browser window to the front. The person presses Post themselves, then answers **Done** (approves), **Skip** (rejects) or **Changed it** with the final text (approves; the text is the call's result). The answer is the tool's result on the run.
-- **Where:** `services/pilots/handover.rs`; `browser.rs` (`tools`, `bring_to_front`, `Action::HandOver`); `tools.rs` (`call`); `orchestrator.rs` `run_call` (bring forward); `events.rs` `approval_request` (TTL); `chat.rs` `answer_hand_over`; command `answer_hand_over`, `POST /api/approvals/{id}/hand-over`; UI `HandOverCard.tsx` (inside `ApprovalRequestCard`, so chat, Run Detail, the Inbox and Requests show it).
+- **Where:** `services/pilots/handover.rs`; `browser.rs` (`tools`, `bring_to_front`, `Action::HandOver`); `tools.rs` (`call`); `orchestrator.rs` `run_call` (bring forward); `events.rs` `approval_request` (TTL); `chat.rs` `answer_hand_over`; command `answer_hand_over`, `POST /api/rpc/answer_hand_over`; UI `HandOverCard.tsx` (inside `ApprovalRequestCard`, so chat, Run Detail, the Inbox and Requests show it).
 - **Preconditions:** CP-09 for an agent with `pilots: [browser]`; Chrome or Edge.
 - **Steps:** 1. Ask the agent to fill a form and hand over. 2. Check the window comes forward and the Inbox card. 3. Answer Changed it with new text. 4. Repeat and answer Skip.
 - **Expected:** 1-2. Card with draft, Done / Skip / Changed it, "Waits up to 24 h more"; no Approve / Reject. 3. The run's tool result: "The person changed it and published it … What went out: <text>". 4. "Rejected": the agent says nothing was published.
@@ -744,7 +744,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-20 — Capability sources (registries)
 
 - **What:** Subscribe to git repos whose `capabilities/` (or `.nandi/capabilities/`) folder is merged read-only into the capability index. Add with URL or folder, kind (auto-detect / GitHub / GitLab / Local / Git), optional branch prefix and user slug (follows `<prefix>/<slug>`). Synced on add, on demand, every 6 h; never pushed to. Rows show count, synced time/commit and skipped files; Remove deletes the local clone.
-- **Where:** Settings › Sources (kind Capabilities). `src/components/capability/AddCapabilitySourceForm.tsx`, `SourcesSection.tsx`; commands `list_capability_registries`, `add_capability_registry`, `remove_capability_registry`, `sync_capability_registry` (`commands/capability_registries.rs`); HTTP `POST /api/rpc/list_capability_registries|add_capability_registry|remove_capability_registry`, `POST /api/rpc/sync_capability_registry {url}`; `services/capability/registry.rs`, `git_sync.rs`. Clones in `~/.nandi/local/cache/capability-registries/<hash>/`.
+- **Where:** Settings › Sources (kind Capabilities). `src/components/capability/AddCapabilitySourceForm.tsx`, `SourcesSection.tsx`; commands `list_capability_registries`, `add_capability_registry`, `remove_capability_registry`, `sync_capability_registry` (`rpc/capability_registries.rs`); HTTP `POST /api/rpc/list_capability_registries|add_capability_registry|remove_capability_registry`, `POST /api/rpc/sync_capability_registry {url}`; `services/capability/registry.rs`, `git_sync.rs`. Clones in `~/.nandi/local/cache/capability-registries/<hash>/`.
 - **Preconditions:** A git repo with capability YAMLs.
 - **Steps:** 1. Add. 2. Sync now. 3. Remove.
 - **Expected:** Capabilities appear in Discover; local definitions override a registry's same ID; a second registry defining the same ID is reported, not merged.
@@ -756,7 +756,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-21 — Local capability lookups and agent cards
 
 - **What:** APIs to list capabilities local agents declare, find local agents serving a capability, fetch an agent's card (used by Network › Offer), and query the relay for providers of a capability (`*` for all).
-- **Where:** Commands `list_declared_capabilities`, `find_agents_by_capability`, `get_agent_card` (`commands/capability.rs`; HTTP `POST /api/rpc/list_declared_capabilities`, `find_agents_by_capability`, `get_agent_card`); `query_capability_presence` (`rpc/relay_capabilities.rs`).
+- **Where:** Commands `list_declared_capabilities`, `find_agents_by_capability`, `get_agent_card` (`rpc/capability.rs`; HTTP `POST /api/rpc/list_declared_capabilities`, `find_agents_by_capability`, `get_agent_card`); `query_capability_presence` (`rpc/relay_capabilities.rs`).
 - **Preconditions:** Agents with `serves:`/`provides:`; relay connected for presence.
 - **Steps:** Call each endpoint.
 - **Expected:** JSON arrays / card.
@@ -770,7 +770,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-01 — Ask page layout and conversations
 
 - **What:** "Ask" (internally Studio) is a split view: left the chat (conversation list when none selected, messages, ask box, Recent asks), right the artifact editor. **New** menu offers Chat, Agent, Workflow, Capability, Policy; empty state shows starter asks ("What's waiting for me?", "What did my agents do today?", …). Conversations persist in SQLite and are listed newest first; a draft chat is created on first message.
-- **Where:** Sidebar → Ask (`{ kind: 'studio', conversationId, draft? }`). `src/components/views/StudioView.tsx`, `src/components/studio/AskNewMenu.tsx`, `src/store/studio-store.ts`; HTTP `/api/studio/conversations` (+ `/{id}/messages`).
+- **Where:** Sidebar → Ask (`{ kind: 'studio', conversationId, draft? }`). `src/components/views/StudioView.tsx`, `src/components/studio/AskNewMenu.tsx`, `src/store/studio-store.ts`; HTTP `POST /api/rpc/get_studio_conversations`, `create_studio_conversation`, `send_studio_message`.
 - **Preconditions:** A model configured for answers.
 - **Steps:** 1. Open Ask with no chats. 2. New → Chat. 3. Send a message. 4. Back to list.
 - **Expected:** Starters shown; new conversation listed with title.
@@ -894,19 +894,19 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-11 — Companion window and global hotkey
 
 - **What:** A second always-available window (`companion.html` → `src/companion-main.tsx`, own QueryClient/theme/language). **Ctrl/Cmd+Shift+Space** from any app toggles the card (ask box focused); pressing again puts it away. In the web build the companion is docked in the main window's corner.
-- **Where:** `src-tauri/src/commands/companion.rs` (`setup`, `COMPANION_SHORTCUT`, `toggle_companion_window`), `src/components/companion/CompanionWindow.tsx`, `src-tauri/capabilities/companion.json`. HTTP `POST /api/companion/toggle` returns 501.
+- **Where:** `src-tauri/src/desktop/companion.rs` (`setup`, `COMPANION_SHORTCUT`, `toggle_companion_window`), `src/components/companion/CompanionWindow.tsx`, `src-tauri/capabilities/companion.json`. No browser route: the web client answers "use the desktop app".
 - **Preconditions:** Desktop app.
 - **Steps:** Press the hotkey from another app; press again.
 - **Expected:** Card opens in its corner with focus in the ask box; second press returns to the bison (or hides without it).
 - **Edge / negative cases:** Hotkey registration failure is logged, app still starts.
-- **Automation:** Covered by: none (manual steps documented in `commands/companion.rs` header) | Layer: manual | Gap: hotkey automation.
+- **Automation:** Covered by: none (manual steps documented in `rpc/companion.rs` header) | Layer: manual | Gap: hotkey automation.
 - **Needs relay:** no
 - **Status:** Shipped
 
 ### AI-12 — The bison: animation, badge, corner placement and drag-snap
 
 - **What:** Collapsed, the window (192×128) is the bison (`CompanionCollapsed`, `CompanionBison`): the brand kit's resting bison as a 4-second animated WebP, with the count badge (Inbox count, or `!` for a problem) coloured by state. `data-pose` still reflects the state (`wait`, `carry`, `done`, `rest`). Whether it moves follows Settings › Appearance › **Bison moves** (AI-17): Always (default), When the system allows (still under reduce motion; on Windows, Animation effects off) or Never (still frame). Dragging moves the window and it snaps to the nearest corner, kept after a restart.
-- **Where:** `src/components/companion/CompanionCollapsed.tsx`, `src/assets/brand/CompanionBison.tsx`, `companion-bison.css`, `src/assets/brand/mascot/companion-bison.webp` (and `-still.webp`), `src/lib/bison-motion.ts`, `companion-model.ts` (`orbFor`, `poseFor`); `commands/companion.rs` (`COLLAPSED_SIZE`, `place_companion`, `nearest_corner`).
+- **Where:** `src/components/companion/CompanionCollapsed.tsx`, `src/assets/brand/CompanionBison.tsx`, `companion-bison.css`, `src/assets/brand/mascot/companion-bison.webp` (and `-still.webp`), `src/lib/bison-motion.ts`, `companion-model.ts` (`orbFor`, `poseFor`); `rpc/companion.rs` (`COLLAPSED_SIZE`, `place_companion`, `nearest_corner`).
 - **Preconditions:** "Nandi on the desktop" on (default).
 - **Steps:** 1. Look at the bison with Windows Animation effects off; 2. trigger an approval; 3. set Bison moves to Never, then When the system allows; 4. drag to top-left; 5. restart; 6. right-click → Hide the bison.
 - **Expected:** 1. It moves (Always is the default). 2. The badge shows the count. 3. Never shows the still frame at once; When the system allows is still while Animation effects is off. 4–5. It snaps top-left and is there after restart. 6. Hide turns the bubble setting off.
@@ -918,7 +918,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-13 — Companion card: Needs you, Running, Recent
 
 - **What:** Expanded card is Home in miniature: one-sentence summary, "Needs you (n)" (max 3 with "+ N more", inline Approve/Reject/Answer), Running (Requests with step n of m and blocker), Recent; first-run and no-model states ("Add a model to start", "Install a starter pack"). Header: Open in Nandi, Keep on top / Stop keeping on top, Expand/Collapse (overlay, Mod+Shift+F), "Minimize to the orb", ⋯ (Notify me, Quit Nandi).
-- **Where:** `CompanionExpanded.tsx`, `CompanionHeader.tsx`, `CompanionOverlay.tsx`, `src/hooks/useCompanion.ts`; `get_companion_snapshot` (`GET /api/companion/snapshot?dayStart=`), `set_companion_pinned` (`POST /api/companion/pin`), `place_companion`, `quit_nandi`.
+- **Where:** `CompanionExpanded.tsx`, `CompanionHeader.tsx`, `CompanionOverlay.tsx`, `src/hooks/useCompanion.ts`; `get_companion_snapshot` (`POST /api/rpc/get_companion_snapshot`), `set_companion_pinned` (desktop; the browser saves it with `save_companion_pinned`), `place_companion`, `quit_nandi`.
 - **Preconditions:** Some pending approval and a running run.
 - **Steps:** 1. Open card. 2. Approve inline. 3. Expand to overlay; Escape. 4. Pin, click another app.
 - **Expected:** Approval resumes the run without the main window; overlay spans the monitor; pinned card stays on top; pin remembered after restart.
@@ -930,7 +930,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-14 — Companion conversation, @Agent, Request scope and live cards
 
 - **What:** One input (no Chat/Ask toggle) sends to a Studio conversation titled "Companion" (listed in Ask). "@Agent name …" routes to that agent's chat. Answers render `nandi://request/<id>` links as live Request cards. Clicking a running/finished item pins it at the top as a live card; **Ask about this** scopes the chat to that Request (scope chip with Clear; stored as a setting and added to Studio's prompt); its › opens the Request in the main window. Edits hand off with **Open in Ask**.
-- **Where:** `CompanionExpanded.tsx`, `RequestCard.tsx`, `companion-model.ts` (`requestToPin`, `requestIdFromLink`); `send_companion_message` (`POST /api/companion/messages`); `services/companion.rs`.
+- **Where:** `CompanionExpanded.tsx`, `RequestCard.tsx`, `companion-model.ts` (`requestToPin`, `requestIdFromLink`); `send_companion_message` (`POST /api/rpc/send_companion_message`); `services/companion.rs`.
 - **Preconditions:** Model key.
 - **Steps:** 1. Ask "what did my agents do today?". 2. "@Researcher find papers on X". 3. Click a Request → Ask about this → ask. 4. Open in Ask.
 - **Expected:** Replies in conversation; agent chat receives the @ message; scoped answer about that Request; Ask page opens the "Companion" conversation.
@@ -942,7 +942,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-15 — Watch in companion
 
 - **What:** On a Request page, ⋯ → **Watch in companion** shows the companion with that Request pinned at the top of Running (`companion://focus_request`, emitted only to the companion window).
-- **Where:** `companion_focus_request` (`commands/companion.rs`); in web build handled in-page.
+- **Where:** `companion_focus_request` (`rpc/companion.rs`); in web build handled in-page.
 - **Preconditions:** A Request.
 - **Steps:** Request page → ⋯ → Watch in companion.
 - **Expected:** Companion opens expanded with the Request pinned.
@@ -954,7 +954,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-16 — Companion notifications
 
 - **What:** While the card is hidden, OS notifications for new approvals and questions ("<agent> needs your approval", "A question for you: …") and once 5 minutes before an item expires; never for items present at launch or for failures. Toggle via companion ⋯ → Notify me or Settings › Appearance.
-- **Where:** `src/hooks/useCompanionNotifications.ts`, `companion-model.ts` (`noticesFor`); `set_companion_notify` (`POST /api/companion/notify`); sends via `sendNativeNotification`.
+- **Where:** `src/hooks/useCompanionNotifications.ts`, `companion-model.ts` (`noticesFor`); `set_companion_notify` (`POST /api/rpc/set_companion_notify`); sends via `sendNativeNotification`.
 - **Preconditions:** OS notifications allowed.
 - **Steps:** Hide companion; trigger an approval; turn Notify me off; trigger another.
 - **Expected:** One notification, then none.
@@ -971,7 +971,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **Steps:** 1. Turn bubble off/on. 2. Turn on start-bison-only and relaunch. 3. Close main window → Open in Nandi. 4. Quit from ⋯.
 - **Expected:** As described; settings persist across restart.
 - **Edge / negative cases:** Main window may flash briefly at launch with bison-only.
-- **Automation:** Covered by: Rust `services/companion.rs` / `commands/companion.rs` settings tests | Layer: manual | Gap: acceptance unchecked (`task-x-companion-bison.md`).
+- **Automation:** Covered by: Rust `services/companion.rs` / `rpc/companion.rs` settings tests | Layer: manual | Gap: acceptance unchecked (`task-x-companion-bison.md`).
 - **Needs relay:** no
 - **Status:** Shipped (overlaps Settings area)
 
@@ -998,6 +998,6 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - Shared folders acceptance (two folders, Ask "give write access") unchecked — `docs/tasks-todo/task-x-shared-folders.md`.
 - No HTTP sync-all route for capability registries; registry file-name/ID rule inconsistent with gold copy.
 - `marketplace.md` describes an Installed tab with a Modified badge, "Update all" and a Registries tab; the current Library has none of these (single-item update via drawer; registries in Settings › Sources). `list_installed` and `search_marketplace` have no UI consumer.
-- `queryCapabilityPresence` has no HTTP route (web client returns not supported); `POST /api/companion/toggle` returns 501.
+- `queryCapabilityPresence` has no HTTP route (web client returns not supported); `toggle_companion_window` is desktop-only; the web client answers it itself.
 - `registry-schema/README.md` ([`nandi-spec/registry-schema`](https://github.com/vaultdbai/nandi-spec/tree/main/registry-schema)) still points to "Marketplace → Registries".
 - Not built by design: ratings, payments, install analytics, auto-updates — `docs/developer/marketplace.md`.

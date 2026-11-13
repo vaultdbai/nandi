@@ -11,7 +11,7 @@ index.html      → src/main.tsx            → the main app
 companion.html  → src/companion-main.tsx  → CompanionWindow (own QueryClient, theme, language)
 ```
 
-`vite.config.ts` builds both inputs. The window (label `companion`) is created once at startup and shown or hidden after that (`src-tauri/src/commands/companion.rs` `setup`). Its permissions are in `capabilities/companion.json`. **Ctrl/Cmd+Shift+Space** toggles it from anywhere (`COMPANION_SHORTCUT`).
+`vite.config.ts` builds both inputs. The window (label `companion`) is created once at startup and shown or hidden after that (`src-tauri/src/desktop/companion.rs` `setup`). Its permissions are in `capabilities/companion.json`. **Ctrl/Cmd+Shift+Space** toggles it from anywhere (`COMPANION_SHORTCUT`).
 
 In the web build there's no second window. `MainWindow` renders `<CompanionApp docked />` in the corner, with the same content.
 
@@ -41,7 +41,7 @@ The default opens views in the current window. The companion provides `<ViewOpen
 | `companion://open_settings` | companion → main    | `{ pane }`      | The main window opens Settings at that pane        |
 | `companion://focus_request` | backend → companion | `{ requestId }` | The card opens with that Request pinned in Running |
 
-The constants are in `src/lib/companion-events.ts` and `FOCUS_REQUEST_EVENT` in `commands/companion.rs`. **Watch in companion** calls `companion_focus_request(id)`, which shows the window and emits only to it (`emit_to(COMPANION_LABEL, …)`).
+The constants are in `src/lib/companion-events.ts` and `FOCUS_REQUEST_EVENT` in `desktop/companion.rs`. **Watch in companion** calls `companion_focus_request(id)`, which shows the window and emits only to it (`emit_to(COMPANION_LABEL, …)`).
 
 ## Notifications
 

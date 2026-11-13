@@ -358,7 +358,7 @@ start and always on top, and closing the card goes back to it instead of
 hiding the window. The window keeps to a screen corner: Rust's
 `place_companion` sizes it for the bison or the card and puts it in the
 saved corner (`companion.corner`), and a drag snaps to the nearest corner
-when the moves stop (`commands/companion.rs`, pure `nearest_corner` /
+when the moves stop (`desktop/companion.rs`, pure `nearest_corner` /
 `corner_position`). The window-state plugin denylists it. The card opens
 on `companion://expand` (the hotkey, Watch in companion) or a click, not
 on focus, so pressing the bison to drag it doesn't open it; a press that

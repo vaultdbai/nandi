@@ -69,7 +69,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-04 — Agent tool container lifecycle (start, stop, restart, reconcile)
 
 - **What:** Each native agent gets its own `nandi-runtime` container, started on first tool use or from the agent page, stopped/restarted from the agent page's menu; a reconciler notices containers stopped outside Nandi every 15 s.
-- **Where:** Agent page → "⋯" menu → Start container / Stop container / Restart container (restart asks "Restart the container?": "The current turn will stop."). `src/components/views/AgentView.tsx`, `src/lib/agent-actions.ts` (`controlContainer`), `src-tauri/src/commands/agents.rs` (`start_agent`, `stop_agent`, `restart_agent`), `src-tauri/src/services/runtimes.rs` (`AgentRuntimes::get_or_start`, `restart`, `stop`, `reconcile`), `src-tauri/src/runtime.rs` (`start_container`, `stop_container`, `container_running`). Event `agent://agents_changed`; warning banner after `agent://warning` (`src/components/agent-console/ContainerControls.tsx`).
+- **Where:** Agent page → "⋯" menu → Start container / Stop container / Restart container (restart asks "Restart the container?": "The current turn will stop."). `src/components/views/AgentView.tsx`, `src/lib/agent-actions.ts` (`controlContainer`), `src-tauri/src/rpc/agents.rs` (`start_agent`, `stop_agent`, `restart_agent`), `src-tauri/src/services/runtimes.rs` (`AgentRuntimes::get_or_start`, `restart`, `stop`, `reconcile`), `src-tauri/src/runtime.rs` (`start_container`, `stop_container`, `container_running`). Event `agent://agents_changed`; warning banner after `agent://warning` (`src/components/agent-console/ContainerControls.tsx`).
 - **Preconditions:** Docker running, `ghcr.io/vaultdbai/nandi-runtime:sandbox-6` built.
 - **Steps:** 1. Start the agent's container. 2. `docker ps` . 3. `docker stop nandi-agent-<tag>-<id>` from a terminal, wait 15 s. 4. Restart from the menu.
 - **Expected:** Container named `nandi-agent-<tag>-<id>` (`runtime::container_name`; `<tag>` is `nandi_config::instance_tag`, eight hex characters from this Nandi's folder) is running with labels carrying the agent id and the instance tag; the agent overview shows the state; after the external stop the state returns to Idle; Restart replaces the container (proxy token re-issued) and opens a new tool-server session over `docker exec` (RT-06). A failed start shows "Container: couldn't start" on the agent page menu and the Overview health card, and an error toast.
@@ -105,7 +105,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-07 — Built-in tool catalog and On/Off switch
 
 - **What:** The tool catalog lists built-in tools (`shell`, `read_file`, `write_file`, `list_dir`, delegation), connector and pilot tools; a built-in tool can be switched off (confirmation asked, agents lose it) and on; usage stats are available.
-- **Where:** Library → Browse, Tools filter (On/Off switch in `src/components/library/LibraryItemAction.tsx`); `src/hooks/useTools.ts`; `src-tauri/src/commands/tools.rs` (`list_tools`, `get_tool`, `set_tool_enabled`, `get_tool_usage_stats`), `src-tauri/src/services/tools/` (`builtin.rs`, `catalog.rs`). HTTP `POST /api/rpc/list_tools`, `get_tool_usage_stats`, `get_tool`, `set_tool_enabled`. Event `tool://catalog_changed`.
+- **Where:** Library → Browse, Tools filter (On/Off switch in `src/components/library/LibraryItemAction.tsx`); `src/hooks/useTools.ts`; `src-tauri/src/rpc/tools.rs` (`list_tools`, `get_tool`, `set_tool_enabled`, `get_tool_usage_stats`), `src-tauri/src/services/tools/` (`builtin.rs`, `catalog.rs`). HTTP `POST /api/rpc/list_tools`, `get_tool_usage_stats`, `get_tool`, `set_tool_enabled`. Event `tool://catalog_changed`.
 - **Preconditions:** None.
 - **Steps:** 1. Open Library, filter to Tools, find "Run shell commands" (`shell`). 2. Switch it Off, click Switch off. 3. Restart the app. 4. Switch it On.
 - **Expected:** Off opens "Switch off Run shell commands?" ("Agents that use … won't be able to until you switch it back on."). After Off, `tool_catalog.enabled = 0` and survives a catalog rebuild and restart; On needs no confirmation. Delegation tool has `requires_approval: true` by default.
@@ -269,7 +269,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-21 — Recent harness sessions list and Stop
 
 - **What:** Advanced shows recent harness sessions (below Enterprise config) with status (Starting, Running, Finished, Failed, Stopped) and token counts ("N in / M out tokens"); Stop kills a live session (CLI and container stop, run fails).
-- **Where:** Settings → Models & runtimes → Advanced (sessions list). `src/components/harness/HarnessSessionList.tsx`, `commands/harness_sessions.rs` (`list_harness_sessions`, `get_harness_session`, `get_harness_events`, `kill_harness_session`). HTTP `POST /api/rpc/list_harness_sessions`, `get_harness_session|kill_harness_session`, `POST /api/rpc/get_harness_events`.
+- **Where:** Settings → Models & runtimes → Advanced (sessions list). `src/components/harness/HarnessSessionList.tsx`, `rpc/harness_sessions.rs` (`list_harness_sessions`, `get_harness_session`, `get_harness_events`, `kill_harness_session`). HTTP `POST /api/rpc/list_harness_sessions`, `get_harness_session|kill_harness_session`, `POST /api/rpc/get_harness_events`.
 - **Preconditions:** At least one harness run.
 - **Steps:** 1. Start a long harness run. 2. Open Settings › Models & runtimes, expand Advanced, click Stop on the running session.
 - **Expected:** Row goes to Stopped; run fails; container gone. Empty state: "No harness sessions yet".
@@ -338,15 +338,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### RT-28 — List Docker containers command
 
-- **What:** Lists all containers (running and stopped) with short id, name, image, state, status.
-- **Where:** `src-tauri/src/rpc/containers.rs` (`list_containers`). No UI uses it.
-- **Preconditions:** Docker.
-- **Steps:** 1. Call `commands.listContainers()` from devtools.
-- **Expected:** Array of `ContainerInfo`; error "Failed to connect to Docker: ..." without Docker.
-- **Edge / negative cases:** unnamed containers ("unnamed").
-- **Automation:** Covered by: `rpc/containers.rs` tests | Layer: unit | Gap: not surfaced in UI.
-- **Needs relay:** no
-- **Status:** Partial (backend only)
+- **Status:** Removed 2026-11-13 (`list_containers` had no caller). The ID is kept so other IDs don't shift.
 
 ## Models, providers and keys
 
@@ -543,7 +535,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-18 — Team LLM config (`.nandi/llm.yaml`) and Enterprise config panel
 
 - **What:** A team repo can carry `.nandi/llm.yaml` (providers bedrock/azure/litellm/anthropic/openai/ollama, routing default/fallbacks, no secrets); precedence env (`NANDI_LLM_PROVIDER`, `NANDI_LLM_MODEL`) > repo > local; harness agents take its provider/model, native agents its native default model. Advanced shows what's in effect, with Sync.
-- **Where:** Settings → Models & runtimes → Advanced → Enterprise config. `src/components/preferences/EnterpriseConfigSection.tsx`, `services/config/repo_config.rs`, `commands/config.rs` (`get_repo_llm_config`, `reload_repo_llm_config`). HTTP `POST /api/rpc/get_repo_llm_config`, `POST /api/rpc/reload_repo_llm_config`. Event `config://repo_llm_changed`.
+- **Where:** Settings → Models & runtimes → Advanced → Enterprise config. `src/components/preferences/EnterpriseConfigSection.tsx`, `services/config/repo_config.rs`, `rpc/config.rs` (`get_repo_llm_config`, `reload_repo_llm_config`). HTTP `POST /api/rpc/get_repo_llm_config`, `POST /api/rpc/reload_repo_llm_config`. Event `config://repo_llm_changed`.
 - **Preconditions:** A repo with `.nandi/llm.yaml`.
 - **Steps:** 1. Add the file with `default: bedrock-primary`. 2. Click Sync. 3. Break the YAML, Sync. 4. Set `NANDI_LLM_MODEL=ollama:llama3`, restart.
 - **Expected:** 2. Toast "Enterprise config synced", effective values shown, `repo_config_cache` row. 3. Toast "The repo's .nandi/llm.yaml has a problem". 4. Default model for calls is `ollama:llama3`. File changes on disk are picked up by mtime without Sync.
@@ -843,4 +835,3 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - `verify` does not consider Claude Code sign-in, the trial, or CLI runtimes/harness image (`src-tauri/src/verify.rs`).
 - `scripts/e2e-smoke.ps1` only checks for a DeepSeek key (paths, schema and identifier were fixed on 2026-10-22).
 - Model error messages from the core still say "Settings › Models" rather than "Settings › Models & runtimes" (`llm_trial` `TRIAL_USED_UP`, `llm_keys.rs` `NO_KEY`, `requests/blocker.rs`, `studio/validate.rs`).
-- `list_containers` has no UI.

@@ -187,7 +187,7 @@ Notes that apply to the whole section:
   - Agents are grouped by owner ("Alice · Agents: 3"). Each group can be folded and has **View profile** and **Trust** (the TrustControls popover).
   - The "From" filter offers Everyone, My teams, Relay and "Used in the last 7 days".
   - Each card has **Call**. "Install locally" is disabled.
-- **Where:** Library → Shared tab (`{kind:'library', tab:'shared'}`). Code: `src/components/views/SharedWithMe.tsx`, `src/components/network/OwnerGroupHeader.tsx`, `commands/shared.rs` (`list_agents_shared_with_me`), `services/shared.rs`. HTTP: `POST /api/rpc/list_agents_shared_with_me`.
+- **Where:** Library → Shared tab (`{kind:'library', tab:'shared'}`). Code: `src/components/views/SharedWithMe.tsx`, `src/components/network/OwnerGroupHeader.tsx`, `rpc/shared.rs` (`list_agents_shared_with_me`), `services/shared.rs`. HTTP: `POST /api/rpc/list_agents_shared_with_me`.
 - **Preconditions:** You are in a team with shared agents, and/or connected to a relay where others accept delegation.
 - **Steps:** 1. Open Library → Shared. 2. Switch the From filter. 3. Fold an owner group. 4. Open View profile. 5. Open the Trust popover.
 - **Expected:**
@@ -205,7 +205,7 @@ Notes that apply to the whole section:
 ### TM-13 — By capability: provider ranking, Auto and pins
 
 - **What:** For each capability, lists every provider (yours, teammates' and relay agents) in the order delegation would try them: a pinned one the relay has free, then yours (they run here), then the relay's plan. "Auto sends tasks to {name}" names the pick. Other members' providers show the relay's reasons in your language ("Bob is free · Bob is usually quick"), never their success rate. Unavailable providers show the reason: offline, full, closed, not serving, "That's you", or "Online, but not picked right now". **Pin** a provider so Auto uses it first. Pins are personal (`settings.yaml` `delegation.preferred_providers`).
-- **Where:** Library → Shared tab → pick a capability in the "Can do" filter; the provider list shows above the cards (`src/components/sharing/CapabilityProvidersList.tsx`, mounted by `SharedWithMe.tsx`; reasons by `components/network/RouteReasons.tsx`). Code: `commands/shared.rs` (`list_capability_providers`, `set_provider_pin`), `services/shared.rs` (`auto_order`), the relay's plan (`a2a/route.rs`). HTTP: `POST /api/rpc/list_capability_providers`, `POST /api/rpc/set_provider_pin {"capability","cardId"|null}`.
+- **Where:** Library → Shared tab → pick a capability in the "Can do" filter; the provider list shows above the cards (`src/components/sharing/CapabilityProvidersList.tsx`, mounted by `SharedWithMe.tsx`; reasons by `components/network/RouteReasons.tsx`). Code: `rpc/shared.rs` (`list_capability_providers`, `set_provider_pin`), `services/shared.rs` (`auto_order`), the relay's plan (`a2a/route.rs`). HTTP: `POST /api/rpc/list_capability_providers`, `POST /api/rpc/set_provider_pin {"capability","cardId"|null}`.
 - **Preconditions:** At least two providers serve the same capability.
 - **Steps:** 1. Open Library → Shared and choose the capability under "Can do". 2. Note the Auto pick. 3. Pin another provider. 4. Unpin it.
 - **Expected:**
@@ -243,7 +243,7 @@ Notes that apply to the whole section:
 ### TM-15 — Shared by me
 
 - **What:** Lists your agents that accept delegation or are shared to a team. Each shows "N calls in 30 days", last called (or "never called"), "Accepts delegation (relay)" and "Shared to {team}" chips, with search and an "All / Recently used" filter. Each sharing chip can be turned off after a confirmation.
-- **Where:** Network → Sharing → Shared (`{kind:'network', tab:'sharing', sharing:'shared'}`). Code: `src/components/views/SharedByMe.tsx`, `commands/shared.rs` (`list_agents_shared_by_me`). HTTP: `POST /api/rpc/list_agents_shared_by_me`.
+- **Where:** Network → Sharing → Shared (`{kind:'network', tab:'sharing', sharing:'shared'}`). Code: `src/components/views/SharedByMe.tsx`, `rpc/shared.rs` (`list_agents_shared_by_me`). HTTP: `POST /api/rpc/list_agents_shared_by_me`.
 - **Preconditions:** At least one agent is shared or accepts delegation.
 - **Steps:** 1. Open the tab. 2. Search. 3. Turn off a chip and confirm.
 - **Expected:**
@@ -262,7 +262,7 @@ Notes that apply to the whole section:
 ### TM-16 — Trust policies per caller and agent (Allow / Ask / Deny)
 
 - **What:** A machine-local rule per edge decides whether a requester (a card ID, or `*`) may run tasks on a local agent. A specific rule beats `*`, and the default is Ask. Ask rejects remote requesters unless they are trusted peers.
-- **Where:** Network → Sharing → Who may call you → Graph (TM-17), or via API. Code: `services/trust.rs` (the `trust_policies` table), `commands/shared.rs` (`list_trust_policies`, `set_trust_policy`). HTTP: `POST /api/rpc/list_trust_policies`, `set_trust_policy` (body `requester`, `providerAgent`, `policy`).
+- **Where:** Network → Sharing → Who may call you → Graph (TM-17), or via API. Code: `services/trust.rs` (the `trust_policies` table), `rpc/shared.rs` (`list_trust_policies`, `set_trust_policy`). HTTP: `POST /api/rpc/list_trust_policies`, `set_trust_policy` (body `requester`, `providerAgent`, `policy`).
 - **Preconditions:** Two instances on a relay. B has an agent with `accepts_delegation`.
 - **Steps:** 1. On B, set `{requester:"<A>/<agent>", providerAgent:"x", policy:"deny"}`. 2. Have A call B's agent. 3. Change the rule to allow and call again.
 - **Expected:** With deny, the task is Rejected and the requester sees the reason. With allow, it runs. The rule is stored in SQLite, not in the gold copy.
@@ -974,7 +974,7 @@ Notes that apply to the whole section:
   - Webhook and device trigger receivers skip the token (overlap with Triggers).
 - **Where:** `src-tauri/src/http/auth.rs`.
 - **Preconditions:** The server is running.
-- **Steps:** 1. `curl /api/agents` with no token. 2. Repeat with the Bearer token. 3. Open `/?token=<t>` in a browser. 4. Open `/` without a cookie.
+- **Steps:** 1. `curl -X POST /api/rpc/list_agents` with no token. 2. Repeat with the Bearer token. 3. Open `/?token=<t>` in a browser. 4. Open `/` without a cookie.
 - **Expected:**
   - Step 1 gets `401 {"error":"unauthorized"}`. Step 2 gets 200.
   - Step 3 gets a 303 to `/` with Set-Cookie, and later navigation works.

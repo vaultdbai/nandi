@@ -79,7 +79,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-05 — New workflow from a template
 
 - **What:** **New workflow** ▾ → "From a template…" opens the dialog "New workflow from a template" listing the bundled templates (Daily summary, Review new files, Approve then send, Two-agent pipeline); the user names it and picks an agent per agent step. The workflow is saved with an id derived from the name (made unique) and its Graph tab opens. With no agents, it offers to install a starter pack instead.
-- **Where:** Automations → Workflows → New workflow ▾; `src/components/automations/NewWorkflowMenu.tsx` (`TemplateDialog`), `src-tauri/src/services/workflows/templates.rs`, commands `list_workflow_templates`, `create_workflow_from_template` (`src-tauri/src/commands/workflows.rs`); HTTP `GET/POST /api/workflow-templates`.
+- **Where:** Automations → Workflows → New workflow ▾; `src/components/automations/NewWorkflowMenu.tsx` (`TemplateDialog`), `src-tauri/src/services/workflows/templates.rs`, commands `list_workflow_templates`, `create_workflow_from_template` (`src-tauri/src/rpc/workflows.rs`); HTTP `POST /api/rpc/list_workflow_templates`, `create_workflow_from_template`.
 - **Preconditions:** At least one agent (for the agent picker).
 - **Steps:**
   1. Open the template dialog; choose "Two-agent pipeline".
@@ -109,7 +109,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-07 — Import a workflow YAML file
 
 - **What:** "Import a workflow file…" opens a file picker (`.yaml,.yml`); the file is validated and written to the repo, then its page opens. Re-importing identical text is a no-op; a different workflow with an existing id is refused.
-- **Where:** Automations → Workflows → New workflow ▾ → Import a workflow file…; `src/components/views/WorkflowImport.tsx` (`useWorkflowImport`), `src/lib/workflow-actions.ts` (`importWorkflowFile`), command `create_workflow`; HTTP `POST /api/workflows` (`{yaml}`); `src-tauri/src/services/repos/workflow_repo.rs` (`create_source`).
+- **Where:** Automations → Workflows → New workflow ▾ → Import a workflow file…; `src/components/views/WorkflowImport.tsx` (`useWorkflowImport`), `src/lib/workflow-actions.ts` (`importWorkflowFile`), command `create_workflow`; HTTP `POST /api/rpc/create_workflow` (`{input: {yaml}}`); `src-tauri/src/services/repos/workflow_repo.rs` (`create_source`).
 - **Preconditions:** A YAML file on disk.
 - **Steps:** 1. Import a valid file. 2. Import the same file again. 3. Change a step and import again with the same `id`. 4. Import an invalid file.
 - **Expected:** (1) toast "Added <name>", file written, detail page opens; (2) succeeds silently with no change; (3) error "already exists"; (4) validation error toast.
@@ -147,7 +147,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-10 — Graph tab (workflow canvas)
 
 - **What:** A React Flow canvas with one node per step laid out top to bottom, "sequence" edges between consecutive steps and "data" edges for `{{step.output}}` references, and live per-node status from the latest run ("Pending", "Running", "Waiting for your approval", "Waiting on a person", "Success", "Failed", "Skipped"). Nodes aren't draggable. A screen-reader list describes the dependencies.
-- **Where:** Workflow → Graph tab; `src/components/workflow-builder/WorkflowCanvas.tsx`, `graph-model.ts` (`layoutGraph`, `applyWorkflowEvent`), `useWorkflowGraph.ts`; command `get_workflow_graph` (`src-tauri/src/commands/workflow_builder.rs`, `src-tauri/src/services/workflow_graph.rs` `build_graph`); HTTP `POST /api/rpc/get_workflow_graph`.
+- **Where:** Workflow → Graph tab; `src/components/workflow-builder/WorkflowCanvas.tsx`, `graph-model.ts` (`layoutGraph`, `applyWorkflowEvent`), `useWorkflowGraph.ts`; command `get_workflow_graph` (`src-tauri/src/rpc/workflow_builder.rs`, `src-tauri/src/services/workflow_graph.rs` `build_graph`); HTTP `POST /api/rpc/get_workflow_graph`.
 - **Preconditions:** A workflow with a data reference.
 - **Steps:** 1. Open Graph. 2. Run the workflow and watch nodes. 3. Let it fail at a step.
 - **Expected:** Edges match the YAML; nodes change status live from `workflow://*` events; steps after a failure show as skipped once the run ended.
@@ -236,7 +236,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-17 — Run a workflow (sequential engine)
 
 - **What:** Run checks every agent step's agent exists, inserts a `workflow_runs` row, and a driver advances steps in order: each step renders `{{step.output}}` and is submitted as an ordinary agent run (source `workflow`, label "<workflow> · step n") in that agent's conversation, then waits for `agent://turn_done`. The step output is the run's last non-empty assistant message.
-- **Where:** Workflow → Run; command `run_workflow`; HTTP `POST /api/workflows/{id}/run`; `src-tauri/src/services/workflows.rs` (`run_workflow`, `start_run`, `drive`, `start_step`, `finish_step`).
+- **Where:** Workflow → Run; command `run_workflow`; HTTP `POST /api/rpc/run_workflow`; `src-tauri/src/services/workflows.rs` (`run_workflow`, `start_run`, `drive`, `start_step`, `finish_step`).
 - **Preconditions:** Two agents; a model or the canned engine (`engine` = `"canned"` in `local_settings`).
 - **Steps:** 1. Create the `echo-chain` workflow from `docs/developer/workflows.md`. 2. Run it. 3. Open each agent's chat.
 - **Expected:** `first` completes before `second` starts; `second`'s input contains `first`'s output; each agent's chat has exactly its step message; run status `completed`; `workflow_runs.context` holds per-step status, input, output, agent run id.
@@ -263,7 +263,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-19 — Steps that ask first (workflow approvals)
 
 - **What:** A step with `requires_approval: true` pauses the run before sending (`awaiting_approval`, `workflow://step_awaiting_approval`). Approve resumes the driver; Reject (confirmed in the UI) marks the step rejected and fails the run without messaging the agent. Decisions are available in the workflow banner ("“<step>” (<agent>) needs you: it asks you first."), the step panel, the Inbox (RQ-22), and the API.
-- **Where:** Workflow page banner; `src/components/automations/StepActions.tsx` (`StepApprovalButtons`); command `approve_workflow_step`; HTTP `POST /api/workflow-runs/{runId}/approve` (`{stepId, decision}`); `workflows.rs` (`approve_step`).
+- **Where:** Workflow page banner; `src/components/automations/StepActions.tsx` (`StepApprovalButtons`); command `approve_workflow_step`; HTTP `POST /api/rpc/approve_workflow_step` (`{runId, stepId, decision}`); `workflows.rs` (`approve_step`).
 - **Preconditions:** A workflow with an approval step.
 - **Steps:** 1. Run it. 2. Approve from the banner. 3. Run again; Reject → confirm.
 - **Expected:** Approve: step runs, run completes. Reject: dialog "Reject “<step>”?" ("The run stops here, and the steps after it don't run.") then run `failed` with error "Step 'x' was rejected".
@@ -419,7 +419,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-29 — Workflow HTTP and command API
 
 - **What:** Headless access to workflows: list, get (definition + last 20 runs + source), create from YAML, templates, run, approve, graph, save YAML, manual steps.
-- **Where:** `src-tauri/src/http/routes.rs` (`GET/POST /api/workflows`, `GET /api/workflows/{id}`, `POST /api/workflows/{id}/run`, `GET/POST /api/workflow-templates`, `POST /api/workflow-runs/{id}/approve`), `src-tauri/src/http/workflow_builder.rs` (`POST /api/rpc/get_workflow_graph`, `POST /api/rpc/save_workflow_yaml`), `src-tauri/src/rpc/manual_steps.rs`.
+- **Where:** `src-tauri/src/rpc/workflows.rs`, `src-tauri/src/rpc/workflow_builder.rs` (`POST /api/rpc/{name}`), `src-tauri/src/rpc/manual_steps.rs`.
 - **Preconditions:** Web token (non-receiver routes require it).
 - **Steps:** Exercise each route with valid and invalid bodies.
 - **Expected:** JSON matching the Tauri commands; invalid bodies → 4xx with message.
@@ -942,7 +942,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-15 — Work items API
 
 - **What:** `list_work` returns workflow runs in flight or from the last 24 h, agent runs started by trigger firings, outgoing top-level delegated tasks, and local Requests (items their steps started are folded into them), newest first, optionally filtered by state (active, waiting, done, failed, cancelled). Each item has kind, title, state, owner, progress, next action (with `reason_kind` and target ids), rating.
-- **Where:** commands `list_work`, `get_work_item` (`src-tauri/src/commands/work.rs`); HTTP `POST /api/rpc/list_work`, `POST /api/rpc/get_work_item`; `src-tauri/src/services/work/mod.rs`; consumed by Home Running/Recent and the Inbox; `work://item_added|updated|removed` events.
+- **Where:** commands `list_work`, `get_work_item` (`src-tauri/src/rpc/work.rs`); HTTP `POST /api/rpc/list_work`, `POST /api/rpc/get_work_item`; `src-tauri/src/services/work/mod.rs`; consumed by Home Running/Recent and the Inbox; `work://item_added|updated|removed` events.
 - **Preconditions:** Some recent work.
 - **Steps:** Call `POST /api/rpc/list_work` and `list_work {"stateFilter":"waiting"}`.
 - **Expected:** Items as described; gateway sub-tasks hidden under their parent.
@@ -978,7 +978,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-18 — Tool approvals in the Inbox, with expiry
 
 - **What:** Pending tool approvals from every agent (`list_pending_approvals`) render as the shared approval card with a plain-language summary ("Run a command: git push origin main"; a request to someone on the network names them and quotes it: "Ask Lena Fischer · PR Reviewer (review-pr): “…”"), JSON collapsed under Details, the asking agent's name, "Expires in N min", Approve and Reject (Reject asks first). Approvals expire after 1 hour (`APPROVAL_TTL_MS`, swept every minute; expired = reject). Deciding anywhere clears it everywhere.
-- **Where:** Home → Inbox; `src/components/agent-console/ApprovalRequestCard.tsx`, `src/components/inbox/approval-model.ts`; command `list_pending_approvals` / `approve_action`; HTTP `GET /api/approvals/pending`, `POST /api/agents/{id}/approve`; `src-tauri/src/services/chat.rs` (`expire_overdue_approvals`), `approvals.expires_at`.
+- **Where:** Home → Inbox; `src/components/agent-console/ApprovalRequestCard.tsx`, `src/components/inbox/approval-model.ts`; command `list_pending_approvals` / `approve_action`; HTTP `POST /api/rpc/list_pending_approvals`, `POST /api/rpc/approve_action`; `src-tauri/src/services/chat.rs` (`expire_overdue_approvals`), `approvals.expires_at`.
 - **Preconditions:** An agent with `requires_approval: [shell]` and a model.
 - **Steps:** 1. Make it run a shell command. 2. Approve from the Inbox. 3. Repeat and wait over an hour.
 - **Expected:** Run resumes on approve; after an hour it disappears and the run shows the approval as expired.
@@ -1062,7 +1062,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-28 — Told when a request comes back
 
 - **What:** A request you sent that comes back after the live wait (an answer, Done, Decline, an error, or no answer by its due date) is recorded (`request_returns`), shown in the Inbox as "Lena answered" with the answer and what you asked, and sent as `request://returned`. The companion turns it into an OS notification while hidden, unless Settings › Appearance › **Notify me when requests come back** is off (`companion.notifyResults`, on by default). **Dismiss** takes it out of the Inbox. A request that came back failed shows once, as the return, not also as a generic failure. Returns older than 7 days drop off.
-- **Where:** `services/a2a/returns.rs` (`from_result`, `insert`, `list`, `dismiss`), `history.rs` (`close`), `db.rs` (`request_returns`), commands `list_request_returns`, `dismiss_request_return`, `set_companion_notify_results`; HTTP `POST /api/rpc/list_request_returns`, `POST /api/rpc/dismiss_request_return`, `POST /api/companion/notify-results`. Frontend: `inbox-model.ts` (`requestReturn`), `Inbox.tsx` (`RequestReturnRow`), `useInbox.ts` (`useRequestReturns`), `companion-model.ts` (`noticesFor`, `results`), `useCompanionNotifications.ts`, `AppearancePane.tsx`.
+- **Where:** `services/a2a/returns.rs` (`from_result`, `insert`, `list`, `dismiss`), `history.rs` (`close`), `db.rs` (`request_returns`), commands `list_request_returns`, `dismiss_request_return`, `set_companion_notify_results`; HTTP `POST /api/rpc/list_request_returns`, `POST /api/rpc/dismiss_request_return`, `POST /api/rpc/set_companion_notify_results`. Frontend: `inbox-model.ts` (`requestReturn`), `Inbox.tsx` (`RequestReturnRow`), `useInbox.ts` (`useRequestReturns`), `companion-model.ts` (`noticesFor`, `results`), `useCompanionNotifications.ts`, `AppearancePane.tsx`.
 - **Preconditions:** Two Nandis on a relay. The receiver doesn't answer within the live wait (for example, offline).
 - **Steps:**
   1. Ask the other person a question; their Nandi is off.

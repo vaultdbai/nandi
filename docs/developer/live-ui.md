@@ -85,13 +85,13 @@ refetchInterval: 15_000
 
 ## Tests
 
-| What                             | Where                                                                                                                                                       |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Folder watcher with real folders | `live/folders.rs` `changes_in_real_folders_arrive_batched_by_area`                                                                                          |
-| Who changed it                   | `live/tests.rs` `notes_say_who_changed_them`, `files_in_a_work_folder_name_the_agent_or_workflow_running`; `live/author.rs`                                 |
-| Refresh with the watcher off     | `live/tests.rs` `refresh_works_with_the_watcher_off`                                                                                                        |
-| Dropped events                   | `watcher.rs` `events_the_os_may_have_dropped_rescan_everything`; `live/folders.rs` `a_batch_that_lost_events_rescans_every_area`                            |
-| Event names Tauri can emit       | `commands/events.rs` `every_event_name_is_one_tauri_accepts`, `domain/events.rs` `every_topic_is_a_valid_tauri_event_name`; `src/lib/client/events.test.ts` |
-| Exact invalidation               | `src/lib/live-changes.test.ts`                                                                                                                              |
+| What                             | Where                                                                                                                                                      |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Folder watcher with real folders | `live/folders.rs` `changes_in_real_folders_arrive_batched_by_area`                                                                                         |
+| Who changed it                   | `live/tests.rs` `notes_say_who_changed_them`, `files_in_a_work_folder_name_the_agent_or_workflow_running`; `live/author.rs`                                |
+| Refresh with the watcher off     | `live/tests.rs` `refresh_works_with_the_watcher_off`                                                                                                       |
+| Dropped events                   | `watcher.rs` `events_the_os_may_have_dropped_rescan_everything`; `live/folders.rs` `a_batch_that_lost_events_rescans_every_area`                           |
+| Event names Tauri can emit       | `desktop/events.rs` `every_event_name_is_one_tauri_accepts`, `domain/events.rs` `every_topic_is_a_valid_tauri_event_name`; `src/lib/client/events.test.ts` |
+| Exact invalidation               | `src/lib/live-changes.test.ts`                                                                                                                             |
 
 File watcher tests wait with `live::testing::wait_until` (polls a condition, up to 20 s), never a fixed sleep.

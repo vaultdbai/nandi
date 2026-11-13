@@ -728,7 +728,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### SH-21 — Command palette: open, search, open results
 
 - **What:** Cmd/Ctrl+K toggles the palette, even from inside inputs. Shift and Alt variants are ignored. Typing searches agents, workflows, runs, packages, tools and actions on the server (debounced 150 ms) plus the local commands. Results are grouped (Ask, Actions, Agents, Workflows, Runs, Packages, Tools) and ranked: exact, prefix, word prefix, contains, then description. A run ranks below its agent. Keys: Up, Down, Home, End, Enter, Esc. Choosing an entity opens its view.
-- **Where:** `src/components/palette/CommandPalette.tsx`, `PaletteResult.tsx`, `palette-items.ts`, `src/hooks/usePalette.ts`; `search_palette` (`src-tauri/src/commands/palette.rs`, `services/palette.rs`); `POST /api/rpc/search_palette` `{query}`.
+- **Where:** `src/components/palette/CommandPalette.tsx`, `PaletteResult.tsx`, `palette-items.ts`, `src/hooks/usePalette.ts`; `search_palette` (`src-tauri/src/rpc/palette.rs`, `services/palette.rs`); `POST /api/rpc/search_palette` `{query}`.
 - **Preconditions:** Some agents and workflows.
 - **Steps:**
   1. Press Ctrl+K and type the start of an agent's name.
@@ -866,7 +866,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### SH-28 — Toasts and native notifications
 
 - **What:** In-app toasts (sonner, bottom-right) follow the light/dark mode. `notify()` can send a native OS notification instead (desktop). If that fails, it falls back to an error toast. The app sends a native notification when a workflow manual step becomes ready. The companion sends its own approval and question notifications (companion area).
-- **Where:** `src/lib/notifications.ts`, `src/components/layout/MainWindow.tsx` (`Toaster`), `src-tauri/src/commands/notifications.rs` (`send_native_notification`), `src/lib/agent-sync.ts` (`workflow://manual_step_ready`), `src/lib/toast-error.ts`, `src/lib/friendly-error.ts`, `docs/developer/notifications.md`.
+- **Where:** `src/lib/notifications.ts`, `src/components/layout/MainWindow.tsx` (`Toaster`), `src-tauri/src/desktop/notifications.rs` (`send_native_notification`), `src/lib/agent-sync.ts` (`workflow://manual_step_ready`), `src/lib/toast-error.ts`, `src/lib/friendly-error.ts`, `docs/developer/notifications.md`.
 - **Preconditions:** OS notifications allowed, for the native ones.
 - **Steps:**
   1. Run a workflow with a manual step while the app is in the background.
@@ -904,7 +904,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### SH-31 — Emergency data files (recovery)
 
 - **What:** Small JSON files are saved, loaded and cleaned up under `<app data dir>/recovery/`. Filenames are 1–100 characters of letters, digits, `-`, `_` or `.`. Content is capped at 10 MB. Files older than 7 days are removed at startup. Today only the crash file uses it.
-- **Where:** `src-tauri/src/commands/recovery.rs` (`save_emergency_data`, `load_emergency_data`, `cleanup_old_recovery_files`), `services/recovery.rs`, `src-tauri/src/types.rs` (`validate_filename`, `MAX_RECOVERY_DATA_BYTES`, `RecoveryError`); `GET` and `PUT /api/emergency-data/{filename}`, `POST /api/emergency-data/cleanup`.
+- **Where:** `src-tauri/src/desktop/recovery.rs` (`save_emergency_data`, `load_emergency_data`, `cleanup_old_recovery_files`), `services/recovery.rs`, `src-tauri/src/types.rs` (`validate_filename`, `MAX_RECOVERY_DATA_BYTES`, `RecoveryError`); `GET` and `PUT /api/emergency-data/{filename}`, `POST /api/emergency-data/cleanup`.
 - **Preconditions:** None.
 - **Steps:**
   1. Call `PUT /api/emergency-data/draft-1` with `{"a":1}`.

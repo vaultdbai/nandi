@@ -5,7 +5,7 @@
 
 ## Today
 
-- Before 2026-10-21, the `companion` window (`tauri.conf.json`): 380×220, transparent, frameless, skip-taskbar, **hidden** at start, not on top. Opened only with Ctrl/Cmd+Shift+Space (`commands/companion.rs`, `COMPANION_SHORTCUT`).
+- Before 2026-10-21, the `companion` window (`tauri.conf.json`): 380×220, transparent, frameless, skip-taskbar, **hidden** at start, not on top. Opened only with Ctrl/Cmd+Shift+Space (`rpc/companion.rs`, `COMPANION_SHORTCUT`).
 - Before 2026-10-21, `CompanionWindow.tsx` had collapsed (88 px Sparkles orb, `CompanionCollapsed.tsx`), expanded and overlay states.
 - Bison poses exist: `src/assets/brand/mascot/nandi-bull-{rest,wait,carry,done}.png` (white on transparent), mapped in `src/themes/palette-icons.ts`.
 

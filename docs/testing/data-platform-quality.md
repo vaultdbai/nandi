@@ -110,7 +110,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **What:** Writes an agent's `skill.md`/`instructions.md` from the editor input, creating the folder if new; validation happens before any write; marketplace agents are read-only until forked; fields the editor doesn't edit are kept. Listed here for the write path only; the editor UI is in the Agents section.
 - **Where:** Tauri `repo_save_agent`; `POST /api/rpc/repo_save_agent`; `services/repo_service.rs` (`save_agent`, `save_agent_definition`).
 - **Preconditions:** None.
-- **Steps:** Save an agent via the editor or the route; check `git status` and `GET /api/agents`.
+- **Steps:** Save an agent via the editor or the route; check `git status` and `POST /api/rpc/list_agents`.
 - **Expected:** File staged, projected row updated, `repo://agent-created|updated` emitted.
 - **Edge / negative cases:** Invalid model / ID → error, nothing written; saving a marketplace agent → refused.
 - **Automation:** Covered by: `services/repo_service.rs` `saving_writes_the_files_projects_and_publishes`, `saving_an_unknown_agent_creates_it_and_invalid_saves_change_nothing`, `invalid_definitions_are_rejected_before_any_write`, `definitions_keep_what_the_editor_does_not_edit`, `deleting_removes_the_folder_and_the_projected_row` | Layer: unit, api | Gap: none.
@@ -524,7 +524,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-42 — Snapshot read APIs (cross-ref Agents/Runs/Dashboard)
 
 - **What:** The UI reads state only through snapshots and applies `agent://*` / `dashboard://*` events on top: agent snapshot, conversation, Ask conversations, workflows, run detail, dashboard snapshot, and resolving/opening files a run touched (open with default app or reveal in file manager; "That file isn't on this computer anymore" when gone).
-- **Where:** `src-tauri/src/commands/snapshots.rs` (`get_agent_snapshot`, `get_conversation`, `get_studio_conversations`, `get_workflows`, `get_run_detail`, `resolve_run_file`, `open_run_file`, `get_dashboard_snapshot`); `services/snapshots.rs`; `GET /api/snapshots/agent/{id}`, `GET /api/snapshots/dashboard`, `GET /api/runs/{id}`, `POST /api/runs/{id}/file`, `GET /api/conversations/{id}`.
+- **Where:** `src-tauri/src/rpc/snapshots.rs` (`get_agent_snapshot`, `get_conversation`, `get_studio_conversations`, `get_workflows`, `get_run_detail`, `resolve_run_file`, `open_run_file`, `get_dashboard_snapshot`); `services/snapshots.rs`; `POST /api/rpc/{name}` for each.
 - **Preconditions:** Some runs.
 - **Steps:** Call each route; for `runs/{id}/file` pass a path outside the workdir.
 - **Expected:** JSON snapshots; path outside the workdir returns null (no traversal).

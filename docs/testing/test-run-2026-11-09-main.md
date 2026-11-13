@@ -19,7 +19,7 @@
 
 ## Fix from this run
 
-- **An Inbox item's chat never loaded its messages** (a spinner, and a 400 from `GET /api/conversations/{id}`). `snapshots::get_conversation` served only Studio conversations, while Inbox threads belong to the Chief of Staff; unit tests passed because they mock the client. It now also serves Chief of Staff threads (`inbox:` and `intake:`), and nothing else of the Chief of Staff's (`snapshots::readable`; test `studio_and_chief_of_staff_threads_are_readable_other_chats_are_not`).
+- **An Inbox item's chat never loaded its messages** (a spinner, and a 400 from `GET /api/conversations/{id}`, now `POST /api/rpc/get_conversation`). `snapshots::get_conversation` served only Studio conversations, while Inbox threads belong to the Chief of Staff; unit tests passed because they mock the client. It now also serves Chief of Staff threads (`inbox:` and `intake:`), and nothing else of the Chief of Staff's (`snapshots::readable`; test `studio_and_chief_of_staff_threads_are_readable_other_chats_are_not`).
 
 ## Screenshots (shots/)
 

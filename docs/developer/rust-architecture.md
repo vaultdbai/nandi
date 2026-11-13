@@ -10,11 +10,10 @@ src-tauri/src/
 ├── lib.rs           # App setup, plugins, startup logic
 ├── bindings.rs      # tauri-specta command registration
 ├── types.rs         # Shared types, constants, validation
-├── commands/        # Command handlers by domain
-│   ├── mod.rs       # Re-exports all command modules
-│   ├── preferences.rs
-│   ├── notifications.rs
-│   └── recovery.rs
+├── services/        # The core: business logic, no Tauri types
+├── rpc/             # Each command declared once (rpc::commands!)
+├── desktop/         # Desktop-only Tauri commands, and the webview event sink
+├── http/            # Web server: POST /api/rpc/{name}, webhooks, /ws
 └── utils/           # Utility modules
     ├── mod.rs
     └── platform.rs  # Platform-specific helpers
@@ -22,35 +21,31 @@ src-tauri/src/
 
 ## Adding New Commands
 
-### 1. Create or update a command module
+### 1. Declare it once
+
+Put the logic in a service, then add one line to `src-tauri/src/rpc/<module>.rs`. It serves Tauri IPC and `POST /api/rpc/{name}` alike:
 
 ```rust
-// src-tauri/src/commands/my_feature.rs
-use tauri::AppHandle;
-
-/// Brief description of what this command does.
-#[tauri::command]
-#[specta::specta]
-pub fn my_command(app: AppHandle, input: String) -> Result<String, String> {
-    // Implementation
-    Ok(format!("Processed: {input}"))
+super::commands! {
+    /// One Request with its Steps
+    fn get_request(state, id: String) -> Request => requests::get_request(&state, id).await;
 }
 ```
 
-### 2. Export from commands/mod.rs
+Only a command that needs the `AppHandle`, a window or a typed error is written by hand, in `desktop/` (see [Tauri Commands](./tauri-commands.md#2-desktop-only-commands)).
 
-```rust
-pub mod my_feature;
-```
+### 2. Wire a new module
+
+A new `rpc/` module gets `pub mod <module>;` and its `RPC` table in `TABLES` in `rpc/mod.rs`.
 
 ### 3. Register in bindings.rs
 
 ```rust
 pub fn generate_bindings() -> Builder<tauri::Wry> {
-    use crate::commands::{my_feature, /* ... */};
+    use crate::rpc::{requests, /* ... */};
 
     Builder::<tauri::Wry>::new().commands(collect_commands![
-        my_feature::my_command,
+        requests::get_request,
         // ... other commands
     ])
 }
@@ -82,7 +77,7 @@ pub struct MyData {
 
 ### Error Types
 
-Use typed enums for errors the frontend needs to handle:
+Most commands return `Result<T, String>`, which `rpc::commands!` serves on both transports. Use a typed enum only for errors the frontend must match on; such a command is written by hand in `desktop/` with its own browser route, as recovery is (`http/recovery.rs`):
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -184,7 +179,7 @@ app_builder = app_builder
 
 When adding new features:
 
-1. **New command domain?** Create new file in `commands/`
+1. **New command domain?** Create a new file in `rpc/` (or `desktop/` if it needs the `AppHandle` or a window)
 2. **New shared types?** Add to `types.rs`
 3. **Platform-specific utils?** Add to `utils/platform.rs`
 4. **New plugin?** Register in `lib.rs` setup

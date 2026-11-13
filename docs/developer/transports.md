@@ -6,8 +6,10 @@ The same Nandi core serves two transports: Tauri IPC for the desktop webview, an
             services/  (Nandi core — no Tauri types)
             AppState: db · orchestrators · event bus · secrets · paths
                  │                                │
-       commands/ (Tauri IPC)               http/ (Axum)
-       1–3 line adapters                   /api/* REST · /ws events · / frontend
+          rpc/  one line per command (rpc::commands!)
+                 │                                │
+       Tauri IPC  + desktop/              http/ (Axum)
+       (desktop-only commands)            POST /api/rpc/{name} · /ws · / frontend
                  │                                │
           Tauri webview                        Browser
                  └──────── src/lib/client ────────┘
@@ -17,18 +19,20 @@ The same Nandi core serves two transports: Tauri IPC for the desktop webview, an
 ## Rules
 
 - **`services/` and `http/` never import Tauri.** Services take `&AppState`; `AppState::start(Config)` is called by both `lib.rs` (desktop) and `headless.rs`.
-- **One declaration per command.** Business logic lives in a service. Declare the command once with `rpc::commands!` in `src-tauri/src/rpc/<module>.rs`: one line gives the Tauri command (desktop) and `POST /api/rpc/{name}` (web). Register it in `bindings.rs` and run `pnpm run rust:bindings`; the UI then calls `client.<camelName>` on both transports. Commands that need the `AppHandle`, a window or a typed error stay hand-written in `commands/` with a route in `http/`. Modules not yet moved to `rpc/` still use that older pair.
+- **One declaration per command.** Business logic lives in a service. Declare the command once with `rpc::commands!` in `src-tauri/src/rpc/<module>.rs`: one line gives the Tauri command (desktop) and `POST /api/rpc/{name}` (web). Register it in `bindings.rs` and run `pnpm run rust:bindings`; the UI then calls `client.<camelName>` on both transports. See [Tauri Commands](./tauri-commands.md#adding-new-commands).
+- **Desktop-only commands live in `src-tauri/src/desktop/`.** Only a command that needs the `AppHandle`, a window or a typed error goes there; `desktop/mod.rs` says why each one is there. The web client answers each itself (`HandWrittenCommands` in `src/lib/client/types.ts`). A test in `rpc/mod.rs` fails if a generated command is neither RPC nor in `desktop::COMMANDS`.
+- **Validation and auth live in the service**, never in a transport, so both transports get them.
 - **The UI never calls `invoke()`/`listen()` for data.** Use `client` from `@/lib/client`. Desktop-only chrome (windows, menus, updater, companion window, OS plugins) is gated by `isDesktop()`.
-- **Paths never come from a client.** The native file picker runs in the Tauri adapter (`commands/attachments.rs`) and stages files; clients only hold attachment IDs. The web client reports attachments as unsupported.
+- **Paths never come from a client.** The native file picker runs in the Tauri adapter (`desktop/attachments.rs`) and stages files; clients only hold attachment IDs. The web client reports attachments as unsupported.
 - **Secrets** use the `keyring` crate via `services::secrets`, under the app identifier (`services::APP_IDENTIFIER`, checked against `tauri.conf.json` by a test).
 
 ## Events
 
-`EventBus` emits to a `FanoutSink`: the Tauri webview (`commands::events::TauriSink`) and WebSocket subscribers (`BroadcastSink`). Wire format on `/ws`: `{"event": "agent://token", "payload": {…}}`.
+`EventBus` emits to a `FanoutSink`: the Tauri webview (`desktop::events::TauriSink`) and WebSocket subscribers (`BroadcastSink`). Wire format on `/ws`: `{"event": "agent://token", "payload": {…}}`.
 
 `client.subscribe(handler)` returns `{ ready, unsubscribe }`. Load snapshots only after `ready`, so no event can slip between a snapshot read and the first listener. The web client emits `nandi://resync` after a reconnect, and the server sends it when a client lags; `agent-sync` then reloads all snapshots.
 
-New event types: add the struct with `event!` in `services/events.rs`, mirror it in `commands/events.rs` (`tauri_events!`), register it in `bindings.rs`, and add it to `src/lib/client/events.ts`.
+New event types: add the struct with `event!` in `services/events.rs`, mirror it in `desktop/events.rs` (`tauri_events!`), register it in `bindings.rs`, and add it to `src/lib/client/events.ts`.
 
 ## Web access
 
@@ -46,13 +50,20 @@ In dev: `pnpm run tauri dev -- -- --server`. Headless from the repo: `cargo run 
 
 Release builds on Windows have no console of their own: when started from a terminal with flags, Nandi attaches to that terminal's console, and `--server` / `--headless` also write the access link to `~/.nandi/server.log`. `--help` lists the flags; unknown flags are rejected.
 
-## REST routes
+## HTTP routes
 
-`POST /api/rpc/{name}` runs any command declared with `rpc::commands!`. The JSON body is its arguments with camelCase keys, as over IPC: `POST /api/rpc/request_for_run {"runId": "r1"}`. Unknown names are `404`. The generated `commands` reach it through `src/lib/client/invoke.ts`.
+`POST /api/rpc/{name}` runs any command declared with `rpc::commands!` (`http/rpc.rs`). The JSON body is its arguments with camelCase keys, as over IPC: `POST /api/rpc/request_for_run {"runId": "r1"}`. Unknown names are `404`. The generated `commands` reach it through `src/lib/client/invoke.ts`.
 
-The hand-written routes: `/api/agents` (GET, POST) · `/api/agents/{id}` (DELETE) · `/api/agents/{id}/start|stop|restart|messages|approve|cancel` (POST) · `/api/agents/{id}/queue|current` (GET) · `/api/queue/{runId}/cancel` (POST) · `/api/queue/{runId}/priority` (POST `{ priority }`) · `/api/triggers…` (see [Triggers](./triggers.md#api)) · `/api/snapshots/agent/{id}` · `/api/snapshots/dashboard?dayStart=` · `/api/runs/{id}` · `/api/workflows` · `/api/studio/conversations` (GET, POST) · `/api/studio/conversations/{id}/messages` (POST) · `/api/conversations/{id}` · `/api/attachments/{id}` (DELETE) · `/api/emergency-data/{name}` (GET, PUT) · `/api/emergency-data/cleanup` (POST).
+| Route                                                                       | Why it isn't RPC                                                                       |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `POST /api/triggers/webhook/{id}`, `POST /api/triggers/device/{id}`         | Webhook receivers: the trigger's secret, not the token ([Triggers](./triggers.md#api)) |
+| `GET`, `PUT /api/emergency-data/{name}`, `POST /api/emergency-data/cleanup` | Typed errors (`RecoveryError`), sent as-is (`http/recovery.rs`)                        |
+| `/ws`                                                                       | Events                                                                                 |
+| `/`                                                                         | The frontend (`http/static_files.rs`), behind the same token auth                      |
 
-Errors are `400 {"error": "…"}` with the same messages the IPC commands return; auth failures are `401`.
+The web client writes by hand only the transport (`getWebOrigin`, `openExternal`, `subscribe`) and its answers to the desktop-only commands (`src/lib/client/web.ts`).
+
+Errors are `400 {"error": "…"}` with the same messages the IPC commands return, `503` for `RelayUnavailable`; auth failures are `401`.
 
 ## Agent lifecycle
 

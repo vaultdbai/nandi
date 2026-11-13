@@ -89,7 +89,8 @@ src/
 ├── lib/                      # Utilities, mock data, generated Tauri bindings
 └── types/                    # Shared TypeScript types
 src-tauri/src/
-├── commands/                 # Tauri commands by domain (docker, preferences, ...)
+├── rpc/                      # Each command declared once, for desktop and browser
+├── desktop/                  # Desktop-only Tauri commands (windows, file picker, ...)
 └── bindings.rs               # tauri-specta command registration
 locales/                      # Translations (en, fr, ar)
 ```
@@ -98,9 +99,9 @@ locales/                      # Translations (en, fr, ar)
 
 Commands are type-safe via [tauri-specta](https://github.com/specta-rs/tauri-specta):
 
-1. Add the command to a module in `src-tauri/src/commands/` with `#[tauri::command]` and `#[specta::specta]`
+1. Declare it in one line with `rpc::commands!` in `src-tauri/src/rpc/<module>.rs`: it serves Tauri IPC and `POST /api/rpc/{name}`. Only a command that needs a window or the `AppHandle` is hand-written, in `src-tauri/src/desktop/`
 2. Register it in `collect_commands!` in `src-tauri/src/bindings.rs`
-3. Regenerate bindings (`pnpm run rust:bindings`) and call it from React via `commands` in `@/lib/tauri-bindings`
+3. Regenerate bindings (`pnpm run rust:bindings`) and call it from React via `client` in `@/lib/client`
 
 See [docs/developer/tauri-commands.md](docs/developer/tauri-commands.md) for details.
 
