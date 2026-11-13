@@ -4,10 +4,10 @@ Scope: the per-instance gateway agent defined by `~/.nandi/repo/NANDI.md`. This 
 
 Notes that apply to the whole section:
 
-- Code: `src-tauri/src/services/gateway/` (`mod.rs`, `manifest.rs`, `registration.rs`, `policy.rs`, `router.rs`, `holds.rs`, `chat.rs`), `src-tauri/src/commands/gateway.rs`, `src-tauri/src/http/gateway.rs`, `src/hooks/useGateway.ts`, `src/components/gateway/`.
+- Code: `src-tauri/src/services/gateway/` (`mod.rs`, `manifest.rs`, `registration.rs`, `policy.rs`, `router.rs`, `holds.rs`, `chat.rs`), `src-tauri/src/rpc/gateway.rs`, `src-tauri/src/rpc/gateway.rs`, `src/hooks/useGateway.ts`, `src/components/gateway/`.
 - The gateway never runs work itself. A task addressed to `<instance>/gateway` (capability `gateway`, or empty) goes through the executor hook (`a2a/executor.rs` `is_gateway_task` → `router::handle_gateway_task`), which applies policy, may hold or queue the task, routes it, then dispatches a child task.
 - SQLite tables: `gateway_callers` (caller policies), `gateway_usage` (monthly counts), `gateway_holds` (approval holds). NANDI.md is the gold copy for everything else.
-- HTTP routes are under `/api/gateway/...` and need `Authorization: Bearer $(cat $NANDI_HOME/web_token)`.
+- Commands are `POST /api/rpc/{name}` and need `Authorization: Bearer $(cat $NANDI_HOME/web_token)`.
 - Events: `gateway://config_changed`, `gateway://caller_updated`, `gateway://rate_limited`, `gateway://hold_changed`.
 - The routing model is the default model from Settings. With no usable key, LLM routing and chat fail with "Add an API key in Settings so the gateway can route requests".
 
@@ -57,9 +57,9 @@ Notes that apply to the whole section:
   - `get_gateway_config` and `set_gateway_config` read and replace the structured part of the frontmatter (`relay`, `policy`, `federation`, `routing`). The identity fields and the body are kept.
   - `get_gateway_manifest` and `set_gateway_manifest` read and write the whole file, frontmatter and body.
   - Every save emits `gateway://config_changed` and re-registers the card in the background.
-- **Where:** Code: `commands/gateway.rs` (`get_gateway_config`, `set_gateway_config`, `get_gateway_manifest`, `set_gateway_manifest`), `mod.rs` (`save_manifest`, `validate`). HTTP: `GET`/`PUT /api/gateway/config`, `GET`/`PUT /api/gateway/manifest`. UI: `useSetGatewayConfig`, and `useSetGatewayManifest` (used by What you offer, GW-18).
+- **Where:** Code: `rpc/gateway.rs` (`get_gateway_config`, `set_gateway_config`, `get_gateway_manifest`, `set_gateway_manifest`), `mod.rs` (`save_manifest`, `validate`). HTTP: `POST /api/rpc/get_gateway_config|set_gateway_config`, `POST /api/rpc/get_gateway_manifest|set_gateway_manifest`. UI: `useSetGatewayConfig`, and `useSetGatewayManifest` (used by What you offer, GW-18).
 - **Preconditions:** None.
-- **Steps:** 1. `GET /api/gateway/config`. 2. `PUT` it back with `policy.maxConcurrent: 5`. 3. `GET /api/gateway/manifest` and check the body. 4. `PUT /api/gateway/config` with `policy.maxConcurrent: 0`.
+- **Steps:** 1. `POST /api/rpc/get_gateway_config`. 2. `PUT` it back with `policy.maxConcurrent: 5`. 3. `POST /api/rpc/get_gateway_manifest` and check the body. 4. `POST /api/rpc/set_gateway_config` with `policy.maxConcurrent: 0`.
 - **Expected:**
   - The config JSON is camelCase (`relay.enabled`, `policy.rateLimitPerHour`, `federation.trustedPeers`, `routing.preferences`).
   - After step 2, NANDI.md has `max_concurrent: 5`, the body is unchanged, and `gateway://config_changed` fires.
@@ -90,7 +90,7 @@ Notes that apply to the whole section:
 
 - **Where:** Code: `registration.rs` (`build_card`, `exposed_capabilities`, `shared_agent_cards`, `withdrawn_card`, `route_card`, `card_owner`, `current_load`, `HEARTBEAT_INTERVAL`), `mod.rs` (`sync`, `share_agents`, `card`), `relay/mod.rs` (`local_cards_from`); nandi-relay `server.rs` (`RegisterGateway`), `directory.rs` (`withdraw`).
 - **Preconditions:** A relay is connected (RL-01). Local agents have `serves:`.
-- **Steps:** 1. `PUT /api/gateway/config` with relay enabled and discoverable on. 2. `curl http://<relay>:8787/instances`. 3. Add a capability to `hide` and save. 4. Turn discoverable off. 5. Turn off "Show my responsibilities on my card". 6. Turn relay enabled off. 7. Quit Nandi, set `relay.enabled: true` then back to `false` by hand while another Nandi watches People, and start it again.
+- **Steps:** 1. `POST /api/rpc/set_gateway_config` with relay enabled and discoverable on. 2. `curl http://<relay>:8787/instances`. 3. Add a capability to `hide` and save. 4. Turn discoverable off. 5. Turn off "Show my responsibilities on my card". 6. Turn relay enabled off. 7. Quit Nandi, set `relay.enabled: true` then back to `false` by hand while another Nandi watches People, and start it again.
 - **Expected:**
   - After step 1, the instance shows a gateway card with sorted, distinct capabilities, and from a second instance `POST /api/rpc/get_network_snapshot` shows the member with the body text.
   - After step 3, the hidden capability disappears from the card and from the agent cards within a few seconds; an agent serving only hidden capabilities is no longer listed.
@@ -118,9 +118,9 @@ Notes that apply to the whole section:
     - `lastHeartbeatAt`.
   - `make_gateway_reachable` turns on `relay.enabled` and `relay.discoverable` (it saves only if something changed), re-registers right away and returns the status. This extends NW-04, which is the People banner button that calls it.
   - The UI refetches the status every 30 s, and when `gateway://config_changed`, `gateway://rate_limited` or `task://state_changed` arrives (`useGatewayEvents`).
-- **Where:** Code: `commands/gateway.rs` (`get_gateway_status`, `make_gateway_reachable`), `mod.rs` (`status`, `queued_tasks`). HTTP: `GET /api/gateway/status`, `POST /api/gateway/reachable`. UI consumers: the People banner (NW-04), the reachability checklist (RL-06), and the Incoming requests empty state (NW-10).
+- **Where:** Code: `rpc/gateway.rs` (`get_gateway_status`, `make_gateway_reachable`), `mod.rs` (`status`, `queued_tasks`). HTTP: `POST /api/rpc/get_gateway_status`, `POST /api/rpc/make_gateway_reachable`. UI consumers: the People banner (NW-04), the reachability checklist (RL-06), and the Incoming requests empty state (NW-10).
 - **Preconditions:** None. For `registered: true`, a connected relay.
-- **Steps:** 1. With the relay off in NANDI.md, `GET /api/gateway/status`. 2. `POST /api/gateway/reachable`. 3. `GET` the status again. 4. `POST` it a second time.
+- **Steps:** 1. With the relay off in NANDI.md, `POST /api/rpc/get_gateway_status`. 2. `POST /api/rpc/make_gateway_reachable`. 3. `GET` the status again. 4. `POST` it a second time.
 - **Expected:**
   - Step 1 shows `enabled:false, registered:false`.
   - After step 2, NANDI.md has `relay.enabled: true` and `discoverable: true`, and the response has `registered: true` when connected.
@@ -135,7 +135,7 @@ Notes that apply to the whole section:
 - **What:** On every gateway sync (at start, after a save, after a hand edit), the owner from NANDI.md is put on every local agent card: the display name, and the user slug as the handle. When it changed, the agents are re-registered at the relay. This fixed "Nandi user" and instance IDs showing in reassign candidates and delegated prompts.
 - **Where:** Code: `mod.rs` (`refresh_owner`), `registration.rs` (`card_owner`), `capability_index.rs` (`set_owner`). Commits `176bd77`, `4ea9b28`.
 - **Preconditions:** Onboarding or Settings › Account has set a display name and slug (TM-01). A relay is connected.
-- **Steps:** 1. Change the display name in Settings › Account. 2. From a second instance, list the online agents (`GET /api/relay/agents`).
+- **Steps:** 1. Change the display name in Settings › Account. 2. From a second instance, list the online agents (`POST /api/rpc/list_online_agents`).
 - **Expected:** The other instance sees the new owner name on this instance's agent cards without a restart.
 - **Edge / negative cases:**
   - When not connected, the cards go out on the next connect.
@@ -188,9 +188,9 @@ Notes that apply to the whole section:
 ### GW-09 — Monthly task budget and usage per caller
 
 - **What:** A caller row may set `monthlyTaskBudget`. Each request that gets a slot adds one to `gateway_usage(caller_instance, month YYYY-MM)`. Once the count reaches the budget, requests are refused with "{who} used its N requests for this month" (limit `monthly_budget`, which also fires `gateway://rate_limited`). The callers table shows "N tasks" or "N of B" for the month.
-- **Where:** Code: `policy.rs` (`usage_count`, `increment_usage`, `usage`, `month_of`), `commands/gateway.rs` (`get_gateway_usage`). HTTP: `GET /api/gateway/usage/{caller_instance}`. UI: the This month column of `GatewayCallersTable` (`UsageCell`).
+- **Where:** Code: `policy.rs` (`usage_count`, `increment_usage`, `usage`, `month_of`), `rpc/gateway.rs` (`get_gateway_usage`). HTTP: `POST /api/rpc/get_gateway_usage`. UI: the This month column of `GatewayCallersTable` (`UsageCell`).
 - **Preconditions:** A caller row exists (GW-10).
-- **Steps:** 1. Set the caller's budget to 1. 2. Send two requests from that caller. 3. `GET /api/gateway/usage/<caller>`.
+- **Steps:** 1. Set the caller's budget to 1. 2. Send two requests from that caller. 3. `POST /api/rpc/get_gateway_usage`.
 - **Expected:** The first request runs and the second is refused. The usage response is `{"month":"2026-10","taskCount":1,"monthlyTaskBudget":1}`, and the table shows "1 of 1".
 - **Edge / negative cases:**
   - The count resets each UTC month.
@@ -210,7 +210,7 @@ Notes that apply to the whole section:
   - An Enabled switch.
   - Edit (pencil): an inline row with Allowed capabilities (comma-separated), "Tasks at a time" (≥ 1) and "Monthly budget" (≥ 0, or empty for unlimited), and Save or Cancel.
   - Remove (trash).
-- **Where:** Network → Sharing → Who may call you → List. Code: `src/components/gateway/GatewayCallersTable.tsx`, `src/components/views/SharingView.tsx` (`CallersPanel`), `useGatewayCallers`, `useSetCallerPolicy`, `useRemoveCallerPolicy`, `mod.rs` (`caller_policy`, `set_caller_policy`, `remove_caller_policy`). Commands: `list_gateway_callers`, `set_caller_policy`, `remove_caller_policy`. HTTP: `GET /api/gateway/callers`, `PUT`/`DELETE /api/gateway/callers/{caller_instance}` (the path sets `callerInstance`).
+- **Where:** Network → Sharing → Who may call you → List. Code: `src/components/gateway/GatewayCallersTable.tsx`, `src/components/views/SharingView.tsx` (`CallersPanel`), `useGatewayCallers`, `useSetCallerPolicy`, `useRemoveCallerPolicy`, `mod.rs` (`caller_policy`, `set_caller_policy`, `remove_caller_policy`). Commands: `list_gateway_callers`, `set_caller_policy`, `remove_caller_policy`. HTTP: `POST /api/rpc/list_gateway_callers`, `POST /api/rpc/set_caller_policy|remove_caller_policy` (the path sets `callerInstance`).
 - **Preconditions:** At least one remote instance has sent a gateway request, or a row was made with `PUT`.
 - **Steps:** 1. Have A send B a request. 2. On B, open Network → Sharing → Who may call you and choose List. 3. Click Edit (pencil), set Allowed capabilities to `summarize, translate`, Tasks at a time to 2 and the budget to 10, then Save. 4. Turn the switch off. 5. Click Remove.
 - **Expected:**
@@ -244,7 +244,7 @@ Notes that apply to the whole section:
 - **Steps:** 1. From A, send two gateway requests to B back to back. 2. Watch A's Request page for the second one. 3. Let the first finish.
 - **Expected:**
   - The second request shows "Waiting for a free slot" with its position, and starts once the first completes.
-  - `GET /api/gateway/status` on B shows `activeTasks: 1` while one waits.
+  - `POST /api/rpc/get_gateway_status` on B shows `activeTasks: 1` while one waits.
 - **Edge / negative cases:**
   - A caller whose own `maxConcurrent` is 1 waits even when the gateway has free slots.
   - When the requester's timeout ends the task, it leaves the line.
@@ -306,9 +306,9 @@ Notes that apply to the whole section:
 
   Holds survive a restart: a resumed task finds a decision that is already on the row. Approval is checked only when the request names a capability. A plain-language ask is not held.
 
-- **Where:** Code: `services/gateway/holds.rs` (`open`, `decide`, `pending`, `summarize`, `HoldWaiters`, `HOLD_TTL_MS`), `router.rs` (`hold_for_approval`), `mod.rs` (`list_gateway_holds`, `decide_gateway_hold`). Commands: `list_gateway_holds`, `decide_gateway_hold`. HTTP: `GET /api/gateway/holds`, `POST /api/gateway/holds/{task_id}/decide {"approve":true|false}`.
+- **Where:** Code: `services/gateway/holds.rs` (`open`, `decide`, `pending`, `summarize`, `HoldWaiters`, `HOLD_TTL_MS`), `router.rs` (`hold_for_approval`), `mod.rs` (`list_gateway_holds`, `decide_gateway_hold`). Commands: `list_gateway_holds`, `decide_gateway_hold`. HTTP: `POST /api/rpc/list_gateway_holds`, `POST /api/rpc/decide_gateway_hold {"taskId","approve":true|false,"note"?}`.
 - **Preconditions:** Two instances. B has `require_approval: [summarize]`, and A may call B.
-- **Steps:** 1. From A, send `summarize` to `<B>/gateway`. 2. On B, `GET /api/gateway/holds`. 3. `POST …/decide {"approve":true}`. 4. Repeat steps 1–2 and decline. 5. Repeat and wait more than 1 hour (or send with a short task deadline).
+- **Steps:** 1. From A, send `summarize` to `<B>/gateway`. 2. On B, `POST /api/rpc/list_gateway_holds`. 3. `POST …/decide {"approve":true}`. 4. Repeat steps 1–2 and decline. 5. Repeat and wait more than 1 hour (or send with a short task deadline).
 - **Expected:**
   - Step 2 returns one pending hold, with `callerName`, `capability: "summarize"`, `summary` and `expiresAt`.
   - Step 3 returns the hold with `status: approved`, and A's task goes on to Working and a result.
@@ -357,7 +357,7 @@ Notes that apply to the whole section:
   - `my_requests` shows open assignments as "assigned, on their list" / "on your list" with `due`, and `overdue: true` once past.
 - **Where:**
   - Code: `services/a2a/assignment.rs` (`ASSIGN_ME`, `due_at`, `ACCEPT_WINDOW`, `POLL_EVERY_MS`), `delegator.rs` (`Waited::Accepted`, `assign_locally`), `task.rs` (`on_event`, results kept at the relay), `queue.rs` (the outbox), `history.rs` (`close`), `people.rs` (`requests_from`), `gateway/assignments.rs` (`links_of`, `gateway_assignment_links`), `gateway/router.rs` (`assign`), `gateway/mod.rs` (`list_gateway_assignments`, `close_gateway_assignment`).
-  - Commands: `list_gateway_assignments`, `close_gateway_assignment`. HTTP: `GET /api/gateway/assignments`, `POST /api/gateway/assignments/{task_id}/close {"done":true|false,"note"?}`.
+  - Commands: `list_gateway_assignments`, `close_gateway_assignment`. HTTP: `POST /api/rpc/list_gateway_assignments`, `POST /api/rpc/close_gateway_assignment {"taskId","done":true|false,"note"?}`.
   - UI: `src/components/inbox/Inbox.tsx` (`AssignmentRow`), `src/hooks/useInbox.ts` (`useGatewayAssignments`, `useCloseGatewayAssignment`), `inbox-model.ts` (kind `assignment`).
 - **Preconditions:** Two instances on one relay (the relay on this build: older relays drop the result from status answers). B's NANDI.md has `require_approval: [assign-me]`. A has Chief of Staff.
 - **Steps:**
@@ -467,7 +467,7 @@ Notes that apply to the whole section:
 
   It never runs work, and it points you to **Ask** on a member's card, or to Studio, for that. Each message is answered on its own, with no history sent. The conversation lives only in the panel. Enter sends and Shift+Enter adds a new line. While waiting, the panel shows "The gateway is answering…".
 
-- **Where:** Network → Sharing → What you offer → Advanced → "Ask the gateway". Code: `src/components/gateway/GatewayChat.tsx`, `useGatewayChat`, `services/gateway/chat.rs` (`system_prompt`, `add_network_gateways`, `reply`, `MAX_CHAT_CHARS`), `mod.rs` (`chat`). Command: `gateway_chat`. HTTP: `POST /api/gateway/chat {"message":"…"}` (returns a string).
+- **Where:** Network → Sharing → What you offer → Advanced → "Ask the gateway". Code: `src/components/gateway/GatewayChat.tsx`, `useGatewayChat`, `services/gateway/chat.rs` (`system_prompt`, `add_network_gateways`, `reply`, `MAX_CHAT_CHARS`), `mod.rs` (`chat`). Command: `gateway_chat`. HTTP: `POST /api/rpc/gateway_chat {"message":"…"}` (returns a string).
 - **Preconditions:** A model key is set.
 - **Steps:** 1. Open Network → Sharing → What you offer → Advanced. 2. In "Ask the gateway", type "What can you help with?" and press Enter. 3. Ask "Who else could translate this?" while a member who serves translate is online.
 - **Expected:**

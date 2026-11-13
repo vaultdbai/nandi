@@ -94,21 +94,21 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-06 — Load an entity as stored in its file
 
 - **What:** Returns one entity as JSON exactly as its file holds it, for editors (`kind`: `agent` | `workflow` | `trigger` | `connector` | `settings`).
-- **Where:** Tauri `repo_load_entity` (`src-tauri/src/commands/repo.rs`), `GET /api/repo/entities/{kind}/{id}` (`src-tauri/src/http/repo.rs`); used by `src/hooks/useAgentEditor.ts`.
+- **Where:** Tauri `repo_load_entity` (`src-tauri/src/rpc/repo.rs`), `POST /api/rpc/repo_load_entity` (`src-tauri/src/rpc/repo.rs`); used by `src/hooks/useAgentEditor.ts`.
 - **Preconditions:** At least one agent.
 - **Steps:**
-  1. `GET /api/repo/entities/agent/<id>` with the web token.
+  1. `POST /api/rpc/repo_load_entity` with the web token.
   2. Repeat for a workflow, trigger, `connector`, and `settings/settings`.
 - **Expected:** 200 with the file's fields; unknown kind or id returns an error string.
 - **Edge / negative cases:** Bad kind (`foo`); id with path traversal (`../x`) rejected by ID validation.
-- **Automation:** Covered by: `services/repo_service.rs` `loads_other_entities_as_json`; `src-tauri/src/http/repo.rs` test | Layer: api | Gap: no negative-kind test.
+- **Automation:** Covered by: `services/repo_service.rs` `loads_other_entities_as_json`; `src-tauri/src/rpc/repo.rs` test | Layer: api | Gap: no negative-kind test.
 - **Needs relay:** no
 - **Status:** Shipped
 
 ### DT-07 — Save an agent definition through the repo (cross-ref Agents)
 
 - **What:** Writes an agent's `skill.md`/`instructions.md` from the editor input, creating the folder if new; validation happens before any write; marketplace agents are read-only until forked; fields the editor doesn't edit are kept. Listed here for the write path only; the editor UI is in the Agents section.
-- **Where:** Tauri `repo_save_agent`; `POST /api/repo/agents/{id}/save`; `services/repo_service.rs` (`save_agent`, `save_agent_definition`).
+- **Where:** Tauri `repo_save_agent`; `POST /api/rpc/repo_save_agent`; `services/repo_service.rs` (`save_agent`, `save_agent_definition`).
 - **Preconditions:** None.
 - **Steps:** Save an agent via the editor or the route; check `git status` and `GET /api/agents`.
 - **Expected:** File staged, projected row updated, `repo://agent-created|updated` emitted.
@@ -138,10 +138,10 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-09 — Rebuild the projection (command and HTTP)
 
 - **What:** Wipes projected tables (`agents`, `workflows`, `triggers`, `settings`, `connectors`, `sync_state`) and re-reads every file in one transaction; refuses (changing nothing) while any file is invalid unless `force`, which skips invalid files. Afterwards ensures an orchestrator per agent, re-arms triggers, and emits `repo://rebuild_started`, `agents/workflows/triggers changed`, `repo://rebuild_completed` (with stats).
-- **Where:** Tauri `repo_rebuild` (`force?`), `POST /api/repo/rebuild` (body optional `{"force": true}`), `services/repo_service.rs` (`rebuild`, `RepoStore::rebuild_checked`). No UI button.
+- **Where:** Tauri `repo_rebuild` (`force?`), `POST /api/rpc/repo_rebuild` (body optional `{"force": true}`), `services/repo_service.rs` (`rebuild`, `RepoStore::rebuild_checked`). No UI button.
 - **Preconditions:** App running (desktop or headless).
 - **Steps:**
-  1. `POST /api/repo/rebuild` with no body.
+  1. `POST /api/rpc/repo_rebuild` with no body.
   2. Break one agent's frontmatter; call again.
   3. Call with `{"force": true}`.
 - **Expected:** 1: returns `ProjectionStats` (agents, workflows, triggers, connectors, skipped=0). 2: error "1 file(s) are invalid; fix them or rebuild with --force to skip them:" listing the path; projection unchanged. 3: succeeds with `skipped: 1`; run history unchanged.
@@ -168,9 +168,9 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-11 — Repo status (counts, problems, watching)
 
 - **What:** Reports repo root path, agent/workflow/trigger counts, every problem (kind, id, source path, error, isError) and whether the file watcher is live.
-- **Where:** Tauri `repo_status`, `GET /api/repo/status`, `services/repo_service.rs` (`RepoStore::status`); shown in Settings › Backup › This computer’s copy (DT-31).
+- **Where:** Tauri `repo_status`, `POST /api/rpc/repo_status`, `services/repo_service.rs` (`RepoStore::status`); shown in Settings › Backup › This computer’s copy (DT-31).
 - **Preconditions:** None.
-- **Steps:** `GET /api/repo/status`; then create an agent folder named `Bad_ID` with a `skill.md` and call again.
+- **Steps:** `POST /api/rpc/repo_status`; then create an agent folder named `Bad_ID` with a `skill.md` and call again.
 - **Expected:** `watching: true`; second call lists a problem for the invalid ID with `isError: true`.
 - **Edge / negative cases:** Duplicate agent ID (local vs vendored) reported as a duplicate; dangling references (workflow naming a missing agent) reported.
 - **Automation:** Covered by: `services/domain/repo.rs` `assembles_with_duplicates_and_dangling_refs_as_problems`; `LocalCopyPanel.test.tsx` | Layer: api | Gap: none.
@@ -238,7 +238,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-16 — Local git status, diff and commit
 
 - **What:** Git status of `HOME/repo` (branch, ahead/behind, files with `added|modified|deleted|renamed|untracked`), unified diff of one file vs `HEAD`, and "stage everything and commit" returning the hash. Never pushes. Only the repo at the layout root is opened.
-- **Where:** Tauri `repo_git_status`, `repo_git_diff`, `repo_git_commit`; `GET /api/repo/git/status`, `GET /api/repo/git/diff?path=`, `POST /api/repo/git/commit` `{message}`; `services/repo_service.rs` (`GitService`). UI uses status only (LocalCopyPanel, RemoteSection's local-change count).
+- **Where:** Tauri `repo_git_status`, `repo_git_diff`, `repo_git_commit`; `POST /api/rpc/repo_git_status`, `POST /api/rpc/repo_git_diff`, `POST /api/rpc/repo_git_commit` `{message}`; `services/repo_service.rs` (`GitService`). UI uses status only (LocalCopyPanel, RemoteSection's local-change count).
 - **Preconditions:** Repo with some uncommitted change.
 - **Steps:** Call status, diff on the changed path, commit with a message, status again.
 - **Expected:** Status lists the file; diff shows the change; commit returns a 40-char hash; status afterwards empty.

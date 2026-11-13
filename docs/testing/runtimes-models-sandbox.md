@@ -353,7 +353,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-01 — Add a provider key (tested before saving)
 
 - **What:** Provider keys (Anthropic, OpenAI, DeepSeek) are write-only: a pasted key is tested against the provider and stored only if it works; when the provider can't be reached at all the user may save it untested; "Get a key" opens the provider's page.
-- **Where:** Settings → Models & runtimes → Provider keys → provider row. `src/components/models/ProviderKeyForm.tsx`, `src/components/preferences/LlmKeysSection.tsx` (`ProviderRow`), `commands/llm_keys.rs` (`test_llm_key`, `set_llm_api_key`), `services/llm_keys.rs`. HTTP `POST /api/llm-keys/{provider}/test` (body `{apiKey?}`), `PUT /api/llm-keys/{provider}`, `GET /api/llm-keys`.
+- **Where:** Settings → Models & runtimes → Provider keys → provider row. `src/components/models/ProviderKeyForm.tsx`, `src/components/preferences/LlmKeysSection.tsx` (`ProviderRow`), `rpc/llm_keys.rs` (`test_llm_key`, `set_llm_api_key`), `services/llm_keys.rs`. HTTP `POST /api/rpc/test_llm_key` (body `{apiKey?}`), `POST /api/rpc/set_llm_api_key`, `POST /api/rpc/get_llm_key_status`.
 - **Preconditions:** A real key for one provider.
 - **Steps:** 1. In Settings › Models & runtimes → Provider keys, paste a valid key, click Save (Replace when a key is stored). 2. Paste an invalid key, Save. 3. Go offline, paste a key, Save, then click "Save without testing".
 - **Expected:** 1. Toast "API key saved"; row shows configured; keyring entry `nandi.llm.<provider>`; key never returned to the webview. 2. Test result shows invalid key; nothing stored. 3. Untested save stored.
@@ -365,7 +365,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-02 — Key test result classification
 
 - **What:** A key test reports OK with latency, or a failure kind: invalid key (401/403), no quota (402, 429 or 400 with quota/credit text), rate limited (429), unreachable (network, 5xx), no key, other; raw provider answer only under Details.
-- **Where:** `src/components/models/KeyTestResult.tsx`, `services/llm_keys.rs` (`key_test_failure`), `src-tauri/src/llm/probe.rs`. Also "Test" on a stored key (`POST /api/llm-keys/{provider}/test` with no body).
+- **Where:** `src/components/models/KeyTestResult.tsx`, `services/llm_keys.rs` (`key_test_failure`), `src-tauri/src/llm/probe.rs`. Also "Test" on a stored key (`POST /api/rpc/test_llm_key` with no body).
 - **Preconditions:** Keys in the various states.
 - **Steps:** 1. Test a revoked key. 2. Test an OpenAI key with no credit. 3. Test with no stored key.
 - **Expected:** Matching messages; `failure` = `invalidKey` / `noQuota` / `noKey`.
@@ -389,7 +389,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-04 — Default model: pick provider, type any model
 
 - **What:** The default model for Nandi's own calls is a provider select (Anthropic, OpenAI, DeepSeek, Ollama) plus a free-text model name; picking a provider fills in its usual model (for Ollama one it has); Save writes `<provider>:<model>` to `settings.yaml` in the repo; a provider without a key says where to add it.
-- **Where:** Settings → Models & runtimes → Nandi (built in) → Default model. `LlmKeysSection.tsx` (`DefaultModelField`), `src/lib/models.ts`, `commands/llm_keys.rs` (`get_default_model`, `set_default_model`). HTTP `GET|PUT /api/default-model`.
+- **Where:** Settings → Models & runtimes → Nandi (built in) → Default model. `LlmKeysSection.tsx` (`DefaultModelField`), `src/lib/models.ts`, `rpc/llm_keys.rs` (`get_default_model`, `set_default_model`). HTTP `POST /api/rpc/get_default_model|set_default_model`.
 - **Preconditions:** None.
 - **Steps:** 1. Pick OpenAI, type `gpt-5.1`, Save. 2. Inspect `~/.nandi/repo/.nandi/settings.yaml`. 3. Pick a provider with no key.
 - **Expected:** Toast "Default model saved"; settings file `default_model: gpt:gpt-5.1` committed through the repo; needs-key hint for 3. Save disabled when unchanged or empty.
@@ -401,7 +401,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-05 — Suggested models from the provider's own list
 
 - **What:** With a key saved, the model field's suggestions come from the provider's live model list (Anthropic, OpenAI, DeepSeek), newest first, OpenAI embedding/audio/image/moderation models left out; without a key or when unreachable, built-in hints (or Ollama's installed models) are shown; any model can still be typed.
-- **Where:** Same field (datalist `llm-model-suggestions`). `src/hooks/useLlmKeyStatus.ts` (`useProviderModels`), `commands/llm_keys.rs` (`list_provider_models`), `llm/probe.rs` (`model_ids`). HTTP `GET /api/llm-keys/{provider}/models`.
+- **Where:** Same field (datalist `llm-model-suggestions`). `src/hooks/useLlmKeyStatus.ts` (`useProviderModels`), `rpc/llm_keys.rs` (`list_provider_models`), `llm/probe.rs` (`model_ids`). HTTP `POST /api/rpc/list_provider_models`.
 - **Preconditions:** A provider key.
 - **Steps:** 1. Pick Anthropic with a key, focus the model field. 2. Remove the key.
 - **Expected:** Live IDs listed; built-in hints after removal.
@@ -485,7 +485,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-12 — Ollama (local models)
 
 - **What:** The "Ollama (on this computer)" row says whether Ollama is running and which models it has, with "Check again" and "Install Ollama from ollama.com"; Ollama needs no key; its installed models are suggested in the default model field.
-- **Where:** Provider keys → Ollama. `LlmKeysSection.tsx` (`OllamaRow`), `commands/llm_keys.rs` (`detect_ollama`), `llm/probe.rs` (`ollama_models`, 2 s timeout). HTTP `GET /api/ollama`.
+- **Where:** Provider keys → Ollama. `LlmKeysSection.tsx` (`OllamaRow`), `rpc/llm_keys.rs` (`detect_ollama`), `llm/probe.rs` (`ollama_models`, 2 s timeout). HTTP `POST /api/rpc/detect_ollama`.
 - **Preconditions:** Ollama installed (or not).
 - **Steps:** 1. With Ollama stopped, open the row. 2. Start Ollama, Check again. 3. Make `ollama:llama3` the default and chat.
 - **Expected:** "Not running" then "Running · N models"; calls go to `localhost:11434`; trial turns off.
@@ -497,7 +497,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-13 — Free tokens (trial gateway)
 
 - **What:** Every build has a free trial on `deepseek:deepseek-flash` through Nandi's trial gateway (`https://trial.vaultdb.ai`, `NANDI_TRIAL_GATEWAY_URL` overrides it). The DeepSeek key lives only on the gateway; nothing is baked into the app. The gateway gives each person 100,000 tokens (input + output), one device or all of a person's devices once they sign in, and is the only counter: Settings shows what `GET /v1/trial` says. The trial is used only when nothing of the user's own works, only on the host, never in a container. Each call is signed with the instance's device key (`X-Nandi-Instance`, `X-Nandi-Key`, `X-Nandi-Time`, `X-Nandi-Signature` over `nandi-trial-v1\n<METHOD>\n<path>\n<instance>\n<time>\n<hex sha256(body)>`) and streamed through the DeepSeek adapter's parser with no bearer key.
-- **Where:** `services/llm_trial/` (`mod.rs` modes and health, `gateway.rs` signed client), `llm/mod.rs` (`dispatch`), `llm/deepseek.rs` (`request_body`, `read_stream`), `services/llm_keys.rs` (`usable_model`, `get_free_trial_account`); Settings › Models & runtimes › Free tokens (`FreeTrialField`, `lib/free-trial.ts`); HTTP `GET /api/free-trial/account`; onboarding model step.
+- **Where:** `services/llm_trial/` (`mod.rs` modes and health, `gateway.rs` signed client), `llm/mod.rs` (`dispatch`), `llm/deepseek.rs` (`request_body`, `read_stream`), `services/llm_keys.rs` (`usable_model`, `get_free_trial_account`); Settings › Models & runtimes › Free tokens (`FreeTrialField`, `lib/free-trial.ts`); HTTP `POST /api/rpc/get_free_trial_account`; onboarding model step.
 - **Preconditions:** No own keys; internet (or `NANDI_TRIAL_GATEWAY_URL` pointing at a local gateway).
 - **Steps:** 1. Fresh install, ask something. 2. Open Settings › Models & runtimes › Free tokens. 3. Ask again and reopen the card.
 - **Expected:** The answer streams. The card says "In use: N of 100,000 free tokens left." and N drops after each call (the gateway's count). Used up: "Your free tokens are used up. ..." and the switch disabled.
@@ -509,7 +509,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-14 — Free tokens switch and automatic turn-off
 
 - **What:** The "Use free tokens" switch turns the trial on (remembering the current default, making the trial model default) or off (giving the previous default back unless the user picked another since). The trial turns itself off for good after a call on the user's own model succeeds (key, working Claude Code sign-in, Ollama default, llm.yaml/env model); saving a key also turns it off. It can be turned back on while the gateway hasn't said the tokens are used up.
-- **Where:** `FreeTrialField` switch `#free-trial-switch`, `commands/llm_keys.rs` (`set_free_trial`), `llm_trial/mod.rs` (`set_enabled`, `own_model_worked`, `own_model_set_up`, `remember_default`, `take_remembered_default`). HTTP `PUT /api/free-trial`. Keychain `nandi.trial.deepseek.mode`, `nandi.trial.deepseek.previous-model`.
+- **Where:** `FreeTrialField` switch `#free-trial-switch`, `rpc/llm_keys.rs` (`set_free_trial`), `llm_trial/mod.rs` (`set_enabled`, `own_model_worked`, `own_model_set_up`, `remember_default`, `take_remembered_default`). HTTP `POST /api/rpc/set_free_trial`. Keychain `nandi.trial.deepseek.mode`, `nandi.trial.deepseek.previous-model`.
 - **Preconditions:** Tokens left on the gateway.
 - **Steps:** 1. Turn on with default `claude:x`. 2. Turn off. 3. Turn on, change default to `gpt:y`, turn off. 4. Add a working key and make a call.
 - **Expected:** 1. Default becomes `deepseek:deepseek-flash`. 2. Back to `claude:x`. 3. Stays `gpt:y`. 4. Message "Off, because you set up your own model. You still have N free tokens."; while on, `deepseek:` calls use the trial before the user's DeepSeek key.

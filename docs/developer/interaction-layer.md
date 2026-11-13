@@ -392,12 +392,12 @@ either.
 
 ## Interfaces
 
-| Area   | Commands                                                                              | Routes                           |
-| ------ | ------------------------------------------------------------------------------------- | -------------------------------- |
-| Ask    | `ask`, `ask_streaming`, `list_ask_history`                                            | `POST /api/rpc/{command}`        |
-| Studio | `load_artifact`, `save_artifact`, `preview_edit`, `list_push_targets`                 | `POST /api/rpc/{command}`        |
-| Work   | `list_work`, `get_work_item`, `pause_work`, `resume_work`, `cancel_work`, `rate_work` | `POST /api/rpc/{command}`        |
-| Models | `get_default_model`, `set_default_model`                                              | `GET` / `PUT /api/default-model` |
+| Area   | Commands                                                                              | Routes                                    |
+| ------ | ------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Ask    | `ask`, `ask_streaming`, `list_ask_history`                                            | `POST /api/rpc/{command}`                 |
+| Studio | `load_artifact`, `save_artifact`, `preview_edit`, `list_push_targets`                 | `POST /api/rpc/{command}`                 |
+| Work   | `list_work`, `get_work_item`, `pause_work`, `resume_work`, `cancel_work`, `rate_work` | `POST /api/rpc/{command}`                 |
+| Models | `get_default_model`, `set_default_model`                                              | `GET` / `POST /api/rpc/set_default_model` |
 
 Events: `ask://streaming_delta`, `ask://completed`,
 `studio://artifact_loaded`, `studio://artifact_saved`,

@@ -49,6 +49,7 @@ import {
 import { marketplaceQueryKeys, useRegistries } from '@/hooks/useMarketplace'
 import type { CapabilityRegistry, RegistryInfo } from '@/lib/bindings'
 import { client } from '@/lib/client'
+import { marketplaceFilter } from '@/lib/marketplace-filter'
 import { formatRelativeTime } from '@/lib/format-time'
 import { removeRegistry } from '@/lib/marketplace-actions'
 import { cn } from '@/lib/utils'
@@ -66,7 +67,9 @@ function useSyncMarketplace() {
   const [syncing, setSyncing] = useState(false)
   const sync = async () => {
     setSyncing(true)
-    const result = await client.listMarketplacePacks({ refresh: true })
+    const result = await client.listMarketplacePacks(
+      marketplaceFilter({ refresh: true })
+    )
     setSyncing(false)
     if (result.status === 'error') {
       toast.error(result.error)

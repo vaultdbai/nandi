@@ -125,12 +125,14 @@ pub mod capability;
 pub mod capability_definitions;
 pub mod capability_registries;
 pub mod config;
+pub mod connectors;
 pub mod containers;
 pub mod decisions;
 pub mod delegation;
 pub mod delegation_clarification;
 pub mod egress;
 pub mod email;
+pub mod gateway;
 pub mod groups;
 pub mod harness_sessions;
 pub mod harnesses;
@@ -139,8 +141,10 @@ pub mod identity;
 pub mod images;
 pub mod knowme;
 pub mod live;
+pub mod llm_keys;
 pub mod machine;
 pub mod manual_steps;
+pub mod marketplace;
 pub mod marketplace_search;
 pub mod mascot;
 pub mod memory;
@@ -152,8 +156,10 @@ pub mod policies;
 pub mod preferences;
 pub mod queue;
 pub mod reassign;
+pub mod relay;
 pub mod relay_capabilities;
 pub mod remote;
+pub mod repo;
 pub mod requests;
 pub mod runs;
 pub mod shared;
@@ -185,12 +191,14 @@ const TABLES: &[&[(&str, Handler)]] = &[
     capability_definitions::RPC,
     capability_registries::RPC,
     config::RPC,
+    connectors::RPC,
     containers::RPC,
     decisions::RPC,
     delegation::RPC,
     delegation_clarification::RPC,
     egress::RPC,
     email::RPC,
+    gateway::RPC,
     groups::RPC,
     harness_sessions::RPC,
     harnesses::RPC,
@@ -199,8 +207,10 @@ const TABLES: &[&[(&str, Handler)]] = &[
     images::RPC,
     knowme::RPC,
     live::RPC,
+    llm_keys::RPC,
     machine::RPC,
     manual_steps::RPC,
+    marketplace::RPC,
     marketplace_search::RPC,
     mascot::RPC,
     memory::RPC,
@@ -212,8 +222,10 @@ const TABLES: &[&[(&str, Handler)]] = &[
     preferences::RPC,
     queue::RPC,
     reassign::RPC,
+    relay::RPC,
     relay_capabilities::RPC,
     remote::RPC,
+    repo::RPC,
     requests::RPC,
     runs::RPC,
     shared::RPC,

@@ -7,9 +7,9 @@
 //! are searched for every secret value: files hold `secret_refs` only, the
 //! values are in the keychain. A secret written to the repo fails CI.
 
-use serde_json::{json, Value};
+use serde_json::json;
 
-use crate::offline_suite::{boot, call, post, rpc};
+use crate::offline_suite::{boot, post, rpc};
 use crate::services::domain::EntityKind;
 use crate::services::relay::BuiltInRelay;
 use crate::services::AppState;
@@ -51,16 +51,6 @@ fn history(repo: &std::path::Path) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
-async fn put(router: &axum::Router, uri: &str, body: Value) -> Value {
-    let (status, answer) = call(router, "PUT", uri, body).await;
-    assert_eq!(
-        status,
-        axum::http::StatusCode::OK,
-        "PUT /api/{uri}: {answer}"
-    );
-    answer
-}
-
 /// An agent with the visible browser, so it can hold a site password
 fn add_shopper(state: &AppState) {
     let path = state.store().layout().skill_path("shopper");
@@ -80,7 +70,12 @@ async fn no_secret_reaches_the_repo_or_its_history() {
 
     // Settings: a provider key and AWS keys
     let provider = "sk-ant-api03-dt04-provider-0123456789";
-    put(&router, "llm-keys/anthropic", json!({ "apiKey": provider })).await;
+    rpc(
+        &router,
+        "set_llm_api_key",
+        json!({ "provider": "anthropic", "apiKey": provider }),
+    )
+    .await;
     secrets.push(("provider key", provider.into()));
     let aws_secret = "dt04AwsSecretKey0123456789abcdefghijklmn";
     rpc(
@@ -93,23 +88,23 @@ async fn no_secret_reaches_the_repo_or_its_history() {
     secrets.push(("AWS secret key", aws_secret.into()));
 
     // A connector and its API key
-    post(
+    rpc(
         &router,
-        "connectors/scaffold",
-        json!({
+        "scaffold_connector",
+        json!({ "input": {
             "id": "tracker", "name": "Issue tracker", "description": "Issues.",
             "version": "1.0.0", "run": "npx -y @acme/tracker-mcp@1.2.3",
             "auth": { "kind": "api_key", "env": ["TRACKER_TOKEN"], "label": "Tracker API key" },
             "hosts": ["api.tracker.example"],
             "tools": [{ "name": "list_issues", "description": "List issues", "access": "read" }],
-        }),
+        } }),
     )
     .await;
     let connector_key = "tk_dt04_connector_secret_0123456789";
-    put(
+    rpc(
         &router,
-        "connectors/tracker/secret",
-        json!({ "key": "TRACKER_TOKEN", "value": connector_key }),
+        "set_connector_secret",
+        json!({ "id": "tracker", "key": "TRACKER_TOKEN", "value": connector_key }),
     )
     .await;
     secrets.push(("connector key", connector_key.into()));
@@ -188,9 +183,9 @@ async fn no_secret_reaches_the_repo_or_its_history() {
     );
 
     // Everything into the history, as a backup would commit it
-    post(
+    rpc(
         &router,
-        "repo/git/commit",
+        "repo_git_commit",
         json!({ "message": "DT-04: everything saved" }),
     )
     .await;

@@ -147,14 +147,14 @@ async fn tracker_script(state: &AppState) {
 
 /// The issue tracker connector, and agent `triager` using it
 async fn triager_with_tracker(router: &axum::Router) {
-    post(
+    rpc(
         router,
-        "connectors/scaffold",
-        json!({
+        "scaffold_connector",
+        json!({ "input": {
             "id": "tracker", "name": "Issue tracker", "description": "Issues.",
             "run": "uvx tracker-mcp==1.0", "hosts": ["api.tracker.example"],
             "tools": [{ "name": "list_issues", "description": "List issues", "access": "read" }],
-        }),
+        } }),
     )
     .await;
     post(
@@ -165,9 +165,9 @@ async fn triager_with_tracker(router: &axum::Router) {
     .await;
     let (status, body) = call(
         router,
-        "PUT",
-        "agents/triager/connectors",
-        json!({ "connectors": [{ "id": "tracker" }] }),
+        "POST",
+        "rpc/set_agent_connectors",
+        json!({ "agentId": "triager", "connectors": [{ "id": "tracker" }] }),
     )
     .await;
     assert_eq!(status, axum::http::StatusCode::OK, "{body}");

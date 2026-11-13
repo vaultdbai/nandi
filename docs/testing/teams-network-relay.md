@@ -347,7 +347,7 @@ Notes that apply to the whole section:
 ### TM-21 — Block a member, or one of their agents
 
 - **What:** "Block this member" stores `(instance, *)` in `blocked_members`. Their tasks are rejected the moment they arrive, and none of their agents are used. To block a single agent, use **Block** next to that agent on the member profile's Capabilities tab (`MemberAgentsPanel`), or the block API.
-- **Where:** The Trust popover or Trust tab → "Block this member"; member profile → Capabilities → **Block** / **Unblock** for one agent. Code: `services/team/trust.rs` (`block_agent_from_member`, `unblock_agent_from_member`, `ALL_AGENTS`). HTTP: `POST`/`POST /api/rpc/unblock_agent_from_member`.
+- **Where:** The Trust popover or Trust tab → "Block this member"; member profile → Capabilities → **Block** / **Unblock** for one agent. Code: `services/team/trust.rs` (`block_agent_from_member`, `unblock_agent_from_member`, `ALL_AGENTS`). HTTP: `POST /api/rpc/block_agent_from_member|unblock_agent_from_member`.
 - **Preconditions:** A known member.
 - **Steps:** 1. Block the member. 2. Have them call you. 3. Unblock. 4. Block a single agent and check Shared with me.
 - **Expected:**
@@ -569,9 +569,9 @@ Notes that apply to the whole section:
 
 - **What:**
   - With no relay, the card reads **Join a company relay**: the **Relay URL** (empty, with the example `wss://relay.example.com/relay` as its placeholder; prefilled only with the build's own relay, never a developer address), a **Join code** password field and **Paste invite**. Nothing connects or enrolls until you click **Join** (`join_relay`, RL-38). A joined relay shows a toast "Joined <host>. Connecting…"; anything else shows why under the form and changes nothing.
-  - Once joined, the URL shows as text with **Change…**, **Test connection**, **Copy invite message** and **Disconnect**. The text never shows this instance's `?token=`; neither do invites, `NetworkSnapshot.relayUrl` or `RelayStatus.relayUrl` (the command, `GET /api/relay/status` and `relay://status` strip it: `RelayStatus::without_token`).
+  - Once joined, the URL shows as text with **Change…**, **Test connection**, **Copy invite message** and **Disconnect**. The text never shows this instance's `?token=`; neither do invites, `NetworkSnapshot.relayUrl` or `RelayStatus.relayUrl` (the command, `POST /api/rpc/get_relay_status` and `relay://status` strip it: `RelayStatus::without_token`).
   - The URL goes to `~/.nandi/config.json` (`relay_url`), and the app reconnects on every launch.
-- **Where:** Network → Connection (`src/components/views/ConnectionView.tsx` `RelayCard`, `components/network/JoinRelayFields.tsx`, `src/hooks/useRelay.ts` `useJoinRelay`, `useCopyInvite`, `DEFAULT_RELAY_URL`). Code: `commands/relay.rs` (`get_relay_status`, `join_relay`, `get_relay_invite`), `services/relay/join.rs`, `services/relay/mod.rs` (`resolve_url`). HTTP: `GET /api/relay/status`, `POST /api/relay/join {"url","joinCode"}`, `GET /api/relay/invite`. Event: `relay://status`.
+- **Where:** Network → Connection (`src/components/views/ConnectionView.tsx` `RelayCard`, `components/network/JoinRelayFields.tsx`, `src/hooks/useRelay.ts` `useJoinRelay`, `useCopyInvite`, `DEFAULT_RELAY_URL`). Code: `rpc/relay.rs` (`get_relay_status`, `join_relay`, `get_relay_invite`), `services/relay/join.rs`, `services/relay/mod.rs` (`resolve_url`). HTTP: `POST /api/rpc/get_relay_status`, `POST /api/rpc/join_relay {"url","joinCode"}`, `POST /api/rpc/get_relay_invite`. Event: `relay://status`.
 - **Preconditions:** A relay is running (RL-07), with a join code for the secured case.
 - **Steps:** 1. On a fresh install, open Network → Connection. 2. Enter `wss://<relay>/relay` and the join code (or Paste invite). 3. Click **Join**. 4. Restart the app. 5. Click **Change…**, edit the URL and click **Join**.
 - **Expected:**
@@ -590,7 +590,7 @@ Notes that apply to the whole section:
 ### RL-02 — Test connection
 
 - **What:** Pings the URL in the field with a WebSocket, with a 2 s probe timeout and a 5 s connect timeout. It shows the round trip in ms or the exact error.
-- **Where:** Connection card, and the checklist's relay row. Code: `commands/relay.rs` (`test_relay_connection`). HTTP: `POST /api/relay/test {"url"}`.
+- **Where:** Connection card, and the checklist's relay row. Code: `rpc/relay.rs` (`test_relay_connection`). HTTP: `POST /api/rpc/test_relay_connection {"url"}`.
 - **Preconditions:** None.
 - **Steps:** 1. Test a running relay. 2. Test a closed port. 3. Test a firewalled LAN host.
 - **Expected:** The result is `network.connection.testOk` with the ms for the running relay, and `testFailed` with the error (refused or timeout) for the others.
@@ -602,7 +602,7 @@ Notes that apply to the whole section:
 ### RL-03 — Disconnect
 
 - **What:** After a confirmation, clears the saved URL. The app disconnects and stays disconnected on the next launch. The instance token is kept for that relay, so joining it again reuses the seat (no second enrollment).
-- **Where:** Connection card → Disconnect (ConfirmAction "Disconnect from the relay?"). The same call is `PUT /api/relay/url {"url":""}`.
+- **Where:** Connection card → Disconnect (ConfirmAction "Disconnect from the relay?"). The same call is `POST /api/rpc/set_relay_url {"url":""}`.
 - **Preconditions:** A relay is saved.
 - **Steps:** 1. Click **Disconnect** and confirm with **Disconnect**. 2. Restart the app.
 - **Expected:** The toast reads "Disconnected from the relay", `relay_url` is removed, and the Network page defaults to Connection.
@@ -613,11 +613,11 @@ Notes that apply to the whole section:
 
 ### RL-04 — Relay URL precedence (`NANDI_RELAY_URL` > config.json > none)
 
-- **What:** `NANDI_RELAY_URL` wins, then `relay_url` in `config.json` (with the instance token from `relay_state`). `NANDI_RELAY_URL` is not read. The Connection card says "Set by your environment; changes here won't apply." with **Change** and **Disconnect** disabled, and Details shows "Relay address set by: An environment variable (NANDI_RELAY_URL)". A `PUT /api/relay/url` still takes effect for the running app, but the environment variable wins again at the next launch. With neither set, the app stays disconnected.
+- **What:** `NANDI_RELAY_URL` wins, then `relay_url` in `config.json` (with the instance token from `relay_state`). `NANDI_RELAY_URL` is not read. The Connection card says "Set by your environment; changes here won't apply." with **Change** and **Disconnect** disabled, and Details shows "Relay address set by: An environment variable (NANDI_RELAY_URL)". A `POST /api/rpc/set_relay_url` still takes effect for the running app, but the environment variable wins again at the next launch. With neither set, the app stays disconnected.
 - **Where:** `services/relay/mod.rs` (`resolve_url`, `RELAY_URL_ENV`), `RelayStatus.relayUrlSource`.
 - **Preconditions:** None.
 - **Steps:** 1. Launch with `NANDI_RELAY_URL=ws://127.0.0.1:8787/relay`. 2. Open Connection and Details.
-- **Expected:** The app is connected without any saved config, and Details names the environment variable as the source (`relayUrlSource: "env"` in `GET /api/relay/status`).
+- **Expected:** The app is connected without any saved config, and Details names the environment variable as the source (`relayUrlSource: "env"` in `POST /api/rpc/get_relay_status`).
 - **Edge / negative cases:** A relay URL stored anywhere else (for example a `relay_state.relay_url` row) is ignored; with no env and no `config.json` value the app is disconnected.
 - **Automation:** Covered by: `relay/tests.rs` (`the_relay_url_comes_from_the_env_then_config`, `without_a_relay_status_is_disconnected`) | Layer: api | Gap: none.
 - **Needs relay:** yes
@@ -692,9 +692,9 @@ Notes that apply to the whole section:
   - `GET /health` returns `{status, instances_connected, uptime_seconds, version, auth}`.
   - `GET /instances` lists each instance's ID, peer address, agent cards, connected_at, last_heartbeat and seconds_since_heartbeat.
   - The app shows the instances through `get_relay_instances`.
-- **Where:** nandi-relay `src/server.rs`. App side: `commands/relay.rs` (`get_relay_instances`, `list_online_agents`). HTTP: `GET /api/relay/instances`, `GET /api/relay/agents?capability=`.
+- **Where:** nandi-relay `src/server.rs`. App side: `rpc/relay.rs` (`get_relay_instances`, `list_online_agents`). HTTP: `POST /api/rpc/get_relay_instances`, `POST /api/rpc/list_online_agents`.
 - **Preconditions:** A relay is running.
-- **Steps:** 1. `curl http://<relay>:8787/health`. 2. `curl …/instances`. 3. `GET /api/relay/agents`.
+- **Steps:** 1. `curl http://<relay>:8787/health`. 2. `curl …/instances`. 3. `POST /api/rpc/list_online_agents`.
 - **Expected:**
   - `"auth":"open"` when no secret is set.
   - The instances list matches the connected apps.
@@ -769,7 +769,7 @@ Notes that apply to the whole section:
 
   Settings are written to skill.md through the repos layer, never to SQLite.
 
-- **Where:** Agent → Settings tab → Sharing section (`src/components/agent-console/DelegationPanel.tsx` inside `src/components/agents/AgentSettingsTab.tsx`). Code: `rpc/delegation.rs` (`get_agent_delegation`, `set_agent_delegation`), `services/a2a/settings.rs`. HTTP: `GET`/`POST /api/rpc/set_agent_delegation`.
+- **Where:** Agent → Settings tab → Sharing section (`src/components/agent-console/DelegationPanel.tsx` inside `src/components/agents/AgentSettingsTab.tsx`). Code: `rpc/delegation.rs` (`get_agent_delegation`, `set_agent_delegation`), `services/a2a/settings.rs`. HTTP: `POST /api/rpc/get_agent_delegation|set_agent_delegation`.
 - **Preconditions:** An agent exists.
 - **Steps:** 1. Turn on both switches. 2. Set Tasks at once to 2. 3. Add an exception `summarize: Never accept`. 4. Open skill.md.
 - **Expected:** skill.md has `delegation_outbound: true`, `accepts_delegation: true`, `max_delegation_concurrent: 2` and `delegation_overrides: {summarize: deny}`, and the gold copy commit is made.
@@ -862,7 +862,7 @@ Notes that apply to the whole section:
 
   The question shows as a card in the thread, and you can answer it, take it over yourself ("Ask me") or let the agent answer. The policy editor sets allow, max rounds, auto topics, escalate topics and the timeout.
 
-- **Where:** Thread `ClarificationCard`; Agent → Settings → Sharing → clarification policy (`src/components/agents/AgentDelegationTab.tsx`, `ClarificationPolicyEditor.tsx`). Code: `rpc/delegation_clarification.rs` (`respond_to_clarification`, `escalate_clarification`, `get_pending_clarifications`, `get/set_clarification_policy`). HTTP: `POST /api/rpc/respond_to_clarification`, `POST /api/rpc/escalate_clarification`, `POST /api/rpc/get_pending_clarifications`, `GET`/`POST /api/rpc/set_clarification_policy`. Events: `task://clarification_requested`, `task://clarification_answered`.
+- **Where:** Thread `ClarificationCard`; Agent → Settings → Sharing → clarification policy (`src/components/agents/AgentDelegationTab.tsx`, `ClarificationPolicyEditor.tsx`). Code: `rpc/delegation_clarification.rs` (`respond_to_clarification`, `escalate_clarification`, `get_pending_clarifications`, `get/set_clarification_policy`). HTTP: `POST /api/rpc/respond_to_clarification`, `POST /api/rpc/escalate_clarification`, `POST /api/rpc/get_pending_clarifications`, `POST /api/rpc/get_clarification_policy|set_clarification_policy`. Events: `task://clarification_requested`, `task://clarification_answered`.
 - **Preconditions:** Two agents (local or cross-instance) and a provider prompt that triggers a question.
 - **Steps:** 1. Set the escalate topics to `budget`. 2. Delegate a task whose provider asks about the budget. 3. Answer in the card.
 - **Expected:** The task goes to `inputRequired`, then resumes after your answer and completes. The saved policy is bounded, and its topics are trimmed and de-duplicated.
@@ -1016,7 +1016,7 @@ Notes that apply to the whole section:
 ### RL-38 — Join a company relay with a join code, and invite a teammate
 
 - **What:** A public installer joins a secured company relay from the UI: the relay's address and the join code the operator gives out (Connection, RL-01; onboarding, ON-09). `join_relay` checks `/health` (reachable, a Nandi relay, same protocol version), then enrolls once and stores the token as the build's flow does (`relay_state`). Outcomes (`JoinOutcome`): `joined`, `invalidUrl`, `unreachable`, `versionMismatch`, `codeNeeded`, `wrongCode`, `relayFull` (the relay's message shown verbatim), `alreadyEnrolled`, `removed`, `noEnrollment`, `signInNeeded` (a public relay: join it by signing in, RL-45), `refused`. An open relay joins without a code. The typed code is kept in the keychain (`nandi.relay.join_code`) only for **Copy invite message**, whose invite line is `<url>#join=<code>`; **Paste invite** (or pasting the message into the address) fills both fields. The code and the token are never shown or logged after entry.
-- **Where:** `services/relay/join.rs`, `commands/relay.rs` (`join_relay`, `get_relay_invite`), `http/relay.rs` (`POST /relay/join`, `GET /relay/invite`), `components/network/JoinRelayFields.tsx`, `join-model.ts`, `relay-invite.ts`, `hooks/useRelay.ts` (`useJoinRelay`, `useCopyInvite`).
+- **Where:** `services/relay/join.rs`, `rpc/relay.rs` (`join_relay`, `get_relay_invite`), `rpc/relay.rs` (`POST /relay/join`, `GET /relay/invite`), `components/network/JoinRelayFields.tsx`, `join-model.ts`, `relay-invite.ts`, `hooks/useRelay.ts` (`useJoinRelay`, `useCopyInvite`).
 - **Preconditions:** A relay with `NANDI_RELAY_SECRET` and `NANDI_RELAY_JOIN_CODE`; a public build (no default relay).
 - **Steps:** 1. Join with a wrong code. 2. Join with the right code. 3. Copy invite message, paste it into a second fresh install's address field, Join. 4. On a relay at its 20-user limit, Join. 5. Disconnect and Join again.
 - **Expected:** 1. "That join code wasn't accepted…", nothing saved. 2. Joined and connected; the code field clears. 3. The message holds the address and `#join=<code>`, never the token; the second install fills both fields and joins. 4. "<host> has no free seat. The relay says:" and the relay's free-limit message. 5. Joined again with no second enrollment.
@@ -1120,7 +1120,7 @@ Notes that apply to the whole section:
 ### RL-34 — Everyone on the company's relay is trusted
 
 - **What:** When this Nandi's relay connection carries an instance token (the relay needs a secret, so only enrolled instances are on it) and the relay isn't a public one, every member the relay lists is trusted, as if marked **Trusted peer**, unless the owner turns off **Trust everyone on this relay** (Network › Connection, `trust.relayMembers`, on by default). Pause and Block still apply. Where it can't apply the switch shows off and disabled, whatever was saved, with the reason: no relay yet ("Applies once you join your company's relay…"), an open relay, or the public relay ("Anyone with an email can join the public relay, so you trust people one by one.", `RelayTrust.public`); the switch and the words always agree. Revoking someone on the relay (RL-30) takes them off it, so they lose this trust too.
-- **Where:** `services/team/trust.rs` (`is_trusted`, `trusted_by_relay`, `on_a_secured_relay`, `relay_trust`, `set_trusts_relay_members`), used by `a2a/executor.rs` (agent and workflow trust checks) and `team/trust_requests.rs`. Commands `get_relay_trust`, `set_relay_trust`; HTTP `GET`/`POST /api/rpc/set_relay_trust`. UI: `ConnectionView.tsx` (`RelayTrustCard`).
+- **Where:** `services/team/trust.rs` (`is_trusted`, `trusted_by_relay`, `on_a_secured_relay`, `relay_trust`, `set_trusts_relay_members`), used by `a2a/executor.rs` (agent and workflow trust checks) and `team/trust_requests.rs`. Commands `get_relay_trust`, `set_relay_trust`; HTTP `POST /api/rpc/get_relay_trust|set_relay_trust`. UI: `ConnectionView.tsx` (`RelayTrustCard`).
 - **Preconditions:** A relay with `NANDI_RELAY_SECRET` and a join code, three Nandis enrolled on it.
 - **Steps:**
   1. From one Nandi, ask another's agent for a capability set to **Ask** (not Allow), without marking each other trusted.
@@ -1249,7 +1249,7 @@ Notes that apply to the whole section:
 ### RL-45 — Join the public relay with the connected email
 
 - **What:** People without a company relay join VaultDB.ai's public relay with the Outlook or Gmail they connected (the locked identity, ST-34), not with a join code or a sign-in. Onboarding's network step (ON-09) and Network › Connection (while no relay is set: a **Public relay** card with **Join the public relay**) share one flow. It asks the relay's `/health` (`public`, `identity`: whose ID tokens it accepts) and shows the free limits ("up to 10 groups, 50 people per group and 500 messages a day"), "You join as <email>, the email this Nandi is connected with." and one **Join the public relay** button. Joining posts this Nandi's ID, device public keys, a fresh ID token of the identity's mailbox and the machine hash (the relay's salt) to `/relay/public/join`; the relay checks the token and locks the email to the device key. The token is kept exactly like an enrolled one (`relay_state`, never `config.json` or the UI), the account is remembered (`relay_state.relay_account`) and Nandi connects: "Joined as <email>. Connecting to the public relay…". With no email connected the card says "Connect your Outlook or Gmail in Settings › Email to join groups on the public relay." with **Open Settings › Email**, and there is no other way in; a disconnected or ended mailbox says to connect it again. Every refusal code has its own calm line (`PublicRelayRefusal`, `publicRelay.refusal.*`) with the relay's words under it: `id_token_invalid`, `id_token_expired`, `email_unverified`, `identity_unavailable`, `account_suspended`, `already_linked`, `key_mismatch`, `device_limit`, `machine_limit`, `signup_limit`, `revoked`, `invalid_request`, `unauthorized`, `no_account`, `not_public`, anything else. An unreachable relay is never an error: "The public relay isn't reachable right now — you can join later from Network › Connection." with **Try again**. The URL is `wss://relay.vaultdb.ai/relay`, or `NANDI_PUBLIC_RELAY_URL` (staging, tests).
-- **Where:** `services/relay/public.rs` (`offer`, `join`, `PUBLIC_RELAY_URL`, `PUBLIC_RELAY_URL_ENV`), `services/identity/` (`fresh_id_token`, `machine_id`), `services/relay/mod.rs` (`BuiltInRelay::public_url`, `RelayStatus.publicRelayUrl`), commands `get_public_relay_offer`, `join_public_relay`; HTTP `GET /api/relay/public`, `POST /api/relay/public/join`; UI `components/network/PublicRelayJoin.tsx`, `public-relay-model.ts`, `ConnectionView.tsx` (`PublicRelayCard`), `Step3_Network.tsx`. The relay: nandi-relay `--public` (README "A public relay").
+- **Where:** `services/relay/public.rs` (`offer`, `join`, `PUBLIC_RELAY_URL`, `PUBLIC_RELAY_URL_ENV`), `services/identity/` (`fresh_id_token`, `machine_id`), `services/relay/mod.rs` (`BuiltInRelay::public_url`, `RelayStatus.publicRelayUrl`), commands `get_public_relay_offer`, `join_public_relay`; HTTP `POST /api/rpc/get_public_relay_offer`, `POST /api/rpc/join_public_relay`; UI `components/network/PublicRelayJoin.tsx`, `public-relay-model.ts`, `ConnectionView.tsx` (`PublicRelayCard`), `Step3_Network.tsx`. The relay: nandi-relay `--public` (README "A public relay").
 - **Preconditions:** A relay run with `--public` and `NANDI_RELAY_GOOGLE_CLIENT_ID` / `NANDI_RELAY_MICROSOFT_CLIENT_ID` set to the app build's mail client IDs; the app started with `NANDI_PUBLIC_RELAY_URL` pointing at it.
 - **Steps:**
   1. Fresh home, no email connected: in onboarding choose **Join the public relay**.
@@ -1273,7 +1273,7 @@ Notes that apply to the whole section:
 ### RL-46 — The public relay's Account card
 
 - **What:** On the public relay, Network › Connection shows **Public relay account**: "Joined as <email>", this account's Nandis (instance IDs, "(this Nandi)" marked), the free limits and today's usage ("Groups 2 of 10", "People per group Up to 50", "Messages today 37 of 500") and when today's count resets, in the user's own clock. A note says "On a public relay you see only people you share a group with." with **Open Groups**. While the relay doesn't answer, the card names the account as kept and says "Your account's details show when the public relay answers." Refreshed every minute. On any other relay there is no card.
-- **Where:** `services/relay/public.rs` (`account`: `GET /relay/account?instanceId=` with the token as bearer; `PublicRelayAccount`), command `get_public_relay_account`, HTTP `GET /api/relay/public/account`, UI `components/network/PublicRelayAccountCard.tsx`, `hooks/useRelay.ts` (`usePublicRelayAccount`).
+- **Where:** `services/relay/public.rs` (`account`: `GET /relay/account?instanceId=` with the token as bearer; `PublicRelayAccount`), command `get_public_relay_account`, HTTP `POST /api/rpc/get_public_relay_account`, UI `components/network/PublicRelayAccountCard.tsx`, `hooks/useRelay.ts` (`usePublicRelayAccount`).
 - **Preconditions:** RL-45 joined.
 - **Steps:** 1. Open Network › Connection. 2. Create a group and send a request. 3. Stop the relay and reopen.
 - **Expected:** 1. The card as above. 2. Groups and messages today go up by what the relay counts. 3. The kept account and the calm line.
@@ -1326,7 +1326,7 @@ Notes that apply to the whole section:
   - Events: `GET /ws` (RL-24).
 - **Where:** `src-tauri/src/http/*.rs`.
 - **Preconditions:** The server is running and you have the token.
-- **Steps:** 1. Two headless instances plus a relay. 2. `PUT /api/relay/url`. 3. `PUT /api/gateway/config` (relay enabled and discoverable). 4. `POST /api/rpc/set_trust_relationship {"addedAsTrustedPeer":true}` on B. 5. `POST /api/rpc/delegate_task`. 6. Poll `POST /api/rpc/get_task_events`.
+- **Steps:** 1. Two headless instances plus a relay. 2. `POST /api/rpc/set_relay_url`. 3. `POST /api/rpc/set_gateway_config` (relay enabled and discoverable). 4. `POST /api/rpc/set_trust_relationship {"addedAsTrustedPeer":true}` on B. 5. `POST /api/rpc/delegate_task`. 6. Poll `POST /api/rpc/get_task_events`.
 - **Expected:** The cross-instance delegation completes using only the API.
 - **Edge / negative cases:**
   - Service errors return 400 with the same message the IPC command returns.

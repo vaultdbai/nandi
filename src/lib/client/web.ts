@@ -7,7 +7,6 @@
 import type { Result } from '@/lib/bindings'
 import type { NandiEvent } from './events'
 import { createEventBus } from './event-bus'
-import { marketplaceQuery } from './marketplace-filter'
 import type { NandiClient } from './types'
 import { withCommands } from './with-commands'
 
@@ -199,18 +198,6 @@ export const webClient: NandiClient = withCommands({
   getConversation: conversationId =>
     request('GET', `/conversations/${id(conversationId)}`),
 
-  getLlmKeyStatus: () => request('GET', '/llm-keys'),
-  getDefaultModel: () => request('GET', '/default-model'),
-  setDefaultModel: model => request('PUT', '/default-model', { model }),
-  setFreeTrial: enabled => request('PUT', '/free-trial', { enabled }),
-  getFreeTrialAccount: () => request('GET', '/free-trial/account'),
-  testLlmKey: (provider, apiKey) =>
-    request('POST', `/llm-keys/${provider}/test`, { apiKey }),
-  listProviderModels: provider =>
-    request('GET', `/llm-keys/${provider}/models`),
-  detectOllama: () => request('GET', '/ollama'),
-  setLlmApiKey: (provider, apiKey) =>
-    request('PUT', `/llm-keys/${id(provider)}`, { apiKey }),
   saveEmergencyData: (filename, data) =>
     request('PUT', `/emergency-data/${id(filename)}`, data),
   loadEmergencyData: filename =>
@@ -219,48 +206,6 @@ export const webClient: NandiClient = withCommands({
 
   // The page is served by the Nandi web server itself
   getWebOrigin: () => Promise.resolve(location.origin),
-
-  listAvailablePacks: () => request('GET', '/marketplace/packs'),
-  listMarketplacePacks: filter =>
-    request('GET', `/marketplace/packs${marketplaceQuery(filter)}`),
-  listAvailableAgents: filter =>
-    request('GET', `/marketplace/agents${marketplaceQuery(filter)}`),
-  getAgentDetail: agentId =>
-    request('GET', `/marketplace/agents/${id(agentId)}/detail`),
-  getPackDetail: packId =>
-    request('GET', `/marketplace/packs/${id(packId)}/detail`),
-  installPack: packId =>
-    request('POST', `/marketplace/install/pack/${id(packId)}`),
-  installAgent: agentId =>
-    request('POST', `/marketplace/install/agent/${id(agentId)}`),
-  inspectLocalPack: path =>
-    request('POST', '/marketplace/local/inspect', { path }),
-  installLocalPack: path =>
-    request('POST', '/marketplace/local/install', { path }),
-  listInstalled: () => request('GET', '/marketplace/installed'),
-  uninstallInstalled: (kind, installedId) =>
-    request('DELETE', `/marketplace/installed/${id(kind)}/${id(installedId)}`),
-  forkInstalledAgent: (installedId, newId, newName) =>
-    request('POST', `/marketplace/fork/${id(installedId)}`, {
-      newId,
-      newName,
-    }),
-  checkForUpdates: () => request('GET', '/marketplace/updates'),
-  applyUpdate: (installedId, newRef) =>
-    request('POST', `/marketplace/updates/${id(installedId)}/apply`, {
-      newRef,
-    }),
-  getAgentConsent: agentId =>
-    request('GET', `/marketplace/consent/${id(agentId)}`),
-  grantAgentConsent: (agentId, categories) =>
-    request('POST', `/marketplace/consent/${id(agentId)}`, { categories }),
-  listRegistries: () => request('GET', '/marketplace/registries'),
-  addRegistry: input => request('POST', '/marketplace/registries', input),
-  removeRegistry: url =>
-    request('DELETE', `/marketplace/registries/${id(url)}`),
-  createCommunityRegistry: () =>
-    request('POST', '/marketplace/community/create'),
-  publishAgent: input => request('POST', '/marketplace/publish', input),
 
   // Agents repo, pilots, run history, audit, connectors, and the network
   saveAgent: (agentId, input) =>
@@ -282,41 +227,9 @@ export const webClient: NandiClient = withCommands({
     request('DELETE', `/repo/agents/${id(agentId)}/playbooks/${id(name)}`),
   loadEntity: (kind, entityId) =>
     request('GET', `/repo/entities/${id(kind)}/${id(entityId)}`),
-  repoStatus: () => request('GET', '/repo/status'),
   gitStatus: () => request('GET', '/repo/git/status'),
   gitDiff: path => request('GET', `/repo/git/diff${query({ path })}`),
   gitCommit: message => request('POST', '/repo/git/commit', { message }),
-
-  listConnectors: () => request('GET', '/connectors'),
-  installConnector: connectorId =>
-    request('POST', `/connectors/${id(connectorId)}/install`),
-  startConnector: connectorId =>
-    request('POST', `/connectors/${id(connectorId)}/start`),
-  stopConnector: connectorId =>
-    request('POST', `/connectors/${id(connectorId)}/stop`),
-  configureConnector: (connectorId, config) =>
-    request('PUT', `/connectors/${id(connectorId)}/config`, { config }),
-  getAgentConnectors: agentId =>
-    request('GET', `/agents/${id(agentId)}/connectors`),
-  setAgentConnectors: (agentId, connectors) =>
-    request('PUT', `/agents/${id(agentId)}/connectors`, { connectors }),
-  setConnectorSecret: (connectorId, key, value) =>
-    request('PUT', `/connectors/${id(connectorId)}/secret`, { key, value }),
-  connectorStatus: connectorId =>
-    request('GET', `/connectors/${id(connectorId)}/status`),
-
-  getRelayStatus: () => request('GET', '/relay/status'),
-  setRelayUrl: url => request('PUT', '/relay/url', { url }),
-  joinRelay: (url, joinCode) =>
-    request('POST', '/relay/join', { url, joinCode }),
-  getRelayInvite: () => request('GET', '/relay/invite'),
-  getPublicRelayOffer: () => request('GET', '/relay/public'),
-  joinPublicRelay: () => request('POST', '/relay/public/join'),
-  getPublicRelayAccount: () => request('GET', '/relay/public/account'),
-  listOnlineAgents: capability =>
-    request('GET', `/relay/agents${query({ capability })}`),
-  testRelayConnection: url => request('POST', '/relay/test', { url }),
-  getRelayInstances: () => request('GET', '/relay/instances'),
 
   // The route still names the field `githubOrg`; it carries the registry URL
 
@@ -332,8 +245,6 @@ export const webClient: NandiClient = withCommands({
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
   setCompanionStartBisonOnly: () =>
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
-  listFolderUsers: connectorId =>
-    request('GET', `/connectors/${id(connectorId)}/folder-users`),
   setCompanionPinned: pinned => request('POST', '/companion/pin', { pinned }),
   sendCompanionMessage: (text, conversationId, scopeRequestId) =>
     request('POST', '/companion/messages', {
@@ -348,51 +259,6 @@ export const webClient: NandiClient = withCommands({
   // The web build's companion lives in the page (`watchInCompanion`)
   companionFocusRequest: () =>
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
-
-  getGatewayStatus: () => request('GET', '/gateway/status'),
-  makeGatewayReachable: () => request('POST', '/gateway/reachable'),
-  listGatewayHolds: () => request('GET', '/gateway/holds'),
-  decideGatewayHold: (taskId, approve, note) =>
-    request('POST', `/gateway/holds/${encodeURIComponent(taskId)}/decide`, {
-      approve,
-      note,
-    }),
-  listGatewayAssignments: () => request('GET', '/gateway/assignments'),
-  listRegistryConnectors: refresh =>
-    request('GET', `/registry-connectors?refresh=${refresh}`),
-  getConnectorConsent: (registryUrl, connectorId) =>
-    request('POST', '/registry-connectors/consent', {
-      registryUrl,
-      connectorId,
-    }),
-  installRegistryConnector: (registryUrl, connectorId, apiKey) =>
-    request('POST', '/registry-connectors/install', {
-      registryUrl,
-      connectorId,
-      apiKey,
-    }),
-  removeConnector: connectorId =>
-    request('POST', `/connectors/${id(connectorId)}/remove`),
-  scaffoldConnector: input => request('POST', '/connectors/scaffold', input),
-  publishConnector: input => request('POST', '/connectors/publish', input),
-  closeGatewayAssignment: (taskId, done, note) =>
-    request(
-      'POST',
-      `/gateway/assignments/${encodeURIComponent(taskId)}/close`,
-      { done, note }
-    ),
-  getGatewayConfig: () => request('GET', '/gateway/config'),
-  setGatewayConfig: config => request('PUT', '/gateway/config', config),
-  listGatewayCallers: () => request('GET', '/gateway/callers'),
-  setCallerPolicy: policy =>
-    request('PUT', `/gateway/callers/${id(policy.callerInstance)}`, policy),
-  removeCallerPolicy: callerInstance =>
-    request('DELETE', `/gateway/callers/${id(callerInstance)}`),
-  getGatewayUsage: callerInstance =>
-    request('GET', `/gateway/usage/${id(callerInstance)}`),
-  getGatewayManifest: () => request('GET', '/gateway/manifest'),
-  setGatewayManifest: manifest => request('PUT', '/gateway/manifest', manifest),
-  gatewayChat: message => request('POST', '/gateway/chat', { message }),
 
   // The relay connection lives in the core; no browser route for this yet
 

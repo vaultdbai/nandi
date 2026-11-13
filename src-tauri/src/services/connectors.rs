@@ -851,14 +851,16 @@ pub struct FolderUsers {
 
 /// Which agents get each of `connector_id`'s shared folders, so its page
 /// can say so and ask before removing one in use
-pub fn folder_users(state: &AppState, connector_id: &str) -> Vec<FolderUsers> {
+pub fn folder_users(state: &AppState, connector_id: &str) -> Result<Vec<FolderUsers>, String> {
+    parse_id(connector_id)?;
     let manifest = manifest(state);
     let Some(decl) = manifest.get(connector_id) else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     let list = folders::shared_folders(decl).unwrap_or_default();
     let agents: Vec<domain::Agent> = state.store().read(|repo| repo.agents().cloned().collect());
-    list.iter()
+    let users = list
+        .iter()
         .map(|folder| {
             let mut names: Vec<String> = agents
                 .iter()
@@ -882,7 +884,8 @@ pub fn folder_users(state: &AppState, connector_id: &str) -> Vec<FolderUsers> {
                 agents: names,
             }
         })
-        .collect()
+        .collect();
+    Ok(users)
 }
 
 /// `choices` as skill.md's `connectors:` (plain IDs where there are no
@@ -1162,6 +1165,7 @@ pub async fn install_package(
 /// Removes an installed connector: its declaration, its package file, its
 /// key and every grant on it
 pub async fn remove_connector(state: &AppState, id: &str) -> Result<(), String> {
+    parse_id(id)?;
     let current = manifest(state);
     let decl = current
         .get(id)
@@ -1280,6 +1284,7 @@ fn connector_info(
 /// Declares a built-in connector in `.nandi/connectors.yaml`. Installing
 /// doesn't start it, and no agent uses it until its skill.md says so.
 pub async fn install_connector(state: &AppState, id: &str) -> Result<(), String> {
+    parse_id(id)?;
     let current = manifest(state);
     if current.get(id).is_some() {
         return Ok(());
@@ -1309,6 +1314,7 @@ pub async fn configure_connector(
     id: &str,
     config: BTreeMap<String, serde_yaml::Value>,
 ) -> Result<(), String> {
+    parse_id(id)?;
     let current = manifest(state);
     let Some(existing) = current.get(id) else {
         return Err(format!("Connector '{id}' isn't installed"));
@@ -1508,6 +1514,7 @@ pub async fn set_connector_secret(
     key: &str,
     value: &str,
 ) -> Result<(), String> {
+    parse_id(id)?;
     let decl = match manifest(state).get(id) {
         Some(decl) => decl.clone(),
         None => catalog::declaration(
@@ -1550,6 +1557,7 @@ fn save_manifest(state: &AppState, connectors: Vec<ConnectorDecl>) -> Result<(),
 }
 
 pub async fn start_connector(state: &AppState, id: &str) -> Result<(), String> {
+    parse_id(id)?;
     let registry = registry(state)?;
     let decl = installed(state, id)?;
     // Missing a secret, a folder, or a sign-in: say what, don't try
@@ -1566,6 +1574,7 @@ pub async fn start_connector(state: &AppState, id: &str) -> Result<(), String> {
 }
 
 pub async fn stop_connector(state: &AppState, id: &str) -> Result<(), String> {
+    parse_id(id)?;
     let registry = registry(state)?;
     installed(state, id)?;
     registry.stop(id).await;
@@ -1575,6 +1584,7 @@ pub async fn stop_connector(state: &AppState, id: &str) -> Result<(), String> {
 
 /// Live status: a running connector is health-checked (at most 2s).
 pub async fn connector_status(state: &AppState, id: &str) -> Result<ConnectorStatus, String> {
+    parse_id(id)?;
     let is_installed = manifest(state).get(id).is_some();
     if !is_installed && catalog::builtin(id).is_none() {
         return Err(format!("Unknown connector '{id}'"));
@@ -1596,7 +1606,8 @@ pub async fn connector_status(state: &AppState, id: &str) -> Result<ConnectorSta
     Ok(after)
 }
 
-/// A connector ID from a client, checked before it touches anything.
+/// A connector ID from a client, checked before it touches anything. Every
+/// service call that takes an ID from a client starts with it.
 pub fn parse_id(id: &str) -> Result<ConnectorId, String> {
     ConnectorId::parse(id).map_err(|e| e.to_string())
 }

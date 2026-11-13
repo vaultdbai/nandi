@@ -176,22 +176,22 @@ The re-scan also emits the usual `repo://agent-*` and `agent://agents_changed` e
 
 ## Commands and routes
 
-| Tauri command                    | HTTP                                                     |
-| -------------------------------- | -------------------------------------------------------- |
-| `list_available_packs`           | `GET /api/marketplace/packs`                             |
-| `list_marketplace_packs(filter)` | `GET /api/marketplace/packs?query=&tags=&installedOnly=` |
-| `list_available_agents(filter)`  | `GET /api/marketplace/agents?…`                          |
-| `get_agent_detail(agent_id)`     | `GET /api/marketplace/agents/{id}/detail`                |
-| `install_pack(pack_id)`          | `POST /api/marketplace/install/pack/{id}`                |
-| `install_agent(agent_id)`        | `POST /api/marketplace/install/agent/{id}`               |
-| `list_installed`                 | `GET /api/marketplace/installed`                         |
-| `uninstall_installed(kind, id)`  | `DELETE /api/marketplace/installed/{kind}/{id}`          |
-| `fork_installed_agent(…)`        | `POST /api/marketplace/fork/{installed_id}`              |
-| `check_for_updates`              | `GET /api/marketplace/updates`                           |
-| `apply_update(id, new_ref)`      | `POST /api/marketplace/updates/{installed_id}/apply`     |
-| `list_registries`                | `GET /api/marketplace/registries`                        |
-| `add_registry(input)`            | `POST /api/marketplace/registries`                       |
-| `remove_registry(url)`           | `DELETE /api/marketplace/registries/{url}` (encoded)     |
+| Tauri command                    | HTTP                                      |
+| -------------------------------- | ----------------------------------------- |
+| `list_available_packs`           | `POST /api/rpc/list_marketplace_packs`    |
+| `list_marketplace_packs(filter)` | `POST /api/rpc/list_marketplace_packs`    |
+| `list_available_agents(filter)`  | `POST /api/rpc/list_available_agents`     |
+| `get_agent_detail(agent_id)`     | `POST /api/rpc/get_agent_detail`          |
+| `install_pack(pack_id)`          | `POST /api/rpc/install_pack`              |
+| `install_agent(agent_id)`        | `POST /api/rpc/install_agent`             |
+| `list_installed`                 | `POST /api/rpc/list_installed`            |
+| `uninstall_installed(kind, id)`  | `POST /api/rpc/uninstall_installed`       |
+| `fork_installed_agent(…)`        | `POST /api/rpc/fork_installed_agent`      |
+| `check_for_updates`              | `POST /api/rpc/check_for_updates`         |
+| `apply_update(id, new_ref)`      | `POST /api/rpc/apply_update`              |
+| `list_registries`                | `POST /api/rpc/list_registries`           |
+| `add_registry(input)`            | `POST /api/rpc/add_registry`              |
+| `remove_registry(url)`           | `POST /api/rpc/remove_registry` (encoded) |
 
 ## Frontend
 

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { MarketplaceFilter } from '@/lib/bindings'
 import { logger } from '@/lib/logger'
+import { marketplaceFilter } from '@/lib/marketplace-filter'
 import type { Result } from '@/lib/tauri-bindings'
 
 /** Everything marketplace-related lives under `['marketplace']` */
@@ -33,7 +34,10 @@ export function useMarketplacePacks(filter: Partial<MarketplaceFilter> = {}) {
   return useQuery({
     queryKey: marketplaceQueryKeys.packs(filter),
     queryFn: () =>
-      unwrap('marketplace packs', client.listMarketplacePacks(filter)),
+      unwrap(
+        'marketplace packs',
+        client.listMarketplacePacks(marketplaceFilter(filter))
+      ),
     staleTime: STALE_MS,
   })
 }
@@ -42,7 +46,10 @@ export function useMarketplaceAgents(filter: Partial<MarketplaceFilter> = {}) {
   return useQuery({
     queryKey: marketplaceQueryKeys.agents(filter),
     queryFn: () =>
-      unwrap('marketplace agents', client.listAvailableAgents(filter)),
+      unwrap(
+        'marketplace agents',
+        client.listAvailableAgents(marketplaceFilter(filter))
+      ),
     staleTime: STALE_MS,
   })
 }

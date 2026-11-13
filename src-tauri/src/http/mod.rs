@@ -11,12 +11,7 @@ pub mod auth;
 // Wave A
 mod companion;
 // Wave EF
-mod connectors;
 // Wave final
-mod gateway;
-mod marketplace;
-mod relay;
-mod repo;
 mod routes;
 mod rpc;
 mod static_files;
@@ -46,17 +41,11 @@ pub fn router(state: AppState, token: WebToken) -> Router {
             routes::api()
                 .merge(rpc::api())
                 .merge(triggers::api())
-                .merge(marketplace::api())
-                .merge(repo::api())
-                .merge(connectors::api())
                 // Wave 2A
-                .merge(relay::api())
                 // Wave 2B redesign
-                .merge(companion::api())
-                // Wave final
-                // Wave final, network-first
-                .merge(gateway::api()), // Wave A
-                                        // Wave B, // Wave CD (see docs/developer/interaction-layer.md),
+                .merge(companion::api()), // Wave final
+                                          // Wave final, network-first, // Wave A
+                                          // Wave B, // Wave CD (see docs/developer/interaction-layer.md),
         )
         .route("/ws", get(ws::handler))
         .fallback(static_files::handler)
@@ -223,31 +212,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wave_2a_routes_are_mounted() {
+    async fn an_unrouted_api_path_falls_through_to_the_frontend() {
         let (state, app) = app();
-        for (method, uri) in [
-            ("GET", "/api/relay/status"),
-            ("PUT", "/api/relay/url"),
-            ("POST", "/api/relay/join"),
-            ("GET", "/api/relay/invite"),
-            ("GET", "/api/relay/public"),
-            ("GET", "/api/relay/public/account"),
-            ("POST", "/api/relay/public/join"),
-            ("GET", "/api/relay/agents"),
-            ("POST", "/api/relay/test"),
-            ("GET", "/api/relay/instances"),
-        ] {
-            // Every route answers JSON (success or error); unmatched paths
-            // fall through to the frontend's HTML instead.
-            let response = app
-                .clone()
-                .oneshot(authed(method, uri, "{}"))
-                .await
-                .unwrap();
-            assert!(is_json(&response), "{method} {uri}: {}", response.status());
-        }
+        // Not JSON: the frontend's HTML, so a client never reads it as data
         let missing = app
-            .clone()
             .oneshot(authed("GET", "/api/relay/nope", ""))
             .await
             .unwrap();
@@ -281,27 +249,8 @@ mod tests {
     async fn wave_final_routes_are_mounted() {
         let (state, app) = app();
         for (method, uri) in [
-            // Network-first
-            ("PUT", "/api/connectors/github/secret"),
-            ("PUT", "/api/connectors/filesystem/config"),
             ("GET", "/api/workflow-templates"),
             ("POST", "/api/runs/r1/file"),
-            ("POST", "/api/llm-keys/anthropic/test"),
-            ("GET", "/api/ollama"),
-            ("GET", "/api/gateway/status"),
-            ("GET", "/api/gateway/config"),
-            ("PUT", "/api/gateway/config"),
-            ("GET", "/api/gateway/manifest"),
-            ("PUT", "/api/gateway/manifest"),
-            ("GET", "/api/gateway/callers"),
-            ("PUT", "/api/gateway/callers/i2"),
-            ("DELETE", "/api/gateway/callers/i2"),
-            ("GET", "/api/gateway/usage/i2"),
-            ("POST", "/api/gateway/chat"),
-            ("GET", "/api/gateway/holds"),
-            ("POST", "/api/gateway/holds/t1/decide"),
-            ("GET", "/api/gateway/assignments"),
-            ("POST", "/api/gateway/assignments/t1/close"),
         ] {
             // JSON (501 while stubbed, or the track's answer)
             let response = app

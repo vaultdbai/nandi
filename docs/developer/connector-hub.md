@@ -95,18 +95,18 @@ connectors: { forbid: [gmail, 'tracker:write'], ask: ['outlook*'] }
 
 ### Commands
 
-| Command                                                               | Route                                                                  |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `list_connector_grants`                                               | `POST /api/rpc/list_connector_grants`                                  |
-| `grant_connector_access`                                              | `POST /api/rpc/grant_connector_access`                                 |
-| `revoke_connector_access`                                             | `POST /api/rpc/revoke_connector_access`                                |
-| `answer_access_request`                                               | `POST /api/rpc/answer_access_request`                                  |
-| `list_registry_connectors`                                            | `GET /api/registry-connectors`                                         |
-| `get_connector_consent`, `install_registry_connector`                 | `POST /api/registry-connectors/consent`, `…/install`                   |
-| `remove_connector`, `scaffold_connector`, `publish_connector`         | `POST /api/connectors/{id}/remove`, `/connectors/scaffold`, `/publish` |
-| `get_workspace_status`, `start/poll_workspace_sign_in`                | `POST /api/rpc/{command}`                                              |
-| `disconnect_workspace`, `check_calendar_now`, `set_calendar_interval` | `POST /api/rpc/{command}`                                              |
-| `list_note_suggestions`, `answer_note_suggestion`                     | `POST /api/rpc/{command}`                                              |
+| Command                                                               | Route                                                                |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `list_connector_grants`                                               | `POST /api/rpc/list_connector_grants`                                |
+| `grant_connector_access`                                              | `POST /api/rpc/grant_connector_access`                               |
+| `revoke_connector_access`                                             | `POST /api/rpc/revoke_connector_access`                              |
+| `answer_access_request`                                               | `POST /api/rpc/answer_access_request`                                |
+| `list_registry_connectors`                                            | `POST /api/rpc/list_registry_connectors`                             |
+| `get_connector_consent`, `install_registry_connector`                 | `POST /api/rpc/get_connector_consent`, `…/install`                   |
+| `remove_connector`, `scaffold_connector`, `publish_connector`         | `POST /api/rpc/remove_connector`, `/connectors/scaffold`, `/publish` |
+| `get_workspace_status`, `start/poll_workspace_sign_in`                | `POST /api/rpc/{command}`                                            |
+| `disconnect_workspace`, `check_calendar_now`, `set_calendar_interval` | `POST /api/rpc/{command}`                                            |
+| `list_note_suggestions`, `answer_note_suggestion`                     | `POST /api/rpc/{command}`                                            |
 
 Events: `grants://changed`, `workspace://changed`, `connectors://changed`.
 

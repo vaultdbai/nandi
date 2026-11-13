@@ -46,19 +46,6 @@ const SCREEN_ROUTES: &[&str] = &[
     "agents/overviews",
     "approvals/pending",
     "companion/snapshot",
-    "connectors",
-    "default-model",
-    "gateway/callers",
-    "gateway/config",
-    "gateway/holds",
-    "gateway/manifest",
-    "gateway/status",
-    "llm-keys",
-    "marketplace/installed",
-    "relay/agents",
-    "relay/status",
-    "repo/git/status",
-    "repo/status",
     "workflows",
 ];
 
@@ -67,13 +54,19 @@ const SCREEN_ROUTES: &[&str] = &[
 const SCREEN_COMMANDS: &[&str] = &[
     "get_auto_approve_rules",
     "get_chief_of_staff_digest",
+    "get_default_model",
     "get_egress_status",
     "get_email_status",
+    "get_gateway_config",
+    "get_gateway_manifest",
+    "get_gateway_status",
     "get_identity_status",
     "get_know_me",
+    "get_llm_key_status",
     "get_my_notes",
     "get_network_snapshot",
     "get_pending_clarifications",
+    "get_relay_status",
     "get_remote_status",
     "get_repo_llm_config",
     "get_tool_usage_stats",
@@ -86,11 +79,16 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_capability_providers",
     "list_capability_registries",
     "list_connector_grants",
+    "list_connectors",
     "list_decision_months",
     "list_declared_capabilities",
     "list_dismissed_work",
+    "list_gateway_callers",
+    "list_gateway_holds",
     "list_groups",
+    "list_installed",
     "list_note_suggestions",
+    "list_online_agents",
     "list_pending_manual_steps",
     "list_pilots",
     "list_push_targets",
@@ -105,6 +103,8 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_work",
     "load_preferences",
     "mascot_get",
+    "repo_git_status",
+    "repo_status",
 ];
 
 /// A core with no relay of its own: `built_in` is what the build ships
@@ -230,7 +230,7 @@ async fn every_screen_answers(router: &Router) {
 }
 
 async fn relay_is_disconnected(router: &Router) -> Value {
-    let status = get(router, "relay/status").await;
+    let status = rpc(router, "get_relay_status", json!({})).await;
     assert_eq!(status["connected"], false, "{status}");
     status
 }
@@ -333,22 +333,12 @@ async fn a_starter_pack_installs_from_a_local_folder(router: &Router) {
         .join("../test-fixtures/offline-pack")
         .to_string_lossy()
         .into_owned();
-    let manifest = post(
-        router,
-        "marketplace/local/inspect",
-        json!({ "path": folder }),
-    )
-    .await;
+    let manifest = rpc(router, "inspect_local_pack", json!({ "path": folder })).await;
     assert_eq!(manifest["id"], "offline-pack", "{manifest}");
     assert_eq!(manifest["verified"], false, "{manifest}");
-    let installed = post(
-        router,
-        "marketplace/local/install",
-        json!({ "path": folder }),
-    )
-    .await;
+    let installed = rpc(router, "install_local_pack", json!({ "path": folder })).await;
     assert_eq!(installed["id"], "offline-pack", "{installed}");
-    let items = get(router, "marketplace/installed").await;
+    let items = rpc(router, "list_installed", json!({})).await;
     let pack = items
         .as_array()
         .unwrap()
@@ -548,7 +538,7 @@ async fn with_no_relay_getting_to_know_you_works() {
     )
     .await
     .unwrap();
-    let manifest = get(&router, "gateway/manifest").await;
+    let manifest = rpc(&router, "get_gateway_manifest", json!({})).await;
     assert_eq!(manifest["responsibilities"], json!(["Month-end close"]));
     let private =
         std::fs::read_to_string(notes.path().join("private").join("about-me.md")).unwrap();
@@ -570,7 +560,7 @@ async fn with_no_relay_a_workflow_runs() {
 async fn with_no_relay_person_to_person_answers_not_connected() {
     let (_state, router) = boot(BuiltInRelay::default());
     person_to_person_is_not_connected(&router).await;
-    let (status, body) = call(&router, "GET", "relay/instances", Value::Null).await;
+    let (status, body) = call(&router, "POST", "rpc/get_relay_instances", json!({})).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
     assert!(
         body["error"]
@@ -597,9 +587,9 @@ async fn an_unreachable_default_relay_changes_nothing_local() {
     a_starter_pack_installs_from_a_local_folder(&router).await;
     person_to_person_is_not_connected(&router).await;
     // Joining it answers calmly that it can't be reached, and saves nothing
-    let joined = post(
+    let joined = rpc(
         &router,
-        "relay/join",
+        "join_relay",
         json!({ "url": status["builtInUrl"] }),
     )
     .await;
@@ -662,13 +652,13 @@ async fn an_unreachable_public_relay_never_blocks_onboarding() {
     assert!(status["publicRelayUrl"].is_string(), "{status}");
     assert_eq!(status["relayUrl"], Value::Null, "{status}");
 
-    let offer = get(&router, "relay/public").await;
+    let offer = rpc(&router, "get_public_relay_offer", json!({})).await;
     assert_eq!(offer["kind"], "unreachable", "{offer}");
     // No email connected: joining says to connect one, at once
-    let joined = post(&router, "relay/public/join", Value::Null).await;
+    let joined = rpc(&router, "join_public_relay", json!({})).await;
     assert_eq!(joined["kind"], "needsEmail", "{joined}");
     // No account to show
-    let account = get(&router, "relay/public/account").await;
+    let account = rpc(&router, "get_public_relay_account", json!({})).await;
     assert_eq!(account["kind"], "notPublic", "{account}");
 
     onboarding_completes(&router).await;
@@ -720,7 +710,7 @@ async fn with_the_trial_gateway_unreachable_the_ask_box_still_helps() {
         "offline-instance".into(),
     ))));
     let (_state, router) = boot(BuiltInRelay::default());
-    let model = get(&router, "default-model").await;
+    let model = rpc(&router, "get_default_model", json!({})).await;
     assert!(
         model["effectiveModel"].is_string(),
         "the trial is offered: {model}"
@@ -737,7 +727,7 @@ async fn with_the_trial_gateway_unreachable_the_ask_box_still_helps() {
     assert_eq!(first["data"]["reason"], "modelFailed", "{first}");
 
     // Now known unreachable: no model is offered, the guide answers at once
-    let model = get(&router, "default-model").await;
+    let model = rpc(&router, "get_default_model", json!({})).await;
     assert!(model["effectiveModel"].is_null(), "{model}");
     assert_eq!(model["trial"]["unreachable"], true, "{model}");
     let second = rpc(

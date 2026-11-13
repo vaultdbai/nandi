@@ -657,7 +657,7 @@ async fn an_agents_folders_are_set_from_its_page() {
     assert_eq!(agent_connectors(&state, "writer").unwrap(), [choice]);
     // The folder list says who has each folder
     assert_eq!(
-        folder_users(&state, "filesystem"),
+        folder_users(&state, "filesystem").unwrap(),
         [
             FolderUsers {
                 folder: "docs".into(),

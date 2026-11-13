@@ -52,7 +52,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **Steps:** 1. Open an installed pack's drawer. 2. ⋯ → Check for an update. 3. ⋯ → Uninstall → confirm. 4. ⋯ → Copy ID.
 - **Expected:** Update toasts "<name> is up to date." when nothing newer; Uninstall removes `.nandi/agents/marketplace/...` folder and the `installed.yaml` entry, card returns to Install; `marketplace://uninstalled` emitted; Copy ID toasts "Copied".
 - **Edge / negative cases:** Cancel in uninstall confirm leaves everything. Uninstall of something still in use (see LB-12).
-- **Automation:** Covered by: none in UI for the menu | Layer: ui-e2e (or api: `DELETE /api/marketplace/installed/{kind}/{id}`) | Gap: menu tests.
+- **Automation:** Covered by: none in UI for the menu | Layer: ui-e2e (or api: `POST /api/rpc/uninstall_installed`) | Gap: menu tests.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -96,10 +96,10 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### LB-09 — Install and allow (consent before install)
 
 - **What:** Install first opens "Install <name>?" listing exactly what the agent or pack will be allowed to do (tools, network hosts, pilots, AWS; or "No special access"), plus pack contents. **Install and allow** installs and records consent for each installed agent's required categories so the first run doesn't ask; **Cancel** installs nothing. Unverified entries show a warning and the button reads **Install anyway**.
-- **Where:** Library → card Install. `src/components/library/InstallConsentDialog.tsx` (`AccessList`), `library-actions.ts` (`installAndAllow`), commands `install_agent` / `install_pack` / `grant_agent_consent` (`src-tauri/src/commands/marketplace.rs`); HTTP `POST /api/marketplace/install/agent/{id}`, `POST /api/marketplace/install/pack/{id}`, `POST /api/marketplace/consent/{agent_id}`.
+- **Where:** Library → card Install. `src/components/library/InstallConsentDialog.tsx` (`AccessList`), `library-actions.ts` (`installAndAllow`), commands `install_agent` / `install_pack` / `grant_agent_consent` (`src-tauri/src/rpc/marketplace.rs`); HTTP `POST /api/rpc/install_agent`, `POST /api/rpc/install_pack`, `POST /api/rpc/grant_agent_consent`.
 - **Preconditions:** Network access to the registry (default `github.com/vaultdbai/nandi-registry`).
 - **Steps:** 1. Browse → Install on a pack. 2. Review the access list. 3. Cancel. 4. Install again → Install and allow.
-- **Expected:** After Cancel nothing changes. After allow: files under `~/.nandi/repo/.nandi/agents/marketplace/packs/<id>/` (pack) or `.../marketplace/<publisher>/<id>/` (agent); entry in `.nandi/installed.yaml` (commit, tree_hash, signature_verified); agents projected and listed; `marketplace://installed` and `marketplace://progress` events; consent stored so `GET /api/marketplace/consent/{agent_id}` reports satisfied.
+- **Expected:** After Cancel nothing changes. After allow: files under `~/.nandi/repo/.nandi/agents/marketplace/packs/<id>/` (pack) or `.../marketplace/<publisher>/<id>/` (agent); entry in `.nandi/installed.yaml` (commit, tree_hash, signature_verified); agents projected and listed; `marketplace://installed` and `marketplace://progress` events; consent stored so `POST /api/rpc/get_agent_consent` reports satisfied.
 - **Edge / negative cases:**
   - Entry needing a newer Nandi (`min_nandi_version`): refused / button disabled.
   - ID already taken by an existing agent or workflow: refused.
@@ -113,9 +113,9 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### LB-10 — Marketplace agent read-only banner and first-use consent
 
 - **What:** Every marketplace agent's page shows `SharedAgentBanner`: it's read-only (from pack X / publisher Y), offers **Fork**, and until consent is granted shows **Review and allow**, opening "Allow <name> to run?" (`ConsentDialog`) where each requested category must be ticked before **Allow**. The backend refuses to run an unconsented marketplace agent from chat, workflows or triggers.
-- **Where:** Agent page of an installed marketplace agent. `src/components/marketplace/SharedAgentBanner.tsx`, `ConsentDialog.tsx`; `src-tauri/src/services/marketplace/consent.rs` (`status`, `check`, `grant`, `forget`), enforced from `services/chat.rs`. HTTP `GET/POST /api/marketplace/consent/{agent_id}`.
+- **Where:** Agent page of an installed marketplace agent. `src/components/marketplace/SharedAgentBanner.tsx`, `ConsentDialog.tsx`; `src-tauri/src/services/marketplace/consent.rs` (`status`, `check`, `grant`, `forget`), enforced from `services/chat.rs`. HTTP `POST /api/rpc/get_agent_consent|grant_agent_consent`.
 - **Preconditions:** A marketplace agent installed without consent (e.g. via API install, or a newer version requesting more).
-- **Steps:** 1. Install via `POST /api/marketplace/install/agent/{id}` (no consent). 2. Send it a message. 3. Open its page → Review and allow → tick all → Allow. 4. Send again.
+- **Steps:** 1. Install via `POST /api/rpc/install_agent` (no consent). 2. Send it a message. 3. Open its page → Review and allow → tick all → Allow. 4. Send again.
 - **Expected:** Step 2 fails with "<name> is a marketplace agent and needs your approval before it runs (<categories>). Open it to review what it can do." Allow is disabled until every category is ticked; after Allow the message runs and the banner's consent row disappears.
 - **Edge / negative cases:** Editing the agent (save) is refused: "The agent '<id>' is shared from the marketplace and is read-only. Fork it to customize."; delete refused ("'<id>' is installed from the marketplace. Uninstall it from the Marketplace's Installed tab.": the message names a tab that no longer exists, use Library › Installed).
 - **Automation:** Covered by: `src/components/marketplace/SharedAgentBanner.test.tsx`; Rust `consent.rs` tests (2) | Layer: api | Gap: trigger-run refusal test.
@@ -125,7 +125,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### LB-11 — Fork an installed agent
 
 - **What:** Fork copies a marketplace agent into the user's own agents with a new ID and name; the fork is editable and no longer receives updates. Things still pointing at the original (e.g. a pack workflow) are listed.
-- **Where:** Library drawer ⋯ → Fork, or the agent page banner → Fork. `src/components/marketplace/ForkDialog.tsx`; command `fork_installed_agent` → `POST /api/marketplace/fork/{installed_id}`; `services/marketplace` fork logic.
+- **Where:** Library drawer ⋯ → Fork, or the agent page banner → Fork. `src/components/marketplace/ForkDialog.tsx`; command `fork_installed_agent` → `POST /api/rpc/fork_installed_agent`; `services/marketplace` fork logic.
 - **Preconditions:** An installed marketplace agent.
 - **Steps:** 1. Fork → in "Fork <name>" enter New ID (default derived) and Name (default "My <name>") → Fork. 2. Open the new agent and edit it.
 - **Expected:** Toast "<name> is now your own agent"; `.nandi/agents/<new_id>/` created with `skill.md` rewritten (new id/name, `source`/`publisher`/`version` keys dropped); vendored copy trashed and its `installed.yaml` entry removed (for a pack agent: added to the pack's `forked_out`); `marketplace://forked { sourceId, newId }`; remaining references reported.
@@ -137,7 +137,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### LB-12 — Uninstall
 
 - **What:** Removes a vendored pack or agent: files, `installed.yaml` entry and projection rows; installed agents become unavailable.
-- **Where:** Drawer ⋯ → Uninstall; command `uninstall_installed(kind, id)` → `DELETE /api/marketplace/installed/{kind}/{id}`.
+- **Where:** Drawer ⋯ → Uninstall; command `uninstall_installed(kind, id)` → `POST /api/rpc/uninstall_installed`.
 - **Preconditions:** Something installed.
 - **Steps:** 1. Uninstall a pack. 2. Check `~/.nandi/repo/.nandi/agents/marketplace/packs/`.
 - **Expected:** Folder gone; agents/workflows gone from lists; `marketplace://uninstalled`.
@@ -149,7 +149,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### LB-13 — Check for updates and apply update
 
 - **What:** Updates are never automatic. Checking compares each install with its source's newest release tag (or branch head) and reports; applying refuses when the installed folder was modified locally (tree_hash mismatch).
-- **Where:** Library card **Update** (pill "Update available") → drawer; drawer ⋯ → Check for an update. Commands `check_for_updates` → `GET /api/marketplace/updates`; `apply_update` → `POST /api/marketplace/updates/{installed_id}/apply`. Events `marketplace://update_available`, `marketplace://update_applied`.
+- **Where:** Library card **Update** (pill "Update available") → drawer; drawer ⋯ → Check for an update. Commands `check_for_updates` → `POST /api/rpc/check_for_updates`; `apply_update` → `POST /api/rpc/apply_update`. Events `marketplace://update_available`, `marketplace://update_applied`.
 - **Preconditions:** An install older than the registry's `latest_version`.
 - **Steps:** 1. Install an older version (local fixture registry). 2. Publish a newer tag. 3. Check for an update → apply. 4. Edit a vendored file by hand, check again, apply.
 - **Expected:** Step 3 updates files and `installed.yaml` version. Step 4 refused because of local changes.
@@ -161,9 +161,9 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### LB-14 — Marketplace listing, detail and search APIs
 
 - **What:** List agents and packs from all configured registries merged by ID (highest `latest_version` wins; tie → earlier registry), with filters (query, tags, verifiedOnly, installedOnly, refresh); detail per agent/pack; ranked catalog search (installed and available).
-- **Where:** Commands `list_available_packs`, `list_marketplace_packs`, `list_available_agents`, `get_agent_detail`, `get_pack_detail`, `list_installed`, `search_marketplace` (`commands/marketplace.rs`, `commands/marketplace_search.rs`). HTTP `GET /api/marketplace/packs`, `/packs/{id}/detail`, `/agents`, `/agents/{id}/detail`, `/installed`, `/search?q=`. `services/marketplace/registry.rs`, `search.rs`. The command palette also searches marketplace entries (`services/palette.rs`).
+- **Where:** Commands `list_available_packs`, `list_marketplace_packs`, `list_available_agents`, `get_agent_detail`, `get_pack_detail`, `list_installed`, `search_marketplace` (`rpc/marketplace.rs`, `commands/marketplace_search.rs`). HTTP `POST /api/rpc/list_marketplace_packs`, `/packs/{id}/detail`, `/agents`, `/agents/{id}/detail`, `/installed`, `/search?q=`. `services/marketplace/registry.rs`, `search.rs`. The command palette also searches marketplace entries (`services/palette.rs`).
 - **Preconditions:** Registry reachable or cached.
-- **Steps:** 1. `GET /api/marketplace/agents?query=paper`. 2. `POST /api/rpc/search_marketplace` `{"query":"review"}`. 3. `GET /api/marketplace/installed`.
+- **Steps:** 1. `POST /api/rpc/list_available_agents`. 2. `POST /api/rpc/search_marketplace` `{"query":"review"}`. 3. `POST /api/rpc/list_installed`.
 - **Expected:** JSON lists; `verified` set per entry; search hits ranked.
 - **Edge / negative cases:** Bad entry in an index is skipped with a log line; hostile paths (`..`), option-like refs, non-https asset URLs rejected by `manifest.rs` validation.
 - **Automation:** Covered by: Rust `services/marketplace/manifest.rs` (7), `search.rs` (7), `registry.rs` (4) tests | Layer: api | Gap: `search_marketplace` and `list_installed` have no UI consumer (API/palette only).
@@ -185,7 +185,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### LB-16 — Marketplace sources (Settings › Sources: agents & packs)
 
 - **What:** Add a marketplace registry by URL with kind (public / community / personal) and either a token (stored in the keychain) or **Use my GitHub sign-in (private repos)**; the index is fetched once before saving so a bad URL fails immediately. Rows show kind, counts ("Agents: n · Packs: n"), last fetch, warnings, Sync, ⋯ (Copy URL, Open in browser) and Remove (confirmation "Remove <url>?"; installed agents stay installed). **Sync all** syncs every source.
-- **Where:** Settings › Sources (also Library → Browse → Sources ›). `src/components/settings/sections/SourcesSection.tsx`, `src/components/marketplace/SourceForms.tsx` (`AddMarketplaceSourceForm`); commands `list_registries`, `add_registry`, `remove_registry`; HTTP `GET/POST /api/marketplace/registries`, `DELETE /api/marketplace/registries/{url}`. Stored under `marketplace.registries` in `settings.yaml` (token only as a keyring ref).
+- **Where:** Settings › Sources (also Library → Browse → Sources ›). `src/components/settings/sections/SourcesSection.tsx`, `src/components/marketplace/SourceForms.tsx` (`AddMarketplaceSourceForm`); commands `list_registries`, `add_registry`, `remove_registry`; HTTP `POST /api/rpc/list_registries|add_registry`, `POST /api/rpc/remove_registry`. Stored under `marketplace.registries` in `settings.yaml` (token only as a keyring ref).
 - **Preconditions:** A registry URL (and token for private).
 - **Steps:** 1. Settings › Sources → **Add source** → Kind of source "Agents & packs" → URL + "GitHub token (optional)" → **Add registry**. 2. Try a wrong URL. 3. Remove a source → confirm.
 - **Expected:** Toast "Added <url>"; valid source appears and its agents show in Browse; wrong URL errors without saving; removed source's entries disappear from Browse but installs remain.
@@ -197,7 +197,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### LB-17 — Create my community registry
 
 - **What:** Using the GitHub sign-in, creates a private `nandi-community-<login>` repo seeded with empty `index.json`, `publishers/<login>.json`, `agents/`, `packs/`, README; adds it as a community source; shows the share URL and the GitHub invite page. Re-running reuses the repo and fills in missing files only.
-- **Where:** Settings › Sources → "Your community registry" card. `SourceForms.tsx` (`CommunitySourceCard`); command `create_community_registry` → `POST /api/marketplace/community/create`; `services/marketplace/community.rs`.
+- **Where:** Settings › Sources → "Your community registry" card. `SourceForms.tsx` (`CommunitySourceCard`); command `create_community_registry` → `POST /api/rpc/create_community_registry`; `services/marketplace/community.rs`.
 - **Preconditions:** Signed in with GitHub (token with repo scope).
 - **Steps:** 1. Click **Create my community registry**. 2. Copy the "Registry URL to share". 3. Click again.
 - **Expected:** First: "Created and added to your registries."; second: "You already have one; it's in your registries."; source listed as Community.
@@ -209,7 +209,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### LB-18 — Publish an agent to a registry
 
 - **What:** For the user's own agents, **Publish** picks a registry (prefers a community one), version (x.y.z, prefilled to next), tags; requires the agent folder committed and backed up (`HEAD` on a branch of `origin`; Settings › Backup › Back up now commits and pushes to the user's `nandi/<slug>` branch), creates tag `<id>-v<version>`, builds a signed (if `~/.nandi/keys/publisher.key` exists) entry, and opens a PR (forking the registry when needed). On a community registry the user can push to, the PR is merged at once.
-- **Where:** Agent page ⋯ → Publish (only for own agents). `src/components/marketplace/PublishDialog.tsx`; command `publish_agent` → `POST /api/marketplace/publish`; `services/marketplace/publish.rs`, `github.rs`.
+- **Where:** Agent page ⋯ → Publish (only for own agents). `src/components/marketplace/PublishDialog.tsx`; command `publish_agent` → `POST /api/rpc/publish_agent`; `services/marketplace/publish.rs`, `github.rs`.
 - **Preconditions:** GitHub sign-in, agents repo with a remote, agent synced.
 - **Steps:** 1. Edit an agent without backing up → Publish. 2. Settings › Backup › Back up now → Publish 1.0.0. 3. Publish 1.0.0 again for a different commit.
 - **Expected:** 1: "The agent has changes that aren't backed up yet. Use Back up now in Settings › Backup, then publish." 2: success dialog ("Pull request opened for <name>" or "<name> is published", "Release <tag>, signed with your publisher key" / "not signed (…)") with **View on GitHub**. 3: refused (version reuse).
@@ -269,7 +269,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### LB-23 — Install a starter pack from this computer (folder or .zip)
 
 - **What:** Library › **Install from this computer** › **A pack folder…** or **A pack .zip file…** installs a starter pack with no internet and no relay. Nandi reads the pack, shows the same consent dialog as a registry pack (what it will be allowed to do, "From this computer", and the unverified warning, since nothing proves who published it), then installs it through the same checks: the pack's `.nandi/manifest.yaml`, every agent and workflow validated, the Nandi version, IDs already taken, already installed. A `.zip` may wrap the pack in one top folder (GitHub's "Download ZIP"). The install is recorded as source `local:<path>`, ref `local`, not verified, with no registry; Check for updates skips it and Update is refused. Library › Installed lists it (with its workflows) from its vendored copy, since no registry does, even offline or after the original folder is gone (`Installer::installed_local_packs`). Uninstall works as for any pack. Desktop only (the browser can't pick host paths; the HTTP routes take a path on the host).
-- **Where:** `src/components/library/LocalPackInstall.tsx`, `InstallConsentDialog.tsx` (`localPath`), `library-actions.ts` (`installAndAllow`), `src/lib/marketplace-actions.ts` (`installLocalPack`). Rust: `services/marketplace/local.rs` (`LocalPackSource`), `install.rs` (`Installer::install_local_pack`, `inspect_local_pack`), `mod.rs`, `domain/installed.rs` (`local:` sources). Commands `inspect_local_pack`, `install_local_pack`. HTTP: `POST /api/marketplace/local/inspect {path}`, `POST /api/marketplace/local/install {path}`. Fixture: `test-fixtures/offline-pack`.
+- **Where:** `src/components/library/LocalPackInstall.tsx`, `InstallConsentDialog.tsx` (`localPath`), `library-actions.ts` (`installAndAllow`), `src/lib/marketplace-actions.ts` (`installLocalPack`). Rust: `services/marketplace/local.rs` (`LocalPackSource`), `install.rs` (`Installer::install_local_pack`, `inspect_local_pack`), `mod.rs`, `domain/installed.rs` (`local:` sources). Commands `inspect_local_pack`, `install_local_pack`. HTTP: `POST /api/rpc/inspect_local_pack {path}`, `POST /api/rpc/install_local_pack {path}`. Fixture: `test-fixtures/offline-pack`.
 - **Preconditions:** A pack folder (for example `test-fixtures/offline-pack`) or a `.zip` of one. No network needed.
 - **Steps:** 1. Library › Install from this computer › A pack folder…, pick the folder. 2. Read the dialog, click Install anyway. 3. Check Installed and Agents. 4. Try the same with a `.zip`.
 - **Expected:**
@@ -289,7 +289,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-01 — Connector catalog and lifecycle (install, start, stop, status)
 
 - **What:** Connectors are MCP servers giving agents external tools: built-ins `filesystem`, `web_search` (no key, CP-25) and `github` (token, CP-23), `aws`, `s3_backup`, and external `kind: mcp` servers declared in `.nandi/connectors.yaml` (stdio command or HTTP URL). Cards install, start and stop them; a running connector's tools are merged into agents that declare it.
-- **Where:** Library → Tools chip → connector cards. `LibraryItemAction.tsx` (`ConnectorButton`), `src/hooks/useConnectors.ts`; commands `list_connectors`, `install_connector`, `start_connector`, `stop_connector`, `connector_status` (`commands/connectors.rs`); HTTP `GET /api/connectors`, `POST /api/connectors/{id}/install|start|stop`, `GET /api/connectors/{id}/status`; `services/connectors.rs`, `services/connectors/catalog.rs`, `mcp.rs`.
+- **Where:** Library → Tools chip → connector cards. `LibraryItemAction.tsx` (`ConnectorButton`), `src/hooks/useConnectors.ts`; commands `list_connectors`, `install_connector`, `start_connector`, `stop_connector`, `connector_status` (`rpc/connectors.rs`); HTTP `POST /api/rpc/list_connectors`, `POST /api/rpc/install_connector|start_connector|stop_connector`, `POST /api/rpc/connector_status`; `services/connectors.rs`, `services/connectors/catalog.rs`, `mcp.rs`.
 - **Preconditions:** For MCP stdio servers, Docker and `ghcr.io/vaultdbai/nandi-harness:sandbox-6` built (they run in their own container, CP-22).
 - **Steps:** 1. Install GitHub. 2. Start (blocked until a token is set or the GitHub CLI is signed in, CP-02). 3. Stop. 4. Declare a `kind: mcp` server in `connectors.yaml` and start it.
 - **Expected:** Pills move Needs setup → Stopped → Running; status endpoint reports running/error.
@@ -301,7 +301,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-02 — Connector setup: config, masked secrets, Start gating
 
 - **What:** The drawer's Setup shows editable settings (saved to `.nandi/connectors.yaml`, never secrets; a running connector restarts with them), a masked field per secret (saved to the OS keychain, never shown again; **Replace**, **Clear** with confirmation; "Get a key" link), and **Start** disabled with the reason until setup is complete.
-- **Where:** Library → connector → drawer → Setup. `src/components/library/ConnectorSetup.tsx` (`ConfigFields`, `SecretField`, `StartRow`), `library-model.ts` (`startBlocked`); commands `configure_connector` (`PUT /api/connectors/{id}/config`), `set_connector_secret` (`PUT /api/connectors/{id}/secret`, empty value removes).
+- **Where:** Library → connector → drawer → Setup. `src/components/library/ConnectorSetup.tsx` (`ConfigFields`, `SecretField`, `StartRow`), `library-model.ts` (`startBlocked`); commands `configure_connector` (`POST /api/rpc/configure_connector`), `set_connector_secret` (`POST /api/rpc/set_connector_secret`, empty value removes).
 - **Preconditions:** Connector installed.
 - **Steps:** 1. Signed out of the GitHub CLI: Library → Tools chip → GitHub → Set up. 2. Note Start disabled. 3. "Paste the key" → Save. 4. Start. 5. Clear → confirm.
 - **Expected:** Token stored in keyring entry `connectors.github.token`; toast "Key saved", the field never shows the value; Start enabled after save (before: "Add a GitHub token, or sign in with the GitHub CLI (gh auth login)"); Clear asks first (**Remove key**), toast "Key removed", Start blocked again. Web search has no key to set.
@@ -418,7 +418,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-04 — Shared folders on the Filesystem connector
 
 - **What:** Filesystem holds a list of folders: **Add a folder** (native folder picker), short name, **Read only** or **Read and write**, remove (asks first, naming agents using it). Each row shows which agents use it. Agents in a container see folders at `/agent/folders/<name>`.
-- **Where:** Library → Filesystem → Setup. `ConnectorSetup.tsx` (`SharedFoldersField`), `src/components/library/shared-folders.ts`; `list_folder_users` (`GET /api/connectors/{id}/folder-users`); `services/connectors/filesystem.rs`, `folders.rs`.
+- **Where:** Library → Filesystem → Setup. `ConnectorSetup.tsx` (`SharedFoldersField`), `src/components/library/shared-folders.ts`; `list_folder_users` (`POST /api/rpc/list_folder_users`); `services/connectors/filesystem.rs`, `folders.rs`.
 - **Preconditions:** Filesystem connector installed.
 - **Steps:** 1. Library → Tools chip → Filesystem → Setup: **Add a folder** `docs` (Read only) and `reports` (Read and write). 2. **Save settings**. 3. Remove a folder used by an agent.
 - **Expected:** `.nandi/connectors.yaml` gets `folders: [{id, path, access}]`; each row shows "Used by <agents>" or "No agent uses it yet"; removal dialog "Remove <id>?" warns "<agents> use this folder. They lose it once you save."
@@ -430,7 +430,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-05 — Per-agent connectors and folder grants
 
 - **What:** On an agent's page, Settings › Permissions lists connectors; turning on Filesystem lets you pick each folder as Not shared / Read only / Read and write (never wider than the folder allows). Saved to the agent's skill.md `connectors:` through the agent repository. Writing a file still asks for approval.
-- **Where:** Agent page → Settings → Permissions (connectors, then "Folders this agent can use"). `src/components/agents/AgentSettingsTab.tsx`, `src/components/agent-console/ConnectorsPanel.tsx`; commands `get_agent_connectors`, `set_agent_connectors`; HTTP `GET/PUT /api/agents/{agent_id}/connectors`.
+- **Where:** Agent page → Settings → Permissions (connectors, then "Folders this agent can use"). `src/components/agents/AgentSettingsTab.tsx`, `src/components/agent-console/ConnectorsPanel.tsx`; commands `get_agent_connectors`, `set_agent_connectors`; HTTP `POST /api/rpc/get_agent_connectors|set_agent_connectors`.
 - **Preconditions:** CP-04 folders exist; an own (non-marketplace) agent.
 - **Steps:** 1. Give the agent `docs` read only. 2. Run it: list and read a file. 3. Ask it to write there.
 - **Expected:** skill.md `connectors: - id: filesystem, folders: [...]`; agent sees only granted folders; write refused before any approval card on a read folder.

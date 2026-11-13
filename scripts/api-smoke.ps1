@@ -17,27 +17,28 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Routes = @(
-    'agents', 'agents/overviews', 'approvals/pending', 'companion/snapshot', 'connectors',
-    'default-model', 'gateway/callers', 'gateway/config', 'gateway/holds', 'gateway/manifest',
-    'gateway/status', 'llm-keys', 'marketplace/agents', 'marketplace/installed',
-    'marketplace/packs', 'marketplace/updates', 'ollama', 'relay/agents', 'relay/status',
-    'repo/git/status', 'repo/status', 'workflows',
+    'agents', 'agents/overviews', 'approvals/pending', 'companion/snapshot', 'workflows',
     # Commands without arguments: `POST /api/rpc/{name}` with `{}`
-    'rpc:detect_aws_cli', 'rpc:get_auto_approve_rules', 'rpc:get_chief_of_staff_digest',
-    'rpc:get_egress_status', 'rpc:get_email_status', 'rpc:get_identity_status',
-    'rpc:get_know_me', 'rpc:get_litellm_gateway_status', 'rpc:get_my_notes',
-    'rpc:get_network_snapshot', 'rpc:get_pending_clarifications', 'rpc:get_remote_status',
-    'rpc:get_repo_llm_config', 'rpc:get_tool_usage_stats', 'rpc:get_workspace_status',
-    'rpc:help_topics', 'rpc:list_agents_shared_by_me', 'rpc:list_agents_shared_with_me',
-    'rpc:list_ask_history', 'rpc:list_aws_profiles', 'rpc:list_bedrock_models',
+    'rpc:check_for_updates', 'rpc:detect_aws_cli', 'rpc:detect_ollama',
+    'rpc:get_auto_approve_rules', 'rpc:get_chief_of_staff_digest', 'rpc:get_default_model',
+    'rpc:get_egress_status', 'rpc:get_email_status', 'rpc:get_gateway_config',
+    'rpc:get_gateway_manifest', 'rpc:get_gateway_status', 'rpc:get_identity_status',
+    'rpc:get_know_me', 'rpc:get_litellm_gateway_status', 'rpc:get_llm_key_status',
+    'rpc:get_my_notes', 'rpc:get_network_snapshot', 'rpc:get_pending_clarifications',
+    'rpc:get_relay_status', 'rpc:get_remote_status', 'rpc:get_repo_llm_config',
+    'rpc:get_tool_usage_stats', 'rpc:get_workspace_status', 'rpc:help_topics',
+    'rpc:list_agents_shared_by_me', 'rpc:list_agents_shared_with_me', 'rpc:list_ask_history',
+    'rpc:list_available_packs', 'rpc:list_aws_profiles', 'rpc:list_bedrock_models',
     'rpc:list_capabilities', 'rpc:list_capability_providers', 'rpc:list_capability_registries',
-    'rpc:list_connector_grants', 'rpc:list_decision_months', 'rpc:list_declared_capabilities',
-    'rpc:list_dismissed_work', 'rpc:list_groups', 'rpc:list_harness_sessions',
-    'rpc:list_harnesses', 'rpc:list_note_suggestions', 'rpc:list_pending_manual_steps',
-    'rpc:list_pilots', 'rpc:list_push_targets', 'rpc:list_recent_changes',
-    'rpc:list_request_returns', 'rpc:list_tasks', 'rpc:list_teams', 'rpc:list_tools',
-    'rpc:list_triggers', 'rpc:list_trust_policies', 'rpc:list_trust_requests', 'rpc:list_work',
-    'rpc:load_preferences', 'rpc:mascot_get'
+    'rpc:list_connector_grants', 'rpc:list_connectors', 'rpc:list_decision_months',
+    'rpc:list_declared_capabilities', 'rpc:list_dismissed_work', 'rpc:list_gateway_callers',
+    'rpc:list_gateway_holds', 'rpc:list_groups', 'rpc:list_harness_sessions',
+    'rpc:list_harnesses', 'rpc:list_installed', 'rpc:list_note_suggestions',
+    'rpc:list_online_agents', 'rpc:list_pending_manual_steps', 'rpc:list_pilots',
+    'rpc:list_push_targets', 'rpc:list_recent_changes', 'rpc:list_request_returns',
+    'rpc:list_tasks', 'rpc:list_teams', 'rpc:list_tools', 'rpc:list_triggers',
+    'rpc:list_trust_policies', 'rpc:list_trust_requests', 'rpc:list_work',
+    'rpc:load_preferences', 'rpc:mascot_get', 'rpc:repo_git_status', 'rpc:repo_status'
 )
 
 if (-not (Test-Path $Binary)) {

@@ -255,7 +255,7 @@ Shared preconditions used below:
 ### AG-15 — Settings tab: General, save, revert and leave guard
 
 - **What:** Plain-words form for name and description. Changes show a sticky bar with **Revert** and **Save**; Save writes skill.md through the repo (`repo_save_agent`) and toasts "Settings saved". Leaving the Settings tab with unsaved changes asks "Discard changes?" ("Your unsaved settings will be lost.", with Keep editing and Discard). The form reloads whenever the files change (e.g. Ask saved). Installed agents are read-only with "Installed from the Library. Make a copy in Ask to change it."
-- **Where:** Agent page → Settings. `src/components/agents/AgentSettingsTab.tsx`, `src/hooks/useAgentEditor.ts` (`useAgentDefinition` via `loadEntity`, `useSaveAgent`, `validateDraft`, `toDefinitionInput`), `src-tauri/src/commands/repo.rs` (`repo_save_agent`).
+- **Where:** Agent page → Settings. `src/components/agents/AgentSettingsTab.tsx`, `src/hooks/useAgentEditor.ts` (`useAgentDefinition` via `loadEntity`, `useSaveAgent`, `validateDraft`, `toDefinitionInput`), `src-tauri/src/rpc/repo.rs` (`repo_save_agent`).
 - **Preconditions:** A local agent.
 - **Steps:**
   1. Change the name; switch to Chat; choose Keep editing; then Save.
@@ -296,7 +296,7 @@ Shared preconditions used below:
   - Ask can do the same: `nandi_save_artifact` kind `instructions`.
 - **Where:**
   - `src/components/agents/AgentSettingsTab.tsx` (`YourRules`), `src/hooks/useAgentEditor.ts` (`useSaveAgentInstructions`, `useResetAgentInstructions`).
-  - Commands `repo_save_agent_instructions`, `repo_reset_agent_instructions`. HTTP `POST/DELETE /api/repo/agents/{id}/instructions`.
+  - Commands `repo_save_agent_instructions`, `repo_reset_agent_instructions`. HTTP `POST /api/rpc/repo_save_agent_instructions|repo_reset_agent_instructions`.
   - `services/repos/agent_repo.rs` (`save_instructions`, `reset_instructions`, `has_instructions_override`, `instructions_source`), `repos/layout.rs` (`instructions_override_path`), `repos/mod.rs` (the fingerprint includes the override), `watcher.rs` (an override file reloads its agent), `studio/save.rs` (`save_instructions`).
 - **Preconditions:** An installed pack agent (e.g. PR Reviewer from the Nandi Dev Pack).
 - **Steps:**
@@ -438,7 +438,7 @@ Shared preconditions used below:
   - **Playbooks tab** on the agent page: the list (name, description, when), the open playbook in a Markdown editor with a word count, **New playbook**, **Save playbook** (checks the same rules: taken name, kebab-case, required fields, word limit), **Delete** (asks first). Leaving with unsaved changes asks first. Broken files show with their error.
   - An installed agent's playbooks are read-only (no New, Save or Delete). Installs bring `skills/*.md`.
   - Chief of Staff ships eight, added once when it has no `skills/` folder: `web-task`, `pay-a-bill`, `sign-in-and-accounts`, `delegate-work`, `build-a-workflow`, `email-triage`, `meeting-prep`, `occasions`. Edits and deletions stay.
-- **Where:** `src-tauri/src/services/domain/playbook.rs`, `services/repos/agent_repo.rs` (`load_playbooks`, `save_playbook`, `delete_playbook`), `services/repo_service.rs`, `commands/repo.rs`, `http/repo.rs`, `services/playbooks.rs`, `services/orchestrator.rs` (offer and `run_call`), `services/builtin_agents.rs`, `src-tauri/resources/builtin-agents/chief-of-staff/skills/`, `src/components/agents/AgentPlaybooksTab.tsx`, `playbooks-model.ts`, `src/hooks/usePlaybooks.ts`.
+- **Where:** `src-tauri/src/services/domain/playbook.rs`, `services/repos/agent_repo.rs` (`load_playbooks`, `save_playbook`, `delete_playbook`), `services/repo_service.rs`, `rpc/repo.rs`, `rpc/repo.rs`, `services/playbooks.rs`, `services/orchestrator.rs` (offer and `run_call`), `services/builtin_agents.rs`, `src-tauri/resources/builtin-agents/chief-of-staff/skills/`, `src/components/agents/AgentPlaybooksTab.tsx`, `playbooks-model.ts`, `src/hooks/usePlaybooks.ts`.
 - **Preconditions:** None (Chief of Staff is built in).
 - **Steps:**
   1. Open Agents › Chief of Staff › Playbooks.
@@ -658,7 +658,7 @@ Shared preconditions used below:
 ### AG-25 — Installed (marketplace) agents: read-only banner, fork and consent gate
 
 - **What:** An installed agent's page shows a banner ("From @<publisher>." or "From the <pack> pack.", "This is a shared agent. Change its rules in Settings › Your rules; fork it to change how it works."), **Your rules** (opens the Settings tab), **Fork**, and, until its requested capabilities are allowed, "Before its first run, review and approve what it can do." with **Review and allow**. Sending a message to it before consent fails with "<name> is a marketplace agent and needs your approval before it runs (…). Open it to review what it can do."
-- **Where:** `src/components/marketplace/SharedAgentBanner.tsx`, `ForkDialog.tsx`; `fork_installed_agent` (`commands/marketplace.rs`); gate `services/marketplace/consent.rs::check` called from `services/chat.rs::submit`.
+- **Where:** `src/components/marketplace/SharedAgentBanner.tsx`, `ForkDialog.tsx`; `fork_installed_agent` (`rpc/marketplace.rs`); gate `services/marketplace/consent.rs::check` called from `services/chat.rs::submit`.
 - **Preconditions:** An agent installed from the Library without allowing it.
 - **Steps:**
   1. Open the agent; send a message.

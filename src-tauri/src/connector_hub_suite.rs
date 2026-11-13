@@ -15,7 +15,7 @@
 
 use serde_json::{json, Value};
 
-use crate::offline_suite::{boot, call, canned, get, post, rpc, until};
+use crate::offline_suite::{boot, call, canned, post, rpc, until};
 use crate::services::relay::BuiltInRelay;
 
 const TRACKER_MD_TOOL: &str = "tracker__list_issues";
@@ -98,10 +98,10 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
 
     // --- 1. Nandi A: Studio › New connector, then Publish ---------------
     let (state_a, a) = boot(BuiltInRelay::new(None, None));
-    let info = post(
+    let info = rpc(
         &a,
-        "connectors/scaffold",
-        json!({
+        "scaffold_connector",
+        json!({ "input": {
             "id": "tracker",
             "name": "Issue tracker",
             "description": "Read the issues in your projects.",
@@ -117,7 +117,7 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
             "writes": ["New issues you ask for"],
             "tags": ["dev"],
             "instructions": "Use it to look up issues. Never file one without asking.",
-        }),
+        } }),
     )
     .await;
     assert_eq!(info["package"]["version"], "1.0.0", "{info}");
@@ -132,16 +132,16 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
     .unwrap();
     assert!(md.contains("run: npx -y @acme/tracker-mcp@1.2.3"), "{md}");
 
-    post(
+    rpc(
         &a,
-        "marketplace/registries",
-        json!({ "url": registry_url, "kind": "personal" }),
+        "add_registry",
+        json!({ "input": { "url": registry_url, "kind": "personal" } }),
     )
     .await;
-    let published = post(
+    let published = rpc(
         &a,
-        "connectors/publish",
-        json!({ "connectorId": "tracker", "registryUrl": registry_url }),
+        "publish_connector",
+        json!({ "input": { "connectorId": "tracker", "registryUrl": registry_url } }),
     )
     .await;
     assert_eq!(published["tag"], "tracker-v1.0.0", "{published}");
@@ -162,15 +162,15 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
 
     // --- 2. Nandi B: the install dialog, then Install --------------------
     let (state_b, b) = boot(BuiltInRelay::new(None, None));
-    post(
+    rpc(
         &b,
-        "marketplace/registries",
-        json!({ "url": registry_url, "kind": "personal" }),
+        "add_registry",
+        json!({ "input": { "url": registry_url, "kind": "personal" } }),
     )
     .await;
-    let consent = post(
+    let consent = rpc(
         &b,
-        "registry-connectors/consent",
+        "get_connector_consent",
         json!({ "registryUrl": registry_url, "connectorId": "tracker" }),
     )
     .await;
@@ -183,9 +183,9 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
     assert_eq!(consent["package"]["auth"]["kind"], "api_key");
     assert_eq!(consent["package"]["placement"], "container");
     assert!(consent["installedVersion"].is_null());
-    post(
+    rpc(
         &b,
-        "registry-connectors/install",
+        "install_registry_connector",
         json!({ "registryUrl": registry_url, "connectorId": "tracker", "apiKey": "tk_secret" }),
     )
     .await;
@@ -201,7 +201,7 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
     let yaml = std::fs::read_to_string(state_b.store().layout().connectors_path()).unwrap();
     assert!(!yaml.contains("tk_secret"), "never in a file: {yaml}");
     assert!(yaml.contains("@acme/tracker-mcp@1.2.3"), "{yaml}");
-    let installed = get(&b, "connectors").await;
+    let installed = rpc(&b, "list_connectors", json!({})).await;
     let tracker = installed
         .as_array()
         .unwrap()
@@ -224,9 +224,9 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
     post(&b, "agents", json!({ "id": "triager", "name": "Triager" })).await;
     let (status, body) = call(
         &b,
-        "PUT",
-        "agents/triager/connectors",
-        json!({ "connectors": [{ "id": "tracker" }] }),
+        "POST",
+        "rpc/set_agent_connectors",
+        json!({ "agentId": "triager", "connectors": [{ "id": "tracker" }] }),
     )
     .await;
     assert_eq!(status, axum::http::StatusCode::OK, "{body}");
@@ -305,7 +305,7 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
     );
 
     // Uninstalling removes the key and every grant
-    post(&b, "connectors/tracker/remove", Value::Null).await;
+    rpc(&b, "remove_connector", json!({ "id": "tracker" })).await;
     assert_eq!(
         state_b
             .secrets()
@@ -320,14 +320,14 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
 #[tokio::test]
 async fn allow_once_lasts_for_the_run_only() {
     let (state, router) = boot(BuiltInRelay::new(None, None));
-    post(
+    rpc(
         &router,
-        "connectors/scaffold",
-        json!({
+        "scaffold_connector",
+        json!({ "input": {
             "id": "tracker", "name": "Issue tracker", "description": "Issues.",
             "run": "uvx tracker-mcp==1.0", "hosts": ["api.tracker.example"],
             "tools": [{ "name": "list_issues", "description": "List issues", "access": "read" }],
-        }),
+        } }),
     )
     .await;
     canned(&state, script()).await;
@@ -339,9 +339,9 @@ async fn allow_once_lasts_for_the_run_only() {
     .await;
     call(
         &router,
-        "PUT",
-        "agents/triager/connectors",
-        json!({ "connectors": [{ "id": "tracker" }] }),
+        "POST",
+        "rpc/set_agent_connectors",
+        json!({ "agentId": "triager", "connectors": [{ "id": "tracker" }] }),
     )
     .await;
     let (run_id, _) = run(&router, "triager", "What's open?").await;

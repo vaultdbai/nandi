@@ -115,7 +115,7 @@ These turned up while building the catalog. In each case the catalog follows the
 - **Triggers:** `triggers.md` describes Definition/Fires/Payload tabs. The code has Settings and Firings tabs.
 - **User guide:** "Work → Waiting on me" is now Home's Inbox (there is no Work page), and the "Memory tab" is under Settings › Advanced.
 - **Delegation:** the Relay screen with "Call" is gone, and calls now go from Library → Shared. There is no delegation history page: delegations show in Home → All activity.
-- **Data model:** "Sync now" (`syncAgentsRepo`) is still described in user guide §5 and §12, and in comments in `services/repos/git.rs`, `repo_service.rs`, `commands/repo.rs` and `team/registry.rs`, but it no longer exists. Publish's errors point to Settings › Backup › Back up now (LB-18).
+- **Data model:** "Sync now" (`syncAgentsRepo`) is still described in user guide §5 and §12, and in comments in `services/repos/git.rs`, `repo_service.rs`, `rpc/repo.rs` and `team/registry.rs`, but it no longer exists. Publish's errors point to Settings › Backup › Back up now (LB-18).
 - **Updater:** the updater reads the GitHub release's `latest.json` (`https://github.com/vaultdbai/nandi/releases/latest/download/latest.json`), which every release attaches. An update reaches people once its draft is published.
 - **Template leftovers:** `tauri.conf.json` still has placeholder publisher, description and copyright. The identifier is now `com.nandi.app`.
 

@@ -5,17 +5,16 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::model::ApprovalDecision;
 use crate::services::agents::{self, CreateAgentInput};
-use crate::services::llm_keys::{self, KeyedProvider};
 use crate::services::relay::RelayUnavailable;
 use crate::services::workflows::{self, CreateWorkflowInput};
-use crate::services::{attachments, chat, recovery, repo_service, snapshots, AppState};
+use crate::services::{attachments, chat, recovery, snapshots, AppState};
 
 /// A service result as an HTTP response.
 pub(super) struct ApiResult<T>(pub(super) Result<T, String>);
@@ -99,47 +98,11 @@ pub fn api() -> Router<AppState> {
         )
         .route("/conversations/{id}", get(conversation))
         .route("/attachments/{id}", delete(discard_attachment))
-        .route("/llm-keys", get(llm_key_status))
-        .route("/llm-keys/{provider}", put(set_llm_key))
-        // Body `{ apiKey? }` (none: the stored key); returns `LlmKeyTest`
-        .route("/llm-keys/{provider}/test", post(test_llm_key))
-        // Returns the provider's current model IDs, newest first
-        .route("/llm-keys/{provider}/models", get(list_provider_models))
-        // Returns `OllamaStatus`
-        .route("/ollama", get(detect_ollama))
-        // Returns `DefaultModelStatus`; body `{ model }` to set it
-        .route("/default-model", get(default_model).put(set_default_model))
-        .route("/free-trial", put(set_free_trial))
-        // Returns `TrialAccount` (the gateway's `GET /v1/trial`)
-        .route("/free-trial/account", get(free_trial_account))
-        .route("/repo/status", get(repo_status))
-        .route("/repo/rebuild", post(repo_rebuild))
         .route("/emergency-data/cleanup", post(cleanup_emergency_data))
         .route(
             "/emergency-data/{filename}",
             get(load_emergency_data).put(save_emergency_data),
         )
-}
-
-// --- Repo ------------------------------------------------------------------
-
-#[derive(Deserialize, Default)]
-struct RebuildBody {
-    #[serde(default)]
-    force: bool,
-}
-
-async fn repo_status(State(state): State<AppState>) -> impl IntoResponse {
-    ApiResult(repo_service::status(&state).await)
-}
-
-/// `POST /api/repo/rebuild` (body optional: `{"force": true}`)
-async fn repo_rebuild(
-    State(state): State<AppState>,
-    body: Option<Json<RebuildBody>>,
-) -> impl IntoResponse {
-    let force = body.map(|Json(body)| body.force).unwrap_or_default();
-    ApiResult(repo_service::rebuild(&state, force).await)
 }
 
 // --- Agents ----------------------------------------------------------------
@@ -404,83 +367,6 @@ async fn conversation(State(state): State<AppState>, Path(id): Path<String>) -> 
 }
 
 // --- Settings --------------------------------------------------------------
-
-async fn llm_key_status(State(state): State<AppState>) -> impl IntoResponse {
-    ApiResult(llm_keys::get_llm_key_status(&state).await)
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ApiKeyBody {
-    api_key: String,
-}
-
-async fn set_llm_key(
-    State(state): State<AppState>,
-    Path(provider): Path<KeyedProvider>,
-    Json(body): Json<ApiKeyBody>,
-) -> impl IntoResponse {
-    ApiResult(llm_keys::set_llm_api_key(&state, provider, body.api_key).await)
-}
-
-#[derive(Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct TestKeyBody {
-    #[serde(default)]
-    api_key: Option<String>,
-}
-
-async fn test_llm_key(
-    State(state): State<AppState>,
-    Path(provider): Path<KeyedProvider>,
-    body: Option<Json<TestKeyBody>>,
-) -> impl IntoResponse {
-    let body = body.map(|Json(body)| body).unwrap_or_default();
-    ApiResult(llm_keys::test_llm_key(&state, provider, body.api_key).await)
-}
-
-async fn list_provider_models(
-    State(state): State<AppState>,
-    Path(provider): Path<KeyedProvider>,
-) -> impl IntoResponse {
-    ApiResult(llm_keys::list_provider_models(&state, provider).await)
-}
-
-async fn detect_ollama() -> impl IntoResponse {
-    ApiResult(Ok::<_, String>(llm_keys::detect_ollama().await))
-}
-
-async fn default_model(State(state): State<AppState>) -> impl IntoResponse {
-    ApiResult(llm_keys::get_default_model(&state).await)
-}
-
-#[derive(Deserialize)]
-struct DefaultModelBody {
-    model: String,
-}
-
-async fn set_default_model(
-    State(state): State<AppState>,
-    Json(body): Json<DefaultModelBody>,
-) -> impl IntoResponse {
-    ApiResult(llm_keys::set_default_model(&state, body.model).await)
-}
-
-#[derive(Deserialize)]
-struct FreeTrialBody {
-    enabled: bool,
-}
-
-async fn set_free_trial(
-    State(state): State<AppState>,
-    Json(body): Json<FreeTrialBody>,
-) -> impl IntoResponse {
-    ApiResult(llm_keys::set_free_trial(&state, body.enabled).await)
-}
-
-async fn free_trial_account(State(state): State<AppState>) -> impl IntoResponse {
-    ApiResult(llm_keys::get_free_trial_account(&state).await)
-}
 
 async fn save_emergency_data(
     State(state): State<AppState>,

@@ -154,7 +154,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ON-05 — Step 3: use a key already on this computer
 
 - **What:** If the keychain already holds a provider key (from another home on this computer), the step says "Found a key for <provider> on this computer." and offers one-click "Use <provider> (<model>)". That sets the default model and moves on.
-- **Where:** `src/components/onboarding/Step2_Model.tsx`, `useLlmKeyStatus`, `set_default_model` (`PUT /api/default-model`).
+- **Where:** `src/components/onboarding/Step2_Model.tsx`, `useLlmKeyStatus`, `set_default_model` (`POST /api/rpc/set_default_model`).
 - **Preconditions:** A provider key in the keychain (for example `nandi.llm.anthropic`).
 - **Steps:**
   1. Reach step 2.
@@ -170,7 +170,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ON-06 — Step 3: enter and test a provider key
 
 - **What:** The user chooses a provider (Anthropic, OpenAI, DeepSeek) and pastes a key. The key is tested first and stored only if it works. When the provider can't be reached (offline), it can be saved untested. A "get a key" link opens the provider's key page. Keys never come back to the webview.
-- **Where:** `src/components/models/ProviderKeyForm.tsx`, `KeyTestResult.tsx`; `test_llm_key` (`POST /api/llm-keys/{provider}/test`), `set_llm_api_key` (`PUT /api/llm-keys/{provider}`); keychain entries `nandi.llm.anthropic`, `nandi.llm.openai`, `nandi.llm.deepseek`.
+- **Where:** `src/components/models/ProviderKeyForm.tsx`, `KeyTestResult.tsx`; `test_llm_key` (`POST /api/rpc/test_llm_key`), `set_llm_api_key` (`POST /api/rpc/set_llm_api_key`); keychain entries `nandi.llm.anthropic`, `nandi.llm.openai`, `nandi.llm.deepseek`.
 - **Preconditions:** A real or fake key. Network access for a real test.
 - **Steps:**
   1. Choose OpenAI and paste a bad key.
@@ -188,7 +188,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ON-07 — Step 3: Ollama and Amazon Bedrock options
 
 - **What:** The Ollama choice detects a local Ollama. It says "Ollama isn't running…" or "…has no models yet", with "Check again". Otherwise it offers its models and "Use Ollama". Amazon Bedrock is listed with the hint "Works with the Claude Code runtime. Set it up after setup, in Settings › Models & runtimes."
-- **Where:** `Step2_Model.tsx` (Ollama option), `detect_ollama` (`GET /api/ollama`).
+- **Where:** `Step2_Model.tsx` (Ollama option), `detect_ollama` (`POST /api/rpc/detect_ollama`).
 - **Preconditions:** Ollama installed or not.
 - **Steps:**
   1. Stop Ollama, choose Ollama, and read the message.
@@ -203,7 +203,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ON-08 — Step 3: free tokens notice and skipping without a model
 
 - **What:** With no key, while the free trial is offered, the step says "You can start now: Nandi comes with free tokens on <model>". Otherwise it says "Nandi will use <model>" when some model is usable. "Skip for now" asks a second time ("Without a model, agents can't run…", with Go back and Skip anyway).
-- **Where:** `Step2_Model.tsx`, `get_default_model` (`GET /api/default-model`), `services/llm_trial/`.
+- **Where:** `Step2_Model.tsx`, `get_default_model` (`POST /api/rpc/get_default_model`), `services/llm_trial/`.
 - **Preconditions:** No keys. The trial gateway reachable for the trial line.
 - **Steps:**
   1. Reach step 2 with no keys.
