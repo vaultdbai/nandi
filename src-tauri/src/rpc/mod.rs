@@ -265,18 +265,36 @@ pub async fn call(state: AppState, name: &str, args: Value) -> Option<Result<Val
 mod tests {
     use super::*;
 
+    fn bindings() -> String {
+        crate::bindings::generate_bindings()
+            .export_str(specta_typescript::Typescript::default())
+            .unwrap()
+    }
+
+    /// The command names `bindings.rs` registers, as the generated
+    /// TypeScript calls them
+    fn generated(bindings: &str) -> Vec<&str> {
+        const CALL: &str = "TAURI_INVOKE(\"";
+        bindings
+            .match_indices(CALL)
+            .map(|(at, _)| {
+                let name = &bindings[at + CALL.len()..];
+                &name[..name.find('"').unwrap()]
+            })
+            .collect()
+    }
+
     /// Every RPC command is a specta command too, so desktop and web both
     /// reach it
     #[test]
     fn every_command_is_on_both_transports() {
-        let bindings = crate::bindings::generate_bindings()
-            .export_str(specta_typescript::Typescript::default())
-            .unwrap();
+        let bindings = bindings();
+        let generated = generated(&bindings);
         let names: Vec<&str> = all().map(|(name, _)| *name).collect();
         assert!(!names.is_empty());
         for name in &names {
             assert!(
-                bindings.contains(&format!("TAURI_INVOKE(\"{name}\"")),
+                generated.contains(name),
                 "{name} is in an RPC table but not in bindings.rs"
             );
         }
@@ -284,5 +302,29 @@ mod tests {
         unique.sort_unstable();
         unique.dedup();
         assert_eq!(unique.len(), names.len(), "an RPC name is declared twice");
+    }
+
+    /// The other way round: every generated command is RPC, or one of the
+    /// hand-written desktop ones. A module missing from `TABLES` fails here.
+    #[test]
+    fn every_generated_command_is_rpc_or_desktop_only() {
+        let bindings = bindings();
+        let generated = generated(&bindings);
+        let rpc: Vec<&str> = all().map(|(name, _)| *name).collect();
+        let desktop = crate::desktop::COMMANDS;
+        for name in &generated {
+            assert!(
+                rpc.contains(name) || desktop.contains(name),
+                "{name} is generated but on no RPC table and not in desktop::COMMANDS"
+            );
+        }
+        for name in desktop {
+            assert!(!rpc.contains(name), "{name} is both RPC and desktop-only");
+            assert!(
+                generated.contains(name),
+                "{name} is in desktop::COMMANDS but not in bindings.rs"
+            );
+        }
+        assert_eq!(generated.len(), rpc.len() + desktop.len());
     }
 }

@@ -364,6 +364,49 @@ async fn with_no_relay_a_starter_pack_installs_from_a_folder() {
     a_starter_pack_installs_from_a_local_folder(&router).await;
 }
 
+/// The Discover tab's reads take a filter: over RPC its arguments reach the
+/// service, which filters what a local (`file://`) registry and a local
+/// pack offer. The default GitHub registry is removed first, so nothing
+/// leaves this computer.
+#[tokio::test]
+async fn with_no_relay_marketplace_agents_and_packs_list_with_a_filter() {
+    let (_state, router) = boot(BuiltInRelay::default());
+    let registry = tempfile::tempdir().unwrap();
+    let index = json!({ "schema_version": 1, "agents": [{
+        "id": "arxiv", "name": "ArXiv", "publisher": "alice",
+        "repo": "https://example.invalid/arxiv", "path": "agents/arxiv",
+        "latest_version": "1.0.0",
+    }] });
+    std::fs::write(registry.path().join("index.json"), index.to_string()).unwrap();
+    let path = registry.path().to_string_lossy().replace('\\', "/");
+    let url = format!("file:///{}", path.trim_start_matches('/'));
+    let default = crate::services::domain::settings::DEFAULT_REGISTRY;
+    rpc(&router, "remove_registry", json!({ "url": default })).await;
+    let added = json!({ "input": { "url": url, "kind": "personal" } });
+    rpc(&router, "add_registry", added).await;
+    a_starter_pack_installs_from_a_local_folder(&router).await;
+
+    let filter = |query: &str| json!({ "filter": { "query": query, "refresh": true } });
+    let ids = |listed: Value| -> Vec<String> {
+        let listed = listed.as_array().expect("a list").iter();
+        listed
+            .map(|item| item["id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let agents = rpc(&router, "list_available_agents", filter("arxiv")).await;
+    assert_eq!(ids(agents), ["arxiv"]);
+    let agents = rpc(&router, "list_available_agents", filter("nothing like it")).await;
+    assert!(ids(agents).is_empty());
+
+    let packs = rpc(&router, "list_marketplace_packs", filter("offline")).await;
+    assert_eq!(ids(packs), ["offline-pack"]);
+    let installed_only = json!({ "filter": { "installedOnly": true } });
+    let packs = rpc(&router, "list_marketplace_packs", installed_only).await;
+    assert_eq!(ids(packs), ["offline-pack"]);
+    let packs = rpc(&router, "list_marketplace_packs", filter("arxiv")).await;
+    assert!(ids(packs).is_empty());
+}
+
 /// Settings › This computer: the checklist answers, read-only, with every
 /// row a state and the image check's "no answer" kept to its own row
 #[tokio::test]

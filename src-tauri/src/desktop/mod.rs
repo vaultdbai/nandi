@@ -22,3 +22,21 @@ pub mod events;
 pub mod notifications;
 pub mod recovery;
 pub mod run_files;
+
+/// Every command in this module, by name. `rpc/mod.rs` tests that each
+/// generated command is RPC or one of these, so none is left off both.
+#[cfg(test)]
+pub const COMMANDS: &[&str] = &[
+    "pick_attachments",
+    "toggle_companion_window",
+    "quit_nandi",
+    "place_companion",
+    "set_companion_bubble",
+    "set_companion_pinned",
+    "companion_focus_request",
+    "send_native_notification",
+    "save_emergency_data",
+    "load_emergency_data",
+    "cleanup_old_recovery_files",
+    "open_run_file",
+];
