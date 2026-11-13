@@ -172,12 +172,6 @@ export const webClient: NandiClient = withCommands({
   cancelTurn: (agentId, turnId) =>
     request('POST', `/agents/${id(agentId)}/cancel`, { turnId }),
 
-  getAgentQueue: agentId => request('GET', `/agents/${id(agentId)}/queue`),
-  getCurrentTurn: agentId => request('GET', `/agents/${id(agentId)}/current`),
-  cancelQueuedRun: runId => request('POST', `/queue/${id(runId)}/cancel`),
-  reprioritizeQueuedRun: (runId, newPriority) =>
-    request('POST', `/queue/${id(runId)}/priority`, { priority: newPriority }),
-
   // The native picker would open on the host, not in this browser
   pickAttachments: () =>
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
@@ -220,8 +214,6 @@ export const webClient: NandiClient = withCommands({
   setDefaultModel: model => request('PUT', '/default-model', { model }),
   setFreeTrial: enabled => request('PUT', '/free-trial', { enabled }),
   getFreeTrialAccount: () => request('GET', '/free-trial/account'),
-  helpTopics: () => request('GET', '/help/topics'),
-  helpAnswer: text => request('POST', '/help/answer', { text }),
   testLlmKey: (provider, apiKey) =>
     request('POST', `/llm-keys/${provider}/test`, { apiKey }),
   listProviderModels: provider =>
@@ -234,10 +226,6 @@ export const webClient: NandiClient = withCommands({
   loadEmergencyData: filename =>
     request('GET', `/emergency-data/${id(filename)}`),
   cleanupOldRecoveryFiles: () => request('POST', '/emergency-data/cleanup'),
-  getEgressStatus: () => request('GET', '/egress/status'),
-  setAwsCredentials: (accessKey, secret) =>
-    request('PUT', '/egress/aws-credentials', { accessKey, secret }),
-  setAwsRegion: region => request('PUT', '/egress/aws-region', { region }),
 
   listTriggers: () => request('GET', '/triggers'),
   getTrigger: triggerId => request('GET', `/triggers/${id(triggerId)}`),
@@ -364,12 +352,6 @@ export const webClient: NandiClient = withCommands({
     }),
   clearBrowserProfile: (agentId, pilotId) =>
     request('DELETE', `/agents/${id(agentId)}/pilots/${id(pilotId)}/profile`),
-
-  listAllRuns: (filters, limit, offset) =>
-    request('GET', `/runs${query({ ...filters, limit, offset })}`),
-  getRunStats: range => request('GET', `/runs/stats${query({ ...range })}`),
-  listAuditLog: (kind, limit, offset) =>
-    request('GET', `/audit/${id(kind)}${query({ limit, offset })}`),
 
   listConnectors: () => request('GET', '/connectors'),
   installConnector: connectorId =>
@@ -514,8 +496,6 @@ export const webClient: NandiClient = withCommands({
       note,
     }),
   listGatewayAssignments: () => request('GET', '/gateway/assignments'),
-  listRecentChanges: () => request('GET', '/changes'),
-  refreshFromDisk: () => request('POST', '/changes/refresh'),
   getEmailStatus: () => request('GET', '/email'),
   startEmailSignIn: provider =>
     request('POST', `/email/${encodeURIComponent(provider)}/sign-in`),
@@ -674,8 +654,6 @@ export const webClient: NandiClient = withCommands({
     ),
 
   // The relay connection lives in the core; no browser route for this yet
-  queryCapabilityPresence: () =>
-    Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
 
   listHarnesses: () => request('GET', '/harnesses'),
   detectHarnesses: () => request('POST', '/harnesses/detect'),

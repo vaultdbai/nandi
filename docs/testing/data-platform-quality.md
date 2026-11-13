@@ -574,7 +574,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-45 — Recent changes on Home
 
 - **What:** Home lists the latest 8 file changes (Recent changes): "Changed deadlines.md", "Added Analyst" with the files, who and when. Each row opens its page: the note, the agent, the workflow, the trigger, the Library or Settings. Hidden until something changes; the core keeps the last 200 this session.
-- **Where:** `src/components/live/RecentChanges.tsx`, `src/hooks/useLiveChanges.ts` (`useRecentChanges`), `services/live/mod.rs` (`ChangeFeed::recent`), command `list_recent_changes`, `GET /api/changes`.
+- **Where:** `src/components/live/RecentChanges.tsx`, `src/hooks/useLiveChanges.ts` (`useRecentChanges`), `services/live/mod.rs` (`ChangeFeed::recent`), command `list_recent_changes`, `POST /api/rpc/list_recent_changes`.
 - **Preconditions:** App running.
 - **Steps:** Edit a note outside Nandi, save an agent in Studio, add a file to an agent's work folder; open Home.
 - **Expected:** Three rows, newest first, each with its author; clicking one opens its page.
@@ -586,7 +586,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### DT-46 — Refresh, F5 and Ctrl+R
 
 - **What:** A **Refresh** button on My notes, an agent's page, Workflows, Triggers and Home's Recent changes, F5 and Ctrl/Cmd+R anywhere in the main window, and **Refresh** in the command palette re-read every definition from disk and refetch every file-backed screen. It works with no watcher at all (a network drive, a laptop that slept). F5 no longer reloads the webview.
-- **Where:** `services/live/mod.rs` (`refresh_from_disk`), command `refresh_from_disk`, `POST /api/changes/refresh`, `src/lib/live-changes.ts` (`refreshFromDisk`, `FILE_BACKED_KEYS`), `src/components/live/RefreshButton.tsx`, `src/lib/commands/live-commands.ts`, `src/hooks/use-keyboard-shortcuts.ts`.
+- **Where:** `services/live/mod.rs` (`refresh_from_disk`), command `refresh_from_disk`, `POST /api/rpc/refresh_from_disk`, `src/lib/live-changes.ts` (`refreshFromDisk`, `FILE_BACKED_KEYS`), `src/components/live/RefreshButton.tsx`, `src/lib/commands/live-commands.ts`, `src/hooks/use-keyboard-shortcuts.ts`.
 - **Preconditions:** App running.
 - **Steps:**
   1. Start with the watcher unable to see a change (for example `NANDI_HOME` on a network share), or just press F5 after an edit.

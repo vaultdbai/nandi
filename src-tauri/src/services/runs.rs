@@ -73,9 +73,6 @@ pub struct DateRange {
     pub to: Timestamp,
 }
 
-/// Rows per page when the caller doesn't say.
-pub const DEFAULT_PAGE_SIZE: u32 = 100;
-
 /// The most rows one page may hold.
 pub const MAX_PAGE_SIZE: u32 = 200;
 
@@ -312,6 +309,7 @@ mod tests {
     use super::*;
 
     const DAY: f64 = 86_400_000.0;
+    const DEFAULT_PAGE_SIZE: u32 = 100;
 
     fn run(id: &str, agent_id: &str, started_at: f64) -> RunSummary {
         RunSummary {

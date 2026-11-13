@@ -14,10 +14,9 @@ use crate::model::ApprovalDecision;
 use crate::services::agents::{self, CreateAgentInput};
 use crate::services::llm_keys::{self, KeyedProvider};
 use crate::services::relay::RelayUnavailable;
-use crate::services::runs::{self, DateRange, RunFilters};
 use crate::services::workflows::{self, CreateWorkflowInput};
 use crate::services::{
-    attachments, chat, egress, preferences, queue, recovery, repo_service, snapshots, AppState,
+    attachments, chat, preferences, recovery, repo_service, snapshots, AppState,
 };
 use crate::types::AppPreferences;
 
@@ -75,10 +74,6 @@ pub fn api() -> Router<AppState> {
         .route("/approvals/pending", get(pending_approvals))
         .route("/approvals/{id}/hand-over", post(answer_hand_over))
         .route("/agents/{id}/cancel", post(cancel_turn))
-        .route("/agents/{id}/queue", get(agent_queue))
-        .route("/agents/{id}/current", get(current_turn))
-        .route("/queue/{run_id}/cancel", post(cancel_queued_run))
-        .route("/queue/{run_id}/priority", post(reprioritize_queued_run))
         .route("/snapshots/agent/{id}", get(agent_snapshot))
         .route("/snapshots/dashboard", get(dashboard_snapshot))
         .route("/runs/{id}", get(run_detail))
@@ -88,9 +83,6 @@ pub fn api() -> Router<AppState> {
         .route("/runs/{id}/plan", get(run_plan))
         // Body `{ path }`; returns a `data:` URL or null
         .route("/runs/{id}/screenshot", post(run_screenshot))
-        .route("/runs", get(list_all_runs))
-        .route("/runs/stats", get(run_stats))
-        .route("/audit/{kind}", get(list_audit_log))
         .route("/workflows", get(list_workflows).post(create_workflow))
         .route("/workflows/{id}", get(get_workflow))
         .route("/workflows/{id}/run", post(run_workflow))
@@ -124,9 +116,6 @@ pub fn api() -> Router<AppState> {
         .route("/free-trial", put(set_free_trial))
         // Returns `TrialAccount` (the gateway's `GET /v1/trial`)
         .route("/free-trial/account", get(free_trial_account))
-        .route("/egress/status", get(egress_status))
-        .route("/egress/aws-credentials", put(set_aws_credentials))
-        .route("/egress/aws-region", put(set_aws_region))
         .route("/repo/status", get(repo_status))
         .route("/repo/rebuild", post(repo_rebuild))
         .route("/emergency-data/cleanup", post(cleanup_emergency_data))
@@ -307,37 +296,6 @@ async fn cancel_turn(
     ApiResult(chat::cancel_turn(&state, id, body.turn_id).await)
 }
 
-// --- Queue -----------------------------------------------------------------
-
-async fn agent_queue(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
-    ApiResult(queue::get_agent_queue(&state, id).await)
-}
-
-async fn current_turn(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
-    ApiResult(queue::get_current_turn(&state, id).await)
-}
-
-async fn cancel_queued_run(
-    State(state): State<AppState>,
-    Path(run_id): Path<String>,
-) -> impl IntoResponse {
-    ApiResult(queue::cancel_queued_run(&state, run_id).await)
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PriorityBody {
-    priority: i32,
-}
-
-async fn reprioritize_queued_run(
-    State(state): State<AppState>,
-    Path(run_id): Path<String>,
-    Json(body): Json<PriorityBody>,
-) -> impl IntoResponse {
-    ApiResult(queue::reprioritize_queued_run(&state, run_id, body.priority).await)
-}
-
 async fn discard_attachment(Path(id): Path<String>) -> impl IntoResponse {
     ApiResult(attachments::discard_attachment(id).await)
 }
@@ -394,67 +352,6 @@ async fn run_screenshot(
     Json(body): Json<RunFileBody>,
 ) -> impl IntoResponse {
     ApiResult(snapshots::run_screenshot(&state, id, body.path).await)
-}
-
-// --- Runs + audit ----------------------------------------------------------
-
-/// `RunFilters` plus paging. Spelled out rather than `#[serde(flatten)]`:
-/// flattened query strings can't parse numbers.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RunsQuery {
-    date_from: Option<f64>,
-    date_to: Option<f64>,
-    status: Option<String>,
-    source_type: Option<String>,
-    agent_id: Option<String>,
-    search: Option<String>,
-    limit: Option<u32>,
-    offset: Option<u32>,
-}
-
-/// `GET /api/runs?status=&sourceType=&agentId=&search=&dateFrom=&dateTo=
-/// &limit=&offset=` → `RunPage`
-async fn list_all_runs(
-    State(state): State<AppState>,
-    Query(query): Query<RunsQuery>,
-) -> impl IntoResponse {
-    let filters = RunFilters {
-        date_from: query.date_from,
-        date_to: query.date_to,
-        status: query.status,
-        source_type: query.source_type,
-        agent_id: query.agent_id,
-        search: query.search,
-    };
-    let limit = query.limit.unwrap_or(runs::DEFAULT_PAGE_SIZE);
-    let offset = query.offset.unwrap_or_default();
-    ApiResult(runs::list_all_runs(state.db(), filters, limit, offset).await)
-}
-
-/// `GET /api/runs/stats?from=&to=` → `RunStats`
-async fn run_stats(
-    State(state): State<AppState>,
-    Query(range): Query<DateRange>,
-) -> impl IntoResponse {
-    ApiResult(runs::get_run_stats(state.db(), range).await)
-}
-
-#[derive(Deserialize)]
-struct PageQuery {
-    limit: Option<u32>,
-    offset: Option<u32>,
-}
-
-/// `GET /api/audit/{kind}?limit=&offset=` → `AuditEntry[]`
-async fn list_audit_log(
-    State(state): State<AppState>,
-    Path(kind): Path<String>,
-    Query(page): Query<PageQuery>,
-) -> impl IntoResponse {
-    let limit = page.limit.unwrap_or(runs::DEFAULT_PAGE_SIZE);
-    let offset = page.offset.unwrap_or_default();
-    ApiResult(state.audit_store().list(&kind, limit, offset).await)
 }
 
 async fn list_workflows(State(state): State<AppState>) -> impl IntoResponse {
@@ -600,38 +497,6 @@ async fn free_trial_account(State(state): State<AppState>) -> impl IntoResponse 
     ApiResult(llm_keys::get_free_trial_account(&state).await)
 }
 
-// --- Egress ----------------------------------------------------------------
-
-async fn egress_status(State(state): State<AppState>) -> impl IntoResponse {
-    ApiResult(egress::get_egress_status(&state).await)
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct AwsCredentialsBody {
-    access_key: String,
-    secret: String,
-}
-
-async fn set_aws_credentials(
-    State(state): State<AppState>,
-    Json(body): Json<AwsCredentialsBody>,
-) -> impl IntoResponse {
-    ApiResult(egress::set_aws_credentials(&state, body.access_key, body.secret).await)
-}
-
-#[derive(Deserialize)]
-struct AwsRegionBody {
-    region: String,
-}
-
-async fn set_aws_region(
-    State(state): State<AppState>,
-    Json(body): Json<AwsRegionBody>,
-) -> impl IntoResponse {
-    ApiResult(egress::set_aws_region(&state, body.region).await)
-}
-
 async fn save_emergency_data(
     State(state): State<AppState>,
     Path(filename): Path<String>,
@@ -649,64 +514,4 @@ async fn load_emergency_data(
 
 async fn cleanup_emergency_data(State(state): State<AppState>) -> impl IntoResponse {
     RecoveryResult(recovery::cleanup_old_recovery_files(&state).await)
-}
-
-#[cfg(test)]
-mod tests {
-    use axum::body::{to_bytes, Body};
-    use axum::http::Request;
-    use tower::ServiceExt;
-
-    use super::*;
-
-    async fn get(uri: &str) -> (StatusCode, Value) {
-        let state = AppState::for_tests(vec![]);
-        let response = api()
-            .with_state(state.clone())
-            .oneshot(Request::get(uri).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let status = response.status();
-        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        state.shutdown();
-        (status, serde_json::from_slice(&body).unwrap())
-    }
-
-    #[tokio::test]
-    async fn runs_route_parses_filters_and_paging() {
-        let (status, body) = get(
-            "/runs?status=failed&sourceType=trigger&agentId=writer&search=x\
-             &dateFrom=0&dateTo=1700000000000&limit=5&offset=0",
-        )
-        .await;
-        assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body, json!({ "rows": [], "total": 0 }));
-
-        let (status, body) = get("/runs").await;
-        assert_eq!(status, StatusCode::OK, "{body}");
-
-        let (status, body) = get("/runs?status=bogus").await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(body["error"].as_str().unwrap().contains("bogus"));
-    }
-
-    #[tokio::test]
-    async fn run_stats_route_takes_a_range() {
-        let (status, body) = get("/runs/stats?from=0&to=1700000000000").await;
-        assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body["totalRuns"], 0);
-
-        let (status, _) = get("/runs/stats?from=2&to=1").await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-    }
-
-    #[tokio::test]
-    async fn audit_route_checks_the_kind() {
-        let (status, body) = get("/audit/bogus?limit=10&offset=0").await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(body["error"]
-            .as_str()
-            .unwrap()
-            .contains("Unknown audit log"));
-    }
 }

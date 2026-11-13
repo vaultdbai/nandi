@@ -756,7 +756,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-21 — Local capability lookups and agent cards
 
 - **What:** APIs to list capabilities local agents declare, find local agents serving a capability, fetch an agent's card (used by Network › Offer), and query the relay for providers of a capability (`*` for all).
-- **Where:** Commands `list_declared_capabilities`, `find_agents_by_capability`, `get_agent_card` (`commands/capability.rs`; HTTP `POST /api/rpc/list_declared_capabilities`, `find_agents_by_capability`, `get_agent_card`); `query_capability_presence` (`commands/relay_capabilities.rs`, Tauri only).
+- **Where:** Commands `list_declared_capabilities`, `find_agents_by_capability`, `get_agent_card` (`commands/capability.rs`; HTTP `POST /api/rpc/list_declared_capabilities`, `find_agents_by_capability`, `get_agent_card`); `query_capability_presence` (`rpc/relay_capabilities.rs`).
 - **Preconditions:** Agents with `serves:`/`provides:`; relay connected for presence.
 - **Steps:** Call each endpoint.
 - **Expected:** JSON arrays / card.

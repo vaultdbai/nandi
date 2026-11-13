@@ -638,7 +638,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### SH-19 — All activity
 
 - **What:** Home › All activity lists runs and delegations (both ways) in one table: When, Request, Source, Agent or member, Took, State. It has search and filters for Date, Status, Source, Direction, Agent and Member, plus "Clear filters". "Export CSV" exports exactly the filtered rows. "Load more" pages the list. Filters live in the view, so they survive Back.
-- **Where:** `src/components/home/AllActivityView.tsx`, `activity-model.ts`; view `{kind:'home-activity', filters}`; `GET /api/runs`.
+- **Where:** `src/components/home/AllActivityView.tsx`, `activity-model.ts`; view `{kind:'home-activity', filters}`; `POST /api/rpc/list_all_runs`.
 - **Preconditions:** Activity exists.
 - **Steps:**
   1. Filter Status = failed.
@@ -1183,7 +1183,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ST-25 — Logs
 
 - **What:** Settings › Logs shows the redacted audit logs in tabs: Model calls, Internet, Triggers, Pilots, Connectors, Decisions (approval decisions and who decided them). It can be opened on a tab (`logTab`). Overlaps the audit area.
-- **Where:** `src/components/views/AuditLogView.tsx`, `src/hooks/useAuditLog.ts` (`AUDIT_KINDS`), `src-tauri/src/audit.rs`, `GET /api/audit/{kind}`.
+- **Where:** `src/components/views/AuditLogView.tsx`, `src/hooks/useAuditLog.ts` (`AUDIT_KINDS`), `src-tauri/src/audit.rs`, `POST /api/rpc/list_audit_log`.
 - **Preconditions:** Some activity.
 - **Steps:**
   1. Open Logs.
@@ -1380,7 +1380,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### SH-40 — A chat sent with no model also gets the help guide
 
 - **What:** In any chat box (an agent's page, Ask conversations, Chief of Staff threads) a message sent while no model can be called is sent as usual, and the help guide's answer to it appears above the box, dismissable.
-- **Where:** `components/ask/AskBox.tsx` (chat mode, `useDefaultModel().effectiveModel === null`), command `help_answer` (HTTP `POST /api/help/answer`, body `{ text }`).
+- **Where:** `components/ask/AskBox.tsx` (chat mode, `useDefaultModel().effectiveModel === null`), command `help_answer` (HTTP `POST /api/rpc/help_answer`, body `{ text }`).
 - **Preconditions:** No model.
 - **Steps:** 1. Open an agent, type "install docker" in Chat and send.
 - **Expected:** The message is sent; the Install Docker topic shows above the box. With a model, nothing extra shows.
@@ -1392,7 +1392,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### SH-41 — Help window from the no-model and Docker notices
 
 - **What:** **How?** on the "No model connected" notice and on "Agents need Docker to act." opens a help window on that topic, with every topic listed to switch between. Links to a screen go there and close the window; web links open in the browser.
-- **Where:** `components/help/HelpGuideDialog.tsx` (mounted in `MainWindow.tsx`), `useUIStore` (`openHelp`, `closeHelp`), `LlmKeyNotice.tsx`, `DockerSetupPrompt.tsx`, command `help_topics` (HTTP `GET /api/help/topics`).
+- **Where:** `components/help/HelpGuideDialog.tsx` (mounted in `MainWindow.tsx`), `useUIStore` (`openHelp`, `closeHelp`), `LlmKeyNotice.tsx`, `DockerSetupPrompt.tsx`, command `help_topics` (HTTP `POST /api/rpc/help_topics`).
 - **Preconditions:** No model, or Docker stopped.
 - **Steps:** 1. Click How? on the notice. 2. Pick "Install Docker". 3. Click "Open This computer".
 - **Expected:** 1. The window on "Connect a model". 2. That topic. 3. Settings › This computer; the window closes.

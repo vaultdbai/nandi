@@ -69,13 +69,13 @@ refetchInterval: 15_000
 
 ## Recent changes and "Updated by"
 
-- The core keeps the last 200 changes in memory (`ChangeFeed`, `list_recent_changes`, `GET /api/changes`). The list starts empty with the app.
+- The core keeps the last 200 changes in memory (`ChangeFeed`, `list_recent_changes`, `POST /api/rpc/list_recent_changes`). The list starts empty with the app.
 - **Home** shows the latest 8 in **Recent changes** (`RecentChanges.tsx`), each linking to its page (`live-model.ts` `viewOf`). Hidden until something changes.
 - **`UpdatedBy`** shows "Updated just now by Chief of Staff" on a note (My notes) and on an agent's page (its definition or work folder). Without a change this session, it falls back to the file's own time.
 
 ## Refresh
 
-`refresh_from_disk` (`POST /api/changes/refresh`) re-scans every definition (`RepoStore::rescan_all`), whether a watcher runs or not. Then `refreshFromDisk()` refetches every query in `FILE_BACKED_KEYS`. Notes and work folders are read from disk on each request, so refetching them is enough.
+`refresh_from_disk` (`POST /api/rpc/refresh_from_disk`) re-scans every definition (`RepoStore::rescan_all`), whether a watcher runs or not. Then `refreshFromDisk()` refetches every query in `FILE_BACKED_KEYS`. Notes and work folders are read from disk on each request, so refetching them is enough.
 
 | Where                                                       | How                                                                    |
 | ----------------------------------------------------------- | ---------------------------------------------------------------------- |

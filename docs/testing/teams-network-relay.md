@@ -728,7 +728,7 @@ Notes that apply to the whole section:
   - Cards that name another instance are dropped.
   - Turning on `accepts_delegation` re-registers the cards within about 500 ms.
   - `query_capability_presence` lists who serves a capability (`*` for all).
-- **Where:** `services/relay/presence.rs`, `client.rs`, nandi-relay `src/server.rs`, `commands/relay_capabilities.rs` (`query_capability_presence`).
+- **Where:** `services/relay/presence.rs`, `client.rs`, nandi-relay `src/server.rs`, `rpc/relay_capabilities.rs` (`query_capability_presence`).
 - **Preconditions:** A relay and two instances.
 - **Steps:** 1. Suspend instance B for more than 90 s. 2. Check `/instances`. 3. On A, turn on an agent's `accepts_delegation` and watch the relay. 4. On A, give a capability `visibility: private` and turn `relay.enabled` off; on B, run `query_capability_presence "*"`.
 - **Expected:**

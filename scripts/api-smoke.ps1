@@ -17,23 +17,23 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Routes = @(
-    'agents', 'agents/overviews', 'approvals/pending', 'ask/history', 'aws/cli', 'aws/profiles',
-    'bedrock/gateway', 'bedrock/models', 'capabilities', 'companion/snapshot', 'connectors',
-    'default-model', 'delegation/history', 'delegation/pending-clarifications',
-    'delegation/providers', 'egress/status', 'gateway/callers', 'gateway/config',
-    'gateway/holds', 'gateway/manifest', 'gateway/status', 'harnesses', 'identity/status',
-    'llm-keys', 'marketplace/agents', 'marketplace/installed', 'marketplace/packs',
-    'marketplace/updates', 'network/snapshot', 'ollama', 'pilots', 'preferences',
-    'relay/agents', 'relay/status', 'remote/status', 'repo/git/status', 'repo/status', 'runs',
-    'studio/push-targets', 'tasks', 'teams', 'triggers', 'trust/requests', 'workflows',
-    'workflows/manual-steps',
+    'agents', 'agents/overviews', 'approvals/pending', 'ask/history', 'aws/cli',
+    'aws/profiles', 'bedrock/gateway', 'bedrock/models', 'capabilities', 'companion/snapshot',
+    'connectors', 'default-model', 'delegation/history', 'delegation/pending-clarifications',
+    'delegation/providers', 'gateway/callers', 'gateway/config', 'gateway/holds',
+    'gateway/manifest', 'gateway/status', 'harnesses', 'identity/status', 'llm-keys',
+    'marketplace/agents', 'marketplace/installed', 'marketplace/packs', 'marketplace/updates',
+    'network/snapshot', 'ollama', 'pilots', 'preferences', 'relay/agents', 'relay/status',
+    'remote/status', 'repo/git/status', 'repo/status', 'studio/push-targets', 'tasks', 'teams',
+    'triggers', 'trust/requests', 'workflows', 'workflows/manual-steps',
     # Commands without arguments: `POST /api/rpc/{name}` with `{}`
-    'rpc:get_auto_approve_rules', 'rpc:get_chief_of_staff_digest', 'rpc:get_know_me',
-    'rpc:get_my_notes', 'rpc:get_repo_llm_config', 'rpc:get_tool_usage_stats',
-    'rpc:list_agents_shared_by_me', 'rpc:list_agents_shared_with_me',
-    'rpc:list_capability_providers', 'rpc:list_capability_registries',
-    'rpc:list_decision_months', 'rpc:list_declared_capabilities', 'rpc:list_dismissed_work',
-    'rpc:list_harness_sessions', 'rpc:list_note_suggestions', 'rpc:list_tools',
+    'rpc:get_auto_approve_rules', 'rpc:get_chief_of_staff_digest', 'rpc:get_egress_status',
+    'rpc:get_know_me', 'rpc:get_my_notes', 'rpc:get_repo_llm_config',
+    'rpc:get_tool_usage_stats', 'rpc:help_topics', 'rpc:list_agents_shared_by_me',
+    'rpc:list_agents_shared_with_me', 'rpc:list_capability_providers',
+    'rpc:list_capability_registries', 'rpc:list_decision_months',
+    'rpc:list_declared_capabilities', 'rpc:list_dismissed_work', 'rpc:list_harness_sessions',
+    'rpc:list_note_suggestions', 'rpc:list_recent_changes', 'rpc:list_tools',
     'rpc:list_trust_policies', 'rpc:list_work', 'rpc:mascot_get'
 )
 

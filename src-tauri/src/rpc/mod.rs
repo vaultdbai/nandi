@@ -18,8 +18,17 @@
 //!
 //! A line reads: the command's name, `state` (the `AppState`) and its
 //! arguments, the `Ok` type, then the service call. The call must return
-//! `Result<Ok, String>`. Over HTTP the arguments are a JSON object with
-//! camelCase keys, the same keys Tauri IPC uses.
+//! `Result<Ok, String>`; a sync service is called without `.await`. Over
+//! HTTP the arguments are a JSON object with camelCase keys, the same keys
+//! Tauri IPC uses.
+//!
+//! A command that doesn't read the app state leaves `state` out:
+//!
+//! ```ignore
+//! commands! {
+//!     fn help_topics() -> Vec<HelpTopic> => Ok(help::topics());
+//! }
+//! ```
 //!
 //! Commands that need the `AppHandle`, a window or a typed error stay
 //! hand-written in `commands/`.
@@ -35,58 +44,98 @@ use crate::services::AppState;
 macro_rules! commands {
     ($(
         $(#[doc = $doc:literal])*
-        fn $name:ident($state:ident $(, $arg:ident: $ty:ty)* $(,)?) -> $ok:ty => $call:expr;
+        fn $name:ident($($params:tt)*) -> $ok:ty => $call:expr;
     )*) => {
         $(
-            $(#[doc = $doc])*
-            #[tauri::command]
-            #[specta::specta]
-            pub async fn $name(
-                $state: tauri::State<'_, $crate::services::AppState>,
-                $($arg: $ty),*
-            ) -> Result<$ok, String> {
-                $call
-            }
+            $crate::rpc::commands!(@command [$($doc)*] $name($($params)*) -> $ok => $call);
         )*
 
         /// This module's commands over HTTP (`POST /api/rpc/{name}`)
         pub const RPC: &[(&str, $crate::rpc::Handler)] = &[$(
-            (
-                stringify!($name),
-                |$state: $crate::services::AppState, args: serde_json::Value| -> $crate::rpc::RpcFuture {
-                    Box::pin(async move {
-                        #[derive(serde::Deserialize)]
-                        #[serde(rename_all = "camelCase")]
-                        struct Args { $($arg: $ty),* }
-
-                        let Args { $($arg),* } = serde_json::from_value(args).map_err(|e| {
-                            let name = stringify!($name);
-                            format!("Invalid arguments for {name}: {e}")
-                        })?;
-                        let result: Result<$ok, String> = $call;
-                        serde_json::to_value(result?).map_err(|e| e.to_string())
-                    })
-                },
-            ),
+            (stringify!($name), $crate::rpc::commands!(@handler $name($($params)*) -> $ok => $call)),
         )*];
+    };
+
+    // The Tauri command, with the app state
+    (@command [$($doc:literal)*] $name:ident($state:ident $(, $arg:ident: $ty:ty)* $(,)?) -> $ok:ty => $call:expr) => {
+        $(#[doc = $doc])*
+        #[tauri::command]
+        #[specta::specta]
+        pub async fn $name(
+            $state: tauri::State<'_, $crate::services::AppState>,
+            $($arg: $ty),*
+        ) -> Result<$ok, String> {
+            $call
+        }
+    };
+
+    // The Tauri command, without the app state
+    (@command [$($doc:literal)*] $name:ident($($arg:ident: $ty:ty),* $(,)?) -> $ok:ty => $call:expr) => {
+        $(#[doc = $doc])*
+        #[tauri::command]
+        #[specta::specta]
+        pub async fn $name($($arg: $ty),*) -> Result<$ok, String> {
+            $call
+        }
+    };
+
+    // The RPC handler, with the app state
+    (@handler $name:ident($state:ident $(, $arg:ident: $ty:ty)* $(,)?) -> $ok:ty => $call:expr) => {
+        |$state: $crate::services::AppState, args: serde_json::Value| -> $crate::rpc::RpcFuture {
+            Box::pin(async move {
+                $crate::rpc::commands!(@args $name, args, $($arg: $ty),*);
+                let result: Result<$ok, String> = $call;
+                serde_json::to_value(result?).map_err(|e| e.to_string())
+            })
+        }
+    };
+
+    // The RPC handler, without the app state
+    (@handler $name:ident($($arg:ident: $ty:ty),* $(,)?) -> $ok:ty => $call:expr) => {
+        |_: $crate::services::AppState, args: serde_json::Value| -> $crate::rpc::RpcFuture {
+            Box::pin(async move {
+                $crate::rpc::commands!(@args $name, args, $($arg: $ty),*);
+                let result: Result<$ok, String> = $call;
+                serde_json::to_value(result?).map_err(|e| e.to_string())
+            })
+        }
+    };
+
+    // Binds each argument from the JSON object (camelCase keys)
+    (@args $name:ident, $args:ident, $($arg:ident: $ty:ty),*) => {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Args { $($arg: $ty),* }
+
+        let Args { $($arg),* } = serde_json::from_value($args).map_err(|e| {
+            let name = stringify!($name);
+            format!("Invalid arguments for {name}: {e}")
+        })?;
     };
 }
 pub(crate) use commands;
 
 pub mod analysis;
+pub mod audit;
 pub mod capability;
 pub mod capability_registries;
 pub mod config;
 pub mod decisions;
+pub mod egress;
 pub mod harness_sessions;
+pub mod help;
 pub mod knowme;
+pub mod live;
 pub mod marketplace_search;
 pub mod mascot;
 pub mod memory;
 pub mod notes;
 pub mod palette;
 pub mod policies;
+pub mod queue;
+pub mod relay_capabilities;
 pub mod requests;
+pub mod runs;
 pub mod shared;
 pub mod tools;
 pub mod work;
@@ -101,19 +150,26 @@ pub type Handler = fn(AppState, Value) -> RpcFuture;
 /// Every module's `RPC` table. A new module adds its table here.
 const TABLES: &[&[(&str, Handler)]] = &[
     analysis::RPC,
+    audit::RPC,
     capability::RPC,
     capability_registries::RPC,
     config::RPC,
     decisions::RPC,
+    egress::RPC,
     harness_sessions::RPC,
+    help::RPC,
     knowme::RPC,
+    live::RPC,
     marketplace_search::RPC,
     mascot::RPC,
     memory::RPC,
     notes::RPC,
     palette::RPC,
     policies::RPC,
+    queue::RPC,
+    relay_capabilities::RPC,
     requests::RPC,
+    runs::RPC,
     shared::RPC,
     tools::RPC,
     work::RPC,

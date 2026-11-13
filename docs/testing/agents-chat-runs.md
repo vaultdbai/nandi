@@ -237,7 +237,7 @@ Shared preconditions used below:
 ### AG-14 — Runs tab
 
 - **What:** Every run of the agent, newest first, 25 per page with "Load more (n of m)". Each row: relative start time, the input's first line (or "(no message)"), "Part of" (Chat, a workflow, a Request, or the trigger label) and status with duration. Filters: "Search runs…" and status ("Status: any", Running, Awaiting approval, Completed, Failed, Cancelled).
-- **Where:** Agent page → Runs. `src/components/agents/AgentRunsTab.tsx` (`AgentRunRow`, `RunOriginLink`), `runOrigin` in `agent-page-model.ts`; command `list_all_runs` with `agentId` (`src-tauri/src/commands/runs.rs`, `services/runs.rs`); HTTP `GET /api/runs?agentId=…`.
+- **Where:** Agent page → Runs. `src/components/agents/AgentRunsTab.tsx` (`AgentRunRow`, `RunOriginLink`), `runOrigin` in `agent-page-model.ts`; command `list_all_runs` with `agentId` (`src-tauri/src/rpc/runs.rs`, `services/runs.rs`); HTTP `POST /api/rpc/list_all_runs` with `filters.agentId`.
 - **Preconditions:** An agent with runs from chat, a workflow and a trigger.
 - **Steps:**
   1. Filter by Failed; type a word from one run's input.
@@ -820,7 +820,7 @@ Shared preconditions used below:
 ### CH-11 — One turn per agent and the queue strip
 
 - **What:** Each agent runs one turn at a time. A message sent while busy becomes a `queued` run with an `agent_queue` row; toast "Queued: the agent will get to it after its current task." The strip above the chat (and on Overview) shows "Working on: …" or "Waiting for approval: …", "+N queued" ("Show queue" opens the queue), and **Stop**. Hidden when idle with nothing queued. Priorities: user 10, critical workflow step 30, workflow step 50, delegation 60, schedule 80, background 100 (triggers: cron 80, file 70, webhook 60, device 50, event 60). The next run is the lowest priority number, then oldest.
-- **Where:** `src/components/agent-console/TurnQueue.tsx` (`TurnQueueStrip`); `get_agent_queue`, `get_current_turn` (`commands/queue.rs`); HTTP `GET /api/agents/{id}/queue`, `GET /api/agents/{id}/current`; event `agent://queue_changed { agentId, queue, current }`.
+- **Where:** `src/components/agent-console/TurnQueue.tsx` (`TurnQueueStrip`); `get_agent_queue`, `get_current_turn` (`rpc/queue.rs`); HTTP `POST /api/rpc/get_agent_queue`, `get_current_turn`; event `agent://queue_changed { agentId, queue, current }`.
 - **Preconditions:** Model key; an agent that pauses on approval (easiest way to keep it busy).
 - **Steps:**
   1. Trigger an approval-gated call so the run waits.
@@ -834,7 +834,7 @@ Shared preconditions used below:
 ### CH-12 — Queue panel: reorder and remove
 
 - **What:** "Queue" sheet: the current run ("Now" or Awaiting approval, its source, Stop) and each waiting request with source (You, Workflow, Another agent, Scheduled, Schedule, File, Webhook, Device, Event), "Priority N", age, and preview (or attachment names). Drag rows, or Alt+↑/↓ on the handle, to reorder (sets a new priority); the X ("Remove from queue") removes a request (ends it as `cancelled`). With nothing waiting: "Nothing else is waiting."
-- **Where:** `TurnQueue.tsx` (`QueuePanel`), `src/lib/queue-order.ts` (`priorityForMove`); `cancel_queued_run`, `reprioritize_queued_run`; HTTP `POST /api/queue/{runId}/cancel`, `POST /api/queue/{runId}/priority`.
+- **Where:** `TurnQueue.tsx` (`QueuePanel`), `src/lib/queue-order.ts` (`priorityForMove`); `cancel_queued_run`, `reprioritize_queued_run`; HTTP `POST /api/rpc/cancel_queued_run`, `reprioritize_queued_run`.
 - **Preconditions:** As CH-11 with 3 queued requests.
 - **Steps:** Drag the last row to the top; remove the middle one; approve the current one.
 - **Expected:** The moved request runs next; the removed one is Cancelled in history; every change arrives via `agent://queue_changed` without polling.
@@ -1217,7 +1217,7 @@ Shared preconditions used below:
 ### RN-14 — Global runs query API
 
 - **What:** Runs across all agents, newest first, filtered by date range, status (`awaitingApproval` or `awaiting_approval`), source type (`user`, `workflow`, `agent`, `scheduled`, `cron`, `file`, `webhook`, `device`, `event`, or `trigger` for any trigger source), agent and text (matches input, summary, source label, agent, workflow and trigger names). Page size default 100, max 200, with total. Studio runs are left out unless asked for by agent ID. Stats for a range: totals, completed, failed, cancelled, tokens, cost, average duration.
-- **Where:** `list_all_runs`, `get_run_stats` (`commands/runs.rs`, `services/runs.rs`); HTTP `GET /api/runs`, `GET /api/runs/stats?from=…&to=…`. UI consumers: agent Runs tab, Home › All activity (Home section).
+- **Where:** `list_all_runs`, `get_run_stats` (`rpc/runs.rs`, `services/runs.rs`); HTTP `POST /api/rpc/list_all_runs`, `get_run_stats` (body `{ range: { from, to } }`). UI consumers: agent Runs tab, Home › All activity (Home section).
 - **Preconditions:** Runs from several sources.
 - **Steps:** Call with `sourceType=trigger`; with `limit=500`; stats without `from`.
 - **Expected:** Only trigger-started runs; at most 200 rows; stats without `from` is a 400.
@@ -1229,7 +1229,7 @@ Shared preconditions used below:
 ### RN-15 — Audit log viewer
 
 - **What:** Settings › Logs with tabs Model calls (`llm`), Internet (`egress`), Triggers, Pilots, Connectors. Decisions aren't a log here: they're in the gold copy, read on Home › Decisions (PO-14). Each shows a table (Time, Agent, a per-tab column, Outcome, Duration, Details), 100 rows per page with Previous page/Next page, "Search this page" with a "Search in" column selector, **Refresh**, and **Download raw log** (all entries as JSONL, `nandi-audit-<kind>-….jsonl`). Entries are metadata only and redacted by the backend (`[redacted]`) and again in the UI; refused/failed outcomes are highlighted.
-- **Where:** Sidebar → Settings → Logs. `src/components/views/AuditLogView.tsx`, `src/hooks/useAuditLog.ts`; `list_audit_log` (`commands/audit.rs`, `src-tauri/src/audit.rs`); files in `~/.nandi/local/logs/`; HTTP `GET /api/audit/{kind}?limit=&offset=`.
+- **Where:** Sidebar → Settings → Logs. `src/components/views/AuditLogView.tsx`, `src/hooks/useAuditLog.ts`; `list_audit_log` (`rpc/audit.rs`, `src-tauri/src/audit.rs`); files in `~/.nandi/local/logs/`; HTTP `POST /api/rpc/list_audit_log` (body `{ logKind, limit, offset }`).
 - **Preconditions:** Some model calls, an egress request and a trigger fire.
 - **Steps:** Open each tab; search; page; Download.
 - **Expected:** Newest first; downloaded file has every entry, one JSON per line; no keys or prompt text anywhere.

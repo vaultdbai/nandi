@@ -24,10 +24,8 @@ mod email;
 mod gateway;
 mod groups;
 mod harnesses;
-mod help;
 mod identity;
 mod images;
-mod live;
 mod machine;
 mod manual_steps;
 mod marketplace;
@@ -76,7 +74,6 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(connectors::api())
                 .merge(images::api())
                 .merge(machine::api())
-                .merge(help::api())
                 // Wave 2A
                 .merge(relay::api())
                 .merge(delegation::api())
@@ -91,7 +88,6 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(delegation_clarification::api())
                 .merge(gateway::api())
                 .merge(network::api())
-                .merge(live::api())
                 .merge(email::api())
                 .merge(workspace::api())
                 .merge(access::api())

@@ -689,7 +689,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### SB-08 — AWS access key and region for agents' AWS calls
 
 - **What:** A write-only "Access key ID" + "Secret access key" and "Region", used for agents' AWS calls through Nandi; shown redacted (`AKIA…WXYZ`); removable with confirmation ("Remove the AWS access key?", Remove key).
-- **Where:** Settings → Cloud credentials → AWS → "Access key for agents" (`data-settings-focus="aws-access-key"`). `CloudCredentialsSection.tsx` (`AccessKeyForm`), `commands/egress.rs` (`get_egress_status`, `set_aws_credentials`, `set_aws_region`). HTTP `GET /api/egress/status`, `PUT /api/egress/aws-credentials`, `PUT /api/egress/aws-region`. Keychain `nandi.aws.access_key`, `nandi.aws.secret_key`, `nandi.aws.region`.
+- **Where:** Settings → Cloud credentials → AWS → "Access key for agents" (`data-settings-focus="aws-access-key"`). `CloudCredentialsSection.tsx` (`AccessKeyForm`), `rpc/egress.rs` (`get_egress_status`, `set_aws_credentials`, `set_aws_region`). HTTP `POST /api/rpc/{command}`. Keychain `nandi.aws.access_key`, `nandi.aws.secret_key`, `nandi.aws.region`.
 - **Preconditions:** An IAM key.
 - **Steps:** 1. Enter key and region, click Save credentials. 2. Reload. 3. Click Remove, then Remove key.
 - **Expected:** Toast "AWS credentials saved"; status shows redacted id and region; secret never returned; remove asks first, then "AWS credentials removed".

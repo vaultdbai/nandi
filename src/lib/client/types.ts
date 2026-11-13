@@ -39,7 +39,6 @@ import type {
   ApprovalDecision,
   AttachmentInfo,
   AttachmentKind,
-  AuditEntry,
   CommunityRegistry,
   CompanionSnapshot,
   ConnectorInfo,
@@ -71,9 +70,7 @@ import type {
   TemplateWorkflowInput,
   WorkflowTemplate,
   DashboardSnapshot,
-  DateRange,
   DeviceFlowState,
-  EgressStatus,
   ForkedAgent,
   GitStatus,
   HandOverAnswer,
@@ -85,8 +82,6 @@ import type {
   LlmKeyStatus,
   LlmKeyTest,
   DefaultModelStatus,
-  HelpAnswer,
-  HelpTopic,
   TrialAccount,
   OllamaStatus,
   OnboardingStep,
@@ -97,7 +92,6 @@ import type {
   PilotStatus,
   PublishAgentInput,
   PublishResult,
-  QueueEntry,
   RecoveryError,
   RegistryInfo,
   RelayPeer,
@@ -111,11 +105,7 @@ import type {
   RepoStatus,
   Result,
   RunDetail,
-  RunFilters,
-  RunPage,
   RunPlan,
-  RunStats,
-  RunSummary,
   SavedTrigger,
   SendMessageResult,
   StudioConversationSummary,
@@ -136,8 +126,6 @@ import type {
   GatewayManifest,
   GatewayStatus,
   GatewayAssignment,
-  LiveChange,
-  RefreshReport,
   GatewayHold,
   GatewayUsage,
   IdentityStatus,
@@ -169,7 +157,6 @@ import type {
   CapabilityOwner,
   CapabilityProvider,
   CapabilityProviderStats,
-  InstancePresence,
   AwsCliInfo,
   AwsProfile,
   KeyProfileInput,
@@ -280,16 +267,6 @@ export interface HandWrittenClient {
   cancelTurn(agentId: string, turnId: string): Promise<Result<null, string>>
 
   // Queue: one turn per agent; other requests wait, lowest priority first
-  getAgentQueue(agentId: string): Promise<Result<QueueEntry[], string>>
-  /** The running or approval-blocked turn, or `null` when idle */
-  getCurrentTurn(agentId: string): Promise<Result<RunSummary | null, string>>
-  /** Removes a queued run (never the current turn; see `cancelTurn`) */
-  cancelQueuedRun(runId: string): Promise<Result<null, string>>
-  /** Lower priorities run sooner */
-  reprioritizeQueuedRun(
-    runId: string,
-    newPriority: number
-  ): Promise<Result<null, string>>
 
   // Attachments (picking needs the desktop app; see `supports`)
   pickAttachments(
@@ -344,10 +321,6 @@ export interface HandWrittenClient {
   /** The free trial's allowance as Nandi's trial gateway counts it */
   getFreeTrialAccount(): Promise<Result<TrialAccount, string>>
   /** Starts linking this computer's free trial to a person's account */
-  /** Every topic of the built-in help guide (no model needed) */
-  helpTopics(): Promise<Result<HelpTopic[], string>>
-  /** The built-in help guide's answer to `text` */
-  helpAnswer(text: string): Promise<Result<HelpAnswer, string>>
   /** Checks a key (`null`: the stored one) without storing it */
   testLlmKey(
     provider: KeyedProvider,
@@ -369,13 +342,6 @@ export interface HandWrittenClient {
   cleanupOldRecoveryFiles(): Promise<Result<number, RecoveryError>>
 
   // Egress
-  getEgressStatus(): Promise<Result<EgressStatus, string>>
-  /** Empty `accessKey` and `secret` remove the stored key */
-  setAwsCredentials(
-    accessKey: string,
-    secret: string
-  ): Promise<Result<null, string>>
-  setAwsRegion(region: string): Promise<Result<null, string>>
 
   // Workflows (listing is `getWorkflows`)
   getWorkflow(id: string): Promise<Result<Workflow, string>>
@@ -558,19 +524,6 @@ export interface HandWrittenClient {
   ): Promise<Result<AgentPilotPermission[], string>>
 
   // Runs across every agent, and the audit logs (wave 1, Track C)
-  /** Newest first */
-  listAllRuns(
-    filters: RunFilters,
-    limit: number,
-    offset: number
-  ): Promise<Result<RunPage, string>>
-  getRunStats(range: DateRange): Promise<Result<RunStats, string>>
-  /** `kind`: `llm` | `egress` | `triggers` | `pilots` | `connectors`; newest first */
-  listAuditLog(
-    kind: string,
-    limit: number,
-    offset: number
-  ): Promise<Result<AuditEntry[], string>>
 
   // Runtime connectors: MCP servers + OAuth2 (wave 1, Track D)
   listConnectors(): Promise<Result<ConnectorInfo[], string>>
@@ -819,10 +772,6 @@ export interface HandWrittenClient {
     note: string | null
   ): Promise<Result<GatewayHold, string>>
   // Live UI (`services::live`)
-  /** The latest file changes, newest first: who changed what */
-  listRecentChanges(): Promise<Result<LiveChange[], string>>
-  /** Re-reads every definition from disk (the Refresh button, F5) */
-  refreshFromDisk(): Promise<Result<RefreshReport, string>>
   // Email (the Chief of Staff reads it to keep My notes)
   /** Mailboxes, what this build can connect, and the next check */
   getEmailStatus(): Promise<Result<EmailStatus, string>>
@@ -1053,10 +1002,6 @@ export interface HandWrittenClient {
   // Wave A: capability registries (not the marketplace registries)
 
   // Wave A: capability presence on the relay
-  /** `*` for every capability */
-  queryCapabilityPresence(
-    capabilityId: string
-  ): Promise<Result<InstancePresence[], string>>
 
   // Wave B: harness adapters
   listHarnesses(): Promise<Result<HarnessInfo[], string>>

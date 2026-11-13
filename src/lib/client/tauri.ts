@@ -53,12 +53,6 @@ export const tauriClient: NandiClient = withCommands({
   listPendingApprovals: () => commands.listPendingApprovals(),
   cancelTurn: (agentId, turnId) => commands.cancelTurn(agentId, turnId),
 
-  getAgentQueue: agentId => commands.getAgentQueue(agentId),
-  getCurrentTurn: agentId => commands.getCurrentTurn(agentId),
-  cancelQueuedRun: runId => commands.cancelQueuedRun(runId),
-  reprioritizeQueuedRun: (runId, newPriority) =>
-    commands.reprioritizeQueuedRun(runId, newPriority),
-
   pickAttachments: kind => commands.pickAttachments(kind),
   discardAttachment: id => commands.discardAttachment(id),
 
@@ -81,8 +75,6 @@ export const tauriClient: NandiClient = withCommands({
   setDefaultModel: model => commands.setDefaultModel(model),
   setFreeTrial: enabled => commands.setFreeTrial(enabled),
   getFreeTrialAccount: () => commands.getFreeTrialAccount(),
-  helpTopics: () => commands.helpTopics(),
-  helpAnswer: text => commands.helpAnswer(text),
   testLlmKey: (provider, apiKey) => commands.testLlmKey(provider, apiKey),
   listProviderModels: provider => commands.listProviderModels(provider),
   detectOllama: () => commands.detectOllama(),
@@ -92,10 +84,6 @@ export const tauriClient: NandiClient = withCommands({
   loadEmergencyData: filename => commands.loadEmergencyData(filename),
   cleanupOldRecoveryFiles: () => commands.cleanupOldRecoveryFiles(),
 
-  getEgressStatus: () => commands.getEgressStatus(),
-  setAwsCredentials: (accessKey, secret) =>
-    commands.setAwsCredentials(accessKey, secret),
-  setAwsRegion: region => commands.setAwsRegion(region),
   getWorkflow: workflowId => commands.getWorkflow(workflowId),
   createWorkflow: input => commands.createWorkflow(input),
   runWorkflow: workflowId => commands.runWorkflow(workflowId),
@@ -186,12 +174,6 @@ export const tauriClient: NandiClient = withCommands({
     commands.addPilotSecret(agentId, pilotId, name, value),
   clearBrowserProfile: (agentId, pilotId) =>
     commands.clearBrowserProfile(agentId, pilotId),
-
-  listAllRuns: (filters, limit, offset) =>
-    commands.listAllRuns(filters, limit, offset),
-  getRunStats: range => commands.getRunStats(range),
-  listAuditLog: (kind, limit, offset) =>
-    commands.listAuditLog(kind, limit, offset),
 
   listConnectors: () => commands.listConnectors(),
   installConnector: id => commands.installConnector(id),
@@ -299,8 +281,6 @@ export const tauriClient: NandiClient = withCommands({
   decideGatewayHold: (taskId, approve, note) =>
     commands.decideGatewayHold(taskId, approve, note),
   listGatewayAssignments: () => commands.listGatewayAssignments(),
-  listRecentChanges: () => commands.listRecentChanges(),
-  refreshFromDisk: () => commands.refreshFromDisk(),
   getEmailStatus: () => commands.getEmailStatus(),
   startEmailSignIn: provider => commands.startEmailSignIn(provider),
   pollEmailSignIn: provider => commands.pollEmailSignIn(provider),
@@ -398,9 +378,6 @@ export const tauriClient: NandiClient = withCommands({
   listCapabilityAmbiguities: id => commands.listCapabilityAmbiguities(id),
   promoteAmbiguityToSchema: (id, clusterId) =>
     commands.promoteAmbiguityToSchema(id, clusterId),
-
-  queryCapabilityPresence: capabilityId =>
-    commands.queryCapabilityPresence(capabilityId),
 
   listHarnesses: () => commands.listHarnesses(),
   detectHarnesses: () => commands.detectHarnesses(),

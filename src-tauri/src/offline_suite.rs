@@ -54,7 +54,6 @@ const SCREEN_ROUTES: &[&str] = &[
     "delegation/pending-clarifications",
     "delegation/providers",
     "delegation/returns",
-    "egress/status",
     "email",
     "connector-grants",
     "workspace",
@@ -74,7 +73,6 @@ const SCREEN_ROUTES: &[&str] = &[
     "remote/status",
     "repo/git/status",
     "repo/status",
-    "runs",
     "studio/push-targets",
     "tasks",
     "teams",
@@ -89,10 +87,12 @@ const SCREEN_ROUTES: &[&str] = &[
 const SCREEN_COMMANDS: &[&str] = &[
     "get_auto_approve_rules",
     "get_chief_of_staff_digest",
+    "get_egress_status",
     "get_know_me",
     "get_my_notes",
     "get_repo_llm_config",
     "get_tool_usage_stats",
+    "help_topics",
     "list_agents_shared_by_me",
     "list_agents_shared_with_me",
     "list_capability_providers",
@@ -101,6 +101,7 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_declared_capabilities",
     "list_dismissed_work",
     "list_note_suggestions",
+    "list_recent_changes",
     "list_tools",
     "list_trust_policies",
     "list_work",
@@ -215,6 +216,9 @@ async fn every_screen_answers(router: &Router) {
     for command in SCREEN_COMMANDS {
         rpc(router, command, json!({})).await;
     }
+    // The run history's first page, with no filters
+    let first_page = json!({ "filters": {}, "limit": 50, "offset": 0 });
+    rpc(router, "list_all_runs", first_page).await;
 }
 
 async fn relay_is_disconnected(router: &Router) -> Value {
@@ -701,9 +705,9 @@ async fn with_no_model_the_ask_box_answers_from_the_help_guide() {
     assert_eq!(answer["data"]["topic"]["id"], "install-docker", "{answer}");
     assert_eq!(answer["data"]["reason"], "noModel", "{answer}");
 
-    let topics = get(&router, "help/topics").await;
+    let topics = rpc(&router, "help_topics", json!({})).await;
     assert!(topics.as_array().is_some_and(|t| t.len() >= 10), "{topics}");
-    let chat = post(&router, "help/answer", json!({ "text": "join a relay" })).await;
+    let chat = rpc(&router, "help_answer", json!({ "text": "join a relay" })).await;
     assert_eq!(chat["topic"]["id"], "join-relay", "{chat}");
 }
 
