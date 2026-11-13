@@ -92,7 +92,7 @@ Notes that apply to the whole section:
 - **Preconditions:** A relay is connected (RL-01). Local agents have `serves:`.
 - **Steps:** 1. `PUT /api/gateway/config` with relay enabled and discoverable on. 2. `curl http://<relay>:8787/instances`. 3. Add a capability to `hide` and save. 4. Turn discoverable off. 5. Turn off "Show my responsibilities on my card". 6. Turn relay enabled off. 7. Quit Nandi, set `relay.enabled: true` then back to `false` by hand while another Nandi watches People, and start it again.
 - **Expected:**
-  - After step 1, the instance shows a gateway card with sorted, distinct capabilities, and from a second instance `GET /api/network/snapshot` shows the member with the body text.
+  - After step 1, the instance shows a gateway card with sorted, distinct capabilities, and from a second instance `POST /api/rpc/get_network_snapshot` shows the member with the body text.
   - After step 3, the hidden capability disappears from the card and from the agent cards within a few seconds; an agent serving only hidden capabilities is no longer listed.
   - After step 4, the card has no body, but still carries `responsibilities`.
   - After step 5, the card has no `responsibilities`, and people search no longer finds the member by them.

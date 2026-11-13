@@ -219,11 +219,6 @@ export const tauriClient: NandiClient = withCommands({
   getCompanionSnapshot: dayStart => commands.getCompanionSnapshot(dayStart),
   toggleCompanionWindow: () => commands.toggleCompanionWindow(),
   quitNandi: () => commands.quitNandi(),
-  getImageStatus: image => commands.getImageStatus(image),
-  buildImage: image => commands.buildImage(image),
-  pullImage: image => commands.pullImage(image),
-  getToolsStatus: bundle => commands.getToolsStatus(bundle),
-  installTools: bundle => commands.installTools(bundle),
   checkMachine: fresh => commands.checkMachine(fresh),
   startDocker: () => commands.startDocker(),
   placeCompanion: shape => commands.placeCompanion(shape),
@@ -257,15 +252,6 @@ export const tauriClient: NandiClient = withCommands({
   pushToRemote: overwrite => commands.pushToRemote(overwrite),
   pullFromRemote: () => commands.pullFromRemote(),
   listRemoteBranches: () => commands.listRemoteBranches(),
-
-  getTask: taskId => commands.getTask(taskId),
-  listTasks: filter => commands.listTasks(filter),
-  cancelTask: (taskId, reason) => commands.cancelTask(taskId, reason),
-  queryTaskStatus: taskId => commands.queryTaskStatus(taskId),
-  getTaskEvents: taskId => commands.getTaskEvents(taskId),
-  getTaskMessages: taskId => commands.getTaskMessages(taskId),
-  getEtaEstimate: (capability, providerAgent) =>
-    commands.getEtaEstimate(capability, providerAgent),
 
   respondToClarification: response => commands.respondToClarification(response),
   escalateClarification: (taskId, questionId) =>
@@ -325,14 +311,6 @@ export const tauriClient: NandiClient = withCommands({
   setGatewayManifest: manifest => commands.setGatewayManifest(manifest),
   gatewayChat: message => commands.gatewayChat(message),
 
-  getNetworkSnapshot: () => commands.getNetworkSnapshot(),
-  refreshNetwork: () => commands.refreshNetwork(),
-
-  getTeamRoster: teamId => commands.getTeamRoster(teamId),
-  getMemberProfile: (teamId, handle) =>
-    commands.getMemberProfile(teamId, handle),
-  getMemberByInstance: instanceId => commands.getMemberByInstance(instanceId),
-  acceptPeerKey: instanceId => commands.acceptPeerKey(instanceId),
   listGroups: () => commands.listGroups(),
   getGroup: groupId => commands.getGroup(groupId),
   createGroup: (name, description, policy) =>
@@ -350,19 +328,6 @@ export const tauriClient: NandiClient = withCommands({
     commands.setGroupRole(groupId, instanceId, role),
   getGroupAccess: groupId => commands.getGroupAccess(groupId),
   setGroupAccess: (groupId, level) => commands.setGroupAccess(groupId, level),
-  setTrustRelationship: (instanceId, update) =>
-    commands.setTrustRelationship(instanceId, update),
-  getRelayTrust: () => commands.getRelayTrust(),
-  setRelayTrust: enabled => commands.setRelayTrust(enabled),
-  blockAgentFromMember: (instanceId, agentId) =>
-    commands.blockAgentFromMember(instanceId, agentId),
-  unblockAgentFromMember: (instanceId, agentId) =>
-    commands.unblockAgentFromMember(instanceId, agentId),
-  pauseDelegationsFromMember: (instanceId, paused) =>
-    commands.pauseDelegationsFromMember(instanceId, paused),
-  listTrustRequests: () => commands.listTrustRequests(),
-  respondTrustRequest: (instanceId, answer, block) =>
-    commands.respondTrustRequest(instanceId, answer, block),
 
   listCapabilities: () => commands.listCapabilities(),
   getCapability: id => commands.getCapability(id),
@@ -423,12 +388,6 @@ export const tauriClient: NandiClient = withCommands({
 
   listRequestReturns: () => commands.listRequestReturns(),
   dismissRequestReturn: taskId => commands.dismissRequestReturn(taskId),
-
-  reassignTask: request => commands.reassignTask(request),
-  listReassignCandidates: taskId => commands.listReassignCandidates(taskId),
-  completeManualStep: (runId, stepId, completion) =>
-    commands.completeManualStep(runId, stepId, completion),
-  listPendingManualSteps: () => commands.listPendingManualSteps(),
 
   openExternal: url => openUrl(url),
 

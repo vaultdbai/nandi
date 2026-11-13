@@ -12,9 +12,7 @@
 //! touch the network on the calling thread: connecting happens in tasks it
 //! spawns, and only when the user configured it.
 
-// Wave EF: member profiles by instance
 pub mod peer_keys;
-pub mod profiles;
 
 use std::sync::{Arc, RwLock};
 

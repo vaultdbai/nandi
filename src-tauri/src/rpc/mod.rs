@@ -124,19 +124,25 @@ pub mod decisions;
 pub mod egress;
 pub mod harness_sessions;
 pub mod help;
+pub mod images;
 pub mod knowme;
 pub mod live;
+pub mod manual_steps;
 pub mod marketplace_search;
 pub mod mascot;
 pub mod memory;
+pub mod network;
 pub mod notes;
 pub mod palette;
 pub mod policies;
 pub mod queue;
+pub mod reassign;
 pub mod relay_capabilities;
 pub mod requests;
 pub mod runs;
 pub mod shared;
+pub mod tasks;
+pub mod teams_roster;
 pub mod tools;
 pub mod work;
 pub mod workflow_builder;
@@ -158,19 +164,25 @@ const TABLES: &[&[(&str, Handler)]] = &[
     egress::RPC,
     harness_sessions::RPC,
     help::RPC,
+    images::RPC,
     knowme::RPC,
     live::RPC,
+    manual_steps::RPC,
     marketplace_search::RPC,
     mascot::RPC,
     memory::RPC,
+    network::RPC,
     notes::RPC,
     palette::RPC,
     policies::RPC,
     queue::RPC,
+    reassign::RPC,
     relay_capabilities::RPC,
     requests::RPC,
     runs::RPC,
     shared::RPC,
+    tasks::RPC,
+    teams_roster::RPC,
     tools::RPC,
     work::RPC,
     workflow_builder::RPC,

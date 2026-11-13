@@ -955,7 +955,7 @@ Shared preconditions used below:
 ### CH-22 — Delegation task strip (requester)
 
 - **What:** Under the chat header, up to 3 in-flight tasks: for tasks this agent sent, a panel with provider, state, ETA, elapsed, progress, **Query status** (live state report), **Cancel**, open thread, "Questions waiting for your answer: N" with **Answer**, "<member> is offline. The request is queued and will be sent automatically when they're back.", and "Taking much longer than expected (over twice the ETA)." Hidden when tasks end or the task service is down.
-- **Where:** `src/components/agents/AgentTaskStrip.tsx`, `src/components/agent-console/TaskStatusPanel.tsx`; commands in `src-tauri/src/commands/tasks.rs` (`list_tasks`, `get_task`, `cancel_task`, `query_task_status`, `get_task_events`, `get_task_messages`, `get_eta_estimate`); HTTP `GET /api/tasks`, `GET /api/tasks/{id}`, `POST /api/tasks/{id}/cancel`, `GET /api/tasks/{id}/status|events|messages`, `GET /api/eta/{capability}`.
+- **Where:** `src/components/agents/AgentTaskStrip.tsx`, `src/components/agent-console/TaskStatusPanel.tsx`; commands in `src-tauri/src/rpc/tasks.rs` (`list_tasks`, `get_task`, `cancel_task`, `query_task_status`, `get_task_events`, `get_task_messages`, `get_eta_estimate`); HTTP `POST /api/rpc/list_tasks`, `POST /api/rpc/get_task`, `POST /api/rpc/cancel_task`, `POST /api/rpc/query_task_status`, `get_task_events`, `get_task_messages`, `POST /api/rpc/get_eta_estimate`.
 - **Preconditions:** Two agents (or two instances via relay); provider `accepts_delegation: true`; requester allowed outbound.
 - **Steps:** Ask the requester to delegate; click Query status; then Cancel.
 - **Expected:** Panel appears with state; Query shows "Provider says: <state>, <elapsed> elapsed"; Cancel toasts "Task cancelled." and the panel hides.
@@ -967,7 +967,7 @@ Shared preconditions used below:
 ### CH-23 — Provider state panel and reassign
 
 - **What:** For tasks this agent is serving: who asked, the clarification round, questions awaiting an answer; a Reassign menu hands the task to an online teammate serving the same capability (hidden when nobody else could).
-- **Where:** `ProviderStatePanel.tsx`, `ReassignMenu.tsx`; `reassign_task`, `list_reassign_candidates` (`commands/reassign.rs`); HTTP `POST /api/tasks/{id}/reassign`, `GET /api/tasks/{id}/reassign-candidates`.
+- **Where:** `ProviderStatePanel.tsx`, `ReassignMenu.tsx`; `reassign_task`, `list_reassign_candidates` (`rpc/reassign.rs`); HTTP `POST /api/rpc/reassign_task`, `POST /api/rpc/list_reassign_candidates`.
 - **Preconditions:** Relay with two members serving one capability.
 - **Steps:** Receive a delegated task; open Reassign; pick a teammate.
 - **Expected:** The task moves to the teammate; the panel hides here.

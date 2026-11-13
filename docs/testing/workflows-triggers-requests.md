@@ -340,22 +340,22 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-25 — Manual steps (`step_type: manual`)
 
 - **What:** Reaching a manual step suspends the run (`waiting`, step `awaitingInput`) with no driver; instructions are rendered with earlier outputs; a deadline is set from `deadline_hours`; a `manual_steps` row indexes it; `workflow://manual_step_ready` fires and the app shows a native notification "<workflow> needs you". The run can wait for days and across restarts.
-- **Where:** `src-tauri/src/services/workflows/manual_steps.rs`, `workflows.rs`, `src/lib/agent-sync.ts` (notification); command `list_pending_manual_steps`; HTTP `GET /api/workflows/manual-steps`.
+- **Where:** `src-tauri/src/services/workflows/manual_steps.rs`, `workflows.rs`, `src/lib/agent-sync.ts` (notification); command `list_pending_manual_steps`; HTTP `POST /api/rpc/list_pending_manual_steps`.
 - **Preconditions:** A workflow with a manual step and `deadline_hours: 48`.
-- **Steps:** 1. Run it. 2. Observe the notification and Home Inbox. 3. Call `GET /api/workflows/manual-steps`. 4. Restart the app.
+- **Steps:** 1. Run it. 2. Observe the notification and Home Inbox. 3. Call `POST /api/rpc/list_pending_manual_steps`. 4. Restart the app.
 - **Expected:** Run `waiting`; the pending list has runId, workflowName, stepId, rendered instructions, deadline ≈ now+48 h, readyAt; still pending after restart.
 - **Edge / negative cases:**
   - Cancelling the run closes the manual step (`cancelled`).
   - The run-time agent check skips manual steps.
   - Overdue deadlines are only displayed; nothing escalates.
-- **Automation:** Covered by: `a_manual_step_waits_for_a_person_and_survives_a_restart`, `the_run_check_skips_manual_steps`, `a_cancelled_run_drops_its_manual_step` (`workflows.rs`), HTTP tests in `src-tauri/src/http/manual_steps.rs` | Layer: api | Gap: native notification is manual.
+- **Automation:** Covered by: `a_manual_step_waits_for_a_person_and_survives_a_restart`, `the_run_check_skips_manual_steps`, `a_cancelled_run_drops_its_manual_step` (`workflows.rs`), HTTP tests in `src-tauri/src/rpc/manual_steps.rs` | Layer: api | Gap: native notification is manual.
 - **Needs relay:** no
 - **Status:** Shipped
 
 ### WF-26 — Complete a manual step (reply, attachments, Mark done)
 
 - **What:** The manual step card (Inbox) shows "Manual step <step> of <workflow>", instructions, "Waiting since …", "Due …" or "Overdue since …", a "Your reply" box, **Attach a file**, and **Complete step**. The reply (plus absolute paths of attached files under `~/.nandi/attachments/workflow-<run>-<step>/…`) becomes `{{step.output}}` and the run resumes. The workflow page banner ("“<step>” is yours to do.") and step panel offer a lighter **Mark done** with an optional "Note for the next step (optional)".
-- **Where:** Home → Inbox; Workflow banner; `src/components/work/ManualStepCard.tsx`, `src/components/automations/StepActions.tsx` (`MarkStepDoneButton`); command `complete_manual_step`; HTTP `POST /api/workflows/{runId}/steps/{stepId}/complete` (`{output, attachmentIds}`).
+- **Where:** Home → Inbox; Workflow banner; `src/components/work/ManualStepCard.tsx`, `src/components/automations/StepActions.tsx` (`MarkStepDoneButton`); command `complete_manual_step`; HTTP `POST /api/rpc/complete_manual_step` (`{output, attachmentIds}`).
 - **Preconditions:** A run waiting on a manual step.
 - **Steps:** 1. Type a reply, attach a file, Complete step. 2. Check the next step's input.
 - **Expected:** Toast "Step completed; the workflow carries on"; `manual_steps` row `completed`; next agent step's input contains the reply and the attachment path; `workflow://manual_step_completed` and `step_done` emitted.
@@ -364,7 +364,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
   - Wrong step: "This step is not waiting for anyone".
   - An empty body (with or without `Content-Type: application/json`) completes the step with no reply; a body that isn't JSON is a 400 "Invalid request body".
   - Attach button only when the client supports attachments (desktop).
-- **Automation:** Covered by: `src-tauri/src/http/manual_steps.rs` tests (`an_empty_body_is_a_completion_with_no_reply`, `wave_ef_routes_work_over_http`), `workflows.rs` manual-step tests | Layer: api | Gap: ManualStepCard UI not unit-tested.
+- **Automation:** Covered by: `src-tauri/src/rpc/manual_steps.rs` tests (`an_empty_body_is_a_completion_with_no_reply`, `wave_ef_routes_work_over_http`), `workflows.rs` manual-step tests | Layer: api | Gap: ManualStepCard UI not unit-tested.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -419,12 +419,12 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-29 — Workflow HTTP and command API
 
 - **What:** Headless access to workflows: list, get (definition + last 20 runs + source), create from YAML, templates, run, approve, graph, save YAML, manual steps.
-- **Where:** `src-tauri/src/http/routes.rs` (`GET/POST /api/workflows`, `GET /api/workflows/{id}`, `POST /api/workflows/{id}/run`, `GET/POST /api/workflow-templates`, `POST /api/workflow-runs/{id}/approve`), `src-tauri/src/http/workflow_builder.rs` (`POST /api/rpc/get_workflow_graph`, `POST /api/rpc/save_workflow_yaml`), `src-tauri/src/http/manual_steps.rs`.
+- **Where:** `src-tauri/src/http/routes.rs` (`GET/POST /api/workflows`, `GET /api/workflows/{id}`, `POST /api/workflows/{id}/run`, `GET/POST /api/workflow-templates`, `POST /api/workflow-runs/{id}/approve`), `src-tauri/src/http/workflow_builder.rs` (`POST /api/rpc/get_workflow_graph`, `POST /api/rpc/save_workflow_yaml`), `src-tauri/src/rpc/manual_steps.rs`.
 - **Preconditions:** Web token (non-receiver routes require it).
 - **Steps:** Exercise each route with valid and invalid bodies.
 - **Expected:** JSON matching the Tauri commands; invalid bodies → 4xx with message.
 - **Edge / negative cases:** `PUT /yaml` with `{}` or non-JSON rejected.
-- **Automation:** Covered by: `src-tauri/src/http/workflow_builder.rs` tests, `src-tauri/src/http/manual_steps.rs` tests | Layer: api | Gap: no HTTP test for run/approve routes.
+- **Automation:** Covered by: `src-tauri/src/http/workflow_builder.rs` tests, `src-tauri/src/rpc/manual_steps.rs` tests | Layer: api | Gap: no HTTP test for run/approve routes.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -837,7 +837,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-06 — Stop a Request
 
 - **What:** Stop asks first ("Stop this request?": "<member> is told to stop." for delegations, "The work in progress stops." for local asks; "Keep it" backs out), then cancels the task (`cancel_task`) or the local Request and everything its running steps started (agent turns, workflow runs, tasks).
-- **Where:** Request header → Stop; `RequestDetailView.tsx`; commands `cancel_task`, `cancel_request`; HTTP `POST /api/rpc/cancel_request`, `POST /api/tasks/{id}/cancel`.
+- **Where:** Request header → Stop; `RequestDetailView.tsx`; commands `cancel_task`, `cancel_request`; HTTP `POST /api/rpc/cancel_request`, `POST /api/rpc/cancel_task`.
 - **Preconditions:** A running Request.
 - **Steps:** Stop → Keep it; Stop → confirm.
 - **Expected:** Toast "Stopped"; status cancelled; linked runs cancelled.

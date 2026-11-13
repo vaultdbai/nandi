@@ -10,23 +10,23 @@ and a team-shared `.nandi/llm.yaml`.
 ```text
 src-tauri/src/services/
   network/mod.rs           NetworkService: directory snapshot, member diff, events
-  network/profiles.rs      get_member_profile(instance) (built by team::roster)
+  team/roster.rs           member profiles, by team or by instance
   team/trust.rs            trusted peers, paused delegations, blocked agents / members
   a2a/reassign.rs          reassign (provider), accept (requester), candidates
   workflows/manual_steps.rs  manual_steps table, pending list, complete_manual_step
   config/repo_config.rs    .nandi/llm.yaml: parse, precedence, harness + native defaults
 ```
 
-| Command                                                | Route                                                                                |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `get_network_snapshot`, `refresh_network`              | `GET /api/network/snapshot`, `POST /api/network/refresh`                             |
-| `get_member_by_instance`                               | `GET /api/network/members/{instance}` (also `/api/members/by-instance/{instance}`)   |
-| `set_trust_relationship`                               | `PUT /api/network/members/{instance}/trust` (also `/api/members/{instance}/trust`)   |
-| `block_agent_from_member`, `unblock_agent_from_member` | `POST`/`DELETE /api/members/{instance}/agents/{agent}/block`                         |
-| `pause_delegations_from_member`                        | `POST /api/members/{instance}/delegations/pause`                                     |
-| `reassign_task`, `list_reassign_candidates`            | `POST /api/tasks/{id}/reassign`, `GET /api/tasks/{id}/reassign-candidates`           |
-| `complete_manual_step`, `list_pending_manual_steps`    | `POST /api/workflows/{run}/steps/{step}/complete`, `GET /api/workflows/manual-steps` |
-| `get_repo_llm_config`, `reload_repo_llm_config`        | `POST /api/rpc/get_repo_llm_config`, `POST /api/rpc/reload_repo_llm_config`          |
+| Command                                                | Route                                                                           |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `get_network_snapshot`, `refresh_network`              | `POST /api/rpc/get_network_snapshot`, `POST /api/rpc/refresh_network`           |
+| `get_member_by_instance`                               | `POST /api/rpc/get_member_by_instance`                                          |
+| `set_trust_relationship`                               | `POST /api/rpc/set_trust_relationship`                                          |
+| `block_agent_from_member`, `unblock_agent_from_member` | `POST /api/rpc/block_agent_from_member`, `unblock_agent_from_member`            |
+| `pause_delegations_from_member`                        | `POST /api/rpc/pause_delegations_from_member`                                   |
+| `reassign_task`, `list_reassign_candidates`            | `POST /api/rpc/reassign_task`, `POST /api/rpc/list_reassign_candidates`         |
+| `complete_manual_step`, `list_pending_manual_steps`    | `POST /api/rpc/complete_manual_step`, `POST /api/rpc/list_pending_manual_steps` |
+| `get_repo_llm_config`, `reload_repo_llm_config`        | `POST /api/rpc/get_repo_llm_config`, `POST /api/rpc/reload_repo_llm_config`     |
 
 The wave spec named the member commands `get_member_profile`,
 `block_agent`, and `pause_delegations`; those already existed from wave
@@ -72,7 +72,7 @@ keeps this Nandi's own pin in the `peer_keys` table:
 - **Keys from the relay.** The first time this Nandi seals for someone, or opens something from them, without a pin, the client asks the relay (`PublicKeysQuery`) and pins the answer the same way (`peer_keys::learn`). The directory isn't needed: members with no gateway card are covered too.
 - **The block.** The relay client's key book (`ClientOptions::peer_keys` = `peer_keys::PinnedKeys`, set in `relay::init`) is asked before `delegate_task`, `reassign`, `reseal_as_author`, `send_result`, `send_peer` and `duty_report`, and for every envelope opened. So every path to that member is covered: ask, assign, delegate, results, clarifications, reassignment, handover. The refusal starts with `PEER_KEY_CHANGED` (exported to `bindings.ts`); `friendly-error.ts` maps it to `errors.peerKeyChanged`.
 - **Seen live.** When the client learns of a change (a send, or something from them that didn't open with the pinned key), it emits `network://member_key_changed`, and the profile refetches (`agent-sync.ts`).
-- **The profile.** `MemberProfile.key` (`PeerKeyStatus`: `fingerprint`, `changedFingerprint`) feeds `MemberKeyNotice`: the fingerprint, or "Their key changed" with both fingerprints and **Accept new key** (`accept_peer_key`, `POST /api/members/{id}/key/accept`).
+- **The profile.** `MemberProfile.key` (`PeerKeyStatus`: `fingerprint`, `changedFingerprint`) feeds `MemberKeyNotice`: the fingerprint, or "Their key changed" with both fingerprints and **Accept new key** (`accept_peer_key`, `POST /api/rpc/accept_peer_key`).
 - Fingerprints are `nandi_seal::fingerprint`: the key ID's first 16 hex characters in groups of four.
 
 **Relay down:** `get_network_snapshot` serves the last listing with every

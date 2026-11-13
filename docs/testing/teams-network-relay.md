@@ -42,7 +42,7 @@ Notes that apply to the whole section:
 ### TM-03 — Team detail: members, shared agents, packs, last sync
 
 - **What:** Selecting a team shows its members with roles (Owner/Admin/Member), the agents shared in its registry ("Shared by {name}"), the registry's packs, "Last synced {time}" (or "Not synced yet"), a roster section and a team activity feed.
-- **Where:** Network → People → Manage teams… → select a team. Code: `TeamView.tsx` (`TeamDetailPane`, `MembersCard`), `src/components/team/TeamRosterSection.tsx`, `MemberCard.tsx`, `TeamActivityFeed.tsx`, `commands/teams.rs` (`get_team`), `commands/teams_roster.rs` (`get_team_roster`, `get_member_profile`), `services/team/roster.rs`. HTTP: `GET /api/teams/{team_id}`, `GET /api/teams/{id}/roster`, `GET /api/teams/{id}/members/{handle}/profile`.
+- **Where:** Network → People → Manage teams… → select a team. Code: `TeamView.tsx` (`TeamDetailPane`, `MembersCard`), `src/components/team/TeamRosterSection.tsx`, `MemberCard.tsx`, `TeamActivityFeed.tsx`, `commands/teams.rs` (`get_team`), `rpc/teams_roster.rs` (`get_team_roster`, `get_member_profile`), `services/team/roster.rs`. HTTP: `GET /api/teams/{team_id}`, `POST /api/rpc/get_team_roster`, `POST /api/rpc/get_member_profile`.
 - **Preconditions:** You are in a team (TM-02). For roster stats, at least one member is on the relay and has delegation history with you.
 - **Steps:** 1. Open the team. 2. Check the Members, Shared agents and Packs cards. 3. Check the roster cards: shared agents, team count, sent and received counts, and Open profile. 4. Check the activity feed.
 - **Expected:**
@@ -299,7 +299,7 @@ Notes that apply to the whole section:
   - **Deny** dismisses the request until they ask again.
   - **Deny** with "and block" asks for confirmation, then blocks them.
   - There is no "trust once".
-- **Where:** The strip at the top of Network → Sharing (`src/components/network/TrustRequestsStrip.tsx`) and the Home Inbox (`src/components/inbox/Inbox.tsx`, kind `trustRequest`). Code: `services/team/trust_requests.rs`, `commands/teams_roster.rs` (`list_trust_requests`, `respond_trust_request`). HTTP: `GET /api/trust/requests`, `POST /api/trust/requests/{instance_id} {"answer":"trust"|"deny","block":bool}`. Event: `trust://request_received`.
+- **Where:** The strip at the top of Network → Sharing (`src/components/network/TrustRequestsStrip.tsx`) and the Home Inbox (`src/components/inbox/Inbox.tsx`, kind `trustRequest`). Code: `services/team/trust_requests.rs`, `rpc/teams_roster.rs` (`list_trust_requests`, `respond_trust_request`). HTTP: `POST /api/rpc/list_trust_requests`, `POST /api/rpc/respond_trust_request {"answer":"trust"|"deny","block":bool}`. Event: `trust://request_received`.
 - **Preconditions:** Two instances. B has an agent accepting delegation, B's policy for A is Ask, and A is not trusted.
 - **Steps:** 1. A calls B's agent twice. 2. On B, open Network → Sharing. 3. Click **Trust**. 4. A calls again.
 - **Expected:**
@@ -317,7 +317,7 @@ Notes that apply to the whole section:
 ### TM-19 — Member trust switches: Trusted peer
 
 - **What:** Marks a member's instance as a trusted peer. This writes `trust_relationships` and adds them to `federation.trusted_peers` in NANDI.md (an atomic write that keeps everything else), so their tasks pass the Ask policy.
-- **Where:** Member profile header → **Trust** popover, or the profile's Trust tab (`src/components/network/TrustControls.tsx`, `src/components/team/MemberTrustPanel.tsx`). Code: `services/team/trust.rs` (`set_trust_relationship`). HTTP: `PUT /api/network/members/{instance}/trust` (alias `PUT /api/members/{instance}/trust`) with body `{"addedAsTrustedPeer":bool,"delegationsPaused":null}`. Event: `trust://relationship_updated`.
+- **Where:** Member profile header → **Trust** popover, or the profile's Trust tab (`src/components/network/TrustControls.tsx`, `src/components/team/MemberTrustPanel.tsx`). Code: `services/team/trust.rs` (`set_trust_relationship`). HTTP: `POST /api/rpc/set_trust_relationship` with body `{"instanceId","update":{"addedAsTrustedPeer":bool,"delegationsPaused":null}}`. Event: `trust://relationship_updated`.
 - **Preconditions:** A member is known on the directory.
 - **Steps:** 1. Toggle Trusted peer on. 2. Check NANDI.md. 3. Have that member call one of your agents with policy Ask.
 - **Expected:** The "Trusted" badge shows, NANDI.md lists the peer, and the call runs.
@@ -332,7 +332,7 @@ Notes that apply to the whole section:
 ### TM-20 — Pause delegations from a member
 
 - **What:** While paused, your gateway turns the member's tasks away, and delegation, failover and the shared grids never pick their agents.
-- **Where:** The Trust popover or Trust tab → "Pause delegations". HTTP: `POST /api/members/{instance}/delegations/pause {"paused":bool}`.
+- **Where:** The Trust popover or Trust tab → "Pause delegations". HTTP: `POST /api/rpc/pause_delegations_from_member {"paused":bool}`.
 - **Preconditions:** A known member.
 - **Steps:** 1. Pause them. 2. Have them call you. 3. Try to call their agent via Auto. 4. Unpause.
 - **Expected:**
@@ -347,7 +347,7 @@ Notes that apply to the whole section:
 ### TM-21 — Block a member, or one of their agents
 
 - **What:** "Block this member" stores `(instance, *)` in `blocked_members`. Their tasks are rejected the moment they arrive, and none of their agents are used. To block a single agent, use **Block** next to that agent on the member profile's Capabilities tab (`MemberAgentsPanel`), or the block API.
-- **Where:** The Trust popover or Trust tab → "Block this member"; member profile → Capabilities → **Block** / **Unblock** for one agent. Code: `services/team/trust.rs` (`block_agent_from_member`, `unblock_agent_from_member`, `ALL_AGENTS`). HTTP: `POST`/`DELETE /api/members/{instance}/agents/{agent}/block`.
+- **Where:** The Trust popover or Trust tab → "Block this member"; member profile → Capabilities → **Block** / **Unblock** for one agent. Code: `services/team/trust.rs` (`block_agent_from_member`, `unblock_agent_from_member`, `ALL_AGENTS`). HTTP: `POST`/`POST /api/rpc/unblock_agent_from_member`.
 - **Preconditions:** A known member.
 - **Steps:** 1. Block the member. 2. Have them call you. 3. Unblock. 4. Block a single agent and check Shared with me.
 - **Expected:**
@@ -380,7 +380,7 @@ Notes that apply to the whole section:
   - Search filters the cards by name, handle, description, capabilities and responsibilities (the member's NANDI.md `responsibilities:`, GW-04), so "SOX" finds whoever lists "SOX audit".
   - The filter offers All, Online, and Recently active (last 24 h).
   - **Refresh** re-queries the relay.
-- **Where:** Network → People. Code: `NetworkView.tsx` (`MemberGrid`), `src/components/network/MemberCardCompact.tsx`, `src/hooks/useNetwork.ts` (`filterMembers`, `searchMembers`, `RECENTLY_ACTIVE_MS`), `services/network/mod.rs`, `commands/network.rs` (`get_network_snapshot`, `refresh_network`). HTTP: `GET /api/network/snapshot`, `POST /api/network/refresh`.
+- **Where:** Network → People. Code: `NetworkView.tsx` (`MemberGrid`), `src/components/network/MemberCardCompact.tsx`, `src/hooks/useNetwork.ts` (`filterMembers`, `searchMembers`, `RECENTLY_ACTIVE_MS`), `services/network/mod.rs`, `rpc/network.rs` (`get_network_snapshot`, `refresh_network`). HTTP: `POST /api/rpc/get_network_snapshot`, `POST /api/rpc/refresh_network`.
 - **Preconditions:** Connected to a relay with at least one other instance whose gateway has `relay.enabled` on, with `responsibilities: [SOX audit]` in its NANDI.md.
 - **Steps:** 1. Open People. 2. Search for a name, then for `sox`. 3. Toggle the filters. 4. Click Refresh. 5. Click Copy ID.
 - **Expected:**
@@ -439,7 +439,7 @@ Notes that apply to the whole section:
 ### NW-06 — Member profile
 
 - **What:** The profile header shows avatar, name, presence ("Online", "Seen {time}", or "This member hasn't connected their Nandi yet") and the Trusted, Paused, Blocked and "Blocked agents: N" badges, plus a Trust popover. Below it are the diagnosis (NW-07), Ask (NW-08) and four tabs: Gateway (their NANDI.md), Capabilities (with their agents), Recent delegations (both directions) and Trust.
-- **Where:** People card → Open profile; Shared groups → View profile; the delegation thread side panel. Code: `src/components/views/MemberProfileView.tsx`, `src/components/team/Member*Panel.tsx`, `commands/teams_roster.rs` (`get_member_by_instance`). HTTP: `GET /api/network/members/{instance}` (alias `GET /api/members/by-instance/{instance}`).
+- **Where:** People card → Open profile; Shared groups → View profile; the delegation thread side panel. Code: `src/components/views/MemberProfileView.tsx`, `src/components/team/Member*Panel.tsx`, `rpc/teams_roster.rs` (`get_member_by_instance`). HTTP: `POST /api/rpc/get_member_by_instance`.
 - **Preconditions:** A member known on the directory.
 - **Steps:** 1. Open a profile. 2. Visit each tab. 3. Click the back button "People".
 - **Expected:** Each tab renders. Under the presence line the header shows the member's availability when they set one (NW-14). The Gateway tab lists "Responsible for" with the member's `responsibilities` as tags when the card has any, even when their NANDI.md body isn't shared. A member without a gateway shows the empty state `members.notConnectedDescription` and no diagnosis or Ask.
@@ -517,7 +517,7 @@ Notes that apply to the whole section:
 ### NW-12 — Reassign a task you are serving to a teammate
 
 - **What:** A provider who is serving a delegated task can hand it to an online member who serves the same capability. The relay moves it (relay design step 13): it checks the chain (never back to the requester or anyone who had it), delivers the request resealed for the new provider, and tells the requester. The requester never resubmits, and the task keeps its ID. The provider's row becomes `Reassigned`, its run stops, and `task://reassigned` fires.
-- **Where:** Agent task strip → provider state panel → **Reassign** menu, which is shown only when candidates exist and the task state is reassignable (`src/components/agent-console/ReassignMenu.tsx`, `ProviderStatePanel.tsx`). Code: `commands/reassign.rs` (`reassign_task`, `list_reassign_candidates`), `services/a2a/reassign.rs`, `relay/client.rs` (`reassign`). HTTP: `POST /api/tasks/{id}/reassign {"newProviderInstance","reason"?}`, `GET /api/tasks/{id}/reassign-candidates`. Relay: `Reassign` / `ReassignResult`, nandi-relay `src/dispatch.rs`.
+- **Where:** Agent task strip → provider state panel → **Reassign** menu, which is shown only when candidates exist and the task state is reassignable (`src/components/agent-console/ReassignMenu.tsx`, `ProviderStatePanel.tsx`). Code: `rpc/reassign.rs` (`reassign_task`, `list_reassign_candidates`), `services/a2a/reassign.rs`, `relay/client.rs` (`reassign`). HTTP: `POST /api/rpc/reassign_task {"newProviderInstance","reason"?}`, `POST /api/rpc/list_reassign_candidates`. Relay: `Reassign` / `ReassignResult`, nandi-relay `src/dispatch.rs`.
 - **Preconditions:** Three instances (requester C, provider A, teammate B) on a relay. B serves the same capability, and C's task to A is Delivered, Acknowledged, Working or InputRequired.
 - **Steps:** 1. C delegates to A. 2. On A, open Reassign and pick B. 3. Watch C and B. 4. Take C offline during step 2.
 - **Expected:**
@@ -801,7 +801,7 @@ Notes that apply to the whole section:
   - Your own providers are tried in turn (up to 3); each passed-on attempt is kept as `<id>-attempt<n>`.
   - A request to someone else goes to the relay sealed for every candidate of its plan (`SubmitTask`). The relay gives it to the next one when the first refuses it, doesn't pick it up within 90 s, or (work for an agent) takes over 3× its ETA, with you offline or not. The thread says "Passed to {name}" with why (`failed_over` message), and the task keeps its ID. A named person and an assignment get no one else.
   - A remote request is waited on live for 600 s (`local_settings.delegation_timeout_secs`). Then it stays open until its due date (`input.due`, else 2 days for `ask-me`, 1 day otherwise) and the tool says `status: waiting`; a late answer is kept. Past its due date the relay ends it (abandoned if nobody took it up, else timed out) for both sides.
-- **Where:** `commands/delegation.rs` (`delegate_task`, `list_available_providers`), `services/a2a/delegator.rs`, `task.rs` (`on_event`), `task_state.rs` (`hand_on`), `queue.rs`, `resume.rs`; nandi-relay `src/dispatch.rs`. HTTP: `POST /api/delegation/tasks`, `GET /api/delegation/providers?capability=`, `GET /api/eta/{capability}?providerAgent=`. Events: `delegation://*`, `task://state_changed`, `task://timed_out`, `task://circuit_opened`.
+- **Where:** `commands/delegation.rs` (`delegate_task`, `list_available_providers`), `services/a2a/delegator.rs`, `task.rs` (`on_event`), `task_state.rs` (`hand_on`), `queue.rs`, `resume.rs`; nandi-relay `src/dispatch.rs`. HTTP: `POST /api/delegation/tasks`, `GET /api/delegation/providers?capability=`, `POST /api/rpc/get_eta_estimate`. Events: `delegation://*`, `task://state_changed`, `task://timed_out`, `task://circuit_opened`.
 - **Preconditions:** At least two providers for the capability on other Nandis, one of which refuses.
 - **Steps:** 1. Delegate with no target. 2. Make the first pick reject (trust or closed). 3. Separately, delegate to an offline member, then bring them online.
 - **Expected:**
@@ -844,7 +844,7 @@ Notes that apply to the whole section:
   - It shows a queued-offline banner and a partial-result line.
   - The side panel shows source, attempt, priority, created, ETA, deadline, the clarification policy summary, Rerun, Details, previous attempt, provider and provider profile.
   - **Open as request** opens the Request page.
-- **Where:** Opened from Ask, Call dialog, the provider or task panels, and Request banners (`{kind:'delegation-thread', taskId}`). Code: `src/components/views/DelegationThreadView.tsx`. HTTP: `GET /api/tasks/{id}`, `/events`, `/messages`, `/status`, `POST /api/tasks/{id}/cancel`.
+- **Where:** Opened from Ask, Call dialog, the provider or task panels, and Request banners (`{kind:'delegation-thread', taskId}`). Code: `src/components/views/DelegationThreadView.tsx`. HTTP: `POST /api/rpc/get_task`, `/events`, `/messages`, `/status`, `POST /api/rpc/cancel_task`.
 - **Preconditions:** A delegated task exists.
 - **Steps:** 1. Open a thread for a completed remote task. 2. Open one for a reassigned task. 3. Open one for a task to an offline member.
 - **Expected:** The entries render in order. A reassigned task stays one thread (same ID), now naming the new provider. The offline banner says "{name} is offline. The relay keeps the request and gives it to them when they're back."
@@ -1120,7 +1120,7 @@ Notes that apply to the whole section:
 ### RL-34 — Everyone on the company's relay is trusted
 
 - **What:** When this Nandi's relay connection carries an instance token (the relay needs a secret, so only enrolled instances are on it) and the relay isn't a public one, every member the relay lists is trusted, as if marked **Trusted peer**, unless the owner turns off **Trust everyone on this relay** (Network › Connection, `trust.relayMembers`, on by default). Pause and Block still apply. Where it can't apply the switch shows off and disabled, whatever was saved, with the reason: no relay yet ("Applies once you join your company's relay…"), an open relay, or the public relay ("Anyone with an email can join the public relay, so you trust people one by one.", `RelayTrust.public`); the switch and the words always agree. Revoking someone on the relay (RL-30) takes them off it, so they lose this trust too.
-- **Where:** `services/team/trust.rs` (`is_trusted`, `trusted_by_relay`, `on_a_secured_relay`, `relay_trust`, `set_trusts_relay_members`), used by `a2a/executor.rs` (agent and workflow trust checks) and `team/trust_requests.rs`. Commands `get_relay_trust`, `set_relay_trust`; HTTP `GET`/`PUT /api/trust/relay`. UI: `ConnectionView.tsx` (`RelayTrustCard`).
+- **Where:** `services/team/trust.rs` (`is_trusted`, `trusted_by_relay`, `on_a_secured_relay`, `relay_trust`, `set_trusts_relay_members`), used by `a2a/executor.rs` (agent and workflow trust checks) and `team/trust_requests.rs`. Commands `get_relay_trust`, `set_relay_trust`; HTTP `GET`/`POST /api/rpc/set_relay_trust`. UI: `ConnectionView.tsx` (`RelayTrustCard`).
 - **Preconditions:** A relay with `NANDI_RELAY_SECRET` and a join code, three Nandis enrolled on it.
 - **Steps:**
   1. From one Nandi, ask another's agent for a capability set to **Ask** (not Allow), without marking each other trusted.
@@ -1158,7 +1158,7 @@ Notes that apply to the whole section:
   - The profile shows the key's short fingerprint (`Key 3F2A 91C0 7B44 E1D9`), or a calm "Their key changed" notice with the old and new fingerprints and **Accept new key**.
   - A refused send reads "Their key changed. Open their profile…".
   - A result or message from their new device is refused too (it isn't signed by the pinned key, RL-42), and an open profile updates on its own (`network://member_key_changed`).
-- **Where:** `services/network/peer_keys.rs` (`observe`, `pinned`, `learn`, `PinnedKeys`, `accept`), `network/mod.rs` (`refresh_with`), `relay/client.rs` (the key book), `team/roster.rs` (`MemberProfile.key`); command `accept_peer_key`, HTTP `POST /api/members/{id}/key/accept`; UI `MemberKeyNotice.tsx` on `MemberProfileView`, `agent-sync.ts`.
+- **Where:** `services/network/peer_keys.rs` (`observe`, `pinned`, `learn`, `PinnedKeys`, `accept`), `network/mod.rs` (`refresh_with`), `relay/client.rs` (the key book), `team/roster.rs` (`MemberProfile.key`); command `accept_peer_key`, HTTP `POST /api/rpc/accept_peer_key`; UI `MemberKeyNotice.tsx` on `MemberProfileView`, `agent-sync.ts`.
 - **Preconditions:** Two Nandis on a relay with a secret, each seeing the other in People.
 - **Steps:**
   1. Open the other member's profile and note the key.
@@ -1326,7 +1326,7 @@ Notes that apply to the whole section:
   - Events: `GET /ws` (RL-24).
 - **Where:** `src-tauri/src/http/*.rs`.
 - **Preconditions:** The server is running and you have the token.
-- **Steps:** 1. Two headless instances plus a relay. 2. `PUT /api/relay/url`. 3. `PUT /api/gateway/config` (relay enabled and discoverable). 4. `PUT /api/network/members/{A}/trust {"addedAsTrustedPeer":true}` on B. 5. `POST /api/delegation/tasks`. 6. Poll `GET /api/tasks/{id}/events`.
+- **Steps:** 1. Two headless instances plus a relay. 2. `PUT /api/relay/url`. 3. `PUT /api/gateway/config` (relay enabled and discoverable). 4. `POST /api/rpc/set_trust_relationship {"addedAsTrustedPeer":true}` on B. 5. `POST /api/delegation/tasks`. 6. Poll `POST /api/rpc/get_task_events`.
 - **Expected:** The cross-instance delegation completes using only the API.
 - **Edge / negative cases:**
   - Service errors return 400 with the same message the IPC command returns.

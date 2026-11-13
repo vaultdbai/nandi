@@ -4,14 +4,14 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::commands::{
         access, agents, ask, attachments, aws_auth, bedrock, capabilities, chat, companion,
         connectors, delegation, delegation_clarification, docker, email, gateway, groups,
-        harnesses, identity, images, llm_keys, machine, manual_steps, marketplace, network,
-        notifications, pilots, preferences, reassign, recovery, relay, remote, repo, snapshots,
-        studio, tasks, teams, teams_roster, triggers, workflows, workspace,
+        harnesses, identity, llm_keys, machine, marketplace, notifications, pilots, preferences,
+        recovery, relay, remote, repo, snapshots, studio, teams, triggers, workflows, workspace,
     };
     use crate::rpc::{
         analysis, audit, capability, capability_registries, config, decisions, egress,
-        harness_sessions, help, knowme, live, marketplace_search, mascot, memory, notes, palette,
-        policies, queue, relay_capabilities, requests, runs, shared, tools, work, workflow_builder,
+        harness_sessions, help, images, knowme, live, manual_steps, marketplace_search, mascot,
+        memory, network, notes, palette, policies, queue, reassign, relay_capabilities, requests,
+        runs, shared, tasks, teams_roster, tools, work, workflow_builder,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;

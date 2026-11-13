@@ -414,11 +414,6 @@ export const webClient: NandiClient = withCommands({
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
   // The server keeps running; a browser tab has nothing to quit
   quitNandi: () => Promise.resolve(),
-  getImageStatus: image => request('GET', `/images/${image}`),
-  buildImage: image => request('POST', `/images/${image}/build`),
-  pullImage: image => request('POST', `/images/${image}/pull`),
-  getToolsStatus: bundle => request('GET', `/tool-bundles/${bundle}`),
-  installTools: bundle => request('POST', `/tool-bundles/${bundle}/install`),
   checkMachine: fresh =>
     request('GET', `/machine/readiness${fresh ? '?fresh=true' : ''}`),
   startDocker: () => request('POST', '/machine/start-docker'),
@@ -465,16 +460,6 @@ export const webClient: NandiClient = withCommands({
   pushToRemote: overwrite => request('POST', '/remote/push', { overwrite }),
   pullFromRemote: () => request('POST', '/remote/pull'),
   listRemoteBranches: () => request('GET', '/remote/branches'),
-
-  getTask: taskId => request('GET', `/tasks/${id(taskId)}`),
-  listTasks: filter => request('GET', `/tasks${query({ ...filter })}`),
-  cancelTask: (taskId, reason) =>
-    request('POST', `/tasks/${id(taskId)}/cancel`, { reason }),
-  queryTaskStatus: taskId => request('GET', `/tasks/${id(taskId)}/status`),
-  getTaskEvents: taskId => request('GET', `/tasks/${id(taskId)}/events`),
-  getTaskMessages: taskId => request('GET', `/tasks/${id(taskId)}/messages`),
-  getEtaEstimate: (capability, providerAgent) =>
-    request('GET', `/eta/${id(capability)}${query({ providerAgent })}`),
 
   respondToClarification: ({ taskId, round, answers }) =>
     request('POST', `/delegation/${id(taskId)}/clarify`, { round, answers }),
@@ -576,16 +561,6 @@ export const webClient: NandiClient = withCommands({
   setGatewayManifest: manifest => request('PUT', '/gateway/manifest', manifest),
   gatewayChat: message => request('POST', '/gateway/chat', { message }),
 
-  getNetworkSnapshot: () => request('GET', '/network/snapshot'),
-  refreshNetwork: () => request('POST', '/network/refresh'),
-
-  getTeamRoster: teamId => request('GET', `/teams/${id(teamId)}/roster`),
-  getMemberProfile: (teamId, handle) =>
-    request('GET', `/teams/${id(teamId)}/members/${id(handle)}/profile`),
-  getMemberByInstance: instanceId =>
-    request('GET', `/members/by-instance/${id(instanceId)}`),
-  acceptPeerKey: instanceId =>
-    request('POST', `/members/${id(instanceId)}/key/accept`),
   listGroups: () => request('GET', '/groups'),
   getGroup: groupId => request('GET', `/groups/${id(groupId)}`),
   createGroup: (name, description, policy) =>
@@ -608,21 +583,6 @@ export const webClient: NandiClient = withCommands({
   getGroupAccess: groupId => request('GET', `/groups/${id(groupId)}/access`),
   setGroupAccess: (groupId, level) =>
     request('PUT', `/groups/${id(groupId)}/access`, { level }),
-  setTrustRelationship: (instanceId, update) =>
-    request('PUT', `/members/${id(instanceId)}/trust`, update),
-  getRelayTrust: () => request('GET', '/trust/relay'),
-  setRelayTrust: enabled => request('PUT', '/trust/relay', { enabled }),
-  blockAgentFromMember: (instanceId, agentId) =>
-    request('POST', `/members/${id(instanceId)}/agents/${id(agentId)}/block`),
-  unblockAgentFromMember: (instanceId, agentId) =>
-    request('DELETE', `/members/${id(instanceId)}/agents/${id(agentId)}/block`),
-  pauseDelegationsFromMember: (instanceId, paused) =>
-    request('POST', `/members/${id(instanceId)}/delegations/pause`, {
-      paused,
-    }),
-  listTrustRequests: () => request('GET', '/trust/requests'),
-  respondTrustRequest: (instanceId, answer, block) =>
-    request('POST', `/trust/requests/${id(instanceId)}`, { answer, block }),
 
   listCapabilities: () => request('GET', '/capabilities'),
   getCapability: capabilityId =>
@@ -706,21 +666,6 @@ export const webClient: NandiClient = withCommands({
   listRequestReturns: () => request('GET', '/delegation/returns'),
   dismissRequestReturn: taskId =>
     request('POST', `/delegation/returns/${id(taskId)}/dismiss`),
-
-  reassignTask: ({ taskId, newProviderInstance, reason }) =>
-    request('POST', `/tasks/${id(taskId)}/reassign`, {
-      newProviderInstance,
-      reason,
-    }),
-  listReassignCandidates: taskId =>
-    request('GET', `/tasks/${id(taskId)}/reassign-candidates`),
-  completeManualStep: (runId, stepId, completion) =>
-    request(
-      'POST',
-      `/workflows/${id(runId)}/steps/${id(stepId)}/complete`,
-      completion
-    ),
-  listPendingManualSteps: () => request('GET', '/workflows/manual-steps'),
 
   openExternal: url => {
     window.open(url, '_blank', 'noopener,noreferrer')

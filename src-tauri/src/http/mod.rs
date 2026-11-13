@@ -25,11 +25,8 @@ mod gateway;
 mod groups;
 mod harnesses;
 mod identity;
-mod images;
 mod machine;
-mod manual_steps;
 mod marketplace;
-mod network;
 mod pilots;
 mod relay;
 mod remote;
@@ -38,9 +35,7 @@ mod routes;
 mod rpc;
 mod static_files;
 mod studio;
-mod tasks;
 mod teams;
-mod teams_roster;
 mod triggers;
 mod workspace;
 pub mod ws;
@@ -72,7 +67,6 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(repo::api())
                 .merge(pilots::api())
                 .merge(connectors::api())
-                .merge(images::api())
                 .merge(machine::api())
                 // Wave 2A
                 .merge(relay::api())
@@ -84,14 +78,11 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 // Wave final, network-first
                 .merge(identity::api())
                 .merge(remote::api())
-                .merge(tasks::api())
                 .merge(delegation_clarification::api())
                 .merge(gateway::api())
-                .merge(network::api())
                 .merge(email::api())
                 .merge(workspace::api())
                 .merge(access::api())
-                .merge(teams_roster::api())
                 .merge(groups::api())
                 // Wave A
                 .merge(capabilities::api())
@@ -101,9 +92,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(bedrock::api())
                 // Wave CD (see docs/developer/interaction-layer.md)
                 .merge(ask::api())
-                .merge(studio::api())
-                // Wave EF (see docs/developer/network-and-reassignment.md)
-                .merge(manual_steps::api()),
+                .merge(studio::api()),
         )
         .route("/ws", get(ws::handler))
         .fallback(static_files::handler)
@@ -368,13 +357,6 @@ mod tests {
             ("POST", "/api/runs/r1/file"),
             ("POST", "/api/llm-keys/anthropic/test"),
             ("GET", "/api/ollama"),
-            ("GET", "/api/tasks"),
-            ("GET", "/api/tasks/t1"),
-            ("POST", "/api/tasks/t1/cancel"),
-            ("GET", "/api/tasks/t1/status"),
-            ("GET", "/api/tasks/t1/events"),
-            ("GET", "/api/tasks/t1/messages"),
-            ("GET", "/api/eta/summarize"),
             ("POST", "/api/delegation/t1/clarify"),
             ("POST", "/api/delegation/t1/escalate/q1"),
             ("GET", "/api/delegation/pending-clarifications"),
@@ -393,15 +375,6 @@ mod tests {
             ("GET", "/api/gateway/assignments"),
             ("POST", "/api/gateway/assignments/t1/close"),
             ("GET", "/api/agents/a1/clarification-policy"),
-            ("GET", "/api/network/snapshot"),
-            ("POST", "/api/network/refresh"),
-            ("GET", "/api/teams/t1/roster"),
-            ("GET", "/api/teams/t1/members/ada/profile"),
-            ("GET", "/api/members/by-instance/i2"),
-            ("PUT", "/api/members/i2/trust"),
-            ("POST", "/api/members/i2/agents/a1/block"),
-            ("DELETE", "/api/members/i2/agents/a1/block"),
-            ("POST", "/api/members/i2/delegations/pause"),
         ] {
             // JSON (501 while stubbed, or the track's answer)
             let response = app

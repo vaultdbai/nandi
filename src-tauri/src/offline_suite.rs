@@ -65,7 +65,6 @@ const SCREEN_ROUTES: &[&str] = &[
     "identity/status",
     "llm-keys",
     "marketplace/installed",
-    "network/snapshot",
     "pilots",
     "preferences",
     "relay/agents",
@@ -74,12 +73,9 @@ const SCREEN_ROUTES: &[&str] = &[
     "repo/git/status",
     "repo/status",
     "studio/push-targets",
-    "tasks",
     "teams",
     "triggers",
-    "trust/requests",
     "workflows",
-    "workflows/manual-steps",
 ];
 
 /// The commands without arguments behind every screen, over `/api/rpc`.
@@ -90,6 +86,7 @@ const SCREEN_COMMANDS: &[&str] = &[
     "get_egress_status",
     "get_know_me",
     "get_my_notes",
+    "get_network_snapshot",
     "get_repo_llm_config",
     "get_tool_usage_stats",
     "help_topics",
@@ -101,9 +98,12 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_declared_capabilities",
     "list_dismissed_work",
     "list_note_suggestions",
+    "list_pending_manual_steps",
     "list_recent_changes",
+    "list_tasks",
     "list_tools",
     "list_trust_policies",
+    "list_trust_requests",
     "list_work",
     "mascot_get",
 ];

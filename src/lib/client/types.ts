@@ -12,17 +12,12 @@ import type {
   GroupView,
   GroupsOverview,
   InviteRequest,
-  RelayTrust,
   RequestReturn,
   AddRegistryInput,
   AgentCard,
   AgentConnectorChoice,
   FolderUsers,
-  ImageStatus,
   MachineReport,
-  SandboxImage,
-  ToolBundle,
-  ToolsStatus,
   AgentDefinitionInput,
   AgentPlaybooks,
   Playbook,
@@ -121,7 +116,6 @@ import type {
   CallerPolicy,
   ClarificationPolicy,
   ClarificationResponse,
-  EtaEstimate,
   GatewayConfig,
   GatewayManifest,
   GatewayStatus,
@@ -130,25 +124,12 @@ import type {
   GatewayUsage,
   IdentityStatus,
   GithubSignIn,
-  MemberProfile,
-  PeerKeyStatus,
-  NetworkSnapshot,
   PendingClarification,
   PendingApproval,
   PullResult,
   PushResult,
   RemoteCredential,
   RemoteStatus,
-  TaskEvent,
-  TaskFilter,
-  TaskMessage,
-  TaskRecord,
-  TaskStatusReport,
-  TeamRoster,
-  TrustRelationship,
-  TrustUpdate,
-  TrustRequest,
-  TrustAnswer,
   ShareResult,
   AmbiguityCluster,
   CapabilityDefinition,
@@ -182,10 +163,6 @@ import type {
   EditPreview,
   PushTargetOption,
   ArtifactValidation,
-  ReassignRequest,
-  ReassignCandidate,
-  ManualStepCompletion,
-  PendingManualStep,
 } from '@/lib/bindings'
 import type { commands } from '@/lib/bindings'
 import type { NandiEvent } from './events'
@@ -644,16 +621,6 @@ export interface HandWrittenClient {
   toggleCompanionWindow(): Promise<Result<null, string>>
   /** Quits the desktop app (the companion's way out) */
   quitNandi(): Promise<void>
-  /** A sandbox image: here, Docker running, its size, a download's progress */
-  getImageStatus(image: SandboxImage): Promise<Result<ImageStatus, string>>
-  /** The advanced option: builds it here (`images://pull` events) */
-  buildImage(image: SandboxImage): Promise<Result<null, string>>
-  /** Downloads the pinned image in the background (`images://pull` events) */
-  pullImage(image: SandboxImage): Promise<Result<null, string>>
-  /** A tool bundle fetched on first use (Claude Code): installed, or how */
-  getToolsStatus(bundle: ToolBundle): Promise<Result<ToolsStatus, string>>
-  /** Gets it now, or again after a failure (`images://tools` events) */
-  installTools(bundle: ToolBundle): Promise<Result<null, string>>
   /**
    * Is this computer ready for agents to act (Docker, WSL, virtualization,
    * disk, images). Read-only; `fresh` re-runs the slower checks
@@ -726,19 +693,6 @@ export interface HandWrittenClient {
   listRemoteBranches(): Promise<Result<string[], string>>
 
   // Task lifecycle
-  getTask(taskId: string): Promise<Result<TaskRecord, string>>
-  listTasks(filter: TaskFilter | null): Promise<Result<TaskRecord[], string>>
-  cancelTask(
-    taskId: string,
-    reason: string | null
-  ): Promise<Result<TaskRecord, string>>
-  queryTaskStatus(taskId: string): Promise<Result<TaskStatusReport, string>>
-  getTaskEvents(taskId: string): Promise<Result<TaskEvent[], string>>
-  getTaskMessages(taskId: string): Promise<Result<TaskMessage[], string>>
-  getEtaEstimate(
-    capability: string,
-    providerAgent: string | null
-  ): Promise<Result<EtaEstimate, string>>
 
   // Clarification
   respondToClarification(
@@ -879,20 +833,8 @@ export interface HandWrittenClient {
   gatewayChat(message: string): Promise<Result<string, string>>
 
   // Network directory
-  getNetworkSnapshot(): Promise<Result<NetworkSnapshot, string>>
-  refreshNetwork(): Promise<Result<NetworkSnapshot, string>>
 
   // Team roster, member profiles, and per-member trust
-  getTeamRoster(teamId: string): Promise<Result<TeamRoster, string>>
-  getMemberProfile(
-    teamId: string,
-    handle: string
-  ): Promise<Result<MemberProfile, string>>
-  getMemberByInstance(
-    instanceId: string
-  ): Promise<Result<MemberProfile, string>>
-  /** Their key changed: pin the new one, so sending to them works again */
-  acceptPeerKey(instanceId: string): Promise<Result<PeerKeyStatus, string>>
 
   // Groups (protocol 7, `services::groups`)
   /** Every group on the relay and the invites for me (`connected: false` without a relay) */
@@ -935,33 +877,6 @@ export interface HandWrittenClient {
     groupId: string,
     level: AccessLevel
   ): Promise<Result<AccessLevel, string>>
-  setTrustRelationship(
-    instanceId: string,
-    update: TrustUpdate
-  ): Promise<Result<TrustRelationship, string>>
-  /** "Trust everyone on my company's relay", and whether it applies */
-  getRelayTrust(): Promise<Result<RelayTrust, string>>
-  setRelayTrust(enabled: boolean): Promise<Result<RelayTrust, string>>
-  blockAgentFromMember(
-    instanceId: string,
-    agentId: string
-  ): Promise<Result<TrustRelationship, string>>
-  unblockAgentFromMember(
-    instanceId: string,
-    agentId: string
-  ): Promise<Result<TrustRelationship, string>>
-  pauseDelegationsFromMember(
-    instanceId: string,
-    paused: boolean
-  ): Promise<Result<TrustRelationship, string>>
-  /** People refused because this Nandi doesn't trust them yet (task 12) */
-  listTrustRequests(): Promise<Result<TrustRequest[], string>>
-  /** Trust them, or not now (`block`: refuse them from now on) */
-  respondTrustRequest(
-    instanceId: string,
-    answer: TrustAnswer,
-    block: boolean
-  ): Promise<Result<null, string>>
 
   // Wave A: capabilities
   /** Local, registry, and network capabilities with this instance's relation */
@@ -1086,18 +1001,7 @@ export interface HandWrittenClient {
   dismissRequestReturn(taskId: string): Promise<Result<null, string>>
 
   // Wave EF: supervisor reassignment
-  /** Hands a task we're serving to a teammate; returns our row */
-  reassignTask(request: ReassignRequest): Promise<Result<TaskRecord, string>>
-  listReassignCandidates(
-    taskId: string
-  ): Promise<Result<ReassignCandidate[], string>>
   // Wave EF: manual workflow steps
-  completeManualStep(
-    runId: string,
-    stepId: string,
-    completion: ManualStepCompletion
-  ): Promise<Result<null, string>>
-  listPendingManualSteps(): Promise<Result<PendingManualStep[], string>>
   // Wave EF: `.nandi/llm.yaml`
 
   /** Opens `url` in the system browser */
