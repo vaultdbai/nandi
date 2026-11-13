@@ -128,24 +128,8 @@ import type {
   SsoSetupFinish,
   SsoSetupInput,
   BedrockApiKeyStatus,
-  BedrockModel,
   CredentialStatus,
-  HarnessDefault,
-  HarnessHealth,
-  HarnessInfo,
-  HarnessTestResult,
-  LitellmGatewayStatus,
   SsoLoginResult,
-  ArtifactLoad,
-  ArtifactRef,
-  ArtifactSave,
-  ArtifactSaveResult,
-  AskHistoryEntry,
-  AskRequest,
-  AskResponse,
-  EditPreview,
-  PushTargetOption,
-  ArtifactValidation,
 } from '@/lib/bindings'
 import type { commands } from '@/lib/bindings'
 import type { NandiEvent } from './events'
@@ -826,18 +810,6 @@ export interface HandWrittenClient {
   // Wave A: capability presence on the relay
 
   // Wave B: harness adapters
-  listHarnesses(): Promise<Result<HarnessInfo[], string>>
-  /** Probes PATH, `--version`, and the CLIs' config folders again */
-  detectHarnesses(): Promise<Result<HarnessInfo[], string>>
-  getHarnessHealth(harnessId: string): Promise<Result<HarnessHealth, string>>
-  /** Starts the CLI over ACP, opens a session, and closes it */
-  testHarness(harnessId: string): Promise<Result<HarnessTestResult, string>>
-  setHarnessDefault(
-    harnessId: string,
-    model: string | null
-  ): Promise<Result<HarnessDefault, string>>
-  clearHarnessDefault(): Promise<Result<null, string>>
-  getHarnessDefault(): Promise<Result<HarnessDefault | null, string>>
 
   // Wave B: AWS auth, read from the user's own AWS config (never key material)
   detectAwsCli(): Promise<Result<AwsCliInfo, string>>
@@ -861,46 +833,10 @@ export interface HandWrittenClient {
   getAwsBedrockApiKeyStatus(): Promise<Result<BedrockApiKeyStatus, string>>
 
   // Wave B: Bedrock models and the LiteLLM gateway
-  listBedrockModels(
-    region: string | null
-  ): Promise<Result<BedrockModel[], string>>
-  refreshBedrockModels(
-    region: string | null
-  ): Promise<Result<BedrockModel[], string>>
-  startLitellmGateway(
-    model: string
-  ): Promise<Result<LitellmGatewayStatus, string>>
-  stopLitellmGateway(): Promise<Result<LitellmGatewayStatus, string>>
-  getLitellmGatewayStatus(): Promise<Result<LitellmGatewayStatus, string>>
 
   // Wave CD: the ask box (see docs/developer/interaction-layer.md)
-  /** Classifies and answers: inline answer, plan, edit preview, or a question back */
-  ask(request: AskRequest): Promise<Result<AskResponse, string>>
-  /** Returns the request ID; `ask://streaming_delta` / `ask://completed` follow */
-  askStreaming(request: AskRequest): Promise<Result<string, string>>
-  /** Newest first; `limit` `null` is 20 */
-  listAskHistory(
-    limit: number | null
-  ): Promise<Result<AskHistoryEntry[], string>>
 
   // Wave CD: Studio's artifact editor
-  loadArtifact(artifact: ArtifactRef): Promise<Result<ArtifactLoad, string>>
-  /** What's open in Studio's editor (`null`: nothing), for Studio's chat */
-  setStudioOpenArtifact(
-    artifact: ArtifactRef | null
-  ): Promise<Result<null, string>>
-  saveArtifact(save: ArtifactSave): Promise<Result<ArtifactSaveResult, string>>
-  /** Nothing is written */
-  previewEdit(
-    artifact: ArtifactRef,
-    instruction: string
-  ): Promise<Result<EditPreview, string>>
-  listPushTargets(): Promise<Result<PushTargetOption[], string>>
-  /** Would `content` save as `artifact`? Plus warnings (unknown tools, …) */
-  validateArtifact(
-    artifact: ArtifactRef,
-    content: string
-  ): Promise<Result<ArtifactValidation, string>>
 
   // Wave CD: work in flight
   /** Requests that came back while nobody watched, not yet dismissed */

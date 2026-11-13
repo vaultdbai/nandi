@@ -45,7 +45,6 @@ const SCREEN_ROUTES: &[&str] = &[
     "agents",
     "agents/overviews",
     "approvals/pending",
-    "ask/history",
     "capabilities",
     "companion/snapshot",
     "connectors",
@@ -67,7 +66,6 @@ const SCREEN_ROUTES: &[&str] = &[
     "relay/status",
     "repo/git/status",
     "repo/status",
-    "studio/push-targets",
     "teams",
     "triggers",
     "workflows",
@@ -91,6 +89,7 @@ const SCREEN_COMMANDS: &[&str] = &[
     "help_topics",
     "list_agents_shared_by_me",
     "list_agents_shared_with_me",
+    "list_ask_history",
     "list_capability_providers",
     "list_capability_registries",
     "list_connector_grants",
@@ -99,6 +98,7 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_dismissed_work",
     "list_note_suggestions",
     "list_pending_manual_steps",
+    "list_push_targets",
     "list_recent_changes",
     "list_tasks",
     "list_tools",
@@ -679,10 +679,10 @@ async fn an_unreachable_public_relay_never_blocks_onboarding() {
 #[tokio::test]
 async fn with_no_model_the_ask_box_answers_from_the_help_guide() {
     let (_state, router) = boot(BuiltInRelay::default());
-    let answer = post(
+    let answer = rpc(
         &router,
         "ask",
-        json!({ "text": "How do I install Docker?" }),
+        json!({ "request": { "text": "How do I install Docker?" } }),
     )
     .await;
     assert_eq!(answer["kind"], "help", "{answer}");
@@ -716,7 +716,12 @@ async fn with_the_trial_gateway_unreachable_the_ask_box_still_helps() {
         "the trial is offered: {model}"
     );
 
-    let first = post(&router, "ask", json!({ "text": "What is an agent?" })).await;
+    let first = rpc(
+        &router,
+        "ask",
+        json!({ "request": { "text": "What is an agent?" } }),
+    )
+    .await;
     assert_eq!(first["kind"], "help", "{first}");
     assert_eq!(first["data"]["topic"]["id"], "agents", "{first}");
     assert_eq!(first["data"]["reason"], "modelFailed", "{first}");
@@ -725,10 +730,10 @@ async fn with_the_trial_gateway_unreachable_the_ask_box_still_helps() {
     let model = get(&router, "default-model").await;
     assert!(model["effectiveModel"].is_null(), "{model}");
     assert_eq!(model["trial"]["unreachable"], true, "{model}");
-    let second = post(
+    let second = rpc(
         &router,
         "ask",
-        json!({ "text": "How do I connect a model?" }),
+        json!({ "request": { "text": "How do I connect a model?" } }),
     )
     .await;
     assert_eq!(second["data"]["topic"]["id"], "connect-model", "{second}");

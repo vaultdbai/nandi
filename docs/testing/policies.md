@@ -37,7 +37,7 @@ Policy files in `~/.nandi/repo/.nandi/policies/<id>.md` say what agents may do. 
 ### PO-03 — Studio checks policies with the enforcing parser
 
 - **What:** Studio's live validation for a policy uses the same parser the app will enforce with, so the editor shows "Not valid yet, so it can't be saved:" with the error and keeps **Save** disabled for a policy that would block agents.
-- **Where:** Ask → **New** ▾ → **Policy** (`src/components/studio/ArtifactEditor.tsx`: Save disabled while `validation.ok` is false); `studio/validate.rs` (`ArtifactRef::Policy` → `domain::policy::Policy::parse`); command `validate_artifact`, HTTP `POST /api/studio/validate` with body `{"artifact":{"kind":"policy","id":"x"},"content":"..."}`.
+- **Where:** Ask → **New** ▾ → **Policy** (`src/components/studio/ArtifactEditor.tsx`: Save disabled while `validation.ok` is false); `studio/validate.rs` (`ArtifactRef::Policy` → `domain::policy::Policy::parse`); command `validate_artifact`, HTTP `POST /api/rpc/validate_artifact` with body `{"artifact":{"kind":"policy","id":"x"},"content":"..."}`.
 - **Preconditions:** App or `nandi --server` running.
 - **Steps:** Follow `docs/developer/sandbox-test-checklist.md` 5.2–5.4, typing each policy into the **Raw file** box of a new policy in Ask: 1. Validate a policy with `tools: { deny: [shell] }` and no `applies_to`. 2. Validate `applies_to: [robot:x]`, then `tools: { block: [shell] }`. 3. Validate an existing prose policy. 4. Repeat 1 over HTTP.
 - **Expected:** 1–2 show "Not valid yet, so it can't be saved:" and "Not a valid policy: …" naming `applies_to`, the bad target or the unknown key; Save disabled. 3 valid; saves as before. 4 returns `ok: false` with the same error.

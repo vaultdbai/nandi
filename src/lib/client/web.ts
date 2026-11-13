@@ -550,16 +550,6 @@ export const webClient: NandiClient = withCommands({
 
   // The relay connection lives in the core; no browser route for this yet
 
-  listHarnesses: () => request('GET', '/harnesses'),
-  detectHarnesses: () => request('POST', '/harnesses/detect'),
-  getHarnessHealth: harnessId =>
-    request('GET', `/harnesses/${id(harnessId)}/health`),
-  testHarness: harnessId => request('POST', `/harnesses/${id(harnessId)}/test`),
-  setHarnessDefault: (harnessId, model) =>
-    request('PUT', '/harnesses/default', { harnessId, model }),
-  clearHarnessDefault: () => request('DELETE', '/harnesses/default'),
-  getHarnessDefault: () => request('GET', '/harnesses/default'),
-
   detectAwsCli: () => request('GET', '/aws/cli'),
   listAwsProfiles: () => request('GET', '/aws/profiles'),
   getAwsProfile: name => request('GET', `/aws/profiles/${id(name)}`),
@@ -574,29 +564,6 @@ export const webClient: NandiClient = withCommands({
   checkAwsCredentials: (profile, region) =>
     request('POST', '/aws/credentials/check', { profile, region }),
   getAwsBedrockApiKeyStatus: () => request('GET', '/aws/bedrock-api-key'),
-
-  listBedrockModels: region =>
-    request('GET', `/bedrock/models${query({ region })}`),
-  refreshBedrockModels: region =>
-    request('POST', '/bedrock/models/refresh', { region }),
-  startLitellmGateway: model =>
-    request('POST', '/bedrock/gateway/start', { model }),
-  stopLitellmGateway: () => request('POST', '/bedrock/gateway/stop'),
-  getLitellmGatewayStatus: () => request('GET', '/bedrock/gateway'),
-
-  ask: body => request('POST', '/ask', body),
-  askStreaming: body => request('POST', '/ask/stream', body),
-  listAskHistory: limit => request('GET', `/ask/history${query({ limit })}`),
-
-  loadArtifact: artifact => request('POST', '/studio/load', { artifact }),
-  setStudioOpenArtifact: artifact =>
-    request('POST', '/studio/open', { artifact }),
-  saveArtifact: save => request('POST', '/studio/save', save),
-  previewEdit: (artifact, instruction) =>
-    request('POST', '/studio/preview', { artifact, instruction }),
-  listPushTargets: () => request('GET', '/studio/push-targets'),
-  validateArtifact: (artifact, content) =>
-    request('POST', '/studio/validate', { artifact, content }),
 
   listRequestReturns: () => request('GET', '/delegation/returns'),
   dismissRequestReturn: taskId =>

@@ -117,7 +117,9 @@ pub(crate) use commands;
 
 pub mod access;
 pub mod analysis;
+pub mod ask;
 pub mod audit;
+pub mod bedrock;
 pub mod capability;
 pub mod capability_registries;
 pub mod config;
@@ -125,6 +127,7 @@ pub mod decisions;
 pub mod delegation_clarification;
 pub mod egress;
 pub mod harness_sessions;
+pub mod harnesses;
 pub mod help;
 pub mod identity;
 pub mod images;
@@ -145,6 +148,7 @@ pub mod remote;
 pub mod requests;
 pub mod runs;
 pub mod shared;
+pub mod studio;
 pub mod tasks;
 pub mod teams_roster;
 pub mod tools;
@@ -162,7 +166,9 @@ pub type Handler = fn(AppState, Value) -> RpcFuture;
 const TABLES: &[&[(&str, Handler)]] = &[
     access::RPC,
     analysis::RPC,
+    ask::RPC,
     audit::RPC,
+    bedrock::RPC,
     capability::RPC,
     capability_registries::RPC,
     config::RPC,
@@ -170,6 +176,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     delegation_clarification::RPC,
     egress::RPC,
     harness_sessions::RPC,
+    harnesses::RPC,
     help::RPC,
     identity::RPC,
     images::RPC,
@@ -190,6 +197,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     requests::RPC,
     runs::RPC,
     shared::RPC,
+    studio::RPC,
     tasks::RPC,
     teams_roster::RPC,
     tools::RPC,

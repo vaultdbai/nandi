@@ -5,10 +5,8 @@
 //! pane, native notifications, the native file picker, and window state.
 
 pub mod agents;
-pub mod ask;
 pub mod attachments;
 pub mod aws_auth;
-pub mod bedrock;
 pub mod capabilities;
 pub mod chat;
 pub mod companion;
@@ -19,7 +17,6 @@ pub mod email;
 pub mod events;
 pub mod gateway;
 pub mod groups;
-pub mod harnesses;
 pub mod llm_keys;
 pub mod machine;
 pub mod marketplace;
@@ -30,7 +27,6 @@ pub mod recovery;
 pub mod relay;
 pub mod repo;
 pub mod snapshots;
-pub mod studio;
 pub mod teams;
 pub mod triggers;
 pub mod workflows;

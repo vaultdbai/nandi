@@ -818,7 +818,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-05 — Artifact editor: open, forms, raw file, validation
 
 - **What:** Right pane tabs Capability, Agent, Workflow, Policy (incl. NANDI.md as "gateway"), Tool (read-only catalog with Disabled badges). Choose an existing artifact or enter a New ID → Create (capability/policy/NANDI.md load as starter templates). Field forms edit the raw file line by line (comments survive); a raw file editor; live validation ("Valid: this will save as it is." / "Not valid yet, so it can't be saved:" with warnings such as unknown tools, model without key, missing agents); "Unsaved" badge.
-- **Where:** `src/components/studio/ArtifactTabs.tsx`, `ArtifactEditor.tsx`, `AgentForm.tsx`, `WorkflowForm.tsx`, `CapabilityForm.tsx`, `PolicyForm.tsx`, `src/lib/yaml-fields.ts`; commands `list_policies` (`POST /api/rpc/list_policies`, `src/hooks/usePolicies.ts`), `load_artifact` (`POST /api/studio/load`), `validate_artifact` (`POST /api/studio/validate`), `set_studio_open_artifact` (`POST /api/studio/open`); `services/studio/artifact_loader.rs`, `validate.rs`.
+- **Where:** `src/components/studio/ArtifactTabs.tsx`, `ArtifactEditor.tsx`, `AgentForm.tsx`, `WorkflowForm.tsx`, `CapabilityForm.tsx`, `PolicyForm.tsx`, `src/lib/yaml-fields.ts`; commands `list_policies` (`POST /api/rpc/list_policies`, `src/hooks/usePolicies.ts`), `load_artifact` (`POST /api/rpc/load_artifact`), `validate_artifact` (`POST /api/rpc/validate_artifact`), `set_studio_open_artifact` (`POST /api/rpc/set_studio_open_artifact`); `services/studio/artifact_loader.rs`, `validate.rs`.
 - **Preconditions:** None.
 - **Steps:** 1. Ask → right pane Agent tab → choose an agent in the dropdown. 2. Change the Model field to `bad`. 3. Fix it.
 - **Expected:** Unsaved badge; validation error then valid; Save disabled while invalid.
@@ -830,7 +830,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-06 — Save, Discard, Push (commit targets)
 
 - **What:** Save validates and writes through the artifact's owner (capability service, agent/workflow repos, `PolicyRepository`, gateway manifest) then commits just that file with the commit message (toast "Committed <sha>" / "Saved (nothing to commit)"). Discard asks first ("Discard your changes?", lines added/removed). Push… confirms ("Commit and push") and commits + pushes to `<prefix>/<slug>` branch (never main/master); "Push to <branch> and open a pull request" pushes and returns a warning (PR not implemented). Capability saves must bump the version enough (schema/tools/visibility → major, policy/routing/optional tools → minor, text → patch).
-- **Where:** `ArtifactEditor.tsx`; commands `save_artifact` (`POST /api/studio/save`), `list_push_targets` (`GET /api/studio/push-targets`); `services/studio/artifact_saver.rs`, `version_bumper.rs`. Events `studio://artifact_saved`.
+- **Where:** `ArtifactEditor.tsx`; commands `save_artifact` (`POST /api/rpc/save_artifact`), `list_push_targets` (`POST /api/rpc/list_push_targets`); `services/studio/artifact_saver.rs`, `version_bumper.rs`. Events `studio://artifact_saved`.
 - **Preconditions:** For Push: a git remote.
 - **Steps:** 1. Edit → Save. 2. Edit → Discard → confirm. 3. Edit capability schema without bumping version → Save. 4. Push….
 - **Expected:** 1: one commit touching only that file. 3: refused. 4: "Pushed to <branch>".
@@ -844,7 +844,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-07 — Ask box: classify, answer, plan, edit, clarify (streaming)
 
 - **What:** One ask box component used in Ask (Studio), agent pages (with Chat/Ask toggle, starting in Chat), and workflow run project view. The model classifies the ask (below 0.5 confidence it asks back; with no model, or when the model fails, the help guide answers and says why). Questions stream Markdown with source links and follow-up buttons (`FOLLOWUPS:` line). Placeholder depends on view.
-- **Where:** `src/components/ask/AskBox.tsx`, `AskComposer.tsx`, `AskAnswer.tsx`, `src/hooks/useAsk.ts`, `src/lib/ask.ts` (`askContextForView`); commands `ask` (`POST /api/ask`), `ask_streaming` (`POST /api/ask/stream`) with events `ask://streaming_delta`, `ask://completed`; `services/ask/{classifier,context,planner,editor}.rs`.
+- **Where:** `src/components/ask/AskBox.tsx`, `AskComposer.tsx`, `AskAnswer.tsx`, `src/hooks/useAsk.ts`, `src/lib/ask.ts` (`askContextForView`); commands `ask` (`POST /api/rpc/ask`), `ask_streaming` (`POST /api/rpc/ask_streaming`) with events `ask://streaming_delta`, `ask://completed`; `services/ask/{classifier,context,planner,editor}.rs`.
 - **Preconditions:** Model key (classification falls back without one).
 - **Steps:** 1. Ask a question. 2. Click a source and a follow-up. 3. Ask something vague. 4. Dismiss.
 - **Expected:** Streaming text then final answer; follow-ups re-ask; vague → clarifying question; Dismiss clears.
@@ -868,7 +868,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-09 — Edit preview and Apply
 
 - **What:** An edit ask rewrites only the focused (or named) artifact; result must parse as that artifact; capability edits get the smallest legal version bump. Preview shows a unified diff, impact (subscribers, workflows using an agent, runs in flight) and bump; **Apply** opens it in the editor (only where the box supports apply, e.g. Ask page).
-- **Where:** `src/components/ask/EditPreview.tsx`; `preview_edit` (`POST /api/studio/preview`); `services/ask/editor.rs`; event `studio://edit_previewed`.
+- **Where:** `src/components/ask/EditPreview.tsx`; `preview_edit` (`POST /api/rpc/preview_edit`); `services/ask/editor.rs`; event `studio://edit_previewed`.
 - **Preconditions:** An artifact open in the editor.
 - **Steps:** Open an agent, type "make the description shorter" → Apply → Save.
 - **Expected:** Diff shown; Apply loads the new text unsaved into the editor.
@@ -880,7 +880,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-10 — Ask history
 
 - **What:** Finished asks are stored in `ask_history` (SQLite) and listed as "Recent asks (N)" with kind labels (Answer, Plan, Edit, Question back).
-- **Where:** `src/components/ask/AskHistory.tsx` (Ask page); `list_ask_history` → `GET /api/ask/history` (default 20).
+- **Where:** `src/components/ask/AskHistory.tsx` (Ask page); `list_ask_history` → `POST /api/rpc/list_ask_history` (default 20).
 - **Preconditions:** At least one ask.
 - **Steps:** Ask twice, expand Recent asks, restart app.
 - **Expected:** Newest first; persists across restart.

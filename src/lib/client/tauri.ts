@@ -304,15 +304,6 @@ export const tauriClient: NandiClient = withCommands({
   promoteAmbiguityToSchema: (id, clusterId) =>
     commands.promoteAmbiguityToSchema(id, clusterId),
 
-  listHarnesses: () => commands.listHarnesses(),
-  detectHarnesses: () => commands.detectHarnesses(),
-  getHarnessHealth: harnessId => commands.getHarnessHealth(harnessId),
-  testHarness: harnessId => commands.testHarness(harnessId),
-  setHarnessDefault: (harnessId, model) =>
-    commands.setHarnessDefault(harnessId, model),
-  clearHarnessDefault: () => commands.clearHarnessDefault(),
-  getHarnessDefault: () => commands.getHarnessDefault(),
-
   detectAwsCli: () => commands.detectAwsCli(),
   listAwsProfiles: () => commands.listAwsProfiles(),
   getAwsProfile: name => commands.getAwsProfile(name),
@@ -326,25 +317,6 @@ export const tauriClient: NandiClient = withCommands({
   checkAwsCredentials: (profile, region) =>
     commands.checkAwsCredentials(profile, region),
   getAwsBedrockApiKeyStatus: () => commands.getAwsBedrockApiKeyStatus(),
-
-  listBedrockModels: region => commands.listBedrockModels(region),
-  refreshBedrockModels: region => commands.refreshBedrockModels(region),
-  startLitellmGateway: model => commands.startLitellmGateway(model),
-  stopLitellmGateway: () => commands.stopLitellmGateway(),
-  getLitellmGatewayStatus: () => commands.getLitellmGatewayStatus(),
-
-  ask: request => commands.ask(request),
-  askStreaming: request => commands.askStreaming(request),
-  listAskHistory: limit => commands.listAskHistory(limit),
-
-  loadArtifact: artifact => commands.loadArtifact(artifact),
-  setStudioOpenArtifact: artifact => commands.setStudioOpenArtifact(artifact),
-  saveArtifact: save => commands.saveArtifact(save),
-  previewEdit: (artifact, instruction) =>
-    commands.previewEdit(artifact, instruction),
-  listPushTargets: () => commands.listPushTargets(),
-  validateArtifact: (artifact, content) =>
-    commands.validateArtifact(artifact, content),
 
   listRequestReturns: () => commands.listRequestReturns(),
   dismissRequestReturn: taskId => commands.dismissRequestReturn(taskId),

@@ -6,11 +6,9 @@
 //! with an explicit `--server`.
 
 // Wave CD (see docs/developer/interaction-layer.md)
-mod ask;
 pub mod auth;
 // Wave B
 mod aws_auth;
-mod bedrock;
 mod capabilities;
 // Wave A
 mod companion;
@@ -21,7 +19,6 @@ mod delegation;
 mod email;
 mod gateway;
 mod groups;
-mod harnesses;
 mod machine;
 mod marketplace;
 mod pilots;
@@ -30,7 +27,6 @@ mod repo;
 mod routes;
 mod rpc;
 mod static_files;
-mod studio;
 mod teams;
 mod triggers;
 pub mod ws;
@@ -77,12 +73,7 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 // Wave A
                 .merge(capabilities::api())
                 // Wave B
-                .merge(harnesses::api())
-                .merge(aws_auth::api())
-                .merge(bedrock::api())
-                // Wave CD (see docs/developer/interaction-layer.md)
-                .merge(ask::api())
-                .merge(studio::api()),
+                .merge(aws_auth::api()), // Wave CD (see docs/developer/interaction-layer.md),
         )
         .route("/ws", get(ws::handler))
         .fallback(static_files::handler)
@@ -394,19 +385,23 @@ mod tests {
         // Only routes without side effects outside the test (no CLI
         // probes, no browser, no AWS calls)
         for (method, uri, body) in [
-            ("GET", "/api/harnesses", "{}"),
-            ("GET", "/api/harnesses/default", "{}"),
+            ("POST", "/api/rpc/list_harnesses", "{}"),
+            ("POST", "/api/rpc/get_harness_default", "{}"),
             (
-                "PUT",
-                "/api/harnesses/default",
+                "POST",
+                "/api/rpc/set_harness_default",
                 r#"{"harnessId":"claude-code","model":null}"#,
             ),
-            ("DELETE", "/api/harnesses/default", "{}"),
-            ("GET", "/api/harnesses/nope/health", "{}"),
-            ("POST", "/api/harnesses/nope/test", "{}"),
+            ("POST", "/api/rpc/clear_harness_default", "{}"),
+            (
+                "POST",
+                "/api/rpc/get_harness_health",
+                r#"{"harnessId":"nope"}"#,
+            ),
+            ("POST", "/api/rpc/test_harness", r#"{"harnessId":"nope"}"#),
             ("GET", "/api/aws/bedrock-api-key", "{}"),
             ("GET", "/api/aws/sso/login/l1", "{}"),
-            ("GET", "/api/bedrock/gateway", "{}"),
+            ("POST", "/api/rpc/get_litellm_gateway_status", "{}"),
         ] {
             // JSON (501 while stubbed, or the track's answer)
             let response = app
@@ -422,19 +417,19 @@ mod tests {
     #[tokio::test]
     async fn wave_cd_routes_are_mounted() {
         let (state, app) = app();
-        let ask = r#"{"text":"What can you do?","context":{"currentView":"home"}}"#;
+        let ask = r#"{"request":{"text":"What can you do?","context":{"currentView":"home"}}}"#;
         let artifact = r#"{"artifact":{"kind":"agent","id":"nope"}}"#;
         let preview = r#"{"artifact":{"kind":"agent","id":"nope"},"instruction":"x"}"#;
         // Side-effect-free routes only (no model calls, no git writes)
         for (method, uri, body) in [
-            ("POST", "/api/ask", ask),
-            ("GET", "/api/ask/history", "{}"),
-            ("POST", "/api/studio/load", artifact),
-            ("POST", "/api/studio/preview", preview),
-            ("GET", "/api/studio/push-targets", "{}"),
+            ("POST", "/api/rpc/ask", ask),
+            ("POST", "/api/rpc/list_ask_history", "{}"),
+            ("POST", "/api/rpc/load_artifact", artifact),
+            ("POST", "/api/rpc/preview_edit", preview),
+            ("POST", "/api/rpc/list_push_targets", "{}"),
             (
                 "POST",
-                "/api/studio/validate",
+                "/api/rpc/validate_artifact",
                 r#"{"artifact":{"kind":"agent","id":"a"},"content":"---\nmodel: x\n---\n"}"#,
             ),
             ("GET", "/api/approvals/pending", "{}"),

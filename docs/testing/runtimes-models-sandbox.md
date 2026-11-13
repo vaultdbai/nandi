@@ -119,10 +119,10 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-08 — Runtime cards and detection (Nandi, Claude Code, Codex, Gemini CLI)
 
 - **What:** The Coding agents group shows a Nandi card ("Built in. Uses the model chosen above.") and one card per detected CLI with install state and version; "Detect again" re-detects; before detection answers placeholder cards show "Checking…", then "Couldn’t check" after 15 s.
-- **Where:** Settings → Models & runtimes → Coding agents. `src/components/settings/sections/RuntimesSection.tsx` (`RuntimesPanel`), `src/components/harness/HarnessCard.tsx` (`HarnessCard`, `NandiRuntimeCard`, `PendingRuntimeCard`), `src-tauri/src/commands/harnesses.rs` (`list_harnesses`, `detect_harnesses`), `services/harness/detection.rs`. HTTP `GET /api/harnesses`, `POST /api/harnesses/detect`. Event `harness://detected`.
+- **Where:** Settings → Models & runtimes → Coding agents. `src/components/settings/sections/RuntimesSection.tsx` (`RuntimesPanel`), `src/components/harness/HarnessCard.tsx` (`HarnessCard`, `NandiRuntimeCard`, `PendingRuntimeCard`), `src-tauri/src/rpc/harnesses.rs` (`list_harnesses`, `detect_harnesses`), `services/harness/detection.rs`. HTTP `POST /api/rpc/list_harnesses`, `POST /api/rpc/detect_harnesses`. Event `harness://detected`.
 - **Preconditions:** Optionally `claude`, `codex`, `gemini` installed on the host (used for sign-in detection only).
 - **Steps:** 1. Open Settings › Models & runtimes with none installed. 2. Install Claude Code, click Detect again.
-- **Expected:** Not installed: "Not found. Install Claude Code to run agents in it." Installed: "On this computer for sign-in: version x.y.z". Detection results stored in SQLite and returned by `GET /api/harnesses`.
+- **Expected:** Not installed: "Not found. Install Claude Code to run agents in it." Installed: "On this computer for sign-in: version x.y.z". Detection results stored in SQLite and returned by `POST /api/rpc/list_harnesses`.
 - **Edge / negative cases:** CLI whose `--version` hangs (15 s timeout); detection error shows a red alert "Couldn’t check the runtimes on this computer: …"; RTL layout.
 - **Automation:** Covered by: `src/components/harness/harness-ui.test.tsx`, `src/components/settings/SettingsView.test.tsx`, Rust tests in `services/harness/detection.rs` | Layer: api + unit | Gap: none.
 - **Needs relay:** no
@@ -143,7 +143,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-10 — Test connection for a runtime
 
 - **What:** "Test connection" checks detection, then opens and closes a one-turn ACP session in a throwaway folder (in the harness container when its image is built, else on the host), returning OK/failed, latency, version and provider.
-- **Where:** Settings → Models & runtimes → Coding agents → card → Test connection. `commands/harnesses.rs` (`test_harness`), `services/harness/mod.rs` (`HarnessService::test`, `test_config`). HTTP `POST /api/harnesses/{id}/test`.
+- **Where:** Settings → Models & runtimes → Coding agents → card → Test connection. `rpc/harnesses.rs` (`test_harness`), `services/harness/mod.rs` (`HarnessService::test`, `test_config`). HTTP `POST /api/rpc/test_harness`.
 - **Preconditions:** CLI detected; a sign-in.
 - **Steps:** 1. Click Test connection on Claude Code. 2. Repeat with no sign-in. 3. Repeat with the CLI uninstalled.
 - **Expected:** "Connection works" or "Connection failed" with the error; uninstalled gives `NotInstalled`. Temp folder `nandi-harness-test-<uuid>` under the OS temp dir; container `nandi-harness-test-<12 chars>`. Request timeout 90 s.
@@ -155,7 +155,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-11 — Runtime Details dialog
 
 - **What:** Details shows the executable path, version, config folder, provider, "Signed in (host)", "Signed in (container)" (or "No: sign in on this computer (your account or AWS); an API key is the last resort"), "Container image built", last check time and the last test result.
-- **Where:** Card → Details. `src/components/harness/HarnessHealthDialog.tsx`, `commands/harnesses.rs` (`get_harness_health`). HTTP `GET /api/harnesses/{id}/health`.
+- **Where:** Card → Details. `src/components/harness/HarnessHealthDialog.tsx`, `rpc/harnesses.rs` (`get_harness_health`). HTTP `POST /api/rpc/get_harness_health`.
 - **Preconditions:** Detection ran.
 - **Steps:** 1. Open Details for each card. 2. Run Test, reopen.
 - **Expected:** Fields filled from `HarnessHealth`; test result shown after a test; no secret values displayed.
@@ -167,7 +167,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-12 — Make a runtime the default
 
 - **What:** "Make default" marks one CLI runtime as default (badge "Default"); with none marked, the Nandi card is default. The stored default's model is used for that runtime's runs when the agent sets none.
-- **Where:** Card → Make default. `commands/harnesses.rs` (`set_harness_default`, `clear_harness_default`, `get_harness_default`), table `harness_preferences`. HTTP routes under `/api/harnesses` (default).
+- **Where:** Card → Make default. `rpc/harnesses.rs` (`set_harness_default`, `clear_harness_default`, `get_harness_default`), table `harness_preferences`. HTTP `POST /api/rpc/{command}`.
 - **Preconditions:** A detected CLI.
 - **Steps:** 1. Click Make default on Codex. 2. Reload the page. 3. Create a new agent.
 - **Expected:** Codex card shows Default, Nandi card loses it; persists across restart.
@@ -567,7 +567,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-20 — Bedrock model picker
 
 - **What:** Lists Bedrock models from a bundled registry (Anthropic native in Claude Code vs third-party through the gateway, tested/untested/known issues/unsupported badges), filterable, refreshable from Bedrock; picking one says how Claude Code reaches it; "Needs AWS sign-in:" with a Cloud credentials link.
-- **Where:** Settings → Models & runtimes → Coding agents → "Bedrock models". `src/components/harness/BedrockModelSelector.tsx`, `RuntimesSection.tsx` (`BedrockGateway`), `commands/bedrock.rs` (`list_bedrock_models`, `refresh_bedrock_models`), `services/harness/bedrock_models.rs`, `bedrock_model_registry.json`. HTTP `GET /api/bedrock/models`, `POST /api/bedrock/models/refresh`. Event `bedrock://models_refreshed`.
+- **Where:** Settings → Models & runtimes → Coding agents → "Bedrock models". `src/components/harness/BedrockModelSelector.tsx`, `RuntimesSection.tsx` (`BedrockGateway`), `rpc/bedrock.rs` (`list_bedrock_models`, `refresh_bedrock_models`), `services/harness/bedrock_models.rs`, `bedrock_model_registry.json`. HTTP `POST /api/rpc/list_bedrock_models`, `POST /api/rpc/refresh_bedrock_models`. Event `bedrock://models_refreshed`.
 - **Preconditions:** AWS sign-in for refresh.
 - **Steps:** 1. Open the selector, filter "llama". 2. Refresh.
 - **Expected:** Grouped list with badges; refresh updates `bedrock_models_cache`.
@@ -579,7 +579,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-21 — LiteLLM gateway for third-party Bedrock models
 
 - **What:** For a third-party Bedrock model, "Start gateway" runs `ghcr.io/berriai/litellm:v1.102.0` as `nandi-litellm` on Docker network `nandi-harness` (its way to Bedrock) and, since #9, also on the internal `nandi-agents` (so coding agents reach it directly, and it is in their `NO_PROXY`), published on `127.0.0.1:4000` for its health check, with aliases `nandi-bedrock` / `nandi-bedrock-small`, AWS credentials and a per-start master key in its env (config file has no secrets); Claude Code gets `ANTHROPIC_BASE_URL=http://nandi-litellm:4000`. Status shows running/stopped and "Serving <model> at <endpoint>", with Stop.
-- **Where:** Bedrock models block → Start gateway / `LitellmGatewayStatus.tsx`; `commands/bedrock.rs` (`start_litellm_gateway`, `stop_litellm_gateway`, `get_litellm_gateway_status`), `services/harness/gateway.rs`, `runtimes/nandi-harness/litellm-config-template.yaml`. HTTP `GET /api/bedrock/gateway`, `POST /api/bedrock/gateway/start`, `POST /api/bedrock/gateway/stop`. Event `bedrock://gateway_status`.
+- **Where:** Bedrock models block → Start gateway / `LitellmGatewayStatus.tsx`; `rpc/bedrock.rs` (`start_litellm_gateway`, `stop_litellm_gateway`, `get_litellm_gateway_status`), `services/harness/gateway.rs`, `runtimes/nandi-harness/litellm-config-template.yaml`. HTTP `POST /api/rpc/get_litellm_gateway_status`, `POST /api/rpc/start_litellm_gateway`, `POST /api/rpc/stop_litellm_gateway`. Event `bedrock://gateway_status`.
 - **Preconditions:** Docker, AWS sign-in, image pullable.
 - **Steps:** 1. Pick a Llama model, Start gateway. 2. `docker ps`. 3. Run a `runtime: claude-code` agent with `runtime_config.gateway: litellm`. 4. Stop.
 - **Expected:** Ready within 90 s; container on `127.0.0.1:4000`; `docker inspect nandi-litellm` lists both `nandi-harness` and `nandi-agents` (checklist 4.10); agent run goes through it with no model hosts opened on the proxy (SB-15); Stop removes it.
