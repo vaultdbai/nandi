@@ -339,12 +339,12 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-28 — List Docker containers command
 
 - **What:** Lists all containers (running and stopped) with short id, name, image, state, status.
-- **Where:** `src-tauri/src/commands/docker.rs` (`list_containers`). No UI uses it.
+- **Where:** `src-tauri/src/rpc/containers.rs` (`list_containers`). No UI uses it.
 - **Preconditions:** Docker.
 - **Steps:** 1. Call `commands.listContainers()` from devtools.
 - **Expected:** Array of `ContainerInfo`; error "Failed to connect to Docker: ..." without Docker.
 - **Edge / negative cases:** unnamed containers ("unnamed").
-- **Automation:** Covered by: `commands/docker.rs` tests | Layer: unit | Gap: not surfaced in UI.
+- **Automation:** Covered by: `rpc/containers.rs` tests | Layer: unit | Gap: not surfaced in UI.
 - **Needs relay:** no
 - **Status:** Partial (backend only)
 
@@ -555,7 +555,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### MD-19 — AWS sign-in for Bedrock (profiles, SSO login, check)
 
 - **What:** Shows the AWS CLI version (needed for SSO), the profiles from the AWS config with their kind (SSO, access keys, assumed role, credential process, default chain), a Check that resolves credentials (account, ARN with show/hide), "Log in with SSO" in a dialog with the device code and a link, and whether a Bedrock API key is set (environment or Claude Code settings).
-- **Where:** Settings → Cloud credentials → AWS → "Sign-in for Bedrock models". `src/components/harness/AwsAuthPanel.tsx`, `SsoLoginDialog.tsx`, `aws-identity.ts`, `commands/aws_auth.rs` (`detect_aws_cli`, `list_aws_profiles`, `get_aws_profile`, `start_aws_sso_login`, `poll_aws_sso_login`, `check_aws_credentials`, `get_aws_bedrock_api_key_status`), `services/harness/aws_auth.rs`, `aws_config_parser.rs`. HTTP `/api/aws/cli`, `/api/aws/profiles`, `/api/aws/profiles/{name}`, `POST /api/aws/sso/login`, `GET /api/aws/sso/login/{id}`, `POST /api/aws/credentials/check`, `GET /api/aws/bedrock-api-key`. Events `aws://profile_changed`, `aws://credentials_expired`.
+- **Where:** Settings → Cloud credentials → AWS → "Sign-in for Bedrock models". `src/components/harness/AwsAuthPanel.tsx`, `SsoLoginDialog.tsx`, `aws-identity.ts`, `rpc/aws_auth.rs` (`detect_aws_cli`, `list_aws_profiles`, `get_aws_profile`, `start_aws_sso_login`, `poll_aws_sso_login`, `check_aws_credentials`, `get_aws_bedrock_api_key_status`), `services/harness/aws_auth.rs`, `aws_config_parser.rs`. HTTP `/api/aws/cli`, `/api/aws/profiles`, `/api/aws/profiles/{name}`, `POST /api/rpc/start_aws_sso_login`, `POST /api/rpc/poll_aws_sso_login`, `POST /api/rpc/check_aws_credentials`, `POST /api/rpc/get_aws_bedrock_api_key_status`. Events `aws://profile_changed`, `aws://credentials_expired`.
 - **Preconditions:** AWS CLI v2, an SSO profile.
 - **Steps:** 1. Pick the profile, Check. 2. Let the session expire, Check. 3. Log in with SSO, approve in the browser.
 - **Expected:** "Works" with account; "Your SSO session has expired: log in again."; dialog "Waiting for you to approve in the browser…" then "Logged in.".
@@ -731,7 +731,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### SB-17 — Log in and set up AWS profiles in Cloud credentials
 
 - **What:** Settings → Cloud credentials → Sign-in offers what each profile needs: **Log in** for SSO (`aws sso login`) and for `login_session` profiles where the CLI has `aws login`; **Replace keys** for an access-key profile. **Add access keys** writes a new profile with `aws configure` (secret on stdin). **Add SSO profile** takes the start URL and SSO region, opens the IAM Identity Center sign-in with the code, then lists the accounts and roles to pick from, writes the profile with `aws configure set`, and runs `aws sso login` for it. Nandi writes no AWS file itself.
-- **Where:** `harness/aws_auth/setup.rs` (`save_key_profile`, `start_sso_setup`, `poll_sso_setup`, `finish_sso_setup`), `aws_auth.rs` (`start_sso_login`, `detect_cli` `supportsLogin`), `aws_config_parser.rs` (`ConsoleLogin`); commands `save_aws_key_profile`, `start_aws_sso_setup`, `poll_aws_sso_setup`, `finish_aws_sso_setup`, `cancel_aws_sso_setup`; HTTP `POST /api/aws/profiles/keys`, `POST /api/aws/sso/setup`, `GET|DELETE /api/aws/sso/setup/{id}`, `POST /api/aws/sso/setup/finish`; `AwsAuthPanel.tsx`, `AwsKeysDialog.tsx`, `AwsSsoSetupDialog.tsx`, `aws-setup-model.ts`.
+- **Where:** `harness/aws_auth/setup.rs` (`save_key_profile`, `start_sso_setup`, `poll_sso_setup`, `finish_sso_setup`), `aws_auth.rs` (`start_sso_login`, `detect_cli` `supportsLogin`), `aws_config_parser.rs` (`ConsoleLogin`); commands `save_aws_key_profile`, `start_aws_sso_setup`, `poll_aws_sso_setup`, `finish_aws_sso_setup`, `cancel_aws_sso_setup`; HTTP `POST /api/rpc/save_aws_key_profile`, `POST /api/rpc/start_aws_sso_setup`, `GET|DELETE /api/aws/sso/setup/{id}`, `POST /api/rpc/finish_aws_sso_setup`; `AwsAuthPanel.tsx`, `AwsKeysDialog.tsx`, `AwsSsoSetupDialog.tsx`, `aws-setup-model.ts`.
 - **Preconditions:** The AWS CLI v2. For SSO, an IAM Identity Center start URL you can sign in to.
 - **Steps:**
   1. Add access keys: name `build`, a key ID and secret, region `eu-west-1`.

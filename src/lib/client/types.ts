@@ -18,7 +18,6 @@ import type {
   AgentInfo,
   AgentOverview,
   AgentManifest,
-  AgentPilotPermission,
   AppliedUpdate,
   AgentSnapshot,
   ApprovalDecision,
@@ -28,13 +27,6 @@ import type {
   CompanionSnapshot,
   ConnectorInfo,
   ConnectorStatus,
-  BackfillAction,
-  BackfillEstimate,
-  BackfillRange,
-  EmailSettingsInput,
-  EmailSignInPoll,
-  EmailStatus,
-  MailProvider,
   ConnectorConsent,
   ConnectorEntry,
   PublishConnectorInput,
@@ -44,12 +36,9 @@ import type {
   ConversationSnapshot,
   CreateAgentInput,
   CreateWorkflowInput,
-  CalendarPreview,
-  CronPreview,
   TemplateWorkflowInput,
   WorkflowTemplate,
   DashboardSnapshot,
-  DeviceFlowState,
   ForkedAgent,
   GitStatus,
   HandOverAnswer,
@@ -66,8 +55,6 @@ import type {
   MarketplaceFilter,
   PackDetail,
   PackManifest,
-  PilotDefinition,
-  PilotStatus,
   PublishAgentInput,
   PublishResult,
   RecoveryError,
@@ -83,12 +70,8 @@ import type {
   Result,
   RunDetail,
   RunPlan,
-  SavedTrigger,
   SendMessageResult,
   StudioConversationSummary,
-  Trigger,
-  TriggerFire,
-  TriggerInput,
   UpdateAvailable,
   Workflow,
   WorkflowSummary,
@@ -100,22 +83,6 @@ import type {
   GatewayHold,
   GatewayUsage,
   PendingApproval,
-  AmbiguityCluster,
-  CapabilityDefinition,
-  CapabilityEvidence,
-  CapabilityListing,
-  CapabilityOwner,
-  CapabilityProvider,
-  CapabilityProviderStats,
-  AwsCliInfo,
-  AwsProfile,
-  KeyProfileInput,
-  SsoSetup,
-  SsoSetupFinish,
-  SsoSetupInput,
-  BedrockApiKeyStatus,
-  CredentialStatus,
-  SsoLoginResult,
 } from '@/lib/bindings'
 import type { commands } from '@/lib/bindings'
 import type { NandiEvent } from './events'
@@ -293,33 +260,8 @@ export interface HandWrittenClient {
   // Triggers (rules that start runs on schedules, files, webhooks, devices,
   // and Nandi's own events). A secret is only ever returned on create,
   // update to a webhook/device source, or rotate.
-  listTriggers(): Promise<Result<Trigger[], string>>
-  getTrigger(id: string): Promise<Result<Trigger, string>>
-  createTrigger(input: TriggerInput): Promise<Result<SavedTrigger, string>>
-  updateTrigger(
-    id: string,
-    input: TriggerInput
-  ): Promise<Result<SavedTrigger, string>>
-  deleteTrigger(id: string): Promise<Result<null, string>>
-  setTriggerEnabled(id: string, enabled: boolean): Promise<Result<null, string>>
-  rotateTriggerSecret(id: string): Promise<Result<SavedTrigger, string>>
-  /** Fires by hand (even if disabled); `null` sends `{"test": true}` */
-  testFireTrigger(
-    id: string,
-    payload: unknown
-  ): Promise<Result<TriggerFire, string>>
-  listTriggerFires(
-    triggerId: string,
-    limit: number | null
-  ): Promise<Result<TriggerFire[], string>>
   /** Where webhook/device requests go, e.g. `http://127.0.0.1:17463` */
   getWebOrigin(): Promise<string | null>
-  /** Whether a cron schedule is valid, and its next 3 runs */
-  previewCron(schedule: string): Promise<Result<CronPreview, string>>
-  /** Whether a calendar config is valid, and its next 5 runs with who is on duty */
-  previewCalendar(
-    config: Record<string, unknown>
-  ): Promise<Result<CalendarPreview, string>>
 
   // Marketplace: agents and packs from shared git repos. Installed ones
   // are read-only until forked; nothing updates without the user asking.
@@ -411,45 +353,6 @@ export interface HandWrittenClient {
   gitCommit(message: string): Promise<Result<string, string>>
 
   // Pilots: host-side MCP servers for OS control (wave 1, Track A)
-  listPilots(): Promise<Result<PilotDefinition[], string>>
-  installPilot(id: string): Promise<Result<null, string>>
-  /** Returns the pilot's process ID */
-  startPilot(id: string): Promise<Result<number, string>>
-  stopPilot(id: string): Promise<Result<null, string>>
-  pilotStatus(id: string): Promise<Result<PilotStatus, string>>
-  grantPilotCapability(
-    agentId: string,
-    pilotId: string,
-    capability: string
-  ): Promise<Result<null, string>>
-  revokePilotCapability(
-    agentId: string,
-    pilotId: string,
-    capability: string
-  ): Promise<Result<null, string>>
-  /** Saves a pilot secret the agent's skill.md names (empty removes it) */
-  setPilotSecret(
-    agentId: string,
-    pilotId: string,
-    name: string,
-    value: string
-  ): Promise<Result<null, string>>
-  /** Adds a site secret: its name into skill.md, its value into the keychain */
-  addPilotSecret(
-    agentId: string,
-    pilotId: string,
-    name: string,
-    value: string
-  ): Promise<Result<null, string>>
-  /** Sign out everywhere: clears the agent's browser profile (false: none) */
-  clearBrowserProfile(
-    agentId: string,
-    pilotId: string
-  ): Promise<Result<boolean, string>>
-  /** The pilots the agent declares, and what the user granted each */
-  agentPilotPermissions(
-    agentId: string
-  ): Promise<Result<AgentPilotPermission[], string>>
 
   // Runs across every agent, and the audit logs (wave 1, Track C)
 
@@ -594,36 +497,6 @@ export interface HandWrittenClient {
   ): Promise<Result<GatewayHold, string>>
   // Live UI (`services::live`)
   // Email (the Chief of Staff reads it to keep My notes)
-  /** Mailboxes, what this build can connect, and the next check */
-  getEmailStatus(): Promise<Result<EmailStatus, string>>
-  /** Starts connecting a mailbox: open `verificationUri` (or show `userCode`) */
-  startEmailSignIn(
-    provider: MailProvider
-  ): Promise<Result<DeviceFlowState, string>>
-  /** Checks the sign-in once */
-  pollEmailSignIn(
-    provider: MailProvider
-  ): Promise<Result<EmailSignInPoll, string>>
-  /** Checks every connected mailbox now, in the background */
-  checkEmailNow(): Promise<Result<EmailStatus, string>>
-  setEmailPaused(
-    provider: MailProvider,
-    paused: boolean
-  ): Promise<Result<EmailStatus, string>>
-  /** Signs out: the sign-in, the cursor and the Chief of Staff's access */
-  disconnectEmail(provider: MailProvider): Promise<Result<EmailStatus, string>>
-  setEmailSettings(
-    settings: EmailSettingsInput
-  ): Promise<Result<EmailStatus, string>>
-  /** Pause, Resume, Stop or Restart a mailbox's background read */
-  setEmailBackfill(
-    provider: MailProvider,
-    action: BackfillAction
-  ): Promise<Result<EmailStatus, string>>
-  /** About how much older mail a range covers, per connected mailbox */
-  estimateEmailBackfill(
-    range: BackfillRange
-  ): Promise<Result<BackfillEstimate[], string>>
   // Connector hub: grants, registry connectors, calendars and files
   /** Connectors listed in the configured registries */
   listRegistryConnectors(
@@ -675,38 +548,6 @@ export interface HandWrittenClient {
   // Groups (protocol 7, `services::groups`)
 
   // Wave A: capabilities
-  /** Local, registry, and network capabilities with this instance's relation */
-  listCapabilities(): Promise<Result<CapabilityListing[], string>>
-  getCapability(id: string): Promise<Result<CapabilityDefinition, string>>
-  /** Creates or replaces `.nandi/capabilities/<id>.yaml`; returns it as saved */
-  saveCapability(
-    definition: CapabilityDefinition
-  ): Promise<Result<CapabilityDefinition, string>>
-  deleteCapability(id: string): Promise<Result<null, string>>
-  transferCapabilityOwnership(
-    id: string,
-    newOwner: CapabilityOwner,
-    reason: string | null
-  ): Promise<Result<CapabilityDefinition, string>>
-  /** Agents and workflows providing `id` (not `listCapabilityProviders`) */
-  listProvidersForCapability(
-    id: string
-  ): Promise<Result<CapabilityProvider[], string>>
-  /** `windowDays`: `null` is 30 */
-  getCapabilityEvidence(
-    id: string,
-    windowDays: number | null
-  ): Promise<Result<CapabilityEvidence[], string>>
-  getCapabilityProviderBreakdown(
-    id: string
-  ): Promise<Result<CapabilityProviderStats[], string>>
-  listCapabilityAmbiguities(
-    id: string
-  ): Promise<Result<AmbiguityCluster[], string>>
-  promoteAmbiguityToSchema(
-    id: string,
-    clusterId: string
-  ): Promise<Result<CapabilityDefinition, string>>
 
   // Wave A: the unified tool catalog
 
@@ -717,25 +558,8 @@ export interface HandWrittenClient {
   // Wave B: harness adapters
 
   // Wave B: AWS auth, read from the user's own AWS config (never key material)
-  detectAwsCli(): Promise<Result<AwsCliInfo, string>>
-  listAwsProfiles(): Promise<Result<AwsProfile[], string>>
-  getAwsProfile(name: string): Promise<Result<AwsProfile, string>>
   /** `aws sso login` (or `aws login` for a console profile): the AWS CLI
    * opens the browser; poll for the outcome */
-  startAwsSsoLogin(profile: string): Promise<Result<SsoLoginResult, string>>
-  pollAwsSsoLogin(loginId: string): Promise<Result<SsoLoginResult, string>>
-  /** A new access-key profile, or new keys for one (`aws configure`) */
-  saveAwsKeyProfile(input: KeyProfileInput): Promise<Result<AwsProfile, string>>
-  /** The IAM Identity Center sign-in for a new SSO profile */
-  startAwsSsoSetup(input: SsoSetupInput): Promise<Result<SsoSetup, string>>
-  pollAwsSsoSetup(setupId: string): Promise<Result<SsoSetup, string>>
-  finishAwsSsoSetup(finish: SsoSetupFinish): Promise<Result<AwsProfile, string>>
-  cancelAwsSsoSetup(setupId: string): Promise<Result<null, string>>
-  checkAwsCredentials(
-    profile: string | null,
-    region: string | null
-  ): Promise<Result<CredentialStatus, string>>
-  getAwsBedrockApiKeyStatus(): Promise<Result<BedrockApiKeyStatus, string>>
 
   // Wave B: Bedrock models and the LiteLLM gateway
 

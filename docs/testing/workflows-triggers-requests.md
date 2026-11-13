@@ -481,7 +481,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### TR-05 — Schedule picker with plain-words preview and next runs
 
 - **What:** "When" offers a **Preset** ("Every 5 minutes", "Every hour", "Every day at 9:00", "Weekdays at 9:00", "Mondays at 9:00") or **Custom** cron ("Cron expression"). The form reads it back in the UI language ("At 09:00, Monday through Friday (your time)") and lists the next 3 run times ("Next: …") from the backend's own parser; an unreadable schedule shows an error and disables Save/Create.
-- **Where:** `src/components/triggers/TriggerForm.tsx` (`ScheduleFields`), `automations-model.ts` (`describeSchedule`, cronstrue en/fr/ar/ja), command `preview_cron`; HTTP `POST /api/triggers/cron-preview`.
+- **Where:** `src/components/triggers/TriggerForm.tsx` (`ScheduleFields`), `automations-model.ts` (`describeSchedule`, cronstrue en/fr/ar/ja), command `preview_cron`; HTTP `POST /api/rpc/preview_cron`.
 - **Preconditions:** None.
 - **Steps:** In New Trigger → Schedule: 1. Pick each preset. 2. Choose Custom and type `0 9 * * 1-5`. 3. Type `61 * * * *`.
 - **Expected:** Words and three upcoming times shown; invalid shows "Nandi can't read this schedule. Check it, or pick a preset." and Create trigger (or Save changes on a trigger page) disabled.
@@ -529,7 +529,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### TR-09 — Rotate a trigger's secret
 
 - **What:** "Generate a new secret" asks first ("Make a new secret?": "The old secret stops working at once…"), then generates a 256-bit secret, stores it in the keyring and shows it once.
-- **Where:** Trigger page → Settings; `src/components/triggers/TriggerDialogs.tsx` (`RotateSecretButton`); command `rotate_trigger_secret`; HTTP `POST /api/triggers/{id}/secret`.
+- **Where:** Trigger page → Settings; `src/components/triggers/TriggerDialogs.tsx` (`RotateSecretButton`); command `rotate_trigger_secret`; HTTP `POST /api/rpc/rotate_trigger_secret`.
 - **Preconditions:** A webhook or device trigger.
 - **Steps:** On a webhook trigger's Settings tab: 1. Generate a new secret → Cancel. 2. Generate a new secret → **Make a new secret**. 3. Call the webhook with the old and new secret.
 - **Expected:** New secret displayed; old secret → 401, new → 202.
@@ -601,7 +601,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### TR-15 — Turn a trigger on or off
 
 - **What:** The switch (list and page) writes `enabled` to the file and reloads; disabled triggers don't fire (webhooks get 404). On failure the switch reverts and a toast says "Couldn't turn the trigger on" / "Couldn't turn the trigger off" with the reason.
-- **Where:** List row / trigger header; `src/lib/trigger-actions.ts` (`setTriggerEnabled`); command `set_trigger_enabled`; HTTP `POST /api/triggers/{id}/enable|disable`.
+- **Where:** List row / trigger header; `src/lib/trigger-actions.ts` (`setTriggerEnabled`); command `set_trigger_enabled`; HTTP `POST /api/rpc/set_trigger_enabled`.
 - **Preconditions:** A trigger.
 - **Steps:** On a webhook trigger: toggle off (list "On" column or page header), fire the webhook, toggle on, fire again.
 - **Expected:** 404 while off; YAML `enabled: false`; 202 after on.
@@ -613,7 +613,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### TR-16 — Test fire
 
 - **What:** **Test…** opens "Test “<name>”?", which warns "This really fires: <target> runs now…", lets the user edit the "Test payload" JSON (default `{"test": true}`; invalid JSON shows "Not valid JSON." and disables the button), and fires on **Fire it now**. Works while disabled and bypasses the storm guard and rate limit. Toast "Test fire queued a run" or the fire's status/error.
-- **Where:** List ⋯ → Test…, trigger page header; `TriggerDialogs.tsx` (`TestTriggerDialog`); command `test_fire_trigger`; HTTP `POST /api/triggers/{id}/test`.
+- **Where:** List ⋯ → Test…, trigger page header; `TriggerDialogs.tsx` (`TestTriggerDialog`); command `test_fire_trigger`; HTTP `POST /api/rpc/test_fire_trigger`.
 - **Preconditions:** A trigger (any type).
 - **Steps:** 1. Disable a trigger. 2. Test with a custom payload. 3. Enter invalid JSON.
 - **Expected:** A run starts with that payload; fire row status `queued`; invalid JSON shows a hint and disables Fire.
@@ -661,7 +661,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### TR-20 — Firings tab (history)
 
 - **What:** Every fire (columns Fired, Result, Request) with relative time (full time in a tooltip), status badge with its error: once the fire started a run, the run's status (Queued, Running, Waiting for approval, Completed, Failed, Cancelled; for a workflow also Waiting on a person, Paused), otherwise the fire's own (Rate limited, Error, Skipped), and a link "Open <target>" to the run it started; selecting a row shows "What it received" (the payload).
-- **Where:** Trigger page → Firings; `TriggerDetailView.tsx` (`FiringsTable`, `FiringRow`), `trigger-ui.tsx` (`FireStatusBadge`); command `list_trigger_fires` (default 50); HTTP `GET /api/triggers/{id}/fires?limit=`.
+- **Where:** Trigger page → Firings; `TriggerDetailView.tsx` (`FiringsTable`, `FiringRow`), `trigger-ui.tsx` (`FireStatusBadge`); command `list_trigger_fires` (default 50); HTTP `POST /api/rpc/list_trigger_fires`.
 - **Preconditions:** A trigger that has fired.
 - **Steps:** Open Firings, select a row, click the link.
 - **Expected:** Payload JSON shown; link opens the agent Run Detail or the workflow run view.
@@ -673,7 +673,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### TR-21 — Delete a trigger
 
 - **What:** ⋯ → Delete… asks first ("Delete “<name>”?", button **Delete trigger**), then removes the file, its projection and its keyring secret, and stops its cron job/watcher.
-- **Where:** `TriggerDialogs.tsx` (`DeleteTriggerDialog`); command `delete_trigger`; HTTP `DELETE /api/triggers/{id}`.
+- **Where:** `TriggerDialogs.tsx` (`DeleteTriggerDialog`); command `delete_trigger`; HTTP `POST /api/rpc/delete_trigger`.
 - **Preconditions:** A trigger.
 - **Steps:** Delete from the list; then from the trigger page.
 - **Expected:** File gone from `.nandi/triggers/`; row disappears; from the page, navigation returns to the list.
@@ -720,7 +720,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 
 ### TR-25 — Trigger management HTTP API
 
-- **What:** `GET/POST /api/triggers`, `POST /api/triggers/cron-preview`, `POST /api/triggers/calendar-preview`, `GET/PUT/DELETE /api/triggers/{id}`, `POST /api/triggers/{id}/enable|disable|secret|test`, `GET /api/triggers/{id}/fires`, plus receivers (TR-07, TR-10). Management routes need the web token; receivers use the trigger secret.
+- **What:** The trigger commands over `POST /api/rpc/{name}` (`list_triggers`, `create_trigger`, `update_trigger`, `delete_trigger`, `set_trigger_enabled`, `rotate_trigger_secret`, `test_fire_trigger`, `list_trigger_fires`, `preview_cron`, `preview_calendar`), plus receivers (TR-07, TR-10). Management commands need the web token; receivers use the trigger secret.
 - **Where:** `src-tauri/src/http/triggers.rs`.
 - **Preconditions:** Web token.
 - **Steps:** Create, update, toggle, test, list fires and delete a trigger over HTTP.
@@ -745,7 +745,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### TR-27 — Calendar source: times, days and who is responsible
 
 - **What:** A `calendar` trigger fires at set local times (`times`) on set weekdays (`days`), except on `skipDates`. Who is responsible each day is decided in this order: a stand-in (`cover`) spanning the date, then a fixed weekday owner (`byDay`), then whose turn it is (`people` taking turns from `startDate`, `rotate: week | day`; daily turns skip days off). If the calendar names people and nobody is responsible on a day, it doesn't fire that day. The payload is `{scheduled_at, trigger_id, duty_id, date, role: primary, responsible, backup, covering_for, duty_reason}`, so templates can use `{{payload.responsible}}`. Default priority 80. It is exempt from the storm guard.
-- **Where:** `src-tauri/src/services/domain/calendar.rs`, `src-tauri/src/services/triggers/calendar.rs`; New Trigger → **Calendar** tab (`src/components/triggers/CalendarFields.tsx`); command `preview_calendar`, `POST /api/triggers/calendar-preview`.
+- **Where:** `src-tauri/src/services/domain/calendar.rs`, `src-tauri/src/services/triggers/calendar.rs`; New Trigger → **Calendar** tab (`src/components/triggers/CalendarFields.tsx`); command `preview_calendar`, `POST /api/rpc/preview_calendar`.
 - **Preconditions:** A target agent.
 - **Steps:** 1. Create a Calendar trigger: 09:00, Mon–Fri, people `alice, bob`, each turn a day, starting last Monday, plus a stand-in for next week. 2. Read **Next runs**. 3. Clear the start date.
 - **Expected:** Next runs lists the dates with the responsible person, "(for …)" on stand-in days, and "backup: …". Without a start date, Create is disabled.

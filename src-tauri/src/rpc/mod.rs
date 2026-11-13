@@ -119,14 +119,18 @@ pub mod access;
 pub mod analysis;
 pub mod ask;
 pub mod audit;
+pub mod aws_auth;
 pub mod bedrock;
 pub mod capability;
+pub mod capability_definitions;
 pub mod capability_registries;
 pub mod config;
+pub mod containers;
 pub mod decisions;
 pub mod delegation;
 pub mod delegation_clarification;
 pub mod egress;
+pub mod email;
 pub mod groups;
 pub mod harness_sessions;
 pub mod harnesses;
@@ -143,6 +147,7 @@ pub mod memory;
 pub mod network;
 pub mod notes;
 pub mod palette;
+pub mod pilots;
 pub mod policies;
 pub mod preferences;
 pub mod queue;
@@ -157,6 +162,7 @@ pub mod tasks;
 pub mod teams;
 pub mod teams_roster;
 pub mod tools;
+pub mod triggers;
 pub mod work;
 pub mod workflow_builder;
 pub mod workspace;
@@ -173,14 +179,18 @@ const TABLES: &[&[(&str, Handler)]] = &[
     analysis::RPC,
     ask::RPC,
     audit::RPC,
+    aws_auth::RPC,
     bedrock::RPC,
     capability::RPC,
+    capability_definitions::RPC,
     capability_registries::RPC,
     config::RPC,
+    containers::RPC,
     decisions::RPC,
     delegation::RPC,
     delegation_clarification::RPC,
     egress::RPC,
+    email::RPC,
     groups::RPC,
     harness_sessions::RPC,
     harnesses::RPC,
@@ -197,6 +207,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     network::RPC,
     notes::RPC,
     palette::RPC,
+    pilots::RPC,
     policies::RPC,
     preferences::RPC,
     queue::RPC,
@@ -211,6 +222,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     teams::RPC,
     teams_roster::RPC,
     tools::RPC,
+    triggers::RPC,
     work::RPC,
     workflow_builder::RPC,
     workspace::RPC,

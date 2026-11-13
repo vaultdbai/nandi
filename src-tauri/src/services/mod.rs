@@ -40,6 +40,7 @@ pub mod config;
 // Not every API has a caller yet
 #[allow(dead_code)]
 pub mod connectors;
+pub mod containers;
 // The domain model's API is complete by design (entities, value objects,
 // behavior); not every accessor has a caller yet.
 #[allow(dead_code)]

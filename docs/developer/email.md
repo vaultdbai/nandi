@@ -122,15 +122,15 @@ IDs carry their provider: `outlook:<id>`, `gmail:<id>`. Results are wrapped as u
 
 ## Commands and routes
 
-| Command               | Route                                     |
-| --------------------- | ----------------------------------------- |
-| `get_email_status`    | `GET /api/email`                          |
-| `start_email_sign_in` | `POST /api/email/{provider}/sign-in`      |
-| `poll_email_sign_in`  | `POST /api/email/{provider}/sign-in/poll` |
-| `check_email_now`     | `POST /api/email/check`                   |
-| `set_email_paused`    | `PUT /api/email/{provider}/paused`        |
-| `disconnect_email`    | `DELETE /api/email/{provider}`            |
-| `set_email_settings`  | `PUT /api/email/settings`                 |
+| Command               | Route                               |
+| --------------------- | ----------------------------------- |
+| `get_email_status`    | `POST /api/rpc/get_email_status`    |
+| `start_email_sign_in` | `POST /api/rpc/start_email_sign_in` |
+| `poll_email_sign_in`  | `POST /api/rpc/poll_email_sign_in`  |
+| `check_email_now`     | `POST /api/rpc/check_email_now`     |
+| `set_email_paused`    | `POST /api/rpc/set_email_paused`    |
+| `disconnect_email`    | `POST /api/rpc/disconnect_email`    |
+| `set_email_settings`  | `POST /api/rpc/set_email_settings`  |
 
 `email://changed` fires on connect, disconnect, pause and every check; `useEmailStatus` refetches on it.
 

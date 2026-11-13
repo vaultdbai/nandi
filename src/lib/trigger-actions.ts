@@ -10,6 +10,7 @@ import { client } from '@/lib/client'
 import { logger } from '@/lib/logger'
 import { queryClient } from '@/lib/query-client'
 import type {
+  JsonValue,
   SavedTrigger,
   TriggerFire,
   TriggerInput,
@@ -103,7 +104,11 @@ export async function testFireTrigger(
   id: string,
   payload: unknown
 ): Promise<TriggerFire | null> {
-  const result = await client.testFireTrigger(id, payload)
+  // `payload` is parsed JSON (or undefined for none)
+  const result = await client.testFireTrigger(
+    id,
+    (payload ?? null) as JsonValue | null
+  )
   refresh(id)
   if (result.status === 'error') {
     toast.error(result.error)

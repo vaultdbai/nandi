@@ -2,17 +2,16 @@ use tauri_specta::{collect_commands, collect_events, Builder};
 
 pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::commands::{
-        agents, attachments, aws_auth, capabilities, chat, companion, connectors, docker, email,
-        gateway, llm_keys, marketplace, notifications, pilots, recovery, relay, repo, snapshots,
-        triggers, workflows,
+        agents, attachments, chat, companion, connectors, gateway, llm_keys, marketplace,
+        notifications, recovery, relay, repo, snapshots, workflows,
     };
     use crate::rpc::{
-        access, analysis, ask, audit, bedrock, capability, capability_registries, config,
-        decisions, delegation, delegation_clarification, egress, groups, harness_sessions,
-        harnesses, help, identity, images, knowme, live, machine, manual_steps, marketplace_search,
-        mascot, memory, network, notes, palette, policies, preferences, queue, reassign,
-        relay_capabilities, remote, requests, runs, shared, studio, tasks, teams, teams_roster,
-        tools, work, workflow_builder, workspace,
+        access, analysis, ask, audit, aws_auth, bedrock, capability, capability_definitions,
+        capability_registries, config, containers, decisions, delegation, delegation_clarification,
+        egress, email, groups, harness_sessions, harnesses, help, identity, images, knowme, live,
+        machine, manual_steps, marketplace_search, mascot, memory, network, notes, palette, pilots,
+        policies, preferences, queue, reassign, relay_capabilities, remote, requests, runs, shared,
+        studio, tasks, teams, teams_roster, tools, triggers, work, workflow_builder, workspace,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;
@@ -60,7 +59,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             recovery::save_emergency_data,
             recovery::load_emergency_data,
             recovery::cleanup_old_recovery_files,
-            docker::list_containers,
+            containers::list_containers,
             agents::list_agents,
             agents::list_agent_overviews,
             agents::create_agent,
@@ -378,16 +377,16 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             teams_roster::list_trust_requests,
             teams_roster::respond_trust_request,
             // Wave A
-            capabilities::list_capabilities,
-            capabilities::get_capability,
-            capabilities::save_capability,
-            capabilities::delete_capability,
-            capabilities::transfer_capability_ownership,
-            capabilities::list_providers_for_capability,
-            capabilities::get_capability_evidence,
-            capabilities::get_capability_provider_breakdown,
-            capabilities::list_capability_ambiguities,
-            capabilities::promote_ambiguity_to_schema,
+            capability_definitions::list_capabilities,
+            capability_definitions::get_capability,
+            capability_definitions::save_capability,
+            capability_definitions::delete_capability,
+            capability_definitions::transfer_capability_ownership,
+            capability_definitions::list_providers_for_capability,
+            capability_definitions::get_capability_evidence,
+            capability_definitions::get_capability_provider_breakdown,
+            capability_definitions::list_capability_ambiguities,
+            capability_definitions::promote_ambiguity_to_schema,
             tools::list_tools,
             tools::get_tool,
             tools::set_tool_enabled,

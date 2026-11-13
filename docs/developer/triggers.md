@@ -94,7 +94,7 @@ rate_limit_seconds: 3600
 
 Tauri: `list_triggers`, `get_trigger`, `create_trigger`, `update_trigger`, `delete_trigger`, `set_trigger_enabled`, `rotate_trigger_secret`, `test_fire_trigger` (works while disabled, skips the storm guard and rate limit), `list_trigger_fires`, `get_web_origin`, `preview_cron`, `preview_calendar` (the next 5 runs with who is on duty).
 
-HTTP: `GET/POST /api/triggers` · `POST /api/triggers/cron-preview` · `POST /api/triggers/calendar-preview` · `GET/PUT/DELETE /api/triggers/{id}` · `POST /api/triggers/{id}/enable|disable|secret|test` · `GET /api/triggers/{id}/fires?limit=` · receivers `POST /api/triggers/webhook/{id}` and `POST /api/triggers/device/{deviceId}`.
+HTTP: every command is `POST /api/rpc/{name}` (`rpc/triggers.rs`), except the receivers `POST /api/triggers/webhook/{id}` and `POST /api/triggers/device/{deviceId}`.
 
 ```sh
 curl -X POST http://127.0.0.1:17463/api/triggers/webhook/new-orders \

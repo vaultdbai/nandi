@@ -35,11 +35,11 @@ Every pilot tool needs approval unless the pilot marks it `readOnlyHint`. Every 
 
 Grants are machine-local state in SQLite `local_settings`: `consent.<agent_id>.<pilot_id>.<capability> = true`. They aren't part of the agent's definition.
 
-| Action      | Command / route                                                                |
-| ----------- | ------------------------------------------------------------------------------ |
-| Read grants | `agent_pilot_permissions(agent_id)` / `GET /api/agents/{id}/pilots`            |
-| Grant       | `grant_pilot_capability(...)` / `POST /api/agents/{id}/pilots/{pilot}/grant`   |
-| Revoke      | `revoke_pilot_capability(...)` / `POST /api/agents/{id}/pilots/{pilot}/revoke` |
+| Action      | Command / route                                                               |
+| ----------- | ----------------------------------------------------------------------------- |
+| Read grants | `agent_pilot_permissions(agent_id)` / `POST /api/rpc/agent_pilot_permissions` |
+| Grant       | `grant_pilot_capability(...)` / `POST /api/rpc/grant_pilot_capability`        |
+| Revoke      | `revoke_pilot_capability(...)` / `POST /api/rpc/revoke_pilot_capability`      |
 
 Grant and revoke take a `{"capability": "..."}` body over HTTP. A revoke takes effect on the agent's next step. `tools::call` re-checks access on every call.
 

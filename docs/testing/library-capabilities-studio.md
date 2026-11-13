@@ -313,7 +313,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-03 — Email: connect Outlook or Gmail for the Chief of Staff
 
 - **What:** Settings › Email lists Outlook and Gmail. It says what Nandi reads (new inbox and sent mail, without newsletters), what it never does (send, move, delete, mark read), that no mail copy is kept, and that each note cites its email. **Connect Outlook** / **Connect Gmail** opens the provider's sign-in in the browser (Microsoft: PKCE on `http://localhost:<port>`, device code as the fallback; Google: PKCE on `http://127.0.0.1:<port>/callback`). Once signed in, the card shows "Connected as <name> (<email>)", the last check and how many emails went to the notes, and **Check now**, **Pause** / **Resume** and **Stop reading my email** (asks first). Connecting gives the Chief of Staff read access to that mailbox (a grant in `config.json`).
-- **Where:** Settings › Email. `src/components/settings/sections/EmailSection.tsx`, `settings/email/email-model.ts`, `src/hooks/useEmail.ts`; commands `get_email_status`, `start_email_sign_in`, `poll_email_sign_in`, `check_email_now`, `set_email_paused`, `disconnect_email`, `set_email_settings` (`commands/email.rs`); HTTP `/api/email…` (`http/email.rs`); `services/email/`, `services/auth/oauth.rs`.
+- **Where:** Settings › Email. `src/components/settings/sections/EmailSection.tsx`, `settings/email/email-model.ts`, `src/hooks/useEmail.ts`; commands `get_email_status`, `start_email_sign_in`, `poll_email_sign_in`, `check_email_now`, `set_email_paused`, `disconnect_email`, `set_email_settings` (`rpc/email.rs`); HTTP `POST /api/rpc/{name}` (`rpc/email.rs`); `services/email/`, `services/auth/oauth.rs`.
 - **Preconditions:** A build with `NANDI_MICROSOFT_CLIENT_ID` (Outlook) or `NANDI_GOOGLE_CLIENT_ID` and `NANDI_GOOGLE_CLIENT_SECRET` (Gmail) set at build time. Gmail: a test user on the Google consent screen.
 - **Steps:** 1. Settings › Email › **Connect Outlook**; sign in in the browser. 2. Back in Nandi, see "Connected as …". 3. **Check now**. 4. **Pause**, then **Resume**. 5. **Stop reading my email** → confirm.
 - **Expected:** Step 2 within a few seconds of the browser page saying "Signed in to Nandi". The token is in the keyring as `nandi.email.outlook.oauth`; `~/.nandi/config.json` has `email.accounts` and a `connector_grants` entry for `chief-of-staff`. Step 5 deletes the keyring entry, the cursor (`local_settings` `email.outlook.*`) and the grant; the card goes back to **Connect Outlook**.
@@ -574,7 +574,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-07 — Pilot catalog, install, start, stop
 
 - **What:** Pilots are host MCP servers controlling the OS. The catalog lists only published packages: OpenDesk (any OS) and the browser pilots (CP-26). Win Pilot, UIA-X, MacPilot, Desktop Pilot and OSWright were placeholders that were never published and are gone (2026-10-29). Cards Install (runs the catalog's install command, streaming output as `pilot://install_output`), Start (returns PID), Stop. A pilot installed some other way (the browser's npm package or image at the pinned version) shows as installed: the status check looks for it (`detect.rs`, read-only) and records it. Pilots for another OS show "Not for this computer" and no button.
-- **Where:** Library → Tools → pilot cards/drawer. `LibraryItemAction.tsx` (`PilotButton`), `src/hooks/usePilots.ts`; commands `list_pilots`, `install_pilot`, `start_pilot`, `stop_pilot`, `pilot_status` (`commands/pilots.rs`); HTTP `GET /api/pilots`, `POST /api/pilots/{id}/install|start|stop`, `GET /api/pilots/{id}/status`; `services/pilots/catalog.rs`, `install.rs`, `runtime.rs`.
+- **Where:** Library → Tools → pilot cards/drawer. `LibraryItemAction.tsx` (`PilotButton`), `src/hooks/usePilots.ts`; commands `list_pilots`, `install_pilot`, `start_pilot`, `stop_pilot`, `pilot_status` (`rpc/pilots.rs`); HTTP `POST /api/rpc/list_pilots`, `POST /api/rpc/install_pilot|start_pilot|stop_pilot`, `POST /api/rpc/pilot_status`; `services/pilots/catalog.rs`, `install.rs`, `runtime.rs`.
 - **Preconditions:** The pilot's package manager (pipx / brew / npm) on the host.
 - **Steps:** Library → Tools chip: 1. Install OpenDesk. 2. Start. 3. Stop.
 - **Expected:** Pill Stopped → Running; failed health check shows "Problem" and the button offers Stop. Errors toast "Couldn't install <name>", "Couldn't start <name>" or "Couldn't stop <name>".
@@ -598,7 +598,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-09 — Pilot consent: grant and revoke per agent
 
 - **What:** Grants are machine-local (`local_settings` `consent.<agent>.<pilot>.<capability>`). Granted from the Library pilot drawer ("Choose an agent" → **Allow…** → "Allow <agent> to use <pilot>?", `PilotConsentDialog`), from the agent's Settings › Permissions panel (a switch per capability), or on first use: a run missing consent emits `pilot://consent_needed`, `PilotConsentPrompt` opens the dialog; dismissing it stays quiet for that agent+pilot until restart. The triggering run continues without the pilot.
-- **Where:** `src/components/library/LibraryDrawer.tsx` (`PilotGrant`), `src/components/agent-console/PilotConsentDialog.tsx`, `PilotConsentPrompt.tsx` (mounted in `App.tsx`), `PermissionsPanel.tsx` (`PilotsSection`); commands `grant_pilot_capability`, `revoke_pilot_capability`, `agent_pilot_permissions`; HTTP `GET /api/agents/{id}/pilots`, `POST /api/agents/{id}/pilots/{pilot}/grant|revoke` with `{"capability": "..."}`.
+- **Where:** `src/components/library/LibraryDrawer.tsx` (`PilotGrant`), `src/components/agent-console/PilotConsentDialog.tsx`, `PilotConsentPrompt.tsx` (mounted in `App.tsx`), `PermissionsPanel.tsx` (`PilotsSection`); commands `grant_pilot_capability`, `revoke_pilot_capability`, `agent_pilot_permissions`; HTTP `POST /api/rpc/agent_pilot_permissions`, `POST /api/rpc/grant_pilot_capability|revoke_pilot_capability` with `{"agentId", "pilotId", "capability": "..."}`.
 - **Preconditions:** CP-07 running pilot, an agent with `pilots:` in skill.md.
 - **Steps:** 1. Run the agent without grants. 2. Allow in the prompt. 3. Run again. 4. Revoke one capability in Permissions. 5. Run again.
 - **Expected:** 1: warning + consent dialog, run proceeds without pilot. 3: pilot tools used. 5: pilot tools absent (all capabilities required).
@@ -636,7 +636,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-11 — Capabilities list (Network › Sharing › Capabilities)
 
 - **What:** Four sections: "You own", "You provide", "You use", "Discover", each a grid of capability cards with its own empty state; "Search capabilities", Visibility (Private / Team / Network), Tag and Ownership (All / Mine / Others') filters with **Clear filters**. Cards show provider face (status online count, load) and/or consumer face (providers online, success rate, invocations, **Delegate**), and warn about missing tools.
-- **Where:** Network → Sharing → Capabilities. `src/components/views/CapabilitiesView.tsx`, `src/components/capability/CapabilityCard.tsx`, `capability-model.ts`; command `list_capabilities` → `GET /api/capabilities`.
+- **Where:** Network → Sharing → Capabilities. `src/components/views/CapabilitiesView.tsx`, `src/components/capability/CapabilityCard.tsx`, `capability-model.ts`; command `list_capabilities` → `POST /api/rpc/list_capabilities`.
 - **Preconditions:** None (sections may be empty).
 - **Steps:** 1. Open. 2. Filter Mine. 3. Search. 4. Click a card.
 - **Expected:** Cards grouped correctly; click opens CP-12; load errors shown inline.
@@ -648,7 +648,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-12 — Capability detail: overview and tabs
 
 - **What:** Header with name, version badge, owner; tabs Overview (description, body, required/optional tools, tags, input/output schema, ownership history), Providers, Evidence, Ambiguities, Policy. Owner sees **Edit** and **Transfer**.
-- **Where:** Capability card → detail (`{ kind: 'capability-detail', id }`). `src/components/views/CapabilityDetailView.tsx`; `get_capability` → `GET /api/capabilities/{id}`.
+- **Where:** Capability card → detail (`{ kind: 'capability-detail', id }`). `src/components/views/CapabilityDetailView.tsx`; `get_capability` → `POST /api/rpc/get_capability`.
 - **Preconditions:** A capability exists (`.nandi/capabilities/<id>.yaml` or from a registry).
 - **Steps:** Open and visit each tab.
 - **Expected:** All tabs render; Back returns to the list.
@@ -660,9 +660,9 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-13 — Create, edit and delete capability definitions
 
 - **What:** Capabilities are gold-copy files `.nandi/capabilities/<id>.yaml`. Edit dialog changes name, version, description, tags, required tools, body. Save creates/replaces the file; delete removes it. Projection emits `capability://created|updated|deleted`.
-- **Where:** Detail → Edit (`src/components/capability/EditCapabilityDialog.tsx`); commands `save_capability`, `delete_capability`; HTTP `POST /api/capabilities`, `PUT/DELETE /api/capabilities/{id}`; `services/capability/definition.rs`, `projection.rs`. Also created via Ask (AI-09) and New → Capability.
+- **Where:** Detail → Edit (`src/components/capability/EditCapabilityDialog.tsx`); commands `save_capability`, `delete_capability`; HTTP `POST /api/rpc/save_capability`, `POST /api/rpc/delete_capability`; `services/capability/definition.rs`, `projection.rs`. Also created via Ask (AI-09) and New → Capability.
 - **Preconditions:** Own capability.
-- **Steps:** 1. Network → Sharing → Capabilities → an own capability → **Edit** → change Description → Save. 2. `DELETE /api/capabilities/{id}`.
+- **Steps:** 1. Network → Sharing → Capabilities → an own capability → **Edit** → change Description → Save. 2. `POST /api/rpc/delete_capability`.
 - **Expected:** File updated; toast "Capability saved"; list updates live; delete removes file and projection row.
 - **Edge / negative cases:** File name must match ID in the gold copy (known inconsistency with registries); invalid YAML → error.
 - **Automation:** Covered by: Rust `capability/definition.rs` (4), `projection.rs` (2), `capability/mod.rs` (6) | Layer: api | Gap: UI edit test.
@@ -684,7 +684,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-15 — Transfer capability ownership
 
 - **What:** Owner picks a network member and optional reason, confirms consequences; ownership changes and is recorded in the overview's ownership history.
-- **Where:** Detail → **Transfer**. `src/components/capability/TransferOwnershipDialog.tsx`; `transfer_capability_ownership` → `POST /api/capabilities/{id}/transfer` `{ newOwner, reason? }`.
+- **Where:** Detail → **Transfer**. `src/components/capability/TransferOwnershipDialog.tsx`; `transfer_capability_ownership` → `POST /api/rpc/transfer_capability_ownership` `{ newOwner, reason? }`.
 - **Preconditions:** Own capability; at least one known member.
 - **Steps:** Transfer → "Choose a member" → Continue → **Transfer ownership** in "Transfer to <name>?".
 - **Expected:** Toast "Ownership transferred to <name>"; capability no longer editable by you.
@@ -696,7 +696,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-16 — Providers, provider breakdown and evidence
 
 - **What:** Providers tab: sortable/filterable table (by kind agent/workflow) of providers here and on other instances with online state; click opens the provider. Evidence tab: invocations, success rate, cost and trends over a window (default 30 days), from `capability_evidence` rows aggregated hourly into `capability_aggregates`.
-- **Where:** `src/components/capability/ProviderBreakdownTable.tsx`, `EvidencePanel.tsx`; commands `list_providers_for_capability` (`GET /api/capabilities/{id}/providers`), `get_capability_provider_breakdown` (`/breakdown`), `get_capability_evidence` (`/evidence?windowDays=`); `services/capability/evidence.rs`, `aggregation.rs` (emits `evidence://aggregated`).
+- **Where:** `src/components/capability/ProviderBreakdownTable.tsx`, `EvidencePanel.tsx`; commands `list_providers_for_capability` (`POST /api/rpc/list_providers_for_capability`), `get_capability_provider_breakdown` (`/breakdown`), `get_capability_evidence` (`/evidence?windowDays=`); `services/capability/evidence.rs`, `aggregation.rs` (emits `evidence://aggregated`).
 - **Preconditions:** Delegations that used the capability.
 - **Steps:** Open Providers and Evidence after a few delegations.
 - **Expected:** Counts match finished tasks; "This Nandi" marked for local providers.
@@ -708,7 +708,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-17 — Ambiguity clusters and promote to schema
 
 - **What:** Clarification traffic is clustered per capability; the Ambiguities tab lists clusters ("“<label>” asked N×") and **Promote to input schema** adds an input-schema field from the cluster.
-- **Where:** `src/components/capability/AmbiguityList.tsx`; `list_capability_ambiguities` (`GET /api/capabilities/{id}/ambiguities`), `promote_ambiguity_to_schema` (`POST /api/capabilities/{id}/ambiguities/{cluster}/promote`).
+- **Where:** `src/components/capability/AmbiguityList.tsx`; `list_capability_ambiguities` (`POST /api/rpc/list_capability_ambiguities`), `promote_ambiguity_to_schema` (`POST /api/rpc/promote_ambiguity_to_schema`).
 - **Preconditions:** Delegations with clarification questions.
 - **Steps:** Promote a cluster.
 - **Expected:** Toast "“<label>” is now part of the input schema"; cluster marked "In schema"; capability file updated.

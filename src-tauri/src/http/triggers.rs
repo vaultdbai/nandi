@@ -1,124 +1,26 @@
-//! Trigger routes: CRUD (token auth, like every route) and the webhook and
-//! device receivers, which authenticate with the trigger's own secret
-//! instead (see `auth::is_trigger_receiver`) and answer `202` without
-//! waiting for the dispatch.
+//! The webhook and device receivers. They authenticate with the trigger's
+//! own secret instead of the web token (see `auth::is_trigger_receiver`) and
+//! answer `202` without waiting for the dispatch. Managing triggers is
+//! `rpc/triggers.rs`.
 
 use axum::body::Bytes;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::post;
 use axum::{Json, Router};
-use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::routes::ApiResult;
 use crate::services::triggers::device::DeviceEvent;
-use crate::services::triggers::schema::TriggerInput;
 use crate::services::triggers::webhook::{ReceiveError, SECRET_HEADER};
-use crate::services::triggers::{self, MAX_PAYLOAD_BYTES};
+use crate::services::triggers::MAX_PAYLOAD_BYTES;
 use crate::services::AppState;
 
 pub fn api() -> Router<AppState> {
     Router::new()
-        .route("/triggers", get(list).post(create))
-        // Body `{ schedule }`; returns `CronPreview`
-        .route("/triggers/cron-preview", post(cron_preview))
-        // Body: a calendar config; returns `CalendarPreview`
-        .route("/triggers/calendar-preview", post(calendar_preview))
-        .route("/triggers/{id}", get(get_one).put(update).delete(remove))
-        .route("/triggers/{id}/enable", post(enable))
-        .route("/triggers/{id}/disable", post(disable))
-        .route("/triggers/{id}/secret", post(rotate_secret))
-        .route("/triggers/{id}/test", post(test_fire))
-        .route("/triggers/{id}/fires", get(fires))
         .route("/triggers/webhook/{id}", post(webhook))
         .route("/triggers/device/{device_id}", post(device))
 }
-
-#[derive(Deserialize)]
-struct CronPreviewBody {
-    #[serde(default)]
-    schedule: String,
-}
-
-async fn cron_preview(Json(body): Json<CronPreviewBody>) -> impl IntoResponse {
-    ApiResult(Ok::<_, String>(triggers::cron::preview(
-        &body.schedule,
-        chrono::Local::now(),
-        triggers::cron::PREVIEW_COUNT,
-    )))
-}
-
-async fn calendar_preview(Json(config): Json<serde_json::Value>) -> impl IntoResponse {
-    ApiResult(Ok::<_, String>(triggers::calendar::preview(
-        &config,
-        chrono::Local::now(),
-        triggers::calendar::PREVIEW_COUNT,
-    )))
-}
-
-async fn list(State(state): State<AppState>) -> impl IntoResponse {
-    ApiResult(triggers::list_triggers(&state).await)
-}
-
-async fn create(
-    State(state): State<AppState>,
-    Json(input): Json<TriggerInput>,
-) -> impl IntoResponse {
-    ApiResult(triggers::create_trigger(&state, input).await)
-}
-
-async fn get_one(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
-    ApiResult(triggers::get_trigger(&state, id).await)
-}
-
-async fn update(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(input): Json<TriggerInput>,
-) -> impl IntoResponse {
-    ApiResult(triggers::update_trigger(&state, id, input).await)
-}
-
-async fn remove(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
-    ApiResult(triggers::delete_trigger(&state, id).await)
-}
-
-async fn enable(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
-    ApiResult(triggers::set_trigger_enabled(&state, id, true).await)
-}
-
-async fn disable(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
-    ApiResult(triggers::set_trigger_enabled(&state, id, false).await)
-}
-
-async fn rotate_secret(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
-    ApiResult(triggers::rotate_trigger_secret(&state, id).await)
-}
-
-async fn test_fire(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    body: Option<Json<Value>>,
-) -> impl IntoResponse {
-    ApiResult(triggers::test_fire_trigger(&state, id, body.map(|Json(v)| v)).await)
-}
-
-#[derive(Deserialize)]
-struct FiresQuery {
-    limit: Option<u32>,
-}
-
-async fn fires(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Query(query): Query<FiresQuery>,
-) -> impl IntoResponse {
-    ApiResult(triggers::list_trigger_fires(&state, id, query.limit).await)
-}
-
-// --- Receivers ---------------------------------------------------------------
 
 fn refused(error: ReceiveError) -> Response {
     let status = StatusCode::from_u16(error.status()).unwrap_or(StatusCode::BAD_REQUEST);

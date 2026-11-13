@@ -62,7 +62,7 @@ async cleanupOldRecoveryFiles() : Promise<Result<number, RecoveryError>> {
 }
 },
 /**
- * Lists all containers (running and stopped) on the local Docker daemon.
+ * Lists all containers (running and stopped) on the local Docker daemon
  */
 async listContainers() : Promise<Result<ContainerInfo[], string>> {
     try {
@@ -4060,12 +4060,12 @@ workspaceChanged: "workspace://changed"
 /** user-defined constants **/
 
 export const DAILY_LIMIT = "daily_limit" as const;
-export const NO_SHARED_GROUP = "no_shared_group" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const NO_SHARED_GROUP = "no_shared_group" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 
 /** user-defined types **/
 

@@ -2,7 +2,7 @@
 
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { commands, type JsonValue } from '@/lib/tauri-bindings'
+import { commands } from '@/lib/tauri-bindings'
 import { CORE_EVENT_NAMES, type NandiEvent } from './events'
 import { createEventBus } from './event-bus'
 import { marketplaceFilter } from './marketplace-filter'
@@ -91,26 +91,10 @@ export const tauriClient: NandiClient = withCommands({
   approveWorkflowStep: (runId, stepId, decision) =>
     commands.approveWorkflowStep(runId, stepId, decision),
 
-  listTriggers: () => commands.listTriggers(),
-  getTrigger: id => commands.getTrigger(id),
-  createTrigger: input => commands.createTrigger(input),
-  updateTrigger: (id, input) => commands.updateTrigger(id, input),
-  deleteTrigger: id => commands.deleteTrigger(id),
-  setTriggerEnabled: (id, enabled) => commands.setTriggerEnabled(id, enabled),
-  rotateTriggerSecret: id => commands.rotateTriggerSecret(id),
-  testFireTrigger: (id, payload) =>
-    commands.testFireTrigger(id, (payload ?? null) as JsonValue | null),
-  listTriggerFires: (triggerId, limit) =>
-    commands.listTriggerFires(triggerId, limit),
   getWebOrigin: async () => {
     const result = await commands.getWebOrigin()
     return result.status === 'ok' ? result.data : null
   },
-  previewCron: schedule => commands.previewCron(schedule),
-  previewCalendar: config =>
-    commands.previewCalendar(
-      config as Parameters<typeof commands.previewCalendar>[0]
-    ),
 
   listAvailablePacks: () => commands.listAvailablePacks(),
   listMarketplacePacks: filter =>
@@ -156,23 +140,6 @@ export const tauriClient: NandiClient = withCommands({
   gitDiff: path => commands.repoGitDiff(path),
   gitCommit: message => commands.repoGitCommit(message),
 
-  listPilots: () => commands.listPilots(),
-  installPilot: id => commands.installPilot(id),
-  startPilot: id => commands.startPilot(id),
-  stopPilot: id => commands.stopPilot(id),
-  pilotStatus: id => commands.pilotStatus(id),
-  grantPilotCapability: (agentId, pilotId, capability) =>
-    commands.grantPilotCapability(agentId, pilotId, capability),
-  revokePilotCapability: (agentId, pilotId, capability) =>
-    commands.revokePilotCapability(agentId, pilotId, capability),
-  agentPilotPermissions: agentId => commands.agentPilotPermissions(agentId),
-  setPilotSecret: (agentId, pilotId, name, value) =>
-    commands.setPilotSecret(agentId, pilotId, name, value),
-  addPilotSecret: (agentId, pilotId, name, value) =>
-    commands.addPilotSecret(agentId, pilotId, name, value),
-  clearBrowserProfile: (agentId, pilotId) =>
-    commands.clearBrowserProfile(agentId, pilotId),
-
   listConnectors: () => commands.listConnectors(),
   installConnector: id => commands.installConnector(id),
   startConnector: id => commands.startConnector(id),
@@ -217,17 +184,6 @@ export const tauriClient: NandiClient = withCommands({
   decideGatewayHold: (taskId, approve, note) =>
     commands.decideGatewayHold(taskId, approve, note),
   listGatewayAssignments: () => commands.listGatewayAssignments(),
-  getEmailStatus: () => commands.getEmailStatus(),
-  startEmailSignIn: provider => commands.startEmailSignIn(provider),
-  pollEmailSignIn: provider => commands.pollEmailSignIn(provider),
-  checkEmailNow: () => commands.checkEmailNow(),
-  setEmailPaused: (provider, paused) =>
-    commands.setEmailPaused(provider, paused),
-  disconnectEmail: provider => commands.disconnectEmail(provider),
-  setEmailSettings: settings => commands.setEmailSettings(settings),
-  setEmailBackfill: (provider, action) =>
-    commands.setEmailBackfill(provider, action),
-  estimateEmailBackfill: range => commands.estimateEmailBackfill(range),
   listRegistryConnectors: refresh => commands.listRegistryConnectors(refresh),
   getConnectorConsent: (registryUrl, connectorId) =>
     commands.getConnectorConsent(registryUrl, connectorId),
@@ -248,35 +204,6 @@ export const tauriClient: NandiClient = withCommands({
   getGatewayManifest: () => commands.getGatewayManifest(),
   setGatewayManifest: manifest => commands.setGatewayManifest(manifest),
   gatewayChat: message => commands.gatewayChat(message),
-
-  listCapabilities: () => commands.listCapabilities(),
-  getCapability: id => commands.getCapability(id),
-  saveCapability: definition => commands.saveCapability(definition),
-  deleteCapability: id => commands.deleteCapability(id),
-  transferCapabilityOwnership: (id, newOwner, reason) =>
-    commands.transferCapabilityOwnership(id, newOwner, reason),
-  listProvidersForCapability: id => commands.listProvidersForCapability(id),
-  getCapabilityEvidence: (id, windowDays) =>
-    commands.getCapabilityEvidence(id, windowDays),
-  getCapabilityProviderBreakdown: id =>
-    commands.getCapabilityProviderBreakdown(id),
-  listCapabilityAmbiguities: id => commands.listCapabilityAmbiguities(id),
-  promoteAmbiguityToSchema: (id, clusterId) =>
-    commands.promoteAmbiguityToSchema(id, clusterId),
-
-  detectAwsCli: () => commands.detectAwsCli(),
-  listAwsProfiles: () => commands.listAwsProfiles(),
-  getAwsProfile: name => commands.getAwsProfile(name),
-  startAwsSsoLogin: profile => commands.startAwsSsoLogin(profile),
-  pollAwsSsoLogin: loginId => commands.pollAwsSsoLogin(loginId),
-  saveAwsKeyProfile: input => commands.saveAwsKeyProfile(input),
-  startAwsSsoSetup: input => commands.startAwsSsoSetup(input),
-  pollAwsSsoSetup: setupId => commands.pollAwsSsoSetup(setupId),
-  finishAwsSsoSetup: finish => commands.finishAwsSsoSetup(finish),
-  cancelAwsSsoSetup: setupId => commands.cancelAwsSsoSetup(setupId),
-  checkAwsCredentials: (profile, region) =>
-    commands.checkAwsCredentials(profile, region),
-  getAwsBedrockApiKeyStatus: () => commands.getAwsBedrockApiKeyStatus(),
 
   openExternal: url => openUrl(url),
 

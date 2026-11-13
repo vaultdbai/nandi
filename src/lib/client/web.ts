@@ -217,36 +217,8 @@ export const webClient: NandiClient = withCommands({
     request('GET', `/emergency-data/${id(filename)}`),
   cleanupOldRecoveryFiles: () => request('POST', '/emergency-data/cleanup'),
 
-  listTriggers: () => request('GET', '/triggers'),
-  getTrigger: triggerId => request('GET', `/triggers/${id(triggerId)}`),
-  createTrigger: input => request('POST', '/triggers', input),
-  updateTrigger: (triggerId, input) =>
-    request('PUT', `/triggers/${id(triggerId)}`, input),
-  deleteTrigger: triggerId => request('DELETE', `/triggers/${id(triggerId)}`),
-  setTriggerEnabled: (triggerId, enabled) =>
-    request(
-      'POST',
-      `/triggers/${id(triggerId)}/${enabled ? 'enable' : 'disable'}`
-    ),
-  rotateTriggerSecret: triggerId =>
-    request('POST', `/triggers/${id(triggerId)}/secret`),
-  testFireTrigger: (triggerId, payload) =>
-    request(
-      'POST',
-      `/triggers/${id(triggerId)}/test`,
-      payload ?? { test: true }
-    ),
-  listTriggerFires: (triggerId, limit) =>
-    request(
-      'GET',
-      `/triggers/${id(triggerId)}/fires${limit === null ? '' : `?limit=${limit}`}`
-    ),
   // The page is served by the Nandi web server itself
   getWebOrigin: () => Promise.resolve(location.origin),
-  previewCron: schedule =>
-    request('POST', '/triggers/cron-preview', { schedule }),
-  previewCalendar: config =>
-    request('POST', '/triggers/calendar-preview', config),
 
   listAvailablePacks: () => request('GET', '/marketplace/packs'),
   listMarketplacePacks: filter =>
@@ -314,34 +286,6 @@ export const webClient: NandiClient = withCommands({
   gitStatus: () => request('GET', '/repo/git/status'),
   gitDiff: path => request('GET', `/repo/git/diff${query({ path })}`),
   gitCommit: message => request('POST', '/repo/git/commit', { message }),
-
-  listPilots: () => request('GET', '/pilots'),
-  installPilot: pilotId => request('POST', `/pilots/${id(pilotId)}/install`),
-  startPilot: pilotId => request('POST', `/pilots/${id(pilotId)}/start`),
-  stopPilot: pilotId => request('POST', `/pilots/${id(pilotId)}/stop`),
-  pilotStatus: pilotId => request('GET', `/pilots/${id(pilotId)}/status`),
-  grantPilotCapability: (agentId, pilotId, capability) =>
-    request('POST', `/agents/${id(agentId)}/pilots/${id(pilotId)}/grant`, {
-      capability,
-    }),
-  revokePilotCapability: (agentId, pilotId, capability) =>
-    request('POST', `/agents/${id(agentId)}/pilots/${id(pilotId)}/revoke`, {
-      capability,
-    }),
-  agentPilotPermissions: agentId =>
-    request('GET', `/agents/${id(agentId)}/pilots`),
-  setPilotSecret: (agentId, pilotId, name, value) =>
-    request('PUT', `/agents/${id(agentId)}/pilots/${id(pilotId)}/secret`, {
-      name,
-      value,
-    }),
-  addPilotSecret: (agentId, pilotId, name, value) =>
-    request('POST', `/agents/${id(agentId)}/pilots/${id(pilotId)}/secrets`, {
-      name,
-      value,
-    }),
-  clearBrowserProfile: (agentId, pilotId) =>
-    request('DELETE', `/agents/${id(agentId)}/pilots/${id(pilotId)}/profile`),
 
   listConnectors: () => request('GET', '/connectors'),
   installConnector: connectorId =>
@@ -414,25 +358,6 @@ export const webClient: NandiClient = withCommands({
       note,
     }),
   listGatewayAssignments: () => request('GET', '/gateway/assignments'),
-  getEmailStatus: () => request('GET', '/email'),
-  startEmailSignIn: provider =>
-    request('POST', `/email/${encodeURIComponent(provider)}/sign-in`),
-  pollEmailSignIn: provider =>
-    request('POST', `/email/${encodeURIComponent(provider)}/sign-in/poll`),
-  checkEmailNow: () => request('POST', '/email/check'),
-  setEmailPaused: (provider, paused) =>
-    request('PUT', `/email/${encodeURIComponent(provider)}/paused`, {
-      paused,
-    }),
-  disconnectEmail: provider =>
-    request('DELETE', `/email/${encodeURIComponent(provider)}`),
-  setEmailSettings: settings => request('PUT', '/email/settings', settings),
-  setEmailBackfill: (provider, action) =>
-    request('PUT', `/email/${encodeURIComponent(provider)}/backfill`, {
-      action,
-    }),
-  estimateEmailBackfill: range =>
-    request('POST', '/email/backfill/estimate', { range }),
   listRegistryConnectors: refresh =>
     request('GET', `/registry-connectors?refresh=${refresh}`),
   getConnectorConsent: (registryUrl, connectorId) =>
@@ -469,51 +394,7 @@ export const webClient: NandiClient = withCommands({
   setGatewayManifest: manifest => request('PUT', '/gateway/manifest', manifest),
   gatewayChat: message => request('POST', '/gateway/chat', { message }),
 
-  listCapabilities: () => request('GET', '/capabilities'),
-  getCapability: capabilityId =>
-    request('GET', `/capabilities/${id(capabilityId)}`),
-  saveCapability: definition =>
-    request('PUT', `/capabilities/${id(definition.id)}`, definition),
-  deleteCapability: capabilityId =>
-    request('DELETE', `/capabilities/${id(capabilityId)}`),
-  transferCapabilityOwnership: (capabilityId, newOwner, reason) =>
-    request('POST', `/capabilities/${id(capabilityId)}/transfer`, {
-      newOwner,
-      reason,
-    }),
-  listProvidersForCapability: capabilityId =>
-    request('GET', `/capabilities/${id(capabilityId)}/providers`),
-  getCapabilityEvidence: (capabilityId, windowDays) =>
-    request(
-      'GET',
-      `/capabilities/${id(capabilityId)}/evidence${query({ windowDays })}`
-    ),
-  getCapabilityProviderBreakdown: capabilityId =>
-    request('GET', `/capabilities/${id(capabilityId)}/breakdown`),
-  listCapabilityAmbiguities: capabilityId =>
-    request('GET', `/capabilities/${id(capabilityId)}/ambiguities`),
-  promoteAmbiguityToSchema: (capabilityId, clusterId) =>
-    request(
-      'POST',
-      `/capabilities/${id(capabilityId)}/ambiguities/${id(clusterId)}/promote`
-    ),
-
   // The relay connection lives in the core; no browser route for this yet
-
-  detectAwsCli: () => request('GET', '/aws/cli'),
-  listAwsProfiles: () => request('GET', '/aws/profiles'),
-  getAwsProfile: name => request('GET', `/aws/profiles/${id(name)}`),
-  startAwsSsoLogin: profile => request('POST', '/aws/sso/login', { profile }),
-  pollAwsSsoLogin: loginId => request('GET', `/aws/sso/login/${id(loginId)}`),
-  saveAwsKeyProfile: input => request('POST', '/aws/profiles/keys', input),
-  startAwsSsoSetup: input => request('POST', '/aws/sso/setup', input),
-  pollAwsSsoSetup: setupId => request('GET', `/aws/sso/setup/${id(setupId)}`),
-  finishAwsSsoSetup: finish => request('POST', '/aws/sso/setup/finish', finish),
-  cancelAwsSsoSetup: setupId =>
-    request('DELETE', `/aws/sso/setup/${id(setupId)}`),
-  checkAwsCredentials: (profile, region) =>
-    request('POST', '/aws/credentials/check', { profile, region }),
-  getAwsBedrockApiKeyStatus: () => request('GET', '/aws/bedrock-api-key'),
 
   openExternal: url => {
     window.open(url, '_blank', 'noopener,noreferrer')

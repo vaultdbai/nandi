@@ -1,7 +1,4 @@
-//! Docker container commands.
-//!
-//! Talks to the local Docker daemon via bollard. Agents run in containers,
-//! so these commands back the Agent Console's view of the runtime.
+//! The containers on the local Docker daemon, through bollard.
 
 use bollard::models::ContainerSummary;
 use bollard::query_parameters::ListContainersOptions;
@@ -40,8 +37,6 @@ impl From<ContainerSummary> for ContainerInfo {
 }
 
 /// Lists all containers (running and stopped) on the local Docker daemon.
-#[tauri::command]
-#[specta::specta]
 pub async fn list_containers() -> Result<Vec<ContainerInfo>, String> {
     let docker = Docker::connect_with_local_defaults().map_err(|e| {
         log::error!("Failed to connect to Docker: {e}");

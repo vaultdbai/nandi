@@ -8,17 +8,13 @@
 // Wave CD (see docs/developer/interaction-layer.md)
 pub mod auth;
 // Wave B
-mod aws_auth;
-mod capabilities;
 // Wave A
 mod companion;
 // Wave EF
 mod connectors;
 // Wave final
-mod email;
 mod gateway;
 mod marketplace;
-mod pilots;
 mod relay;
 mod repo;
 mod routes;
@@ -49,10 +45,9 @@ pub fn router(state: AppState, token: WebToken) -> Router {
             "/api",
             routes::api()
                 .merge(rpc::api())
-                .merge(marketplace::api())
                 .merge(triggers::api())
+                .merge(marketplace::api())
                 .merge(repo::api())
-                .merge(pilots::api())
                 .merge(connectors::api())
                 // Wave 2A
                 .merge(relay::api())
@@ -60,12 +55,8 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(companion::api())
                 // Wave final
                 // Wave final, network-first
-                .merge(gateway::api())
-                .merge(email::api())
-                // Wave A
-                .merge(capabilities::api())
-                // Wave B
-                .merge(aws_auth::api()), // Wave CD (see docs/developer/interaction-layer.md),
+                .merge(gateway::api()), // Wave A
+                                        // Wave B, // Wave CD (see docs/developer/interaction-layer.md),
         )
         .route("/ws", get(ws::handler))
         .fallback(static_files::handler)
@@ -235,7 +226,6 @@ mod tests {
     async fn wave_2a_routes_are_mounted() {
         let (state, app) = app();
         for (method, uri) in [
-            ("GET", "/api/capabilities"),
             ("GET", "/api/relay/status"),
             ("PUT", "/api/relay/url"),
             ("POST", "/api/relay/join"),
@@ -294,8 +284,6 @@ mod tests {
             // Network-first
             ("PUT", "/api/connectors/github/secret"),
             ("PUT", "/api/connectors/filesystem/config"),
-            ("POST", "/api/triggers/cron-preview"),
-            ("POST", "/api/triggers/calendar-preview"),
             ("GET", "/api/workflow-templates"),
             ("POST", "/api/runs/r1/file"),
             ("POST", "/api/llm-keys/anthropic/test"),
@@ -327,37 +315,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn wave_a_routes_are_mounted() {
-        let (state, app) = app();
-        let definition = r#"{"id":"c1","name":"C","description":"","version":"1.0.0",
-            "owner":{"kind":"user","id":"ada","displayName":"Ada"},
-            "createdAt":null,"updatedAt":null}"#;
-        let owner = r#"{"newOwner":{"kind":"user","id":"bob","displayName":"Bob"}}"#;
-        for (method, uri, body) in [
-            ("GET", "/api/capabilities", "{}"),
-            ("POST", "/api/capabilities", definition),
-            ("GET", "/api/capabilities/c1", "{}"),
-            ("PUT", "/api/capabilities/c1", definition),
-            ("DELETE", "/api/capabilities/c1", "{}"),
-            ("POST", "/api/capabilities/c1/transfer", owner),
-            ("GET", "/api/capabilities/c1/providers", "{}"),
-            ("GET", "/api/capabilities/c1/breakdown", "{}"),
-            ("GET", "/api/capabilities/c1/evidence?windowDays=7", "{}"),
-            ("GET", "/api/capabilities/c1/ambiguities", "{}"),
-            ("POST", "/api/capabilities/c1/ambiguities/k1/promote", "{}"),
-        ] {
-            // JSON (501 while stubbed, or the track's answer)
-            let response = app
-                .clone()
-                .oneshot(authed(method, uri, body))
-                .await
-                .unwrap();
-            assert!(is_json(&response), "{method} {uri}: {}", response.status());
-        }
-        state.shutdown();
-    }
-
-    #[tokio::test]
     async fn wave_b_routes_are_mounted() {
         let (state, app) = app();
         // Only routes without side effects outside the test (no CLI
@@ -377,8 +334,8 @@ mod tests {
                 r#"{"harnessId":"nope"}"#,
             ),
             ("POST", "/api/rpc/test_harness", r#"{"harnessId":"nope"}"#),
-            ("GET", "/api/aws/bedrock-api-key", "{}"),
-            ("GET", "/api/aws/sso/login/l1", "{}"),
+            ("POST", "/api/rpc/get_aws_bedrock_api_key_status", "{}"),
+            ("POST", "/api/rpc/poll_aws_sso_login", r#"{"loginId":"l1"}"#),
             ("POST", "/api/rpc/get_litellm_gateway_status", "{}"),
         ] {
             // JSON (501 while stubbed, or the track's answer)
@@ -523,9 +480,9 @@ mod tests {
             .clone()
             .oneshot(authed(
                 "POST",
-                "/api/triggers",
-                r#"{"name": "Hook", "sourceType": "webhook", "sourceConfig": {},
-                    "targetType": "agent", "targetId": "writer"}"#,
+                "/api/rpc/create_trigger",
+                r#"{"input": {"name": "Hook", "sourceType": "webhook", "sourceConfig": {},
+                    "targetType": "agent", "targetId": "writer"}}"#,
             ))
             .await
             .unwrap();
@@ -561,11 +518,15 @@ mod tests {
             let response = app.clone().oneshot(hook(secret, body)).await.unwrap();
             assert_eq!(response.status(), status, "{secret:?} {body}");
         }
-        // Everything else under /api/triggers still needs the token
-        let response = app.clone().oneshot(get("/api/triggers")).await.unwrap();
+        // Managing triggers still needs the token
+        let unauthed = Request::post("/api/rpc/list_triggers")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from("{}"))
+            .unwrap();
+        let response = app.clone().oneshot(unauthed).await.unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let listed = json(
-            app.oneshot(authed("GET", "/api/triggers", ""))
+            app.oneshot(authed("POST", "/api/rpc/list_triggers", "{}"))
                 .await
                 .unwrap(),
         )

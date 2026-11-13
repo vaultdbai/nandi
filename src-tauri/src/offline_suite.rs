@@ -45,11 +45,9 @@ const SCREEN_ROUTES: &[&str] = &[
     "agents",
     "agents/overviews",
     "approvals/pending",
-    "capabilities",
     "companion/snapshot",
     "connectors",
     "default-model",
-    "email",
     "gateway/callers",
     "gateway/config",
     "gateway/holds",
@@ -57,12 +55,10 @@ const SCREEN_ROUTES: &[&str] = &[
     "gateway/status",
     "llm-keys",
     "marketplace/installed",
-    "pilots",
     "relay/agents",
     "relay/status",
     "repo/git/status",
     "repo/status",
-    "triggers",
     "workflows",
 ];
 
@@ -72,6 +68,7 @@ const SCREEN_COMMANDS: &[&str] = &[
     "get_auto_approve_rules",
     "get_chief_of_staff_digest",
     "get_egress_status",
+    "get_email_status",
     "get_identity_status",
     "get_know_me",
     "get_my_notes",
@@ -85,6 +82,7 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_agents_shared_by_me",
     "list_agents_shared_with_me",
     "list_ask_history",
+    "list_capabilities",
     "list_capability_providers",
     "list_capability_registries",
     "list_connector_grants",
@@ -94,12 +92,14 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_groups",
     "list_note_suggestions",
     "list_pending_manual_steps",
+    "list_pilots",
     "list_push_targets",
     "list_recent_changes",
     "list_request_returns",
     "list_tasks",
     "list_teams",
     "list_tools",
+    "list_triggers",
     "list_trust_policies",
     "list_trust_requests",
     "list_work",
@@ -157,10 +157,11 @@ pub(crate) async fn call(
         .unwrap();
     let status = response.status();
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    (
-        status,
-        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
-    )
+    // Every API answer is JSON; HTML is the frontend's fallback for a path
+    // with no route
+    let body = serde_json::from_slice(&bytes)
+        .unwrap_or_else(|_| panic!("{method} /api/{uri} has no route (the answer isn't JSON)"));
+    (status, body)
 }
 
 pub(crate) async fn get(router: &Router, uri: &str) -> Value {

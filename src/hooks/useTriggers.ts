@@ -2,7 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useAgents } from '@/hooks/useAgents'
 import { useWorkflows } from '@/hooks/useSnapshots'
 import { client } from '@/lib/client'
-import { unwrapResult, type Trigger } from '@/lib/tauri-bindings'
+import {
+  unwrapResult,
+  type JsonValue,
+  type Trigger,
+} from '@/lib/tauri-bindings'
 import {
   calendarConfig,
   formProblems,
@@ -77,7 +81,7 @@ export function useCalendarPreview(config: Record<string, unknown> | null) {
   return useQuery({
     queryKey: ['calendarPreview', key],
     queryFn: async () =>
-      unwrapResult(await client.previewCalendar(config ?? {})),
+      unwrapResult(await client.previewCalendar((config ?? {}) as JsonValue)),
     enabled: config !== null,
     placeholderData: previous => previous,
     staleTime: 60_000,

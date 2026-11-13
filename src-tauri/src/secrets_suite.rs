@@ -83,9 +83,9 @@ async fn no_secret_reaches_the_repo_or_its_history() {
     put(&router, "llm-keys/anthropic", json!({ "apiKey": provider })).await;
     secrets.push(("provider key", provider.into()));
     let aws_secret = "dt04AwsSecretKey0123456789abcdefghijklmn";
-    put(
+    rpc(
         &router,
-        "egress/aws-credentials",
+        "set_aws_credentials",
         json!({ "accessKey": "AKIADT04EXAMPLE00000", "secret": aws_secret }),
     )
     .await;
@@ -117,10 +117,13 @@ async fn no_secret_reaches_the_repo_or_its_history() {
     // An agent and its browser's site password
     add_shopper(&state);
     let site_password = "dt04-site-password-Hunter2!";
-    post(
+    rpc(
         &router,
-        "agents/shopper/pilots/browser/secrets",
-        json!({ "name": "SITE_PASSWORD", "value": site_password }),
+        "add_pilot_secret",
+        json!({
+            "agentId": "shopper", "pilotId": "browser",
+            "name": "SITE_PASSWORD", "value": site_password,
+        }),
     )
     .await;
     secrets.push(("site password", site_password.into()));
@@ -132,13 +135,13 @@ async fn no_secret_reaches_the_repo_or_its_history() {
         json!({ "yaml": "id: dt04-flow\nname: DT-04 flow\nsteps:\n  - id: shop\n    agent: shopper\n    input: \"Check the order\"\n" }),
     )
     .await;
-    let saved = post(
+    let saved = rpc(
         &router,
-        "triggers",
-        json!({
+        "create_trigger",
+        json!({ "input": {
             "id": "dt04-hook", "name": "DT-04 hook", "sourceType": "webhook",
             "sourceConfig": {}, "targetType": "workflow", "targetId": "dt04-flow",
-        }),
+        }}),
     )
     .await;
     let hook_secret = saved["secret"]
