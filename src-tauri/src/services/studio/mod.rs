@@ -15,7 +15,6 @@ pub mod validate;
 pub mod version_bumper;
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -183,7 +182,7 @@ impl StudioService {
         instruction: String,
     ) -> Result<EditPreview, StudioError> {
         let state = self.state()?;
-        let ask = state.ask().ok_or("The ask box is unavailable")?.clone();
+        let ask = state.ask().clone();
         let context = ask::context::load(
             &state,
             &AskContext {
@@ -245,22 +244,12 @@ impl StudioService {
     }
 }
 
-pub fn init(state: &AppState) -> Option<Arc<StudioService>> {
-    Some(Arc::new(StudioService::new(state.downgrade())))
-}
-
-fn service(state: &AppState) -> Result<&Arc<StudioService>, StudioError> {
-    state
-        .studio()
-        .ok_or_else(|| "Studio is unavailable".to_string())
-}
-
 /// What's open in Studio's editor (`None`: nothing), for Studio's chat
 pub fn set_open_artifact(
     state: &AppState,
     artifact: Option<ArtifactRef>,
 ) -> Result<(), StudioError> {
-    service(state)?.set_open_artifact(artifact);
+    state.studio().set_open_artifact(artifact);
     Ok(())
 }
 
@@ -268,14 +257,14 @@ pub async fn load_artifact(
     state: &AppState,
     artifact: ArtifactRef,
 ) -> Result<ArtifactLoad, StudioError> {
-    service(state)?.load(artifact).await
+    state.studio().load(artifact).await
 }
 
 pub async fn save_artifact(
     state: &AppState,
     save: ArtifactSave,
 ) -> Result<ArtifactSaveResult, StudioError> {
-    service(state)?.save(save).await
+    state.studio().save(save).await
 }
 
 pub async fn preview_edit(
@@ -283,11 +272,11 @@ pub async fn preview_edit(
     artifact: ArtifactRef,
     instruction: String,
 ) -> Result<EditPreview, StudioError> {
-    service(state)?.preview(artifact, instruction).await
+    state.studio().preview(artifact, instruction).await
 }
 
 pub async fn list_push_targets(state: &AppState) -> Result<Vec<PushTargetOption>, StudioError> {
-    service(state)?.push_targets()
+    state.studio().push_targets()
 }
 
 /// Checks `content` as `artifact` the way saving would, plus unknown tools,

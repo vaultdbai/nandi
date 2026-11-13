@@ -18,7 +18,7 @@
 //! (`CredentialStatus`, `AwsProfile`, …) holds no key material.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -875,22 +875,22 @@ fn aws_smithy_error(error: &(dyn std::error::Error + 'static)) -> String {
     message
 }
 
-pub fn init(state: &AppState) -> Option<Arc<AwsAuthService>> {
-    let env = if cfg!(test) {
-        let empty = state.app_data_dir().join("aws-test-home");
-        DetectEnv {
-            path: Some(empty.clone().into_os_string()),
-            home: empty,
-            vars: HashMap::new(),
-        }
-    } else {
-        DetectEnv::current()
-    };
-    Some(Arc::new(AwsAuthService::new(
-        state.db().clone(),
-        state.bus().clone(),
-        env,
-    )))
+impl AwsAuthService {
+    /// Reads this machine's AWS config. Tests get an empty home inside
+    /// `app_data_dir` instead.
+    pub fn for_app(db: Db, bus: EventBus, app_data_dir: &Path) -> Self {
+        let env = if cfg!(test) {
+            let empty = app_data_dir.join("aws-test-home");
+            DetectEnv {
+                path: Some(empty.clone().into_os_string()),
+                home: empty,
+                vars: HashMap::new(),
+            }
+        } else {
+            DetectEnv::current()
+        };
+        Self::new(db, bus, env)
+    }
 }
 
 /// Agents' AWS identity from `service`'s profiles (`egress::credentials`)
@@ -901,74 +901,68 @@ pub fn agent_sign_in(service: Arc<AwsAuthService>) -> SignInFn {
     })
 }
 
-fn service(state: &AppState) -> Result<&Arc<AwsAuthService>, String> {
-    state
-        .aws_auth()
-        .ok_or_else(|| "AWS auth is not available".to_string())
-}
-
 /// The AWS credentials a Bedrock session (or the gateway) gets
 pub async fn bedrock_credentials(
     state: &AppState,
     profile: Option<String>,
     region: Option<String>,
 ) -> Result<HarnessCredentials, String> {
-    service(state)?.bedrock_credentials(profile, region).await
+    state.aws_auth().bedrock_credentials(profile, region).await
 }
 
 pub async fn detect_aws_cli(state: &AppState) -> Result<AwsCliInfo, String> {
-    Ok(service(state)?.detect_cli().await)
+    Ok(state.aws_auth().detect_cli().await)
 }
 
 pub async fn list_aws_profiles(state: &AppState) -> Result<Vec<AwsProfile>, String> {
-    service(state)?.profiles().await
+    state.aws_auth().profiles().await
 }
 
 pub async fn get_aws_profile(state: &AppState, name: &str) -> Result<AwsProfile, String> {
-    service(state)?.profile(name).await
+    state.aws_auth().profile(name).await
 }
 
 pub async fn start_aws_sso_login(
     state: &AppState,
     profile: &str,
 ) -> Result<SsoLoginResult, String> {
-    service(state)?.start_sso_login(profile).await
+    state.aws_auth().start_sso_login(profile).await
 }
 
 pub async fn poll_aws_sso_login(
     state: &AppState,
     login_id: &str,
 ) -> Result<SsoLoginResult, String> {
-    service(state)?.poll_sso_login(login_id)
+    state.aws_auth().poll_sso_login(login_id)
 }
 
 pub async fn save_aws_key_profile(
     state: &AppState,
     input: KeyProfileInput,
 ) -> Result<AwsProfile, String> {
-    service(state)?.save_key_profile(input).await
+    state.aws_auth().save_key_profile(input).await
 }
 
 pub async fn start_aws_sso_setup(
     state: &AppState,
     input: SsoSetupInput,
 ) -> Result<SsoSetup, String> {
-    service(state)?.start_sso_setup(input).await
+    state.aws_auth().start_sso_setup(input).await
 }
 
 pub async fn poll_aws_sso_setup(state: &AppState, setup_id: &str) -> Result<SsoSetup, String> {
-    service(state)?.poll_sso_setup(setup_id).await
+    state.aws_auth().poll_sso_setup(setup_id).await
 }
 
 pub async fn finish_aws_sso_setup(
     state: &AppState,
     finish: SsoSetupFinish,
 ) -> Result<AwsProfile, String> {
-    service(state)?.finish_sso_setup(finish).await
+    state.aws_auth().finish_sso_setup(finish).await
 }
 
 pub async fn cancel_aws_sso_setup(state: &AppState, setup_id: &str) -> Result<(), String> {
-    service(state)?.cancel_sso_setup(setup_id);
+    state.aws_auth().cancel_sso_setup(setup_id);
     Ok(())
 }
 
@@ -977,13 +971,13 @@ pub async fn check_aws_credentials(
     profile: Option<String>,
     region: Option<String>,
 ) -> Result<CredentialStatus, String> {
-    Ok(service(state)?.check(profile, region, true).await)
+    Ok(state.aws_auth().check(profile, region, true).await)
 }
 
 pub async fn get_aws_bedrock_api_key_status(
     state: &AppState,
 ) -> Result<BedrockApiKeyStatus, String> {
-    Ok(service(state)?.bedrock_api_key_status())
+    Ok(state.aws_auth().bedrock_api_key_status())
 }
 
 #[cfg(test)]

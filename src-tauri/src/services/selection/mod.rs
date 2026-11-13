@@ -40,10 +40,8 @@ pub trait SelectionService: Send + Sync {
     /// knows whether a provider missing from the ranking was filtered out
     fn capability_ranking<'a>(
         &'a self,
-        _ctx: &'a CapabilitySelectionContext,
-    ) -> BoxFuture<'a, Result<CapabilityRanking, SelectionError>> {
-        Box::pin(async { Err(crate::services::redesign::NOT_IMPLEMENTED.to_string()) })
-    }
+        ctx: &'a CapabilitySelectionContext,
+    ) -> BoxFuture<'a, Result<CapabilityRanking, SelectionError>>;
 
     /// One outcome for a local provider's circuit (`provider_circuits`)
     fn record_provider_outcome<'a>(

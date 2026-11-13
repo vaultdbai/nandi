@@ -460,8 +460,9 @@ pub async fn resolve_runtime(app: &AppState, agent: &Agent) -> RuntimeDecision {
         Err(e) => return RuntimeDecision::Unavailable(e),
     };
     let shared = skill.folders.clone();
-    let gateway = match (&config.gateway, app.litellm_gateway()) {
-        (Some(_), Some(gateway)) => {
+    let gateway = match &config.gateway {
+        Some(_) => {
+            let gateway = app.litellm_gateway();
             let Some(bedrock_model) = config.model.clone() else {
                 return RuntimeDecision::Unavailable(
                     "runtime_config.model must name the Bedrock model for the gateway".to_string(),
@@ -474,7 +475,7 @@ pub async fn resolve_runtime(app: &AppState, agent: &Agent) -> RuntimeDecision {
             }
             gateway.session_gateway(true)
         }
-        _ => None,
+        None => None,
     };
     plan(
         agent,

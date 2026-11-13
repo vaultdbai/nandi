@@ -158,6 +158,11 @@ pub struct Analyzer {
 }
 
 impl Analyzer {
+    /// The analyzer with the real model. Doesn't touch the network.
+    pub fn with_llm(db: Db, store: RepoStore, secrets: Secrets) -> Self {
+        Self::new(db, store, Arc::new(LlmModel { secrets }))
+    }
+
     pub fn new(db: Db, store: RepoStore, model: Arc<dyn AnalysisModel>) -> Self {
         Self { db, store, model }
     }
@@ -274,34 +279,16 @@ impl RunAnalyzer for Analyzer {
     }
 }
 
-/// Builds the analyzer with the real model. Doesn't touch the network.
-pub fn init(state: &AppState) -> Option<Arc<dyn RunAnalyzer>> {
-    let model = Arc::new(LlmModel {
-        secrets: state.secrets().clone(),
-    });
-    Some(Arc::new(Analyzer::new(
-        state.db().clone(),
-        state.store().clone(),
-        model,
-    )))
-}
-
-fn analyzer(state: &AppState) -> Result<&Arc<dyn RunAnalyzer>, String> {
-    state
-        .analysis()
-        .ok_or_else(|| "Run analysis is not available".to_string())
-}
-
 pub async fn analyze_run(
     state: &AppState,
     run_id: &str,
     question: &str,
 ) -> Result<AnalysisResponse, String> {
-    analyzer(state)?.analyze_run(run_id, question).await
+    state.analysis().analyze_run(run_id, question).await
 }
 
 pub async fn summarize_run(state: &AppState, run_id: &str) -> Result<String, String> {
-    analyzer(state)?.summarize_run(run_id).await
+    state.analysis().summarize_run(run_id).await
 }
 
 // ---------------------------------------------------------------------------
@@ -974,7 +961,6 @@ mod tests {
     async fn without_an_api_key_the_error_says_where_to_add_one() {
         let state = AppState::for_tests(vec![]);
         insert_fixture(&state);
-        assert!(state.analysis().is_some());
         let error = analyze_run(&state, "r1", "What happened?")
             .await
             .unwrap_err();

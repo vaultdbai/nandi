@@ -12,8 +12,6 @@
 //! which Studio's prompt reads ([`prompt_context`]). "@Agent …" sends the
 //! rest of the message to that agent instead.
 
-use std::sync::Arc;
-
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -88,12 +86,6 @@ pub const DEGRADED: &str = "degraded";
 pub const DOWN: &str = "down";
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
-
-pub struct CompanionService;
-
-pub fn init(_state: &AppState) -> Option<Arc<CompanionService>> {
-    Some(Arc::new(CompanionService))
-}
 
 /// Agent health inputs that don't come from the runs table.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]

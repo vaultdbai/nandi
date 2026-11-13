@@ -1747,7 +1747,7 @@ pub fn init(state: &AppState) -> Option<Arc<TaskService>> {
     };
     let service = TaskService::new(
         deps,
-        state.selection().cloned(),
+        Some(state.selection().clone()),
         TaskConfig::default(),
         state.runtime(),
     );

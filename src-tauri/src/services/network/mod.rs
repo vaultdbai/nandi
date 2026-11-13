@@ -693,11 +693,10 @@ fn emit_changes(state: &AppState, changes: &DirectoryChanges, member_count: usiz
     }
 }
 
-/// Builds the directory and, in the background, refreshes it whenever the
-/// relay reports presence or connection changes (diffing for the
-/// `network://*` events). Never touches the network on this thread.
-pub fn init_directory(state: &AppState) -> Option<Arc<NetworkService>> {
-    let service = Arc::new(NetworkService::new(state.db()));
+/// Refreshes the directory in the background whenever the relay reports
+/// presence or connection changes (diffing for the `network://*` events).
+/// Never touches the network on this thread.
+pub fn watch_directory(state: &AppState) {
     let mut events = state.broadcast().subscribe();
     // Weak, so the listener ends with the app (the sender lives in it)
     let weak = Arc::downgrade(&state.0);
@@ -720,13 +719,10 @@ pub fn init_directory(state: &AppState) -> Option<Arc<NetworkService>> {
             }
         }
     });
-    Some(service)
 }
 
 async fn snapshot(state: &AppState, force: bool) -> Result<NetworkSnapshot, String> {
-    let service = state
-        .network()
-        .ok_or_else(|| "The network directory isn't available".to_string())?;
+    let service = state.network();
     if !force {
         if let Some(snapshot) = service.cached() {
             return Ok(snapshot);
@@ -1075,7 +1071,6 @@ pub(crate) mod directory_tests {
     #[tokio::test]
     async fn the_service_answers_through_app_state() {
         let state = AppState::for_tests(vec![]);
-        assert!(state.network().is_some());
         let snapshot = get_network_snapshot(&state).await.unwrap();
         assert!(snapshot.members.is_empty());
         // No relay: refreshing says so; the listing stays readable

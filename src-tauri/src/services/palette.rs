@@ -17,7 +17,7 @@
 //!   stalls typing.
 
 use std::collections::{BTreeSet, HashMap};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -77,10 +77,6 @@ impl PaletteService {
     fn paused(&self) -> MutexGuard<'_, BTreeSet<String>> {
         self.paused.lock().unwrap_or_else(|e| e.into_inner())
     }
-}
-
-pub fn init(_state: &AppState) -> Option<Arc<PaletteService>> {
-    Some(Arc::new(PaletteService::default()))
 }
 
 // ---------------------------------------------------------------------------
@@ -758,12 +754,6 @@ fn require(value: Option<String>, action_id: &str, field: &str) -> Result<String
         .ok_or_else(|| format!("Action '{action_id}' needs '{field}'"))
 }
 
-fn service(state: &AppState) -> Result<&Arc<PaletteService>, String> {
-    state
-        .palette()
-        .ok_or_else(|| "The command palette isn't ready".to_string())
-}
-
 fn message(text: String) -> PaletteActionOutcome {
     PaletteActionOutcome {
         message: Some(text),
@@ -801,7 +791,7 @@ pub async fn execute_palette_action(
             let id = require(args.agent_id, action_id, "agentId")?;
             state.store().require_agent(&id)?;
             agents::stop_agent(state, &id).await?;
-            service(state)?.paused().insert(id.clone());
+            state.palette().paused().insert(id.clone());
             Ok(message(format!(
                 "Paused {}",
                 state.store().display_name(&id)
@@ -810,7 +800,7 @@ pub async fn execute_palette_action(
         RESUME_AGENT => {
             let id = require(args.agent_id, action_id, "agentId")?;
             agents::start_agent(state, &id).await?;
-            service(state)?.paused().remove(&id);
+            state.palette().paused().remove(&id);
             Ok(message(format!(
                 "Resumed {}",
                 state.store().display_name(&id)
@@ -820,12 +810,12 @@ pub async fn execute_palette_action(
             let agent_list = agents::list_agents(state).await?;
             for agent in &agent_list {
                 agents::stop_agent(state, &agent.id).await?;
-                service(state)?.paused().insert(agent.id.clone());
+                state.palette().paused().insert(agent.id.clone());
             }
             Ok(message(format!("Paused {} agent(s)", agent_list.len())))
         }
         RESUME_ALL => {
-            let paused: Vec<String> = service(state)?.paused().iter().cloned().collect();
+            let paused: Vec<String> = state.palette().paused().iter().cloned().collect();
             if paused.is_empty() {
                 return Ok(message(
                     "No agents were paused from the palette".to_string(),
@@ -836,7 +826,7 @@ pub async fn execute_palette_action(
             for id in paused {
                 match agents::start_agent(state, &id).await {
                     Ok(_) => {
-                        service(state)?.paused().remove(&id);
+                        state.palette().paused().remove(&id);
                         resumed += 1;
                     }
                     Err(e) => failures.push(format!("{id}: {e}")),

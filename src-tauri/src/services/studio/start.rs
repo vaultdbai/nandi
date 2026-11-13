@@ -20,7 +20,7 @@ use serde_json::{json, Value};
 use crate::db::PlannedCall;
 use crate::engine::ToolOutcome;
 use crate::services::ask::context::{self, GatewayContext};
-use crate::services::ask::{planner, ActionPlan, AskContext, ModelAskLlm, PlanStep, PlanStepKind};
+use crate::services::ask::{planner, ActionPlan, AskContext, PlanStep, PlanStepKind};
 use crate::services::AppState;
 
 use super::prompt::REQUEST_LINK_PREFIX;
@@ -157,13 +157,7 @@ pub async fn call(state: &AppState, args: &Value) -> ToolOutcome {
     let context = gateway_context(state).await;
 
     let Some(plan) = plan_arg(args) else {
-        let plan = match state.ask() {
-            Some(ask) => planner::plan(ask.llm().as_ref(), text, &context).await,
-            None => {
-                let llm = ModelAskLlm::new(state.secrets().clone(), state.store().clone());
-                planner::plan(&llm, text, &context).await
-            }
-        };
+        let plan = planner::plan(state.ask().llm().as_ref(), text, &context).await;
         if let Some(rejection) = &plan.rejection {
             return ok(json!({ "rejection": rejection }));
         }

@@ -56,17 +56,6 @@ pub struct TrustUpdate {
     pub delegations_paused: Option<bool>,
 }
 
-/// The trust service. Stateless: everything lives in SQLite (and NANDI.md
-/// for trusted peers); it exists so `AppState` reports trust as available.
-pub struct TrustService {
-    _private: (),
-}
-
-/// Never blocks
-pub fn init(_state: &AppState) -> Option<std::sync::Arc<TrustService>> {
-    Some(std::sync::Arc::new(TrustService { _private: () }))
-}
-
 // ---------------------------------------------------------------------------
 // Checks (for the gateway, delegation, and the shared listings)
 // ---------------------------------------------------------------------------
@@ -846,7 +835,6 @@ mod tests {
         use crate::services::events::tests::RecordingSink;
         let sink = std::sync::Arc::new(RecordingSink::default());
         let state = AppState::for_tests(vec![sink.clone()]);
-        assert!(state.trust().is_some());
         let rel = pause_delegations_from_member(&state, "i-x", true)
             .await
             .unwrap();

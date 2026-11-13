@@ -13,7 +13,6 @@ pub mod credentials;
 pub mod git_ops;
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
@@ -24,7 +23,6 @@ use crate::model::Timestamp;
 use crate::services::auth;
 use crate::services::domain::ChangedBy;
 use crate::services::events::{self as bus_events, EventBus, NandiEvent};
-use crate::services::redesign::NOT_IMPLEMENTED;
 use crate::services::repo_store::RepoStore;
 use crate::services::secrets::Secrets;
 use crate::services::AppState;
@@ -304,12 +302,12 @@ pub struct GitRemoteService {
 }
 
 impl GitRemoteService {
-    pub fn new(state: &AppState) -> Self {
+    pub fn new(bus: EventBus, secrets: Secrets, store: RepoStore, nandi_dir: PathBuf) -> Self {
         Self {
-            bus: state.bus().clone(),
-            secrets: state.secrets().clone(),
-            store: state.store().clone(),
-            nandi_dir: state.nandi_dir().to_path_buf(),
+            bus,
+            secrets,
+            store,
+            nandi_dir,
             lock: Mutex::new(()),
         }
     }
@@ -672,17 +670,8 @@ impl RemoteService for GitRemoteService {
     }
 }
 
-/// The git remote service. Touches no network until asked. Must not block.
-pub fn init(state: &AppState) -> Option<Arc<dyn RemoteService>> {
-    Some(Arc::new(GitRemoteService::new(state)))
-}
-
-fn service(state: &AppState) -> Result<&Arc<dyn RemoteService>, RemoteError> {
-    state.remote().ok_or_else(|| NOT_IMPLEMENTED.to_string())
-}
-
 pub async fn get_remote_status(state: &AppState) -> Result<RemoteStatus, RemoteError> {
-    service(state)?.get_status().await
+    state.remote().get_status().await
 }
 
 pub async fn configure_remote(
@@ -692,29 +681,30 @@ pub async fn configure_remote(
     prefix: Option<String>,
     slug: Option<String>,
 ) -> Result<RemoteStatus, RemoteError> {
-    service(state)?
+    state
+        .remote()
         .configure(url, credential, prefix, slug)
         .await
 }
 
 pub async fn clear_remote(state: &AppState) -> Result<(), RemoteError> {
-    service(state)?.clear().await
+    state.remote().clear().await
 }
 
 pub async fn test_remote_connection(state: &AppState) -> Result<(), RemoteError> {
-    service(state)?.test_connection().await
+    state.remote().test_connection().await
 }
 
 pub async fn push_to_remote(state: &AppState, overwrite: bool) -> Result<PushResult, RemoteError> {
-    service(state)?.push(overwrite).await
+    state.remote().push(overwrite).await
 }
 
 pub async fn pull_from_remote(state: &AppState) -> Result<PullResult, RemoteError> {
-    service(state)?.pull().await
+    state.remote().pull().await
 }
 
 pub async fn list_remote_branches(state: &AppState) -> Result<Vec<String>, RemoteError> {
-    service(state)?.list_remote_branches().await
+    state.remote().list_remote_branches().await
 }
 
 #[cfg(test)]

@@ -55,7 +55,7 @@ pub async fn save(state: &AppState, save: ArtifactSave) -> Result<ArtifactSaveRe
     };
     let mut pushed_branch = None;
     if save.push_target != PushTarget::LocalOnly {
-        let remote = state.remote().ok_or("The remote is unavailable")?.clone();
+        let remote = state.remote().clone();
         let pushed = remote.push(false).await?;
         if pushed.conflict {
             warnings.push(format!(

@@ -352,34 +352,21 @@ async fn wait_ready() -> Result<(), String> {
     ))
 }
 
-pub fn init(state: &AppState) -> Option<std::sync::Arc<GatewayService>> {
-    Some(std::sync::Arc::new(GatewayService::new(
-        state.bus().clone(),
-        state.app_data_dir().join("local").join("gateway"),
-    )))
-}
-
-fn service(state: &AppState) -> Result<&std::sync::Arc<GatewayService>, String> {
-    state
-        .litellm_gateway()
-        .ok_or_else(|| "The gateway is not available".to_string())
-}
-
 /// Starts the gateway with the AWS identity Bedrock sessions use
 pub async fn start_litellm_gateway(
     state: &AppState,
     model: &str,
 ) -> Result<LitellmGatewayStatus, String> {
     let credentials = super::aws_auth::bedrock_credentials(state, None, None).await?;
-    service(state)?.start(model, &credentials).await
+    state.litellm_gateway().start(model, &credentials).await
 }
 
 pub async fn stop_litellm_gateway(state: &AppState) -> Result<LitellmGatewayStatus, String> {
-    service(state)?.stop().await
+    state.litellm_gateway().stop().await
 }
 
 pub async fn get_litellm_gateway_status(state: &AppState) -> Result<LitellmGatewayStatus, String> {
-    Ok(service(state)?.status().await)
+    Ok(state.litellm_gateway().status().await)
 }
 
 #[cfg(test)]

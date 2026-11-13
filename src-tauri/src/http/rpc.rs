@@ -33,18 +33,14 @@ async fn call(
 }
 
 /// A command's result as an HTTP response: `200` with the value, `400
-/// {"error": "..."}` (the same message Tauri IPC returns), `503` for
-/// [`RelayUnavailable`], or `501` for a frozen service not built yet.
+/// {"error": "..."}` (the same message Tauri IPC returns), or `503` for
+/// [`RelayUnavailable`].
 struct ApiResult<T>(Result<T, String>);
 
 impl<T: Serialize> IntoResponse for ApiResult<T> {
     fn into_response(self) -> Response {
         match self.0 {
             Ok(value) => Json(value).into_response(),
-            // A frozen service its track hasn't implemented yet
-            Err(error) if error == crate::services::redesign::NOT_IMPLEMENTED => {
-                (StatusCode::NOT_IMPLEMENTED, Json(json!({ "error": error }))).into_response()
-            }
             // A person-to-person action with no relay connected: the same
             // text as the Tauri command, which the UI recognises
             Err(error) if RelayUnavailable::is(&error) => (

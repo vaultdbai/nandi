@@ -3,8 +3,6 @@
 //! action. Reads `workflow_runs` and `tasks`; pausing and cancelling go
 //! through the workflow engine.
 
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -644,21 +642,11 @@ fn task_title(task: &TaskRecord) -> String {
     short
 }
 
-pub fn init(state: &AppState) -> Option<Arc<WorkService>> {
-    Some(Arc::new(WorkService::new(state.downgrade())))
-}
-
-fn service(state: &AppState) -> Result<&Arc<WorkService>, WorkError> {
-    state
-        .work()
-        .ok_or_else(|| "Work is unavailable".to_string())
-}
-
 pub async fn list_work(
     state: &AppState,
     state_filter: Option<WorkState>,
 ) -> Result<Vec<WorkItem>, WorkError> {
-    service(state)?.list(state_filter).await
+    state.work().list(state_filter).await
 }
 
 /// `work_preferences` key prefix of a dismissed failure (value: epoch ms)
@@ -712,23 +700,23 @@ pub async fn list_dismissed_work(state: &AppState) -> Result<Vec<String>, WorkEr
 }
 
 pub async fn get_work_item(state: &AppState, id: String) -> Result<WorkItem, WorkError> {
-    service(state)?.get(&id).await
+    state.work().get(&id).await
 }
 
 pub async fn pause_work(state: &AppState, id: String) -> Result<(), WorkError> {
-    service(state)?.pause(&id).await
+    state.work().pause(&id).await
 }
 
 pub async fn resume_work(state: &AppState, id: String) -> Result<(), WorkError> {
-    service(state)?.resume(&id).await
+    state.work().resume(&id).await
 }
 
 pub async fn rate_work(state: &AppState, id: String, rating: u32) -> Result<(), WorkError> {
-    service(state)?.rate(&id, rating).await
+    state.work().rate(&id, rating).await
 }
 
 pub async fn cancel_work(state: &AppState, id: String) -> Result<(), WorkError> {
-    service(state)?.cancel(&id).await
+    state.work().cancel(&id).await
 }
 
 #[cfg(test)]

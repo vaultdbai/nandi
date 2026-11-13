@@ -126,15 +126,10 @@ impl NandiEvent for TeamRosterChanged {
     const NAME: &'static str = TEAM_ROSTER_CHANGED;
 }
 
-/// The roster service: rosters live in `roster_cache`, so this only keeps
-/// the cache honest (see `init`).
-pub struct RosterService {
-    _private: (),
-}
-
-/// Drops cached rosters when a team changes (emitting
-/// `team://roster_changed`) or a member comes or goes. Never blocks.
-pub fn init(state: &AppState) -> Option<std::sync::Arc<RosterService>> {
+/// Rosters live in `roster_cache`. This drops cached rosters when a team
+/// changes (emitting `team://roster_changed`) or a member comes or goes.
+/// Never blocks.
+pub fn watch(state: &AppState) {
     let mut events = state.broadcast().subscribe();
     let db = state.db().clone();
     let bus = state.bus().clone();
@@ -172,7 +167,6 @@ pub fn init(state: &AppState) -> Option<std::sync::Arc<RosterService>> {
             }
         }
     });
-    Some(std::sync::Arc::new(RosterService { _private: () }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1029,7 +1023,6 @@ mod tests {
     #[tokio::test]
     async fn an_unknown_instance_gets_the_empty_state() {
         let state = AppState::for_tests(vec![]);
-        assert!(state.team_roster().is_some());
         let profile = get_member_by_instance(&state, "i-nobody").await.unwrap();
         assert!(!profile.connected);
         assert_eq!(profile.instance_id.as_deref(), Some("i-nobody"));

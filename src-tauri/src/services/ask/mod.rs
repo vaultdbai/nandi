@@ -533,29 +533,15 @@ pub fn sources(answer: &str, context: &GatewayContext) -> Vec<AskSourceRef> {
     out
 }
 
-pub fn init(state: &AppState) -> Option<Arc<AskService>> {
-    let llm: Arc<dyn AskLlm> = Arc::new(ModelAskLlm::new(
-        state.secrets().clone(),
-        state.store().clone(),
-    ));
-    Some(Arc::new(AskService::new(state.downgrade(), llm)))
-}
-
-fn service(state: &AppState) -> Result<&Arc<AskService>, AskError> {
-    state
-        .ask()
-        .ok_or_else(|| "The ask box is unavailable".to_string())
-}
-
 pub async fn ask(state: &AppState, request: AskRequest) -> Result<AskResponse, AskError> {
-    service(state)?.respond(&request, None).await
+    state.ask().respond(&request, None).await
 }
 
 /// Starts answering in the background and returns the request ID;
 /// `ask://streaming_delta` and `ask://completed` follow
 pub async fn ask_streaming(state: &AppState, request: AskRequest) -> Result<String, AskError> {
     validate(&request.text)?;
-    let service = Arc::clone(service(state)?);
+    let service = Arc::clone(state.ask());
     Ok(spawn_streaming(
         service,
         state.bus().clone(),

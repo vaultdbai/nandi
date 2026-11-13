@@ -286,7 +286,7 @@ pub async fn start_now(
 /// Who would do `text`: the user's agents, workflows or teammates, the
 /// Chief of Staff itself for one step at most, else a step for the user
 pub async fn plan_for(state: &AppState, text: &str) -> Result<ActionPlan, String> {
-    let service = state.ask().ok_or("Planning is unavailable right now")?;
+    let service = state.ask();
     let context = ask::context::load(
         state,
         &AskContext {

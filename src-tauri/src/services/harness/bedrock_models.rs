@@ -9,8 +9,6 @@
 //! gateway (`requires_gateway`). Before the first refresh, the registry's
 //! `known` models stand in.
 
-use std::sync::Arc;
-
 use aws_sdk_bedrock::types::{InferenceType, ModelModality};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
@@ -326,24 +324,10 @@ fn error_text(error: &(dyn std::error::Error + 'static)) -> String {
     text
 }
 
-pub fn init(state: &AppState) -> Option<Arc<BedrockModelService>> {
-    Some(Arc::new(BedrockModelService::new(
-        state.db().clone(),
-        state.bus().clone(),
-    )))
-}
-
-fn service(state: &AppState) -> Result<&Arc<BedrockModelService>, String> {
-    state
-        .bedrock_models()
-        .ok_or_else(|| "The Bedrock catalog is not available".to_string())
-}
-
 fn region_or_default(state: &AppState, region: Option<String>) -> String {
     region
         .filter(|r| !r.trim().is_empty())
-        .or_else(|| state.aws_auth().map(|aws| aws.default_region()))
-        .unwrap_or_else(|| super::aws_auth::DEFAULT_REGION.to_string())
+        .unwrap_or_else(|| state.aws_auth().default_region())
 }
 
 /// Cached models for `region` (`None`: the AWS default region); the
@@ -353,7 +337,7 @@ pub async fn list_bedrock_models(
     region: Option<String>,
 ) -> Result<Vec<BedrockModel>, String> {
     let region = region_or_default(state, region);
-    service(state)?.list(&region).await
+    state.bedrock_models().list(&region).await
 }
 
 /// Asks Bedrock, replaces the cache, emits `bedrock://models_refreshed`
@@ -362,11 +346,9 @@ pub async fn refresh_bedrock_models(
     region: Option<String>,
 ) -> Result<Vec<BedrockModel>, String> {
     let region = region_or_default(state, region);
-    let aws = state
-        .aws_auth()
-        .ok_or_else(|| "AWS auth is not available".to_string())?;
+    let aws = state.aws_auth();
     let sdk = aws.sdk_config(None, Some(region.clone())).await?;
-    service(state)?.refresh(&sdk, &region).await
+    state.bedrock_models().refresh(&sdk, &region).await
 }
 
 #[cfg(test)]

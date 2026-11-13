@@ -641,7 +641,7 @@ pub async fn prompt_facts(state: &AppState, conversation_id: &str) -> PromptFact
         // The companion floats over other apps: Studio's editor isn't "this"
         open_artifact: companion
             .is_none()
-            .then(|| state.studio().and_then(|studio| studio.open_artifact()))
+            .then(|| state.studio().open_artifact())
             .flatten(),
         companion,
     }

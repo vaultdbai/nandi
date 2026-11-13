@@ -34,7 +34,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex};
 use std::time::SystemTime;
 
 use rusqlite::params;
@@ -485,16 +485,12 @@ pub struct RepoConfigService {
     bus: EventBus,
 }
 
-/// Never blocks: the file is read on first use
-pub fn init(state: &AppState) -> Option<Arc<RepoConfigService>> {
-    Some(Arc::new(RepoConfigService {
-        store: state.store().clone(),
-        db: state.db().clone(),
-        bus: state.bus().clone(),
-    }))
-}
-
 impl RepoConfigService {
+    /// Never blocks: the file is read on first use
+    pub fn new(store: RepoStore, db: Db, bus: EventBus) -> Self {
+        Self { store, db, bus }
+    }
+
     fn path(&self) -> PathBuf {
         path_in(&self.store)
     }
@@ -560,18 +556,12 @@ impl RepoConfigService {
     }
 }
 
-fn service(state: &AppState) -> Result<&Arc<RepoConfigService>, String> {
-    state
-        .repo_config()
-        .ok_or_else(|| "Repo config is not available".to_string())
-}
-
 pub async fn get_repo_llm_config(state: &AppState) -> Result<RepoLlmConfigStatus, String> {
-    service(state)?.get().await
+    state.repo_config().get().await
 }
 
 pub async fn reload_repo_llm_config(state: &AppState) -> Result<RepoLlmConfigStatus, String> {
-    service(state)?.reload().await
+    state.repo_config().reload().await
 }
 
 #[cfg(test)]
@@ -735,7 +725,7 @@ routing:
     #[tokio::test]
     async fn the_service_reads_syncs_and_reports_the_file() {
         use crate::services::events::tests::RecordingSink;
-        let recorder = Arc::new(RecordingSink::default());
+        let recorder = std::sync::Arc::new(RecordingSink::default());
         let state = AppState::for_tests(vec![recorder.clone()]);
         let missing = get_repo_llm_config(&state).await.unwrap();
         assert!(!missing.found && missing.config.is_none() && missing.error.is_none());

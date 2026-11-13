@@ -89,8 +89,6 @@ pub mod preferences;
 pub mod projection;
 pub mod queue;
 pub mod recovery;
-// Wave 2B redesign wiring (frozen)
-pub mod redesign;
 // Not every API has a caller yet
 #[allow(dead_code)]
 pub mod relay;
@@ -150,7 +148,6 @@ use crate::utils::nandi_config;
 
 use a2a::A2ADelegator;
 use capability_index::CapabilityIndex;
-use companion::CompanionService;
 use connectors::ConnectorRegistry;
 use egress::EgressState;
 use events::{BroadcastSink, EventBus, EventSink, FanoutSink};
@@ -224,19 +221,22 @@ struct Inner {
     relay_client: OnceLock<Arc<dyn RelayClient>>,
     a2a_delegator: OnceLock<Arc<dyn A2ADelegator>>,
     team_manager: OnceLock<Arc<dyn TeamManager>>,
-    // Wave 2B redesign: set once by each track's `init` (`redesign::init`)
-    analysis: OnceLock<Arc<dyn RunAnalyzer>>,
-    companion: OnceLock<Arc<CompanionService>>,
-    palette: OnceLock<Arc<PaletteService>>,
+    analysis: Arc<dyn RunAnalyzer>,
+    palette: Arc<PaletteService>,
+    remote: Arc<dyn remote::RemoteService>,
+    selection: Arc<dyn selection::SelectionService>,
+    network: Arc<network::NetworkService>,
+    studio: Arc<studio::StudioService>,
+    work: Arc<work::WorkService>,
+    ask: Arc<ask::AskService>,
+    repo_config: Arc<config::repo_config::RepoConfigService>,
+    aws_auth: Arc<harness::aws_auth::AwsAuthService>,
+    bedrock_models: Arc<harness::bedrock_models::BedrockModelService>,
+    litellm_gateway: Arc<harness::gateway::GatewayService>,
     // Wave final: set once by each track's `init` (`init_wave_final`)
-    remote: OnceLock<Arc<dyn remote::RemoteService>>,
     tasks: OnceLock<Arc<a2a::task::TaskService>>,
     clarifications: OnceLock<Arc<a2a::clarification::ClarificationService>>,
     gateway: OnceLock<Arc<gateway::GatewayService>>,
-    selection: OnceLock<Arc<dyn selection::SelectionService>>,
-    network: OnceLock<Arc<network::NetworkService>>,
-    team_roster: OnceLock<Arc<team::roster::RosterService>>,
-    trust: OnceLock<Arc<team::trust::TrustService>>,
     // Wave A: set once by each track's `init` (`init_wave_a`)
     capabilities: OnceLock<Arc<capability::CapabilityService>>,
     tools: OnceLock<Arc<tools::ToolService>>,
@@ -244,16 +244,6 @@ struct Inner {
     // Wave B: set once by each track's `init` (`init_wave_b`)
     harnesses: OnceLock<Arc<harness::HarnessService>>,
     harness_detector: OnceLock<Arc<harness::detection::HarnessDetector>>,
-    aws_auth: OnceLock<Arc<harness::aws_auth::AwsAuthService>>,
-    bedrock_models: OnceLock<Arc<harness::bedrock_models::BedrockModelService>>,
-    litellm_gateway: OnceLock<Arc<harness::gateway::GatewayService>>,
-    // Wave CD: set once by `init_wave_cd`
-    ask: OnceLock<Arc<ask::AskService>>,
-    studio: OnceLock<Arc<studio::StudioService>>,
-    work: OnceLock<Arc<work::WorkService>>,
-    // Wave EF: set once by `init_wave_ef` (network and trust are wave
-    // final's slots above)
-    repo_config: OnceLock<Arc<config::repo_config::RepoConfigService>>,
 }
 
 /// Shared handle to everything the services need. Cheap to clone.
@@ -326,12 +316,9 @@ impl AppState {
         state.watch_repo();
         images::init(state.bus());
         network::init(&state);
-        redesign::init(&state);
         state.init_wave_final();
         state.init_wave_a();
         state.init_wave_b();
-        state.init_wave_cd();
-        state.init_wave_ef();
 
         let workflows = state.workflows().clone();
         state.runtime().spawn(async move {
@@ -457,7 +444,54 @@ impl AppState {
         let nandi_dir = config.app_data_dir.clone();
         #[cfg(not(test))]
         let nandi_dir = nandi_config::nandi_dir().unwrap_or_else(|_| config.app_data_dir.clone());
-        Self(Arc::new(Inner {
+        let analysis: Arc<dyn RunAnalyzer> = Arc::new(run_analysis::Analyzer::with_llm(
+            db.clone(),
+            store.clone(),
+            config.secrets.clone(),
+        ));
+        let remote: Arc<dyn remote::RemoteService> = Arc::new(remote::GitRemoteService::new(
+            bus.clone(),
+            config.secrets.clone(),
+            store.clone(),
+            nandi_dir.clone(),
+        ));
+        let selection: Arc<dyn selection::SelectionService> =
+            Arc::new(selection::DbSelection::new(db.clone(), Some(bus.clone())));
+        let network = Arc::new(network::NetworkService::new(&db));
+        let repo_config = Arc::new(config::repo_config::RepoConfigService::new(
+            store.clone(),
+            db.clone(),
+            bus.clone(),
+        ));
+        let aws_auth = Arc::new(harness::aws_auth::AwsAuthService::for_app(
+            db.clone(),
+            bus.clone(),
+            &config.app_data_dir,
+        ));
+        let bedrock_models = Arc::new(harness::bedrock_models::BedrockModelService::new(
+            db.clone(),
+            bus.clone(),
+        ));
+        let litellm_gateway = Arc::new(harness::gateway::GatewayService::new(
+            bus.clone(),
+            config.app_data_dir.join("local").join("gateway"),
+        ));
+        let ask_llm: Arc<dyn ask::AskLlm> =
+            Arc::new(ask::ModelAskLlm::new(config.secrets.clone(), store.clone()));
+        Self(Arc::new_cyclic(|inner| Inner {
+            // Services that call back into the app hold it weakly
+            studio: Arc::new(studio::StudioService::new(WeakAppState(inner.clone()))),
+            work: Arc::new(work::WorkService::new(WeakAppState(inner.clone()))),
+            ask: Arc::new(ask::AskService::new(WeakAppState(inner.clone()), ask_llm)),
+            analysis,
+            palette: Arc::default(),
+            remote,
+            selection,
+            network,
+            repo_config,
+            aws_auth,
+            bedrock_models,
+            litellm_gateway,
             nandi_dir,
             db,
             built_in_relay: config.built_in_relay,
@@ -488,29 +522,14 @@ impl AppState {
             relay_client: OnceLock::new(),
             a2a_delegator: OnceLock::new(),
             team_manager: OnceLock::new(),
-            analysis: OnceLock::new(),
-            companion: OnceLock::new(),
-            palette: OnceLock::new(),
-            remote: OnceLock::new(),
             tasks: OnceLock::new(),
             clarifications: OnceLock::new(),
             gateway: OnceLock::new(),
-            selection: OnceLock::new(),
-            network: OnceLock::new(),
-            team_roster: OnceLock::new(),
-            trust: OnceLock::new(),
             capabilities: OnceLock::new(),
             tools: OnceLock::new(),
             capability_registries: OnceLock::new(),
             harnesses: OnceLock::new(),
             harness_detector: OnceLock::new(),
-            aws_auth: OnceLock::new(),
-            bedrock_models: OnceLock::new(),
-            litellm_gateway: OnceLock::new(),
-            ask: OnceLock::new(),
-            studio: OnceLock::new(),
-            work: OnceLock::new(),
-            repo_config: OnceLock::new(),
         }))
     }
 
@@ -543,12 +562,9 @@ impl AppState {
             layout,
         );
         network::init(&state);
-        redesign::init(&state);
         state.init_wave_final();
         state.init_wave_a();
         state.init_wave_b();
-        state.init_wave_cd();
-        state.init_wave_ef();
         state
     }
 
@@ -681,41 +697,19 @@ impl AppState {
         let _ = self.0.team_manager.set(manager);
     }
 
-    /// "Ask about this run" (wave 2B redesign, Track A)
-    #[allow(dead_code)]
-    pub fn analysis(&self) -> Option<&Arc<dyn RunAnalyzer>> {
-        self.0.analysis.get()
+    /// "Ask about this run"
+    pub fn analysis(&self) -> &Arc<dyn RunAnalyzer> {
+        &self.0.analysis
     }
 
-    /// The floating companion (wave 2B redesign, Track D)
-    #[allow(dead_code)]
-    pub fn companion(&self) -> Option<&Arc<CompanionService>> {
-        self.0.companion.get()
+    /// The command palette
+    pub fn palette(&self) -> &Arc<PaletteService> {
+        &self.0.palette
     }
 
-    /// The command palette (wave 2B redesign, Track E)
-    #[allow(dead_code)]
-    pub fn palette(&self) -> Option<&Arc<PaletteService>> {
-        self.0.palette.get()
-    }
-
-    // Set once, by `redesign::init`
-    fn set_analysis(&self, analyzer: Arc<dyn RunAnalyzer>) {
-        let _ = self.0.analysis.set(analyzer);
-    }
-
-    fn set_companion(&self, companion: Arc<CompanionService>) {
-        let _ = self.0.companion.set(companion);
-    }
-
-    fn set_palette(&self, palette: Arc<PaletteService>) {
-        let _ = self.0.palette.set(palette);
-    }
-
-    /// The git remote (wave final, Track A); `None` until it lands
-    #[allow(dead_code)]
-    pub fn remote(&self) -> Option<&Arc<dyn remote::RemoteService>> {
-        self.0.remote.get()
+    /// The optional git remote for the repo
+    pub fn remote(&self) -> &Arc<dyn remote::RemoteService> {
+        &self.0.remote
     }
 
     /// The task lifecycle (wave final, Track B)
@@ -736,44 +730,19 @@ impl AppState {
         self.0.gateway.get()
     }
 
-    /// Capability selection (wave final, Track D)
-    #[allow(dead_code)]
-    pub fn selection(&self) -> Option<&Arc<dyn selection::SelectionService>> {
-        self.0.selection.get()
+    /// Capability selection and circuit breakers
+    pub fn selection(&self) -> &Arc<dyn selection::SelectionService> {
+        &self.0.selection
     }
 
-    /// The network directory (wave final, Track E)
-    #[allow(dead_code)]
-    pub fn network(&self) -> Option<&Arc<network::NetworkService>> {
-        self.0.network.get()
+    /// The network directory
+    pub fn network(&self) -> &Arc<network::NetworkService> {
+        &self.0.network
     }
 
-    /// Team rosters and member profiles (wave final, Track E)
-    #[allow(dead_code)]
-    pub fn team_roster(&self) -> Option<&Arc<team::roster::RosterService>> {
-        self.0.team_roster.get()
-    }
-
-    /// Trust toward other members (wave final, Track E)
-    #[allow(dead_code)]
-    pub fn trust(&self) -> Option<&Arc<team::trust::TrustService>> {
-        self.0.trust.get()
-    }
-
-    /// Wave final: each track's `init`, after `redesign::init`, in
-    /// dependency order (selection before tasks, which fail over through
-    /// it; tasks before the gateway, which dispatches child tasks). Must
-    /// not block.
+    /// Wave final: each track's `init`, in dependency order (tasks before
+    /// the gateway, which dispatches child tasks). Must not block.
     fn init_wave_final(&self) {
-        if let Some(service) = remote::init(self) {
-            let _ = self.0.remote.set(service);
-        }
-        if let Some(service) = team::trust::init(self) {
-            let _ = self.0.trust.set(service);
-        }
-        if let Some(service) = selection::init(self) {
-            let _ = self.0.selection.set(service);
-        }
         if let Some(service) = a2a::task::init(self) {
             let _ = self.0.tasks.set(service);
         }
@@ -783,13 +752,9 @@ impl AppState {
         if let Some(service) = gateway::init(self) {
             let _ = self.0.gateway.set(service);
         }
-        if let Some(service) = network::init_directory(self) {
-            let _ = self.0.network.set(service);
-        }
+        network::watch_directory(self);
         triggers::handover::init(self);
-        if let Some(service) = team::roster::init(self) {
-            let _ = self.0.team_roster.set(service);
-        }
+        team::roster::watch(self);
     }
 
     /// The capability service (wave A, Track A)
@@ -841,22 +806,19 @@ impl AppState {
         self.0.harness_detector.get()
     }
 
-    /// AWS auth for Bedrock (wave B, Track F)
-    #[allow(dead_code)]
-    pub fn aws_auth(&self) -> Option<&Arc<harness::aws_auth::AwsAuthService>> {
-        self.0.aws_auth.get()
+    /// AWS auth for Bedrock
+    pub fn aws_auth(&self) -> &Arc<harness::aws_auth::AwsAuthService> {
+        &self.0.aws_auth
     }
 
-    /// The Bedrock model catalog (wave B, Track F)
-    #[allow(dead_code)]
-    pub fn bedrock_models(&self) -> Option<&Arc<harness::bedrock_models::BedrockModelService>> {
-        self.0.bedrock_models.get()
+    /// The Bedrock model catalog
+    pub fn bedrock_models(&self) -> &Arc<harness::bedrock_models::BedrockModelService> {
+        &self.0.bedrock_models
     }
 
-    /// The LiteLLM gateway (wave B, Track C)
-    #[allow(dead_code)]
-    pub fn litellm_gateway(&self) -> Option<&Arc<harness::gateway::GatewayService>> {
-        self.0.litellm_gateway.get()
+    /// The LiteLLM gateway
+    pub fn litellm_gateway(&self) -> &Arc<harness::gateway::GatewayService> {
+        &self.0.litellm_gateway
     }
 
     /// Wave B: each track's `init`, after `init_wave_a`. Must not block.
@@ -865,70 +827,36 @@ impl AppState {
             let _ = self.0.harness_detector.set(detector);
             let _ = self.0.harnesses.set(service);
         }
-        if let Some(gateway) = harness::gateway::init(self) {
-            let _ = self.0.litellm_gateway.set(gateway);
-        }
         pilots::browser::init(pilots::browser::Host {
             proxy_tokens: self.proxy_tokens().clone(),
             secrets: self.secrets().clone(),
             store: self.store().clone(),
         });
-        if let Some(aws) = harness::aws_auth::init(self) {
-            self.egress()
-                .credentials()
-                .set_sign_in(harness::aws_auth::agent_sign_in(aws.clone()));
-            let _ = self.0.aws_auth.set(aws);
-        }
-        if let Some(models) = harness::bedrock_models::init(self) {
-            let _ = self.0.bedrock_models.set(models);
-        }
+        self.egress()
+            .credentials()
+            .set_sign_in(harness::aws_auth::agent_sign_in(self.aws_auth().clone()));
         // Harness runs reach the services through the orchestrators' deps
         let _ = self.orchestrators().deps().harness.set(self.downgrade());
     }
 
-    /// The ask box (wave CD, Tracks A, B, H)
-    #[allow(dead_code)]
-    pub fn ask(&self) -> Option<&Arc<ask::AskService>> {
-        self.0.ask.get()
+    /// The ask box
+    pub fn ask(&self) -> &Arc<ask::AskService> {
+        &self.0.ask
     }
 
-    /// Studio's artifact editor (wave CD, Track C)
-    #[allow(dead_code)]
-    pub fn studio(&self) -> Option<&Arc<studio::StudioService>> {
-        self.0.studio.get()
+    /// Studio's artifact editor
+    pub fn studio(&self) -> &Arc<studio::StudioService> {
+        &self.0.studio
     }
 
-    /// Work in flight (wave CD, Track F)
-    #[allow(dead_code)]
-    pub fn work(&self) -> Option<&Arc<work::WorkService>> {
-        self.0.work.get()
+    /// Work in flight
+    pub fn work(&self) -> &Arc<work::WorkService> {
+        &self.0.work
     }
 
-    /// Wave CD: after `init_wave_b`. Must not block.
-    fn init_wave_cd(&self) {
-        if let Some(service) = studio::init(self) {
-            let _ = self.0.studio.set(service);
-        }
-        if let Some(service) = work::init(self) {
-            let _ = self.0.work.set(service);
-        }
-        if let Some(service) = ask::init(self) {
-            let _ = self.0.ask.set(service);
-        }
-    }
-
-    /// `.nandi/llm.yaml` (wave EF, Track E)
-    #[allow(dead_code)]
-    pub fn repo_config(&self) -> Option<&Arc<config::repo_config::RepoConfigService>> {
-        self.0.repo_config.get()
-    }
-
-    /// Wave EF: after `init_wave_cd`. Must not block. The network
-    /// directory and trust service are wave final's (`init_wave_final`).
-    fn init_wave_ef(&self) {
-        if let Some(service) = config::repo_config::init(self) {
-            let _ = self.0.repo_config.set(service);
-        }
+    /// `.nandi/llm.yaml`
+    pub fn repo_config(&self) -> &Arc<config::repo_config::RepoConfigService> {
+        &self.0.repo_config
     }
 
     /// Events for WebSocket subscribers

@@ -184,7 +184,7 @@ mod tests {
             ("POST", "/api/rpc/poll_aws_sso_login", r#"{"loginId":"l1"}"#),
             ("POST", "/api/rpc/get_litellm_gateway_status", "{}"),
         ] {
-            // JSON (501 while stubbed, or the track's answer)
+            // Each answers with JSON, whatever the status
             let response = app
                 .clone()
                 .oneshot(authed(method, uri, body))
@@ -215,7 +215,7 @@ mod tests {
             ),
             ("POST", "/api/rpc/list_pending_approvals", "{}"),
         ] {
-            // JSON (501 while stubbed, or the track's answer)
+            // Each answers with JSON, whatever the status
             let response = app
                 .clone()
                 .oneshot(authed(method, uri, body))
