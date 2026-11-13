@@ -5,8 +5,10 @@
 //! keeps what the relay hasn't taken yet: a question or an assignment
 //! (`ask-me`, `assign-me`) made while the relay was unreachable waits
 //! `Submitted` here, with no `_accepted` message, and is sent (priority,
-//! then age) when the relay connects and on every sweep. Anything else
-//! made with no relay is refused at once (`RelayUnavailable`). Once the
+//! then age) when the relay connects and on every sweep. A submission the
+//! relay did not answer (the frame went out, no `accepted` came back) also
+//! stays `Submitted` and is sent again the same way. Anything else made
+//! with no relay is refused at once (`RelayUnavailable`). Once the
 //! relay takes a request it's marked `_accepted` and never sent again
 //! (the relay deduplicates a request sent twice by its ID anyway).
 //!
