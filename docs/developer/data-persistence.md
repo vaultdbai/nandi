@@ -128,7 +128,7 @@ impl Default for MyData {
 
 ### 2. Add Tauri commands
 
-Follow the pattern in `src-tauri/src/commands/preferences.rs`:
+Follow the pattern in `src-tauri/src/rpc/preferences.rs`:
 
 - `load_*` command with Default fallback
 - `save_*` command with atomic write

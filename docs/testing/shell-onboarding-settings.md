@@ -688,7 +688,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### SH-37 — Home: "Agents can talk, but need Docker to act"
 
 - **What:** Until Docker answers, Home shows a calm line "Agents can talk, but need Docker to act." with **Set up**, which opens Settings › This computer. It disappears once Docker runs. Nothing else on Home waits on it.
-- **Where:** `src/components/machine/MachineHomeItem.tsx` in `HomeView.tsx`; `useMachineReport` (`check_machine`, `GET /api/machine/readiness`).
+- **Where:** `src/components/machine/MachineHomeItem.tsx` in `HomeView.tsx`; `useMachineReport` (`check_machine`, `POST /api/rpc/check_machine`).
 - **Preconditions:** Docker stopped or not installed.
 - **Steps:**
   1. Open Home.
@@ -1197,7 +1197,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ST-33 — Settings › This computer (get your computer ready)
 
 - **What:** A checklist of what agents need to act, checked read-only: Docker installed, Docker running, WSL 2 (Windows), Virtualization (Windows, macOS), Disk space (about 15 GB), Nandi's images (downloaded, or ghcr.io reachable). Each row shows Ready, Missing, Not running, Needs an update, Blocked or Couldn't tell, and what Nandi saw. A row that isn't ready adds one sentence saying why it matters, numbered steps for this OS (Linux: for the distribution family), copyable commands, and buttons: **Start Docker** (Docker Desktop, no admin rights) and links to official pages. A summary line says whether agents can act. The page re-checks every 10 seconds; **Check again** re-runs the slower checks too. "Docker Desktop is unable to start" lists, in order: quit Docker Desktop, `wsl --update`, `wsl --shutdown`, start it, check virtualization, Docker's factory reset. Linux shows `sudo systemctl start docker` and the `docker` group fix as commands; Nandi never runs them.
-- **Where:** `src/components/settings/sections/ThisComputerSection.tsx`, `src/components/machine/` (`MachineChecklist`, `machine-model.ts`), `hooks/useMachine.ts`; Rust `services/machine/` (`check_machine`, `start_docker`; `GET /api/machine/readiness?fresh=true`, `POST /api/machine/start-docker`). See `docs/developer/machine-readiness.md`.
+- **Where:** `src/components/settings/sections/ThisComputerSection.tsx`, `src/components/machine/` (`MachineChecklist`, `machine-model.ts`), `hooks/useMachine.ts`; Rust `services/machine/` (`check_machine`, `start_docker`; `POST /api/rpc/check_machine`, `POST /api/rpc/start_docker`). See `docs/developer/machine-readiness.md`.
 - **Preconditions:** None. For the states: Docker not installed, stopped, failing to start; on Linux, a user outside the `docker` group.
 - **Steps:**
   1. Open Settings › This computer with Docker running.
@@ -1302,13 +1302,13 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ST-31 — Preferences persistence
 
 - **What:** Theme, palette and language are saved twice. Portable values go to `~/.nandi/repo/.nandi/settings.yaml` (so they follow the repo and the remote). A startup copy goes to `<app data dir>/preferences.json`, written atomically (temp file and rename). Load returns defaults (system, default palette, system language) when the file is missing.
-- **Where:** `src-tauri/src/commands/preferences.rs` (`load_preferences`, `save_preferences`), `services/preferences.rs`, `src-tauri/src/types.rs` (`AppPreferences`, `validate_theme`), `src/services/preferences.ts`; `GET` and `PUT /api/preferences`.
+- **Where:** `src-tauri/src/rpc/preferences.rs` (`load_preferences`, `save_preferences`), `services/preferences.rs`, `src-tauri/src/types.rs` (`AppPreferences`, `validate_theme`), `src/services/preferences.ts`; `GET` and `POST /api/rpc/save_preferences`.
 - **Preconditions:** None.
 - **Steps:**
   1. Change the language and palette.
   2. Inspect both files.
   3. Delete `preferences.json` and relaunch.
-  4. Call `PUT /api/preferences` with `{"theme":"blue","language":null}`.
+  4. Call `POST /api/rpc/save_preferences` with `{"preferences":{"theme":"blue","language":null}}`.
 - **Expected:**
   - (2) Both files hold the values.
   - (3) The values come back from `settings.yaml`.

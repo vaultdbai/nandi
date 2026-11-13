@@ -60,10 +60,10 @@ Phase 1 (built): detection, the checklist UI, the no-admin **Start Docker** acti
 
 ### API
 
-| Tauri command                | HTTP                                    | Returns         |
-| ---------------------------- | --------------------------------------- | --------------- |
-| `check_machine(fresh: bool)` | `GET /api/machine/readiness?fresh=true` | `MachineReport` |
-| `start_docker()`             | `POST /api/machine/start-docker`        | `()`            |
+| Tauri command                | HTTP                          | Returns         |
+| ---------------------------- | ----------------------------- | --------------- |
+| `check_machine(fresh: bool)` | `POST /api/rpc/check_machine` | `MachineReport` |
+| `start_docker()`             | `POST /api/rpc/start_docker`  | `()`            |
 
 `fresh` re-runs the slow probes (WSL, virtualization, disk, registry); without it they come from the last minute and a check takes about 50 ms. A fresh check takes 2 to 3 s on Windows.
 

@@ -14,12 +14,9 @@ mod capabilities;
 mod companion;
 // Wave EF
 mod connectors;
-mod delegation;
 // Wave final
 mod email;
 mod gateway;
-mod groups;
-mod machine;
 mod marketplace;
 mod pilots;
 mod relay;
@@ -27,7 +24,6 @@ mod repo;
 mod routes;
 mod rpc;
 mod static_files;
-mod teams;
 mod triggers;
 pub mod ws;
 
@@ -58,18 +54,14 @@ pub fn router(state: AppState, token: WebToken) -> Router {
                 .merge(repo::api())
                 .merge(pilots::api())
                 .merge(connectors::api())
-                .merge(machine::api())
                 // Wave 2A
                 .merge(relay::api())
-                .merge(delegation::api())
-                .merge(teams::api())
                 // Wave 2B redesign
                 .merge(companion::api())
                 // Wave final
                 // Wave final, network-first
                 .merge(gateway::api())
                 .merge(email::api())
-                .merge(groups::api())
                 // Wave A
                 .merge(capabilities::api())
                 // Wave B
@@ -254,20 +246,6 @@ mod tests {
             ("GET", "/api/relay/agents"),
             ("POST", "/api/relay/test"),
             ("GET", "/api/relay/instances"),
-            ("GET", "/api/delegation/providers?capability=x"),
-            ("POST", "/api/delegation/tasks"),
-            ("GET", "/api/delegation/history?limit=5"),
-            ("GET", "/api/delegation/returns"),
-            ("GET", "/api/agents/a/delegation"),
-            ("PUT", "/api/agents/a/delegation"),
-            ("GET", "/api/teams"),
-            ("POST", "/api/teams"),
-            ("GET", "/api/teams/org"),
-            ("POST", "/api/teams/org/join"),
-            ("POST", "/api/teams/org/leave"),
-            ("POST", "/api/teams/org/sync"),
-            ("POST", "/api/teams/org/agents/a"),
-            ("DELETE", "/api/teams/org/agents/a"),
         ] {
             // Every route answers JSON (success or error); unmatched paths
             // fall through to the frontend's HTML instead.

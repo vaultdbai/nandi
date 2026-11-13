@@ -199,8 +199,6 @@ export const webClient: NandiClient = withCommands({
   getConversation: conversationId =>
     request('GET', `/conversations/${id(conversationId)}`),
 
-  loadPreferences: () => request('GET', '/preferences'),
-  savePreferences: preferences => request('PUT', '/preferences', preferences),
   getLlmKeyStatus: () => request('GET', '/llm-keys'),
   getDefaultModel: () => request('GET', '/default-model'),
   setDefaultModel: model => request('PUT', '/default-model', { model }),
@@ -376,29 +374,7 @@ export const webClient: NandiClient = withCommands({
   testRelayConnection: url => request('POST', '/relay/test', { url }),
   getRelayInstances: () => request('GET', '/relay/instances'),
 
-  listAvailableProviders: capability =>
-    request('GET', `/delegation/providers${query({ capability })}`),
-  delegateTask: (capability, input, target) =>
-    request('POST', '/delegation/tasks', { capability, input, target }),
-  listDelegationHistory: limit =>
-    request('GET', `/delegation/history${query({ limit })}`),
-  getAgentDelegation: agentId =>
-    request('GET', `/agents/${id(agentId)}/delegation`),
-  setAgentDelegation: (agentId, settings) =>
-    request('PUT', `/agents/${id(agentId)}/delegation`, settings),
-
-  listTeams: () => request('GET', '/teams'),
-  getTeam: teamId => request('GET', `/teams/${id(teamId)}`),
   // The route still names the field `githubOrg`; it carries the registry URL
-  createTeam: registryUrl =>
-    request('POST', '/teams', { githubOrg: registryUrl }),
-  joinTeam: teamId => request('POST', `/teams/${id(teamId)}/join`),
-  leaveTeam: teamId => request('POST', `/teams/${id(teamId)}/leave`),
-  syncTeamRegistry: teamId => request('POST', `/teams/${id(teamId)}/sync`),
-  shareAgent: (teamId, agentId) =>
-    request('POST', `/teams/${id(teamId)}/agents/${id(agentId)}`),
-  unshareAgent: (teamId, agentId) =>
-    request('DELETE', `/teams/${id(teamId)}/agents/${id(agentId)}`),
 
   getCompanionSnapshot: dayStart =>
     request('GET', `/companion/snapshot${query({ dayStart })}`),
@@ -406,9 +382,6 @@ export const webClient: NandiClient = withCommands({
     Promise.resolve({ status: 'error', error: NOT_SUPPORTED }),
   // The server keeps running; a browser tab has nothing to quit
   quitNandi: () => Promise.resolve(),
-  checkMachine: fresh =>
-    request('GET', `/machine/readiness${fresh ? '?fresh=true' : ''}`),
-  startDocker: () => request('POST', '/machine/start-docker'),
   // No companion window in a browser
   placeCompanion: () => Promise.resolve({ status: 'ok', data: null }),
   setCompanionBubble: () =>
@@ -496,29 +469,6 @@ export const webClient: NandiClient = withCommands({
   setGatewayManifest: manifest => request('PUT', '/gateway/manifest', manifest),
   gatewayChat: message => request('POST', '/gateway/chat', { message }),
 
-  listGroups: () => request('GET', '/groups'),
-  getGroup: groupId => request('GET', `/groups/${id(groupId)}`),
-  createGroup: (name, description, policy) =>
-    request('POST', '/groups', { name, description, policy }),
-  updateGroup: (groupId, name, description) =>
-    request('PUT', `/groups/${id(groupId)}`, { name, description }),
-  setGroupPolicy: (groupId, policy) =>
-    request('PUT', `/groups/${id(groupId)}/policy`, { policy }),
-  inviteToGroup: (groupId, invite) =>
-    request('POST', `/groups/${id(groupId)}/invites`, invite),
-  revokeGroupInvite: code => request('DELETE', `/groups/invites/${id(code)}`),
-  joinGroup: code => request('POST', '/groups/join', { code }),
-  leaveGroup: groupId => request('POST', `/groups/${id(groupId)}/leave`),
-  removeGroupMember: (groupId, instanceId) =>
-    request('DELETE', `/groups/${id(groupId)}/members/${id(instanceId)}`),
-  setGroupRole: (groupId, instanceId, role) =>
-    request('PUT', `/groups/${id(groupId)}/members/${id(instanceId)}`, {
-      role,
-    }),
-  getGroupAccess: groupId => request('GET', `/groups/${id(groupId)}/access`),
-  setGroupAccess: (groupId, level) =>
-    request('PUT', `/groups/${id(groupId)}/access`, { level }),
-
   listCapabilities: () => request('GET', '/capabilities'),
   getCapability: capabilityId =>
     request('GET', `/capabilities/${id(capabilityId)}`),
@@ -564,10 +514,6 @@ export const webClient: NandiClient = withCommands({
   checkAwsCredentials: (profile, region) =>
     request('POST', '/aws/credentials/check', { profile, region }),
   getAwsBedrockApiKeyStatus: () => request('GET', '/aws/bedrock-api-key'),
-
-  listRequestReturns: () => request('GET', '/delegation/returns'),
-  dismissRequestReturn: taskId =>
-    request('POST', `/delegation/returns/${id(taskId)}/dismiss`),
 
   openExternal: url => {
     window.open(url, '_blank', 'noopener,noreferrer')

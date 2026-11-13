@@ -124,8 +124,10 @@ pub mod capability;
 pub mod capability_registries;
 pub mod config;
 pub mod decisions;
+pub mod delegation;
 pub mod delegation_clarification;
 pub mod egress;
+pub mod groups;
 pub mod harness_sessions;
 pub mod harnesses;
 pub mod help;
@@ -133,6 +135,7 @@ pub mod identity;
 pub mod images;
 pub mod knowme;
 pub mod live;
+pub mod machine;
 pub mod manual_steps;
 pub mod marketplace_search;
 pub mod mascot;
@@ -141,6 +144,7 @@ pub mod network;
 pub mod notes;
 pub mod palette;
 pub mod policies;
+pub mod preferences;
 pub mod queue;
 pub mod reassign;
 pub mod relay_capabilities;
@@ -150,6 +154,7 @@ pub mod runs;
 pub mod shared;
 pub mod studio;
 pub mod tasks;
+pub mod teams;
 pub mod teams_roster;
 pub mod tools;
 pub mod work;
@@ -173,8 +178,10 @@ const TABLES: &[&[(&str, Handler)]] = &[
     capability_registries::RPC,
     config::RPC,
     decisions::RPC,
+    delegation::RPC,
     delegation_clarification::RPC,
     egress::RPC,
+    groups::RPC,
     harness_sessions::RPC,
     harnesses::RPC,
     help::RPC,
@@ -182,6 +189,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     images::RPC,
     knowme::RPC,
     live::RPC,
+    machine::RPC,
     manual_steps::RPC,
     marketplace_search::RPC,
     mascot::RPC,
@@ -190,6 +198,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     notes::RPC,
     palette::RPC,
     policies::RPC,
+    preferences::RPC,
     queue::RPC,
     reassign::RPC,
     relay_capabilities::RPC,
@@ -199,6 +208,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     shared::RPC,
     studio::RPC,
     tasks::RPC,
+    teams::RPC,
     teams_roster::RPC,
     tools::RPC,
     work::RPC,

@@ -720,7 +720,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### CP-18 — Delegate to a capability from its card
 
 - **What:** **Delegate** on a capability card opens a dialog to type a request; sending creates a delegation task without leaving the page, then opens the thread.
-- **Where:** `src/components/capability/DelegateCapabilityDialog.tsx` (via `CapabilityCard`); uses delegation `POST /api/delegation/tasks {capability, input, target?}`.
+- **Where:** `src/components/capability/DelegateCapabilityDialog.tsx` (via `CapabilityCard`); uses delegation `POST /api/rpc/delegate_task {capability, input, target?}`.
 - **Preconditions:** A provider (local or remote) for the capability.
 - **Steps:** Delegate → type → Send.
 - **Expected:** Toast "Sent to <name>"; thread opens.

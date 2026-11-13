@@ -77,7 +77,7 @@ Teams carry `source: { kind: "github" | "entra", identifier }`, persisted in `te
 | -------------- | ------------------------------------------------------------------------------- |
 | Sign-in, Graph | `src-tauri/src/services/auth/microsoft.rs` (mock server in its `mock` module)   |
 | Group teams    | `src-tauri/src/services/team/entra.rs`                                          |
-| Commands       | `commands/auth.rs` (Microsoft), `commands/entra_config.rs`, `commands/teams.rs` |
+| Commands       | `commands/auth.rs` (Microsoft), `commands/entra_config.rs`, `rpc/teams.rs`      |
 | Routes         | `src-tauri/src/http/entra.rs`                                                   |
 | UI             | `src/components/entra/`, `EntraSetupView`, `EntraPane`, `Login`, `TeamView`     |
 | Hooks          | `src/hooks/useEntraAuth.ts` (queries, mutations, and the shared device polling) |

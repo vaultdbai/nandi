@@ -6,23 +6,14 @@
  */
 
 import type {
-  AccessLevel,
-  GroupInvite,
-  GroupRole,
-  GroupView,
-  GroupsOverview,
-  InviteRequest,
-  RequestReturn,
   AddRegistryInput,
   AgentCard,
   AgentConnectorChoice,
   FolderUsers,
-  MachineReport,
   AgentDefinitionInput,
   AgentPlaybooks,
   Playbook,
   PlaybookInput,
-  AgentDelegationSettings,
   AgentDetail,
   AgentInfo,
   AgentOverview,
@@ -30,7 +21,6 @@ import type {
   AgentPilotPermission,
   AppliedUpdate,
   AgentSnapshot,
-  AppPreferences,
   ApprovalDecision,
   AttachmentInfo,
   AttachmentKind,
@@ -96,9 +86,6 @@ import type {
   SavedTrigger,
   SendMessageResult,
   StudioConversationSummary,
-  TaskResult,
-  Team,
-  TeamDetail,
   Trigger,
   TriggerFire,
   TriggerInput,
@@ -113,7 +100,6 @@ import type {
   GatewayHold,
   GatewayUsage,
   PendingApproval,
-  ShareResult,
   AmbiguityCluster,
   CapabilityDefinition,
   CapabilityEvidence,
@@ -253,8 +239,6 @@ export interface HandWrittenClient {
   ): Promise<Result<ConversationSnapshot, string>>
 
   // Settings
-  loadPreferences(): Promise<Result<AppPreferences, string>>
-  savePreferences(preferences: AppPreferences): Promise<Result<null, string>>
   getLlmKeyStatus(): Promise<Result<LlmKeyStatus[], string>>
   /** The default model, and the one calls use with the keys set now */
   getDefaultModel(): Promise<Result<DefaultModelStatus, string>>
@@ -535,40 +519,8 @@ export interface HandWrittenClient {
   getRelayInstances(): Promise<Result<RelayPeer[], string>>
 
   // Delegation (Track C)
-  /** Local and remote agents serving `capability` */
-  listAvailableProviders(
-    capability: string
-  ): Promise<Result<AgentCard[], string>>
-  /** Starts a delegation; returns the task ID. `target` (a card ID) skips scoring */
-  delegateTask(
-    capability: string,
-    input: JsonValue,
-    target: string | null
-  ): Promise<Result<string, string>>
-  /** Newest first, both directions */
-  listDelegationHistory(limit: number): Promise<Result<TaskResult[], string>>
-  getAgentDelegation(
-    agentId: string
-  ): Promise<Result<AgentDelegationSettings, string>>
-  setAgentDelegation(
-    agentId: string,
-    settings: AgentDelegationSettings
-  ): Promise<Result<null, string>>
 
   // Teams: a shared git registry (Track D)
-  listTeams(): Promise<Result<Team[], string>>
-  getTeam(teamId: string): Promise<Result<TeamDetail, string>>
-  /** `registryUrl`: the team registry's git URL */
-  createTeam(registryUrl: string): Promise<Result<Team, string>>
-  joinTeam(teamId: string): Promise<Result<null, string>>
-  leaveTeam(teamId: string): Promise<Result<null, string>>
-  syncTeamRegistry(teamId: string): Promise<Result<null, string>>
-  /** Pushes a share branch; a team admin merges it */
-  shareAgent(
-    teamId: string,
-    agentId: string
-  ): Promise<Result<ShareResult, string>>
-  unshareAgent(teamId: string, agentId: string): Promise<Result<null, string>>
 
   // Shared views + trust (Track E)
 
@@ -588,13 +540,6 @@ export interface HandWrittenClient {
   toggleCompanionWindow(): Promise<Result<null, string>>
   /** Quits the desktop app (the companion's way out) */
   quitNandi(): Promise<void>
-  /**
-   * Is this computer ready for agents to act (Docker, WSL, virtualization,
-   * disk, images). Read-only; `fresh` re-runs the slower checks
-   */
-  checkMachine(fresh: boolean): Promise<Result<MachineReport, string>>
-  /** Launches Docker Desktop (no admin rights) */
-  startDocker(): Promise<Result<null, string>>
   /** Sizes the companion for `shape` and keeps it in its screen corner */
   placeCompanion(
     shape: 'collapsed' | 'expanded' | 'overlay'
@@ -728,46 +673,6 @@ export interface HandWrittenClient {
   // Team roster, member profiles, and per-member trust
 
   // Groups (protocol 7, `services::groups`)
-  /** Every group on the relay and the invites for me (`connected: false` without a relay) */
-  listGroups(): Promise<Result<GroupsOverview, string>>
-  getGroup(groupId: string): Promise<Result<GroupView, string>>
-  createGroup(
-    name: string,
-    description: string,
-    policy: string
-  ): Promise<Result<GroupView, string>>
-  updateGroup(
-    groupId: string,
-    name: string,
-    description: string
-  ): Promise<Result<GroupView, string>>
-  /** Signs the next version of the policy and sends it (admins) */
-  setGroupPolicy(
-    groupId: string,
-    policy: string
-  ): Promise<Result<GroupView, string>>
-  inviteToGroup(
-    groupId: string,
-    invite: InviteRequest
-  ): Promise<Result<GroupInvite, string>>
-  revokeGroupInvite(code: string): Promise<Result<null, string>>
-  joinGroup(code: string): Promise<Result<GroupView, string>>
-  leaveGroup(groupId: string): Promise<Result<null, string>>
-  removeGroupMember(
-    groupId: string,
-    instanceId: string
-  ): Promise<Result<GroupView, string>>
-  setGroupRole(
-    groupId: string,
-    instanceId: string,
-    role: GroupRole
-  ): Promise<Result<GroupView, string>>
-  getGroupAccess(groupId: string): Promise<Result<AccessLevel, string>>
-  /** My access level for a group (works offline) */
-  setGroupAccess(
-    groupId: string,
-    level: AccessLevel
-  ): Promise<Result<AccessLevel, string>>
 
   // Wave A: capabilities
   /** Local, registry, and network capabilities with this instance's relation */
@@ -839,9 +744,6 @@ export interface HandWrittenClient {
   // Wave CD: Studio's artifact editor
 
   // Wave CD: work in flight
-  /** Requests that came back while nobody watched, not yet dismissed */
-  listRequestReturns(): Promise<Result<RequestReturn[], string>>
-  dismissRequestReturn(taskId: string): Promise<Result<null, string>>
 
   // Wave EF: supervisor reassignment
   // Wave EF: manual workflow steps

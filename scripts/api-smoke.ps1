@@ -18,12 +18,11 @@ $ErrorActionPreference = 'Stop'
 
 $Routes = @(
     'agents', 'agents/overviews', 'approvals/pending', 'aws/cli', 'aws/profiles',
-    'capabilities', 'companion/snapshot', 'connectors',
-    'default-model', 'delegation/history', 'delegation/providers', 'gateway/callers',
-    'gateway/config', 'gateway/holds', 'gateway/manifest', 'gateway/status', 
-    'llm-keys', 'marketplace/agents', 'marketplace/installed', 'marketplace/packs',
-    'marketplace/updates', 'ollama', 'pilots', 'preferences', 'relay/agents', 'relay/status',
-    'repo/git/status', 'repo/status', 'teams', 'triggers', 'workflows',
+    'capabilities', 'companion/snapshot', 'connectors', 'default-model', 'gateway/callers',
+    'gateway/config', 'gateway/holds', 'gateway/manifest', 'gateway/status', 'llm-keys',
+    'marketplace/agents', 'marketplace/installed', 'marketplace/packs', 'marketplace/updates',
+    'ollama', 'pilots', 'relay/agents', 'relay/status', 'repo/git/status', 'repo/status',
+    'triggers', 'workflows',
     # Commands without arguments: `POST /api/rpc/{name}` with `{}`
     'rpc:get_auto_approve_rules', 'rpc:get_chief_of_staff_digest', 'rpc:get_egress_status',
     'rpc:get_identity_status', 'rpc:get_know_me', 'rpc:get_litellm_gateway_status',
@@ -33,10 +32,11 @@ $Routes = @(
     'rpc:list_agents_shared_with_me', 'rpc:list_ask_history', 'rpc:list_bedrock_models',
     'rpc:list_capability_providers', 'rpc:list_capability_registries',
     'rpc:list_connector_grants', 'rpc:list_decision_months', 'rpc:list_declared_capabilities',
-    'rpc:list_dismissed_work', 'rpc:list_harness_sessions', 'rpc:list_harnesses',
-    'rpc:list_note_suggestions', 'rpc:list_pending_manual_steps', 'rpc:list_push_targets',
-    'rpc:list_recent_changes', 'rpc:list_tasks', 'rpc:list_tools', 'rpc:list_trust_policies',
-    'rpc:list_trust_requests', 'rpc:list_work', 'rpc:mascot_get'
+    'rpc:list_dismissed_work', 'rpc:list_groups', 'rpc:list_harness_sessions',
+    'rpc:list_harnesses', 'rpc:list_note_suggestions', 'rpc:list_pending_manual_steps',
+    'rpc:list_push_targets', 'rpc:list_recent_changes', 'rpc:list_request_returns',
+    'rpc:list_tasks', 'rpc:list_teams', 'rpc:list_tools', 'rpc:list_trust_policies',
+    'rpc:list_trust_requests', 'rpc:list_work', 'rpc:load_preferences', 'rpc:mascot_get'
 )
 
 if (-not (Test-Path $Binary)) {

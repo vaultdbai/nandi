@@ -13,21 +13,12 @@ src-tauri/src/services/
   groups/enforce.rs      Enforcer / GroupRules: the decision for one incoming request
   relay/client.rs        group_request (request_id correlation), on_groups, public_keys_of,
                          Registered.visibility -> RelayStatus.visibility, no_shared_group
-src-tauri/src/commands/groups.rs, http/groups.rs
+src-tauri/src/rpc/groups.rs
 src/hooks/useGroups.ts, src/components/views/{GroupsView,GroupDetail}.tsx,
 src/components/network/{groups-model,group-toast}.ts
 ```
 
-| Command                                  | Route                                                                |
-| ---------------------------------------- | -------------------------------------------------------------------- |
-| `list_groups` (`GroupsOverview`)         | `GET /api/groups`                                                    |
-| `create_group`                           | `POST /api/groups`                                                   |
-| `get_group`, `update_group`              | `GET`/`PUT /api/groups/{id}`                                         |
-| `set_group_policy`                       | `PUT /api/groups/{id}/policy`                                        |
-| `invite_to_group`, `revoke_group_invite` | `POST /api/groups/{id}/invites`, `DELETE /api/groups/invites/{code}` |
-| `join_group`, `leave_group`              | `POST /api/groups/join`, `POST /api/groups/{id}/leave`               |
-| `set_group_role`, `remove_group_member`  | `PUT`/`DELETE /api/groups/{id}/members/{instance}`                   |
-| `get_group_access`, `set_group_access`   | `GET`/`PUT /api/groups/{id}/access`                                  |
+Every command is one declaration in `rpc/groups.rs`, served over IPC and `POST /api/rpc/{name}`: `list_groups` (`GroupsOverview`), `create_group`, `get_group`, `update_group`, `set_group_policy`, `invite_to_group`, `revoke_group_invite`, `join_group`, `leave_group`, `set_group_role`, `remove_group_member`, `get_group_access`, `set_group_access`.
 
 Without a relay every call answers `RelayUnavailable` (the UI shows `RelayConnectNotice`), except `list_groups` (`connected: false`) and the access level, which is a local file.
 

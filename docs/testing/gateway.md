@@ -161,7 +161,7 @@ Notes that apply to the whole section:
 
 - **Where:** Code: `policy.rs` (`evaluate`, `is_exposed`), `router.rs` (`handle_gateway_task`, `caller_name`, `reject_message`).
 - **Preconditions:** Two instances on a relay. B's gateway has relay enabled. A is allowed past trust, or the request is plain language.
-- **Steps:** 1. On B, hide `summarize`. 2. From A, `POST /api/delegation/tasks {"capability":"summarize","input":"x","target":"<B>/gateway"}`. 3. On B, set A's caller row `allowedCapabilities: ["translate"]` and send `research`. 4. On B, disable A's row and send anything.
+- **Steps:** 1. On B, hide `summarize`. 2. From A, `POST /api/rpc/delegate_task {"capability":"summarize","input":"x","target":"<B>/gateway"}`. 3. On B, set A's caller row `allowedCapabilities: ["translate"]` and send `research`. 4. On B, disable A's row and send anything.
 - **Expected:** A's Request page shows a refusal with the matching sentence and reason kind for each step. On B, each task is Rejected and listed under Incoming requests → Refused (NW-10). No usage is counted for a refused request.
 - **Edge / negative cases:**
   - A disabled or paused caller is refused without spending a rate-limit token.

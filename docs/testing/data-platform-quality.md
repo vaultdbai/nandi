@@ -56,7 +56,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
   - Empty file = defaults (default model `claude:claude-sonnet-5`).
   - Invalid `delegation.preferred_providers` card ID rejected.
   - `secret_refs` are preserved verbatim, never resolved into the file.
-- **Automation:** Covered by: `services/domain/settings.rs` (`empty_file_is_defaults`, `rejects_secrets_and_bad_values`, `preserves_secret_refs_without_resolving_them`, `provider_pins_round_trip_and_are_validated`, `consent_round_trips_and_needs_agent_ids`, `registries_default_validate_and_round_trip`, `mutations_keep_invariants`), `services/repos/settings_repo.rs` test | Layer: unit; api for the write-back via `PUT /api/preferences` | Gap: no test of the hand-edit-to-UI round trip.
+- **Automation:** Covered by: `services/domain/settings.rs` (`empty_file_is_defaults`, `rejects_secrets_and_bad_values`, `preserves_secret_refs_without_resolving_them`, `provider_pins_round_trip_and_are_validated`, `consent_round_trips_and_needs_agent_ids`, `registries_default_validate_and_round_trip`, `mutations_keep_invariants`), `services/repos/settings_repo.rs` test | Layer: unit; api for the write-back via `POST /api/rpc/save_preferences` | Gap: no test of the hand-edit-to-UI round trip.
 - **Needs relay:** no
 - **Status:** Shipped
 

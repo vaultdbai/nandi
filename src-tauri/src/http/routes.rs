@@ -15,10 +15,7 @@ use crate::services::agents::{self, CreateAgentInput};
 use crate::services::llm_keys::{self, KeyedProvider};
 use crate::services::relay::RelayUnavailable;
 use crate::services::workflows::{self, CreateWorkflowInput};
-use crate::services::{
-    attachments, chat, preferences, recovery, repo_service, snapshots, AppState,
-};
-use crate::types::AppPreferences;
+use crate::services::{attachments, chat, recovery, repo_service, snapshots, AppState};
 
 /// A service result as an HTTP response.
 pub(super) struct ApiResult<T>(pub(super) Result<T, String>);
@@ -102,7 +99,6 @@ pub fn api() -> Router<AppState> {
         )
         .route("/conversations/{id}", get(conversation))
         .route("/attachments/{id}", delete(discard_attachment))
-        .route("/preferences", get(load_preferences).put(save_preferences))
         .route("/llm-keys", get(llm_key_status))
         .route("/llm-keys/{provider}", put(set_llm_key))
         // Body `{ apiKey? }` (none: the stored key); returns `LlmKeyTest`
@@ -408,17 +404,6 @@ async fn conversation(State(state): State<AppState>, Path(id): Path<String>) -> 
 }
 
 // --- Settings --------------------------------------------------------------
-
-async fn load_preferences(State(state): State<AppState>) -> impl IntoResponse {
-    ApiResult(preferences::load_preferences(&state).await)
-}
-
-async fn save_preferences(
-    State(state): State<AppState>,
-    Json(prefs): Json<AppPreferences>,
-) -> impl IntoResponse {
-    ApiResult(preferences::save_preferences(&state, prefs).await)
-}
 
 async fn llm_key_status(State(state): State<AppState>) -> impl IntoResponse {
     ApiResult(llm_keys::get_llm_key_status(&state).await)

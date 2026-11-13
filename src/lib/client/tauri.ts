@@ -68,8 +68,6 @@ export const tauriClient: NandiClient = withCommands({
   getStudioConversations: () => commands.getStudioConversations(),
   getConversation: conversationId => commands.getConversation(conversationId),
 
-  loadPreferences: () => commands.loadPreferences(),
-  savePreferences: preferences => commands.savePreferences(preferences),
   getLlmKeyStatus: () => commands.getLlmKeyStatus(),
   getDefaultModel: () => commands.getDefaultModel(),
   setDefaultModel: model => commands.setDefaultModel(model),
@@ -198,29 +196,9 @@ export const tauriClient: NandiClient = withCommands({
   testRelayConnection: url => commands.testRelayConnection(url),
   getRelayInstances: () => commands.getRelayInstances(),
 
-  listAvailableProviders: capability =>
-    commands.listAvailableProviders(capability),
-  delegateTask: (capability, input, target) =>
-    commands.delegateTask(capability, input, target),
-  listDelegationHistory: limit => commands.listDelegationHistory(limit),
-  getAgentDelegation: agentId => commands.getAgentDelegation(agentId),
-  setAgentDelegation: (agentId, settings) =>
-    commands.setAgentDelegation(agentId, settings),
-
-  listTeams: () => commands.listTeams(),
-  getTeam: teamId => commands.getTeam(teamId),
-  createTeam: registryUrl => commands.createTeam(registryUrl),
-  joinTeam: teamId => commands.joinTeam(teamId),
-  leaveTeam: teamId => commands.leaveTeam(teamId),
-  syncTeamRegistry: teamId => commands.syncTeamRegistry(teamId),
-  shareAgent: (teamId, agentId) => commands.shareAgent(teamId, agentId),
-  unshareAgent: (teamId, agentId) => commands.unshareAgent(teamId, agentId),
-
   getCompanionSnapshot: dayStart => commands.getCompanionSnapshot(dayStart),
   toggleCompanionWindow: () => commands.toggleCompanionWindow(),
   quitNandi: () => commands.quitNandi(),
-  checkMachine: fresh => commands.checkMachine(fresh),
-  startDocker: () => commands.startDocker(),
   placeCompanion: shape => commands.placeCompanion(shape),
   setCompanionBubble: bubble => commands.setCompanionBubble(bubble),
   setCompanionStartBisonOnly: on => commands.setCompanionStartBisonOnly(on),
@@ -271,24 +249,6 @@ export const tauriClient: NandiClient = withCommands({
   setGatewayManifest: manifest => commands.setGatewayManifest(manifest),
   gatewayChat: message => commands.gatewayChat(message),
 
-  listGroups: () => commands.listGroups(),
-  getGroup: groupId => commands.getGroup(groupId),
-  createGroup: (name, description, policy) =>
-    commands.createGroup(name, description, policy),
-  updateGroup: (groupId, name, description) =>
-    commands.updateGroup(groupId, name, description),
-  setGroupPolicy: (groupId, policy) => commands.setGroupPolicy(groupId, policy),
-  inviteToGroup: (groupId, invite) => commands.inviteToGroup(groupId, invite),
-  revokeGroupInvite: code => commands.revokeGroupInvite(code),
-  joinGroup: code => commands.joinGroup(code),
-  leaveGroup: groupId => commands.leaveGroup(groupId),
-  removeGroupMember: (groupId, instanceId) =>
-    commands.removeGroupMember(groupId, instanceId),
-  setGroupRole: (groupId, instanceId, role) =>
-    commands.setGroupRole(groupId, instanceId, role),
-  getGroupAccess: groupId => commands.getGroupAccess(groupId),
-  setGroupAccess: (groupId, level) => commands.setGroupAccess(groupId, level),
-
   listCapabilities: () => commands.listCapabilities(),
   getCapability: id => commands.getCapability(id),
   saveCapability: definition => commands.saveCapability(definition),
@@ -317,9 +277,6 @@ export const tauriClient: NandiClient = withCommands({
   checkAwsCredentials: (profile, region) =>
     commands.checkAwsCredentials(profile, region),
   getAwsBedrockApiKeyStatus: () => commands.getAwsBedrockApiKeyStatus(),
-
-  listRequestReturns: () => commands.listRequestReturns(),
-  dismissRequestReturn: taskId => commands.dismissRequestReturn(taskId),
 
   openExternal: url => openUrl(url),
 

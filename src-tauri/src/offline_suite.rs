@@ -49,9 +49,6 @@ const SCREEN_ROUTES: &[&str] = &[
     "companion/snapshot",
     "connectors",
     "default-model",
-    "delegation/history",
-    "delegation/providers",
-    "delegation/returns",
     "email",
     "gateway/callers",
     "gateway/config",
@@ -61,12 +58,10 @@ const SCREEN_ROUTES: &[&str] = &[
     "llm-keys",
     "marketplace/installed",
     "pilots",
-    "preferences",
     "relay/agents",
     "relay/status",
     "repo/git/status",
     "repo/status",
-    "teams",
     "triggers",
     "workflows",
 ];
@@ -96,15 +91,19 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_decision_months",
     "list_declared_capabilities",
     "list_dismissed_work",
+    "list_groups",
     "list_note_suggestions",
     "list_pending_manual_steps",
     "list_push_targets",
     "list_recent_changes",
+    "list_request_returns",
     "list_tasks",
+    "list_teams",
     "list_tools",
     "list_trust_policies",
     "list_trust_requests",
     "list_work",
+    "load_preferences",
     "mascot_get",
 ];
 
@@ -219,6 +218,14 @@ async fn every_screen_answers(router: &Router) {
     // The run history's first page, with no filters
     let first_page = json!({ "filters": {}, "limit": 50, "offset": 0 });
     rpc(router, "list_all_runs", first_page).await;
+    // Delegation: every provider, and the history's first page
+    rpc(
+        router,
+        "list_available_providers",
+        json!({ "capability": "" }),
+    )
+    .await;
+    rpc(router, "list_delegation_history", json!({ "limit": 200 })).await;
 }
 
 async fn relay_is_disconnected(router: &Router) -> Value {
@@ -233,7 +240,7 @@ async fn person_to_person_is_not_connected(router: &Router) {
     let (status, body) = call(
         router,
         "POST",
-        "delegation/tasks",
+        "rpc/delegate_task",
         json!({
             "capability": "gateway",
             "input": { "text": "Can you review my plan?" },
@@ -374,9 +381,11 @@ async fn with_no_relay_the_computer_checklist_answers() {
     // Local commands (WSL, PowerShell, df) take their own short timeouts;
     // none of them is the relay
     let request = Request::builder()
-        .uri("/api/machine/readiness")
+        .method("POST")
+        .uri("/api/rpc/check_machine")
         .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
-        .body(Body::empty())
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"fresh":false}"#))
         .unwrap();
     let response = tokio::time::timeout(Duration::from_secs(30), router.oneshot(request))
         .await

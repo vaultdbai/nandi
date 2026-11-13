@@ -20,7 +20,7 @@ Notes that apply to the whole section:
 ### TM-02 — Create a team from a registry git URL
 
 - **What:** You create a team by entering any git URL for a shared "registry" repo. Nandi clones it to `~/.nandi/repo/teams/<id>/`. If the registry layout is missing, Nandi scaffolds it and pushes the scaffold to `nandi/<my slug>`, never to the default branch. You are added as Owner.
-- **Where:** Network → People → team filter → "Manage teams…" → Teams → **New team** (dialog "Registry git URL"). Code: `src/components/views/TeamView.tsx` (`CreateTeamDialog`), `commands/teams.rs` (`create_team`; its argument is still named `github_org` but takes a URL), `services/team/mod.rs` (`create_team`), `services/team/registry.rs`. HTTP: `POST /api/teams`, `GET /api/teams`.
+- **Where:** Network → People → team filter → "Manage teams…" → Teams → **New team** (dialog "Registry git URL"). Code: `src/components/views/TeamView.tsx` (`CreateTeamDialog`), `rpc/teams.rs` (`create_team`; its argument is still named `github_org` but takes a URL), `services/team/mod.rs` (`create_team`), `services/team/registry.rs`. HTTP: `POST /api/rpc/create_team`, `POST /api/rpc/list_teams`.
 - **Preconditions:** A user slug is set (TM-01). You have a reachable git remote with push rights, or a local bare repo for testing.
 - **Steps:** 1. Open Network → People. 2. In the team select, choose "Manage teams…". 3. Click **New team**. 4. Enter `file:///…/acme-registry.git` or an https URL and click **Create team**.
 - **Expected:**
@@ -42,7 +42,7 @@ Notes that apply to the whole section:
 ### TM-03 — Team detail: members, shared agents, packs, last sync
 
 - **What:** Selecting a team shows its members with roles (Owner/Admin/Member), the agents shared in its registry ("Shared by {name}"), the registry's packs, "Last synced {time}" (or "Not synced yet"), a roster section and a team activity feed.
-- **Where:** Network → People → Manage teams… → select a team. Code: `TeamView.tsx` (`TeamDetailPane`, `MembersCard`), `src/components/team/TeamRosterSection.tsx`, `MemberCard.tsx`, `TeamActivityFeed.tsx`, `commands/teams.rs` (`get_team`), `rpc/teams_roster.rs` (`get_team_roster`, `get_member_profile`), `services/team/roster.rs`. HTTP: `GET /api/teams/{team_id}`, `POST /api/rpc/get_team_roster`, `POST /api/rpc/get_member_profile`.
+- **Where:** Network → People → Manage teams… → select a team. Code: `TeamView.tsx` (`TeamDetailPane`, `MembersCard`), `src/components/team/TeamRosterSection.tsx`, `MemberCard.tsx`, `TeamActivityFeed.tsx`, `rpc/teams.rs` (`get_team`), `rpc/teams_roster.rs` (`get_team_roster`, `get_member_profile`), `services/team/roster.rs`. HTTP: `POST /api/rpc/get_team`, `POST /api/rpc/get_team_roster`, `POST /api/rpc/get_member_profile`.
 - **Preconditions:** You are in a team (TM-02). For roster stats, at least one member is on the relay and has delegation history with you.
 - **Steps:** 1. Open the team. 2. Check the Members, Shared agents and Packs cards. 3. Check the roster cards: shared agents, team count, sent and received counts, and Open profile. 4. Check the activity feed.
 - **Expected:**
@@ -61,7 +61,7 @@ Notes that apply to the whole section:
 ### TM-04 — Sync team registry
 
 - **What:** Fetches and fast-forwards the team's checkout so that newly merged shares appear and pending shares that were merged leave the pending list.
-- **Where:** Team detail → **Sync**. Code: `commands/teams.rs` (`sync_team_registry`). HTTP: `POST /api/teams/{team_id}/sync`.
+- **Where:** Team detail → **Sync**. Code: `rpc/teams.rs` (`sync_team_registry`). HTTP: `POST /api/rpc/sync_team_registry`.
 - **Preconditions:** You are in a team, and a share branch was merged on the remote.
 - **Steps:** 1. Merge a `nandi/share-…` branch into the registry's default branch on the remote. 2. Click **Sync**.
 - **Expected:** "Last synced" updates. The agent appears under Shared agents, and its "Waiting for a team admin to merge" badge disappears. A `team://changed` event fires.
@@ -75,9 +75,9 @@ Notes that apply to the whole section:
 ### TM-05 — Join (re-sync) a known team
 
 - **What:** Re-syncs a team that already has a row on this machine and lists you as a Member. It cannot join a team by ID alone, because there is no directory service.
-- **Where:** API and command only: `commands/teams.rs` (`join_team`), `POST /api/teams/{team_id}/join`. The `useTeams` hook supports a `join` action, but no screen calls it.
+- **Where:** API and command only: `rpc/teams.rs` (`join_team`), `POST /api/rpc/join_team`. The `useTeams` hook supports a `join` action, but no screen calls it.
 - **Preconditions:** The team row exists locally.
-- **Steps:** 1. `POST /api/teams/<id>/join` for a known team. 2. Repeat with an unknown ID.
+- **Steps:** 1. `POST /api/rpc/join_team` for a known team. 2. Repeat with an unknown ID.
 - **Expected:** For the known team, the checkout syncs and a member row exists for you. For the unknown ID, a 400 error says "There's no team <id> here. Add it with its registry's git URL instead."
 - **Edge / negative cases:** Joining with no slug set fails.
 - **Automation:** Covered by: `mod.rs` (`join_team_needs_a_known_team`) | Layer: api | Gap: none.
@@ -87,7 +87,7 @@ Notes that apply to the whole section:
 ### TM-06 — Leave team
 
 - **What:** Forgets the team on this machine. It deletes the team and member rows and removes the checkout folder. Nothing on the remote changes.
-- **Where:** Team detail → **Leave**. HTTP: `POST /api/teams/{team_id}/leave`.
+- **Where:** Team detail → **Leave**. HTTP: `POST /api/rpc/leave_team`.
 - **Preconditions:** You are in a team.
 - **Steps:** 1. Click **Leave**.
 - **Expected:** The team disappears from the list, `~/.nandi/repo/teams/<id>/` is deleted, and a `team://changed` event fires. The remote is unchanged.
@@ -106,7 +106,7 @@ Notes that apply to the whole section:
   - Agent menu → "Share with team" (TM-10).
   - Agent sharing dialog (TM-11).
   - Code: `services/team/mod.rs` (`share_agent`, `remember_pending_share`, `pending_shares`), `src/components/team/share-toast.ts`.
-  - HTTP: `POST /api/teams/{team_id}/agents/{agent_id}`.
+  - HTTP: `POST /api/rpc/share_agent`.
 - **Preconditions:** You are in a team, you have your own agent (not vendored from the marketplace), and push access.
 - **Steps:** 1. Click **Share agent**. 2. Pick an agent and click **Share**. 3. Look at the toast. 4. Look at the team's agent list.
 - **Expected:**
@@ -126,7 +126,7 @@ Notes that apply to the whole section:
 ### TM-08 — Stop sharing an agent with a team
 
 - **What:** Removes the agent folder and its index entry, and pushes the change to `nandi/unshare-<slug>-<agent>`. Only the agent's publisher can do this.
-- **Where:** Team detail → **Stop sharing**, Shared by me → sharing toggle (with confirmation), or the Agent menu team checkbox. HTTP: `DELETE /api/teams/{team_id}/agents/{agent_id}`.
+- **Where:** Team detail → **Stop sharing**, Shared by me → sharing toggle (with confirmation), or the Agent menu team checkbox. HTTP: `POST /api/rpc/unshare_agent`.
 - **Preconditions:** You shared the agent earlier.
 - **Steps:** 1. Click **Stop sharing**. 2. Check the remote branches.
 - **Expected:** An unshare branch is pushed. Shared by me shows the toast "Stopped sharing", and the agent disappears from Shared by me once the change is merged and synced.
@@ -225,7 +225,7 @@ Notes that apply to the whole section:
 ### TM-14 — Call dialog (send one task to a shared agent)
 
 - **What:** Sends one delegated task. You pick the capability, "Send to" (Auto, or a named provider that is never swapped) and the input (JSON or plain text). The owner's trust policy decides whether it runs.
-- **Where:** Shared with me card → **Call**, or By capability → **Send task**. Code: `src/components/sharing/CallDialog.tsx`, `useCallSharedAgent` → `delegate_task`. HTTP: `POST /api/delegation/tasks`.
+- **Where:** Shared with me card → **Call**, or By capability → **Send task**. Code: `src/components/sharing/CallDialog.tsx`, `useCallSharedAgent` → `delegate_task`. HTTP: `POST /api/rpc/delegate_task`.
 - **Preconditions:** A provider is reachable: local, or on the relay and trusting you.
 - **Steps:** 1. Click **Call**. 2. Keep Auto and enter `{"text":"hi"}`. 3. Click **Send**. 4. Repeat with a named provider.
 - **Expected:**
@@ -468,7 +468,7 @@ Notes that apply to the whole section:
 ### NW-08 — Ask {name} (a plain-language request to a member's gateway)
 
 - **What:** A composer sends `{text}` as capability `gateway` to the target `<instance>/gateway`. The member's gateway routes it to one of their agents. Example chips fill in prompts from their capabilities. The card's **Ask** is disabled with a reason when the member is not connected, offline, or not accepting.
-- **Where:** Member profile (`src/components/network/AskMemberComposer.tsx`), the People card Ask button. Code: `ask-model.ts` (`gatewayRequest`), `delegate_task`. HTTP: `POST /api/delegation/tasks {"capability":"gateway","input":{"text":"…"},"target":"<instance>/gateway"}`.
+- **Where:** Member profile (`src/components/network/AskMemberComposer.tsx`), the People card Ask button. Code: `ask-model.ts` (`gatewayRequest`), `delegate_task`. HTTP: `POST /api/rpc/delegate_task {"capability":"gateway","input":{"text":"…"},"target":"<instance>/gateway"}`.
 - **Preconditions:** The member is online with their gateway accepting delegation, and they trust you, or their policy allows you.
 - **Steps:** 1. Type a request and click Send. 2. Follow the opened delegation thread.
 - **Expected:**
@@ -769,7 +769,7 @@ Notes that apply to the whole section:
 
   Settings are written to skill.md through the repos layer, never to SQLite.
 
-- **Where:** Agent → Settings tab → Sharing section (`src/components/agent-console/DelegationPanel.tsx` inside `src/components/agents/AgentSettingsTab.tsx`). Code: `commands/delegation.rs` (`get_agent_delegation`, `set_agent_delegation`), `services/a2a/settings.rs`. HTTP: `GET`/`PUT /api/agents/{agent_id}/delegation`.
+- **Where:** Agent → Settings tab → Sharing section (`src/components/agent-console/DelegationPanel.tsx` inside `src/components/agents/AgentSettingsTab.tsx`). Code: `rpc/delegation.rs` (`get_agent_delegation`, `set_agent_delegation`), `services/a2a/settings.rs`. HTTP: `GET`/`POST /api/rpc/set_agent_delegation`.
 - **Preconditions:** An agent exists.
 - **Steps:** 1. Turn on both switches. 2. Set Tasks at once to 2. 3. Add an exception `summarize: Never accept`. 4. Open skill.md.
 - **Expected:** skill.md has `delegation_outbound: true`, `accepts_delegation: true`, `max_delegation_concurrent: 2` and `delegation_overrides: {summarize: deny}`, and the gold copy commit is made.
@@ -801,7 +801,7 @@ Notes that apply to the whole section:
   - Your own providers are tried in turn (up to 3); each passed-on attempt is kept as `<id>-attempt<n>`.
   - A request to someone else goes to the relay sealed for every candidate of its plan (`SubmitTask`). The relay gives it to the next one when the first refuses it, doesn't pick it up within 90 s, or (work for an agent) takes over 3× its ETA, with you offline or not. The thread says "Passed to {name}" with why (`failed_over` message), and the task keeps its ID. A named person and an assignment get no one else.
   - A remote request is waited on live for 600 s (`local_settings.delegation_timeout_secs`). Then it stays open until its due date (`input.due`, else 2 days for `ask-me`, 1 day otherwise) and the tool says `status: waiting`; a late answer is kept. Past its due date the relay ends it (abandoned if nobody took it up, else timed out) for both sides.
-- **Where:** `commands/delegation.rs` (`delegate_task`, `list_available_providers`), `services/a2a/delegator.rs`, `task.rs` (`on_event`), `task_state.rs` (`hand_on`), `queue.rs`, `resume.rs`; nandi-relay `src/dispatch.rs`. HTTP: `POST /api/delegation/tasks`, `GET /api/delegation/providers?capability=`, `POST /api/rpc/get_eta_estimate`. Events: `delegation://*`, `task://state_changed`, `task://timed_out`, `task://circuit_opened`.
+- **Where:** `rpc/delegation.rs` (`delegate_task`, `list_available_providers`), `services/a2a/delegator.rs`, `task.rs` (`on_event`), `task_state.rs` (`hand_on`), `queue.rs`, `resume.rs`; nandi-relay `src/dispatch.rs`. HTTP: `POST /api/rpc/delegate_task`, `POST /api/rpc/list_available_providers`, `POST /api/rpc/get_eta_estimate`. Events: `delegation://*`, `task://state_changed`, `task://timed_out`, `task://circuit_opened`.
 - **Preconditions:** At least two providers for the capability on other Nandis, one of which refuses.
 - **Steps:** 1. Delegate with no target. 2. Make the first pick reject (trust or closed). 3. Separately, delegate to an offline member, then bring them online.
 - **Expected:**
@@ -877,7 +877,7 @@ Notes that apply to the whole section:
 ### RL-18 — Delegation history and audit log
 
 - **What:** Every delegation, in both directions, is recorded in `delegations` (one row per task and side) and in `~/.nandi/local/logs/delegations.log` (JSONL: who, capability, status, duration, error; never the input or output). It shows in Home → All activity next to runs. Each row opens its Request.
-- **Where:** Home → All activity (`{kind:'home-activity'}`; `src/components/home/activity-model.ts` `delegationRow`). Code: `commands/delegation.rs` (`list_delegation_history`), `services/a2a/history.rs`. HTTP: `GET /api/delegation/history?limit=`.
+- **Where:** Home → All activity (`{kind:'home-activity'}`; `src/components/home/activity-model.ts` `delegationRow`). Code: `rpc/delegation.rs` (`list_delegation_history`), `services/a2a/history.rs`. HTTP: `POST /api/rpc/list_delegation_history`.
 - **Preconditions:** At least one delegation.
 - **Steps:** 1. Make a delegation. 2. Open Home → All activity. 3. Read `delegations.log`.
 - **Expected:** The row shows direction, the other party, status and duration. The log has no payload.
@@ -1326,7 +1326,7 @@ Notes that apply to the whole section:
   - Events: `GET /ws` (RL-24).
 - **Where:** `src-tauri/src/http/*.rs`.
 - **Preconditions:** The server is running and you have the token.
-- **Steps:** 1. Two headless instances plus a relay. 2. `PUT /api/relay/url`. 3. `PUT /api/gateway/config` (relay enabled and discoverable). 4. `POST /api/rpc/set_trust_relationship {"addedAsTrustedPeer":true}` on B. 5. `POST /api/delegation/tasks`. 6. Poll `POST /api/rpc/get_task_events`.
+- **Steps:** 1. Two headless instances plus a relay. 2. `PUT /api/relay/url`. 3. `PUT /api/gateway/config` (relay enabled and discoverable). 4. `POST /api/rpc/set_trust_relationship {"addedAsTrustedPeer":true}` on B. 5. `POST /api/rpc/delegate_task`. 6. Poll `POST /api/rpc/get_task_events`.
 - **Expected:** The cross-instance delegation completes using only the API.
 - **Edge / negative cases:**
   - Service errors return 400 with the same message the IPC command returns.
@@ -1345,7 +1345,7 @@ Notes that apply to the whole section:
 - **Expected:**
   - Steps 1 to 3 show "Connect to your company's relay"; the button opens Network › Connection.
   - Step 4: no relay notice or toast anywhere.
-  - `POST /api/delegation/tasks` with another Nandi's target answers 503 with the `relay_unavailable` error; delegating to your own agents still works.
+  - `POST /api/rpc/delegate_task` with another Nandi's target answers 503 with the `relay_unavailable` error; delegating to your own agents still works.
 - **Edge / negative cases:**
   - A configured relay that is reconnecting keeps a question or an assignment to someone in the outbox (RL-43) instead of refusing it.
   - The team inbox (holds, assignments) decides locally; answers go out when the relay is back.
@@ -1357,7 +1357,7 @@ Notes that apply to the whole section:
 ### GR-01 — Network › Groups lists the relay's groups
 
 - **What:** Network › Groups shows every group on the relay with its name, description and member count, my groups first with a **Member** or **Admin** badge. Nobody is in a group by default. Without a relay the tab shows "Connect to your company's relay", never an error.
-- **Where:** `src/components/views/GroupsView.tsx`, `NavPages.tsx` (`groups` tab), `useGroups.ts`; command `list_groups`, `GET /api/groups`; Rust `services/groups/mod.rs` (`Groups::overview`).
+- **Where:** `src/components/views/GroupsView.tsx`, `NavPages.tsx` (`groups` tab), `useGroups.ts`; command `list_groups`, `POST /api/rpc/list_groups`; Rust `services/groups/mod.rs` (`Groups::overview`).
 - **Preconditions:** A relay with groups support (protocol 7) and two instances (RL-11).
 - **Steps:** 1. Disconnect and open Network › Groups. 2. Connect and open it again. 3. On the second instance, create a group.
 - **Expected:** Step 1: the calm connect state. Step 2: "No groups yet" or the list. Step 3: the first instance's list shows the new group (after `network://group_changed` or a refresh) without a badge, with "Ask a member for an invite".
@@ -1369,7 +1369,7 @@ Notes that apply to the whole section:
 ### GR-02 — Create a group with a signed policy
 
 - **What:** **Create group** asks for a name, a description and the policy, prefilled with a template whose comments explain each `requests:` field (`approval: always` by default). The creating Nandi picks the group ID (`g_` and 16 hex characters) and signs version 1 of the policy over it with this device's key. The creator is the first admin; their access level for the group starts at Ask first.
-- **Where:** `GroupsView.tsx` (`CreateDialog`); `create_group`, `POST /api/groups`; `Groups::create`, `domain::group::POLICY_TEMPLATE`, `GroupPolicyText::parse`.
+- **Where:** `GroupsView.tsx` (`CreateDialog`); `create_group`, `POST /api/rpc/create_group`; `Groups::create`, `domain::group::POLICY_TEMPLATE`, `GroupPolicyText::parse`.
 - **Preconditions:** Connected to a groups-capable relay.
 - **Steps:** 1. Create "Finance" with the template. 2. Open `~/.nandi/repo/.nandi/groups/`. 3. Try a policy with `approval: sometimes`.
 - **Expected:** Step 1: the group opens, "Verified, signed by {you}, version 1". Step 2: `<group-id>.md` (Nandi's frontmatter, then the policy text unchanged) and `access.yaml` with `<group-id>: ask-first`, both staged in git. Step 3: refused before anything reaches the relay, naming `requests`.
@@ -1381,7 +1381,7 @@ Notes that apply to the whole section:
 ### GR-03 — Join with a code, invites for me
 
 - **What:** **Join with code** joins a group with an invite code. Invites addressed to me show at the top of Groups with **Accept** (joins with its code) and **Ignore** (hides it for this session). Joining keeps a copy of the group's policy and sets my access level to Ask first.
-- **Where:** `GroupsView.tsx` (`JoinDialog`, invites section); `join_group`, `POST /api/groups/join`; `Groups::join`.
+- **Where:** `GroupsView.tsx` (`JoinDialog`, invites section); `join_group`, `POST /api/rpc/join_group`; `Groups::join`.
 - **Preconditions:** A member made an invite (GR-05).
 - **Steps:** 1. Paste a code and Join. 2. Have a member invite you by name, then Accept. 3. Join with a used-up code.
 - **Expected:** 1–2: the group opens; its copy is in `.nandi/groups/`, and the author's key is pinned. 3: "That invite code isn't valid…".
@@ -1393,7 +1393,7 @@ Notes that apply to the whole section:
 ### GR-04 — Group detail: members, roles, Leave
 
 - **What:** A group I'm in opens its detail: members with roles (admins first); admins can **Make admin** / **Make member** and **Remove** (asks first). The last admin can't be demoted. **Leave** (asks first) removes the group's copy and my access level.
-- **Where:** `GroupDetail.tsx` (`MembersCard`, Leave); `set_group_role`, `remove_group_member`, `leave_group` (`/api/groups/{id}/members/{instance}`, `/api/groups/{id}/leave`).
+- **Where:** `GroupDetail.tsx` (`MembersCard`, Leave); `set_group_role`, `remove_group_member`, `leave_group` (`POST /api/rpc/{name}`).
 - **Preconditions:** A group with two members.
 - **Steps:** 1. As admin, make the other member an admin, then a member again. 2. Remove them. 3. Leave as the last admin while another member remains.
 - **Expected:** 1–2 update the list for everyone (live, `network://group_changed`). 3: "A group needs an admin: make someone else an admin first".
@@ -1417,7 +1417,7 @@ Notes that apply to the whole section:
 ### GR-06 — The policy: verified or fail closed; admins edit it
 
 - **What:** The group's policy is shown read-only with "Verified, signed by {author}, version {N}", or, when its signature doesn't check out against the author's pinned key, "This group's policy couldn't be verified" (and work from that group is refused, GR-08). Admins **Edit policy** and **Sign and save**: the next version, signed by this device.
-- **Where:** `GroupDetail.tsx` (`PolicyCard`); `set_group_policy`, `PUT /api/groups/{id}/policy`; `Groups::set_policy`, `domain::group::verify`, `groups::enforce::Enforcer::verified`.
+- **Where:** `GroupDetail.tsx` (`PolicyCard`); `set_group_policy`, `POST /api/rpc/set_group_policy`; `Groups::set_policy`, `domain::group::verify`, `groups::enforce::Enforcer::verified`.
 - **Preconditions:** A group you administer.
 - **Steps:** 1. Edit the policy to `approval: per-member` and save. 2. Edit `.nandi/groups/<id>.md` by hand (change the text).
 - **Expected:** 1: version 2, verified, on every member's Nandi. 2: requests from that group's members are refused with "this group's policy couldn't be verified" until the next refresh rewrites the copy.
