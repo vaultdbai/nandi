@@ -6,7 +6,7 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type { HarnessEventRecord, HarnessSessionSummary } from '@/lib/bindings'
+import type { HarnessSessionSummary } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
 /** Everything session-related lives under `['harness-sessions']` */
@@ -42,31 +42,6 @@ export function useHarnessSessions(agentId: string | null) {
     queryKey: harnessSessionKeys.list(agentId),
     queryFn: async (): Promise<HarnessSessionSummary[]> =>
       unwrapResult(await client.listHarnessSessions(agentId, null)),
-  })
-}
-
-/** A session's recorded updates (idle while `null`) */
-export function useHarnessEvents(sessionId: string | null) {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    if (!sessionId) return
-    const subscription = client.subscribe(event => {
-      if (event.event === 'harness://turn_delta') {
-        const payload = event.payload as { sessionId?: string } | null
-        if (payload?.sessionId === sessionId) {
-          void queryClient.invalidateQueries({
-            queryKey: harnessSessionKeys.events(sessionId),
-          })
-        }
-      }
-    })
-    return subscription.unsubscribe
-  }, [queryClient, sessionId])
-  return useQuery({
-    queryKey: harnessSessionKeys.events(sessionId ?? ''),
-    queryFn: async (): Promise<HarnessEventRecord[]> =>
-      unwrapResult(await client.getHarnessEvents(sessionId ?? '', null)),
-    enabled: !!sessionId,
   })
 }
 

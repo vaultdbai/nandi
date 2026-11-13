@@ -70,47 +70,6 @@ export async function saveEmergencyData(
 }
 
 /**
- * Load data from a recovery file
- *
- * @param filename Base filename (without extension)
- * @returns The recovered data or null if file doesn't exist
- *
- * @example
- * ```typescript
- * // Load user draft
- * const draft = await loadEmergencyData('user-draft')
- * if (draft) {
- *   console.log('Found saved draft:', draft.content)
- * }
- * ```
- */
-export async function loadEmergencyData<T = unknown>(
-  filename: string
-): Promise<T | null> {
-  logger.debug('Loading emergency data', { filename })
-
-  const result = await client.loadEmergencyData(filename)
-
-  if (result.status === 'error') {
-    // FileNotFound is an expected case - return null instead of throwing
-    if (result.error.type === 'FileNotFound') {
-      logger.debug('Recovery file not found', { filename })
-      return null
-    }
-
-    const message = formatRecoveryError(result.error)
-    logger.error('Failed to load emergency data', {
-      filename,
-      error: result.error,
-    })
-    throw new Error(message)
-  }
-
-  logger.info('Emergency data loaded successfully', { filename })
-  return result.data as T
-}
-
-/**
  * Clean up old recovery files (older than 7 days)
  * Called automatically on app startup
  *

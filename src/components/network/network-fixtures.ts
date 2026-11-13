@@ -1,11 +1,8 @@
 /** Test fixtures for the Network tabs */
 import type {
-  CallerPolicy,
   GatewayManifest,
   GatewayStatus,
   RelayStatus,
-  TaskRecord,
-  TrustRequest,
 } from '@/lib/bindings'
 
 export const manifestFixture = (
@@ -58,63 +55,5 @@ export const relayStatusFixture = (
   instancesOnline: 2,
   lastConnectedAt: Date.now(),
   lastHeartbeatAt: Date.now(),
-  ...change,
-})
-
-export const callerFixture = (
-  change: Partial<CallerPolicy> = {}
-): CallerPolicy => ({
-  callerInstance: 'bob-laptop-9f8e',
-  callerOwner: '',
-  allowedCapabilities: [],
-  maxConcurrent: 1,
-  monthlyTaskBudget: null,
-  disabled: false,
-  createdAt: 1,
-  ...change,
-})
-
-export const providerTaskFixture = (
-  id: string,
-  state: TaskRecord['state'],
-  change: Partial<TaskRecord> = {}
-): TaskRecord => ({
-  id,
-  requesterInstance: 'bob-laptop-9f8e',
-  requesterAgent: 'bob-laptop-9f8e/writer',
-  providerInstance: 'ada-laptop-1a2b3c4d',
-  providerAgent: 'papers',
-  capability: 'summarize',
-  input: null,
-  state,
-  etaSeconds: null,
-  deadline: null,
-  priority: 0,
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
-  acknowledgedAt: null,
-  completedAt: null,
-  error: null,
-  result: null,
-  parentTaskId: null,
-  sourceKind: 'direct',
-  attemptNumber: 1,
-  previousAttemptId: null,
-  ...change,
-})
-
-export const trustRequestFixture = (
-  change: Partial<TrustRequest> = {}
-): TrustRequest => ({
-  instanceId: 'sam-desktop-77aa',
-  memberName: 'Sam K.',
-  handle: 'sam',
-  agentId: 'papers',
-  agentName: 'Research assistant',
-  capability: 'summarize-paper',
-  attempts: 3,
-  firstAt: Date.now() - 600_000,
-  lastAt: Date.now() - 300_000,
-  lastTaskId: 'task-sam',
   ...change,
 })

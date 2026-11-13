@@ -31,9 +31,6 @@ export function isMascotPhrase(input: string): boolean {
   return PHRASES.has(fnv1a(normalizePhrase(input)))
 }
 
-/** How long the bull shows `done` after an approval or the phrase */
-export const DONE_MS = 1500
-
 /** The bull's pose: waiting on you first, then working, else resting */
 export function nandiState(input: {
   pendingApprovals: number

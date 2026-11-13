@@ -57,18 +57,6 @@ export function useSaveArtifact() {
   })
 }
 
-export function usePreviewEdit() {
-  return useMutation({
-    mutationFn: async ({
-      artifact,
-      instruction,
-    }: {
-      artifact: ArtifactRef
-      instruction: string
-    }) => unwrapResult(await client.previewEdit(artifact, instruction)),
-  })
-}
-
 /**
  * Whether the draft would save, checked as the user types (idle while
  * `content` is `null`); the previous answer stays while the next loads

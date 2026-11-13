@@ -3,7 +3,6 @@ export { TitleBar } from './TitleBar'
 
 // Shared content components
 export {
-  TitleBarContent,
   TitleBarLeftActions,
   TitleBarRightActions,
   TitleBarTitle,

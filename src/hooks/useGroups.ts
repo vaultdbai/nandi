@@ -68,15 +68,6 @@ export function useCreateGroup() {
   )
 }
 
-export function useUpdateGroup() {
-  return useGroupMutation(
-    (input: { groupId: string; name: string; description: string }) =>
-      client
-        .updateGroup(input.groupId, input.name, input.description)
-        .then(unwrapResult)
-  )
-}
-
 export function useSetGroupPolicy() {
   return useGroupMutation((input: { groupId: string; policy: string }) =>
     client.setGroupPolicy(input.groupId, input.policy).then(unwrapResult)

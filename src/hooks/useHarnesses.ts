@@ -8,7 +8,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type {
   HarnessDefault,
-  HarnessHealth,
   HarnessInfo,
   HarnessTestResult,
 } from '@/lib/bindings'
@@ -44,24 +43,6 @@ export function useHarnesses() {
     queryKey: harnessQueryKeys.list,
     queryFn: async (): Promise<HarnessInfo[]> =>
       unwrapResult(await client.listHarnesses()),
-  })
-}
-
-export function useHarnessHealth(harnessId: string | null) {
-  return useQuery({
-    queryKey: harnessQueryKeys.health(harnessId ?? ''),
-    queryFn: async (): Promise<HarnessHealth> =>
-      unwrapResult(await client.getHarnessHealth(harnessId ?? '')),
-    enabled: !!harnessId,
-  })
-}
-
-/** The harness new agents get (`null`: none chosen) */
-export function useHarnessDefault() {
-  return useQuery({
-    queryKey: harnessQueryKeys.default,
-    queryFn: async (): Promise<HarnessDefault | null> =>
-      unwrapResult(await client.getHarnessDefault()),
   })
 }
 

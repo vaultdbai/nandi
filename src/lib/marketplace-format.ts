@@ -47,23 +47,6 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
-/** Whether an entry matches the search (name, description, publisher, tags). */
-export function matchesQuery(
-  entry: {
-    name: string
-    description: string
-    publisher: string
-    tags: string[]
-  },
-  query: string
-): boolean {
-  const needle = query.trim().toLowerCase()
-  if (!needle) return true
-  return [entry.name, entry.description, entry.publisher, ...entry.tags].some(
-    field => field.toLowerCase().includes(needle)
-  )
-}
-
 /** `1.2.3` → `1.2.4`; anything else → `1.0.0` */
 export function nextVersion(current: string | undefined): string {
   const match = current?.match(/^v?(\d+)\.(\d+)\.(\d+)/)

@@ -38,6 +38,3 @@ export { i18n }
 
 // Helper to get available languages
 export const availableLanguages = Object.keys(resources)
-
-// Check if a language is RTL
-export const isRTL = (lng: string): boolean => rtlLanguages.includes(lng)

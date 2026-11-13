@@ -11,7 +11,6 @@ import type {
   CapabilityDefinition,
   CapabilityListing,
   CapabilityOwner,
-  CapabilityProvider,
 } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
@@ -116,16 +115,6 @@ export function useCapability(id: string | null) {
   })
 }
 
-/** Agents and workflows providing `id`, here and on the network */
-export function useCapabilityProviders(id: string | null) {
-  return useQuery({
-    queryKey: capabilityQueryKeys.providers(id ?? ''),
-    queryFn: async (): Promise<CapabilityProvider[]> =>
-      unwrapResult(await client.listProvidersForCapability(id ?? '')),
-    enabled: !!id,
-  })
-}
-
 /** Caches a saved definition and marks the listings stale */
 function useStoreDefinition() {
   const queryClient = useQueryClient()
@@ -149,22 +138,6 @@ export function useSaveCapability() {
     ): Promise<CapabilityDefinition> =>
       unwrapResult(await client.saveCapability(definition)),
     onSuccess: store,
-  })
-}
-
-export function useDeleteCapability() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (id: string): Promise<null> =>
-      unwrapResult(await client.deleteCapability(id)),
-    onSuccess: (_, id) => {
-      queryClient.removeQueries({
-        queryKey: capabilityQueryKeys.definition(id),
-      })
-      void queryClient.invalidateQueries({
-        queryKey: capabilityQueryKeys.listings,
-      })
-    },
   })
 }
 

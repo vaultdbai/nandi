@@ -42,12 +42,6 @@ export const KEYED_PROVIDERS: KeyedProviderInfo[] = [
   },
 ]
 
-/** Suggestions for the default model (any `<provider>:<model>` works) */
-export const MODEL_SUGGESTIONS = [
-  ...KEYED_PROVIDERS.flatMap(info => info.models),
-  'ollama:llama3.2',
-]
-
 export function providerInfo(provider: KeyedProvider): KeyedProviderInfo {
   const info = KEYED_PROVIDERS.find(p => p.provider === provider)
   if (!info) throw new Error(`Unknown provider ${provider}`)

@@ -25,8 +25,6 @@ import { applyPalette, storedPalette } from '@/themes/palettes'
 /** The companion's three states */
 export type CompanionState = 'collapsed' | 'expanded' | 'overlay'
 
-export const COLLAPSED_SIZE = { width: 192, height: 128 } as const
-export const EXPANDED_SIZE = { width: 420, height: 640 } as const
 /** The overlay spans the monitor's width at this height */
 export const OVERLAY_HEIGHT = 560
 

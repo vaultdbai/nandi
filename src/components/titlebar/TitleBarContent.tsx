@@ -104,19 +104,3 @@ export function TitleBarTitle({ title = 'Nandi' }: TitleBarTitleProps) {
     </div>
   )
 }
-
-/**
- * Combined toolbar content for simple layouts.
- * Use this for Linux or when you want all toolbar items in one fragment.
- *
- * For more control, use TitleBarLeftActions, TitleBarRightActions, and TitleBarTitle separately.
- */
-export function TitleBarContent({ title = 'Nandi' }: TitleBarTitleProps) {
-  return (
-    <>
-      <TitleBarLeftActions />
-      <TitleBarTitle title={title} />
-      <TitleBarRightActions />
-    </>
-  )
-}

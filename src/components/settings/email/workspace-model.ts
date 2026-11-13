@@ -86,7 +86,6 @@ export function workspaceCard(status: WorkspaceAccountStatus): WorkspaceCard {
 }
 
 export const CALENDAR_INTERVALS = [15, 30, 60, 120, 240] as const
-export const DEFAULT_CALENDAR_INTERVAL = 60
 
 /** The offered intervals, with the current one if it's set elsewhere */
 export function calendarIntervalOptions(current: number): number[] {

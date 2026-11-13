@@ -14,12 +14,6 @@ export interface AppCommand {
   shortcut?: string
 }
 
-export interface CommandGroup {
-  id: string
-  label: string
-  commands: AppCommand[]
-}
-
 export interface CommandContext {
   // Preferences
   openPreferences: () => void

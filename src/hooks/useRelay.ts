@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { inviteLine } from '@/components/network/relay-invite'
 import { client } from '@/lib/client'
-import type { AgentCard, JsonValue, RelayStatus } from '@/lib/bindings'
+import type { AgentCard, RelayStatus } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
 /** Everything relay-related lives under `['relay']` */
@@ -257,20 +257,5 @@ export function useTestRelayConnection() {
   return useMutation({
     mutationFn: async (url: string) =>
       unwrapResult(await client.testRelayConnection(url.trim())),
-  })
-}
-
-/** "Call": delegates `input` to one online agent; returns the task ID */
-export function useCallAgent() {
-  return useMutation({
-    mutationFn: async ({
-      card,
-      capability,
-      input,
-    }: {
-      card: AgentCard
-      capability: string
-      input: JsonValue
-    }) => unwrapResult(await client.delegateTask(capability, input, card.id)),
   })
 }

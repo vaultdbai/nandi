@@ -7,7 +7,6 @@ import type { TrustRelationship } from '@/lib/bindings'
 import { useBlockAgentFromMember } from './useMemberProfile'
 
 export {
-  useBlockAgentFromMember,
   usePauseDelegationsFromMember,
   useSetTrustRelationship,
 } from './useMemberProfile'

@@ -6,12 +6,7 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type {
-  CallerPolicy,
-  GatewayConfig,
-  GatewayManifest,
-  TaskRecord,
-} from '@/lib/bindings'
+import type { CallerPolicy, GatewayManifest, TaskRecord } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
 /** Everything gateway-related lives under `['gateway']` */
@@ -72,13 +67,6 @@ export function useGatewayStatus() {
   })
 }
 
-export function useGatewayConfig() {
-  return useQuery({
-    queryKey: gatewayQueryKeys.config,
-    queryFn: async () => unwrapResult(await client.getGatewayConfig()),
-  })
-}
-
 export function useGatewayManifest() {
   return useQuery({
     queryKey: gatewayQueryKeys.manifest,
@@ -123,17 +111,6 @@ export function useIncomingTasks() {
       ),
     retry: false,
     refetchInterval: 15_000,
-  })
-}
-
-/** Saves the structured frontmatter (the body stays as it is) */
-export function useSetGatewayConfig() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (config: GatewayConfig) =>
-      unwrapResult(await client.setGatewayConfig(config)),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: gatewayQueryKeys.all }),
   })
 }
 

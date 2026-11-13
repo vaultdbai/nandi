@@ -6,7 +6,7 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type { ToolEntry, ToolUsageStats } from '@/lib/bindings'
+import type { ToolEntry } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 
 /** Everything tool-related lives under `['tools']` */
@@ -40,25 +40,6 @@ export function useTools() {
     queryKey: toolQueryKeys.list,
     queryFn: async (): Promise<ToolEntry[]> =>
       unwrapResult(await client.listTools()),
-  })
-}
-
-/** One tool by ID, bare built-in name, or runtime name (idle while `null`) */
-export function useTool(toolId: string | null) {
-  return useQuery({
-    queryKey: toolQueryKeys.tool(toolId ?? ''),
-    queryFn: async (): Promise<ToolEntry> =>
-      unwrapResult(await client.getTool(toolId ?? '')),
-    enabled: !!toolId,
-  })
-}
-
-/** Calls and failures per tool in the last 30 days */
-export function useToolUsageStats() {
-  return useQuery({
-    queryKey: toolQueryKeys.usage,
-    queryFn: async (): Promise<ToolUsageStats[]> =>
-      unwrapResult(await client.getToolUsageStats()),
   })
 }
 

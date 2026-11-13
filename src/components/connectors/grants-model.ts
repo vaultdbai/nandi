@@ -3,15 +3,7 @@
  * on an agent's page. Pure (`domain/grant.rs` is the source of truth).
  */
 
-import type { AccountKind, GrantAccess, GrantInfo } from '@/lib/bindings'
-
-/** The accounts' connector ids, as grants and routes name them */
-export const ACCOUNT_IDS: Record<AccountKind, string> = {
-  outlookCalendar: 'outlook-calendar',
-  googleCalendar: 'google-calendar',
-  oneDrive: 'onedrive',
-  googleDrive: 'google-drive',
-}
+import type { GrantAccess, GrantInfo } from '@/lib/bindings'
 
 /** Product names: not translated */
 export const ACCOUNT_NAMES: Record<string, string> = {

@@ -99,15 +99,6 @@ export function useConnectors() {
   })
 }
 
-/** Live status (health-checked by the core) for one connector */
-export function useConnectorStatus(id: string | null) {
-  return useQuery({
-    queryKey: connectorsQueryKeys.status(id ?? ''),
-    queryFn: () => client.connectorStatus(id ?? '').then(unwrapResult),
-    enabled: id !== null,
-  })
-}
-
 export type ConnectorAction = 'install' | 'start' | 'stop'
 
 /** Install, start, or stop; the list refreshes from the events */
