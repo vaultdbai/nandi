@@ -212,23 +212,42 @@ fn text<'a>(files: &'a FileSet, path: &str) -> Result<Option<&'a str>, String> {
     }
 }
 
-/// Parses an agent folder's files; the agent and its scoped workflows.
-fn validate_agent(id: &AgentId, files: &FileSet) -> Result<(Agent, Vec<WorkflowId>), String> {
+/// Parses an agent folder's files; the agent and its scoped workflows,
+/// which may drive only the agents in `drives` (the agent itself, or its
+/// pack's agents).
+fn validate_agent(
+    id: &AgentId,
+    files: &FileSet,
+    drives: &[AgentId],
+) -> Result<(Agent, Vec<WorkflowId>), String> {
     let skill =
         text(files, "skill.md")?.ok_or_else(|| format!("The agent '{id}' has no skill.md"))?;
     let agent = Agent::from_files(id.clone(), skill, text(files, "instructions.md")?)
         .map_err(|e| describe_error(id.as_str(), &e))?;
     let mut workflows = Vec::new();
     for path in files.keys().filter(|p| p.starts_with("workflows/")) {
-        workflows.push(validate_workflow(path, files)?);
+        workflows.push(validate_workflow(path, files, drives)?);
     }
     Ok((agent, workflows))
 }
 
-fn validate_workflow(path: &str, files: &FileSet) -> Result<WorkflowId, String> {
+/// Parses a workflow. Its agent steps may drive only the agents in
+/// `drives`: a pack's workflow never sends work to the user's own agents
+/// (the Chief of Staff) or another install's, which it has no consent for.
+fn validate_workflow(
+    path: &str,
+    files: &FileSet,
+    drives: &[AgentId],
+) -> Result<WorkflowId, String> {
     let yaml = text(files, path)?.unwrap_or_default();
     let workflow =
         Workflow::from_yaml(yaml).map_err(|e| format!("The workflow {path} isn't valid: {e}"))?;
+    if let Some(outside) = workflow.agents().find(|agent| !drives.contains(agent)) {
+        return Err(format!(
+            "The workflow {path} drives the agent '{outside}', which it doesn't ship. A workflow may use only its own agents ({}).",
+            drives.iter().map(AgentId::as_str).collect::<Vec<_>>().join(", ")
+        ));
+    }
     let stem = path
         .rsplit('/')
         .next()
@@ -282,6 +301,8 @@ struct PackContents {
     files: FileSet,
     agents: Vec<AgentId>,
     workflows: Vec<WorkflowId>,
+    /// What its agents together request
+    requested: ManifestCapabilities,
 }
 
 fn read_pack(
@@ -302,15 +323,20 @@ fn read_pack(
         return Err(newer_nandi(&file.name, &file.min_nandi_version));
     }
     let (mut agents, workflows) = pack_contents(&file, all)?;
+    // Workflows may still drive an agent the user forked out: it is that
+    // agent, now theirs
+    let drives = agents.clone();
     agents.retain(|a| !forked_out.contains(a));
     let files = select_pack_files(all, &agents, &workflows);
+    let mut requested = ManifestCapabilities::default();
     for agent in &agents {
         let prefix = format!("agents/{agent}/");
         let own: FileSet = files
             .iter()
             .filter_map(|(p, b)| Some((p.strip_prefix(&prefix)?.to_string(), b.clone())))
             .collect();
-        validate_agent(agent, &own)?;
+        let (agent, _) = validate_agent(agent, &own, &drives)?;
+        requested.include(super::consent::requested(&agent));
     }
     for workflow in &workflows {
         let path = ["yaml", "yml"]
@@ -320,7 +346,7 @@ fn read_pack(
             .ok_or_else(|| {
                 format!("The pack lists workflow '{workflow}' but has no file for it")
             })?;
-        validate_workflow(&path, &files)?;
+        validate_workflow(&path, &files, &drives)?;
     }
     validate_pack_policies(&files, &agents)?;
     Ok(PackContents {
@@ -328,7 +354,27 @@ fn read_pack(
         files,
         agents,
         workflows,
+        requested,
     })
+}
+
+/// Refuses content that asks for more than its registry entry lists: the
+/// Library card and the install dialog showed the entry, so that is all
+/// the user agreed to (connectors already check this, `matches_entry` in
+/// `connectors.rs`).
+fn matches_entry(
+    name: &str,
+    listed: &ManifestCapabilities,
+    requested: &ManifestCapabilities,
+) -> Result<(), String> {
+    let unlisted = requested.not_in(listed);
+    if unlisted.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{name} asks for more than its registry entry lists ({}). It wasn't installed; tell its publisher.",
+        unlisted.join(", ")
+    ))
 }
 
 /// The `registry` of a pack read from this computer
@@ -461,6 +507,7 @@ impl Installer {
         let checkout = source.fetch(&[&resolved.name], &self.scratch_dir, progress)?;
         let all = checkout.files(&resolved.commit, None)?;
         let pack = read_pack(&all, id.as_str(), &[])?;
+        matches_entry(&manifest.name, &manifest.capabilities, &pack.requested)?;
         self.vendor_pack(
             &id,
             pack,
@@ -529,7 +576,6 @@ impl Installer {
     /// `registry` is `local`, never verified). Validates like an install.
     pub fn inspect_local_pack(&self, source: &LocalPackSource) -> Result<PackManifest, String> {
         let (id, pack) = read_local_pack(source)?;
-        let mut capabilities = ManifestCapabilities::default();
         let mut agents = Vec::new();
         for agent_id in &pack.agents {
             let prefix = format!("agents/{agent_id}/");
@@ -538,8 +584,7 @@ impl Installer {
                 .iter()
                 .filter_map(|(p, b)| Some((p.strip_prefix(&prefix)?.to_string(), b.clone())))
                 .collect();
-            let (agent, _) = validate_agent(agent_id, &own)?;
-            capabilities.include(super::consent::requested(&agent));
+            let (agent, _) = validate_agent(agent_id, &own, &pack.agents)?;
             agents.push(PackAgentSummary {
                 id: agent_id.to_string(),
                 name: agent.name().to_string(),
@@ -565,7 +610,7 @@ impl Installer {
             agents,
             workflows: pack.workflows.iter().map(ToString::to_string).collect(),
             suggested_asks: Vec::new(),
-            capabilities,
+            capabilities: pack.requested.clone(),
             requires_connectors: super::manifest::connector_ids(
                 pack.file.requires_connectors.clone(),
                 id.as_str(),
@@ -691,7 +736,10 @@ impl Installer {
         )?;
         let checkout = source.fetch(&[&resolved.name], &self.scratch_dir, progress)?;
         let files = select_agent_files(checkout.files(&resolved.commit, Some(&manifest.path))?);
-        let (_, workflows) = validate_agent(&id, &files)?;
+        let (agent, workflows) = validate_agent(&id, &files, std::slice::from_ref(&id))?;
+        let mut requested = ManifestCapabilities::default();
+        requested.include(super::consent::requested(&agent));
+        matches_entry(&manifest.name, &manifest.capabilities, &requested)?;
         let workflow_ids: Vec<String> = workflows.iter().map(ToString::to_string).collect();
         self.check_ids_free(&[id.to_string()], &workflow_ids, &BTreeSet::new())?;
 
@@ -1218,7 +1266,7 @@ impl Installer {
             Some(path) => {
                 let files = select_agent_files(checkout.files(&resolved.commit, Some(path))?);
                 let id = AgentId::parse(installed_id).map_err(|e| e.to_string())?;
-                let (_, workflows) = validate_agent(&id, &files)?;
+                let (_, workflows) = validate_agent(&id, &files, std::slice::from_ref(&id))?;
                 let version = super::manifest::split_tag(&resolved.name)
                     .map_or_else(|| version.clone(), |(_, v)| v.to_string());
                 (files, version, vec![id], workflows)

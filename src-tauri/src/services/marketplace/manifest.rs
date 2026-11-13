@@ -103,6 +103,26 @@ impl ManifestCapabilities {
         }
     }
 
+    /// What this asks for that `listed` leaves out, as `<kind> <item>`
+    /// (`tool shell`, `host api.example.com`).
+    pub fn not_in(&self, listed: &Self) -> Vec<String> {
+        [
+            ("tool", &self.tools, &listed.tools),
+            ("host", &self.network, &listed.network),
+            ("AWS service", &self.aws, &listed.aws),
+            ("pilot", &self.pilots, &listed.pilots),
+            ("connector", &self.connectors, &listed.connectors),
+        ]
+        .into_iter()
+        .flat_map(|(kind, asked, listed)| {
+            asked
+                .iter()
+                .filter(|item| !listed.contains(item))
+                .map(move |item| format!("{kind} {item}"))
+        })
+        .collect()
+    }
+
     fn check(&self, what: &str) -> Result<(), String> {
         let lists = [
             &self.tools,

@@ -104,15 +104,24 @@ fn pack_manifest(origin: &Path, version: &str, min_nandi: &str) -> PackManifest 
         "id": "research-pack", "name": "Research Pack", "publisher": "vaultdbai",
         "repo": origin.display().to_string(), "latest_version": version,
         "min_nandi_version": min_nandi,
+        // The summarizer lists its tools; the citer gets every tool
+        "capabilities": { "tools": ["read_file", "*"] },
     });
     parse_pack_entry(&entry.to_string(), "test-registry").unwrap()
+}
+
+/// What the fixture agents' entries list: their skill.md names no
+/// `allowed-tools`, so every tool, and an install refuses content that asks
+/// for more than its entry lists
+fn every_tool() -> serde_json::Value {
+    serde_json::json!({ "tools": ["*"] })
 }
 
 fn agent_manifest(origin: &Path, id: &str, version: &str, registry: &str) -> AgentManifest {
     let entry = serde_json::json!({
         "id": id, "name": "ArXiv", "publisher": "alice",
         "repo": origin.display().to_string(), "path": format!("agents/{id}"),
-        "latest_version": version,
+        "latest_version": version, "capabilities": every_tool(),
     });
     parse_agent_entry(&entry.to_string(), registry).unwrap()
 }
@@ -499,7 +508,7 @@ async fn the_latest_version_across_registries_is_the_one_installed() {
         serde_json::json!([{
             "id": "arxiv", "name": "ArXiv", "publisher": "alice",
             "repo": repo.display().to_string(), "path": "agents/arxiv",
-            "latest_version": version,
+            "latest_version": version, "capabilities": every_tool(),
         }])
     };
     let (first, second) = (tmp.path().join("registry-a"), tmp.path().join("registry-b"));
@@ -729,7 +738,7 @@ async fn signatures_verify_and_pin_the_release_commit() {
         let mut value = serde_json::json!({
             "id": id, "name": id, "publisher": "alice",
             "repo": repo.display().to_string(), "path": format!("agents/{id}"),
-            "latest_version": "1.0.0",
+            "latest_version": "1.0.0", "capabilities": every_tool(),
         });
         if let (Some(sha), Some(sig)) = (sha, sig) {
             value["commit"] = sha.into();
@@ -825,7 +834,7 @@ async fn a_failed_publisher_key_fetch_is_tried_again() {
         serde_json::json!([{
             "id": "arxiv", "name": "arxiv", "publisher": "alice",
             "repo": source.display().to_string(), "path": "agents/arxiv",
-            "latest_version": "1.0.0", "commit": sha,
+            "latest_version": "1.0.0", "commit": sha, "capabilities": every_tool(),
             "signature": signature::sign(&secret, "agent", "arxiv", "1.0.0", &sha).unwrap(),
         }]),
     );
@@ -1015,6 +1024,113 @@ fn local_packs_get_the_same_checks_as_registry_packs() {
         .install_local_pack(&local(&zip))
         .unwrap_err();
     assert!(err.contains("outside the pack"), "{err}");
+}
+
+/// `files` with `path` replaced by (or added as) `content`
+fn with_file(mut files: Vec<(String, String)>, path: &str, content: &str) -> Vec<(String, String)> {
+    files.retain(|(p, _)| p != path);
+    files.push((path.into(), content.into()));
+    files
+}
+
+#[test]
+fn workflows_may_drive_only_their_own_agents() {
+    let outside = |agent: &str| {
+        format!(
+            "id: review
+name: Review
+steps:
+  - {{id: s1, agent: {agent}, input: hi}}
+"
+        )
+    };
+    let scoped = "agents/citer/workflows/citer-daily.yaml";
+    let cases = [
+        (
+            "a pack workflow",
+            "workflows/review.yaml",
+            outside("chief-of-staff"),
+        ),
+        (
+            "an agent's own workflow",
+            scoped,
+            outside("chief-of-staff").replace("review", "citer-daily"),
+        ),
+    ];
+    for (what, path, workflow) in cases {
+        let world = World::new();
+        let files = with_file(pack_files("1.0.0", "x"), path, &workflow);
+        let dir = folder(&world.path("pack"), &files);
+        let err = world
+            .installer
+            .install_local_pack(&local(&dir))
+            .unwrap_err();
+        assert!(
+            err.contains("drives the agent 'chief-of-staff'"),
+            "{what}: {err}"
+        );
+        assert!(world.projected("agents").is_empty(), "{what}");
+    }
+
+    // A standalone agent's workflow drives only that agent
+    let world = World::new();
+    let origin = world.path("alice");
+    let files = with_file(
+        agent_files("x"),
+        "agents/arxiv/workflows/arxiv-daily.yaml",
+        "id: arxiv-daily
+name: Daily
+steps:
+  - {id: a, agent: other, input: go}
+",
+    );
+    commit(&origin, &files, "v1.0.0");
+    let err = world
+        .installer
+        .install_agent(
+            &agent_manifest(&origin, "arxiv", "1.0.0", "r"),
+            None,
+            &mut no_progress(),
+        )
+        .unwrap_err();
+    assert!(err.contains("drives the agent 'other'"), "{err}");
+}
+
+#[test]
+fn an_install_refuses_content_that_asks_for_more_than_its_entry() {
+    let world = World::new();
+    let origin = world.path("origin");
+    commit(&origin, &pack_files("1.0.0", "x"), "v1.0.0");
+    let mut pack = pack_manifest(&origin, "1.0.0", "0.1.0");
+    pack.capabilities.tools = vec!["read_file".into()];
+    let err = world
+        .installer
+        .install_pack(&pack, None, &mut no_progress())
+        .unwrap_err();
+    assert!(err.contains("(tool *)"), "{err}");
+
+    let agents = world.path("alice");
+    let asks = agent_files("x").into_iter().map(|(path, content)| {
+        let content = content.replace(
+            "publisher: alice
+",
+            "publisher: alice
+connectors: [filesystem]
+",
+        );
+        (path, content)
+    });
+    commit(&agents, &asks.collect::<Vec<_>>(), "v1.0.0");
+    let err = world
+        .installer
+        .install_agent(
+            &agent_manifest(&agents, "arxiv", "1.0.0", "r"),
+            None,
+            &mut no_progress(),
+        )
+        .unwrap_err();
+    assert!(err.contains("(connector filesystem)"), "{err}");
+    assert!(world.projected("agents").is_empty());
 }
 
 #[test]

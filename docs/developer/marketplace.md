@@ -138,6 +138,8 @@ install_pack(manifest):                       install_agent(manifest):
   read .nandi/manifest.yaml, re-check min_nandi   read files under manifest.path
   keep allowlisted files only                   keep allowlisted files only
   parse every agent + workflow (domain types)   parse the agent + its workflows
+  refuse a workflow driving another agent       (same: only the agent itself)
+  refuse asking for more than the entry lists   (same)
   refuse if any agent/workflow ID is taken      (same)
   write marketplace/packs/<id>/ in one rename   write marketplace/<publisher>/<id>/
   installed.yaml entry (commit, tree_hash)      (same)
@@ -145,6 +147,8 @@ install_pack(manifest):                       install_agent(manifest):
 ```
 
 Files are read straight from git objects; nothing is checked out. A symlink in the source is an error and submodules are skipped. Only `skill.md`, `instructions.md`, `README.md`, `icon.{svg,png}`, `LICENSE*`, `workflows/*.yaml`, and (for packs) `.nandi/manifest.yaml` are copied. Anything else in a source repo, such as scripts, is left behind.
+
+A workflow's agent steps may drive only the agents it ships with (`validate_workflow`), so a pack never sends work to the Chief of Staff or another install, which it has no consent for. An install refuses content whose agents request a tool, host, AWS service, pilot or connector its registry entry doesn't list (`matches_entry` in `install.rs`): the Library card and the install dialog showed the entry. Updates go by tag, without an entry; first-use consent catches what they widen.
 
 **Installer, watcher and projection.** The installer writes files. It never touches SQLite. A folder is staged under a hidden `.<name>.nandi-tmp-<uuid>` (which the watcher and locator ignore), then renamed into place. The watcher sees one folder appear and re-scans. The installer also calls `rescan_all` itself, so the projection is current when the command returns. Whichever runs second finds equal hashes and does nothing. A folder cloned in by hand is picked up the same way, without an install.
 
