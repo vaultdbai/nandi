@@ -1,4 +1,4 @@
-//! Workflows as capability providers (wave A, Track F).
+//! Workflows as capability providers.
 //!
 //! A workflow YAML may declare `provides: [capability-id, ...]`, like an
 //! agent. When selection picks a workflow provider, the provider-side
@@ -10,7 +10,7 @@
 //!   rows with `provider_kind = 'workflow'` in step with the workflows'
 //!   `provides:` (at startup and on every workflow or agent change), and
 //!   emits `provider://registered` / `provider://unregistered`. Agent rows
-//!   (Track A) are never touched.
+//!   are never touched.
 //! - A workflow provider's tools are its step agents' tools: their own
 //!   `capability_providers` rows' `provided_tools`, plus the core runtime
 //!   tools their skill.md allows.
@@ -558,7 +558,7 @@ fn agent_provider_tools(
 
 /// Re-derives this instance's workflow provider rows from the loaded
 /// workflows, emits the provider events, and returns every (workflow,
-/// capability) pair with its schema warnings (logged too). Track A's
+/// capability) pair with its schema warnings (logged too).
 /// `refresh_local_providers` calls it after the agent rows.
 pub async fn refresh(
     db: &Db,

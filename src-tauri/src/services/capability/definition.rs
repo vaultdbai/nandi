@@ -1,4 +1,4 @@
-//! A capability definition (wave A, Track A): one file per capability at
+//! A capability definition: one file per capability at
 //! `.nandi/capabilities/<id>.yaml` in the gold copy.
 //!
 //! ```yaml

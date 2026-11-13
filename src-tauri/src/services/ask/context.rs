@@ -1,4 +1,4 @@
-//! The gateway's view of this instance for one ask (Track A): what's
+//! The gateway's view of this instance for one ask: what's
 //! running, what finished recently, capabilities (owned / provided /
 //! used), agents, workflows, policies, and network members, plus the
 //! artifact the ask is about. Loaded once per ask and shared by the
@@ -126,7 +126,7 @@ pub struct MemberBrief {
 }
 
 /// Something waiting on the owner, or a handoff they should know about
-/// (wave EF)
+///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WaitingBrief {

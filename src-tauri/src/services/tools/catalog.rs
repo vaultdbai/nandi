@@ -1,4 +1,4 @@
-//! The in-memory tool index (wave A, Track C), built from `tool_catalog`:
+//! The in-memory tool index, built from `tool_catalog`:
 //! lookup by ID (or alias), by source, by tag.
 
 use std::collections::HashMap;

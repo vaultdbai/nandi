@@ -271,9 +271,9 @@ fn save_agent(state: &AppState, id: &str, frontmatter: &str) {
     state.store().commit(EntityKind::Agent, id).unwrap();
 }
 
-/// A `tasks` row on the requester, as Track B will write it
+/// A `tasks` row on the requester, as the task lifecycle writes it
 async fn insert_task(state: &AppState, task_id: &str, requester: &str, provider_instance: &str) {
-    // Requester-side: our own instance asked (Track B's resume fails any
+    // Requester-side: our own instance asked (the restart resume fails any
     // in-flight row it takes for a provider row without a stored request)
     let me = network::local_instance_id(state.db()).unwrap();
     let (id, requester, provider_instance) = (
@@ -320,7 +320,7 @@ async fn task_events(state: &AppState, task_id: &str) -> Vec<String> {
     state
         .db()
         .call(move |conn| {
-            // Track B's startup resume may race the fixture's insert and
+            // The startup resume may race the fixture's insert and
             // record a no-op `resumed after restart` row; it isn't a transition
             let mut stmt = conn.prepare(
                 "SELECT to_state FROM task_events

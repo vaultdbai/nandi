@@ -1,4 +1,4 @@
-//! A tool in the unified catalog (wave A, Track C).
+//! A tool in the unified catalog.
 //!
 //! IDs are dotted: `builtin.<name>` (`builtin.shell`),
 //! `<connector_id>.<tool>` (`gmail.send_email`), `<pilot_id>.<tool>`. A

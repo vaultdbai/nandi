@@ -339,7 +339,7 @@ export function handleNandiEvent(event: NandiEvent) {
       debounce('dashboard', () => void loadDashboard())
       return
     }
-    // Wave 1: minimal invalidations; the owning views refetch what they show
+    // Minimal invalidations: the owning views refetch what they show
     case 'repo://file_changed':
       // A gold-copy file changed: git status, and the entity as stored
       void queryClient.invalidateQueries({ queryKey: ['git'] })
@@ -423,7 +423,7 @@ export function handleNandiEvent(event: NandiEvent) {
     case 'marketplace://error':
       logger.warn('Marketplace action failed', event.payload)
       return
-    // Wave 2A: each track's data lives under its own key prefix; the
+    // Each feature's data lives under its own key prefix; the
     // shared views (`['shared']`) cut across all of them
     case 'relay://status':
       void queryClient.invalidateQueries({ queryKey: ['relay'] })

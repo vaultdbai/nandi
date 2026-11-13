@@ -17,7 +17,7 @@
 //!     agent: publisher-agent
 //!     input: "Send to #ai-news: {{summarize.output}}"
 //!     requires_approval: true
-//! provides: [daily-report.ai]   # optional: capability IDs (wave A)
+//! provides: [daily-report.ai]   # optional: capability IDs
 //! ```
 //!
 //! A workflow that `provides:` a capability can run delegated tasks for
@@ -55,7 +55,7 @@ impl FailurePolicy {
     }
 }
 
-/// What a step does (wave EF)
+/// What a step does
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StepType {
@@ -190,7 +190,7 @@ pub struct Workflow {
     /// What it does, in a sentence or two (Automations › Overview)
     description: Option<String>,
     steps: Vec<Step>,
-    /// Capability IDs this workflow provides (wave A)
+    /// Capability IDs this workflow provides
     provides: Vec<String>,
     scope: WorkflowScope,
     created_at: SystemTime,

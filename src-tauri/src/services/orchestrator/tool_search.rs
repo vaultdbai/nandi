@@ -1,4 +1,4 @@
-//! Deferred tool loading (wave final, Track E). FROZEN signatures.
+//! Deferred tool loading.
 //!
 //! An agent with more than `DEFERRED_LOAD_THRESHOLD` tools starts with the
 //! core tools plus `tool_search`; the model searches (BM25 over tool name +

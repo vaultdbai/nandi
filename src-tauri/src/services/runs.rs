@@ -7,7 +7,7 @@
 //! `agents` projection are joined in so a search also matches the workflow,
 //! the trigger's name, and the agent's name.
 //!
-//! The types below are the frozen wave-1 contract between the backend and
+//! The types below are a stable contract between the backend and
 //! the UI: fields may be added, never renamed or removed.
 
 use rusqlite::types::Value;

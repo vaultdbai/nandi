@@ -1,4 +1,4 @@
-//! Edit previews (Track B): the artifact's file as an instruction would
+//! Edit previews: the artifact's file as an instruction would
 //! change it, as a unified diff with its impact. The gateway's model
 //! rewrites the file (a scoped prompt with only that file); the result
 //! must still parse as that kind of artifact. Capability edits get the

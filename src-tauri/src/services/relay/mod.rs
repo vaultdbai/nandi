@@ -1,6 +1,6 @@
 //! The relay: cross-instance presence and message routing over one
 //! outbound WebSocket per instance, so instances behind NAT reach each
-//! other (wave 2A, Track B).
+//! other.
 //!
 //! - `protocol`: the wire messages (the `nandi-protocol` crate)
 //! - `client_api`: the `RelayClient` trait
@@ -51,7 +51,7 @@ pub mod opened;
 pub mod protocol;
 pub mod public;
 pub mod sealing;
-// Wave A (Track D): capability and tool presence
+// Capability and tool presence
 pub mod presence;
 pub mod tls;
 pub mod unavailable;
@@ -639,7 +639,7 @@ async fn connect_and_register(state: &AppState, client: &dyn RelayClient, url: &
         log::info!("{e}; retrying in the background");
     }
     let cards = local_cards(state, &instance_id, url);
-    // Wave A: the registration carries our capability presence
+    // The registration carries our capability presence
     let presence = presence::publish(state, client).await;
     presence::spawn_refresh(state, presence);
     // Stores the cards even when offline, for the next reconnect

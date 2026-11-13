@@ -1,4 +1,4 @@
-//! Restart resume (wave final, Track B): on boot, tasks still Submitted,
+//! Restart resume: on boot, tasks still Submitted,
 //! Delivered, Acknowledged, or Working are picked up again (provider: rerun
 //! the turn, recorded in `task_events`; requester: re-subscribe and flush).
 //!

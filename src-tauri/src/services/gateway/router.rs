@@ -1,4 +1,4 @@
-//! Routing an inbound gateway request (wave final, Track D): policy first;
+//! Routing an inbound gateway request: policy first;
 //! a named capability goes through the capability index; otherwise the LLM
 //! routes with [`ROUTER_PROMPT`] (confidence below
 //! `MIN_ROUTE_CONFIDENCE` asks for clarification). The chosen target runs

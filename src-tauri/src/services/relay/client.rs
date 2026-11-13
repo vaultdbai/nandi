@@ -279,12 +279,12 @@ struct Shared {
     waiting_reassign: Pending<String, ()>,
     /// Mail handled on this connection (dropped when it comes again)
     handled_mail: HashSet<u64>,
-    /// Our gateway card (wave final); re-sent on reconnect
+    /// Our gateway card; re-sent on reconnect
     gateway: Option<GatewayCard>,
     waiting_directory: Pending<(), Vec<MemberRecord>>,
     /// People searches by `(topic, limit)`
     waiting_people: Pending<(String, u32), PeopleSearch>,
-    /// Wave A: what we provide; carried by every `RegisterInstance`
+    /// What we provide; carried by every `RegisterInstance`
     capabilities: Vec<CapabilityPresence>,
     tools: Vec<String>,
     waiting_presence: Pending<String, Vec<InstancePresence>>,

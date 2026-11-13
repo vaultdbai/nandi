@@ -1,11 +1,9 @@
-//! Turn middleware: policies that wrap each step of a run (wave final,
-//! Track B).
+//! Turn middleware: policies that wrap each step of a run.
 //!
-//! FROZEN types. Track B implements the built-in middlewares here and walks
+//! The built-in middlewares live here, and
 //! the pipeline in `orchestrator.rs`: every `pre_turn` in order before the
-//! engine step, every `post_turn` in reverse after it. Tracks C and D only
-//! implement their middlewares in their own modules; the list below already
-//! registers them.
+//! engine step, every `post_turn` in reverse after it. Other middlewares
+//! live in their own modules; the list below registers them.
 //!
 //! "Turn" here is one engine step of a run (an LLM call and its tool calls);
 //! `TurnContext::turn_number` is the step index.
@@ -612,8 +610,8 @@ impl TurnMiddleware for ReadOnlyMiddleware {
 }
 
 /// The pipeline for one run, in `pre_turn` order: the built-in limits, then
-/// memory (Track C), compaction, the finish check and verify-on-stop
-/// (Track D) when enabled, plan first when enabled, then plan mode when
+/// memory, compaction, the finish check and verify-on-stop
+/// when enabled, plan first when enabled, then plan mode when
 /// declared. The finish check comes before verify-on-stop so its
 /// `post_turn` runs after it and joins their continuations.
 pub fn register_default_middlewares(

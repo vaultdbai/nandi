@@ -1,4 +1,4 @@
-//! Read-only git fetch for capability registries (wave A, Track B). Reuses
+//! Read-only git fetch for capability registries. Reuses
 //! `services::remote::git_ops` (`callbacks`, credentials) instead of new
 //! git2 plumbing. Never pushes: there is no push code here, and the clone
 //! is only ever reset to what the remote has.

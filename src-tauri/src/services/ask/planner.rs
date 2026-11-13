@@ -1,4 +1,4 @@
-//! Action plans for asks classified as actions (Track B). The gateway's
+//! Action plans for asks classified as actions. The gateway's
 //! model picks from what this instance and its network offer (it may only
 //! name listed capabilities, agents, workflows, and members). Without a
 //! usable answer from it there is no plan, only a rejection saying why.

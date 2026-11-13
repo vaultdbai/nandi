@@ -1,11 +1,11 @@
-//! NANDI.md (wave final, Track D): YAML frontmatter + Markdown body, parsed
+//! NANDI.md: YAML frontmatter + Markdown body, parsed
 //! into `GatewayManifest` and written back through the repo's atomic write
 //! path. Reloaded (and re-registered) when the file watcher sees it change.
 //!
 //! The file uses snake_case keys (`display_name`, `user_slug`, …), unlike
 //! the camelCase specta types, so it goes through its own serde shape.
 //! Writes merge into the frontmatter already on disk: keys this version
-//! doesn't know (identity fields from another track, a newer version's,
+//! doesn't know (identity fields from another feature, a newer version's,
 //! the user's own) are kept in place, and the body is written back exactly.
 
 use std::collections::BTreeMap;

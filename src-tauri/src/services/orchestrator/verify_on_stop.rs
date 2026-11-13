@@ -1,4 +1,4 @@
-//! Verify-on-stop (wave final, Track D). FROZEN signatures.
+//! Verify-on-stop.
 //!
 //! When a step would end the run with text only, after files were written
 //! and nothing since checked them (tests, a type check, re-reading the

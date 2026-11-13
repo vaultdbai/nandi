@@ -1,4 +1,4 @@
-//! git2 operations against the remote (wave final, Track A): test
+//! git2 operations against the remote: test
 //! connection, push to `<prefix>/<slug>` (fast-forward only unless
 //! overwriting), pull (fast-forward, else a 3-way merge left in progress on
 //! conflict), list branches. Every push calls

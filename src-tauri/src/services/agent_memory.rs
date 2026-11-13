@@ -1,4 +1,4 @@
-//! Agent-maintained memory (wave final, Track C).
+//! Agent-maintained memory.
 //!
 //! Memory is a gold-copy file, `<agent folder>/memory.md`, read and written
 //! through `AgentRepository::{read_memory, write_memory}` (atomic write +

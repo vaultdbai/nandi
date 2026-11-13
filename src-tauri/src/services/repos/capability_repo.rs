@@ -1,4 +1,4 @@
-//! Capabilities: `.nandi/capabilities/<id>.yaml` (wave A, Track A). The only
+//! Capabilities: `.nandi/capabilities/<id>.yaml`. The only
 //! writer of capability files: atomic write + `git add`, like the other
 //! repositories. The file name is the ID (a file that omits `id:` takes it
 //! from the name; one that names another ID is rejected).

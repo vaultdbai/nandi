@@ -1,4 +1,4 @@
-//! Studio's artifact editor (wave CD, Tracks C and D): load any artifact
+//! Studio's artifact editor: load any artifact
 //! (capability, agent, workflow, policy, NANDI.md) as its raw file plus a
 //! parsed view, save it through the repository that owns it, commit, and
 //! optionally push to `<prefix>/<slug>`.

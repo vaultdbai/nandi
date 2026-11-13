@@ -52,7 +52,7 @@ use crate::services::orchestrator::{RunSource, PRIORITY_SCHEDULED};
 use crate::services::AppState;
 use crate::utils::nandi_config;
 
-/// The calendar check's default: hourly (owner, task Wave 4), batched
+/// The calendar check's default: hourly (owner's decision), batched
 pub const DEFAULT_CALENDAR_MINUTES: u32 = 60;
 const TICK: Duration = Duration::from_secs(30);
 const FIRST_CHECK_AFTER: Duration = Duration::from_secs(90);

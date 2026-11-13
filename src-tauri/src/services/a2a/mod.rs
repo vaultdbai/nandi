@@ -1,4 +1,4 @@
-//! Agent-to-agent delegation across instances (wave 2A, Track C). A local
+//! Agent-to-agent delegation across instances. A local
 //! agent asks for a capability; the delegator picks a provider (local or
 //! through the relay), sends a `Task`, and waits for its `TaskResult`. The
 //! provider side runs delegated tasks as agent turns.
@@ -33,8 +33,7 @@ pub mod returns;
 pub mod route;
 pub mod settings;
 pub mod tool;
-// Wave final
-// Track B: lifecycle, ETA, offline queue, restart resume, failover
+// Lifecycle, ETA, offline queue, restart resume, failover
 pub mod eta;
 pub mod failover;
 pub mod queue;
@@ -42,10 +41,10 @@ pub mod result_outbox;
 pub mod resume;
 pub mod task;
 pub mod task_state;
-// Track C: clarification and human escalation
+// Clarification and human escalation
 pub mod clarification;
 pub mod escalation;
-// Wave EF (Track C): supervisor reassignment
+// Supervisor reassignment
 pub mod reassign;
 
 #[cfg(test)]
@@ -152,7 +151,7 @@ pub struct DelegationOverride {
 }
 
 // ---------------------------------------------------------------------------
-// Clarification (wave final, Track C)
+// Clarification
 // ---------------------------------------------------------------------------
 
 /// How a requester agent answers a provider's questions, kept in its

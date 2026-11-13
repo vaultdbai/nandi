@@ -1,5 +1,5 @@
 /**
- * Trust toward a network member (wave EF): trusted peer, paused
+ * Trust toward a network member: trusted peer, paused
  * delegations, and blocking — one agent, or the whole member (agent `*`,
  * whose tasks are rejected on arrival).
  */

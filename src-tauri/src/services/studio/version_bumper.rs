@@ -1,5 +1,4 @@
-//! Capability version bumps (Track B for edit previews, Track C for
-//! saves). What changed decides the smallest legal bump:
+//! Capability version bumps (for edit previews and saves). What changed decides the smallest legal bump:
 //!
 //! | Change                                                     | Bump  |
 //! | ---------------------------------------------------------- | ----- |

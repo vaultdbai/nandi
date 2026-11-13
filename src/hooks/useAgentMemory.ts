@@ -1,6 +1,6 @@
 /**
- * An agent's memory (`memory.md` in its folder) and its mutations (wave
- * final, Track C), via TanStack Query. Kept live by `repo://file_changed`:
+ * An agent's memory (`memory.md` in its folder) and its mutations, via
+ * TanStack Query. Kept live by `repo://file_changed`:
  * the agent writes new entries in the background after a run, and the file
  * can be edited by hand.
  */

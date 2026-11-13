@@ -1,6 +1,6 @@
 //! "Ask about this run": summaries and answers about one run, grounded in
-//! its events, messages, and outputs, with cited sources (wave 2B redesign,
-//! Track A). Answers are cached in `local_settings` under
+//! its events, messages, and outputs, with cited sources. Answers are
+//! cached in `local_settings` under
 //! `analysis.run.<run_id>.summary` and `analysis.run.<run_id>.qa.<hash>`.
 //!
 //! The model sees only the run's own record, with every item tagged by a

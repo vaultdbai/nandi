@@ -1,4 +1,4 @@
-//! The ask box (wave CD, Tracks A, B, H): one input for questions,
+//! The ask box: one input for questions,
 //! actions, and edits. An ask is classified (`classifier`), answered from
 //! the gateway's view of this instance (`context`), and turned into an
 //! inline answer, an action plan (`planner`), or an edit preview

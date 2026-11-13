@@ -66,7 +66,7 @@ export function useWorkItem(id: string) {
   })
 }
 
-/** Manual workflow steps waiting for someone, oldest first (wave EF) */
+/** Manual workflow steps waiting for someone, oldest first */
 export function useManualSteps() {
   const queryClient = useQueryClient()
   useWorkEvents(queryClient)

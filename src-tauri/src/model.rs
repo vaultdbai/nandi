@@ -262,7 +262,7 @@ pub const APPROVAL_TTL_MS: i64 = 60 * 60 * 1000;
 pub enum AttentionKind {
     Approval,
     Error,
-    /// A workflow waits on a manual step (wave EF): `agent_name` is the
+    /// A workflow waits on a manual step: `agent_name` is the
     /// workflow's name, `run_id` the workflow run
     ManualStep,
 }

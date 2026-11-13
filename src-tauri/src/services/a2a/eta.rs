@@ -1,4 +1,4 @@
-//! ETA estimates from `eta_history` (wave final, Track B): median and p95
+//! ETA estimates from `eta_history`: median and p95
 //! of the last 100 completions; fewer than [`MIN_SAMPLES`] give a
 //! low-confidence default.
 //!

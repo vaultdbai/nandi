@@ -430,7 +430,7 @@ fn build_dashboard(
                 .map(|run| error_attention(&context(run), run, Some(format!("error-{}", run.id)))),
         )
         .collect();
-    // Workflows waiting on a person (wave EF): "Onboarding needs you"
+    // Workflows waiting on a person: "Onboarding needs you"
     let manual_steps = crate::services::workflows::manual_steps::pending_conn(conn)?;
     attention_items.extend(manual_steps.iter().map(|step| AttentionItem {
         id: format!("manual-{}-{}", step.run_id, step.step_id),

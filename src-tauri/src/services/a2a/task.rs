@@ -1,4 +1,4 @@
-//! The cross-user delegation lifecycle (wave final, Track B): a `tasks`
+//! The cross-user delegation lifecycle: a `tasks`
 //! row per attempt, every transition in `task_events`, progress and status
 //! traffic in `task_messages`.
 //!
@@ -87,7 +87,7 @@ pub enum TaskSourceKind {
     Gateway,
     /// A retry on the next provider after a failed attempt
     Failover,
-    /// The provider handed the task to a teammate (wave EF)
+    /// The provider handed the task to a teammate
     Reassign,
 }
 
@@ -862,7 +862,7 @@ pub fn service_for(instance_id: &str) -> Option<Arc<TaskService>> {
         .and_then(Weak::upgrade)
 }
 
-/// The task lifecycle service (Track B). No `AppState` inside: it holds
+/// The task lifecycle service. No `AppState` inside: it holds
 /// the delegation deps (DB, bus, relay, orchestrators) like the delegator.
 pub struct TaskService {
     pub(super) deps: A2aDeps,
@@ -1648,7 +1648,7 @@ impl TaskService {
                 )
                 .await?;
             }
-            // Track C's
+            // Clarification messages
             PeerMessage::ClarificationRequest(_)
             | PeerMessage::ClarificationResponse(_)
             | PeerMessage::ClarificationTimeout { .. } => {}

@@ -1,6 +1,6 @@
 //! A workflow as a graph for the builder: one node per step (with its live
-//! status from the latest run) and an edge per dependency (wave 2B
-//! redesign, Track B). Derived from the workflow definition plus run state.
+//! status from the latest run) and an edge per dependency.
+//! Derived from the workflow definition plus run state.
 //!
 //! Steps run in file order, so each step depends on the one before it
 //! (`sequence` edges). A step whose input uses `{{other.output}}` from an

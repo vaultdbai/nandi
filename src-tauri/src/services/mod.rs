@@ -52,7 +52,7 @@ pub mod orchestrator;
 pub mod palette;
 pub mod pilots;
 pub mod playbooks;
-// Policies applied to agents (enforced-policies wave 3)
+// Policies applied to agents
 pub mod policies;
 pub mod preferences;
 pub mod projection;
@@ -182,13 +182,13 @@ struct Inner {
     aws_auth: Arc<harness::aws_auth::AwsAuthService>,
     bedrock_models: Arc<harness::bedrock_models::BedrockModelService>,
     litellm_gateway: Arc<harness::gateway::GatewayService>,
-    // Wave final: set once by each track's `init` (`init_wave_final`)
+    // Set once at startup by each service's `init` (`init_wave_final`)
     tasks: OnceLock<Arc<a2a::task::TaskService>>,
     clarifications: OnceLock<Arc<a2a::clarification::ClarificationService>>,
     gateway: OnceLock<Arc<gateway::GatewayService>>,
     capability_registries: Arc<capability::registry::CapabilityRegistryService>,
     harnesses: Arc<harness::HarnessService>,
-    // Wave A: set once by each track's `init` (`init_wave_a`)
+    // Set once at startup by each service's `init` (`init_wave_a`)
     capabilities: OnceLock<Arc<capability::CapabilityService>>,
     tools: OnceLock<Arc<tools::ToolService>>,
 }
@@ -670,19 +670,19 @@ impl AppState {
         &self.0.remote
     }
 
-    /// The task lifecycle (wave final, Track B)
+    /// The task lifecycle
     #[allow(dead_code)]
     pub fn tasks(&self) -> Option<&Arc<a2a::task::TaskService>> {
         self.0.tasks.get()
     }
 
-    /// Clarification and escalation (wave final, Track C)
+    /// Clarification and escalation
     #[allow(dead_code)]
     pub fn clarifications(&self) -> Option<&Arc<a2a::clarification::ClarificationService>> {
         self.0.clarifications.get()
     }
 
-    /// The gateway agent (wave final, Track D)
+    /// The gateway agent
     #[allow(dead_code)]
     pub fn gateway(&self) -> Option<&Arc<gateway::GatewayService>> {
         self.0.gateway.get()
@@ -698,7 +698,7 @@ impl AppState {
         &self.0.network
     }
 
-    /// Wave final: each track's `init`, in dependency order (tasks before
+    /// Starts the delegation services, in dependency order (tasks before
     /// the gateway, which dispatches child tasks). Must not block.
     fn init_wave_final(&self) {
         if let Some(service) = a2a::task::init(self) {
@@ -715,13 +715,13 @@ impl AppState {
         team::roster::watch(self);
     }
 
-    /// The capability service (wave A, Track A)
+    /// The capability service
     #[allow(dead_code)]
     pub fn capabilities(&self) -> Option<&Arc<capability::CapabilityService>> {
         self.0.capabilities.get()
     }
 
-    /// The unified tool catalog (wave A, Track C)
+    /// The unified tool catalog
     #[allow(dead_code)]
     pub fn tools(&self) -> Option<&Arc<tools::ToolService>> {
         self.0.tools.get()
@@ -732,7 +732,7 @@ impl AppState {
         &self.0.capability_registries
     }
 
-    /// Wave A: each track's `init`, after `init_wave_final`, in dependency
+    /// Starts the tool and capability services, after `init_wave_final`, in dependency
     /// order (tools and registries before capabilities, which resolve
     /// required tools and merge registry definitions). Must not block.
     fn init_wave_a(&self) {
@@ -767,7 +767,8 @@ impl AppState {
         &self.0.litellm_gateway
     }
 
-    /// Wave B: each track's `init`, after `init_wave_a`. Must not block.
+    /// Starts the harnesses and the browser pilot, after `init_wave_a`. Must
+    /// not block.
     fn init_wave_b(&self) {
         harness::start(self);
         pilots::browser::init(pilots::browser::Host {

@@ -1,4 +1,4 @@
-//! Native or harness, per run (wave B).
+//! Native or harness, per run.
 //!
 //! An agent's `runtime:` picks who runs its turns. `native` (or none) is
 //! Nandi's own loop, unchanged. A harness runtime starts the CLI in the
@@ -73,7 +73,7 @@ pub struct RouterInputs {
     pub credentials: HarnessCredentials,
     /// The running gateway (endpoint, key), when the agent wants one
     pub gateway: Option<(GatewayConfig, String)>,
-    /// `.nandi/llm.yaml`'s choices the environment left open (wave EF);
+    /// `.nandi/llm.yaml`'s choices the environment left open;
     /// the agent's own `runtime_config` still wins
     pub repo: HarnessDefaults,
     /// The CLI is signed in only on the host: its own settings give a

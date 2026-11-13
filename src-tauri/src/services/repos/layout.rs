@@ -38,7 +38,7 @@ pub const SKILL_FILE: &str = "skill.md";
 pub const INSTRUCTIONS_FILE: &str = "instructions.md";
 /// Next to `skill.md`: the agent's playbooks, one `<name>.md` each
 pub const PLAYBOOKS_DIR: &str = "skills";
-/// Agent-maintained memory (wave final, Track C)
+/// Agent-maintained memory
 #[allow(dead_code)]
 pub const MEMORY_FILE: &str = "memory.md";
 pub const SETTINGS_FILE: &str = "settings.yaml";
@@ -48,9 +48,9 @@ pub const CONNECTOR_PACKAGES_DIR: &str = "connectors";
 pub const CONNECTOR_FILE: &str = "connector.md";
 pub const MANIFEST_FILE: &str = "manifest.yaml";
 pub const INSTALLED_FILE: &str = "installed.yaml";
-/// Under `.nandi/`: capability definitions (wave A)
+/// Under `.nandi/`: capability definitions
 pub const CAPABILITIES_DIR: &str = "capabilities";
-/// Under `.nandi/`: policies (wave CD)
+/// Under `.nandi/`: policies
 pub const POLICIES_DIR: &str = "policies";
 /// Under `.nandi/`: the groups this Nandi is in (protocol 7)
 pub const GROUPS_DIR: &str = "groups";
@@ -150,7 +150,7 @@ impl RepoLayout {
         self.meta_dir.join(INSTALLED_FILE)
     }
 
-    /// `.nandi/capabilities/` (wave A): one `<id>.yaml` per capability
+    /// `.nandi/capabilities/`: one `<id>.yaml` per capability
     pub fn capabilities_dir(&self) -> PathBuf {
         self.meta_dir.join(CAPABILITIES_DIR)
     }

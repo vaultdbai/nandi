@@ -6,7 +6,7 @@
 //!   unless skill.md declares `requires_approval` without it.
 //! - Runs on the delegator whatever the engine, so canned runs exercise it.
 //!
-//! Also `ask_requester` (wave final, Track C): `{questions: [{question,
+//! Also `ask_requester`: `{questions: [{question,
 //! topic, requires_human?}]}`, offered only during a delegated turn
 //! (`SourceType::Agent` with a running delegation). It sends the questions
 //! to the requester and blocks the turn until they're answered or the wait
@@ -238,7 +238,7 @@ pub async fn call(
 }
 
 // ---------------------------------------------------------------------------
-// `ask_requester` (wave final, Track C)
+// `ask_requester`
 // ---------------------------------------------------------------------------
 
 pub const ASK_REQUESTER: &str = ASK_REQUESTER_TOOL;

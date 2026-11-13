@@ -1,4 +1,4 @@
-//! Threshold compaction (wave final, Track D). FROZEN signatures.
+//! Threshold compaction.
 //!
 //! When a run's token estimate nears the context window, the run ends as
 //! `compacted` and a child run continues it from a summary (merged with the

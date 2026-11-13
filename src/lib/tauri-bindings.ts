@@ -92,7 +92,7 @@ export type {
   WorkflowStepRun,
   WorkflowStepStatus,
   WorkflowSummary,
-  // Wave 1 interfaces
+  // Interfaces
   AgentDefinitionCapabilities,
   AgentDefinitionInput,
   AuditEntry,

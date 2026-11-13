@@ -115,11 +115,9 @@ tauri_events!(
     DelegationTaskCompleted,
     DelegationTaskFailed,
     RequestReturned,
-    // Wave final
     AgentTurnAborted,
     AgentRunCompacted,
     AgentToolsLoaded,
-    // Wave CD
     AskStreamingDelta,
     AskCompleted,
     StudioArtifactLoaded,
@@ -128,7 +126,6 @@ tauri_events!(
     WorkItemUpdated,
     WorkItemAdded,
     WorkItemRemoved,
-    // Wave EF
     TaskReassigned,
     PendingManualStep,
     ManualStepCompleted,

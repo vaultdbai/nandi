@@ -1,6 +1,6 @@
 //! Ranked search over the catalog (installed + available agents and packs):
 //! name match > description match > tag match (> publisher match), recency
-//! as the tie-break (wave 2B redesign, Track C).
+//! as the tie-break.
 //!
 //! The registries carry no publish dates, so "recency" is the catalog order:
 //! registries append entries as they're published, so a later entry is a

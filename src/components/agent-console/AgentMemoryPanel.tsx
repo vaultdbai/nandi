@@ -1,6 +1,6 @@
 /**
  * The agent's memory.md entries: review, edit, delete, refresh from the
- * latest run, and the "disable memory" toggle (wave final, Track C).
+ * latest run, and the "disable memory" toggle.
  * Entries show newest first; each keeps its index in the file.
  */
 import { useState } from 'react'

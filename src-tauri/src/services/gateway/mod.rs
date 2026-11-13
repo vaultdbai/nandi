@@ -1,4 +1,4 @@
-//! The gateway agent (wave final, Track D): one per Nandi instance, defined
+//! The gateway agent: one per Nandi instance, defined
 //! by `~/.nandi/repo/NANDI.md` (YAML frontmatter + a Markdown body). It is
 //! what the network sees of this instance (a `GatewayCard` at the relay),
 //! takes delegations addressed to the instance, applies the policy, and
@@ -349,7 +349,7 @@ struct Runtime {
     active_by_caller: HashMap<String, u32>,
 }
 
-/// The gateway (Track D): NANDI.md, the card at the relay, policy state,
+/// The gateway: NANDI.md, the card at the relay, policy state,
 /// and the router. Background work (change polling, heartbeat,
 /// federation) holds it weakly and stops when it's dropped.
 pub struct GatewayService {

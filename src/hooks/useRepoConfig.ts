@@ -1,5 +1,5 @@
 /**
- * `.nandi/llm.yaml`, the team's shared LLM config (wave EF): what the repo
+ * `.nandi/llm.yaml`, the team's shared LLM config: what the repo
  * holds and what's in effect after env > repo > local. Kept live by
  * `config://repo_llm_changed`.
  */

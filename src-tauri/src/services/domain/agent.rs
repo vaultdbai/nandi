@@ -774,8 +774,8 @@ impl Agent {
 
     // -- Accessors ----------------------------------------------------------
 
-    /// skill.md keys Nandi doesn't model, preserved on save (e.g. the wave
-    /// final turn policy: `middlewares`, `max_turns`, `memory_disabled`)
+    /// skill.md keys Nandi doesn't model, preserved on save (e.g. the turn
+    /// policy: `middlewares`, `max_turns`, `memory_disabled`)
     pub fn extra(&self) -> &BTreeMap<String, serde_yaml::Value> {
         &self.extra
     }

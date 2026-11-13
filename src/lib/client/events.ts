@@ -157,7 +157,6 @@ interface NandiEventMap {
     finished: boolean | null
     error: string | null
   }
-  // Wave 2A
   'relay://status': RelayStatus
   'relay://agent_online': RelayAgentOnline
   'relay://agent_offline': RelayAgentOffline
@@ -174,14 +173,13 @@ interface NandiEventMap {
   'delegation://task_failed': DelegationTaskFailed
   /** A request you sent came back while nobody watched (an Inbox item) */
   'request://returned': RequestReturned
-  // Wave final
   /** A middleware stopped the run (turn limit, cost cap, ...) */
   'agent://turn_aborted': AgentTurnAborted
   /** The run ended as `compacted`; `newRunId` continues it */
   'agent://run_compacted': AgentRunCompacted
   /** `tool_search` added tools to the run */
   'agent://tools_loaded': AgentToolsLoaded
-  // Local-identity freeze. Payloads are typed by the tracks that emit them
+  // Local identity. Payloads are typed by the services that emit them
   'remote://status_changed': unknown
   'remote://push_completed': unknown
   'remote://pull_completed': unknown
@@ -208,8 +206,8 @@ interface NandiEventMap {
   'trust://relationship_updated': unknown
   /** Someone was refused for trust, or their request was answered (task 12) */
   'trust://request_received': { instanceId: string }
-  // Wave A. Payloads are
-  // typed by the tracks that emit them
+  // Capability events. Payloads are
+  // typed by the services that emit them
   'capability://created': unknown
   'capability://updated': unknown
   'capability://deleted': unknown
@@ -221,8 +219,8 @@ interface NandiEventMap {
   'tool://catalog_changed': unknown
   'tool://usage_recorded': unknown
   'evidence://aggregated': unknown
-  // Wave B. Payloads are
-  // typed by the tracks that emit them
+  // Harness events. Payloads are
+  // typed by the services that emit them
   'harness://detected': unknown
   'harness://health_changed': unknown
   'harness://session_started': unknown
@@ -235,7 +233,6 @@ interface NandiEventMap {
   'aws://credentials_expired': unknown
   'bedrock://models_refreshed': unknown
   'bedrock://gateway_status': unknown
-  // Wave CD (see docs/developer/interaction-layer.md)
   'ask://streaming_delta': AskStreamingDelta
   'ask://completed': AskCompleted
   'studio://artifact_loaded': StudioArtifactLoaded
@@ -246,7 +243,6 @@ interface NandiEventMap {
   'work://item_removed': WorkItemRemoved
   /** A local Request or one of its Steps changed (task 14) */
   'request://updated': RequestUpdated
-  // Wave EF (see docs/developer/network-and-reassignment.md)
   /** Someone new appeared in the network directory */
   'network://member_joined': unknown
   /** A member went offline */

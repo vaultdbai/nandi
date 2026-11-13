@@ -1,5 +1,5 @@
 //! Agent cards: what other Nandi instances see of an agent that serves
-//! capabilities (wave 2A, Track A). A card is derived from the agent's
+//! capabilities. A card is derived from the agent's
 //! skill.md; it is never stored in the gold copy.
 //!
 //! `id` is `<instance_id>/<agent_id>`, unique across instances.

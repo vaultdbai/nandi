@@ -1,4 +1,4 @@
-//! Work (wave CD, Track F): long-running work in flight — workflow runs
+//! Work: long-running work in flight — workflow runs
 //! and delegated tasks — as active / waiting / done items with their next
 //! action. Reads `workflow_runs` and `tasks`; pausing and cancelling go
 //! through the workflow engine.

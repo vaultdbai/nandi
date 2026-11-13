@@ -1,4 +1,4 @@
-//! The unified tool catalog (wave A, Track C): built-in tools, connector
+//! The unified tool catalog: built-in tools, connector
 //! tools, and pilot tools as first-class entities in `tool_catalog`.
 //! Capabilities declare `required_tools`; providers advertise the tools
 //! they have; selection filters by coverage.

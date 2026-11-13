@@ -1,4 +1,4 @@
-//! The evidence aggregation job (wave A, Track F): hourly, rolling 30-day
+//! The evidence aggregation job: hourly, rolling 30-day
 //! aggregates per capability and provider into `capability_aggregates`,
 //! and ambiguity clusters from clarification traffic (`task_messages`)
 //! into `capability_ambiguities`. Emits `evidence://aggregated`.
@@ -11,7 +11,7 @@
 //!   counts once: the provider row wins over the requester row.
 //! - Per capability there is one row per provider and one overall row
 //!   (empty provider key columns). Aggregates are `CapabilityEvidence`
-//!   JSON; `cached` reads them back (Track A's `evidence` for 30+ days).
+//!   JSON; `cached` reads them back (a capability's `evidence` for 30+ days).
 //! - Outcomes: `completed` succeeds, `timedOut` times out, `failed`,
 //!   `rejected`, and `abandoned` fail; `cancelled` and `reassigned` only
 //!   count. Latency percentiles (nearest rank) are over rows with a duration

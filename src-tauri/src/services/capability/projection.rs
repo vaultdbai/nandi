@@ -1,4 +1,4 @@
-//! Capability files into `capabilities_projection` (wave A, Track A).
+//! Capability files into `capabilities_projection`.
 //! Rebuildable from the gold copy (and the registry clones), like the rest
 //! of SQLite. The watcher routes `.nandi/capabilities/` changes to
 //! `CapabilityService::reload_entity`, which calls these and emits

@@ -37,7 +37,7 @@ const SNAPSHOT_EVENTS = new Set<NandiEvent['event']>([
   'agent://agents_changed',
   'dashboard://attention',
   'dashboard://activity',
-  // Wave EF: a workflow waits on (or resumed from) a manual step
+  // A workflow waits on (or resumed from) a manual step
   'workflow://manual_step_ready',
   'workflow://manual_step_completed',
   'nandi://resync',

@@ -1,4 +1,4 @@
-//! Trust toward other members (wave final, Track E): trusted peers (also
+//! Trust toward other members: trusted peers (also
 //! `federation.trusted_peers` in NANDI.md), paused delegations (our gateway
 //! rejects their tasks and we stop routing to them), and blocked agents
 //! (filtered from listings and routing in both directions).
@@ -166,8 +166,8 @@ pub fn is_paused(db: &Db, instance_id: &str) -> bool {
     }
 }
 
-/// The `blocked_members` agent ID that blocks every agent of an instance
-/// (wave EF): its tasks are rejected on arrival and nothing is routed to it
+/// The `blocked_members` agent ID that blocks every agent of an instance:
+/// its tasks are rejected on arrival and nothing is routed to it
 pub const ALL_AGENTS: &str = "*";
 
 /// We blocked `agent_id` (an agent ID, or its `<instance>/<agent>` card

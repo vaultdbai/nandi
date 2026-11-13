@@ -1,6 +1,6 @@
 //! Delegation end to end: local in-process, two instances over a mock
 //! relay, the tool's approval, timeouts, and rejections; and the task
-//! lifecycle over it (wave final, Track B).
+//! lifecycle over it.
 //!
 //! The mock relay seals and opens like the real client: every task,
 //! result and peer message between instances goes through each side's
@@ -1506,7 +1506,7 @@ async fn a_named_provider_is_never_swapped() {
 }
 
 // ---------------------------------------------------------------------------
-// Task lifecycle (wave final, Track B)
+// Task lifecycle
 // ---------------------------------------------------------------------------
 
 mod lifecycle_tests {
@@ -2535,7 +2535,7 @@ mod lifecycle_tests {
 }
 
 // ---------------------------------------------------------------------------
-// Wave final merge wiring: gateway tasks, trust, clarification pauses
+// Wiring: gateway tasks, trust, clarification pauses
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -3306,7 +3306,7 @@ async fn a_task_waiting_for_an_answer_doesnt_time_out() {
 }
 
 // ---------------------------------------------------------------------------
-// Supervisor reassignment (wave EF, Track C)
+// Supervisor reassignment
 // ---------------------------------------------------------------------------
 
 /// Another provider on `hub` with `papers` serving `summarize`, allowing

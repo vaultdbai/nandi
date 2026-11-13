@@ -1,4 +1,4 @@
-//! Built-in tools (wave A, Track C): what the container runtime image
+//! Built-in tools: what the container runtime image
 //! serves (`runtimes/nandi-runtime/app.py`: shell, read_file, write_file,
 //! list_dir) plus the host's own grantable tools (`delegate_to_agent`, and
 //! the people tools `find_people` / `my_requests`), as

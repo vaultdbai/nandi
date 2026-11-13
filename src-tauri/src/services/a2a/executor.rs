@@ -17,14 +17,14 @@
 //! trust policy: they share an owner.
 //!
 //! Inbound tasks (from another instance) also get a provider `tasks` row
-//! and the lifecycle messages (wave final, Track B): `TaskDelivered` on
+//! and the lifecycle messages: `TaskDelivered` on
 //! arrival, `RejectTask` when refused, a wait in the slot queue while the
 //! agent is full (the row stays `Delivered`), `AcknowledgeTask` with an ETA
 //! from `eta_history`, `Working` once the turn is submitted (with a
 //! `ProgressUpdate` when the task wants progress), then the result.
 //! In-process tasks keep no row: the delegator's caller sees them end.
 //!
-//! Wave final merge:
+//! How delegation meets the gateway, trust and clarification:
 //! - A task for `<instance>/gateway` (`gateway::GATEWAY_AGENT_ID`) isn't an
 //!   agent turn: it goes to the gateway's handler (`set_gateway_handler`,
 //!   registered by `gateway::init`), which applies its policy, routes it,
@@ -402,7 +402,7 @@ impl Executor {
     }
 
     /// Another instance's requester we paused delegations with, or one of
-    /// its agents we blocked (Track E)
+    /// its agents we blocked
     fn check_member_trust(&self, task: &Task) -> Result<(), Refusal> {
         let instance = &task.requester.instance_id;
         if *instance == self.deps.instance_id {
@@ -718,7 +718,7 @@ impl Executor {
             return result;
         }
 
-        // Wave A seam (Track F): a workflow provider runs the task instead
+        // A workflow provider runs the task instead
         let outcome = match workflow_provider::resolve(&self.deps, task).await {
             Some(target) => self.run_workflow(task, &target, life.as_ref()).await,
             None => self.run_agent(task, life.as_ref()).await,
@@ -760,7 +760,7 @@ impl Executor {
         }
     }
 
-    /// The workflow path (wave A, Track F): the trust checks an agent
+    /// The workflow path: the trust checks an agent
     /// gets, then `Acknowledged`, `Working`, a progress update per settled
     /// step (when the task wants progress), and the workflow's result,
     /// within the task's deadline

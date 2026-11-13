@@ -608,7 +608,7 @@ function MessageEntry({
   }
 }
 
-/** A clarification waiting on an answer here (Track C's cards) */
+/** A clarification waiting on an answer here (the clarification cards) */
 function PendingCard({
   clarification,
 }: {

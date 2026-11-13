@@ -2224,7 +2224,7 @@ pub fn list_workflows(conn: &Connection) -> rusqlite::Result<Vec<WorkflowSummary
 }
 
 // ---------------------------------------------------------------------------
-// Agent memory (wave final, Track C): a rebuildable cache of memory.md
+// Agent memory: a rebuildable cache of memory.md
 // ---------------------------------------------------------------------------
 
 /// Replaces the cached entries of `agent_id` with `entries`, in file order.

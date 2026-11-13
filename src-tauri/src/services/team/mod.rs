@@ -7,10 +7,10 @@
 //! - What's shared lives in the registry itself (`index.json`); "shared by
 //!   me" is derived from it (entries whose publisher is my handle).
 //! - Changes are pushed to `nandi/<my handle>`, never to the default branch
-//!   (wave final: Nandi never pushes to main or master).
+//!   (Nandi never pushes to main or master).
 
 pub mod registry;
-// Wave final, Track E
+// Rosters and trust toward other members
 pub mod roster;
 pub mod trust;
 pub mod trust_requests;
@@ -834,7 +834,7 @@ impl TeamService {
                 .cloned()
                 .or_else(|| publisher.map(|p| p.display_name))
                 .unwrap_or_else(|| handle.clone());
-            // Where the relay reaches it is Track B's business: unknown here
+            // Where the relay reaches it is the relay client's business: unknown here
             let card = card_from_agent(&agent, &instance, "")
                 .with_owner(OwnerRef {
                     github_handle: handle,

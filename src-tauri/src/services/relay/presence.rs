@@ -1,4 +1,4 @@
-//! Capability and tool presence on the relay (wave A, Track D). On
+//! Capability and tool presence on the relay. On
 //! register (and with each heartbeat) an instance tells the relay which
 //! capabilities its agents and workflows provide and which tools it has;
 //! requesters ask with `CapabilityPresenceQuery`.

@@ -204,8 +204,6 @@ pub trait RelayClient: Send + Sync {
 
     fn status(&self) -> RelayStatus;
 
-    // Wave final
-
     /// Sends a lifecycle message to the other side of a task through the
     /// relay, which keeps it for them if they're offline (live-only kinds
     /// go now or not at all). `Err` when we aren't connected.
@@ -253,8 +251,6 @@ pub trait RelayClient: Send + Sync {
         let _ = query;
         Box::pin(async { Err("Not supported by this relay client".to_string()) })
     }
-
-    // Wave A
 
     /// Sets what this instance provides: carried by every later
     /// `RegisterInstance` (reconnects too) and sent now as `UpdatePresence`

@@ -189,7 +189,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             connectors::remove_connector,
             connectors::scaffold_connector,
             connectors::publish_connector,
-            // Wave 2A
             capability::find_agents_by_capability,
             capability::list_declared_capabilities,
             capability::get_agent_card,
@@ -224,7 +223,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             shared::set_provider_pin,
             shared::list_trust_policies,
             shared::set_trust_policy,
-            // Wave 2B redesign
+            // Run analysis and agent memory
             analysis::analyze_run,
             analysis::summarize_run,
             workflow_builder::get_workflow_graph,
@@ -244,7 +243,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             desktop::companion::companion_focus_request,
             palette::search_palette,
             palette::execute_palette_action,
-            // Wave final
             memory::load_agent_memory,
             memory::update_agent_memory,
             memory::delete_agent_memory,
@@ -279,7 +277,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             access::answer_access_request,
             memory::get_agent_memory_enabled,
             memory::set_agent_memory_enabled,
-            // Wave final, network-first (Track A: identity, remote)
+            // Identity and the optional git remote
             identity::get_identity_status,
             identity::get_verified_identity,
             identity::set_display_name,
@@ -296,7 +294,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             remote::push_to_remote,
             remote::pull_from_remote,
             remote::list_remote_branches,
-            // Track B: task lifecycle
+            // Task lifecycle
             tasks::get_task,
             tasks::list_tasks,
             tasks::cancel_task,
@@ -326,11 +324,11 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             mascot::mascot_get,
             mascot::mascot_set,
             mascot::mascot_phrase,
-            // Track C: clarification
+            // Clarification
             delegation_clarification::respond_to_clarification,
             delegation_clarification::escalate_clarification,
             delegation_clarification::get_pending_clarifications,
-            // Track D: gateway
+            // Gateway
             gateway::get_gateway_status,
             gateway::list_gateway_holds,
             gateway::decide_gateway_hold,
@@ -348,7 +346,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             gateway::gateway_chat,
             delegation_clarification::get_clarification_policy,
             delegation_clarification::set_clarification_policy,
-            // Track E: network, rosters, trust
+            // Network, rosters, trust
             network::get_network_snapshot,
             network::refresh_network,
             teams_roster::get_team_roster,
@@ -376,7 +374,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             teams_roster::pause_delegations_from_member,
             teams_roster::list_trust_requests,
             teams_roster::respond_trust_request,
-            // Wave A
             capability_definitions::list_capabilities,
             capability_definitions::get_capability,
             capability_definitions::save_capability,
@@ -396,7 +393,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             capability_registries::remove_capability_registry,
             capability_registries::sync_capability_registry,
             relay_capabilities::query_capability_presence,
-            // Wave B
             harnesses::list_harnesses,
             images::get_image_status,
             images::build_image,
@@ -434,7 +430,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             bedrock::start_litellm_gateway,
             bedrock::stop_litellm_gateway,
             bedrock::get_litellm_gateway_status,
-            // Wave CD (see docs/developer/interaction-layer.md)
             ask::ask,
             ask::ask_streaming,
             ask::list_ask_history,
@@ -452,7 +447,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             work::rate_work,
             work::dismiss_work,
             work::list_dismissed_work,
-            // Wave EF
             reassign::reassign_task,
             reassign::list_reassign_candidates,
             manual_steps::complete_manual_step,
@@ -514,11 +508,9 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             DelegationTaskCompleted,
             DelegationTaskFailed,
             RequestReturned,
-            // Wave final
             AgentTurnAborted,
             AgentRunCompacted,
             AgentToolsLoaded,
-            // Wave CD
             AskStreamingDelta,
             AskCompleted,
             StudioArtifactLoaded,
@@ -527,7 +519,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             WorkItemUpdated,
             WorkItemAdded,
             WorkItemRemoved,
-            // Wave EF
             TaskReassigned,
             PendingManualStep,
             ManualStepCompleted,

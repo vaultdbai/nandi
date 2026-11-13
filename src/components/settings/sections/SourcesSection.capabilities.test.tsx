@@ -36,7 +36,7 @@ function syncResult(overrides: Partial<SyncResult> = {}): SyncResult {
   }
 }
 
-// The shared setup doesn't mock the wave A commands; this file does
+// The shared setup doesn't mock the capability commands; this file does
 const mocks = {
   listCapabilityRegistries: vi.fn(),
   addCapabilityRegistry: vi.fn(),

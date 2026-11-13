@@ -1,4 +1,4 @@
-//! Classifies an ask as a question, an action, or an edit (Track A). The
+//! Classifies an ask as a question, an action, or an edit. The
 //! gateway's model decides, given a scoped prompt with the view and the
 //! artifact in focus. When it can't (a failed call, a bad reply), the ask
 //! box says so and the help guide answers instead.

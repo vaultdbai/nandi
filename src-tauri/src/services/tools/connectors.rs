@@ -1,4 +1,4 @@
-//! Connector tools (wave A, Track C): one definition per MCP tool of each
+//! Connector tools: one definition per MCP tool of each
 //! installed connector (`services::connectors`), `ToolSource::Connector`.
 //! A running connector reports its live tools; a stopped one its static
 //! list. Refreshed when the installs or the running set change.

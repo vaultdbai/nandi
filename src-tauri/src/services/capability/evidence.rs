@@ -1,4 +1,4 @@
-//! Evidence per capability (wave A, Track A): one `capability_evidence`
+//! Evidence per capability: one `capability_evidence`
 //! row per finished task and role, aggregated per provider over a window.
 //!
 //! `on_task_transitions` is the seam `a2a::task_state` calls after every
@@ -179,7 +179,7 @@ pub async fn record_from_task(db: &Db, task: &TaskRecord) -> Result<(), String> 
                     task.state.as_str(),
                     duration_ms.map(|ms| ms as i64),
                     clarifications,
-                    // Nothing escalates to an owner yet (wave F)
+                    // Nothing escalates to an owner yet
                     0i64,
                     finished_at as i64,
                     serde_json::json!({

@@ -1,6 +1,6 @@
 //! What's shared with me (team registries + agents online at the relay) and
 //! what I share (agents accepting delegation or shared to a team), with call
-//! counts from the `delegations` history (wave 2A, Track E).
+//! counts from the `delegations` history.
 //!
 //! Every source is optional: the team manager and the relay are `None` (or
 //! answer errors) until configured, and a source that's unavailable is
@@ -12,7 +12,7 @@
 //! reasons and my pin for it. The track record shown is mine (my
 //! delegations to them), never another member's.
 //!
-//! Trust applies to both (wave final): agents I blocked never show, and a
+//! Trust applies to both: agents I blocked never show, and a
 //! member whose delegations I paused isn't offered as a provider.
 
 use std::collections::{BTreeMap, HashMap, HashSet};

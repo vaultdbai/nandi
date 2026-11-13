@@ -1,5 +1,5 @@
-//! Policies: `.nandi/policies/<id>.md`, Markdown with YAML frontmatter
-//! (wave CD). Studio edits them; the ask box reads them as context; the
+//! Policies: `.nandi/policies/<id>.md`, Markdown with YAML frontmatter.
+//! Studio edits them; the ask box reads them as context; the
 //! ones with `applies_to` are enforced (`domain::policy`). They aren't
 //! projected into SQLite.
 //!

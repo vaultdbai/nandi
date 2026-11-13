@@ -1,4 +1,4 @@
-//! Gateway policy (wave final, Track D): a token bucket per caller
+//! Gateway policy: a token bucket per caller
 //! (`rate_limit_per_hour`, hourly reset), the monthly budget
 //! (`gateway_usage`), capability exposure (`expose` / `hide`), and
 //! `require_approval`. Over a limit: `gateway://rate_limited` and a
@@ -120,8 +120,8 @@ pub struct PolicyInput<'a> {
     pub capability: Option<&'a str>,
     /// The caller's tasks this month so far
     pub used_this_month: u32,
-    /// We paused delegations with the caller's instance (Track E,
-    /// `team::trust::is_paused`)
+    /// We paused delegations with the caller's instance
+    /// (`team::trust::is_paused`)
     pub caller_paused: bool,
     /// Who the caller is, in words (never a device ID)
     pub caller_name: &'a str,

@@ -46,7 +46,7 @@ impl AuditLog {
 
 // --- Reading ------------------------------------------------------------------
 //
-// `AuditEntry` is a frozen wave-1 contract: fields may be added, never
+// `AuditEntry` is a stable contract with the UI: fields may be added, never
 // renamed or removed.
 
 /// The logs the viewer can read, by `AuditEntry::kind`.
@@ -136,9 +136,9 @@ fn log_file_name(kind: &str) -> Result<&'static str, String> {
         "llm" => Ok(AuditLog::Llm.file_name()),
         "egress" => Ok(AuditLog::Egress.file_name()),
         "triggers" => Ok(AuditLog::Triggers.file_name()),
-        // Written by the pilots track (wave 1)
+        // Written by the pilot service
         "pilots" => Ok(crate::services::pilots::audit::FILE_NAME),
-        // Written by the connectors track (wave 1)
+        // Written by the connector service
         "connectors" => Ok(crate::services::connectors::audit::FILE_NAME),
         _ => Err(format!(
             "Unknown audit log '{kind}': expected one of {}",

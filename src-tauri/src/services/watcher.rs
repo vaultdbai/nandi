@@ -10,7 +10,7 @@
 //!   fires (an app's own write has the same hash and is a no-op)
 //! - invalid: `repo://validation_failed`; the last good version stays
 //!
-//! Capability files (`.nandi/capabilities/`, wave A) aren't `RepoStore`
+//! Capability files (`.nandi/capabilities/`) aren't `RepoStore`
 //! entities: their paths go to the handler the capability service
 //! registers for the repo (`set_capability_handler`).
 //!
@@ -163,7 +163,7 @@ pub enum Target {
     Profile,
 }
 
-/// Takes changed capability paths (wave A); see `set_capability_handler`
+/// Takes changed capability paths; see `set_capability_handler`
 pub type CapabilityHandler = Arc<dyn Fn(Vec<PathBuf>) + Send + Sync>;
 
 /// Repo root to its capability handler
@@ -660,7 +660,7 @@ mod tests {
             c.classify(&p(".nandi/triggers/hook.yaml")),
             target(EntityKind::Trigger, "hook")
         );
-        // Capability files go to the capability service (wave A)
+        // Capability files go to the capability service
         let cap = p(".nandi/capabilities/code-review.python.yaml");
         assert_eq!(c.classify(&cap), Some(Target::Capability(cap.clone())));
         let dir = p(".nandi/capabilities");

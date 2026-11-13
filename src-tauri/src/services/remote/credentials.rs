@@ -1,4 +1,4 @@
-//! The remote's credential in the OS keychain (wave final, Track A), as
+//! The remote's credential in the OS keychain, as
 //! JSON under [`CREDENTIAL_ACCOUNT`]. Long tokens are split across entries
 //! on Windows (the Credential Manager caps a secret's size). Never in a
 //! config file.

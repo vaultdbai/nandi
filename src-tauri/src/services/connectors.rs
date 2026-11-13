@@ -22,9 +22,8 @@
 //!   argument names only).
 //! - Secrets (API keys, tokens) live in the OS keyring only.
 //!
-//! FROZEN INTERFACE (wave 1): the types below are the contract between the
-//! backend and the UI. Track D (Connectors) fills in `ConnectorRegistry` and
-//! the service functions.
+//! The types below are the contract between the backend and the UI:
+//! fields may be added, never renamed or removed.
 
 pub mod audit;
 mod aws;
@@ -337,7 +336,7 @@ struct Running {
 }
 
 /// Installed connectors and their MCP sessions. `AppState::connectors()` is
-/// `None` until Track D initializes it.
+/// `None` until the connector service is initialized.
 #[derive(Default)]
 pub struct ConnectorRegistry {
     running: Mutex<HashMap<String, Arc<Running>>>,

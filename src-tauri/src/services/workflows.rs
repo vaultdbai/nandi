@@ -37,7 +37,7 @@
 //!                                          ─▶ failed ─▶ workflow failed
 //! ```
 
-// Wave EF (Track D): steps that wait for a person
+// Steps that wait for a person
 pub mod manual_steps;
 pub mod templates;
 
@@ -92,7 +92,7 @@ pub struct WorkflowStep {
     pub id: String,
     /// Agent ID (folder name); empty for a manual step
     pub agent: String,
-    /// `manual`: waits for a person (wave EF)
+    /// `manual`: waits for a person
     #[serde(default)]
     pub manual: bool,
     /// What the person should do (manual steps)
@@ -356,7 +356,7 @@ pub enum WorkflowRunStatus {
     Paused,
     /// Stopped for good by the user (Work)
     Cancelled,
-    /// Suspended at a manual step until a person completes it (wave EF)
+    /// Suspended at a manual step until a person completes it
     Waiting,
 }
 
@@ -391,7 +391,7 @@ impl WorkflowRunStatus {
 pub enum WorkflowStepStatus {
     Pending,
     AwaitingApproval,
-    /// A manual step waiting for a person (wave EF)
+    /// A manual step waiting for a person
     AwaitingInput,
     Running,
     Done,
@@ -414,7 +414,7 @@ pub struct WorkflowStepRun {
     pub continue_on_failure: bool,
     #[serde(default)]
     pub approved: bool,
-    /// Waits for a person instead of messaging an agent (wave EF)
+    /// Waits for a person instead of messaging an agent
     #[serde(default)]
     pub manual: bool,
     /// What the person should do (manual steps), rendered when reached
@@ -836,7 +836,7 @@ impl WorkflowEngine {
     }
 
     /// `run_workflow`, with `{{input}}` / `{{input.<field>}}` in the step
-    /// templates replaced by a delegated task's `input` (wave A)
+    /// templates replaced by a delegated task's `input`
     async fn start_run(
         self: &Arc<Self>,
         id: &str,
@@ -901,8 +901,8 @@ impl WorkflowEngine {
         Ok(run_id)
     }
 
-    /// A run the gateway started for a delegated task (wave final, Track
-    /// D): starts `id` and waits for it to end, calling
+    /// A run the gateway started for a delegated task:
+    /// starts `id` and waits for it to end, calling
     /// `on_progress(settled, total, step_id)` as steps settle. Returns the
     /// last step's output; a failed run is an `Err`. A step waiting for
     /// approval keeps it waiting (the caller's deadline applies).
@@ -922,8 +922,8 @@ impl WorkflowEngine {
         run_output(&run)
     }
 
-    /// A run for a delegated task whose provider is this workflow (wave A,
-    /// `capability::workflow_provider`): `input` fills `{{input}}`, and
+    /// A run for a delegated task whose provider is this workflow
+    /// (`capability::workflow_provider`): `input` fills `{{input}}`, and
     /// the ended run comes back whole (for its step breakdown). Progress as
     /// in `run_for_gateway`.
     pub async fn run_for_task(

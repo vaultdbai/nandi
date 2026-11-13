@@ -222,7 +222,7 @@ async fn resolve(
     approval_id: String,
     decision: ApprovalDecision,
 ) -> Result<(), String> {
-    // An escalated clarification question (wave final, Track C) names no
+    // An escalated clarification question names no
     // run: the clarification service resolves it, not the orchestrator
     if approval.tool == a2a::escalation::ESCALATION_TOOL {
         return a2a::escalation::resolve_approval(state, &approval_id, decision).await;

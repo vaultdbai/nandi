@@ -17,7 +17,7 @@ pub mod fs_atomic;
 pub mod git;
 pub mod group_repo;
 pub mod layout;
-// Wave CD: Studio policies
+// Studio policies
 pub mod policy_repo;
 pub mod settings_repo;
 pub mod trigger_repo;

@@ -1,10 +1,9 @@
-//! Who may call which local agent: per-edge `allow` / `deny` / `ask`
-//! (wave 2A). Track E edits the policies (TrustGraph); Track C enforces them
-//! on inbound tasks. Machine-local, like pilot grants: the `trust_policies`
+//! Who may call which local agent: per-edge `allow` / `deny` / `ask`.
+//! The trust view edits the policies (TrustGraph); delegation enforces
+//! them on inbound tasks. Machine-local, like pilot grants: the `trust_policies`
 //! table, not the gold copy.
 //!
-//! The lookup and write below are the contract both tracks build on; Track E
-//! owns this file and may add to it.
+//! The lookup and write below are what both sides build on.
 
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};

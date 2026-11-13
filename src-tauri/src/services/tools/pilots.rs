@@ -1,4 +1,4 @@
-//! Pilot tools (wave A, Track C): the host-side MCP tools of each pilot
+//! Pilot tools: the host-side MCP tools of each pilot
 //! (`services::pilots`), `ToolSource::Pilot`. Only a routable (running,
 //! healthy) pilot can list its tools; an installed pilot that isn't keeps
 //! the tools last seen, so stopping it doesn't make capabilities lose them.

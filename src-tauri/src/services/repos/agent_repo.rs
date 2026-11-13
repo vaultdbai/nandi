@@ -89,7 +89,7 @@ impl AgentRepository {
         agent_locator::agent_dir(&self.layout, id)
     }
 
-    /// The agent's `memory.md`, if it has one (wave final, Track C)
+    /// The agent's `memory.md`, if it has one
     #[allow(dead_code)]
     pub fn read_memory(&self, id: &str) -> RepoResult<Option<String>> {
         let path = self.dir(id).join(MEMORY_FILE);

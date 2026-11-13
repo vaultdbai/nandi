@@ -74,7 +74,7 @@ pub struct RepoStatus {
     pub watching: bool,
 }
 
-// --- Agent editor + git (FROZEN INTERFACE, wave 1; Track B fills these in) --
+// --- Agent editor and git ---
 
 /// Everything the agent editor saves. Optional fields fall back to the
 /// defaults in skill.md (`memory_mb` 1024, `cpu` 1.0, the default model).

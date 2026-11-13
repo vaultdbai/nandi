@@ -1,4 +1,4 @@
-//! Capability registries (wave A, Track B): git remotes whose
+//! Capability registries: git remotes whose
 //! `capabilities/` folder (or `.nandi/capabilities/`) is merged into the
 //! local capability index, read-only.
 //!
@@ -216,8 +216,8 @@ impl CapabilityRegistryService {
         }
     }
 
-    /// Every capability the subscribed registries contribute (Track A
-    /// merges these under the local ones).
+    /// Every capability the subscribed registries contribute (merged
+    /// under the local ones).
     pub fn indexed_capabilities(&self) -> Vec<RegistryCapability> {
         self.index
             .read()

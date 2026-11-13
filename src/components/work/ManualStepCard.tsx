@@ -18,7 +18,7 @@ export interface ManualStepCardProps {
 }
 
 /**
- * A workflow step waiting for a person (wave EF): what to do, when it's
+ * A workflow step waiting for a person: what to do, when it's
  * due, and a reply (text and files) that completes it and resumes the run
  */
 export function ManualStepCard({ step, now }: ManualStepCardProps) {

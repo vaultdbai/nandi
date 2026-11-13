@@ -2,9 +2,8 @@
 //! input, apps). Each pilot is installed and run on the host; agents reach
 //! it only through capabilities the user grants per agent.
 //!
-//! FROZEN INTERFACE (wave 1): the types below are the contract between the
-//! backend and the UI. Track A (Pilots) fills in `PilotRegistry` and the
-//! service functions.
+//! The types below are the contract between the backend and the UI:
+//! fields may be added, never renamed or removed.
 //!
 //! How it fits together:
 //!
@@ -114,7 +113,7 @@ impl NandiEvent for PilotConsentNeeded {
 }
 
 /// Installed pilots and their host processes. `AppState::pilots()` is
-/// `None` until Track A initializes it.
+/// `None` until the pilot service is initialized.
 ///
 /// Holds only what can't live in SQLite: the child processes (killed when
 /// the app exits, so OS control never outlives Nandi) and their health

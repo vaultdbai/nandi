@@ -1,6 +1,6 @@
 //! The global command palette: ranked search across agents, workflows,
 //! recent runs, marketplace entries, tools, and built-in actions, plus
-//! running those actions (wave 2B redesign, Track E).
+//! running those actions.
 //!
 //! - A plain query searches everything; a query starting with `>` searches
 //!   actions only (built-ins plus per-entity ones such as "Pause Writer").

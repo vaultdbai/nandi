@@ -1,4 +1,4 @@
-//! Enterprise LLM config (wave EF, Track E): `.nandi/llm.yaml` in the repo,
+//! Enterprise LLM config: `.nandi/llm.yaml` in the repo,
 //! so everyone who clones a team repo shares one Bedrock / Azure / LiteLLM
 //! setup without configuring their machine.
 //!

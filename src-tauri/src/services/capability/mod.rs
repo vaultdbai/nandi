@@ -1,11 +1,11 @@
-//! Capabilities as first-class entities (wave A).
+//! Capabilities as first-class entities.
 //!
-//! - `definition`: the file format (Track A)
-//! - `projection`: files into `capabilities_projection` (Track A)
-//! - `evidence`: one row per finished task, aggregates (Track A)
-//! - `registry`, `git_sync`: subscribed git registries (Track B)
+//! - `definition`: the file format
+//! - `projection`: files into `capabilities_projection`
+//! - `evidence`: one row per finished task, aggregates
+//! - `registry`, `git_sync`: subscribed git registries
 //! - `workflow_provider`, `aggregation`: workflows as providers, the
-//!   hourly evidence job and ambiguity clusters (Track F)
+//!   hourly evidence job and ambiguity clusters
 //!
 //! Files are the gold copy (`.nandi/capabilities/<id>.yaml`, written only
 //! by `repos::capability_repo`); SQLite is rebuildable from them. An
@@ -52,7 +52,7 @@ pub use definition::{
 };
 pub use evidence::CapabilityEvidence;
 
-// Events. Payloads are typed by the tracks that emit them.
+// Events. Payloads are typed by the services that emit them.
 pub const CAPABILITY_CREATED: &str = "capability://created";
 pub const CAPABILITY_UPDATED: &str = "capability://updated";
 pub const CAPABILITY_DELETED: &str = "capability://deleted";
@@ -200,8 +200,7 @@ const LISTING_WINDOW_DAYS: u32 = 30;
 /// The default evidence window
 pub const DEFAULT_WINDOW_DAYS: u32 = 30;
 
-/// Capabilities, their providers, and their evidence (Track A; Track F
-/// adds the ambiguity methods).
+/// Capabilities, their providers, and their evidence.
 pub struct CapabilityService {
     db: Db,
     bus: EventBus,
@@ -824,7 +823,7 @@ impl CapabilityService {
             .await
     }
 
-    /// Track F: adds an input-schema field from the cluster, writes the
+    /// Adds an input-schema field from the cluster, writes the
     /// file, marks the cluster promoted. Returns the updated definition.
     pub async fn promote_ambiguity_to_schema(
         &self,
@@ -936,7 +935,7 @@ impl CapabilityService {
     /// Re-derives this instance's agent rows in `capability_providers`
     /// from the local agents' `serves:`/`provides:`, emitting
     /// `provider://registered|unregistered` for what changed. Workflow rows
-    /// (Track F) are left alone.
+    /// are left alone.
     pub async fn refresh_local_providers(&self) -> Result<(), String> {
         let Some(store) = &self.store else {
             return Ok(());
@@ -1248,7 +1247,7 @@ pub async fn get_capability_provider_breakdown(
     service(state)?.provider_breakdown(id).await
 }
 
-/// Track F. Reads the clusters straight from SQLite, so it works before
+/// Reads the ambiguity clusters straight from SQLite, so it works before
 /// the capability service is up.
 pub async fn list_capability_ambiguities(
     state: &AppState,
@@ -1261,7 +1260,7 @@ pub async fn list_capability_ambiguities(
         .await
 }
 
-/// Track F
+/// Turns an ambiguity cluster into a capability schema
 pub async fn promote_ambiguity_to_schema(
     state: &AppState,
     id: &str,

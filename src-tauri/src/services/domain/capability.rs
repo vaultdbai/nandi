@@ -37,8 +37,8 @@ pub use nandi_protocol::ServesCapability;
 /// that runs code or changes files.
 pub const DEFAULT_REQUIRES_APPROVAL: &[&str] = &["shell", "write_file"];
 
-/// The built-in tool an agent calls to delegate to another agent (wave 2A,
-/// Track C). Cross-user calls need approval unless skill.md says otherwise.
+/// The built-in tool an agent calls to delegate to another agent.
+/// Cross-user calls need approval unless skill.md says otherwise.
 pub const DELEGATION_TOOL: &str = "delegate_to_agent";
 
 /// Concurrent delegated tasks an accepting agent runs when skill.md
@@ -213,7 +213,7 @@ impl CapabilitySet {
         Ok(self)
     }
 
-    /// Adds the `provides: [id, ...]` shorthand (wave A): each ID not
+    /// Adds the `provides: [id, ...]` shorthand: each ID not
     /// already in `serves:` becomes a bare serves entry (same name rules).
     pub fn with_provides(mut self, provides: Vec<String>) -> DomainResult<Self> {
         let mut delegation = self.delegation.take().map(|d| *d).unwrap_or_default();

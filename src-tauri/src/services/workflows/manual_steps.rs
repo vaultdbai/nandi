@@ -1,4 +1,4 @@
-//! Manual workflow steps (wave EF, Track D): a step with
+//! Manual workflow steps: a step with
 //! `step_type: manual` suspends its run (`waiting`) until a person
 //! completes it, which may be days later. The run's state lives in
 //! `workflow_runs`, so a restart resumes exactly where it stopped; the

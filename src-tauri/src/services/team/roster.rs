@@ -1,4 +1,4 @@
-//! Team rosters and member profiles (wave final, Track E): per member, the
+//! Team rosters and member profiles: per member, the
 //! gateway card, what they shared, how many teams we share, and delegation
 //! stats. Rosters are cached for 60s (`roster_cache`); members are matched
 //! to instances through the network directory (gateway cards) and the
@@ -170,7 +170,7 @@ pub fn watch(state: &AppState) {
 }
 
 // ---------------------------------------------------------------------------
-// Tasks (read-only: Track B writes them)
+// Tasks (read-only: the task lifecycle writes them)
 // ---------------------------------------------------------------------------
 
 const TASK_COLUMNS: &str = "id, requester_instance, requester_agent, provider_instance,

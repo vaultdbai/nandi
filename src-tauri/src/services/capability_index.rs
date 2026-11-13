@@ -1,5 +1,5 @@
-//! The local capability index: which agent cards serve which capability
-//! (wave 2A, Track A). A projection of the agents' `serves:` declarations
+//! The local capability index: which agent cards serve which capability.
+//! A projection of the agents' `serves:` declarations
 //! into the `capability_index` table, kept current from repo events.
 //!
 //! - `init` rebuilds it from the aggregate at startup and subscribes it to

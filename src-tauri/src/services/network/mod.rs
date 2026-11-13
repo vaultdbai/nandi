@@ -1,14 +1,14 @@
-//! Wave 2A wiring: teams, cross-user agent sharing, and delegation.
+//! Wiring for teams, cross-user agent sharing, and delegation.
 //!
-//! FROZEN. Each track fills in its own module's `init`; `AppState` calls
+//! Each service fills in its own module's `init`; `AppState` calls
 //! them in dependency order when it starts:
 //!
-//! 1. `capability_index::init` (Track A)
-//! 2. `relay::init` (Track B)
-//! 3. `team::init` (Track D)
-//! 4. `a2a::init` (Track C), which may use the three above
+//! 1. `capability_index::init`
+//! 2. `relay::init`
+//! 3. `team::init`
+//! 4. `a2a::init`, which may use the three above
 //!
-//! An `init` returns `None` until its track lands. It must not block or
+//! An `init` returns `None` when its service is not available. It must not block or
 //! touch the network on the calling thread: connecting happens in tasks it
 //! spawns, and only when the user configured it.
 
@@ -28,7 +28,7 @@ use crate::db::Db;
 /// `relay_state` key holding this install's instance ID
 pub const INSTANCE_ID_KEY: &str = "instance_id";
 
-/// Runs each track's `init`, in dependency order, storing each result in
+/// Runs each service's `init`, in dependency order, storing each result in
 /// `AppState` before the next one runs.
 pub(super) fn init(state: &AppState) {
     if let Some(index) = capability_index::init(state) {
@@ -48,8 +48,7 @@ pub(super) fn init(state: &AppState) {
 }
 
 /// This install's stable instance ID, created on first use as
-/// `<hostname>-<8 hex>` (e.g. `alice-laptop-1a2b3c4d`; installs from before
-/// wave 2C keep their 32-hex ID). Cards are `<instance_id>/<agent_id>`.
+/// `<hostname>-<8 hex>` (e.g. `alice-laptop-1a2b3c4d`). Cards are `<instance_id>/<agent_id>`.
 pub fn local_instance_id(db: &Db) -> Result<String, String> {
     let conn = db.conn()?;
     let existing: Option<String> = conn
@@ -252,7 +251,7 @@ mod tests {
 
     #[tokio::test]
     async fn init_runs_without_a_relay_configured() {
-        // Each slot is `None` until its track lands; either way, starting
+        // Each slot may be `None`; either way, starting
         // must not need the network
         let state = AppState::for_tests(vec![]);
         let _ = (
@@ -388,9 +387,9 @@ pub struct DirectoryChanges {
     pub went_offline: Vec<NetworkMember>,
     /// An instance we hadn't seen before appeared
     pub membership_changed: bool,
-    /// Instances seen for the first time (wave EF; also in `came_online`)
+    /// Instances seen for the first time (also in `came_online`)
     pub joined: Vec<NetworkMember>,
-    /// Known instances whose gateway card changed (wave EF)
+    /// Known instances whose gateway card changed
     pub profile_updated: Vec<NetworkMember>,
 }
 

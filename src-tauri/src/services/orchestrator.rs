@@ -146,7 +146,7 @@ impl RunSource {
         }
     }
 
-    /// A task delegated by another agent (A2A, Track C): `requester` is its
+    /// A task delegated by another agent (A2A): `requester` is its
     /// card ID.
     pub fn delegation(requester: &str, label: String) -> Self {
         Self {
@@ -158,11 +158,11 @@ impl RunSource {
     }
 }
 
-// --- A2A delegation (Track C) -----------------------------------------------
+// --- A2A delegation -----------------------------------------------
 
 /// The delegator the `delegate_to_agent` tool calls, set by `a2a::init`,
-/// and the clarification service `ask_requester` calls (wave final, Track
-/// C), set by `a2a::clarification::init`. Weak: `AppState` owns both, and
+/// and the clarification service `ask_requester` calls,
+/// set by `a2a::clarification::init`. Weak: `AppState` owns both, and
 /// the delegator holds the orchestrators.
 #[derive(Clone, Default)]
 pub struct DelegationSlot {
@@ -298,7 +298,7 @@ struct Orchestrator {
     /// it's set, new requests queue: this flag, not the channel, is what
     /// keeps a second turn from starting.
     current: Option<String>,
-    /// A2A (Track C): for the `delegate_to_agent` tool
+    /// A2A: for the `delegate_to_agent` tool
     delegation: DelegationSlot,
 }
 
@@ -702,12 +702,12 @@ pub struct RunDeps {
     pub store: RepoStore,
     /// Runtime connectors; `None` in tests that don't need them
     pub connectors: Option<Arc<ConnectorRegistry>>,
-    /// The app, for harness runs (wave B); set once the harness services
+    /// The app, for harness runs; set once the harness services
     /// exist, empty in tests that don't need them
     pub harness: HarnessSlot,
 }
 
-/// Late-bound: `RunDeps` is built before the wave B services
+/// Late-bound: `RunDeps` is built before the harness services start
 pub type HarnessSlot = Arc<std::sync::OnceLock<crate::services::WeakAppState>>;
 
 /// Which engine plans this run's steps.
@@ -983,7 +983,7 @@ async fn drive_run(
                     bus.token(&ctx, &message_id, step_index, chunk).await?;
                     tokio::time::sleep(canned.token_delay()).await;
                 }
-                // A2A (Track C): the agent's policy decides the approval
+                // A2A: the agent's policy decides the approval
                 let policy = a2a::tool::policy(&deps.store, agent_id);
                 let planned_calls = step
                     .calls
@@ -1257,7 +1257,7 @@ fn app_state(deps: &RunDeps) -> Option<crate::services::AppState> {
     deps.harness.get().and_then(|weak| weak.upgrade())
 }
 
-/// Clarification (Track C): adds `ask_requester` to a delegated turn's
+/// Clarification: adds `ask_requester` to a delegated turn's
 /// tools (only while the run serves a delegated task)
 pub(crate) async fn offer_ask_requester(
     slots: &DelegationSlot,
@@ -1290,7 +1290,7 @@ async fn llm_step(
 
     let mut pilot_tools = PilotToolset::default();
     let mut sensitive_tools = HashSet::new();
-    // A2A (Track C): `delegate_to_agent`, when the agent may delegate
+    // A2A: `delegate_to_agent`, when the agent may delegate
     let delegation = match &skill {
         Some(skill) => a2a::tool::policy(&deps.store, &skill.id),
         None => a2a::tool::STUDIO_GATE,
@@ -1402,7 +1402,7 @@ async fn llm_step(
                         Vec::new()
                     }
                 };
-                // Pilots (Track A): host-side OS-control tools
+                // Pilots: host-side OS-control tools
                 pilot_tools = agent_pilot_tools(deps, &skill.id, step_index).await;
                 tools.extend(pilot_tools.tools.iter().cloned());
                 if !pilot_tools.prompt_notes.is_empty() {
@@ -1462,7 +1462,7 @@ async fn llm_step(
             if let Some(source) = data_run {
                 tools.retain(|t| data_run_allows(source, &t.name));
             }
-            // Deferred loading (Track E): past the threshold, only the core
+            // Deferred loading: past the threshold, only the core
             // tools, `tool_search`, and what it loaded for this run
             let mut tools = tool_search::step_tools(&ctx.run_id, tools);
             // After deferral: never hidden behind `tool_search`
@@ -1601,7 +1601,7 @@ async fn llm_step(
 /// The conversation rows the model sees for a step of `run_id`.
 ///
 /// Normally the conversation's latest messages. For a run continuing a
-/// compaction (wave final, Track D) it's the messages outside the
+/// compaction it's the messages outside the
 /// compaction chain, then the run's own: its summary (as a user-role
 /// context message, so `history::build` starts there) and the copies of
 /// the turns it kept. The chain's original messages are left out; that's
@@ -1700,7 +1700,7 @@ async fn agent_tools(deps: &RunDeps, skill: &SkillConfig) -> Option<Vec<ToolSpec
     }
 }
 
-// --- Pilots (Track A) -------------------------------------------------------
+// --- Pilots -------------------------------------------------------
 
 /// The tools of the pilots this agent declares and may use. Each declared
 /// pilot that's left out (not running, no consent, unhealthy) gets one
@@ -1751,7 +1751,7 @@ async fn agent_pilot_tools(deps: &RunDeps, agent_id: &str, step_index: u32) -> P
 // -----------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Connector tools (Track D): merged after the container's tools
+// Connector tools: merged after the container's tools
 // ---------------------------------------------------------------------------
 
 /// Told to email-started runs, after their instructions
@@ -2153,8 +2153,8 @@ async fn run_call(
         }
     }
 
-    // `tool_search` (Track E) only reads the tool list, and `ask_requester`
-    // (Track C) is decided on the requester's side: never gated
+    // `tool_search` only reads the tool list, and `ask_requester`
+    // is decided on the requester's side: never gated
     if call.requires_approval
         && call.tool != tool_search::TOOL_SEARCH_NAME
         && call.tool != a2a::tool::ASK_REQUESTER
@@ -2296,7 +2296,7 @@ async fn run_call(
                 },
             }
         }
-        // Deferred loading (Track E): answered here, never in a container
+        // Deferred loading: answered here, never in a container
         _ if call.tool == tool_search::TOOL_SEARCH_NAME => tool_search::call(bus, ctx, &call.args),
         // The run plan: on the host, for every agent
         _ if ctx.agent_id != STUDIO_AGENT_ID
@@ -2322,7 +2322,7 @@ async fn run_call(
                 },
             }
         }
-        // A2A (Track C): runs on the delegator whatever the engine
+        // A2A: runs on the delegator whatever the engine
         _ if call.tool == a2a::tool::NAME => {
             a2a::tool::call(delegation.get(), &deps.store, &ctx.agent_id, &call.args).await
         }
@@ -2339,7 +2339,7 @@ async fn run_call(
                 },
             }
         }
-        // Clarification (Track C): blocks until the requester answers
+        // Clarification: blocks until the requester answers
         _ if call.tool == a2a::tool::ASK_REQUESTER => {
             a2a::tool::ask_requester(
                 delegation.clarifier(),
@@ -2482,7 +2482,7 @@ async fn execute_tool(
     }
     // Its skill.md narrowed by its policies; a broken policy stops it here
     let skill = deps.store.skill(&ctx.agent_id)?;
-    // Pilots (Track A): host-side, governed by skill.md `pilots:` + consent
+    // Pilots: host-side, governed by skill.md `pilots:` + consent
     if let Some((pilot, _)) = pilots::tools::parse_tool_name(&call.tool) {
         if !skill.pilots.iter().any(|p| p == pilot) {
             crate::services::policies::record_refused(
@@ -2557,7 +2557,7 @@ struct Registry {
     senders: Mutex<HashMap<String, mpsc::Sender<OrchestratorCommand>>>,
     bus: EventBus,
     deps: RunDeps,
-    /// A2A (Track C): shared with every orchestrator
+    /// A2A: shared with every orchestrator
     delegation: DelegationSlot,
     /// Where tasks are spawned: Tauri's runtime on desktop, our own when
     /// headless. Explicit so this works outside a Tauri app.
@@ -2579,7 +2579,7 @@ impl Orchestrators {
         }))
     }
 
-    /// A2A (Track C): the delegator `delegate_to_agent` calls
+    /// A2A: the delegator `delegate_to_agent` calls
     pub fn set_delegator(&self, delegator: &Arc<dyn A2ADelegator>) {
         self.0.delegation.set(delegator);
     }
@@ -2589,12 +2589,12 @@ impl Orchestrators {
         self.0.delegation.get()
     }
 
-    /// Clarification (Track C): the service `ask_requester` calls
+    /// Clarification: the service `ask_requester` calls
     pub fn set_clarifier(&self, service: &Arc<a2a::clarification::ClarificationService>) {
         self.0.delegation.set_clarifier(service);
     }
 
-    /// Clarification (Track C): the service `ask_requester` calls, once set
+    /// Clarification: the service `ask_requester` calls, once set
     pub fn clarifier(&self) -> Option<Arc<a2a::clarification::ClarificationService>> {
         self.0.delegation.clarifier()
     }
@@ -2603,7 +2603,7 @@ impl Orchestrators {
         &self.0.bus
     }
 
-    /// What runs need (for the wave final middlewares' service APIs)
+    /// What runs need (for the turn middlewares' service APIs)
     pub fn deps(&self) -> &RunDeps {
         &self.0.deps
     }
@@ -3572,7 +3572,7 @@ mod middleware_tests {
         state.shutdown();
     }
 
-    /// `ask_requester` (Track C) runs on the clarification service whatever
+    /// `ask_requester` runs on the clarification service whatever
     /// the engine, is never held for approval, and refuses outside a
     /// delegated turn
     #[tokio::test]

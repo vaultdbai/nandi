@@ -1,4 +1,4 @@
-//! Bounded clarification (wave final, Track C). Provider side: the
+//! Bounded clarification. Provider side: the
 //! `ask_requester` tool, offered only during a delegated turn, sends a
 //! `ClarificationRequest` and blocks the turn until the answer or timeout.
 //! Requester side: each question is classified against the requester
@@ -24,7 +24,7 @@
 //!   an answer may be `DENY_ANSWER` (cancel the task), `ALLOW_ONCE_ANSWER`
 //!   (let the agent answer this one), or `ALLOW_ALWAYS_ANSWER` (also add
 //!   the topic to the policy's `auto_topics`).
-//! - Task state changes go through Track B's state machine
+//! - Task state changes go through the task state machine
 //!   (`task_state::advance`, via `transition`): the `tasks` row and its
 //!   `task_events` rows in one transaction, then `task://state_changed`.
 //!   Tasks without a row, or already ended, are left alone.
@@ -241,7 +241,7 @@ pub fn write_policy(
     Ok(policy)
 }
 
-/// For Track F's policy editor (command and client method requested)
+/// For the clarification policy editor (not built yet)
 #[allow(dead_code)]
 pub async fn get_clarification_policy(
     state: &AppState,
@@ -250,7 +250,7 @@ pub async fn get_clarification_policy(
     read_policy(state.store(), agent_id)
 }
 
-/// For Track F's policy editor (command and client method requested)
+/// For the clarification policy editor (not built yet)
 #[allow(dead_code)]
 pub async fn set_clarification_policy(
     state: &AppState,
@@ -462,7 +462,7 @@ impl Answerer for LlmAnswerer {
 }
 
 // ---------------------------------------------------------------------------
-// Task state (Track B's state machine)
+// Task state (the task state machine)
 // ---------------------------------------------------------------------------
 
 /// Moves a task's row toward `to` along the legal path
@@ -647,7 +647,7 @@ pub struct DelegatedTurn {
     pub requester_instance: String,
 }
 
-/// Track C: per-task rounds, pending escalations, the log.
+/// Per-task rounds, pending escalations, the log.
 pub struct ClarificationService {
     me: Weak<ClarificationService>,
     db: Db,

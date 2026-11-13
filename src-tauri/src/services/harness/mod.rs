@@ -1,4 +1,4 @@
-//! Harness adapters (wave B): agents whose `runtime:` is a CLI harness
+//! Harness adapters: agents whose `runtime:` is a CLI harness
 //! (Claude Code, Codex, Gemini CLI, or a custom ACP executable) run in that
 //! CLI instead of Nandi's own loop. Nandi spawns the CLI (in the harness
 //! container by default), speaks ACP over its stdio, and translates the
@@ -6,7 +6,7 @@
 //! run produces. The CLI owns LLM auth (Anthropic, Bedrock, Azure, Vertex,
 //! OpenAI) through its own config.
 //!
-//! - `acp`: sessions on the official ACP SDK; `adapter`: the frozen contract
+//! - `acp`: sessions on the official ACP SDK; `adapter`: the adapter contract
 //! - `claude_code`, `codex`, `gemini_cli`, `custom`: concrete adapters
 //! - `claude_sdk`: Nandi's own `claude:` model calls through Claude Code's
 //!   sign-in (the Claude Agent SDK; tool-less completions, never agent code)

@@ -1,4 +1,4 @@
-//! The harness adapter contract (wave B, frozen): one adapter instance per
+//! The harness adapter contract: one adapter instance per
 //! live session. `start` spawns the CLI and opens an ACP session; `send`
 //! prompts it and streams `AcpSessionUpdate`s until the turn finishes.
 //!

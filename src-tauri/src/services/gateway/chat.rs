@@ -1,4 +1,4 @@
-//! Talking to the gateway (wave final, Track D): answers questions about
+//! Talking to the gateway: answers questions about
 //! this instance from the NANDI.md body, the capability catalog, the queue,
 //! and who else to ask. It never executes work; that takes a delegation.
 

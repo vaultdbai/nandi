@@ -1,4 +1,4 @@
-//! The optional git remote for `~/.nandi/repo` (wave final, Track A). Any
+//! The optional git remote for `~/.nandi/repo`. Any
 //! git URL; the credential lives in the OS keychain only.
 //!
 //! **Branch protection is load-bearing.** Every push goes to

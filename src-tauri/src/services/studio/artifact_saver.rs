@@ -1,4 +1,4 @@
-//! Saves an artifact from Studio (Track C). The text is validated as that
+//! Saves an artifact from Studio. The text is validated as that
 //! kind of artifact, then written by the repository or service that owns
 //! it (gold copy: `services/repos/` are the only writers), so projections
 //! and events follow as for any other edit. Then:

@@ -1,4 +1,4 @@
-//! The task state machine (wave final, Track B): which transitions are
+//! The task state machine: which transitions are
 //! legal (see `task`), and applying one (row update + `task_events` row in
 //! one transaction, then `task://state_changed`).
 //!

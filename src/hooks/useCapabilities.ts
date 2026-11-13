@@ -21,7 +21,7 @@ export const capabilityQueryKeys = {
   agents: (capability: string) =>
     ['capabilities', 'agents', capability] as const,
   card: (agentId: string) => ['capabilities', 'card', agentId] as const,
-  // Wave A: definitions, providers, evidence
+  // Definitions, providers, evidence
   listings: ['capabilities', 'listings'] as const,
   definition: (id: string) => ['capabilities', 'definition', id] as const,
   providers: (id: string) => ['capabilities', 'providers', id] as const,
@@ -61,7 +61,7 @@ export function useAgentCard(agentId: string | null) {
   })
 }
 
-// Wave A: capability definitions (`.nandi/capabilities/`, registries, and the
+// Capability definitions (`.nandi/capabilities/`, registries, and the
 // network), their providers, and ownership.
 
 /** Core events after which capability queries may be stale */

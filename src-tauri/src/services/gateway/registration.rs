@@ -1,4 +1,4 @@
-//! The gateway card and its relay registration (wave final, Track D):
+//! The gateway card and its relay registration:
 //! capabilities from local agents filtered by `expose` / `hide`, load from
 //! local tasks in `Working`; registered when `relay.enabled`, heartbeat
 //! every 30s; with `federation.enabled`, trusted peers' cards are followed.

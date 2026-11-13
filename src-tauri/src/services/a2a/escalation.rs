@@ -1,4 +1,4 @@
-//! Human escalation of clarification questions (wave final, Track C): an
+//! Human escalation of clarification questions: an
 //! `approvals` row (`tool = "delegation_question"`), the task goes
 //! `InputRequired`; the answer resumes it (`Working`), a denial cancels it,
 //! no answer by the deadline times it out (see `clarification`).

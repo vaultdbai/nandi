@@ -15,8 +15,8 @@
 //! and audit log lines, however it ends. A failed local attempt that was
 //! passed on keeps its own row (`<task_id>-attempt<n>`).
 //!
-//! Each cross-instance request also gets a requester `tasks` row (wave
-//! final, Track B): `Submitted`, `Delivered` once the relay hands it over
+//! Each cross-instance request also gets a requester `tasks` row:
+//! `Submitted`, `Delivered` once the relay hands it over
 //! (or a note while the relay holds it for someone offline), the
 //! provider's lifecycle messages in between (handled by `TaskService`),
 //! then the result. The row follows the relay's failovers and
@@ -304,8 +304,8 @@ impl Delegator {
     }
 
     /// Local and remote providers, deduplicated by card ID (local first),
-    /// without instances we paused delegations with or agents we blocked
-    /// (Track E), so neither ranking nor failover ever picks them.
+    /// without instances we paused delegations with or agents we blocked,
+    /// so neither ranking nor failover ever picks them.
     pub async fn providers(&self, capability: &str) -> Vec<AgentCard> {
         let mut cards = self.local_cards(capability);
         let mut seen: HashSet<String> = cards.iter().map(|c| c.id.clone()).collect();
