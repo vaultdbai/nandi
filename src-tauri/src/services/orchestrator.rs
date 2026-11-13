@@ -89,6 +89,8 @@ const CHANNEL_CAPACITY: usize = 64;
 /// Restarts after a panic before an orchestrator is left down
 const MAX_RESTARTS: u32 = 5;
 const RESTART_DELAY: Duration = Duration::from_secs(1);
+/// What a run that failed inside Nandi (a panic) tells the user
+const INTERNAL_ERROR: &str = "The agent hit an internal error.";
 // Steps per run are bounded by skill.md `max_turns` (TurnLimitMiddleware)
 
 // Queue priorities: lower runs sooner, so interactive requests jump ahead
@@ -278,6 +280,18 @@ struct InFlight {
     abort: AbortHandle,
 }
 
+/// The child task executing an agent's run. Its supervisor holds it too,
+/// outside the actor, so after a panic the supervisor can still abort the
+/// orphan child and fail its run (a restarted orchestrator never knew it).
+#[derive(Clone, Default)]
+struct InFlightSlot(Arc<Mutex<Option<InFlight>>>);
+
+impl InFlightSlot {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<InFlight>> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
 struct Orchestrator {
     agent_id: String,
     rx: mpsc::Receiver<OrchestratorCommand>,
@@ -286,7 +300,7 @@ struct Orchestrator {
     bus: EventBus,
     deps: RunDeps,
     /// The child task executing steps, while one is
-    in_flight: Option<InFlight>,
+    in_flight: InFlightSlot,
     /// The agent's one active turn (running or awaiting approval). While
     /// it's set, new requests queue: this flag, not the channel, is what
     /// keeps a second turn from starting.
@@ -379,7 +393,7 @@ impl Orchestrator {
             }
         }
 
-        if let Some(in_flight) = self.in_flight.take() {
+        if let Some(in_flight) = self.in_flight.lock().take() {
             in_flight.abort.abort();
         }
         log::info!("Orchestrator for '{}' stopped", self.agent_id);
@@ -520,7 +534,8 @@ impl Orchestrator {
 
     /// Runs the run's steps in a child task until it completes or suspends.
     fn start_executor(&mut self, run_id: String) {
-        if let Some(in_flight) = &self.in_flight {
+        let mut slot = self.in_flight.lock();
+        if let Some(in_flight) = slot.as_ref() {
             log::warn!(
                 "'{}' is already executing {}; ignoring {run_id}",
                 self.agent_id,
@@ -554,13 +569,11 @@ impl Orchestrator {
                 .await;
         });
 
-        self.in_flight = Some(InFlight { run_id, abort });
+        *slot = Some(InFlight { run_id, abort });
     }
 
     async fn step_finished(&mut self, run_id: &str, outcome: StepOutcome) {
-        if self.in_flight.as_ref().is_some_and(|f| f.run_id == run_id) {
-            self.in_flight = None;
-        }
+        self.in_flight.lock().take_if(|f| f.run_id == run_id);
         let error = match outcome {
             StepOutcome::Ok => {
                 // Completed, or suspended for approval (still current)
@@ -600,7 +613,7 @@ impl Orchestrator {
                     .db
                     .call(move |conn| db::set_agent_state(conn, &agent_id, "error", Some(&message)))
                     .await;
-                "The agent hit an internal error.".to_string()
+                INTERNAL_ERROR.to_string()
             }
         };
         log::warn!("Run {run_id} of '{}' failed: {error}", self.agent_id);
@@ -652,7 +665,8 @@ impl Orchestrator {
         if !run.is_some_and(|r| r.agent_id == self.agent_id && r.status.is_active()) {
             return Ok(());
         }
-        if let Some(in_flight) = self.in_flight.take_if(|f| f.run_id == run_id) {
+        let in_flight = self.in_flight.lock().take_if(|f| f.run_id == run_id);
+        if let Some(in_flight) = in_flight {
             in_flight.abort.abort();
         }
         let ctx = self.context(run_id).await?;
@@ -2619,14 +2633,20 @@ impl Orchestrators {
         if let Some(tx) = senders.get(agent_id).filter(|tx| !tx.is_closed()) {
             return tx.clone();
         }
-        let tx = self.spawn(agent_id, 0);
+        let tx = self.spawn(agent_id, 0, InFlightSlot::default());
         senders.insert(agent_id.to_string(), tx.clone());
         tx
     }
 
     /// Spawns the task under a supervisor that logs panics, marks the agent
-    /// as errored, and restarts it (a bounded number of times).
-    fn spawn(&self, agent_id: &str, restarts: u32) -> mpsc::Sender<OrchestratorCommand> {
+    /// as errored, stops the run the crash orphaned, and restarts it (a
+    /// bounded number of times). The slot outlives each orchestrator.
+    fn spawn(
+        &self,
+        agent_id: &str,
+        restarts: u32,
+        in_flight: InFlightSlot,
+    ) -> mpsc::Sender<OrchestratorCommand> {
         let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
         let orchestrator = Orchestrator {
             agent_id: agent_id.to_string(),
@@ -2634,7 +2654,7 @@ impl Orchestrators {
             tx: tx.clone(),
             bus: self.0.bus.clone(),
             deps: self.0.deps.clone(),
-            in_flight: None,
+            in_flight: in_flight.clone(),
             current: None,
             delegation: self.0.delegation.clone(),
         };
@@ -2657,13 +2677,18 @@ impl Orchestrators {
                 .db
                 .call(move |conn| db::set_agent_state(conn, &id, "error", Some(&error)))
                 .await;
+            let orphan = in_flight.lock().take();
+            if let Some(orphan) = orphan {
+                orphan.abort.abort();
+                registry.fail_orphan(&agent_id, &orphan.run_id).await;
+            }
 
             if restarts >= MAX_RESTARTS {
                 log::error!("Not restarting '{agent_id}' after {restarts} crashes");
                 return;
             }
             tokio::time::sleep(RESTART_DELAY).await;
-            let tx = registry.spawn(&agent_id, restarts + 1);
+            let tx = registry.spawn(&agent_id, restarts + 1, in_flight);
             registry
                 .0
                 .senders
@@ -2672,6 +2697,32 @@ impl Orchestrators {
                 .insert(agent_id, tx);
         });
         tx
+    }
+
+    /// Fails the run a crashed orchestrator's child was executing, so the
+    /// restarted one doesn't wait on it as the current turn. A run that
+    /// already completed or paused for approval is left as it is.
+    async fn fail_orphan(&self, agent_id: &str, run_id: &str) {
+        let id = run_id.to_string();
+        let run = match self.0.bus.db.call(move |conn| db::get_run(conn, &id)).await {
+            Ok(Some(run)) if run.status == RunStatus::Running => run,
+            Ok(_) => return,
+            Err(e) => {
+                log::error!("Failed to load the orphaned run {run_id}: {e}");
+                return;
+            }
+        };
+        let ctx = RunContext {
+            agent_id: agent_id.to_string(),
+            agent_name: display_name(&self.0.deps.store, agent_id),
+            conversation_id: run.conversation_id,
+            run_id: run.id,
+        };
+        let error = Some(INTERNAL_ERROR.to_string());
+        match self.0.bus.turn_done(&ctx, RunStatus::Failed, error).await {
+            Ok(()) => log::warn!("Failed run {run_id} of '{agent_id}': its orchestrator crashed"),
+            Err(e) => log::error!("Failed to record failure of {run_id}: {e}"),
+        }
     }
 
     pub async fn send(&self, agent_id: &str, command: OrchestratorCommand) -> Result<(), String> {

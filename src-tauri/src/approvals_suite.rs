@@ -16,6 +16,8 @@
 //!   group that asks first holds the task until the person decides
 //! - CH-10: a crashing orchestrator restarts, up to the cap, and a run
 //!   waiting for approval survives it
+//! - CH-10: a crash while a run executes stops that run and fails it, and
+//!   the agent's queue goes on
 
 use std::time::{Duration, Instant};
 
@@ -74,15 +76,20 @@ fn you(state: &AppState) -> String {
     )
 }
 
-/// Sends a chat message and waits for the run to settle (done or paused)
-async fn run(router: &axum::Router, agent: &str, text: &str) -> (String, Value) {
+/// Sends a chat message; returns its run's ID
+async fn send(router: &axum::Router, agent: &str, text: &str) -> String {
     let sent = rpc(
         router,
         "send_message",
         json!({ "agentId": agent, "text": text, "attachments": [], "clientMessageId": null }),
     )
     .await;
-    let run_id = sent["runId"].as_str().expect("a run ID").to_string();
+    sent["runId"].as_str().expect("a run ID").to_string()
+}
+
+/// Sends a chat message and waits for the run to settle (done or paused)
+async fn run(router: &axum::Router, agent: &str, text: &str) -> (String, Value) {
+    let run_id = send(router, agent, text).await;
     let detail = until(
         router,
         "get_run_detail",
@@ -532,7 +539,7 @@ fn team_task<'a>(task_id: &'a str, group: GroupSay<'a>) -> TeamTask<'a> {
     TeamTask {
         task_id,
         requester: "Lena Park",
-        target: "Writer · review-pr",
+        target: "Writer Â· review-pr",
         text: "Review PR 42 by Friday",
         instance_id: "inst-lena",
         trusted: false,
@@ -679,5 +686,40 @@ async fn a_crashing_orchestrator_restarts_up_to_the_cap() {
     .await;
     let detail = finished(&router, &run_id).await;
     assert_eq!(detail["run"]["status"], "completed", "{detail}");
+    state.shutdown();
+}
+
+/// CH-10: an orchestrator that crashes mid-run leaves no orphan behind: the
+/// supervisor aborts the run's executor and fails the run, and the restarted
+/// orchestrator starts the request queued behind it
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_crash_mid_run_fails_that_run_and_the_queue_goes_on() {
+    let (state, router) = boot(BuiltInRelay::default());
+    // A slow answer (about 2 s), so the run is still streaming at the crash
+    let slow = ["word"; 40].join(" ");
+    canned(
+        &state,
+        json!({ "agent": [{ "text": slow }], "studio": [], "tokenDelayMs": 50 }),
+    )
+    .await;
+    rpc(
+        &router,
+        "create_agent",
+        json!({ "input": { "id": "crasher", "name": "Crasher" } }),
+    )
+    .await;
+    let first = send(&router, "crasher", "first").await;
+    let second = send(&router, "crasher", "second").await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(state.orchestrators().crash("crasher"));
+
+    let detail = finished(&router, &first).await;
+    assert_eq!(detail["run"]["status"], "failed", "{detail}");
+    let detail = finished(&router, &second).await;
+    assert_eq!(detail["run"]["status"], "completed", "{detail}");
+    // Past the time the orphan would have taken: it was stopped, so the
+    // failed run stays failed
+    let detail = rpc(&router, "get_run_detail", json!({ "runId": first })).await;
+    assert_eq!(detail["run"]["status"], "failed", "{detail}");
     state.shutdown();
 }
