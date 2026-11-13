@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
 
-use super::registry::Registry;
+use super::registry::{self, Registry, RegistryEntry};
 use super::source::GitSource;
 use super::{blocking, indexes, publisher_key, registries, report, signature, token};
 use crate::services::connectors::{self, PackageInfo};
@@ -179,14 +179,15 @@ pub struct ConnectorConsent {
     pub installed_version: Option<String>,
 }
 
-/// Every connector in every registry, one per ID (the highest version).
-/// The public registry's host connectors are left out
+/// Every connector in every registry, one per ID (merged like agents and
+/// packs: the default registry wins its IDs). The public registry's host
+/// connectors are left out
 pub async fn list(state: &AppState, refresh: bool) -> Result<Vec<ConnectorEntry>, String> {
     let (indexes, _failed) = indexes(state, refresh).await;
     let list = registries(state);
-    let mut out: Vec<ConnectorEntry> = Vec::new();
+    let mut listed: Vec<&ConnectorEntry> = Vec::new();
     for index in &indexes {
-        let Some(registry) = list.find(&index.registry).cloned() else {
+        let Some(registry) = list.find(&index.registry) else {
             continue;
         };
         for entry in &index.connectors {
@@ -198,19 +199,13 @@ pub async fn list(state: &AppState, refresh: bool) -> Result<Vec<ConnectorEntry>
                 );
                 continue;
             }
-            let mut entry = entry.clone();
-            entry.verified = verified(state, &registry, &entry).await;
-            let newer = out.iter().position(|e| e.id == entry.id);
-            match newer {
-                Some(at) => {
-                    let better = semver::Version::parse(&entry.version).ok()
-                        > semver::Version::parse(&out[at].version).ok();
-                    if better {
-                        out[at] = entry;
-                    }
-                }
-                None => out.push(entry),
-            }
+            listed.push(entry);
+        }
+    }
+    let mut out = registry::merge(listed);
+    for entry in &mut out {
+        if let Some(registry) = list.find(&entry.registry) {
+            entry.verified = verified(state, registry, entry).await;
         }
     }
     let manifest = state.store().read(|repo| repo.connectors().clone());
@@ -224,6 +219,21 @@ pub async fn list(state: &AppState, refresh: bool) -> Result<Vec<ConnectorEntry>
     }
     out.sort_by_key(|e| e.name.to_lowercase());
     Ok(out)
+}
+
+impl RegistryEntry for ConnectorEntry {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn version(&self) -> &str {
+        &self.version
+    }
+    fn registry(&self) -> &str {
+        &self.registry
+    }
+    fn tags_mut(&mut self) -> &mut Vec<String> {
+        &mut self.tags
+    }
 }
 
 async fn verified(state: &AppState, registry: &Registry, entry: &ConnectorEntry) -> bool {

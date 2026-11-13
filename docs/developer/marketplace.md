@@ -113,6 +113,8 @@ publishers/<handle>.json
 
 `settings.yaml` lists the registries under `marketplace.registries`. If the key is absent, only the default public registry (`DEFAULT_REGISTRY`, `github.com/vaultdbai/nandi-registry`) is used. A private registry's token is stored in the keyring, and `auth:` holds only its reference. `auth: nandi.github.token` means "use the signed-in GitHub account".
 
+Several registries merge into one list, one entry per ID (`registry::merge`, the same rule for agents, packs and connectors). The default registry wins every ID it lists, whatever version another registry claims, so an added registry can't shadow a first-party entry. Among the others the highest version wins; a tie goes to the earlier registry. Only the default registry's entries keep the `official` tag, which puts a verified entry first and ticks it in onboarding.
+
 `RegistryClient::fetch_index` caches each index in `~/.nandi/local/cache/registry-<hash>.json` along with its ETag:
 
 | Situation              | Behaviour                                                        |

@@ -43,7 +43,7 @@ use self::install::{
 };
 use self::local::LocalPackSource;
 use self::manifest::{AgentManifest, ManifestCapabilities, PackManifest};
-use self::registry::{Registry, RegistryClient, RegistryIndex, RegistryList};
+use self::registry::{Registry, RegistryClient, RegistryIndex, RegistryList, OFFICIAL_TAG};
 use self::source::{FetchProgress, GitSource};
 use crate::services::agents::{self, AgentInfo};
 use crate::services::auth::github as github_sign_in;
@@ -308,11 +308,10 @@ async fn indexes(state: &AppState, force: bool) -> (Vec<RegistryIndex>, Vec<(Str
     (ok, failed)
 }
 
-/// First-party packs and agents carry this tag (onboarding ticks them)
-const OFFICIAL_TAG: &str = "official";
-
 /// Verified official entries first, the rest in registry order, so the
-/// first-party pack is the first card in Library and in onboarding.
+/// first-party pack is the first card in Library and in onboarding. Only
+/// the default registry's entries keep the tag (`registry::merge`), and
+/// onboarding ticks them.
 fn official_first<T>(
     items: &mut [T],
     tags: impl Fn(&T) -> &[String],

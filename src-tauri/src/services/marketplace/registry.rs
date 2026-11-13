@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use super::manifest::{self, AgentManifest, PackManifest};
 use crate::services::domain::settings::{
-    normalize_registry_url, RegistryConfig, RegistryKind, SecretRef,
+    normalize_registry_url, RegistryConfig, RegistryKind, SecretRef, DEFAULT_REGISTRY,
 };
 use crate::services::repos::fs_atomic::{content_hash, write_atomic};
 
@@ -447,37 +447,87 @@ impl RegistryList {
         self.registries.iter().find(|r| r.url == url)
     }
 
-    /// Every agent across `indexes`, one per ID: the highest
-    /// `latest_version` wins; a tie goes to the earlier registry.
+    /// Every agent across `indexes`, one per ID (see [`merge`]).
     pub fn merge_agents(indexes: &[RegistryIndex]) -> Vec<AgentManifest> {
-        merge(indexes.iter().flat_map(|i| i.agents.iter()), |a| {
-            (a.id.clone(), a.latest_version.clone())
-        })
+        merge(indexes.iter().flat_map(|i| i.agents.iter()))
     }
 
-    /// Every pack across `indexes`, one per ID (as `merge_agents`).
+    /// Every pack across `indexes`, one per ID (see [`merge`]).
     pub fn merge_packs(indexes: &[RegistryIndex]) -> Vec<PackManifest> {
-        merge(indexes.iter().flat_map(|i| i.packs.iter()), |p| {
-            (p.id.clone(), p.latest_version.clone())
-        })
+        merge(indexes.iter().flat_map(|i| i.packs.iter()))
     }
 }
 
-fn merge<'a, T: Clone + 'a>(
-    entries: impl Iterator<Item = &'a T>,
-    key: impl Fn(&T) -> (String, String),
-) -> Vec<T> {
-    let mut merged: Vec<(String, semver::Version, T)> = Vec::new();
+/// What agent, pack and connector entries share, so entries from several
+/// registries merge by one rule.
+pub trait RegistryEntry: Clone {
+    fn id(&self) -> &str;
+    fn version(&self) -> &str;
+    /// The registry it came from
+    fn registry(&self) -> &str;
+    fn tags_mut(&mut self) -> &mut Vec<String>;
+}
+
+/// First-party entries carry this tag. Only the default registry may set it.
+pub const OFFICIAL_TAG: &str = "official";
+
+/// Entries across registries, one per ID. The default registry wins every
+/// ID it lists, whatever version another registry claims, so no added
+/// registry can shadow a first-party entry. Among the others the highest
+/// version wins, and a tie goes to the earlier registry. Only the default
+/// registry's entries keep the `official` tag.
+pub fn merge<'a, T: RegistryEntry + 'a>(entries: impl IntoIterator<Item = &'a T>) -> Vec<T> {
+    let rank = |entry: &T| {
+        let version =
+            manifest::parse_version(entry.version()).unwrap_or(semver::Version::new(0, 0, 0));
+        (entry.registry() == DEFAULT_REGISTRY, version)
+    };
+    let mut merged: Vec<T> = Vec::new();
     for entry in entries {
-        let (id, version) = key(entry);
-        let version = manifest::parse_version(&version).unwrap_or(semver::Version::new(0, 0, 0));
-        match merged.iter_mut().find(|(existing, ..)| *existing == id) {
-            Some(slot) if version > slot.1 => *slot = (id, version, entry.clone()),
+        match merged.iter_mut().find(|kept| kept.id() == entry.id()) {
+            Some(kept) if rank(entry) > rank(kept) => *kept = entry.clone(),
             Some(_) => {}
-            None => merged.push((id, version, entry.clone())),
+            None => merged.push(entry.clone()),
         }
     }
-    merged.into_iter().map(|(.., entry)| entry).collect()
+    for entry in &mut merged {
+        if entry.registry() != DEFAULT_REGISTRY {
+            entry
+                .tags_mut()
+                .retain(|tag| !tag.eq_ignore_ascii_case(OFFICIAL_TAG));
+        }
+    }
+    merged
+}
+
+impl RegistryEntry for AgentManifest {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn version(&self) -> &str {
+        &self.latest_version
+    }
+    fn registry(&self) -> &str {
+        &self.registry
+    }
+    fn tags_mut(&mut self) -> &mut Vec<String> {
+        &mut self.tags
+    }
+}
+
+impl RegistryEntry for PackManifest {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn version(&self) -> &str {
+        &self.latest_version
+    }
+    fn registry(&self) -> &str {
+        &self.registry
+    }
+    fn tags_mut(&mut self) -> &mut Vec<String> {
+        &mut self.tags
+    }
 }
 
 #[cfg(test)]
@@ -538,11 +588,12 @@ mod tests {
         assert_eq!(index.packs[0].id, "research-pack");
     }
 
+    /// An index listing `agents` (id, version), each tagged `official`
     fn index(registry: &str, agents: &[(&str, &str)]) -> RegistryIndex {
         let json = serde_json::json!({
             "agents": agents.iter().map(|(id, version)| serde_json::json!({
                 "id": id, "name": id, "publisher": "p", "repo": "github.com/p/r",
-                "path": id, "latest_version": version,
+                "path": id, "latest_version": version, "tags": [OFFICIAL_TAG],
             })).collect::<Vec<_>>()
         });
         RegistryClient::parse(
@@ -554,28 +605,66 @@ mod tests {
         .unwrap()
     }
 
+    /// (id, version, registry) of each merged agent
+    fn merged(indexes: &[RegistryIndex]) -> Vec<(String, String, String)> {
+        RegistryList::merge_agents(indexes)
+            .into_iter()
+            .map(|a| (a.id, a.latest_version, a.registry))
+            .collect()
+    }
+
+    fn entry(id: &str, version: &str, registry: &str) -> (String, String, String) {
+        (id.into(), version.into(), registry.into())
+    }
+
     #[test]
     fn dedup_keeps_the_latest_version() {
-        let merged = RegistryList::merge_agents(&[
+        let found = merged(&[
             index("a", &[("x", "1.2.0"), ("y", "1.0.0")]),
             index("b", &[("x", "1.10.0"), ("y", "1.0.0"), ("z", "0.1.0")]),
         ]);
-        let found: Vec<(&str, &str, &str)> = merged
-            .iter()
-            .map(|a| {
-                (
-                    a.id.as_str(),
-                    a.latest_version.as_str(),
-                    a.registry.as_str(),
-                )
-            })
-            .collect();
         assert_eq!(
             found,
             [
-                ("x", "1.10.0", "b"),
-                ("y", "1.0.0", "a"),
-                ("z", "0.1.0", "b")
+                entry("x", "1.10.0", "b"),
+                entry("y", "1.0.0", "a"),
+                entry("z", "0.1.0", "b")
+            ]
+        );
+    }
+
+    #[test]
+    fn the_default_registry_wins_the_ids_it_lists() {
+        // Another registry claims a first-party ID with a higher version,
+        // before or after the default registry
+        let shadow = index("company", &[("dev-pack", "9.0.0"), ("own", "1.0.0")]);
+        let official = index(DEFAULT_REGISTRY, &[("dev-pack", "1.0.0")]);
+        for indexes in [
+            [shadow.clone(), official.clone()],
+            [official.clone(), shadow.clone()],
+        ] {
+            let found = merged(&indexes);
+            assert!(found.contains(&entry("dev-pack", "1.0.0", DEFAULT_REGISTRY)));
+            assert!(found.contains(&entry("own", "1.0.0", "company")));
+            assert_eq!(found.len(), 2);
+        }
+    }
+
+    #[test]
+    fn only_the_default_registrys_entries_stay_official() {
+        let all = RegistryList::merge_agents(&[
+            index("company", &[("own", "1.0.0")]),
+            index(DEFAULT_REGISTRY, &[("dev-pack", "1.0.0")]),
+        ]);
+        let tags: Vec<(&str, &[String])> = all
+            .iter()
+            .map(|a| (a.id.as_str(), a.tags.as_slice()))
+            .collect();
+        assert_eq!(
+            tags,
+            [
+                ("own", &[][..]),
+                ("dev-pack", &[OFFICIAL_TAG.to_string()][..])
             ]
         );
     }
