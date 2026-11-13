@@ -26,7 +26,7 @@
 //!   property of the capability's input schema (pure; the service writes
 //!   the file).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -367,6 +367,7 @@ fn percentile(sorted: &[f64], p: f64) -> Option<f64> {
 
 /// The cached aggregates of `capability_id` for `window_days` (overall row
 /// first), empty before the first pass
+#[cfg(test)]
 pub fn cached(
     conn: &Connection,
     capability_id: &str,
@@ -729,7 +730,10 @@ pub fn promotion(
 }
 
 /// Cluster counts per capability (for summaries)
-pub fn ambiguity_counts(conn: &Connection) -> rusqlite::Result<HashMap<String, u32>> {
+#[cfg(test)]
+pub fn ambiguity_counts(
+    conn: &Connection,
+) -> rusqlite::Result<std::collections::HashMap<String, u32>> {
     let mut stmt = conn.prepare(
         "SELECT capability_id, COUNT(*) FROM capability_ambiguities
          WHERE COALESCE(promoted_to_schema, 0) = 0 GROUP BY capability_id",

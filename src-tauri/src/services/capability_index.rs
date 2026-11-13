@@ -8,7 +8,6 @@
 //! - One row per (agent, capability); `agent_card` holds the card as JSON.
 //!   Like the rest of SQLite, it is rebuildable from the gold copy.
 
-use std::collections::HashSet;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 use rusqlite::params;
@@ -39,11 +38,7 @@ impl CapabilityIndex {
         }
     }
 
-    pub fn with_owner(mut self, owner: OwnerRef) -> Self {
-        self.owner = owner;
-        self
-    }
-
+    #[cfg(test)]
     pub fn instance_id(&self) -> &str {
         &self.instance_id
     }
@@ -65,10 +60,6 @@ impl CapabilityIndex {
         self.owner = owner;
         self.rebuild_from_local(agents)?;
         Ok(true)
-    }
-
-    pub fn db(&self) -> &Db {
-        &self.db
     }
 
     /// The card for a local agent, served or not: endpoint from the relay
@@ -145,6 +136,7 @@ impl CapabilityIndex {
     }
 
     /// The indexed card of a local agent, if it serves anything
+    #[cfg(test)]
     pub fn indexed_card(&self, agent_id: &str) -> Option<AgentCard> {
         self.query_cards(
             "SELECT agent_card FROM capability_index WHERE entity_id = ?1 LIMIT 1",
@@ -156,9 +148,11 @@ impl CapabilityIndex {
 
     /// Local and remote cards serving `capability`, deduplicated by card ID
     /// (local first)
+    #[cfg(test)]
     pub fn find_with_remote(&self, capability: &str, remote_cards: &[AgentCard]) -> Vec<AgentCard> {
         let mut cards = self.find_local(capability);
-        let mut seen: HashSet<String> = cards.iter().map(|c| c.id.clone()).collect();
+        let mut seen: std::collections::HashSet<String> =
+            cards.iter().map(|c| c.id.clone()).collect();
         for card in remote_cards {
             if card.serves(capability) && seen.insert(card.id.clone()) {
                 cards.push(card.clone());

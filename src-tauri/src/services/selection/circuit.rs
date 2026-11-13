@@ -139,6 +139,7 @@ pub(crate) fn is_open_conn(
 
 /// Success closes; the third consecutive failure opens. Returns the row
 /// after the update.
+#[allow(dead_code)] // Kept: the circuit breaker is state (docs/tasks-todo/task-x-move-heuristics-to-model.md)
 pub async fn record(
     db: &Db,
     instance_id: &str,
@@ -196,6 +197,7 @@ pub async fn record_at(
 }
 
 /// Open now (`now` in epoch ms)
+#[allow(dead_code)] // Kept: the circuit breaker is state (docs/tasks-todo/task-x-move-heuristics-to-model.md)
 pub async fn is_open(
     db: &Db,
     instance_id: &str,

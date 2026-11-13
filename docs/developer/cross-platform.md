@@ -76,9 +76,7 @@ fn linux_only() {
 }
 
 // Runtime checks (for dynamic behavior)
-use crate::utils::platform;
-
-if platform::is_macos() {
+if cfg!(target_os = "macos") {
     // macOS runtime behavior
 }
 ```
@@ -169,13 +167,11 @@ function CustomTitleBar() {
 Windows uses backslashes (`\`) in paths, but the frontend expects forward slashes (`/`). Normalize paths when sending from Rust to React:
 
 ```rust
-use crate::utils::platform::normalize_path_for_serialization;
-
 #[tauri::command]
 fn get_file_path() -> String {
     let path = some_path();
     // Converts "C:\Users\foo\file.txt" to "C:/Users/foo/file.txt"
-    normalize_path_for_serialization(&path)
+    path.display().to_string().replace('\\', "/")
 }
 ```
 
@@ -350,5 +346,4 @@ For opacity transitions on Windows title bars, use `transform-gpu` to fix WebKit
 | `src/hooks/use-platform.ts`            | Platform detection hooks     |
 | `src/lib/platform-strings.ts`          | Platform-specific UI strings |
 | `src/components/titlebar/TitleBar.tsx` | Platform-aware title bar     |
-| `src-tauri/src/utils/platform.rs`      | Rust platform utilities      |
 | `src-tauri/tauri.*.conf.json`          | Platform-specific configs    |

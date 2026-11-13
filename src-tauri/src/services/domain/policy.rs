@@ -34,6 +34,7 @@ use super::capability::{split_port, AwsGrant, AwsPolicy, HostRule, NetworkPolicy
 use super::{DomainError, DomainResult};
 
 /// Every key of the policy format, for checks of text that names them
+#[cfg(test)]
 pub const POLICY_KEYS: &[&str] = &[
     "applies_to",
     "tools",
@@ -269,16 +270,14 @@ impl Policy {
         })
     }
 
+    #[cfg(test)]
     pub fn id(&self) -> &str {
         &self.id
     }
 
+    #[cfg(test)]
     pub fn rules(&self) -> &Rules {
         &self.rules
-    }
-
-    pub fn applies_to(&self) -> &[Target] {
-        &self.applies_to
     }
 
     /// Whether it has rules to enforce (else it's prose)
@@ -682,6 +681,7 @@ pub struct Refusal {
 }
 
 impl Effective {
+    #[cfg(test)]
     pub fn allows_tool(&self, tool: &str) -> bool {
         !self.denied_tools.contains_key(tool)
             && self
@@ -690,6 +690,7 @@ impl Effective {
                 .is_none_or(|allowed| allowed.iter().any(|t| t == tool))
     }
 
+    #[cfg(test)]
     pub fn needs_approval(&self, tool: &str) -> bool {
         self.approval.iter().any(|t| t == tool)
     }

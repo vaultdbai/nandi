@@ -4,18 +4,8 @@
 //! list. Refreshed when the installs or the running set change.
 
 use super::definition::{LatencyClass, ToolDefinition, ToolSource};
-use crate::services::connectors::{self, ConnectorInfo};
+use crate::services::connectors::ConnectorInfo;
 use crate::services::AppState;
-
-pub async fn connector_tools(state: &AppState) -> Vec<ToolDefinition> {
-    match connectors::list_connectors(state).await {
-        Ok(infos) => connector_definitions(&infos),
-        Err(e) => {
-            log::warn!("Tool catalog: connectors unavailable ({e})");
-            Vec::new()
-        }
-    }
-}
 
 /// The tools of the installed connectors in `infos`
 pub fn connector_definitions(infos: &[ConnectorInfo]) -> Vec<ToolDefinition> {

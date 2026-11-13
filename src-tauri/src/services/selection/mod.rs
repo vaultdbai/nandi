@@ -16,7 +16,6 @@ use crate::db::{now_ms, Db};
 use crate::services::a2a::task::EtaEstimate;
 use crate::services::capability::{CapabilityRouteStrategy, ProviderKind};
 use crate::services::events::EventBus;
-use crate::services::AppState;
 
 pub mod capability;
 pub mod circuit;
@@ -28,6 +27,7 @@ pub trait SelectionService: Send + Sync {
     /// This instance's providers of `ctx.capability_id`, filtered by
     /// required tools, exclusions and open circuits (`circuit`), scored and
     /// ordered by the strategy. Best first.
+    #[cfg(test)]
     fn rank_for_capability<'a>(
         &'a self,
         ctx: &'a CapabilitySelectionContext,
@@ -154,11 +154,6 @@ impl DbSelection {
         }
     }
 
-    pub fn with_clock(mut self, clock: Clock) -> Self {
-        self.clock = clock;
-        self
-    }
-
     /// This capability's round-robin turn, advancing it
     fn next_turn(&self, capability_id: &str) -> usize {
         let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
@@ -198,14 +193,6 @@ impl SelectionService for DbSelection {
             .map(|_| ())
         })
     }
-}
-
-/// The SQLite-backed selection service. Must not block.
-pub fn init(state: &AppState) -> Option<Arc<dyn SelectionService>> {
-    Some(Arc::new(DbSelection::new(
-        state.db().clone(),
-        Some(state.bus().clone()),
-    )))
 }
 
 #[cfg(test)]

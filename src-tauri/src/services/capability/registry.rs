@@ -226,6 +226,7 @@ impl CapabilityRegistryService {
     }
 
     /// `indexed_capabilities` without the IDs defined locally (local wins)
+    #[cfg(test)]
     pub fn visible_capabilities(&self, local_ids: &HashSet<String>) -> Vec<RegistryCapability> {
         self.indexed_capabilities()
             .into_iter()

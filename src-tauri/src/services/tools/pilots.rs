@@ -20,10 +20,6 @@ pub struct PilotScan {
     pub unlisted: Vec<String>,
 }
 
-pub async fn pilot_tools(state: &AppState) -> Vec<ToolDefinition> {
-    scan(state).await.tools
-}
-
 pub async fn scan(state: &AppState) -> PilotScan {
     let mut scan = PilotScan::default();
     for (pilot, persisted) in persisted(state) {

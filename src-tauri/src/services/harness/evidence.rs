@@ -9,8 +9,6 @@ use super::acp::{AcpSessionUpdate, AcpUsage};
 use super::{HarnessEventRecord, HarnessSessionStatus, HarnessSessionSummary};
 use crate::db::{self, now_ms, ts, Db};
 
-/// The `runs.runtime` of a native run
-pub const NATIVE_RUNTIME: &str = "native";
 /// Recorded events per session; later deltas are dropped (the run's own
 /// messages keep the full text)
 pub const MAX_EVENTS_PER_SESSION: u32 = 5_000;

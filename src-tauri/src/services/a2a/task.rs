@@ -1046,10 +1046,6 @@ impl TaskService {
         });
     }
 
-    pub fn set_presence(&self, presence: Presence) {
-        *self.presence.write().unwrap_or_else(|e| e.into_inner()) = Some(presence);
-    }
-
     pub async fn is_online(&self, instance: &str) -> bool {
         let custom = self
             .presence
@@ -1105,38 +1101,6 @@ impl TaskService {
             .ok_or_else(|| format!("Task {task_id} not found"))
     }
 
-    pub async fn list(&self, filter: TaskFilter) -> Result<Vec<TaskRecord>, String> {
-        list_rows(self.db(), self.instance_id(), filter).await
-    }
-
-    /// One legal transition (see `task_state::apply`)
-    pub async fn transition(
-        &self,
-        task_id: &str,
-        to: TaskState,
-        reason: Option<String>,
-    ) -> Result<TaskRecord, String> {
-        let change = Change {
-            reason,
-            ..Change::default()
-        };
-        self.transition_with(task_id, to, change).await
-    }
-
-    /// One legal transition with its reason kind and stage
-    pub async fn transition_with(
-        &self,
-        task_id: &str,
-        to: TaskState,
-        change: Change,
-    ) -> Result<TaskRecord, String> {
-        Ok(
-            task_state::apply(self.db(), self.bus(), task_id, to, change)
-                .await?
-                .task,
-        )
-    }
-
     /// Sets one column (`column` is one of ours, never user input)
     async fn update<V>(&self, task_id: &str, column: &'static str, value: V) -> Result<(), String>
     where
@@ -1158,15 +1122,6 @@ impl TaskService {
         Ok(())
     }
 
-    /// Without a transition (the terminal ones carry their own)
-    pub async fn set_result(&self, task_id: &str, result: Value) -> Result<(), String> {
-        self.update(task_id, "result", result.to_string()).await
-    }
-
-    pub async fn set_error(&self, task_id: &str, error: &str) -> Result<(), String> {
-        self.update(task_id, "error", error.to_string()).await
-    }
-
     pub async fn set_eta(&self, task_id: &str, eta_seconds: u32) -> Result<(), String> {
         self.update(task_id, "eta_seconds", eta_seconds).await
     }
@@ -1180,6 +1135,7 @@ impl TaskService {
 
     /// Provider side: a `ProgressUpdate` to the requester, when the task
     /// asked for them. Returns whether it was sent.
+    #[cfg(test)]
     pub async fn send_progress(
         &self,
         task_id: &str,

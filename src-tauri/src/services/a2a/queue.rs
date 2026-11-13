@@ -200,6 +200,7 @@ impl SlotQueue {
         }
     }
 
+    #[cfg(test)]
     pub fn waiting(&self, agent_id: &str) -> usize {
         self.lock().get(agent_id).map_or(0, Vec::len)
     }

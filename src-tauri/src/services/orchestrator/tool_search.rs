@@ -228,6 +228,7 @@ pub fn step_tools(run_id: &str, tools: Vec<ToolDef>) -> Vec<ToolDef> {
 }
 
 /// The tools `tool_search` loaded for `run_id`, by name
+#[cfg(test)]
 pub fn loaded_tools(run_id: &str) -> Vec<String> {
     registry()
         .runs

@@ -76,6 +76,7 @@ pub fn connector() -> tokio_tungstenite::Connector {
 
 /// Whether `url` is a plain `ws://` relay on another machine, so traffic
 /// (cards, tasks, results) crosses the network unencrypted
+#[cfg(test)]
 pub fn is_unencrypted_remote(url: &str) -> bool {
     let Some(rest) = url.trim().strip_prefix("ws://") else {
         return false;

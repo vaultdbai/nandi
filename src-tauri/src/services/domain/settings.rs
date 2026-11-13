@@ -44,6 +44,7 @@ use super::grant::Grants;
 use super::{DomainError, DomainResult};
 
 /// The model agents use when skill.md doesn't name one.
+#[cfg(test)]
 pub const DEFAULT_MODEL: &str = "claude:claude-sonnet-5";
 
 /// A keyring entry name, e.g. `nandi.llm.deepseek`. Never a secret itself.
@@ -585,14 +586,7 @@ impl Settings {
         self.language.as_deref()
     }
 
-    pub fn notifications(&self) -> &NotificationPrefs {
-        &self.notifications
-    }
-
-    pub fn agent_defaults(&self) -> &AgentDefaults {
-        &self.agent_defaults
-    }
-
+    #[cfg(test)]
     pub fn secret_refs(&self) -> &BTreeMap<String, SecretRef> {
         &self.secret_refs
     }

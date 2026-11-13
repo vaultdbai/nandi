@@ -49,14 +49,6 @@ pub enum AccessLevel {
 }
 
 impl AccessLevel {
-    pub const ALL: [AccessLevel; 5] = [
-        Self::FullyAutomated,
-        Self::AskFirst,
-        Self::QuestionsOnly,
-        Self::SendMeInfo,
-        Self::None,
-    ];
-
     /// What this level says about one request
     pub fn decide(self, facts: &RequestFacts<'_>) -> Decision {
         match self {
@@ -347,12 +339,6 @@ impl RequestRules {
             Approval::FirstTime | Approval::PerMember => Decision::Auto,
         }
     }
-
-    /// Whether the policy, whatever my level, never lets a request run
-    /// without my approval (for "the group's policy is stricter" notes)
-    pub fn always_asks(&self) -> bool {
-        self.approval == Approval::Always
-    }
 }
 
 /// A group's policy text, parsed: its `requests:` block, and the other
@@ -558,6 +544,7 @@ impl GroupCopy {
         self.members.iter().any(|m| m.instance_id == instance)
     }
 
+    #[cfg(test)]
     pub fn role_of(&self, instance: &str) -> Option<GroupRole> {
         self.members
             .iter()
@@ -656,6 +643,7 @@ impl GroupAccess {
         self.levels.remove(group).is_some()
     }
 
+    #[cfg(test)]
     pub fn groups(&self) -> impl Iterator<Item = &str> {
         self.levels.keys().map(String::as_str)
     }

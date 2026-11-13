@@ -44,6 +44,8 @@ pub const FINISH_CHECK: &str = "finish_check";
 pub enum MiddlewareDecision {
     Continue,
     /// Block for human approval (the reason is shown); resume when granted
+    #[allow(dead_code)]
+    // The approval path is wired and tested; no shipped middleware pauses yet
     PauseForApproval(String),
     /// Stop the run cleanly with this message (`agent://turn_aborted`)
     Abort(String),
@@ -93,7 +95,6 @@ pub enum ExitReason {
     ToolCalls,
     /// A text-only step: the run would end
     Completed,
-    Aborted(String),
 }
 
 /// What one step produced
@@ -108,14 +109,7 @@ pub struct TurnResult {
     pub continue_with: Option<String>,
 }
 
-impl TurnResult {
-    pub fn aborted(reason: impl Into<String>) -> Self {
-        Self {
-            exit_reason: ExitReason::Aborted(reason.into()),
-            ..Self::default()
-        }
-    }
-}
+impl TurnResult {}
 
 pub trait TurnMiddleware: Send + Sync {
     fn name(&self) -> &'static str;
@@ -413,23 +407,17 @@ pub async fn run_pre_turns(
 }
 
 /// Runs every `post_turn` in reverse order (the onion unwinds). Errors are
-/// logged and skipped, as in `run_pre_turns`. Returns the middleware that
-/// set `ExitReason::Aborted`, if one did.
+/// logged and skipped, as in `run_pre_turns`.
 pub async fn run_post_turns(
     pipeline: &[Box<dyn TurnMiddleware>],
     ctx: &mut TurnContext,
     result: &mut TurnResult,
-) -> Option<&'static str> {
-    let mut aborted_by = None;
+) {
     for middleware in pipeline.iter().rev() {
         if let Err(e) = middleware.post_turn(ctx, result).await {
             log::warn!("Middleware '{}' post_turn failed: {e}", middleware.name());
         }
-        if aborted_by.is_none() && matches!(result.exit_reason, ExitReason::Aborted(_)) {
-            aborted_by = Some(middleware.name());
-        }
     }
-    aborted_by
 }
 
 /// What the model is told when a middleware blocks one of its tool calls
@@ -654,7 +642,7 @@ pub fn register_default_middlewares(
         list.push(Box::new(FinishCheckMiddleware::new(deps.clone())));
     }
     if policy.enables(VERIFY_ON_STOP) {
-        list.push(Box::new(VerifyOnStopMiddleware::new(deps.clone())));
+        list.push(Box::new(VerifyOnStopMiddleware::default()));
     }
     if policy.enables(PLAN_FIRST) {
         list.push(Box::new(PlanFirstMiddleware::default()));
@@ -911,7 +899,7 @@ mod tests {
         let mut ctx = ctx();
         assert_eq!(run_pre_turns(&pipeline, &mut ctx, &[]).await, None);
         let mut result = TurnResult::default();
-        assert_eq!(run_post_turns(&pipeline, &mut ctx, &mut result).await, None);
+        run_post_turns(&pipeline, &mut ctx, &mut result).await;
         assert_eq!(
             *calls.lock().unwrap(),
             ["pre:a", "pre:b", "pre:c", "post:c", "post:b", "post:a"]

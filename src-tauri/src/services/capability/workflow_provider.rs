@@ -267,6 +267,7 @@ pub async fn run(
 
 /// `resolve` then `run`, without lifecycle messages or a deadline (tests,
 /// and callers without a provider row). `None` for agent targets.
+#[cfg(test)]
 pub async fn try_dispatch(deps: &A2aDeps, task: &Task) -> Option<WorkflowDispatchOutcome> {
     let target = resolve(deps, task).await?;
     Some(run(&deps.db, task, &target, |_, _, _| {}).await)
@@ -313,6 +314,7 @@ fn step_status(status: WorkflowStepStatus) -> &'static str {
 
 /// The step breakdown recorded for `task_id`, if a workflow ran it (for
 /// its evidence row)
+#[cfg(test)]
 pub fn step_breakdown(conn: &Connection, task_id: &str) -> rusqlite::Result<Option<Value>> {
     let payload: Option<String> = conn
         .query_row(
@@ -624,12 +626,6 @@ pub async fn refresh(
         }
     }
     Ok(providers)
-}
-
-/// The `provides:` of every local workflow, with schema warnings
-pub async fn list_workflow_providers(state: &AppState) -> Result<Vec<WorkflowProvider>, String> {
-    let instance_id = network::local_instance_id(state.db())?;
-    refresh(state.db(), state.bus(), state.store(), &instance_id).await
 }
 
 /// Refreshes the workflow providers when a workflow or agent changes

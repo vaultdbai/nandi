@@ -14,6 +14,7 @@ use crate::db::{now_ms, Db};
 use crate::model::Timestamp;
 
 /// Matches every requester
+#[cfg(test)]
 pub const ANY_REQUESTER: &str = "*";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]

@@ -462,22 +462,19 @@ mod tests {
     use crate::services::domain::{Agent, AgentId, Settings, Workflow};
 
     fn repo() -> AgentRepo {
-        AgentRepo::assemble(
-            "/repo",
-            RepoSnapshot {
-                agents: vec![Agent::from_skill_md(
-                    AgentId::parse("writer").unwrap(),
-                    "---\nname: Writer\nnetwork:\n  allow:\n    - host: x.com\n---\nWrite.",
-                )
-                .unwrap()],
-                workflows: vec![Workflow::from_yaml(
-                    "id: daily\nname: Daily\nsteps:\n  - {id: a, agent: writer, input: hi}\n",
-                )
-                .unwrap()],
-                settings: Some(Settings::from_yaml("theme: dark").unwrap()),
-                ..Default::default()
-            },
-        )
+        AgentRepo::assemble(RepoSnapshot {
+            agents: vec![Agent::from_skill_md(
+                AgentId::parse("writer").unwrap(),
+                "---\nname: Writer\nnetwork:\n  allow:\n    - host: x.com\n---\nWrite.",
+            )
+            .unwrap()],
+            workflows: vec![Workflow::from_yaml(
+                "id: daily\nname: Daily\nsteps:\n  - {id: a, agent: writer, input: hi}\n",
+            )
+            .unwrap()],
+            settings: Some(Settings::from_yaml("theme: dark").unwrap()),
+            ..Default::default()
+        })
     }
 
     fn fingerprints() -> Vec<Fingerprint> {

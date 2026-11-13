@@ -185,6 +185,7 @@ struct Entry<'a> {
 static WRITE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 impl AuditLog {
+    #[cfg(test)]
     pub fn at(path: PathBuf) -> Self {
         Self { path: Some(path) }
     }
@@ -199,10 +200,6 @@ impl AuditLog {
                 .ok()
                 .map(|dir| dir.join("logs").join(LOG_FILE_NAME)),
         }
-    }
-
-    pub fn path(&self) -> Option<&Path> {
-        self.path.as_deref()
     }
 
     /// Appends one entry. Failures are logged, not returned: an unwritable

@@ -45,10 +45,6 @@ impl CliProfile for GeminiCli {
         "gemini-cli"
     }
 
-    fn display_name(&self) -> &'static str {
-        "Gemini CLI"
-    }
-
     fn supported_models(&self) -> Vec<ModelRef> {
         vec![
             ModelRef::new("gemini-2.5-pro", "Gemini 2.5 Pro", "google"),

@@ -477,12 +477,6 @@ impl HarnessService {
             .ok_or_else(|| format!("Harness session '{session_id}' not found"))
     }
 
-    pub fn is_live(&self, session_id: &str) -> bool {
-        self.live
-            .lock()
-            .is_ok_and(|live| live.contains_key(session_id))
-    }
-
     /// Stops a live session: its driver sees the token and stops the CLI;
     /// the container goes too, in case the driver is stuck
     pub async fn kill_session(&self, session_id: &str) -> Result<(), String> {

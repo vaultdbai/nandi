@@ -50,6 +50,7 @@ pub fn redact(args: &Value) -> Value {
 }
 
 impl AuditSink {
+    #[cfg(test)]
     pub fn at(path: PathBuf) -> Self {
         Self { path: Some(path) }
     }

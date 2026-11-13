@@ -17,7 +17,7 @@
 //! (`RepoStore::load`), reloads single entities, and rebuilds the projection.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -144,7 +144,6 @@ pub struct RepoSnapshot {
 
 #[derive(Debug, Clone)]
 pub struct AgentRepo {
-    root: PathBuf,
     manifest: RepoManifest,
     agents: BTreeMap<AgentId, Agent>,
     workflows: BTreeMap<WorkflowId, Workflow>,
@@ -156,9 +155,8 @@ pub struct AgentRepo {
 }
 
 impl AgentRepo {
-    pub fn empty(root: impl Into<PathBuf>) -> Self {
+    pub fn empty() -> Self {
         Self {
-            root: root.into(),
             manifest: RepoManifest::default(),
             agents: BTreeMap::new(),
             workflows: BTreeMap::new(),
@@ -172,8 +170,8 @@ impl AgentRepo {
     /// Builds the aggregate from loaded files. Duplicates become problems
     /// (the first one wins), never a failure: a bad file must not hide the
     /// rest of the repo.
-    pub fn assemble(root: impl Into<PathBuf>, snapshot: RepoSnapshot) -> Self {
-        let mut repo = Self::empty(root);
+    pub fn assemble(snapshot: RepoSnapshot) -> Self {
+        let mut repo = Self::empty();
         repo.manifest = snapshot.manifest.unwrap_or_default();
         repo.settings = snapshot.settings.unwrap_or_default();
         repo.connectors = snapshot.connectors.unwrap_or_default();
@@ -447,14 +445,6 @@ impl AgentRepo {
 
     // -- Accessors ----------------------------------------------------------
 
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
-
-    pub fn manifest(&self) -> &RepoManifest {
-        &self.manifest
-    }
-
     pub fn agent(&self, id: &str) -> Option<&Agent> {
         self.agents.get(id)
     }
@@ -511,20 +501,17 @@ mod tests {
     }
 
     fn repo() -> AgentRepo {
-        AgentRepo::assemble(
-            "/repo",
-            RepoSnapshot {
-                agents: vec![agent("writer"), agent("writer"), agent("research")],
-                workflows: vec![
-                    workflow("daily", "writer"),
-                    workflow("orphan", "ghost"),
-                    workflow("mine", "research")
-                        .in_scope(WorkflowScope::Agent(AgentId::parse("research").unwrap())),
-                ],
-                triggers: vec![trigger("hook", "writer")],
-                ..Default::default()
-            },
-        )
+        AgentRepo::assemble(RepoSnapshot {
+            agents: vec![agent("writer"), agent("writer"), agent("research")],
+            workflows: vec![
+                workflow("daily", "writer"),
+                workflow("orphan", "ghost"),
+                workflow("mine", "research")
+                    .in_scope(WorkflowScope::Agent(AgentId::parse("research").unwrap())),
+            ],
+            triggers: vec![trigger("hook", "writer")],
+            ..Default::default()
+        })
     }
 
     #[test]

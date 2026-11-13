@@ -43,6 +43,7 @@ pub struct PeerKeyStatus {
 }
 
 impl PeerKeyStatus {
+    #[cfg(test)]
     pub fn changed(&self) -> bool {
         self.changed_fingerprint.is_some()
     }

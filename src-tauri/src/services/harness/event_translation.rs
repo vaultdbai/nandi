@@ -267,6 +267,7 @@ impl TurnTranslator {
     }
 
     /// The next step's index (for a follow-up turn on the same run)
+    #[cfg(test)]
     pub fn next_step(&self) -> u32 {
         self.step
     }

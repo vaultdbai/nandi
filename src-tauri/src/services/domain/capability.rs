@@ -398,6 +398,7 @@ impl ToolPolicy {
             .is_none_or(|allowed| allowed.iter().any(|t| t == tool))
     }
 
+    #[cfg(test)]
     pub fn requires_approval_for(&self, tool: &str) -> bool {
         match &self.requires_approval {
             Some(tools) => tools.iter().any(|t| t == tool),

@@ -1,5 +1,4 @@
-//! Utility modules for cross-platform support and common operations.
+//! Utility modules for environment and config handling.
 
 pub mod env;
 pub mod nandi_config;
-pub mod platform;

@@ -684,6 +684,7 @@ impl Agent {
 
     // -- Behavior -----------------------------------------------------------
 
+    #[cfg(test)]
     pub fn update_instructions(&mut self, text: &str) -> DomainResult<()> {
         let text = text.trim();
         check_len(&self.label(), "instructions", text, MAX_INSTRUCTIONS_CHARS)?;
@@ -694,6 +695,7 @@ impl Agent {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn update_profile(&mut self, name: &str, description: &str) -> DomainResult<()> {
         let previous = (self.name.clone(), self.description.clone());
         self.name = name.trim().to_string();
@@ -734,25 +736,6 @@ impl Agent {
         Ok(entry)
     }
 
-    pub fn set_model(&mut self, model: Option<ModelRef>) {
-        self.model = model;
-        self.updated_at = SystemTime::now();
-    }
-
-    pub fn set_runtime(
-        &mut self,
-        runtime: AgentRuntimeKind,
-        config: Option<RuntimeConfig>,
-    ) -> DomainResult<()> {
-        if let Some(config) = &config {
-            config.check()?;
-        }
-        self.runtime = runtime;
-        self.runtime_config = config.map(Box::new);
-        self.updated_at = SystemTime::now();
-        Ok(())
-    }
-
     pub fn runtime(&self) -> &AgentRuntimeKind {
         &self.runtime
     }
@@ -761,10 +744,12 @@ impl Agent {
         self.runtime_config.as_deref()
     }
 
+    #[cfg(test)]
     pub fn requires_approval_for(&self, tool: &str) -> bool {
         self.capabilities.tools().requires_approval_for(tool)
     }
 
+    #[cfg(test)]
     pub fn allows_tool(&self, tool: &str) -> bool {
         self.capabilities.tools().allows(tool)
     }
@@ -1000,6 +985,7 @@ pub const SKILL_FRONTMATTER_KEYS: &[(&str, &str)] = &[
 
 /// Documented keys the connector service reads from `extra` (kept as
 /// written), not the parser
+#[cfg(test)]
 pub const EXTRA_FRONTMATTER_KEYS: &[&str] = &["connectors", "tags"];
 
 #[derive(Serialize)]

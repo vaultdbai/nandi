@@ -31,18 +31,11 @@
 //! The steps of a run execute in an abortable child task, so the
 //! orchestrator keeps receiving commands (e.g. Cancel) while a run streams.
 
-// Wave final
-#[allow(dead_code)]
 pub mod compaction;
-#[allow(dead_code)]
 pub mod middleware;
-// Wave B
-#[allow(dead_code)]
 pub mod run_plan;
 pub mod runtime_router;
-#[allow(dead_code)]
 pub mod tool_search;
-#[allow(dead_code)]
 pub mod verify_on_stop;
 
 use std::collections::{HashMap, HashSet};
@@ -1056,11 +1049,7 @@ async fn drive_run(
             },
             continue_with: None,
         };
-        let aborted_by = middleware::run_post_turns(pipeline, &mut turn, &mut result).await;
-        if let ExitReason::Aborted(reason) = result.exit_reason {
-            abort_run(deps, &ctx, aborted_by.unwrap_or("middleware"), reason).await?;
-            return Ok(RunEnd::Done);
-        }
+        middleware::run_post_turns(pipeline, &mut turn, &mut result).await;
         if let Some(text) = result.continue_with {
             append_continuation(bus, &ctx, text).await?;
         }

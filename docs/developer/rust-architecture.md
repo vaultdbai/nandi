@@ -144,8 +144,6 @@ fn desktop_only() { /* ... */ }
 fn non_linux() { /* ... */ }
 ```
 
-Platform utilities live in `utils/platform.rs`.
-
 ## Plugin Registration (lib.rs)
 
 Plugins are registered in `lib.rs` during app setup:
@@ -181,5 +179,5 @@ When adding new features:
 
 1. **New command domain?** Create a new file in `rpc/` (or `desktop/` if it needs the `AppHandle` or a window)
 2. **New shared types?** Add to `types.rs`
-3. **Platform-specific utils?** Add to `utils/platform.rs`
+3. **Platform-specific code?** Use `#[cfg(target_os = "...")]` next to the code that needs it
 4. **New plugin?** Register in `lib.rs` setup

@@ -849,32 +849,6 @@ mod tests {
         fn list_teams(&self) -> BoxFuture<'_, Result<Vec<Team>, String>> {
             Box::pin(async { Ok(vec![team("acme"), team("broken")]) })
         }
-        fn create_team(&self, _org: String) -> BoxFuture<'_, Result<Team, String>> {
-            Box::pin(async { Err("unused".to_string()) })
-        }
-        fn join_team<'a>(&'a self, _id: &'a str) -> BoxFuture<'a, Result<(), String>> {
-            Box::pin(async { Ok(()) })
-        }
-        fn leave_team<'a>(&'a self, _id: &'a str) -> BoxFuture<'a, Result<(), String>> {
-            Box::pin(async { Ok(()) })
-        }
-        fn sync_team_registry<'a>(&'a self, _id: &'a str) -> BoxFuture<'a, Result<(), String>> {
-            Box::pin(async { Ok(()) })
-        }
-        fn share_agent<'a>(
-            &'a self,
-            _team: &'a str,
-            _agent: &'a str,
-        ) -> BoxFuture<'a, Result<(), String>> {
-            Box::pin(async { Ok(()) })
-        }
-        fn unshare_agent<'a>(
-            &'a self,
-            _team: &'a str,
-            _agent: &'a str,
-        ) -> BoxFuture<'a, Result<(), String>> {
-            Box::pin(async { Ok(()) })
-        }
         fn team_agents<'a>(
             &'a self,
             team_id: &'a str,

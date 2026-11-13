@@ -113,15 +113,6 @@ impl AcpSessionUpdate {
     }
 }
 
-/// What the agent said about itself in `initialize`
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct AcpAgentInfo {
-    pub protocol_version: String,
-    pub name: Option<String>,
-    pub version: Option<String>,
-    pub auth_methods: Vec<String>,
-}
-
 /// How Nandi answers `session/request_permission`. The container is the
 /// sandbox, so the default allows; an agent's `allowed-tools` narrows it.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -131,7 +122,6 @@ pub enum PermissionPolicy {
     /// Allowed when the call's ACP kind is one of these (case-insensitive),
     /// e.g. `read`, `edit`. The CLI writes the title, so it never allows
     Allow(Vec<String>),
-    DenyAll,
     /// `allow` (`None`: everything) minus `deny`, which wins and also
     /// matches a word in the title
     Except {
@@ -157,7 +147,6 @@ impl PermissionPolicy {
     fn allows(&self, title: &str, kind: Option<&str>) -> bool {
         match self {
             Self::AllowAll => true,
-            Self::DenyAll => false,
             Self::Allow(tools) => matches_kind(tools, kind),
             Self::Except { allow, deny } => {
                 !matches_tool(deny, title, kind)
@@ -292,8 +281,6 @@ type TurnSink = Arc<Mutex<Option<mpsc::Sender<AcpSessionUpdate>>>>;
 pub struct AcpClient {
     commands: mpsc::UnboundedSender<Command>,
     task: tokio::task::JoinHandle<Result<(), HarnessError>>,
-    info: AcpAgentInfo,
-    session_id: String,
 }
 
 impl AcpClient {
@@ -321,12 +308,7 @@ impl AcpClient {
         // a child that never answers anything
         let ready = tokio::time::timeout(timeout * 2 + Duration::from_secs(1), ready_rx).await;
         match ready {
-            Ok(Ok(Ok((info, session_id)))) => Ok(Self {
-                commands,
-                task,
-                info,
-                session_id,
-            }),
+            Ok(Ok(Ok(()))) => Ok(Self { commands, task }),
             Ok(Ok(Err(error))) => {
                 task.abort();
                 Err(error)
@@ -341,14 +323,6 @@ impl AcpClient {
                 Err(HarnessError::Timeout(timeout))
             }
         }
-    }
-
-    pub fn info(&self) -> &AcpAgentInfo {
-        &self.info
-    }
-
-    pub fn session_id(&self) -> &str {
-        &self.session_id
     }
 
     /// Sends `session/prompt`; the stream carries the turn's updates and
@@ -387,7 +361,7 @@ async fn run_connection<W, R>(
     transport: ByteStreams<W, R>,
     options: SessionOptions,
     mut commands: mpsc::UnboundedReceiver<Command>,
-    ready: oneshot::Sender<Result<(AcpAgentInfo, String), HarnessError>>,
+    ready: oneshot::Sender<Result<(), HarnessError>>,
 ) -> Result<(), HarnessError>
 where
     W: AsyncWrite + Send + 'static,
@@ -454,9 +428,9 @@ where
         .connect_with(transport, async |cx: ConnectionTo<Agent>| {
             let opened = open_session(&cx, &options).await;
             let session_id = match opened {
-                Ok((info, session_id)) => {
+                Ok(session_id) => {
                     if let Some(ready) = ready.take() {
-                        let _ = ready.send(Ok((info, session_id.clone())));
+                        let _ = ready.send(Ok(()));
                     }
                     session_id
                 }
@@ -535,7 +509,7 @@ where
 async fn open_session(
     cx: &ConnectionTo<Agent>,
     options: &SessionOptions,
-) -> Result<(AcpAgentInfo, String), HarnessError> {
+) -> Result<String, HarnessError> {
     let initialize = cx
         .send_request(InitializeRequest::new(ProtocolVersion::V1))
         .block_task();
@@ -543,24 +517,16 @@ async fn open_session(
         .await
         .map_err(|_| HarnessError::Timeout(options.timeout))?
         .map_err(rpc_error)?;
-    let info = AcpAgentInfo {
-        protocol_version: serde_json::to_value(init.protocol_version)
-            .ok()
-            .map(|v| v.to_string())
-            .unwrap_or_default(),
-        name: init.agent_info.as_ref().map(|i| i.name.clone()),
-        version: init.agent_info.as_ref().map(|i| i.version.clone()),
-        auth_methods: init
-            .auth_methods
-            .iter()
-            .filter_map(|m| serde_json::to_value(m).ok())
-            .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
-            .collect(),
-    };
+    let auth_methods: Vec<String> = init
+        .auth_methods
+        .iter()
+        .filter_map(|m| serde_json::to_value(m).ok())
+        .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect();
     if let Some(method) = options
         .auth_method
         .as_ref()
-        .filter(|m| info.auth_methods.contains(m))
+        .filter(|m| auth_methods.contains(m))
     {
         let authenticate = cx
             .send_request(AuthenticateRequest::new(AuthMethodId::new(method.as_str())))
@@ -576,7 +542,7 @@ async fn open_session(
         .await
         .map_err(|_| HarnessError::Timeout(options.timeout))?
         .map_err(rpc_error)?;
-    Ok((info, session.session_id.0.to_string()))
+    Ok(session.session_id.0.to_string())
 }
 
 fn rpc_error(error: agent_client_protocol::Error) -> HarnessError {
@@ -884,7 +850,6 @@ pub(crate) mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(client.session_id(), "acp-1");
 
         let updates = collect(client.prompt("hi").unwrap()).await;
         assert_eq!(
@@ -1004,10 +969,6 @@ pub(crate) mod tests {
         assert_eq!(
             decision(&PermissionPolicy::AllowAll, &none),
             Decision::Allow
-        );
-        assert_eq!(
-            decision(&PermissionPolicy::DenyAll, &none),
-            Decision::Reject
         );
         let execute = PermissionPolicy::Allow(vec!["execute".into()]);
         assert_eq!(decision(&execute, &none), Decision::Allow);

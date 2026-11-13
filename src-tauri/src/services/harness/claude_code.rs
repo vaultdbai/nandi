@@ -107,10 +107,6 @@ impl CliProfile for ClaudeCode {
         "claude-code"
     }
 
-    fn display_name(&self) -> &'static str {
-        "Claude Code"
-    }
-
     fn supported_models(&self) -> Vec<ModelRef> {
         // Claude Code's aliases resolve per provider (Anthropic or Bedrock);
         // Bedrock IDs come from the Bedrock catalog

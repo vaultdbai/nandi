@@ -202,24 +202,6 @@ pub struct TeamShare {
 
 pub trait TeamManager: Send + Sync {
     fn list_teams(&self) -> BoxFuture<'_, Result<Vec<Team>, String>>;
-    /// Adds a team for the registry at `registry_url` (any git URL),
-    /// scaffolding `index.json`, `agents/`, `packs/`, `publishers/` if missing
-    fn create_team(&self, registry_url: String) -> BoxFuture<'_, Result<Team, String>>;
-    fn join_team<'a>(&'a self, team_id: &'a str) -> BoxFuture<'a, Result<(), String>>;
-    fn leave_team<'a>(&'a self, team_id: &'a str) -> BoxFuture<'a, Result<(), String>>;
-    /// Clones or pulls the registry to `~/.nandi/repo/teams/<org>/`
-    fn sync_team_registry<'a>(&'a self, team_id: &'a str) -> BoxFuture<'a, Result<(), String>>;
-    /// Copies the agent folder to the registry and pushes `nandi/<handle>`
-    fn share_agent<'a>(
-        &'a self,
-        team_id: &'a str,
-        agent_id: &'a str,
-    ) -> BoxFuture<'a, Result<(), String>>;
-    fn unshare_agent<'a>(
-        &'a self,
-        team_id: &'a str,
-        agent_id: &'a str,
-    ) -> BoxFuture<'a, Result<(), String>>;
     /// Cards for the agents in a team's synced registry
     fn team_agents<'a>(&'a self, team_id: &'a str)
         -> BoxFuture<'a, Result<Vec<AgentCard>, String>>;
@@ -888,42 +870,6 @@ impl TeamService {
 impl TeamManager for TeamService {
     fn list_teams(&self) -> BoxFuture<'_, Result<Vec<Team>, String>> {
         Box::pin(TeamService::list_teams(self))
-    }
-
-    fn create_team(&self, registry_url: String) -> BoxFuture<'_, Result<Team, String>> {
-        Box::pin(async move { TeamService::create_team(self, &registry_url).await })
-    }
-
-    fn join_team<'a>(&'a self, team_id: &'a str) -> BoxFuture<'a, Result<(), String>> {
-        Box::pin(TeamService::join_team(self, team_id))
-    }
-
-    fn leave_team<'a>(&'a self, team_id: &'a str) -> BoxFuture<'a, Result<(), String>> {
-        Box::pin(TeamService::leave_team(self, team_id))
-    }
-
-    fn sync_team_registry<'a>(&'a self, team_id: &'a str) -> BoxFuture<'a, Result<(), String>> {
-        Box::pin(TeamService::sync_team_registry(self, team_id))
-    }
-
-    fn share_agent<'a>(
-        &'a self,
-        team_id: &'a str,
-        agent_id: &'a str,
-    ) -> BoxFuture<'a, Result<(), String>> {
-        Box::pin(async move {
-            TeamService::share_agent(self, team_id, agent_id)
-                .await
-                .map(|_| ())
-        })
-    }
-
-    fn unshare_agent<'a>(
-        &'a self,
-        team_id: &'a str,
-        agent_id: &'a str,
-    ) -> BoxFuture<'a, Result<(), String>> {
-        Box::pin(TeamService::unshare_agent(self, team_id, agent_id))
     }
 
     fn team_agents<'a>(

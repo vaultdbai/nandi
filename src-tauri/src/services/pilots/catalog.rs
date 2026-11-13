@@ -9,7 +9,6 @@ use super::PilotDefinition;
 pub const APP_CONTROL: &str = "app_control";
 pub const FILE_SYSTEM: &str = "file_system";
 pub const BROWSER: &str = "browser";
-pub const SYSTEM_SETTINGS: &str = "system_settings";
 
 /// `windows` | `macos` | `linux`, as `PilotDefinition::platform` spells it.
 pub fn current_platform() -> &'static str {

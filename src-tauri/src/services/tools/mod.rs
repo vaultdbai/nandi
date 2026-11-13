@@ -37,7 +37,6 @@ use crate::services::{AppState, WeakAppState};
 use definition::{ToolDefinition, ToolSource};
 
 pub const TOOL_CATALOG_CHANGED: &str = "tool://catalog_changed";
-pub const TOOL_USAGE_RECORDED: &str = "tool://usage_recorded";
 
 /// How often the background task checks whether connectors or pilots
 /// started or stopped (a cheap fingerprint; no keyring, no network)
@@ -192,6 +191,7 @@ impl ToolService {
 
     /// The entries of `required` the catalog doesn't know (a capability
     /// loads anyway: the tool may be installed later)
+    #[cfg(test)]
     pub fn missing_tools(&self, required: &[String]) -> Vec<String> {
         self.catalog()
             .missing(required)

@@ -414,10 +414,6 @@ impl GatewayService {
         &self.slots
     }
 
-    pub fn db(&self) -> &Db {
-        &self.deps.db
-    }
-
     fn lock(&self) -> std::sync::MutexGuard<'_, Runtime> {
         self.runtime.lock().unwrap_or_else(|e| e.into_inner())
     }

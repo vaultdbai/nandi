@@ -62,11 +62,13 @@ impl ToolCatalog {
     }
 
     /// `source` is a `ToolSource::kind`; sorted by ID
+    #[cfg(test)]
     pub fn by_source(&self, source: &str) -> Vec<&ToolDefinition> {
         self.definitions(|d| d.source.kind() == source)
     }
 
     /// Sorted by ID
+    #[cfg(test)]
     pub fn by_tag(&self, tag: &str) -> Vec<&ToolDefinition> {
         self.definitions(|d| d.tags.iter().any(|t| t == tag))
     }
@@ -85,10 +87,7 @@ impl ToolCatalog {
         self.by_id.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.by_id.is_empty()
-    }
-
+    #[cfg(test)]
     fn definitions(&self, keep: impl Fn(&ToolDefinition) -> bool) -> Vec<&ToolDefinition> {
         self.all()
             .into_iter()

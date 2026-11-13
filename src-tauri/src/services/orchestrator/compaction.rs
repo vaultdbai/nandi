@@ -43,7 +43,6 @@ use crate::model::{RunStatus, RunSummary, STUDIO_AGENT_ID};
 use crate::services::events::{self, AgentQueueChanged, AgentRunUpdated, NandiEvent};
 use crate::services::llm_keys;
 use crate::services::secrets::Secrets;
-use crate::services::AppState;
 
 /// Tokens kept free below the context window when `trigger_tokens` is unset
 pub const DEFAULT_BUFFER_TOKENS: u32 = 13_000;
@@ -186,23 +185,6 @@ impl Summarizer for LlmSummarizer {
             Ok(response.content)
         })
     }
-}
-
-pub async fn compact(
-    state: &AppState,
-    run_id: &str,
-    policy: &CompactionPolicy,
-) -> Result<CompactionResult, String> {
-    compact_with(state.orchestrators().deps(), run_id, policy).await
-}
-
-pub async fn compact_with(
-    deps: &RunDeps,
-    run_id: &str,
-    policy: &CompactionPolicy,
-) -> Result<CompactionResult, String> {
-    let summarizer = LlmSummarizer::new(deps.secrets.clone());
-    compact_using(deps, run_id, policy, &summarizer).await
 }
 
 /// `compact_with`, with the summary call injected.
@@ -550,6 +532,7 @@ impl CompactionMiddleware {
         }
     }
 
+    #[cfg(test)]
     pub fn with_summarizer(mut self, summarizer: Arc<dyn Summarizer>) -> Self {
         self.summarizer = summarizer;
         self
@@ -626,6 +609,7 @@ mod tests {
     use crate::db::PlannedCall;
     use crate::model::{SourceType, ToolCallStatus};
     use crate::services::events::tests::RecordingSink;
+    use crate::services::AppState;
     use serde_json::json;
 
     type Reply = Box<dyn Fn(&str) -> Result<String, String> + Send + Sync>;

@@ -9,54 +9,29 @@
 //!
 //! Every service takes `&AppState`.
 
-// Not every API has a caller yet
-#[allow(dead_code)]
 pub mod a2a;
 pub mod access;
-// Wave final (Track C)
-#[allow(dead_code)]
 pub mod agent_memory;
 pub mod agent_overview;
 pub mod agents;
-// Wave CD: the ask box (see docs/developer/interaction-layer.md)
-#[allow(dead_code)]
 pub mod ask;
 pub mod attachments;
-// Wave final (Track A): local identity
-#[allow(dead_code)]
 pub mod auth;
 pub mod builtin_agents;
-// Wave A: capabilities as entities
-#[allow(dead_code)]
 pub mod capability;
-// Not every API has a caller yet
-#[allow(dead_code)]
 pub mod capability_index;
 pub mod chat;
-// Wave 2B redesign (Track D)
-#[allow(dead_code)]
 pub mod companion;
-// Wave EF (Track E): repo-level configuration
-#[allow(dead_code)]
 pub mod config;
-// Not every API has a caller yet
-#[allow(dead_code)]
 pub mod connectors;
-// The domain model's API is complete by design (entities, value objects,
-// behavior); not every accessor has a caller yet.
-#[allow(dead_code)]
 pub mod domain;
 pub mod egress;
 pub mod email;
 pub mod events;
 pub mod grants;
 // Protocol 7: groups, their signed policies, my access levels
-pub mod groups;
-// Wave final (Track D): the gateway agent (NANDI.md)
-#[allow(dead_code)]
 pub mod gateway;
-// Wave B: harness adapters
-#[allow(dead_code)]
+pub mod groups;
 pub mod harness;
 pub mod help;
 pub mod history;
@@ -71,16 +46,10 @@ pub mod llm_trial;
 pub mod machine;
 pub mod marketplace;
 pub mod mascot;
-// Not every API has a caller yet
-#[allow(dead_code)]
 pub mod network;
 pub mod notes;
 pub mod orchestrator;
-// Wave 2B redesign (Track E)
-#[allow(dead_code)]
 pub mod palette;
-// Not every API has a caller yet
-#[allow(dead_code)]
 pub mod pilots;
 pub mod playbooks;
 // Policies applied to agents (enforced-policies wave 3)
@@ -89,18 +58,12 @@ pub mod preferences;
 pub mod projection;
 pub mod queue;
 pub mod recovery;
-// Not every API has a caller yet
-#[allow(dead_code)]
 pub mod relay;
-// Wave final (Track A): the optional git remote
-#[allow(dead_code)]
 pub mod remote;
 pub mod repo_bootstrap;
 pub mod repo_service;
 pub mod repo_store;
 pub mod repos;
-// Wave 2B redesign (Track A)
-#[allow(dead_code)]
 pub mod run_analysis;
 pub mod run_plan;
 pub mod run_waiter;
@@ -109,30 +72,16 @@ pub mod runtimes;
 // v1: Requests and their Steps, projected from the task tables (task 3)
 pub mod requests;
 pub mod secrets;
-// Wave final (Track D): capability selection and circuit breakers
-#[allow(dead_code)]
 pub mod selection;
 pub mod shared;
 pub mod snapshots;
-// Wave CD: Studio's artifact editor
-#[allow(dead_code)]
 pub mod studio;
-// Not every API has a caller yet
-#[allow(dead_code)]
 pub mod team;
-// Wave A (Track C): the unified tool catalog
-#[allow(dead_code)]
 pub mod tools;
 pub mod triggers;
-// Not every API has a caller yet
-#[allow(dead_code)]
 pub mod trust;
 pub mod watcher;
-// Wave CD: work in flight
-#[allow(dead_code)]
 pub mod work;
-// Wave 2B redesign (Track B)
-#[allow(dead_code)]
 pub mod workflow_graph;
 pub mod workflows;
 pub mod workspace;

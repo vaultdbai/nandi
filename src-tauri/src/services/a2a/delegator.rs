@@ -185,13 +185,6 @@ impl Pending {
         }
     }
 
-    fn rekey(&self, from: &str, to: &str) {
-        let mut pending = self.lock();
-        if let Some(waiter) = pending.remove(from) {
-            pending.insert(to.to_string(), waiter);
-        }
-    }
-
     fn forget(&self, task_id: &str) {
         self.lock().remove(task_id);
     }
@@ -218,6 +211,7 @@ impl Delegator {
         &self.deps
     }
 
+    #[cfg(test)]
     pub fn executor(&self) -> &Arc<Executor> {
         &self.executor
     }

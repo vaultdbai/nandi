@@ -39,7 +39,6 @@ mod tools;
 mod web_search;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -371,7 +370,8 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 impl ConnectorRegistry {
     /// A registry that audits to `path` instead of `~/.nandi/local/logs`.
-    pub fn with_audit_log(path: PathBuf) -> Self {
+    #[cfg(test)]
+    pub fn with_audit_log(path: std::path::PathBuf) -> Self {
         Self {
             audit: audit::AuditSink::at(path),
             ..Self::default()
@@ -578,6 +578,7 @@ impl ConnectorRegistry {
     /// Installed connectors start on first use unless the user stopped
     /// them; unhealthy ones are left out with a warning. `taken` holds the
     /// container's tool names, which always win a collision.
+    #[cfg(test)]
     pub async fn agent_tools(
         &self,
         secrets: &Secrets,
@@ -675,6 +676,7 @@ impl ConnectorRegistry {
     /// Runs `name` if it's a tool of a connector `declared` by the agent.
     /// `None` means it isn't a connector tool (the caller tries the
     /// container). Every call is audited.
+    #[cfg(test)]
     pub async fn call_agent_tool(
         &self,
         agent_id: &str,
@@ -688,6 +690,7 @@ impl ConnectorRegistry {
 
     /// `call_agent_tool` with the agent's per-connector `options`
     /// (`declared_options`)
+    #[cfg(test)]
     pub async fn call_agent_tool_with(
         &self,
         agent_id: &str,

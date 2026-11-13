@@ -370,6 +370,7 @@ fn entry_index(entries: &[MemoryEntry], index: u32) -> Result<usize, String> {
 }
 
 /// Appends `new` (empty entries skipped). Returns the whole memory.
+#[cfg(test)]
 async fn append(
     store: &RepoStore,
     bus: &EventBus,
@@ -393,6 +394,7 @@ pub async fn load_memory(state: &AppState, agent_id: &str) -> Result<Vec<MemoryE
 }
 
 /// Appends `entries` to memory.md
+#[cfg(test)]
 pub async fn write_memory(
     state: &AppState,
     agent_id: &str,
@@ -798,14 +800,6 @@ async fn refresh_with(
         None => return Err(format!("Run {run_id} not found")),
     }
     extract_and_append(model, store, bus, &run_id, None).await
-}
-
-/// 0–3 durable facts from the run's transcript (an LLM call)
-pub async fn extract_memory(state: &AppState, run_id: &str) -> Result<Vec<MemoryEntry>, String> {
-    let model = real_model(state.secrets());
-    extract_with(model.as_ref(), state.store(), state.db(), run_id, None)
-        .await
-        .map(|(_, entries)| entries)
 }
 
 /// Extracts from `run_id` (the agent's latest run if `None`) and appends;

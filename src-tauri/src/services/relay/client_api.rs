@@ -2,8 +2,6 @@
 //! connection (`RelayClient`), whatever carries it. The wire messages are
 //! in `nandi_protocol` (re-exported by `protocol`).
 
-use std::collections::HashMap;
-
 use futures_util::future::BoxFuture;
 
 use super::protocol::{
@@ -90,7 +88,11 @@ pub trait RelayClient: Send + Sync {
     /// Sends `RegisterInstance` and waits for `Registered`
     fn register(&self, cards: Vec<AgentCard>) -> BoxFuture<'_, Result<(), String>>;
 
-    fn heartbeat(&self, load: HashMap<String, u32>) -> BoxFuture<'_, Result<(), String>>;
+    #[cfg(test)]
+    fn heartbeat(
+        &self,
+        load: std::collections::HashMap<String, u32>,
+    ) -> BoxFuture<'_, Result<(), String>>;
 
     /// `CapabilityResult` for `capability`, or an error after 5s
     fn query_capability<'a>(

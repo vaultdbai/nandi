@@ -10,8 +10,6 @@
 
 pub mod agent_locator;
 pub mod agent_repo;
-// Wave A (Track A): capability definitions
-#[allow(dead_code)]
 pub mod capability_repo;
 pub mod connector_repo;
 pub mod decision_repo;
@@ -277,18 +275,15 @@ impl Repos {
         problems.extend(agents.problems);
         problems.extend(workflows.problems);
         problems.extend(triggers.problems);
-        AgentRepo::assemble(
-            &self.layout.root,
-            RepoSnapshot {
-                manifest,
-                agents: agents.entities,
-                workflows: workflows.entities,
-                triggers: triggers.entities,
-                settings,
-                connectors,
-                problems,
-            },
-        )
+        AgentRepo::assemble(RepoSnapshot {
+            manifest,
+            agents: agents.entities,
+            workflows: workflows.entities,
+            triggers: triggers.entities,
+            settings,
+            connectors,
+            problems,
+        })
     }
 
     /// The main file and content hash of an entity's file(s), or `None` if

@@ -153,7 +153,7 @@ Every refusal and every wait is typed, so the UI picks the copy and the fix, and
 // ✅ GOOD: a refusal says what kind it is and where it happened
 return Err(Refusal::new(ReasonKind::NotTrusted, TaskStage::Admit,
     format!("The owner of '{name}' needs to trust {who} before it takes their requests.")));
-tasks.transition_with(&id, TaskState::Rejected, Change::refused(&refusal)).await?;
+self.step(TaskState::Rejected, Change::refused(&refusal)).await;
 
 // ✅ GOOD: a wait that doesn't change state is a note event
 task_state::note(db, bus, &id, Change::default().kind(ReasonKind::Queued, TaskStage::Slot)).await?;

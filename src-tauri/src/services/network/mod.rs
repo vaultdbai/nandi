@@ -14,29 +14,19 @@
 
 pub mod peer_keys;
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use rusqlite::{params, OptionalExtension};
 
-use super::a2a::{self, A2ADelegator};
-use super::capability_index::{self, CapabilityIndex};
+use super::a2a::{self};
+use super::capability_index::{self};
 use super::relay::{self, RelayClient};
-use super::team::{self, TeamManager};
+use super::team::{self};
 use super::AppState;
 use crate::db::Db;
 
 /// `relay_state` key holding this install's instance ID
 pub const INSTANCE_ID_KEY: &str = "instance_id";
-
-/// The network services that `init` produced (each `None` until its track
-/// lands).
-#[derive(Default)]
-pub struct NetworkServices {
-    pub capability_index: Option<Arc<RwLock<CapabilityIndex>>>,
-    pub relay_client: Option<Arc<dyn RelayClient>>,
-    pub team_manager: Option<Arc<dyn TeamManager>>,
-    pub a2a_delegator: Option<Arc<dyn A2ADelegator>>,
-}
 
 /// Runs each track's `init`, in dependency order, storing each result in
 /// `AppState` before the next one runs.
@@ -452,6 +442,7 @@ impl NetworkService {
     }
 
     /// Drops the cache so the next read asks the relay
+    #[cfg(test)]
     pub fn invalidate(&self) {
         *self.cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }

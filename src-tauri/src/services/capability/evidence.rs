@@ -58,6 +58,7 @@ pub struct CapabilityEvidence {
 
 impl CapabilityEvidence {
     /// Successes over finished tasks, when there are any
+    #[cfg(test)]
     pub fn success_rate(&self) -> Option<f32> {
         (self.count > 0).then(|| self.success_count as f32 / self.count as f32)
     }
@@ -78,34 +79,6 @@ impl EvidenceRole {
             Self::Provider => "provider",
         }
     }
-}
-
-/// A `capability_evidence` row
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct EvidenceRecord {
-    pub id: String,
-    pub capability_id: String,
-    pub capability_version: Option<String>,
-    pub task_id: String,
-    pub provider_instance: Option<String>,
-    pub provider_kind: Option<ProviderKind>,
-    pub provider_id: Option<String>,
-    pub role: EvidenceRole,
-    /// The task's terminal `TaskState` serde name
-    pub status: String,
-    pub duration_ms: Option<f64>,
-    pub tokens_in: Option<u32>,
-    pub tokens_out: Option<u32>,
-    pub cost_usd: Option<f64>,
-    pub clarification_rounds: u32,
-    pub escalation_required: bool,
-    pub approval_required: bool,
-    pub user_rating: Option<u32>,
-    /// Workflow providers: per-step timings (JSON)
-    pub step_breakdown: Option<serde_json::Value>,
-    pub observed_at: Timestamp,
-    pub metadata: Option<serde_json::Value>,
 }
 
 /// Seam (called by `a2a::task_state::{apply, advance}` after commit and

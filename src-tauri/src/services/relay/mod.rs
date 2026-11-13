@@ -109,6 +109,7 @@ pub const ONLINE_AGENTS_KEY: &str = "online_agents";
 
 /// The relay the Relay view suggests while none is configured: `nandi-relay`
 /// on this machine. Mirrored by `DEFAULT_RELAY_URL` in `useRelay.ts`.
+#[cfg(test)]
 pub const DEFAULT_RELAY_URL: &str = "ws://127.0.0.1:8787/relay";
 
 /// The relay a build comes with, offered as "the Nandi network":

@@ -62,6 +62,7 @@ const INSTALL_TIMEOUT: Duration = Duration::from_secs(600);
 /// Generous, as for `llm`: a completion on a large model can take minutes
 const COMPLETE_TIMEOUT: Duration = Duration::from_secs(300);
 /// How long `usable()` trusts its last look at the machine
+#[cfg_attr(test, allow(dead_code))]
 const READINESS_TTL: Duration = Duration::from_secs(30);
 
 // ---------------------------------------------------------------------------
@@ -173,6 +174,7 @@ impl Readiness {
 static READINESS: Mutex<Option<(Instant, Readiness)>> = Mutex::new(None);
 
 /// This machine's readiness, re-checked at most every `READINESS_TTL`
+#[cfg_attr(test, allow(dead_code))]
 pub fn readiness() -> Readiness {
     let mut cached = READINESS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((at, readiness)) = cached.as_ref() {

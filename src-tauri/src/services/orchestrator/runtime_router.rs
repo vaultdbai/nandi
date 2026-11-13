@@ -861,7 +861,7 @@ mod tests {
     use crate::services::domain::AgentId;
     use crate::services::events::tests::{bus, started};
     use crate::services::harness::adapter::{
-        CliProfile, EventStream, HarnessError, HarnessHealth, HarnessSession, ModelRef,
+        CliProfile, EventStream, HarnessError, HarnessSession, ModelRef,
     };
     use crate::services::harness::detection::{DetectEnv, HarnessDetector};
 
@@ -1305,16 +1305,8 @@ cpu: 2.5
             Ok(())
         }
 
-        async fn health(&self) -> Result<HarnessHealth, HarnessError> {
-            Ok(HarnessHealth::default())
-        }
-
         fn id(&self) -> &'static str {
             "claude-code"
-        }
-
-        fn display_name(&self) -> &'static str {
-            "Claude Code"
         }
 
         fn supported_models(&self) -> Vec<ModelRef> {

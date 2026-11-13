@@ -289,6 +289,7 @@ pub fn classify_with_reason(
     }
 }
 
+#[cfg(test)]
 pub fn classify(policy: &ClarificationPolicy, question: &Question) -> Route {
     classify_with_reason(policy, question).0
 }

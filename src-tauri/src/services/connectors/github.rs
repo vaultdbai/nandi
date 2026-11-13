@@ -41,6 +41,7 @@ const MAX_FILE_BYTES: usize = 512 * 1024;
 const MAX_COMMENTS: usize = 50;
 
 /// How long a `gh auth token` answer is reused: setup hints ask often
+#[cfg_attr(test, allow(dead_code))]
 const CLI_CACHE: Duration = Duration::from_secs(60);
 /// `gh` answers at once when signed in; anything slower is a hung prompt
 const CLI_TIMEOUT: Duration = Duration::from_secs(5);

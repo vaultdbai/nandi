@@ -25,8 +25,6 @@ pub mod local;
 pub mod manifest;
 pub mod publish;
 pub mod registry;
-// Wave 2B redesign (Track C)
-#[allow(dead_code)]
 pub mod search;
 pub mod signature;
 pub mod source;

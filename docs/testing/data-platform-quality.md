@@ -685,7 +685,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **Steps:** On each OS: minimize/maximize/close from the title bar; drag the window by the title bar; check shortcut hints in menus.
 - **Expected:** Controls work; drag regions work; macOS shows Cmd glyphs, others Ctrl.
 - **Edge / negative cases:** Resize below 1000x700 refused.
-- **Automation:** Covered by: `src/hooks/use-platform.test.ts`; `utils/platform.rs` tests | Layer: manual (per OS) | Gap: no cross-OS e2e.
+- **Automation:** Covered by: `src/hooks/use-platform.test.ts` | Layer: manual (per OS) | Gap: no cross-OS e2e.
 - **Needs relay:** no
 - **Status:** Shipped
 

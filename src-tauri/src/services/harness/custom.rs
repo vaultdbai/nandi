@@ -32,10 +32,6 @@ impl CliProfile for Custom {
         "custom"
     }
 
-    fn display_name(&self) -> &'static str {
-        "Custom harness"
-    }
-
     fn supported_models(&self) -> Vec<ModelRef> {
         Vec::new()
     }

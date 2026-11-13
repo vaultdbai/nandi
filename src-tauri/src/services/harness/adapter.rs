@@ -34,10 +34,7 @@ pub trait HarnessAdapter: Send + Sync {
     /// Ends the session and the child process. Boxed so adapters stay
     /// object-safe (`Box<dyn HarnessAdapter>`)
     async fn stop(self: Box<Self>) -> Result<(), HarnessError>;
-    /// Whether the CLI is installed and authenticated, without a session
-    async fn health(&self) -> Result<HarnessHealth, HarnessError>;
     fn id(&self) -> &'static str;
-    fn display_name(&self) -> &'static str;
     fn supported_models(&self) -> Vec<ModelRef>;
 }
 
@@ -310,17 +307,6 @@ pub enum HarnessAuthKind {
     ApiKey,
     #[default]
     None,
-}
-
-/// How an agent runs, resolved for one run
-#[derive(Debug, Clone)]
-pub enum AgentRuntime {
-    /// Nandi's own loop (`orchestrator::drive_run`)
-    Native,
-    Harness {
-        adapter_id: String,
-        config: Box<HarnessConfig>,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -799,17 +785,6 @@ pub async fn test_session(
     ))
 }
 
-/// Merges the config's plain env with the credential env (credentials win)
-pub fn merge_env(
-    plain: &HashMap<String, String>,
-    credentials: Vec<(String, String)>,
-) -> Vec<(String, String)> {
-    let mut merged: std::collections::BTreeMap<String, String> =
-        plain.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    merged.extend(credentials);
-    merged.into_iter().collect()
-}
-
 /// The first `x.y.z` in `--version` output
 pub fn parse_version(output: &str) -> Option<semver::Version> {
     let re = regex::Regex::new(r"(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.\-]+)?").ok()?;
@@ -825,7 +800,6 @@ pub fn parse_version(output: &str) -> Option<semver::Version> {
 /// environment they read. `CliAdapter` does the rest.
 pub trait CliProfile: Send + Sync + 'static {
     fn id(&self) -> &'static str;
-    fn display_name(&self) -> &'static str;
     fn supported_models(&self) -> Vec<ModelRef>;
     /// The ACP command for `placement`; `host_version` is the CLI's version
     /// on the host (detected), for invocations that changed over time
@@ -882,6 +856,7 @@ impl<P: CliProfile> CliAdapter<P> {
         }
     }
 
+    #[cfg(test)]
     pub fn profile(&self) -> &P {
         &self.profile
     }
@@ -971,16 +946,8 @@ impl<P: CliProfile> HarnessAdapter for CliAdapter<P> {
         Ok(())
     }
 
-    async fn health(&self) -> Result<HarnessHealth, HarnessError> {
-        Ok(self.profile.health().await)
-    }
-
     fn id(&self) -> &'static str {
         self.profile.id()
-    }
-
-    fn display_name(&self) -> &'static str {
-        self.profile.display_name()
     }
 
     fn supported_models(&self) -> Vec<ModelRef> {

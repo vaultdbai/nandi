@@ -87,10 +87,6 @@ pub fn checkout_dir(teams_root: &Path, team_id: &str) -> PathBuf {
     teams_root.join(team_id)
 }
 
-pub fn is_synced(dir: &Path) -> bool {
-    dir.join(".git").exists()
-}
-
 // ---------------------------------------------------------------------------
 // Files
 // ---------------------------------------------------------------------------
@@ -328,12 +324,6 @@ pub fn sync(dir: &Path, url: &str, token: Option<&str>, now: Timestamp) -> Resul
 pub fn commit(dir: &Path, message: &str, owner: Option<&str>) -> Result<Option<String>, String> {
     let repo = Repository::open(dir).map_err(git_error)?;
     Ok(repo_bootstrap::commit_all(&repo, message, owner)?.map(|oid| oid.to_string()))
-}
-
-/// The branch HEAD is on (`main` for a fresh checkout)
-pub fn head_branch(dir: &Path) -> Result<String, String> {
-    let repo = Repository::open(dir).map_err(git_error)?;
-    Ok(current_branch(&repo))
 }
 
 /// Pushes HEAD to `remote_branch` on origin: a `nandi/…` branch only, never

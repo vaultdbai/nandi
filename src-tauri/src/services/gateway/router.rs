@@ -1321,6 +1321,7 @@ async fn wait_for_slot<'a>(
 const QUEUE_WAIT_MS: i64 = 10 * 60 * 1000;
 
 /// The caller as the router sees it, for tests and the chat
+#[cfg(test)]
 pub fn anonymous_caller() -> CallerPolicy {
     policy::default_caller("", "", 0)
 }

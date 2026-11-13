@@ -35,7 +35,6 @@ use super::middleware::{
     ExitReason, MiddlewareDecision, MiddlewareError, ToolResultSummary, TurnContext,
     TurnMiddleware, TurnResult,
 };
-use super::RunDeps;
 use crate::db;
 use crate::services::notes::NOTES_FOLDER_ID;
 use crate::services::run_analysis::written_path;
@@ -72,20 +71,14 @@ const COMMAND_KEYS: &[&str] = &["command", "cmd", "script", "args"];
 /// Argument keys that hold a file path
 const PATH_KEYS: &[&str] = &["path", "file_path", "filePath", "file", "filename"];
 
+#[derive(Default)]
 pub struct VerifyOnStopMiddleware {
-    pub deps: RunDeps,
     /// Where `verify.log` goes; `None`: `nandi_config::logs_dir()`
     pub log_dir: Option<PathBuf>,
 }
 
 impl VerifyOnStopMiddleware {
-    pub fn new(deps: RunDeps) -> Self {
-        Self {
-            deps,
-            log_dir: None,
-        }
-    }
-
+    #[cfg(test)]
     pub fn with_log_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.log_dir = Some(dir.into());
         self
@@ -305,7 +298,6 @@ impl TurnMiddleware for VerifyOnStopMiddleware {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::AppState;
     use serde_json::json;
 
     fn tool(turn: u32, name: &str, args: Value) -> ToolResultSummary {
@@ -349,8 +341,8 @@ mod tests {
         }
     }
 
-    fn middleware(state: &AppState, log_dir: &Path) -> VerifyOnStopMiddleware {
-        VerifyOnStopMiddleware::new(state.orchestrators().deps().clone()).with_log_dir(log_dir)
+    fn middleware(log_dir: &Path) -> VerifyOnStopMiddleware {
+        VerifyOnStopMiddleware::default().with_log_dir(log_dir)
     }
 
     fn log_lines(dir: &Path) -> Vec<Value> {
@@ -457,9 +449,8 @@ mod tests {
 
     #[tokio::test]
     async fn fires_once_per_run_and_logs_each_firing() {
-        let state = AppState::for_tests(vec![]);
         let logs = tempfile::tempdir().unwrap();
-        let mw = middleware(&state, logs.path());
+        let mw = middleware(logs.path());
         let mut context = ctx(vec![write(3, "src/lib.rs"), write(4, "src/main.rs")]);
 
         let mut first = completed();
@@ -491,9 +482,8 @@ mod tests {
 
     #[tokio::test]
     async fn verified_runs_end_without_a_continuation_or_log() {
-        let state = AppState::for_tests(vec![]);
         let logs = tempfile::tempdir().unwrap();
-        let mw = middleware(&state, logs.path());
+        let mw = middleware(logs.path());
         let mut context = ctx(vec![write(3, "src/lib.rs"), shell(4, "cargo test")]);
         let mut result = completed();
         mw.post_turn(&mut context, &mut result).await.unwrap();

@@ -40,9 +40,6 @@ pub use crate::services::relay::protocol::ASK_ME;
 /// refused) before it returns "assigned"
 pub const ACCEPT_WINDOW: Duration = Duration::from_secs(10);
 
-/// How often the requester asks after its open assignments
-pub const POLL_EVERY_MS: i64 = 60_000;
-
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 
 /// Whether tasks of `capability` last until a person ends them

@@ -389,6 +389,7 @@ impl Default for ClientOptions {
 impl WsRelayClient {
     /// A disconnected client for `instance_id`; `bus` receives `relay://`
     /// events.
+    #[cfg(test)]
     pub fn new(bus: Option<EventBus>, instance_id: impl Into<String>) -> Self {
         Self::with_options(bus, instance_id, ClientOptions::default())
     }
@@ -417,11 +418,6 @@ impl WsRelayClient {
                 inbound: Mutex::default(),
             }),
         }
-    }
-
-    /// Every card at the relay, as of the last presence refresh
-    pub fn online_agents(&self) -> Vec<AgentCard> {
-        self.inner.lock().online.clone()
     }
 }
 
@@ -1633,6 +1629,7 @@ impl RelayClient for WsRelayClient {
         .boxed()
     }
 
+    #[cfg(test)]
     fn heartbeat(&self, load: HashMap<String, u32>) -> BoxFuture<'_, Result<(), String>> {
         async move {
             self.inner.lock().load = load;

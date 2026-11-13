@@ -152,6 +152,7 @@ fn load_token(entry: &str, secrets: &Secrets) -> Option<StoredToken> {
 
 /// Whether a sign-in stored anything at keyring `entry` (a token that may
 /// still be refreshed counts)
+#[cfg(test)]
 pub fn has_sign_in(entry: &str, secrets: &Secrets) -> bool {
     load_token(entry, secrets).is_some()
 }

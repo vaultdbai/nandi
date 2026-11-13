@@ -251,20 +251,13 @@ impl CapabilityService {
         self
     }
 
+    #[cfg(test)]
     pub fn db(&self) -> &Db {
         &self.db
     }
 
-    pub fn bus(&self) -> &EventBus {
-        &self.bus
-    }
-
     pub fn repo(&self) -> &CapabilityRepository {
         &self.repo
-    }
-
-    pub fn instance_id(&self) -> &str {
-        &self.instance_id
     }
 
     /// Who "you" are for `owned` and new definitions: the user's slug (and
@@ -294,6 +287,7 @@ impl CapabilityService {
     }
 
     /// Local definitions plus the registries' (local wins on the same ID)
+    #[cfg(test)]
     pub async fn list_all(&self) -> Result<Vec<CapabilityDefinition>, String> {
         Ok(self
             .merged()
@@ -827,18 +821,6 @@ impl CapabilityService {
                     .collect::<Result<HashMap<_, _>, _>>()?;
                 Ok(rows)
             })
-            .await
-    }
-
-    /// Track F: the capability's clarification clusters, most frequent
-    /// first (filled by the hourly aggregation job)
-    pub async fn list_ambiguities(
-        &self,
-        capability_id: &str,
-    ) -> Result<Vec<AmbiguityCluster>, String> {
-        let id = capability_id.to_string();
-        self.db
-            .call(move |conn| aggregation::list_ambiguities(conn, &id))
             .await
     }
 

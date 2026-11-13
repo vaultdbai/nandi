@@ -48,10 +48,6 @@ impl CliProfile for Codex {
         "codex"
     }
 
-    fn display_name(&self) -> &'static str {
-        "Codex"
-    }
-
     fn supported_models(&self) -> Vec<ModelRef> {
         vec![
             ModelRef::new("gpt-5-codex", "GPT-5 Codex", "openai"),

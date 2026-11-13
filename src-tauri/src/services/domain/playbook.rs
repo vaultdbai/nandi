@@ -194,6 +194,7 @@ impl Playbook {
         &self.body
     }
 
+    #[cfg(test)]
     pub fn words(&self) -> usize {
         words(&self.body)
     }

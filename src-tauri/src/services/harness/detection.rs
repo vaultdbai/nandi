@@ -18,7 +18,7 @@ use std::time::Duration;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
-use super::adapter::{parse_version, HarnessAuth, HarnessAuthKind, HarnessHealth, HarnessRuntime};
+use super::adapter::{parse_version, HarnessAuth, HarnessAuthKind, HarnessHealth};
 use crate::db::{now_ms, ts, Db};
 
 /// `--version` must answer within this
@@ -54,7 +54,6 @@ impl DetectEnv {
 #[derive(Debug, Clone, Copy)]
 pub struct HarnessSpec {
     pub runtime_id: &'static str,
-    pub display_name: &'static str,
     /// The CLI users install (and sign in with)
     pub executables: &'static [&'static str],
     /// The CLI's own config folder under `~`
@@ -64,19 +63,16 @@ pub struct HarnessSpec {
 pub const SPECS: [HarnessSpec; 3] = [
     HarnessSpec {
         runtime_id: "claude-code",
-        display_name: "Claude Code",
         executables: &["claude", "claude-code"],
         config_dir: ".claude",
     },
     HarnessSpec {
         runtime_id: "codex",
-        display_name: "Codex",
         executables: &["codex"],
         config_dir: ".codex",
     },
     HarnessSpec {
         runtime_id: "gemini-cli",
-        display_name: "Gemini CLI",
         executables: &["gemini"],
         config_dir: ".gemini",
     },
@@ -567,11 +563,6 @@ fn load_one(conn: &mut Connection, id: &str) -> rusqlite::Result<Option<Detectio
         row,
     )
     .optional()
-}
-
-/// The runtime for a detection's ID
-pub fn runtime(harness_id: &str) -> Option<HarnessRuntime> {
-    HarnessRuntime::parse(harness_id)
 }
 
 #[cfg(test)]

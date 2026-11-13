@@ -83,12 +83,11 @@ struct Inner {
 
 impl RepoStore {
     pub fn new(repos: Repos, projection: Arc<dyn ProjectionSink>) -> Self {
-        let root = repos.layout().root.clone();
         Self(Arc::new(Inner {
             subscribers: RwLock::default(),
             watching: AtomicBool::new(false),
             repos,
-            aggregate: RwLock::new(AgentRepo::empty(root)),
+            aggregate: RwLock::new(AgentRepo::empty()),
             projection,
             hashes: Mutex::default(),
             writer: Mutex::new(()),

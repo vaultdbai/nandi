@@ -61,6 +61,7 @@ impl CronSpec {
         Ok(Self { schedule })
     }
 
+    #[cfg(test)]
     pub fn schedule(&self) -> &str {
         &self.schedule
     }
@@ -465,10 +466,6 @@ impl Trigger {
             rate_limit_seconds: self.rate_limit_seconds,
         };
         serde_yaml::to_string(&file).unwrap_or_default()
-    }
-
-    pub fn set_enabled(&mut self, enabled: bool) {
-        self.enabled = enabled;
     }
 
     /// The keyring entry holding this trigger's secret (webhook and device
