@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
 /// The pseudo-agent that owns Studio conversations. `@` can't appear in a
 /// real agent ID, so it never collides with an agent folder.
@@ -12,8 +13,11 @@ pub const STUDIO_AGENT_ID: &str = "@studio";
 
 pub use nandi_protocol::Timestamp;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum RunStatus {
     /// Waiting in the agent's queue behind its current turn
     Queued,
@@ -27,28 +31,9 @@ pub enum RunStatus {
 }
 
 impl RunStatus {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            RunStatus::Queued => "queued",
-            RunStatus::Running => "running",
-            RunStatus::AwaitingApproval => "awaiting_approval",
-            RunStatus::Completed => "completed",
-            RunStatus::Failed => "failed",
-            RunStatus::Cancelled => "cancelled",
-            RunStatus::Compacted => "compacted",
-        }
-    }
-
-    pub fn parse(s: &str) -> Self {
-        match s {
-            "queued" => RunStatus::Queued,
-            "running" => RunStatus::Running,
-            "awaiting_approval" => RunStatus::AwaitingApproval,
-            "completed" => RunStatus::Completed,
-            "cancelled" => RunStatus::Cancelled,
-            "compacted" => RunStatus::Compacted,
-            _ => RunStatus::Failed,
-        }
+        self.into()
     }
 
     /// The agent's current turn: running or suspended for approval. A
@@ -63,8 +48,11 @@ impl RunStatus {
 }
 
 /// Who asked for a run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum SourceType {
     User,
     Workflow,
@@ -88,45 +76,17 @@ pub enum SourceType {
 }
 
 impl SourceType {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            SourceType::User => "user",
-            SourceType::Workflow => "workflow",
-            SourceType::Agent => "agent",
-            SourceType::Scheduled => "scheduled",
-            SourceType::Cron => "cron",
-            SourceType::Calendar => "calendar",
-            SourceType::File => "file",
-            SourceType::Webhook => "webhook",
-            SourceType::Device => "device",
-            SourceType::Event => "event",
-            SourceType::Email => "email",
-            SourceType::CalendarCheck => "calendar_check",
-            SourceType::Request => "request",
-        }
-    }
-
-    pub fn parse(s: &str) -> Self {
-        match s {
-            "workflow" => SourceType::Workflow,
-            "agent" => SourceType::Agent,
-            "scheduled" => SourceType::Scheduled,
-            "cron" => SourceType::Cron,
-            "calendar" => SourceType::Calendar,
-            "file" => SourceType::File,
-            "webhook" => SourceType::Webhook,
-            "device" => SourceType::Device,
-            "event" => SourceType::Event,
-            "email" => SourceType::Email,
-            "calendar_check" => SourceType::CalendarCheck,
-            "request" => SourceType::Request,
-            _ => SourceType::User,
-        }
+        self.into()
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum ApprovalStatus {
     Pending,
     Approved,
@@ -136,22 +96,9 @@ pub enum ApprovalStatus {
 }
 
 impl ApprovalStatus {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            ApprovalStatus::Pending => "pending",
-            ApprovalStatus::Approved => "approved",
-            ApprovalStatus::Rejected => "rejected",
-            ApprovalStatus::Expired => "expired",
-        }
-    }
-
-    pub fn parse(s: &str) -> Self {
-        match s {
-            "pending" => ApprovalStatus::Pending,
-            "approved" => ApprovalStatus::Approved,
-            "rejected" => ApprovalStatus::Rejected,
-            _ => ApprovalStatus::Expired,
-        }
+        self.into()
     }
 }
 
@@ -388,4 +335,35 @@ pub struct WorkflowSummary {
     pub name: String,
     pub definition: serde_json::Value,
     pub created_at: Timestamp,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enum_text_round_trips_in_snake_case() {
+        assert_eq!(RunStatus::AwaitingApproval.as_str(), "awaiting_approval");
+        assert_eq!(
+            "awaiting_approval".parse::<RunStatus>(),
+            Ok(RunStatus::AwaitingApproval)
+        );
+        assert_eq!(SourceType::CalendarCheck.as_str(), "calendar_check");
+        assert_eq!(
+            "calendar_check".parse::<SourceType>(),
+            Ok(SourceType::CalendarCheck)
+        );
+        assert_eq!(ApprovalStatus::Expired.as_str(), "expired");
+        assert_eq!(
+            "expired".parse::<ApprovalStatus>(),
+            Ok(ApprovalStatus::Expired)
+        );
+    }
+
+    #[test]
+    fn unknown_enum_text_is_an_error_not_a_fallback() {
+        assert!("finished".parse::<RunStatus>().is_err());
+        assert!("robot".parse::<SourceType>().is_err());
+        assert!("maybe".parse::<ApprovalStatus>().is_err());
+    }
 }

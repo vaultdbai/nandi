@@ -1665,8 +1665,10 @@ mod tests {
                     "SELECT conversation_id, source_type FROM runs WHERE id = ?1",
                     [&id],
                     |row| {
-                        let source: String = row.get(1)?;
-                        Ok((row.get(0)?, crate::model::SourceType::parse(&source)))
+                        Ok((
+                            row.get("conversation_id")?,
+                            crate::db::text_enum::<crate::model::SourceType>(row, "source_type")?,
+                        ))
                     },
                 )
             })

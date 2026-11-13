@@ -16,11 +16,13 @@
 //! affinity in SQLite, which would coerce a JSON value like `"123"`.
 
 use std::path::Path;
+use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::types::Type;
+use rusqlite::{params, Connection, OptionalExtension, Row, RowIndex};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -1017,9 +1019,23 @@ fn init_schema(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-fn json_col(row: &Row, index: usize) -> rusqlite::Result<Value> {
+fn json_col(row: &Row, index: impl RowIndex) -> rusqlite::Result<Value> {
     let text: String = row.get(index)?;
     Ok(serde_json::from_str(&text).unwrap_or(Value::Null))
+}
+
+/// Reads a text column holding an enum's stored name (`as_str`). An unknown
+/// value fails the read: a bad row is reported, never silently remapped.
+pub fn text_enum<T>(row: &Row, column: &str) -> rusqlite::Result<T>
+where
+    T: FromStr,
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    let text: String = row.get(column)?;
+    text.parse().map_err(|e| {
+        let index = row.as_ref().column_index(column).unwrap_or_default();
+        rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(e))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1451,25 +1467,25 @@ const RUN_COLUMNS: &str =
 
 fn run_row(row: &Row) -> rusqlite::Result<RunSummary> {
     Ok(RunSummary {
-        id: row.get(0)?,
-        agent_id: row.get(1)?,
-        conversation_id: row.get(2)?,
-        status: RunStatus::parse(&row.get::<_, String>(3)?),
-        input: row.get(4)?,
-        summary: row.get(5)?,
-        started_at: ts(row.get(6)?),
-        ended_at: row.get::<_, Option<i64>>(7)?.map(ts),
-        input_tokens: row.get(8)?,
-        output_tokens: row.get(9)?,
-        cost_usd: row.get(10)?,
-        model: row.get(11)?,
-        source_type: SourceType::parse(&row.get::<_, String>(12)?),
-        source_id: row.get(13)?,
-        source_label: row.get(14)?,
-        priority: row.get(15)?,
-        queued_at: row.get::<_, Option<i64>>(16)?.map(ts),
-        parent_run_id: row.get(17)?,
-        compaction_summary: row.get(18)?,
+        id: row.get("id")?,
+        agent_id: row.get("agent_id")?,
+        conversation_id: row.get("conversation_id")?,
+        status: text_enum(row, "status")?,
+        input: row.get("input")?,
+        summary: row.get("summary")?,
+        started_at: ts(row.get("started_at")?),
+        ended_at: row.get::<_, Option<i64>>("ended_at")?.map(ts),
+        input_tokens: row.get("input_tokens")?,
+        output_tokens: row.get("output_tokens")?,
+        cost_usd: row.get("cost_usd")?,
+        model: row.get("model")?,
+        source_type: text_enum(row, "source_type")?,
+        source_id: row.get("source_id")?,
+        source_label: row.get("source_label")?,
+        priority: row.get("priority")?,
+        queued_at: row.get::<_, Option<i64>>("queued_at")?.map(ts),
+        parent_run_id: row.get("parent_run_id")?,
+        compaction_summary: row.get("compaction_summary")?,
     })
 }
 
@@ -1713,21 +1729,21 @@ const QUEUE_COLUMNS: &str = "id, agent_id, run_id, source_type, source_id, sourc
 const QUEUE_ORDER: &str = "priority ASC, created_at ASC, rowid ASC";
 
 fn queue_row(row: &Row) -> rusqlite::Result<QueueRow> {
-    let attachments: Option<String> = row.get(9)?;
+    let attachments: Option<String> = row.get("attachments")?;
     Ok(QueueRow {
-        id: row.get(0)?,
-        agent_id: row.get(1)?,
-        run_id: row.get(2)?,
-        source_type: SourceType::parse(&row.get::<_, String>(3)?),
-        source_id: row.get(4)?,
-        source_label: row.get(5)?,
-        priority: row.get(6)?,
-        message: row.get(7)?,
-        message_id: row.get(8)?,
+        id: row.get("id")?,
+        agent_id: row.get("agent_id")?,
+        run_id: row.get("run_id")?,
+        source_type: text_enum(row, "source_type")?,
+        source_id: row.get("source_id")?,
+        source_label: row.get("source_label")?,
+        priority: row.get("priority")?,
+        message: row.get("message")?,
+        message_id: row.get("message_id")?,
         attachments: attachments
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default(),
-        created_at: row.get(10)?,
+        created_at: row.get("created_at")?,
     })
 }
 
@@ -1935,17 +1951,17 @@ const APPROVAL_COLUMNS: &str = "id, agent_id, run_id, message_id, tool_call_id, 
 
 fn approval_row(row: &Row) -> rusqlite::Result<ApprovalRow> {
     Ok(ApprovalRow {
-        id: row.get(0)?,
-        agent_id: row.get(1)?,
-        run_id: row.get(2)?,
-        message_id: row.get(3)?,
-        tool_call_id: row.get(4)?,
-        tool: row.get(5)?,
-        args: json_col(row, 6)?,
-        status: ApprovalStatus::parse(&row.get::<_, String>(7)?),
-        created_at: row.get(8)?,
-        expires_at: row.get(9)?,
-        decided_by: row.get(10)?,
+        id: row.get("id")?,
+        agent_id: row.get("agent_id")?,
+        run_id: row.get("run_id")?,
+        message_id: row.get("message_id")?,
+        tool_call_id: row.get("tool_call_id")?,
+        tool: row.get("tool")?,
+        args: json_col(row, "args")?,
+        status: text_enum(row, "status")?,
+        created_at: row.get("created_at")?,
+        expires_at: row.get("expires_at")?,
+        decided_by: row.get("decided_by")?,
     })
 }
 
@@ -2075,8 +2091,8 @@ pub fn approvals_by_call(
     )?;
     let rows = stmt.query_map([conversation_id], |row| {
         Ok((
-            row.get::<_, String>(0)?,
-            ApprovalStatus::parse(&row.get::<_, String>(1)?),
+            row.get::<_, String>("tool_call_id")?,
+            text_enum(row, "status")?,
         ))
     })?;
     rows.collect()
@@ -2290,6 +2306,23 @@ pub(crate) mod tests {
         )
         .unwrap();
         conversation_id
+    }
+
+    #[test]
+    fn a_run_with_an_unknown_status_fails_to_read_instead_of_changing_meaning() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        start_run(&conn, "a", "r1");
+        assert_eq!(
+            get_run(&conn, "r1").unwrap().unwrap().status,
+            RunStatus::Running
+        );
+        conn.execute("UPDATE runs SET status = 'finished' WHERE id = 'r1'", [])
+            .unwrap();
+        assert!(matches!(
+            get_run(&conn, "r1"),
+            Err(rusqlite::Error::FromSqlConversionFailure(3, Type::Text, _))
+        ));
     }
 
     #[test]
