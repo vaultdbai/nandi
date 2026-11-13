@@ -1,8 +1,8 @@
 //! Tauri application library entry point.
 //!
 //! This module serves as the main entry point for the Tauri application.
-//! Command implementations are organized in the `commands` module,
-//! and shared types are in the `types` module.
+//! Commands are declared once in `rpc` (both transports); the desktop-only
+//! ones are in `desktop`. Shared types are in the `types` module.
 
 #[cfg(test)]
 mod approvals_suite;
@@ -14,10 +14,10 @@ mod browser_launch_check;
 mod browser_sites_suite;
 mod cli;
 mod cli_mascot;
-mod commands;
 #[cfg(test)]
 mod connector_hub_suite;
 mod db;
+mod desktop;
 mod engine;
 mod headless;
 mod http;
@@ -107,7 +107,7 @@ pub fn run() {
             tauri_plugin_window_state::Builder::new()
                 .with_state_flags(tauri_plugin_window_state::StateFlags::all())
                 // The companion keeps to a screen corner of its own
-                .with_denylist(&[commands::companion::COMPANION_LABEL])
+                .with_denylist(&[desktop::companion::COMPANION_LABEL])
                 .build(),
         );
     }
@@ -185,7 +185,7 @@ pub fn run() {
 
             // The floating companion: the app's one global hotkey and its
             // pinned state. Its window is declared in tauri.conf.json.
-            commands::companion::setup(app.handle());
+            desktop::companion::setup(app.handle());
 
             // Nandi core: SQLite state, one long-lived orchestrator per agent,
             // and the event bus (fanning out to this webview and to WebSocket
@@ -193,7 +193,7 @@ pub fn run() {
             let state = services::AppState::start(services::Config {
                 app_data_dir,
                 runtime: tauri::async_runtime::handle().inner().clone(),
-                sinks: vec![std::sync::Arc::new(commands::events::TauriSink(
+                sinks: vec![std::sync::Arc::new(desktop::events::TauriSink(
                     app.handle().clone(),
                 ))],
                 secrets: services::secrets::Secrets::keychain(services::APP_IDENTIFIER),
@@ -265,7 +265,7 @@ pub fn run() {
                     }
                     // No Dock to reopen it from: the companion is the way back
                     #[cfg(not(target_os = "macos"))]
-                    commands::companion::show_after_main_closed(app_handle);
+                    desktop::companion::show_after_main_closed(app_handle);
                 }
             }
 

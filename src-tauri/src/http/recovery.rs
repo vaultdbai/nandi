@@ -1,6 +1,6 @@
 //! Emergency-data routes, for the browser. Recovery's errors are typed
 //! ([`RecoveryError`]), which `rpc::commands!` doesn't carry, so these and
-//! the Tauri commands in `commands/recovery.rs` stay hand-written. The error
+//! the Tauri commands in `desktop/recovery.rs` stay hand-written. The error
 //! is sent as-is so the client can match on it.
 
 use axum::extract::{Path, State};

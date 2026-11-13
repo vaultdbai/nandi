@@ -1205,7 +1205,7 @@ fn service(state: &AppState) -> Result<&Arc<CapabilityService>, String> {
         .ok_or_else(|| "Capabilities aren't available".to_string())
 }
 
-// Transport entry points (commands/capabilities.rs, http/capabilities.rs)
+// Transport entry points (rpc/capability.rs)
 
 pub async fn list_capabilities(state: &AppState) -> Result<Vec<CapabilityListing>, String> {
     let service = service(state)?;

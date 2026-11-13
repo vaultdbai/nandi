@@ -450,7 +450,7 @@ fn service(state: &AppState) -> Result<&Arc<ToolService>, String> {
         .ok_or_else(|| "The tool catalog is unavailable".to_string())
 }
 
-// Transport entry points (commands/tools.rs, http/tools.rs)
+// Transport entry points (rpc/tools.rs)
 
 pub async fn list_tools(state: &AppState) -> Result<Vec<ToolEntry>, String> {
     service(state)?.list_all().await

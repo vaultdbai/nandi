@@ -31,7 +31,7 @@
 //! ```
 //!
 //! Commands that need the `AppHandle`, a window or a typed error stay
-//! hand-written in `commands/`.
+//! hand-written in `desktop/`, which says why for each.
 
 use std::future::Future;
 use std::pin::Pin;

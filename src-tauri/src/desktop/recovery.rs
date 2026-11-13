@@ -1,4 +1,6 @@
-//! Recovery commands (Tauri adapter for `services::recovery`).
+//! Recovery commands (`services::recovery`). Hand-written because their
+//! errors are typed ([`RecoveryError`]), which `rpc::commands!` doesn't
+//! carry; the browser calls `http/recovery.rs`.
 
 use serde_json::Value;
 use tauri::State;

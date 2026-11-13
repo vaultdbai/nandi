@@ -9,7 +9,7 @@
 //! carry the offset they were appended at.
 //!
 //! The bus knows nothing about transports: it emits to an [`EventSink`].
-//! The app fans out to the Tauri webview (see `commands::events`) and to
+//! The app fans out to the Tauri webview (see `desktop::events`) and to
 //! WebSocket subscribers ([`BroadcastSink`]).
 
 use std::sync::Arc;

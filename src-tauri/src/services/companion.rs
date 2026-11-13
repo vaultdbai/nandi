@@ -2,7 +2,7 @@
 //! come from Home's queries in the webview; this module keeps the orb's
 //! snapshot, the companion's preferences, and its chat. Showing, hiding,
 //! and pinning the window is Tauri-only, so it lives in
-//! `commands/companion.rs`; this module is transport-independent.
+//! `desktop/companion.rs`; this module is transport-independent.
 //!
 //! The companion's chat is one Studio conversation, created on first use
 //! (titled "Companion", so Studio lists it under that name) and remembered

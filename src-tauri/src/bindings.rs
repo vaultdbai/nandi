@@ -1,7 +1,7 @@
 use tauri_specta::{collect_commands, collect_events, Builder};
 
 pub fn generate_bindings() -> Builder<tauri::Wry> {
-    use crate::commands;
+    use crate::desktop;
     use crate::rpc::{
         access, agents, analysis, ask, attachments, audit, aws_auth, bedrock, capability,
         capability_definitions, capability_registries, chat, companion, config, connectors,
@@ -54,10 +54,10 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         .commands(collect_commands![
             preferences::load_preferences,
             preferences::save_preferences,
-            commands::notifications::send_native_notification,
-            commands::recovery::save_emergency_data,
-            commands::recovery::load_emergency_data,
-            commands::recovery::cleanup_old_recovery_files,
+            desktop::notifications::send_native_notification,
+            desktop::recovery::save_emergency_data,
+            desktop::recovery::load_emergency_data,
+            desktop::recovery::cleanup_old_recovery_files,
             containers::list_containers,
             agents::list_agents,
             agents::list_agent_overviews,
@@ -89,7 +89,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             queue::get_current_turn,
             queue::cancel_queued_run,
             queue::reprioritize_queued_run,
-            commands::attachments::pick_attachments,
+            desktop::attachments::pick_attachments,
             attachments::discard_attachment,
             snapshots::get_agent_snapshot,
             snapshots::get_dashboard_snapshot,
@@ -97,7 +97,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             snapshots::resolve_run_file,
             snapshots::get_run_plan,
             snapshots::get_run_screenshot,
-            commands::snapshots::open_run_file,
+            desktop::run_files::open_run_file,
             snapshots::get_workflows,
             snapshots::get_studio_conversations,
             snapshots::get_conversation,
@@ -231,17 +231,17 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             workflow_builder::save_workflow_yaml,
             marketplace_search::search_marketplace,
             companion::get_companion_snapshot,
-            commands::companion::toggle_companion_window,
-            commands::companion::quit_nandi,
-            commands::companion::place_companion,
-            commands::companion::set_companion_bubble,
+            desktop::companion::toggle_companion_window,
+            desktop::companion::quit_nandi,
+            desktop::companion::place_companion,
+            desktop::companion::set_companion_bubble,
             companion::set_companion_start_bison_only,
             companion::save_companion_pinned,
-            commands::companion::set_companion_pinned,
+            desktop::companion::set_companion_pinned,
             companion::send_companion_message,
             companion::set_companion_notify,
             companion::set_companion_notify_results,
-            commands::companion::companion_focus_request,
+            desktop::companion::companion_focus_request,
             palette::search_palette,
             palette::execute_palette_action,
             // Wave final

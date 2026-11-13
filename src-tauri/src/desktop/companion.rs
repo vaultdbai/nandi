@@ -1,7 +1,7 @@
 //! Companion commands. The window itself (label `companion`, declared in
 //! tauri.conf.json, hidden at start) is Tauri-only, so showing, hiding, and
-//! pinning it happen here; the snapshot and chat are in
-//! `services::companion`.
+//! pinning it happen here; the snapshot, preferences and chat are
+//! `rpc/companion.rs`.
 //!
 //! - Hotkey: [`COMPANION_SHORTCUT`] (Cmd/Ctrl+Shift+Space) toggles the
 //!   window from anywhere; the card opens with the ask box focused. It's

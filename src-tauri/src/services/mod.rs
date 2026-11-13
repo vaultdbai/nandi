@@ -2,8 +2,10 @@
 //!
 //! Nothing in `services/` may use Tauri types (`AppHandle`, `State`, …).
 //! Transports are thin adapters over these functions:
-//! - `commands/` — Tauri IPC for the desktop webview
-//! - `http/` — REST + WebSocket for browsers
+//! - `rpc/`: each command declared once, served over Tauri IPC and
+//!   `POST /api/rpc/{name}`
+//! - `desktop/`: the desktop-only Tauri commands
+//! - `http/`: the web server (RPC, webhooks, `/ws`, the frontend)
 //!
 //! Every service takes `&AppState`.
 
