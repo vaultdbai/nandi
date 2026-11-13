@@ -6,6 +6,8 @@
  */
 import type {
   AgentManifest,
+  ApprovedCategory,
+  ConsentCategory,
   ManifestCapabilities,
   PackManifest,
   PilotDefinition,
@@ -102,16 +104,31 @@ export function permissionPhrases(
   return phrases
 }
 
-/** Every access category an item asks for, for the consent it grants */
-export function consentCategories(
-  capabilities: ManifestCapabilities
-): string[] {
-  const categories: string[] = []
-  if (capabilities.tools.length > 0) categories.push('tools')
-  if (capabilities.network.length > 0) categories.push('network')
-  if (capabilities.aws.length > 0) categories.push('aws')
-  if (capabilities.pilots.length > 0) categories.push('pilots')
-  return categories
+/** The consent categories the install dialog lists, by consent key */
+const SHOWN_AT_INSTALL: Record<string, (c: ManifestCapabilities) => string[]> =
+  {
+    tools: c => c.tools,
+    network: c => c.network,
+    aws: c => c.aws,
+    pilots: c => c.pilots,
+    connectors: c => c.connectors,
+  }
+
+/**
+ * What installing approves: each category whose items the install dialog
+ * listed in full (`shown`). Anything it didn't list (shared folders, tasks
+ * from others, or an item the entry left out) waits for the first run.
+ */
+export function approvedAtInstall(
+  requested: ConsentCategory[],
+  shown: ManifestCapabilities
+): ApprovedCategory[] {
+  return requested
+    .filter(({ key, items }) => {
+      const listed = SHOWN_AT_INSTALL[key]?.(shown)
+      return listed !== undefined && items.every(item => listed.includes(item))
+    })
+    .map(({ key, items }) => ({ key, items }))
 }
 
 /** Everything a pack's agents together ask for */

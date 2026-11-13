@@ -10,7 +10,7 @@ import {
   connectorAction,
   connectorItem,
   connectorPill,
-  consentCategories,
+  approvedAtInstall,
   filterItems,
   itemsForTab,
   kindCounts,
@@ -102,11 +102,24 @@ describe('permissionPhrases', () => {
 })
 
 describe('consent', () => {
-  it('asks for each category it uses', () => {
-    expect(consentCategories(caps({ tools: ['shell'], aws: ['s3'] }))).toEqual([
-      'tools',
-      'aws',
-    ])
+  it('approves at install only what the install dialog listed', () => {
+    const requested = (key: string, items: string[]) => ({
+      key,
+      items,
+      granted: false,
+    })
+    const shown = caps({ tools: ['shell'], connectors: ['filesystem'] })
+    expect(
+      approvedAtInstall(
+        [
+          requested('tools', ['shell']),
+          requested('connectors', ['filesystem', 'github']),
+          requested('folders', ['docs:write']),
+          requested('delegation', ['accepts_delegation']),
+        ],
+        shown
+      )
+    ).toEqual([{ key: 'tools', items: ['shell'] }])
   })
 
   it('unions what a pack’s agents ask for', () => {

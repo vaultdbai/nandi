@@ -23,6 +23,9 @@ const CATEGORY_LABELS = {
   network: 'marketplace.consent.network',
   aws: 'marketplace.consent.aws',
   pilots: 'marketplace.consent.pilots',
+  connectors: 'marketplace.consent.connectors',
+  folders: 'marketplace.consent.folders',
+  delegation: 'marketplace.consent.delegation',
 } as const
 
 const isCategory = (key: string): key is keyof typeof CATEGORY_LABELS =>
@@ -70,7 +73,12 @@ function ConsentForm({
 
   const allow = async () => {
     setSaving(true)
-    const updated = await grantConsent(status.agentId, checked)
+    const updated = await grantConsent(
+      status.agentId,
+      status.categories
+        .filter(category => checked.includes(category.key))
+        .map(({ key, items }) => ({ key, items }))
+    )
     setSaving(false)
     if (!updated) return
     queryClient.setQueryData(
@@ -93,9 +101,12 @@ function ConsentForm({
       <ul className="grid gap-3">
         {status.categories.map(category => {
           const id = `consent-${category.key}`
-          const items = category.items.includes('*')
-            ? t('marketplace.consent.allTools')
-            : category.items.join(', ')
+          const items =
+            category.key === 'delegation'
+              ? t('marketplace.consent.delegationItems')
+              : category.items.includes('*')
+                ? t('marketplace.consent.allTools')
+                : category.items.join(', ')
           return (
             <li key={category.key} className="flex items-start gap-3">
               <Checkbox

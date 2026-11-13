@@ -1,6 +1,6 @@
 //! Marketplace commands (Tauri adapter for `services::marketplace`).
 
-use crate::services::marketplace::consent::ConsentStatus;
+use crate::services::marketplace::consent::{ApprovedCategory, ConsentStatus};
 use crate::services::marketplace::install::{
     AppliedUpdate, InstalledAgentInfo, InstalledItem, InstalledPackInfo, UpdateAvailable,
 };
@@ -45,7 +45,7 @@ super::commands! {
 
     fn get_agent_consent(state, agent_id: String) -> ConsentStatus => marketplace::get_agent_consent(&state, &agent_id).await;
 
-    fn grant_agent_consent(state, agent_id: String, categories: Vec<String>) -> ConsentStatus => marketplace::grant_agent_consent(&state, &agent_id, categories).await;
+    fn grant_agent_consent(state, agent_id: String, approved: Vec<ApprovedCategory>) -> ConsentStatus => marketplace::grant_agent_consent(&state, &agent_id, approved).await;
 
     fn list_registries(state) -> Vec<RegistryInfo> => marketplace::list_registries(&state).await;
 

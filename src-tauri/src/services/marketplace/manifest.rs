@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::services::domain::installed::{check_repo_path, check_source};
+use crate::services::domain::settings::AgentConsent;
 use crate::services::domain::{AgentId, PackId, PublisherHandle, WorkflowId};
 
 /// This app's version, for `min_nandi_version`.
@@ -84,6 +85,24 @@ pub struct ManifestCapabilities {
 }
 
 impl ManifestCapabilities {
+    /// Adds what one agent requests (its first-use consent items) to the
+    /// list, each item once.
+    pub fn include(&mut self, requested: AgentConsent) {
+        for (into, items) in [
+            (&mut self.tools, requested.tools),
+            (&mut self.network, requested.network),
+            (&mut self.aws, requested.aws),
+            (&mut self.pilots, requested.pilots),
+            (&mut self.connectors, requested.connectors),
+        ] {
+            for item in items {
+                if !into.contains(&item) {
+                    into.push(item);
+                }
+            }
+        }
+    }
+
     fn check(&self, what: &str) -> Result<(), String> {
         let lists = [
             &self.tools,

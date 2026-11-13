@@ -83,7 +83,10 @@ describe('SharedAgentBanner', () => {
     await userEvent.click(allow)
     expect(commands.grantAgentConsent).toHaveBeenCalledWith(
       'arxiv-researcher',
-      ['tools', 'network']
+      [
+        { key: 'tools', items: ['shell', 'read_file'] },
+        { key: 'network', items: ['export.arxiv.org'] },
+      ]
     )
     expect(
       screen.queryByRole('button', { name: 'Review and allow' })

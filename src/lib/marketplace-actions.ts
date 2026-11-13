@@ -5,6 +5,7 @@ import { client } from '@/lib/client'
 import { logger } from '@/lib/logger'
 import { queryClient } from '@/lib/query-client'
 import type {
+  ApprovedCategory,
   CommunityRegistry,
   ConsentStatus,
   PublishAgentInput,
@@ -176,14 +177,15 @@ export async function forkAgent(
 }
 
 /**
- * Approves capability categories for a marketplace agent's first run.
- * Returns the new status, or `null` if it couldn't be saved.
+ * Approves capability categories for a marketplace agent's first run, with
+ * the items the user was shown: nothing else is approved. Returns the new
+ * status, or `null` if it couldn't be saved.
  */
 export async function grantConsent(
   agentId: string,
-  categories: string[]
+  approved: ApprovedCategory[]
 ): Promise<ConsentStatus | null> {
-  const result = await client.grantAgentConsent(agentId, categories)
+  const result = await client.grantAgentConsent(agentId, approved)
   if (result.status === 'error') {
     toast.error(i18n.t('marketplace.consentFailed'), {
       description: result.error,

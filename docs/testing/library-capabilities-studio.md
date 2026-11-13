@@ -112,13 +112,13 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 
 ### LB-10 — Marketplace agent read-only banner and first-use consent
 
-- **What:** Every marketplace agent's page shows `SharedAgentBanner`: it's read-only (from pack X / publisher Y), offers **Fork**, and until consent is granted shows **Review and allow**, opening "Allow <name> to run?" (`ConsentDialog`) where each requested category must be ticked before **Allow**. The backend refuses to run an unconsented marketplace agent from chat, workflows or triggers.
+- **What:** Every marketplace agent's page shows `SharedAgentBanner`: it's read-only (from pack X / publisher Y), offers **Fork**, and until consent is granted shows **Review and allow**, opening "Allow <name> to run?" (`ConsentDialog`) where each requested category (tools, network hosts, AWS, pilots, connectors, shared folders with `:read`/`:write`, tasks from others) must be ticked before **Allow**. The backend refuses to run an unconsented marketplace agent from chat, workflows or triggers.
 - **Where:** Agent page of an installed marketplace agent. `src/components/marketplace/SharedAgentBanner.tsx`, `ConsentDialog.tsx`; `src-tauri/src/services/marketplace/consent.rs` (`status`, `check`, `grant`, `forget`), enforced from `services/chat.rs`. HTTP `POST /api/rpc/get_agent_consent|grant_agent_consent`.
 - **Preconditions:** A marketplace agent installed without consent (e.g. via API install, or a newer version requesting more).
 - **Steps:** 1. Install via `POST /api/rpc/install_agent` (no consent). 2. Send it a message. 3. Open its page → Review and allow → tick all → Allow. 4. Send again.
 - **Expected:** Step 2 fails with "<name> is a marketplace agent and needs your approval before it runs (<categories>). Open it to review what it can do." Allow is disabled until every category is ticked; after Allow the message runs and the banner's consent row disappears.
-- **Edge / negative cases:** Editing the agent (save) is refused: "The agent '<id>' is shared from the marketplace and is read-only. Fork it to customize."; delete refused ("'<id>' is installed from the marketplace. Uninstall it from the Marketplace's Installed tab.": the message names a tab that no longer exists, use Library › Installed).
-- **Automation:** Covered by: `src/components/marketplace/SharedAgentBanner.test.tsx`; Rust `consent.rs` tests (2) | Layer: api | Gap: trigger-run refusal test.
+- **Edge / negative cases:** An update that adds a connector or folder, makes a read-only folder writable, or turns on `accepts_delegation` asks again; one that narrows a folder to read does not. Allow records only the items the dialog showed. Editing the agent (save) is refused: "The agent '<id>' is shared from the marketplace and is read-only. Fork it to customize."; delete refused ("'<id>' is installed from the marketplace. Uninstall it from the Marketplace's Installed tab.": the message names a tab that no longer exists, use Library › Installed).
+- **Automation:** Covered by: `src/components/marketplace/SharedAgentBanner.test.tsx`; Rust `consent.rs` tests (6) | Layer: api | Gap: trigger-run refusal test.
 - **Needs relay:** no
 - **Status:** Shipped
 

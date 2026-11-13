@@ -1051,14 +1051,15 @@ pub async fn get_agent_consent(
     blocking(move || consent::status(&store, &id)).await
 }
 
-/// Approves the given capability categories for a marketplace agent.
+/// Approves the capability categories the user was shown, with their
+/// items, for a marketplace agent.
 pub async fn grant_agent_consent(
     state: &AppState,
     agent_id: &str,
-    categories: Vec<String>,
+    approved: Vec<consent::ApprovedCategory>,
 ) -> Result<consent::ConsentStatus, String> {
     let (store, id) = (state.store().clone(), agent_id.to_string());
-    blocking(move || consent::grant(&store, &id, &categories)).await
+    blocking(move || consent::grant(&store, &id, &approved)).await
 }
 
 // -- Registries -----------------------------------------------------------------

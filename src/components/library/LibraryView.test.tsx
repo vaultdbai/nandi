@@ -150,7 +150,12 @@ describe('Library', () => {
       agentName: 'Writer',
       required: true,
       satisfied: false,
-      categories: [{ key: 'tools' }, { key: 'network' }],
+      categories: [
+        { key: 'tools', items: ['shell', 'read_file'] },
+        { key: 'network', items: ['arxiv.org'] },
+        // Not in the install dialog: asked on the first run
+        { key: 'folders', items: ['docs:write'] },
+      ],
     } as unknown as ConsentStatus
     Object.assign(commands, { getAgentConsent: ok(consent) })
     const user = userEvent.setup()
@@ -162,8 +167,8 @@ describe('Library', () => {
     await user.click(dialog.getByRole('button', { name: 'Install anyway' }))
     await waitFor(() =>
       expect(commands.grantAgentConsent).toHaveBeenCalledWith('writer', [
-        'tools',
-        'network',
+        { key: 'tools', items: ['shell', 'read_file'] },
+        { key: 'network', items: ['arxiv.org'] },
       ])
     )
     expect(commands.installAgent).toHaveBeenCalledWith('writer')

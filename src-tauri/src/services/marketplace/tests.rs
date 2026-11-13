@@ -562,8 +562,15 @@ async fn the_latest_version_across_registries_is_the_one_installed() {
         .await
         .unwrap();
     assert!(consent.required && !consent.satisfied);
-    let categories = consent.categories.iter().map(|c| c.key.clone()).collect();
-    let consent = marketplace::grant_agent_consent(&state, "arxiv", categories)
+    let shown = consent
+        .categories
+        .iter()
+        .map(|c| marketplace::consent::ApprovedCategory {
+            key: c.key.clone(),
+            items: c.items.clone(),
+        })
+        .collect();
+    let consent = marketplace::grant_agent_consent(&state, "arxiv", shown)
         .await
         .unwrap();
     assert!(consent.satisfied);

@@ -64,6 +64,7 @@ export function InstallConsentDialog({
       name: entry.item.name,
       agentIds: target.agentIds,
       localPath,
+      shown: target.capabilities,
     })
     setInstalling(false)
     if (done) onOpenChange(false)

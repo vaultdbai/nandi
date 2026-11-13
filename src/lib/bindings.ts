@@ -897,9 +897,9 @@ async getAgentConsent(agentId: string) : Promise<Result<ConsentStatus, string>> 
     else return { status: "error", error: e  as any };
 }
 },
-async grantAgentConsent(agentId: string, categories: string[]) : Promise<Result<ConsentStatus, string>> {
+async grantAgentConsent(agentId: string, approved: ApprovedCategory[]) : Promise<Result<ConsentStatus, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("grant_agent_consent", { agentId, categories }) };
+    return { status: "ok", data: await TAURI_INVOKE("grant_agent_consent", { agentId, approved }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -4078,13 +4078,13 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
-export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
-export const DAILY_LIMIT = "daily_limit" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
-export const PEER_KEY_CHANGED = "peer_key_changed" as const;
-export const NO_SHARED_GROUP = "no_shared_group" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
+export const NO_SHARED_GROUP = "no_shared_group" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const DAILY_LIMIT = "daily_limit" as const;
+export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 
 /** user-defined types **/
 
@@ -4586,6 +4586,10 @@ export type ApprovalStatus = "pending" | "approved" | "rejected" |
  * The run ended (e.g. was cancelled) before a decision
  */
 "expired"
+/**
+ * A category the user approved, with the items the dialog showed them.
+ */
+export type ApprovedCategory = { key: string; items: string[] }
 /**
  * An artifact opened for editing
  */
@@ -5472,11 +5476,12 @@ export type ConnectorsChanged = Record<string, never>
  */
 export type ConsentCategory = { 
 /**
- * tools | network | aws | pilots
+ * tools | network | aws | pilots | connectors | folders | delegation
  */
 key: string; 
 /**
- * What the agent requests (`*` in tools: every tool)
+ * What the agent requests (`*` in tools: every tool; `docs:write` in
+ * folders: the folder `docs`, read and write)
  */
 items: string[]; 
 /**

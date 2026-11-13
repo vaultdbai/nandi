@@ -304,6 +304,15 @@ pub struct AgentConsent {
     pub aws: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pilots: Vec<String>,
+    /// Connector IDs from Library › Tools
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub connectors: Vec<String>,
+    /// Shared folders with their access, `<id>:read` or `<id>:write`
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub folders: Vec<String>,
+    /// It takes tasks from other agents and teammates
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub accepts_delegation: bool,
 }
 
 /// My delegation preferences. Personal: they follow me across my devices
@@ -723,6 +732,8 @@ secret_refs:
         let consent = AgentConsent {
             tools: vec!["shell".into()],
             network: vec!["export.arxiv.org".into()],
+            folders: vec!["docs:write".into()],
+            accepts_delegation: true,
             ..Default::default()
         };
         settings.set_consent("arxiv", consent.clone()).unwrap();

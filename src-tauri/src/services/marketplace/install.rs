@@ -357,15 +357,6 @@ fn read_local_pack(source: &LocalPackSource) -> Result<(PackId, PackContents), S
     Ok((id, pack))
 }
 
-/// Adds the `items` not already in `into`
-fn merge(into: &mut Vec<String>, items: Vec<String>) {
-    for item in items {
-        if !into.contains(&item) {
-            into.push(item);
-        }
-    }
-}
-
 fn newer_nandi(name: &str, min: &str) -> String {
     format!(
         "{name} needs Nandi {min} or newer (this is {NANDI_VERSION}). Update Nandi to install it."
@@ -548,11 +539,7 @@ impl Installer {
                 .filter_map(|(p, b)| Some((p.strip_prefix(&prefix)?.to_string(), b.clone())))
                 .collect();
             let (agent, _) = validate_agent(agent_id, &own)?;
-            let requested = super::consent::requested(&agent);
-            merge(&mut capabilities.tools, requested.tools);
-            merge(&mut capabilities.network, requested.network);
-            merge(&mut capabilities.aws, requested.aws);
-            merge(&mut capabilities.pilots, requested.pilots);
+            capabilities.include(super::consent::requested(&agent));
             agents.push(PackAgentSummary {
                 id: agent_id.to_string(),
                 name: agent.name().to_string(),
