@@ -50,7 +50,6 @@ export type {
   AwsServiceGrant,
   Capabilities,
   ChatMessage,
-  ContainerInfo,
   ContainerState,
   ContainerStatus,
   ConversationSnapshot,

@@ -5,12 +5,12 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::rpc::{
         access, agents, analysis, ask, attachments, audit, aws_auth, bedrock, capability,
         capability_definitions, capability_registries, chat, companion, config, connectors,
-        containers, decisions, delegation, delegation_clarification, egress, email, gateway,
-        groups, harness_sessions, harnesses, help, identity, images, knowme, live, llm_keys,
-        machine, manual_steps, marketplace, marketplace_search, mascot, memory, network, notes,
-        palette, pilots, policies, preferences, queue, reassign, relay, relay_capabilities, remote,
-        repo, requests, runs, shared, snapshots, studio, tasks, teams, teams_roster, tools,
-        triggers, work, workflow_builder, workflows, workspace,
+        decisions, delegation, delegation_clarification, egress, email, gateway, groups,
+        harness_sessions, harnesses, help, identity, images, knowme, live, llm_keys, machine,
+        manual_steps, marketplace, marketplace_search, mascot, memory, network, notes, palette,
+        pilots, policies, preferences, queue, reassign, relay, relay_capabilities, remote, repo,
+        requests, runs, shared, snapshots, studio, tasks, teams, teams_roster, tools, triggers,
+        work, workflow_builder, workflows, workspace,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;
@@ -58,7 +58,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             desktop::recovery::save_emergency_data,
             desktop::recovery::load_emergency_data,
             desktop::recovery::cleanup_old_recovery_files,
-            containers::list_containers,
             agents::list_agents,
             agents::list_agent_overviews,
             agents::create_agent,

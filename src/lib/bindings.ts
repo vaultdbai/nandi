@@ -61,17 +61,6 @@ async cleanupOldRecoveryFiles() : Promise<Result<number, RecoveryError>> {
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Lists all containers (running and stopped) on the local Docker daemon
- */
-async listContainers() : Promise<Result<ContainerInfo[], string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("list_containers") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async listAgents() : Promise<Result<AgentInfo[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_agents") };
@@ -4089,12 +4078,12 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const SEAL_REFUSED = "seal_refused" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
-export const NO_SHARED_GROUP = "no_shared_group" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const DAILY_LIMIT = "daily_limit" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const NO_SHARED_GROUP = "no_shared_group" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
 
 /** user-defined types **/
@@ -5507,22 +5496,6 @@ satisfied: boolean;
  * The categories it requests (empty ones left out)
  */
 categories: ConsentCategory[] }
-/**
- * Summary of a Docker container, as shown in the UI.
- */
-export type ContainerInfo = { 
-/**
- * Short (12-char) container ID
- */
-id: string; name: string; image: string; 
-/**
- * Docker state, e.g. "running", "exited"
- */
-state: string; 
-/**
- * Human-readable status, e.g. "Up 2 hours"
- */
-status: string }
 /**
  * An agent's container as last seen by Nandi. A container stopped outside
  * Nandi is noticed by the reconciler (see [`AgentRuntimes::reconcile`]).

@@ -130,7 +130,6 @@ pub mod chat;
 pub mod companion;
 pub mod config;
 pub mod connectors;
-pub mod containers;
 pub mod decisions;
 pub mod delegation;
 pub mod delegation_clarification;
@@ -202,7 +201,6 @@ const TABLES: &[&[(&str, Handler)]] = &[
     companion::RPC,
     config::RPC,
     connectors::RPC,
-    containers::RPC,
     decisions::RPC,
     delegation::RPC,
     delegation_clarification::RPC,
