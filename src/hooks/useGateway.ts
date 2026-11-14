@@ -4,10 +4,11 @@
  * (`useGatewayEvents`).
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { CallerPolicy, GatewayManifest, TaskRecord } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Everything gateway-related lives under `['gateway']` */
 export const gatewayQueryKeys = {
@@ -60,35 +61,32 @@ export function parseList(text: string): string[] {
 }
 
 export function useGatewayStatus() {
-  return useQuery({
-    queryKey: gatewayQueryKeys.status,
-    queryFn: async () => unwrapResult(await client.getGatewayStatus()),
-    refetchInterval: 30_000,
-  })
+  return useClientQuery(
+    gatewayQueryKeys.status,
+    () => client.getGatewayStatus(),
+    { refetchInterval: 30_000 }
+  )
 }
 
 export function useGatewayManifest() {
-  return useQuery({
-    queryKey: gatewayQueryKeys.manifest,
-    queryFn: async () => unwrapResult(await client.getGatewayManifest()),
-  })
+  return useClientQuery(gatewayQueryKeys.manifest, () =>
+    client.getGatewayManifest()
+  )
 }
 
 export function useGatewayCallers() {
-  return useQuery({
-    queryKey: gatewayQueryKeys.callers,
-    queryFn: async () => unwrapResult(await client.listGatewayCallers()),
-  })
+  return useClientQuery(gatewayQueryKeys.callers, () =>
+    client.listGatewayCallers()
+  )
 }
 
 /** This month's use by one caller */
 export function useGatewayUsage(callerInstance: string) {
-  return useQuery({
-    queryKey: gatewayQueryKeys.usage(callerInstance),
-    queryFn: async () =>
-      unwrapResult(await client.getGatewayUsage(callerInstance)),
-    enabled: callerInstance.length > 0,
-  })
+  return useClientQuery(
+    gatewayQueryKeys.usage(callerInstance),
+    () => client.getGatewayUsage(callerInstance),
+    { enabled: callerInstance.length > 0 }
+  )
 }
 
 /**
@@ -120,8 +118,7 @@ export function useIncomingTasks() {
  */
 export function useMakeGatewayReachable() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async () => unwrapResult(await client.makeGatewayReachable()),
+  return useClientMutation(() => client.makeGatewayReachable(), {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: gatewayQueryKeys.all }),
   })
@@ -130,35 +127,42 @@ export function useMakeGatewayReachable() {
 /** Saves all of NANDI.md: frontmatter and body */
 export function useSetGatewayManifest() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (manifest: GatewayManifest) =>
-      unwrapResult(await client.setGatewayManifest(manifest)),
-    onSuccess: saved => {
-      queryClient.setQueryData(gatewayQueryKeys.manifest, saved)
-      void queryClient.invalidateQueries({ queryKey: gatewayQueryKeys.status })
-      void queryClient.invalidateQueries({ queryKey: gatewayQueryKeys.config })
-    },
-  })
+  return useClientMutation(
+    (manifest: GatewayManifest) => client.setGatewayManifest(manifest),
+    {
+      onSuccess: saved => {
+        queryClient.setQueryData(gatewayQueryKeys.manifest, saved)
+        void queryClient.invalidateQueries({
+          queryKey: gatewayQueryKeys.status,
+        })
+        void queryClient.invalidateQueries({
+          queryKey: gatewayQueryKeys.config,
+        })
+      },
+    }
+  )
 }
 
 export function useSetCallerPolicy() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (policy: CallerPolicy) =>
-      unwrapResult(await client.setCallerPolicy(policy)),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: gatewayQueryKeys.callers }),
-  })
+  return useClientMutation(
+    (policy: CallerPolicy) => client.setCallerPolicy(policy),
+    {
+      onSuccess: () =>
+        queryClient.invalidateQueries({ queryKey: gatewayQueryKeys.callers }),
+    }
+  )
 }
 
 export function useRemoveCallerPolicy() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (callerInstance: string) =>
-      unwrapResult(await client.removeCallerPolicy(callerInstance)),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: gatewayQueryKeys.callers }),
-  })
+  return useClientMutation(
+    (callerInstance: string) => client.removeCallerPolicy(callerInstance),
+    {
+      onSuccess: () =>
+        queryClient.invalidateQueries({ queryKey: gatewayQueryKeys.callers }),
+    }
+  )
 }
 
 /** Refreshes the gateway queries when the core reports a change */
@@ -197,8 +201,5 @@ export function useGatewayEvents() {
  * Nothing is cached: the conversation lives in the chat panel.
  */
 export function useGatewayChat() {
-  return useMutation({
-    mutationFn: async (message: string) =>
-      unwrapResult(await client.gatewayChat(message)),
-  })
+  return useClientMutation((message: string) => client.gatewayChat(message))
 }

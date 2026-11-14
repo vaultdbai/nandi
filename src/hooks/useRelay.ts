@@ -1,11 +1,11 @@
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { inviteLine } from '@/components/network/relay-invite'
 import { client } from '@/lib/client'
 import type { AgentCard, RelayStatus } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Everything relay-related lives under `['relay']` */
 export const relayQueryKeys = {
@@ -27,25 +27,25 @@ export const PUBLIC_RELAY_OFFER_KEY = ['publicRelay', 'offer'] as const
  * again" refetches.
  */
 export function usePublicRelayOffer(enabled = true) {
-  return useQuery({
-    queryKey: PUBLIC_RELAY_OFFER_KEY,
-    queryFn: async () => unwrapResult(await client.getPublicRelayOffer()),
-    enabled,
-    retry: false,
-    staleTime: 30_000,
-  })
+  return useClientQuery(
+    PUBLIC_RELAY_OFFER_KEY,
+    () => client.getPublicRelayOffer(),
+    { enabled, retry: false, staleTime: 30_000 }
+  )
 }
 
 /** The public-relay account this Nandi is signed in with */
 export function usePublicRelayAccount(enabled: boolean) {
-  return useQuery({
-    queryKey: relayQueryKeys.publicAccount,
-    queryFn: async () => unwrapResult(await client.getPublicRelayAccount()),
-    enabled,
-    retry: false,
-    // Today's usage moves as people send
-    refetchInterval: enabled ? 60_000 : false,
-  })
+  return useClientQuery(
+    relayQueryKeys.publicAccount,
+    () => client.getPublicRelayAccount(),
+    {
+      enabled,
+      retry: false,
+      // Today's usage moves as people send
+      refetchInterval: enabled ? 60_000 : false,
+    }
+  )
 }
 
 /** Cards grouped by the capabilities they serve, capabilities sorted */
@@ -90,14 +90,12 @@ export function filterAgents(cards: AgentCard[], search: string): AgentCard[] {
 export function useRelay() {
   const queryClient = useQueryClient()
 
-  const status = useQuery({
-    queryKey: relayQueryKeys.status,
-    queryFn: async () => unwrapResult(await client.getRelayStatus()),
-  })
-  const agents = useQuery({
-    queryKey: relayQueryKeys.agents(null),
-    queryFn: async () => unwrapResult(await client.listOnlineAgents(null)),
-  })
+  const status = useClientQuery(relayQueryKeys.status, () =>
+    client.getRelayStatus()
+  )
+  const agents = useClientQuery(relayQueryKeys.agents(null), () =>
+    client.listOnlineAgents(null)
+  )
 
   useEffect(() => {
     const subscription = client.subscribe(event => {
@@ -156,27 +154,21 @@ export function useRelayConnected(): boolean | undefined {
 export const RELAY_TRUST_KEY = ['trust', 'relay'] as const
 
 export function useRelayTrust() {
-  return useQuery({
-    queryKey: RELAY_TRUST_KEY,
-    queryFn: async () => unwrapResult(await client.getRelayTrust()),
-  })
+  return useClientQuery(RELAY_TRUST_KEY, () => client.getRelayTrust())
 }
 
 /** This Nandi's instance ID (`null` until the status is read) */
 export function useOwnInstanceId(): string | null {
-  const status = useQuery({
-    queryKey: relayQueryKeys.status,
-    queryFn: async () => unwrapResult(await client.getRelayStatus()),
-  })
+  const status = useClientQuery(relayQueryKeys.status, () =>
+    client.getRelayStatus()
+  )
   return status.data?.instanceId ?? null
 }
 
 /** Saves the relay URL (empty: no relay); the core reconnects */
 export function useSetRelayUrl() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (url: string) =>
-      unwrapResult(await client.setRelayUrl(url.trim())),
+  return useClientMutation((url: string) => client.setRelayUrl(url.trim()), {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: relayQueryKeys.all }),
   })
@@ -189,22 +181,16 @@ export function useSetRelayUrl() {
  */
 export function useJoinRelay() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
-      url,
-      joinCode,
-    }: {
-      url: string
-      joinCode?: string | null
-    }) =>
-      unwrapResult(
-        await client.joinRelay(url.trim(), joinCode?.trim() || null)
-      ),
-    onSuccess: outcome => {
-      if (outcome.kind === 'joined')
-        void queryClient.invalidateQueries({ queryKey: relayQueryKeys.all })
-    },
-  })
+  return useClientMutation(
+    ({ url, joinCode }: { url: string; joinCode?: string | null }) =>
+      client.joinRelay(url.trim(), joinCode?.trim() || null),
+    {
+      onSuccess: outcome => {
+        if (outcome.kind === 'joined')
+          void queryClient.invalidateQueries({ queryKey: relayQueryKeys.all })
+      },
+    }
+  )
 }
 
 /**
@@ -243,19 +229,20 @@ export function useCopyInvite() {
  * learned from presence.
  */
 export function useRelayInstances(connected: boolean) {
-  return useQuery({
-    queryKey: relayQueryKeys.instances,
-    queryFn: async () => unwrapResult(await client.getRelayInstances()),
-    enabled: connected,
-    refetchInterval: connected ? 10_000 : false,
-    retry: false,
-  })
+  return useClientQuery(
+    relayQueryKeys.instances,
+    () => client.getRelayInstances(),
+    {
+      enabled: connected,
+      refetchInterval: connected ? 10_000 : false,
+      retry: false,
+    }
+  )
 }
 
 /** "Test connection": the round trip in ms, or the exact error */
 export function useTestRelayConnection() {
-  return useMutation({
-    mutationFn: async (url: string) =>
-      unwrapResult(await client.testRelayConnection(url.trim())),
-  })
+  return useClientMutation((url: string) =>
+    client.testRelayConnection(url.trim())
+  )
 }
