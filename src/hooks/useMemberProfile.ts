@@ -3,7 +3,7 @@
  * refetches the profiles, the directory, rosters, and the shared lists
  * (a blocked agent or a paused member drops out of them).
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type {
   MemberProfile,
@@ -16,16 +16,15 @@ import {
   rosterQueryKeys,
   useMemberEvents,
 } from './useNetwork'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 export function useMemberProfile(instanceId: string) {
   useMemberEvents()
-  return useQuery({
-    queryKey: memberQueryKeys.byInstance(instanceId),
-    queryFn: (): Promise<MemberProfile> =>
-      client.getMemberByInstance(instanceId).then(unwrapResult),
-    enabled: instanceId !== '',
-  })
+  return useClientQuery(
+    memberQueryKeys.byInstance(instanceId),
+    () => client.getMemberByInstance(instanceId),
+    { enabled: instanceId !== '' }
+  )
 }
 
 /** The agent ID part of a card ID (`<instance>/<agent>`) */
@@ -70,49 +69,41 @@ function useTrustCallbacks() {
  */
 export function useAcceptPeerKey() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (instanceId: string) =>
-      client.acceptPeerKey(instanceId).then(unwrapResult),
-    onSettled: (_key, _error, instanceId) =>
-      queryClient.invalidateQueries({
-        queryKey: memberQueryKeys.byInstance(instanceId),
-      }),
-  })
+  return useClientMutation(
+    (instanceId: string) => client.acceptPeerKey(instanceId),
+    {
+      onSettled: (_key, _error, instanceId) =>
+        queryClient.invalidateQueries({
+          queryKey: memberQueryKeys.byInstance(instanceId),
+        }),
+    }
+  )
 }
 
 /** Trusted peer and paused delegations; `null` fields keep their value */
 export function useSetTrustRelationship() {
-  return useMutation({
-    mutationFn: (change: { instanceId: string; update: TrustUpdate }) =>
-      client
-        .setTrustRelationship(change.instanceId, change.update)
-        .then(unwrapResult),
-    ...useTrustCallbacks(),
-  })
+  return useClientMutation(
+    (change: { instanceId: string; update: TrustUpdate }) =>
+      client.setTrustRelationship(change.instanceId, change.update),
+    useTrustCallbacks()
+  )
 }
 
 /** Blocks (or, with `blocked: false`, unblocks) one of a member's agents */
 export function useBlockAgentFromMember() {
-  return useMutation({
-    mutationFn: (change: {
-      instanceId: string
-      agentId: string
-      blocked: boolean
-    }) =>
-      (change.blocked
+  return useClientMutation(
+    (change: { instanceId: string; agentId: string; blocked: boolean }) =>
+      change.blocked
         ? client.blockAgentFromMember(change.instanceId, change.agentId)
-        : client.unblockAgentFromMember(change.instanceId, change.agentId)
-      ).then(unwrapResult),
-    ...useTrustCallbacks(),
-  })
+        : client.unblockAgentFromMember(change.instanceId, change.agentId),
+    useTrustCallbacks()
+  )
 }
 
 export function usePauseDelegationsFromMember() {
-  return useMutation({
-    mutationFn: (change: { instanceId: string; paused: boolean }) =>
-      client
-        .pauseDelegationsFromMember(change.instanceId, change.paused)
-        .then(unwrapResult),
-    ...useTrustCallbacks(),
-  })
+  return useClientMutation(
+    (change: { instanceId: string; paused: boolean }) =>
+      client.pauseDelegationsFromMember(change.instanceId, change.paused),
+    useTrustCallbacks()
+  )
 }

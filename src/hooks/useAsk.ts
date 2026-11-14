@@ -6,11 +6,11 @@
  * the history (`useAskHistory`).
  */
 import { useEffect, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import { FOLLOWUPS_MARKER } from '@/lib/ask'
 import type { ActionPlan, AskContext, AskResponse } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 
 export interface AskTurn {
   /** Client-side ID; a newer ask replaces an older pending one */
@@ -164,8 +164,7 @@ export function useAsk(
 
 /** Recent asks, newest first */
 export function useAskHistory(limit = 20) {
-  return useQuery({
-    queryKey: askKeys.history(limit),
-    queryFn: async () => unwrapResult(await client.listAskHistory(limit)),
-  })
+  return useClientQuery(askKeys.history(limit), () =>
+    client.listAskHistory(limit)
+  )
 }

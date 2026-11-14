@@ -2,16 +2,11 @@
  * Teams and their registries, kept live by `team://changed`.
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type {
-  AgentCard,
-  ShareResult,
-  TaskResult,
-  Team,
-  TeamDetail,
-} from '@/lib/bindings'
+import type { AgentCard, ShareResult, TaskResult, Team } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 
 export const teamsQueryKeys = {
   all: ['teams'] as const,
@@ -38,20 +33,16 @@ function useTeamEvents() {
 /** The teams I'm in */
 export function useTeams() {
   useTeamEvents()
-  return useQuery({
-    queryKey: teamsQueryKeys.list,
-    queryFn: (): Promise<Team[]> => client.listTeams().then(unwrapResult),
-  })
+  return useClientQuery(teamsQueryKeys.list, () => client.listTeams())
 }
 
 /** One team with its registry's agents and packs */
 export function useTeam(teamId: string | null) {
-  return useQuery({
-    queryKey: teamsQueryKeys.detail(teamId ?? ''),
-    queryFn: (): Promise<TeamDetail> =>
-      client.getTeam(teamId ?? '').then(unwrapResult),
-    enabled: teamId !== null,
-  })
+  return useClientQuery(
+    teamsQueryKeys.detail(teamId ?? ''),
+    () => client.getTeam(teamId ?? ''),
+    { enabled: teamId !== null }
+  )
 }
 
 export type TeamAction = 'create' | 'join' | 'leave' | 'sync'

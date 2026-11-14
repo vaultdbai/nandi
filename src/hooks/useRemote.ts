@@ -2,11 +2,11 @@
  * The optional git remote: status, configure, push, pull. Kept live by
  * `remote://*` events. Pushes only ever go to `<prefix>/<slug>`.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client, type NandiEventName } from '@/lib/client'
 import { useInvalidateOn } from '@/hooks/useInvalidateOn'
-import type { RemoteCredential, RemoteStatus } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import type { RemoteCredential } from '@/lib/bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Everything remote-related lives under `['remote']` */
 export const remoteQueryKeys = {
@@ -37,19 +37,16 @@ export function useRemoteStatus() {
   // The slug names the target branch
   useInvalidateOn(IDENTITY_EVENTS, remoteQueryKeys.status)
 
-  return useQuery<RemoteStatus>({
-    queryKey: remoteQueryKeys.status,
-    queryFn: async () => unwrapResult(await client.getRemoteStatus()),
-  })
+  return useClientQuery(remoteQueryKeys.status, () => client.getRemoteStatus())
 }
 
 /** Branch names on the remote (only when one is configured) */
 export function useRemoteBranches(enabled = true) {
-  return useQuery<string[]>({
-    queryKey: remoteQueryKeys.branches,
-    queryFn: async () => unwrapResult(await client.listRemoteBranches()),
-    enabled,
-  })
+  return useClientQuery(
+    remoteQueryKeys.branches,
+    () => client.listRemoteBranches(),
+    { enabled }
+  )
 }
 
 function useInvalidateRemote() {
@@ -63,41 +60,33 @@ function useInvalidateRemote() {
 export function useConfigureRemote() {
   const queryClient = useQueryClient()
   const invalidate = useInvalidateRemote()
-  return useMutation({
-    mutationFn: async ({
-      url,
-      credential,
-      prefix,
-      slug,
-    }: ConfigureRemoteInput) =>
-      unwrapResult(
-        await client.configureRemote(
-          url.trim(),
-          credential,
-          prefix?.trim() || null,
-          slug?.trim() || null
-        )
+  return useClientMutation(
+    ({ url, credential, prefix, slug }: ConfigureRemoteInput) =>
+      client.configureRemote(
+        url.trim(),
+        credential,
+        prefix?.trim() || null,
+        slug?.trim() || null
       ),
-    onSuccess: status => {
-      queryClient.setQueryData(remoteQueryKeys.status, status)
-      invalidate()
-    },
-  })
+    {
+      onSuccess: status => {
+        queryClient.setQueryData(remoteQueryKeys.status, status)
+        invalidate()
+      },
+    }
+  )
 }
 
 /** Forgets the remote and its credential */
 export function useClearRemote() {
   const invalidate = useInvalidateRemote()
-  return useMutation({
-    mutationFn: async () => unwrapResult(await client.clearRemote()),
+  return useClientMutation(() => client.clearRemote(), {
     onSuccess: invalidate,
   })
 }
 
 export function useTestRemoteConnection() {
-  return useMutation({
-    mutationFn: async () => unwrapResult(await client.testRemoteConnection()),
-  })
+  return useClientMutation(() => client.testRemoteConnection())
 }
 
 /**
@@ -106,18 +95,16 @@ export function useTestRemoteConnection() {
  */
 export function usePushToRemote() {
   const invalidate = useInvalidateRemote()
-  return useMutation({
-    mutationFn: async (overwrite?: boolean) =>
-      unwrapResult(await client.pushToRemote(overwrite ?? false)),
-    onSettled: invalidate,
-  })
+  return useClientMutation(
+    (overwrite?: boolean) => client.pushToRemote(overwrite ?? false),
+    { onSettled: invalidate }
+  )
 }
 
 /** A result with `conflicts` left a merge in progress (nothing resolved) */
 export function usePullFromRemote() {
   const invalidate = useInvalidateRemote()
-  return useMutation({
-    mutationFn: async () => unwrapResult(await client.pullFromRemote()),
+  return useClientMutation(() => client.pullFromRemote(), {
     onSettled: invalidate,
   })
 }

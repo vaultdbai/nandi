@@ -6,10 +6,10 @@
  * lists.
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type { NetworkMember, NetworkSnapshot } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import type { NetworkMember } from '@/lib/bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 export const networkQueryKeys = {
   all: ['network'] as const,
@@ -61,12 +61,11 @@ export function useMemberEvents() {
 /** The directory; `enabled: false` reads the cache without fetching */
 export function useNetworkSnapshot(enabled = true) {
   useMemberEvents()
-  return useQuery({
-    queryKey: networkQueryKeys.snapshot,
-    queryFn: (): Promise<NetworkSnapshot> =>
-      client.getNetworkSnapshot().then(unwrapResult),
-    enabled,
-  })
+  return useClientQuery(
+    networkQueryKeys.snapshot,
+    () => client.getNetworkSnapshot(),
+    { enabled }
+  )
 }
 
 /**
@@ -74,12 +73,11 @@ export function useNetworkSnapshot(enabled = true) {
  * instance ID when the directory doesn't know them, `null` for `null`
  */
 export function useMemberName(instanceId: string | null): string | null {
-  const snapshot = useQuery({
-    queryKey: networkQueryKeys.snapshot,
-    queryFn: (): Promise<NetworkSnapshot> =>
-      client.getNetworkSnapshot().then(unwrapResult),
-    enabled: false,
-  })
+  const snapshot = useClientQuery(
+    networkQueryKeys.snapshot,
+    () => client.getNetworkSnapshot(),
+    { enabled: false }
+  )
   if (instanceId === null) return null
   const member = snapshot.data?.members.find(m => m.instanceId === instanceId)
   return member?.displayName || instanceId
@@ -88,9 +86,7 @@ export function useMemberName(instanceId: string | null): string | null {
 /** Asks the relay again, bypassing the 10s cache */
 export function useRefreshNetwork() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (): Promise<NetworkSnapshot> =>
-      client.refreshNetwork().then(unwrapResult),
+  return useClientMutation(() => client.refreshNetwork(), {
     onSuccess: snapshot =>
       queryClient.setQueryData(networkQueryKeys.snapshot, snapshot),
   })

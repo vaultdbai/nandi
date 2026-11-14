@@ -5,7 +5,7 @@
  */
 
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type {
   CapabilityProviders,
@@ -16,6 +16,7 @@ import type {
   TrustPolicy,
 } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Everything this track caches lives under `['shared']` */
 export const sharedQueryKeys = {
@@ -188,66 +189,59 @@ export function filterCapabilities(
 }
 
 export function useSharedWithMe() {
-  return useQuery({
-    queryKey: sharedQueryKeys.withMe,
-    queryFn: async () => unwrapResult(await client.listAgentsSharedWithMe()),
-  })
+  return useClientQuery(sharedQueryKeys.withMe, () =>
+    client.listAgentsSharedWithMe()
+  )
 }
 
 export function useSharedByMe() {
-  return useQuery({
-    queryKey: sharedQueryKeys.byMe,
-    queryFn: async () => unwrapResult(await client.listAgentsSharedByMe()),
-  })
+  return useClientQuery(sharedQueryKeys.byMe, () =>
+    client.listAgentsSharedByMe()
+  )
 }
 
 export function useTrustPolicies() {
-  return useQuery({
-    queryKey: sharedQueryKeys.policies,
-    queryFn: async () => unwrapResult(await client.listTrustPolicies()),
-  })
+  return useClientQuery(sharedQueryKeys.policies, () =>
+    client.listTrustPolicies()
+  )
 }
 
 /** Per capability: who serves it, ranked as auto would pick, and my pin */
 export function useCapabilityProviders(capability: string | null = null) {
-  return useQuery({
-    queryKey: sharedQueryKeys.capabilities(capability),
-    queryFn: async () =>
-      unwrapResult(await client.listCapabilityProviders(capability)),
-    enabled: capability !== '',
-  })
+  return useClientQuery(
+    sharedQueryKeys.capabilities(capability),
+    () => client.listCapabilityProviders(capability),
+    { enabled: capability !== '' }
+  )
 }
 
 /** Pins a provider for a capability (my settings), or unpins it */
 export function useSetProviderPin() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (pin: { capability: string; cardId: string | null }) =>
-      unwrapResult(await client.setProviderPin(pin.capability, pin.cardId)),
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: sharedQueryKeys.capabilitiesAll,
-      }),
-  })
+  return useClientMutation(
+    (pin: { capability: string; cardId: string | null }) =>
+      client.setProviderPin(pin.capability, pin.cardId),
+    {
+      onSettled: () =>
+        queryClient.invalidateQueries({
+          queryKey: sharedQueryKeys.capabilitiesAll,
+        }),
+    }
+  )
 }
 
 /** Delegation history for the trust graph */
 export function useTrustGraphHistory() {
-  return useQuery({
-    queryKey: sharedQueryKeys.history,
-    queryFn: async () =>
-      unwrapResult(
-        await client.listDelegationHistory(TRUST_GRAPH_HISTORY_LIMIT)
-      ),
-    retry: false,
-  })
+  return useClientQuery(
+    sharedQueryKeys.history,
+    () => client.listDelegationHistory(TRUST_GRAPH_HISTORY_LIMIT),
+    { retry: false }
+  )
 }
 
 /** My teams for the trust graph */
 export function useTrustGraphTeams() {
-  return useQuery({
-    queryKey: sharedQueryKeys.teams,
-    queryFn: async () => unwrapResult(await client.listTeams()),
+  return useClientQuery(sharedQueryKeys.teams, () => client.listTeams(), {
     retry: false,
   })
 }
@@ -277,22 +271,14 @@ export function useSharedAgents() {
 
 export function useSetTrustPolicy() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (rule: {
-      requester: string
-      providerAgent: string
-      policy: TrustPolicy
-    }) =>
-      unwrapResult(
-        await client.setTrustPolicy(
-          rule.requester,
-          rule.providerAgent,
-          rule.policy
-        )
-      ),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: sharedQueryKeys.policies }),
-  })
+  return useClientMutation(
+    (rule: { requester: string; providerAgent: string; policy: TrustPolicy }) =>
+      client.setTrustPolicy(rule.requester, rule.providerAgent, rule.policy),
+    {
+      onSettled: () =>
+        queryClient.invalidateQueries({ queryKey: sharedQueryKeys.policies }),
+    }
+  )
 }
 
 /**
@@ -301,18 +287,14 @@ export function useSetTrustPolicy() {
  */
 export function useCallSharedAgent() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (call: {
-      cardId: string | null
-      capability: string
-      input: JsonValue
-    }) =>
-      unwrapResult(
-        await client.delegateTask(call.capability, call.input, call.cardId)
-      ),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: sharedQueryKeys.all }),
-  })
+  return useClientMutation(
+    (call: { cardId: string | null; capability: string; input: JsonValue }) =>
+      client.delegateTask(call.capability, call.input, call.cardId),
+    {
+      onSettled: () =>
+        queryClient.invalidateQueries({ queryKey: sharedQueryKeys.all }),
+    }
+  )
 }
 
 export type StopSharing =

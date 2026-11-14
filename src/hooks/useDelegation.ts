@@ -6,7 +6,7 @@
  * from the card `<instance_id>/_user`.
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type {
   AgentCard,
@@ -16,7 +16,7 @@ import type {
   TaskStatus,
   TrustRule,
 } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Rows the history view loads */
 export const HISTORY_LIMIT = 500
@@ -185,11 +185,9 @@ export function useDelegationEvents() {
 /** Delegation history, newest first, both directions, kept live */
 export function useDelegation(limit = HISTORY_LIMIT) {
   useDelegationEvents()
-  const history = useQuery({
-    queryKey: delegationQueryKeys.history,
-    queryFn: async () =>
-      unwrapResult(await client.listDelegationHistory(limit)),
-  })
+  const history = useClientQuery(delegationQueryKeys.history, () =>
+    client.listDelegationHistory(limit)
+  )
   return {
     history: history.data ?? [],
     isLoading: history.isLoading,
@@ -201,11 +199,9 @@ export function useDelegation(limit = HISTORY_LIMIT) {
 
 /** Providers serving `capability`; `''` lists every provider */
 export function useAvailableProviders(capability = '') {
-  return useQuery({
-    queryKey: delegationQueryKeys.providers(capability),
-    queryFn: async () =>
-      unwrapResult(await client.listAvailableProviders(capability)),
-  })
+  return useClientQuery(delegationQueryKeys.providers(capability), () =>
+    client.listAvailableProviders(capability)
+  )
 }
 
 /** Trust rules (empty while they can't be read) */
@@ -220,42 +216,43 @@ export function useTrustRules() {
 }
 
 export function useAgentDelegation(agentId: string) {
-  return useQuery({
-    queryKey: delegationQueryKeys.settings(agentId),
-    queryFn: async () => unwrapResult(await client.getAgentDelegation(agentId)),
-  })
+  return useClientQuery(delegationQueryKeys.settings(agentId), () =>
+    client.getAgentDelegation(agentId)
+  )
 }
 
 /** Saves the settings into skill.md; optimistic, rolled back on error */
 export function useSetAgentDelegation(agentId: string) {
   const queryClient = useQueryClient()
   const key = delegationQueryKeys.settings(agentId)
-  return useMutation({
-    mutationFn: async (settings: AgentDelegationSettings) =>
-      unwrapResult(await client.setAgentDelegation(agentId, settings)),
-    onMutate: async settings => {
-      await queryClient.cancelQueries({ queryKey: key })
-      const previous = queryClient.getQueryData<AgentDelegationSettings>(key)
-      queryClient.setQueryData(key, settings)
-      return { previous }
-    },
-    onError: (_error, _settings, context) => {
-      if (context?.previous) queryClient.setQueryData(key, context.previous)
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: key })
-      void queryClient.invalidateQueries({
-        queryKey: delegationQueryKeys.providersAll,
-      })
-    },
-  })
+  return useClientMutation(
+    (settings: AgentDelegationSettings) =>
+      client.setAgentDelegation(agentId, settings),
+    {
+      onMutate: async settings => {
+        await queryClient.cancelQueries({ queryKey: key })
+        const previous = queryClient.getQueryData<AgentDelegationSettings>(key)
+        queryClient.setQueryData(key, settings)
+        return { previous }
+      },
+      onError: (_error, _settings, context) => {
+        if (context?.previous) queryClient.setQueryData(key, context.previous)
+      },
+      onSettled: () => {
+        void queryClient.invalidateQueries({ queryKey: key })
+        void queryClient.invalidateQueries({
+          queryKey: delegationQueryKeys.providersAll,
+        })
+      },
+    }
+  )
 }
 
 /** Starts a delegation as the user; resolves to the task ID */
 export function useDelegateTask() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
+  return useClientMutation(
+    ({
       capability,
       input,
       target,
@@ -263,11 +260,12 @@ export function useDelegateTask() {
       capability: string
       input: JsonValue
       target?: string | null
-    }) =>
-      unwrapResult(
-        await client.delegateTask(capability, input, target ?? null)
-      ),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: delegationQueryKeys.history }),
-  })
+    }) => client.delegateTask(capability, input, target ?? null),
+    {
+      onSettled: () =>
+        queryClient.invalidateQueries({
+          queryKey: delegationQueryKeys.history,
+        }),
+    }
+  )
 }
