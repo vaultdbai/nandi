@@ -78,7 +78,7 @@ Before a navigation, Nandi checks the URL against the same rules and refuses wit
 **A site outside the rules asks the person first** (`pilots/sites.rs`, through `services::access`, family `site`). `browser_navigate` and `browser_tabs` (`new`) to such a host pause the run with an ordinary access request, the same approval as a connector without a grant (see `docs/developer/connector-hub.md` › A call without a grant):
 
 ```text
-navigate(url) ─▶ access_gate ─▶ decide ─▶ site_decision
+navigate(url) ─▶ CallGate (access check) ─▶ decide ─▶ site_decision
   host allowed (network.allow)                       ─▶ runs
   not askable (IP, localhost, *.local, *.internal, a port, not http(s)) ─▶ refused by allowed_url, as before
   a policy's network ceiling leaves it out (`policies::admits_hosts`)  ─▶ refused, as before
@@ -113,11 +113,11 @@ The arbitrary-code tools (`browser_evaluate`, `browser_run_code_unsafe`) are nev
 
 **Hand-over** (`pilots/handover.rs`). The visible `browser` also offers `browser_hand_over {site, summary, draft}`, Nandi's own tool, for "prepare, a person finishes" (posting on social sites, sending a form the agent may not submit):
 
-| Step      | What happens                                                                                                                                                                                               |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Asking    | Always an approval (`Action::HandOver`; skill.md can't allow it), kept 24 h (`handover::TTL_MS`). `run_call` brings the window forward (`browser::bring_to_front`: the current tab, `browser_tabs select`) |
-| Answering | `answer_hand_over(approval_id, {outcome, finalText})` / `POST /api/rpc/answer_hand_over`: Done and Changed approve, Skip rejects. `HandOverCard` in every approval surface                                 |
-| Result    | `tools::call` answers it with `handover::result`: what the person did, and the final text for Changed. A plain Approve counts as Done                                                                      |
+| Step      | What happens                                                                                                                                                                                                  |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Asking    | Always an approval (`Action::HandOver`; skill.md can't allow it), kept 24 h (`handover::TTL_MS`). The call gate brings the window forward (`browser::bring_to_front`: the current tab, `browser_tabs select`) |
+| Answering | `answer_hand_over(approval_id, {outcome, finalText})` / `POST /api/rpc/answer_hand_over`: Done and Changed approve, Skip rejects. `HandOverCard` in every approval surface                                    |
+| Result    | `tools::call` answers it with `handover::result`: what the person did, and the final text for Changed. A plain Approve counts as Done                                                                         |
 
 ✅ Fill the composer, then `browser_hand_over`. ❌ Click Post, press Enter or Ctrl+Enter to send.
 

@@ -31,6 +31,7 @@
 //! The steps of a run execute in an abortable child task, so the
 //! orchestrator keeps receiving commands (e.g. Cancel) while a run streams.
 
+mod call_gate;
 pub mod compaction;
 pub mod middleware;
 pub mod run_plan;
@@ -73,8 +74,9 @@ use crate::services::requests;
 use crate::services::runtimes::AgentRuntimes;
 use crate::services::secrets::Secrets;
 use crate::services::studio;
+use call_gate::{CallGate, Clearance, LiveChecks, Verdict};
 use middleware::{
-    AgentTurnAborted, CallCheck, ExitReason, MiddlewareDecision, ToolResultSummary, TurnContext,
+    AgentTurnAborted, ExitReason, MiddlewareDecision, ToolResultSummary, TurnContext,
     TurnMiddleware, TurnPolicy, TurnResult,
 };
 
@@ -1947,93 +1949,8 @@ async fn forward_tokens(
     Ok(())
 }
 
-/// What the access check says about one call
-enum AccessGate {
-    /// Go ahead; for account connectors, the ones this call may use
-    Go(Option<Vec<String>>),
-    /// An access request is open
-    Wait,
-    /// Refused (a policy, or the person said no); the model reads why
-    Refused(String),
-}
-
-async fn access_gate(
-    state: &crate::services::AppState,
-    deps: &RunDeps,
-    ctx: &RunContext,
-    call: &PlannedCall,
-) -> Result<AccessGate, String> {
-    use crate::services::access::{self, Decision};
-    let skill = deps.store.skill(&ctx.agent_id).ok();
-    let Some(decision) = access::decide(
-        state,
-        skill.as_ref(),
-        &ctx.agent_id,
-        &ctx.run_id,
-        &call.tool,
-        &call.args,
-    )
-    .await
-    else {
-        return Ok(AccessGate::Go(None));
-    };
-    match decision {
-        Decision::Allowed(ids) => Ok(AccessGate::Go(Some(ids))),
-        Decision::Refused(reason) => Ok(AccessGate::Refused(reason)),
-        Decision::Ask(request) => {
-            let ids: Vec<String> = request.connectors.iter().map(|c| c.id.clone()).collect();
-            let access_call = PlannedCall {
-                id: format!("{}#access", call.id),
-                tool: access::ACCESS_TOOL.to_string(),
-                args: serde_json::to_value(&request).map_err(|e| e.to_string())?,
-                requires_approval: true,
-            };
-            let (run_id, call_id) = (ctx.run_id.clone(), access_call.id.clone());
-            let approval = deps
-                .bus
-                .db
-                .call(move |conn| db::approval_for_call(conn, &run_id, &call_id))
-                .await?;
-            match approval.map(|a| a.status) {
-                None => {
-                    deps.bus.approval_request(ctx, &access_call).await?;
-                    Ok(AccessGate::Wait)
-                }
-                Some(ApprovalStatus::Pending) => Ok(AccessGate::Wait),
-                Some(ApprovalStatus::Approved) => Ok(AccessGate::Go(Some(ids))),
-                Some(_) => Ok(AccessGate::Refused(format!(
-                    "Tool '{}' is not allowed: the person didn't allow it",
-                    call.tool
-                ))),
-            }
-        }
-    }
-}
-
-/// Where `call` stands with `approval`, the one found for its run and call
-/// ID. An approval is for one tool: a call reusing the ID for another tool
-/// is refused, never run on someone else's yes.
-fn approval_status(
-    approval: Option<&db::ApprovalRow>,
-    call: &PlannedCall,
-) -> Option<ApprovalStatus> {
-    approval.map(|approval| {
-        if approval.tool == call.tool {
-            approval.status
-        } else {
-            log::warn!(
-                "Call {} asks for '{}' but its approval was for '{}': refused",
-                call.id,
-                call.tool,
-                approval.tool
-            );
-            ApprovalStatus::Rejected
-        }
-    })
-}
-
-/// Runs one planned call if it's ready. Returns `false` if the run is now
-/// waiting on an approval.
+/// Runs one planned call if its checks pass (`call_gate`). Returns `false`
+/// if the run is now waiting on a person.
 async fn run_call(
     deps: &RunDeps,
     delegation: &DelegationSlot,
@@ -2052,95 +1969,17 @@ async fn run_call(
         return Ok(true);
     }
 
-    // A tool its policies deny (`tools.deny`) is refused before anything
-    // else, whatever the engine: nobody is asked, and the refusal is the
-    // policy's. A broken policy stops the call later, in `execute_tool`.
-    if ctx.agent_id != STUDIO_AGENT_ID {
-        let refused = deps
-            .store
-            .skill(&ctx.agent_id)
-            .ok()
-            .and_then(|skill| denied_by_policy(deps, ctx, call, &skill));
-        if let Some(outcome) = refused {
-            if existing.is_none() {
-                bus.tool_call(ctx, call).await?;
-            }
-            bus.tool_result(ctx, call, &outcome).await?;
-            return Ok(true);
-        }
-    }
-
-    // Plan mode (or another middleware) blocks it outright: no approval,
-    // and the model reads why in the call's error result
-    if let Some(name) = middleware::blocking_middleware(pipeline, &call.tool) {
-        if existing.is_none() {
-            bus.tool_call(ctx, call).await?;
-        }
-        let outcome = ToolOutcome {
-            result: middleware::blocked_tool_result(name, &call.tool),
-            is_error: true,
-        };
-        bus.tool_result(ctx, call, &outcome).await?;
-        return Ok(true);
-    }
-
-    // The run plan's rules: plan first, risky steps are the user's, no
-    // screenshots while the person has the browser
-    let check = plan_check(deps, ctx, call).await;
-    let check_view = CallCheck {
-        tool: &call.tool,
-        effect: check.effect,
-        screenshot: check.screenshot,
-        plan: check.plan.as_ref(),
-    };
-    if let Some((_, why)) = middleware::blocking_call(pipeline, &check_view) {
-        if existing.is_none() {
-            bus.tool_call(ctx, call).await?;
-        }
-        let outcome = ToolOutcome {
-            result: why,
-            is_error: true,
-        };
-        bus.tool_result(ctx, call, &outcome).await?;
-        return Ok(true);
-    }
-
-    // A connector the agent hasn't been granted: the person chooses first
-    // (`services::access`); grants are read on every call
-    let mut allowed_connectors: Option<Vec<String>> = None;
-    if ctx.agent_id != STUDIO_AGENT_ID {
-        if let Some(state) = app_state(deps) {
-            match access_gate(&state, deps, ctx, call).await? {
-                AccessGate::Go(ids) => allowed_connectors = ids,
-                AccessGate::Wait => return Ok(false),
-                AccessGate::Refused(reason) => {
-                    if existing.is_none() {
-                        bus.tool_call(ctx, call).await?;
-                    }
-                    let outcome = ToolOutcome {
-                        result: reason,
-                        is_error: true,
-                    };
-                    bus.tool_result(ctx, call, &outcome).await?;
-                    return Ok(true);
-                }
-            }
-        }
-    }
-
-    // A proposed playbook is checked before the user is asked: the domain
-    // rules, an agent made here, never in a check-started run
-    if playbooks::is_propose(&call.tool) {
-        let refused =
-            if ctx.agent_id == STUDIO_AGENT_ID || data_run(deps, &ctx.run_id).await.is_some() {
-                Some(format!(
-                    "Tool '{}' is not available in this turn",
-                    call.tool
-                ))
-            } else {
-                playbooks::check(&deps.store, &ctx.agent_id, &call.args).err()
-            };
-        if let Some(reason) = refused {
+    let gate = CallGate::new(LiveChecks {
+        deps,
+        ctx,
+        pipeline,
+    });
+    let Clearance {
+        connectors: allowed_connectors,
+        plan: check,
+    } = match gate.decide(call).await? {
+        Verdict::Run(clearance) => clearance,
+        Verdict::Refuse(reason) => {
             if existing.is_none() {
                 bus.tool_call(ctx, call).await?;
             }
@@ -2151,34 +1990,10 @@ async fn run_call(
             bus.tool_result(ctx, call, &outcome).await?;
             return Ok(true);
         }
-    }
-
-    // `tool_search` only reads the tool list, and `ask_requester`
-    // is decided on the requester's side: never gated
-    if call.requires_approval
-        && call.tool != tool_search::TOOL_SEARCH_NAME
-        && call.tool != a2a::tool::ASK_REQUESTER
-    {
-        let (run_id, call_id) = (ctx.run_id.clone(), call.id.clone());
-        let approval = bus
-            .db
-            .call(move |conn| db::approval_for_call(conn, &run_id, &call_id))
-            .await?;
-        match approval_status(approval.as_ref(), call) {
-            None => {
-                bus.approval_request(ctx, call).await?;
-                // The person finishes a hand-over in the browser: show it
-                if pilots::handover::is_hand_over(&call.tool) {
-                    pilots::handover::bring_forward(&ctx.agent_id).await;
-                }
-                return Ok(false);
-            }
-            Some(ApprovalStatus::Pending) => return Ok(false),
-            Some(ApprovalStatus::Approved) => {}
-            // Rejected or expired: skip (the model is told when it replans)
-            Some(_) => return Ok(true),
-        }
-    }
+        Verdict::Wait => return Ok(false),
+        // Rejected or expired: skip (the model is told when it replans)
+        Verdict::Declined => return Ok(true),
+    };
 
     if existing.is_none() {
         bus.tool_call(ctx, call).await?;
@@ -2362,51 +2177,6 @@ async fn run_call(
     Ok(true)
 }
 
-/// What the run plan's rules look at for one call
-struct PlanCheck {
-    effect: crate::services::run_plan::classify::Effect,
-    screenshot: bool,
-    plan: Option<crate::services::run_plan::RunPlan>,
-}
-
-/// Classifies `call` and reads the run's plan (Studio has neither)
-async fn plan_check(deps: &RunDeps, ctx: &RunContext, call: &PlannedCall) -> PlanCheck {
-    use crate::services::run_plan::classify::{self, Effect};
-    if ctx.agent_id == STUDIO_AGENT_ID {
-        return PlanCheck {
-            effect: Effect::None,
-            screenshot: false,
-            plan: None,
-        };
-    }
-    let browser_tool = pilots::tools::parse_tool_name(&call.tool)
-        .filter(|(pilot, _)| pilots::browser::is_browser(pilot));
-    let action = browser_tool.map(|(pilot, tool)| {
-        let secret_names: Vec<String> = deps
-            .store
-            .agent(&ctx.agent_id)
-            .ok()
-            .and_then(|agent| {
-                agent
-                    .capabilities()
-                    .pilot_options(pilot)
-                    .map(|o| o.secrets.keys().cloned().collect())
-            })
-            .unwrap_or_default();
-        pilots::browser::action(
-            tool,
-            &call.args,
-            pilots::browser::is_read_tool(tool),
-            &secret_names,
-        )
-    });
-    PlanCheck {
-        effect: classify::effect(&call.tool, &call.args, action),
-        screenshot: browser_tool.is_some_and(|(_, tool)| tool == pilots::browser::SCREENSHOT_TOOL),
-        plan: crate::services::run_plan::tool::current(&deps.bus, &ctx.run_id).await,
-    }
-}
-
 /// `call` (the browser's screenshot) saving to `browser/<run>/<step>-<n>.png`
 /// in the agent's work folder, with that name
 fn screenshot_call(
@@ -2427,33 +2197,6 @@ fn screenshot_call(
     call.args["filename"] = serde_json::Value::from(name.clone());
     call.args["type"] = serde_json::Value::from("png");
     Some((call, name))
-}
-
-/// A call to a tool its policies deny (`tools.deny`), recorded as the
-/// policy's decision. Checked in `run_call` before any approval, whatever
-/// the engine, so the canned one obeys policies too.
-fn denied_by_policy(
-    deps: &RunDeps,
-    ctx: &RunContext,
-    call: &PlannedCall,
-    skill: &SkillConfig,
-) -> Option<ToolOutcome> {
-    if !skill.denied_tools.contains(&call.tool) {
-        return None;
-    }
-    crate::services::policies::record_refused(
-        &deps.store,
-        &ctx.agent_id,
-        &call.id,
-        &format!("tool {}", call.tool),
-    );
-    Some(ToolOutcome {
-        result: format!(
-            "Tool '{}' is not available: a policy doesn't allow it",
-            call.tool
-        ),
-        is_error: true,
-    })
 }
 
 /// Executes a model-requested tool in the agent's container.
@@ -2891,8 +2634,9 @@ pilots: { allow: [] }
 
         // `run_call` refuses it before any approval, as the policy's
         let skill = state.store().skill("writer").unwrap();
-        let refused = denied_by_policy(&deps(&state), &context("writer"), &call("shell"), &skill)
-            .expect("refused by the policy");
+        let refused =
+            call_gate::denied_by_policy(&deps(&state), &context("writer"), &call("shell"), &skill)
+                .expect("refused by the policy");
         assert!(refused.is_error);
         assert!(
             refused.result.contains("a policy doesn't allow it"),
@@ -3062,61 +2806,6 @@ pilots: { allow: [] }
         assert_eq!(tools.len(), 2, "its tools are left out");
         assert!(recorder.names().contains(&"agent://warning"));
         state.shutdown();
-    }
-}
-
-#[cfg(test)]
-mod approval_tests {
-    use super::*;
-    use crate::db::ApprovalRow;
-
-    fn approval(tool: &str, status: ApprovalStatus) -> ApprovalRow {
-        ApprovalRow {
-            id: "ap1".into(),
-            agent_id: "a".into(),
-            run_id: "r1".into(),
-            message_id: "ap1".into(),
-            tool_call_id: "call_0".into(),
-            tool: tool.into(),
-            args: serde_json::json!({}),
-            status,
-            created_at: 0,
-            expires_at: None,
-            decided_by: None,
-        }
-    }
-
-    #[test]
-    fn an_approval_only_lets_the_tool_it_was_for_run() {
-        let call = PlannedCall {
-            id: "call_0".into(),
-            tool: "shell".into(),
-            args: serde_json::json!({"cmd": "rm -rf ."}),
-            requires_approval: true,
-        };
-        // (the approval found for the call, where the call stands)
-        let cases = [
-            (None, None),
-            (
-                Some(approval("shell", ApprovalStatus::Approved)),
-                Some(ApprovalStatus::Approved),
-            ),
-            (
-                Some(approval("shell", ApprovalStatus::Pending)),
-                Some(ApprovalStatus::Pending),
-            ),
-            (
-                Some(approval("read_file", ApprovalStatus::Approved)),
-                Some(ApprovalStatus::Rejected),
-            ),
-        ];
-        for (found, expected) in cases {
-            assert_eq!(
-                approval_status(found.as_ref(), &call),
-                expected,
-                "{found:?}"
-            );
-        }
     }
 }
 

@@ -73,7 +73,7 @@ connector_grants:
 ### A call without a grant
 
 ```text
-run_call ─▶ access_gate ─▶ decide(agent, tool)
+run_call ─▶ CallGate (access check) ─▶ decide(agent, tool)
   policy connectors.forbid matches   ─▶ refused (audit "forbidden")
   granted, or Allow once in this run ─▶ runs (mail/calendar/files: only the allowed accounts)
   else                               ─▶ approval tool `connector_access`, call id `<call>#access`
