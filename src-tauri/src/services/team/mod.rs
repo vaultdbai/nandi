@@ -38,6 +38,7 @@ use crate::model::Timestamp;
 use crate::services::secrets::Secrets;
 
 use registry::{IndexAgent, Publisher};
+use strum::{EnumString, IntoStaticStr};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -88,8 +89,11 @@ pub struct TeamMember {
     pub joined_at: Timestamp,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum MemberRole {
     Owner,
     Admin,
@@ -97,20 +101,9 @@ pub enum MemberRole {
 }
 
 impl MemberRole {
+    /// The text stored in the database
     fn as_str(self) -> &'static str {
-        match self {
-            Self::Owner => "owner",
-            Self::Admin => "admin",
-            Self::Member => "member",
-        }
-    }
-
-    fn parse(value: &str) -> Self {
-        match value {
-            "owner" => Self::Owner,
-            "admin" => Self::Admin,
-            _ => Self::Member,
-        }
+        self.into()
     }
 }
 
@@ -430,7 +423,7 @@ impl TeamService {
                     Ok(TeamMember {
                         github_handle: row.get(0)?,
                         display_name: row.get(1)?,
-                        role: MemberRole::parse(&row.get::<_, String>(2)?),
+                        role: db::text_enum(row, 2)?,
                         joined_at: db::ts(row.get(3)?),
                     })
                 })?;

@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
 use crate::model::{SourceType, Timestamp};
 use crate::services::agents;
@@ -19,8 +20,11 @@ pub const STORM_WINDOW_MS: i64 = 10_000;
 /// File events for one path within this window collapse into one fire
 pub const DEFAULT_DEBOUNCE_MS: u64 = 2_000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum TriggerSourceType {
     Cron,
     Calendar,
@@ -31,27 +35,9 @@ pub enum TriggerSourceType {
 }
 
 impl TriggerSourceType {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Cron => "cron",
-            Self::Calendar => "calendar",
-            Self::File => "file",
-            Self::Webhook => "webhook",
-            Self::Device => "device",
-            Self::Event => "event",
-        }
-    }
-
-    pub fn parse(s: &str) -> Option<Self> {
-        Some(match s {
-            "cron" => Self::Cron,
-            "calendar" => Self::Calendar,
-            "file" => Self::File,
-            "webhook" => Self::Webhook,
-            "device" => Self::Device,
-            "event" => Self::Event,
-            _ => return None,
-        })
+        self.into()
     }
 
     /// The `runs.source_type` of runs this source dispatches
@@ -83,32 +69,28 @@ impl TriggerSourceType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum TriggerTargetType {
     Agent,
     Workflow,
 }
 
 impl TriggerTargetType {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Agent => "agent",
-            Self::Workflow => "workflow",
-        }
-    }
-
-    pub fn parse(s: &str) -> Self {
-        if s == "workflow" {
-            Self::Workflow
-        } else {
-            Self::Agent
-        }
+        self.into()
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum TriggerFireStatus {
     /// A run was dispatched (queued behind the agent's current turn, if any)
     Queued,
@@ -119,22 +101,9 @@ pub enum TriggerFireStatus {
 }
 
 impl TriggerFireStatus {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Queued => "queued",
-            Self::RateLimited => "rate_limited",
-            Self::Error => "error",
-            Self::Skipped => "skipped",
-        }
-    }
-
-    pub fn parse(s: &str) -> Self {
-        match s {
-            "queued" => Self::Queued,
-            "rate_limited" => Self::RateLimited,
-            "skipped" => Self::Skipped,
-            _ => Self::Error,
-        }
+        self.into()
     }
 }
 
@@ -229,11 +198,15 @@ pub struct TriggerFire {
 }
 
 /// The status of the run a fire dispatched, agent or workflow run, so a
-/// fire reads "Completed" rather than staying "Queued"
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+/// fire reads "Completed" rather than staying "Queued". Parsed from
+/// `runs.status` or `workflow_runs.status` as stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum FireRunStatus {
     Queued,
+    /// Deliberately also `compacted`: a compacted run carries on in a child run
+    #[strum(serialize = "running", serialize = "compacted")]
     Running,
     AwaitingApproval,
     /// A workflow run at a manual step
@@ -242,24 +215,6 @@ pub enum FireRunStatus {
     Completed,
     Failed,
     Cancelled,
-}
-
-impl FireRunStatus {
-    /// `runs.status` or `workflow_runs.status` as stored
-    pub fn parse(status: &str) -> Option<Self> {
-        Some(match status {
-            "queued" => Self::Queued,
-            // A compacted run carries on in a child run
-            "running" | "compacted" => Self::Running,
-            "awaiting_approval" => Self::AwaitingApproval,
-            "waiting" => Self::Waiting,
-            "paused" => Self::Paused,
-            "completed" => Self::Completed,
-            "failed" => Self::Failed,
-            "cancelled" => Self::Cancelled,
-            _ => return None,
-        })
-    }
 }
 
 /// A fire with its trigger's name, for the dashboard.

@@ -1049,17 +1049,13 @@ fn events_all(conn: &Connection, task_id: &str) -> rusqlite::Result<Vec<TaskEven
           WHERE task_id = ?1 ORDER BY id",
     )?;
     let rows = stmt.query_map([task_id], |row| {
-        let from: Option<String> = row.get(1)?;
-        let to: String = row.get(2)?;
-        let kind: Option<String> = row.get(4)?;
-        let stage: Option<String> = row.get(5)?;
         Ok(TaskEvent {
             task_id: row.get(0)?,
-            from_state: from.as_deref().and_then(TaskState::parse),
-            to_state: TaskState::parse(&to).unwrap_or(TaskState::Failed),
+            from_state: db::opt_text_enum_with(row, 1, TaskState::parse)?,
+            to_state: db::text_enum_with(row, 2, TaskState::parse)?,
             reason: row.get(3)?,
-            reason_kind: kind.as_deref().and_then(task::ReasonKind::parse),
-            stage: stage.as_deref().and_then(task::TaskStage::parse),
+            reason_kind: db::opt_text_enum_with(row, 4, task::ReasonKind::parse)?,
+            stage: db::opt_text_enum(row, 5)?,
             at: row.get::<_, i64>(6)? as f64,
         })
     })?;

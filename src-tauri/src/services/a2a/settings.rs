@@ -69,10 +69,13 @@ fn overrides_of(fm: &Mapping) -> BTreeMap<String, TrustPolicy> {
         return BTreeMap::new();
     };
     map.iter()
+        // Deliberate: skill.md is a hand-edited file. An override that isn't
+        // allow, deny or ask is left out, so the capability keeps the
+        // agent's own policy
         .filter_map(|(capability, policy)| {
             Some((
                 capability.as_str()?.to_string(),
-                TrustPolicy::parse(policy.as_str()?)?,
+                policy.as_str()?.parse().ok()?,
             ))
         })
         .collect()

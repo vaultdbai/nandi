@@ -12,10 +12,11 @@ use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
 use super::assignment::ASSIGN_ME;
 use super::{TaskResult, TaskStatus};
-use crate::db::{now_ms, Db};
+use crate::db::{now_ms, text_enum, Db};
 use crate::services::events::NandiEvent;
 
 /// How long an undismissed return stays in the Inbox
@@ -28,8 +29,11 @@ pub const NOTIFY_RESULTS_KEY: &str = "companion.notifyResults";
 const SUMMARY_CHARS: usize = 280;
 
 /// How a request came back
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum ReturnOutcome {
     /// A question or request answered
     Answered,
@@ -44,24 +48,9 @@ pub enum ReturnOutcome {
 }
 
 impl ReturnOutcome {
+    /// The text stored in the database
     fn as_str(self) -> &'static str {
-        match self {
-            Self::Answered => "answered",
-            Self::Done => "done",
-            Self::Declined => "declined",
-            Self::Expired => "expired",
-            Self::Failed => "failed",
-        }
-    }
-
-    fn parse(value: &str) -> Self {
-        match value {
-            "answered" => Self::Answered,
-            "done" => Self::Done,
-            "declined" => Self::Declined,
-            "expired" => Self::Expired,
-            _ => Self::Failed,
-        }
+        self.into()
     }
 }
 
@@ -178,7 +167,7 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<RequestReturn> {
         from_name: row.get(1)?,
         provider_agent: row.get(2)?,
         capability: row.get(3)?,
-        outcome: ReturnOutcome::parse(&row.get::<_, String>(4)?),
+        outcome: text_enum(row, 4)?,
         summary: row.get(5)?,
         request: row.get(6)?,
         returned_at: row.get(7)?,

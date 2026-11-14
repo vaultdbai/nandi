@@ -11,8 +11,10 @@ use std::sync::Mutex;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 use tokio::sync::oneshot;
 
+use crate::db::text_enum;
 use crate::model::Timestamp;
 use crate::services::events::NandiEvent;
 
@@ -23,8 +25,11 @@ pub const GATEWAY_HOLD_CHANGED: &str = "gateway://hold_changed";
 pub const HOLD_TTL_MS: i64 = crate::model::APPROVAL_TTL_MS;
 
 /// Where a hold is
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum HoldStatus {
     Pending,
     Approved,
@@ -33,19 +38,9 @@ pub enum HoldStatus {
 }
 
 impl HoldStatus {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::Approved => "approved",
-            Self::Rejected => "rejected",
-            Self::Expired => "expired",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        [Self::Pending, Self::Approved, Self::Rejected, Self::Expired]
-            .into_iter()
-            .find(|status| status.as_str() == value)
+        self.into()
     }
 }
 
@@ -119,14 +114,13 @@ const COLUMNS: &str =
     "task_id, caller_instance, caller_name, capability, summary, status, created_at, expires_at";
 
 fn from_row(row: &Row<'_>) -> rusqlite::Result<GatewayHold> {
-    let status: String = row.get(5)?;
     Ok(GatewayHold {
         task_id: row.get(0)?,
         caller_instance: row.get(1)?,
         caller_name: row.get(2)?,
         capability: row.get(3)?,
         summary: row.get(4)?,
-        status: HoldStatus::parse(&status).unwrap_or(HoldStatus::Expired),
+        status: text_enum(row, 5)?,
         created_at: row.get::<_, i64>(6)? as f64,
         expires_at: row.get::<_, i64>(7)? as f64,
     })
@@ -308,7 +302,7 @@ mod tests {
             (HoldStatus::Rejected, Some(HoldOutcome::Rejected)),
             (HoldStatus::Expired, Some(HoldOutcome::Expired)),
         ] {
-            assert_eq!(HoldStatus::parse(status.as_str()), Some(status));
+            assert_eq!(status.as_str().parse(), Ok(status));
             assert_eq!(HoldOutcome::of(status), outcome);
         }
     }

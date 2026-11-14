@@ -23,10 +23,11 @@ use std::time::Duration;
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
 use super::definition::{self, CapabilityDefinition};
 use super::{git_sync, projection, REGISTRY_SYNCED, REGISTRY_SYNC_FAILED};
-use crate::db::{now_ms, Db};
+use crate::db::{now_ms, text_enum, Db};
 use crate::model::Timestamp;
 use crate::services::auth;
 use crate::services::events::{self, EventBus, NandiEvent};
@@ -40,8 +41,21 @@ pub const REGISTRY_CACHE_DIR: &str = "capability-registries";
 /// Folders inside a registry repo that hold capability files
 const REGISTRY_FOLDERS: &[&str] = &[".nandi/capabilities", "capabilities"];
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Type,
+    EnumString,
+    IntoStaticStr,
+)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum RegistryKind {
     /// A path on disk (or `file://`)
     Local,
@@ -52,22 +66,9 @@ pub enum RegistryKind {
 }
 
 impl RegistryKind {
+    /// The text stored in the database
     fn as_str(self) -> &'static str {
-        match self {
-            Self::Local => "local",
-            Self::Github => "github",
-            Self::Gitlab => "gitlab",
-            Self::Generic => "generic",
-        }
-    }
-
-    fn parse(value: &str) -> Self {
-        match value {
-            "local" => Self::Local,
-            "github" => Self::Github,
-            "gitlab" => Self::Gitlab,
-            _ => Self::Generic,
-        }
+        self.into()
     }
 
     /// From the URL's shape: a folder or `file://` is local, then by host
@@ -631,7 +632,7 @@ fn row_from_sql(row: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
     Ok(Row {
         id: row.get(0)?,
         url: row.get(1)?,
-        kind: RegistryKind::parse(&row.get::<_, String>(2)?),
+        kind: text_enum(row, 2)?,
         branch_prefix: row.get(3)?,
         user_slug: row.get(4)?,
         last_synced_at: row.get(5)?,

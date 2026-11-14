@@ -50,6 +50,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
 use crate::db::{self, Db};
 use crate::model::{ApprovalDecision, RunStatus, RunSummary, Timestamp};
@@ -345,8 +346,11 @@ pub struct CreateWorkflowInput {
     pub yaml: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum WorkflowRunStatus {
     Running,
     AwaitingApproval,
@@ -361,28 +365,9 @@ pub enum WorkflowRunStatus {
 }
 
 impl WorkflowRunStatus {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Running => "running",
-            Self::AwaitingApproval => "awaiting_approval",
-            Self::Completed => "completed",
-            Self::Failed => "failed",
-            Self::Paused => "paused",
-            Self::Cancelled => "cancelled",
-            Self::Waiting => "waiting",
-        }
-    }
-
-    pub fn parse(s: &str) -> Self {
-        match s {
-            "running" => Self::Running,
-            "awaiting_approval" => Self::AwaitingApproval,
-            "completed" => Self::Completed,
-            "paused" => Self::Paused,
-            "cancelled" => Self::Cancelled,
-            "waiting" => Self::Waiting,
-            _ => Self::Failed,
-        }
+        self.into()
     }
 }
 
@@ -573,13 +558,12 @@ event!(WorkflowsChanged, "workflow://changed");
 const RUN_COLUMNS: &str = "id, workflow_id, status, started_at, ended_at, context";
 
 fn run_row(row: &Row) -> rusqlite::Result<WorkflowRun> {
-    let status: String = row.get(2)?;
     let context: String = row.get(5)?;
     let context: RunContext = serde_json::from_str(&context).unwrap_or_default();
     Ok(WorkflowRun {
         id: row.get(0)?,
         workflow_id: row.get(1)?,
-        status: WorkflowRunStatus::parse(&status),
+        status: db::text_enum(row, 2)?,
         started_at: db::ts(row.get(3)?),
         ended_at: row.get::<_, Option<i64>>(4)?.map(db::ts),
         steps: context.steps,

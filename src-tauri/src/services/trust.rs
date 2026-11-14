@@ -8,16 +8,30 @@
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
-use crate::db::{now_ms, Db};
+use crate::db::{now_ms, text_enum, Db};
 use crate::model::Timestamp;
 
 /// Matches every requester
 #[cfg(test)]
 pub const ANY_REQUESTER: &str = "*";
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Type,
+    EnumString,
+    IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum TrustPolicy {
     Allow,
     Deny,
@@ -27,21 +41,9 @@ pub enum TrustPolicy {
 }
 
 impl TrustPolicy {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Allow => "allow",
-            Self::Deny => "deny",
-            Self::Ask => "ask",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "allow" => Some(Self::Allow),
-            "deny" => Some(Self::Deny),
-            "ask" => Some(Self::Ask),
-            _ => None,
-        }
+        self.into()
     }
 }
 
@@ -70,10 +72,13 @@ pub fn policy_for(db: &Db, requester: &str, provider_agent: &str) -> Result<Trus
         )
         .optional()
         .map_err(|e| format!("Database error: {e}"))?;
-    Ok(policy
-        .as_deref()
-        .and_then(TrustPolicy::parse)
-        .unwrap_or_default())
+    match policy {
+        // No rule for this caller: ask
+        None => Ok(TrustPolicy::default()),
+        Some(text) => text
+            .parse()
+            .map_err(|_| format!("Unknown trust policy '{text}' for {provider_agent}")),
+    }
 }
 
 pub fn set_policy(
@@ -104,12 +109,11 @@ pub fn list_policies(db: &Db) -> Result<Vec<TrustRule>, String> {
         .map_err(|e| format!("Database error: {e}"))?;
     let rows = stmt
         .query_map([], |row| {
-            let policy: String = row.get(2)?;
             let updated_at: i64 = row.get(3)?;
             Ok(TrustRule {
                 requester: row.get(0)?,
                 provider_agent: row.get(1)?,
-                policy: TrustPolicy::parse(&policy).unwrap_or_default(),
+                policy: text_enum(row, 2)?,
                 updated_at: updated_at as Timestamp,
             })
         })

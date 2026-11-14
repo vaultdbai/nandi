@@ -13,9 +13,9 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::db::{now_ms, Db};
+use crate::db::{self, now_ms, Db};
 use crate::model::Timestamp;
-use crate::services::a2a::task::{TaskRecord, TaskSourceKind, TaskState};
+use crate::services::a2a::task::{TaskRecord, TaskState};
 use crate::services::domain::AgentCard;
 use crate::services::events::{emit, NandiEvent};
 use crate::services::gateway::{CatalogWorkflow, GatewayCard};
@@ -181,8 +181,6 @@ const TASK_COLUMNS: &str = "id, requester_instance, requester_agent, provider_in
 fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecord> {
     let json = |text: Option<String>| text.and_then(|t| serde_json::from_str(&t).ok());
     let ms = |value: Option<i64>| value.map(|v| v as Timestamp);
-    let state: String = row.get(7)?;
-    let source: String = row.get(18)?;
     Ok(TaskRecord {
         id: row.get(0)?,
         requester_instance: row.get(1)?,
@@ -191,7 +189,7 @@ fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecord> {
         provider_agent: row.get(4)?,
         capability: row.get(5)?,
         input: json(row.get(6)?).unwrap_or(serde_json::Value::Null),
-        state: TaskState::parse(&state).unwrap_or(TaskState::Failed),
+        state: db::text_enum_with(row, 7, TaskState::parse)?,
         eta_seconds: row
             .get::<_, Option<i64>>(8)?
             .and_then(|s| u32::try_from(s).ok()),
@@ -204,7 +202,7 @@ fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecord> {
         error: row.get(15)?,
         result: json(row.get(16)?),
         parent_task_id: row.get(17)?,
-        source_kind: TaskSourceKind::parse(&source),
+        source_kind: db::text_enum(row, 18)?,
         attempt_number: u32::try_from(row.get::<_, i64>(19)?).unwrap_or(1),
         previous_attempt_id: row.get(20)?,
     })

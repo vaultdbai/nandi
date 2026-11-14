@@ -16,8 +16,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 use tokio::sync::oneshot;
 
+use crate::db::text_enum;
 use crate::model::Timestamp;
 use crate::services::events::NandiEvent;
 
@@ -32,8 +34,11 @@ const MAX_LINKS: usize = 10;
 const MAX_LINK_NAME_CHARS: usize = 200;
 
 /// Where an assignment is
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum AssignmentStatus {
     Open,
     Done,
@@ -43,19 +48,9 @@ pub enum AssignmentStatus {
 }
 
 impl AssignmentStatus {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Open => "open",
-            Self::Done => "done",
-            Self::Declined => "declined",
-            Self::Cancelled => "cancelled",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        [Self::Open, Self::Done, Self::Declined, Self::Cancelled]
-            .into_iter()
-            .find(|status| status.as_str() == value)
+        self.into()
     }
 }
 
@@ -152,13 +147,12 @@ const COLUMNS: &str =
     "task_id, caller_instance, caller_name, request, status, note, created_at, due_at, closed_at";
 
 fn from_row(row: &Row<'_>) -> rusqlite::Result<GatewayAssignment> {
-    let status: String = row.get(4)?;
     Ok(GatewayAssignment {
         task_id: row.get(0)?,
         caller_instance: row.get(1)?,
         caller_name: row.get(2)?,
         request: row.get(3)?,
-        status: AssignmentStatus::parse(&status).unwrap_or(AssignmentStatus::Cancelled),
+        status: text_enum(row, 4)?,
         note: row.get(5)?,
         created_at: row.get::<_, i64>(6)? as f64,
         due_at: row.get::<_, Option<i64>>(7)?.map(|t| t as f64),
@@ -366,9 +360,9 @@ mod tests {
             AssignmentStatus::Declined,
             AssignmentStatus::Cancelled,
         ] {
-            assert_eq!(AssignmentStatus::parse(status.as_str()), Some(status));
+            assert_eq!(status.as_str().parse(), Ok(status));
         }
-        assert_eq!(AssignmentStatus::parse("nope"), None);
+        assert!("nope".parse::<AssignmentStatus>().is_err());
     }
 
     #[test]

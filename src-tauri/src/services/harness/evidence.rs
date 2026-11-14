@@ -154,13 +154,12 @@ const SESSION_COLUMNS: &str = "id, adapter_id, agent_id, run_id, status, child_p
     output_tokens, started_at, ended_at";
 
 fn session_row(row: &rusqlite::Row) -> rusqlite::Result<HarnessSessionSummary> {
-    let status: String = row.get(4)?;
     Ok(HarnessSessionSummary {
         id: row.get(0)?,
         adapter_id: row.get(1)?,
         agent_id: row.get(2)?,
         run_id: row.get(3)?,
-        status: HarnessSessionStatus::parse(&status),
+        status: db::text_enum(row, 4)?,
         child_pid: row.get(5)?,
         container_name: row.get(6)?,
         working_dir: row.get(7)?,

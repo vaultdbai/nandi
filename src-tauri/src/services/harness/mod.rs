@@ -51,6 +51,7 @@ use crate::model::Timestamp;
 use crate::services::events::{self, EventBus, NandiEvent};
 use crate::services::AppState;
 use detection::{DetectEnv, Detection, HarnessDetector};
+use strum::{EnumString, IntoStaticStr};
 
 pub const HARNESS_DETECTED: &str = "harness://detected";
 pub const HARNESS_HEALTH_CHANGED: &str = "harness://health_changed";
@@ -112,8 +113,11 @@ pub struct HarnessDefault {
     pub updated_at: Timestamp,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum HarnessSessionStatus {
     Starting,
     Running,
@@ -123,24 +127,9 @@ pub enum HarnessSessionStatus {
 }
 
 impl HarnessSessionStatus {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Starting => "starting",
-            Self::Running => "running",
-            Self::Finished => "finished",
-            Self::Failed => "failed",
-            Self::Killed => "killed",
-        }
-    }
-
-    pub fn parse(value: &str) -> Self {
-        match value {
-            "starting" => Self::Starting,
-            "running" => Self::Running,
-            "finished" => Self::Finished,
-            "killed" => Self::Killed,
-            _ => Self::Failed,
-        }
+        self.into()
     }
 
     pub fn is_live(self) -> bool {

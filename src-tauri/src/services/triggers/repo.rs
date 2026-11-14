@@ -34,10 +34,16 @@ pub fn to_input(trigger: &domain::Trigger) -> TriggerInput {
         id: Some(trigger.id().to_string()),
         name: trigger.name().to_string(),
         enabled: Some(trigger.enabled()),
-        source_type: TriggerSourceType::parse(source.type_name())
-            .unwrap_or(TriggerSourceType::Webhook),
+        source_type: source
+            .type_name()
+            .parse()
+            .expect("a domain trigger source has a known type"),
         source_config: source.config_json(),
-        target_type: TriggerTargetType::parse(trigger.target().type_name()),
+        target_type: trigger
+            .target()
+            .type_name()
+            .parse()
+            .expect("a domain trigger target has a known type"),
         target_id: trigger.target().id().to_string(),
         input_template: trigger.input_template().map(str::to_string),
         priority: Some(trigger.priority()),

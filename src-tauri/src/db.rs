@@ -1019,23 +1019,77 @@ fn init_schema(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-fn json_col(row: &Row, index: impl RowIndex) -> rusqlite::Result<Value> {
-    let text: String = row.get(index)?;
-    Ok(serde_json::from_str(&text).unwrap_or(Value::Null))
+/// Reads a text column holding JSON. Text that isn't JSON fails the read: a
+/// bad row is reported, never read as `null`.
+pub fn json_col(row: &Row, column: impl RowIndex + Copy) -> rusqlite::Result<Value> {
+    let text: String = row.get(column)?;
+    serde_json::from_str(&text).map_err(|e| conversion_error(row, column, e))
 }
 
 /// Reads a text column holding an enum's stored name (`as_str`). An unknown
 /// value fails the read: a bad row is reported, never silently remapped.
-pub fn text_enum<T>(row: &Row, column: &str) -> rusqlite::Result<T>
+pub fn text_enum<T>(row: &Row, column: impl RowIndex + Copy) -> rusqlite::Result<T>
 where
     T: FromStr,
     T::Err: std::error::Error + Send + Sync + 'static,
 {
     let text: String = row.get(column)?;
-    text.parse().map_err(|e| {
-        let index = row.as_ref().column_index(column).unwrap_or_default();
-        rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(e))
-    })
+    text.parse().map_err(|e| conversion_error(row, column, e))
+}
+
+/// [`text_enum`] for a nullable column: `NULL` reads as `None`, an unknown
+/// value still fails the read.
+pub fn opt_text_enum<T>(row: &Row, column: impl RowIndex + Copy) -> rusqlite::Result<Option<T>>
+where
+    T: FromStr,
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    let text: Option<String> = row.get(column)?;
+    text.map(|text| text.parse().map_err(|e| conversion_error(row, column, e)))
+        .transpose()
+}
+
+/// [`text_enum`] for an enum whose own `parse` returns an `Option` (the wire
+/// enums of `nandi-protocol`, which this crate can't derive `FromStr` for).
+pub fn text_enum_with<T>(
+    row: &Row,
+    column: impl RowIndex + Copy,
+    parse: impl Fn(&str) -> Option<T>,
+) -> rusqlite::Result<T> {
+    let text: String = row.get(column)?;
+    parse(&text).ok_or_else(|| conversion_error(row, column, UnknownValue(text)))
+}
+
+/// [`text_enum_with`] for a nullable column.
+pub fn opt_text_enum_with<T>(
+    row: &Row,
+    column: impl RowIndex + Copy,
+    parse: impl Fn(&str) -> Option<T>,
+) -> rusqlite::Result<Option<T>> {
+    let text: Option<String> = row.get(column)?;
+    text.map(|text| parse(&text).ok_or_else(|| conversion_error(row, column, UnknownValue(text))))
+        .transpose()
+}
+
+/// A stored text value that no variant of the enum read from it matches
+#[derive(Debug)]
+struct UnknownValue(String);
+
+impl std::fmt::Display for UnknownValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown stored value '{}'", self.0)
+    }
+}
+
+impl std::error::Error for UnknownValue {}
+
+fn conversion_error(
+    row: &Row,
+    column: impl RowIndex,
+    error: impl std::error::Error + Send + Sync + 'static,
+) -> rusqlite::Error {
+    let index = column.idx(row.as_ref()).unwrap_or_default();
+    rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
 }
 
 // ---------------------------------------------------------------------------

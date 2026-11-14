@@ -2,11 +2,9 @@
 //! `trigger_state`, and `trigger_fires`.
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
-use serde_json::Value;
 
 use super::schema::{
-    FireRunStatus, Trigger, TriggerFire, TriggerFireStatus, TriggerFireSummary, TriggerSourceType,
-    TriggerStats, TriggerTargetType,
+    Trigger, TriggerFire, TriggerFireStatus, TriggerFireSummary, TriggerStats, TriggerTargetType,
 };
 use crate::db::{self, role};
 use crate::model::RunStatus;
@@ -18,22 +16,14 @@ const TRIGGER_COLUMNS: &str = "t.id, t.name, t.enabled, t.source_type, t.source_
      t.created_at, t.updated_at, s.last_fired_at";
 const TRIGGER_FROM: &str = "triggers t LEFT JOIN trigger_state s ON s.trigger_id = t.id";
 
-fn json_text(row: &Row, index: usize) -> rusqlite::Result<Value> {
-    let text: String = row.get(index)?;
-    Ok(serde_json::from_str(&text).unwrap_or(Value::Null))
-}
-
 fn trigger_row(row: &Row) -> rusqlite::Result<Trigger> {
-    let source: String = row.get(3)?;
     let mut trigger = Trigger {
         id: row.get(0)?,
         name: row.get(1)?,
         enabled: row.get::<_, i64>(2)? != 0,
-        // Rows are validated on write; an unknown type can only come from
-        // a newer version, so it reads as a (never-matching) webhook
-        source_type: TriggerSourceType::parse(&source).unwrap_or(TriggerSourceType::Webhook),
-        source_config: json_text(row, 4)?,
-        target_type: TriggerTargetType::parse(&row.get::<_, String>(5)?),
+        source_type: db::text_enum(row, 3)?,
+        source_config: db::json_col(row, 4)?,
+        target_type: db::text_enum(row, 5)?,
         target_id: row.get(6)?,
         input_template: row.get(7)?,
         priority: row.get(8)?,
@@ -100,14 +90,11 @@ fn fire_row(row: &Row) -> rusqlite::Result<TriggerFire> {
         id: row.get(0)?,
         trigger_id: row.get(1)?,
         fired_at: db::ts(row.get(2)?),
-        payload: json_text(row, 3)?,
+        payload: db::json_col(row, 3)?,
         run_id: row.get(4)?,
-        status: TriggerFireStatus::parse(&row.get::<_, String>(5)?),
+        status: db::text_enum(row, 5)?,
         error: row.get(6)?,
-        run_status: row
-            .get::<_, Option<String>>(7)?
-            .as_deref()
-            .and_then(FireRunStatus::parse),
+        run_status: db::opt_text_enum(row, 7)?,
     })
 }
 
@@ -233,8 +220,7 @@ pub fn recent_fires(conn: &Connection, limit: u32) -> rusqlite::Result<Vec<Trigg
         Ok(TriggerFireSummary {
             fire: fire_row(row)?,
             trigger_name: row.get(8)?,
-            source_type: TriggerSourceType::parse(&row.get::<_, String>(9)?)
-                .unwrap_or(TriggerSourceType::Webhook),
+            source_type: db::text_enum(row, 9)?,
         })
     })?;
     rows.collect()
@@ -293,4 +279,62 @@ pub fn last_output(conn: &Connection, trigger_id: &str) -> rusqlite::Result<Opti
         .rev()
         .find(|m| m.role == role::ASSISTANT && !m.content.trim().is_empty())
         .map(|m| m.content))
+}
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::types::Type;
+
+    use super::*;
+    use crate::services::triggers::schema::{FireRunStatus, TriggerSourceType};
+
+    fn conn_with_trigger(source_type: &str, source_config: &str) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init_db(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO triggers (id, name, source_type, source_config, target_type, target_id,
+                                   created_at, updated_at)
+             VALUES ('t1', 'Nightly', ?1, ?2, 'agent', 'a1', 0, 0)",
+            params![source_type, source_config],
+        )
+        .unwrap();
+        conn
+    }
+
+    fn read_error(conn: &Connection) -> Option<usize> {
+        match get_trigger(conn, "t1") {
+            Err(rusqlite::Error::FromSqlConversionFailure(index, Type::Text, _)) => Some(index),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_valid_trigger_row_reads() {
+        let conn = conn_with_trigger("cron", r#"{"schedule":"0 9 * * *"}"#);
+        let trigger = get_trigger(&conn, "t1").unwrap().unwrap();
+        assert_eq!(trigger.source_type, TriggerSourceType::Cron);
+        assert_eq!(trigger.target_type, TriggerTargetType::Agent);
+    }
+
+    #[test]
+    fn an_unknown_source_type_fails_the_read_instead_of_becoming_a_webhook() {
+        let conn = conn_with_trigger("satellite", "{}");
+        assert_eq!(read_error(&conn), Some(3));
+    }
+
+    #[test]
+    fn a_source_config_that_is_not_json_fails_the_read_instead_of_becoming_null() {
+        let conn = conn_with_trigger("cron", "{not json");
+        assert_eq!(read_error(&conn), Some(4));
+    }
+
+    #[test]
+    fn a_compacted_run_reads_as_running_and_an_unknown_status_is_an_error() {
+        assert_eq!("compacted".parse(), Ok(FireRunStatus::Running));
+        assert_eq!(
+            "awaiting_approval".parse(),
+            Ok(FireRunStatus::AwaitingApproval)
+        );
+        assert!("finished".parse::<FireRunStatus>().is_err());
+    }
 }

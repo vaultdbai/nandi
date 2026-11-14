@@ -46,13 +46,14 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 use tokio::sync::{broadcast::error::RecvError, mpsc, oneshot};
 
 use super::delegator::{instance_of, member_name, A2aDeps};
 use super::executor::Executor;
 use super::task_state::{self, Change};
 use super::{eta, Task, TaskStatus};
-use crate::db::{now_ms, Db};
+use crate::db::{self, now_ms, Db};
 use crate::model::Timestamp;
 use crate::services::events::{self, EventBus, NandiEvent};
 use crate::services::relay::protocol::{
@@ -78,8 +79,11 @@ pub const TASK_CIRCUIT_OPENED: &str = "task://circuit_opened";
 pub type TaskError = String;
 
 /// Why a task row exists
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum TaskSourceKind {
     /// An agent (or the user) delegated to a provider
     Direct,
@@ -92,22 +96,9 @@ pub enum TaskSourceKind {
 }
 
 impl TaskSourceKind {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Direct => "direct",
-            Self::Gateway => "gateway",
-            Self::Failover => "failover",
-            Self::Reassign => "reassign",
-        }
-    }
-
-    pub fn parse(value: &str) -> Self {
-        match value {
-            "gateway" => Self::Gateway,
-            "failover" => Self::Failover,
-            "reassign" => Self::Reassign,
-            _ => Self::Direct,
-        }
+        self.into()
     }
 }
 
@@ -165,8 +156,11 @@ pub struct TaskEvent {
 
 /// Where in handling a task an event happened (the gateway's admit →
 /// policy → approval → slot → route → dispatch → child → result)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum TaskStage {
     Admit,
     Policy,
@@ -179,32 +173,9 @@ pub enum TaskStage {
 }
 
 impl TaskStage {
-    pub const ALL: [TaskStage; 8] = [
-        Self::Admit,
-        Self::Policy,
-        Self::Approval,
-        Self::Slot,
-        Self::Route,
-        Self::Dispatch,
-        Self::Child,
-        Self::Result,
-    ];
-
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Admit => "admit",
-            Self::Policy => "policy",
-            Self::Approval => "approval",
-            Self::Slot => "slot",
-            Self::Route => "route",
-            Self::Dispatch => "dispatch",
-            Self::Child => "child",
-            Self::Result => "result",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|stage| stage.as_str() == value)
+        self.into()
     }
 }
 
@@ -449,8 +420,6 @@ fn json_of(text: Option<String>) -> Option<Value> {
 }
 
 fn from_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
-    let state: String = row.get(7)?;
-    let source_kind: String = row.get(18)?;
     let ms = |i: usize| -> rusqlite::Result<Option<f64>> {
         Ok(row.get::<_, Option<i64>>(i)?.map(|t| t as f64))
     };
@@ -462,7 +431,7 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
         provider_agent: row.get(4)?,
         capability: row.get(5)?,
         input: json_of(row.get(6)?).unwrap_or(Value::Null),
-        state: TaskState::parse(&state).unwrap_or(TaskState::Failed),
+        state: db::text_enum_with(row, 7, TaskState::parse)?,
         eta_seconds: row.get(8)?,
         deadline: ms(9)?,
         priority: row.get(10)?,
@@ -473,7 +442,7 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
         error: row.get(15)?,
         result: json_of(row.get(16)?),
         parent_task_id: row.get(17)?,
-        source_kind: TaskSourceKind::parse(&source_kind),
+        source_kind: db::text_enum(row, 18)?,
         attempt_number: row.get(19)?,
         previous_attempt_id: row.get(20)?,
     })
@@ -649,17 +618,13 @@ pub async fn events_of(db: &Db, task_id: &str) -> Result<Vec<TaskEvent>, String>
                FROM task_events WHERE task_id = ?1 ORDER BY id",
         )?;
         let rows = stmt.query_map([id], |row| {
-            let from: Option<String> = row.get(1)?;
-            let to: String = row.get(2)?;
-            let kind: Option<String> = row.get(4)?;
-            let stage: Option<String> = row.get(5)?;
             Ok(TaskEvent {
                 task_id: row.get(0)?,
-                from_state: from.as_deref().and_then(TaskState::parse),
-                to_state: TaskState::parse(&to).unwrap_or(TaskState::Failed),
+                from_state: db::opt_text_enum_with(row, 1, TaskState::parse)?,
+                to_state: db::text_enum_with(row, 2, TaskState::parse)?,
                 reason: row.get(3)?,
-                reason_kind: kind.as_deref().and_then(ReasonKind::parse),
-                stage: stage.as_deref().and_then(TaskStage::parse),
+                reason_kind: db::opt_text_enum_with(row, 4, ReasonKind::parse)?,
+                stage: db::opt_text_enum(row, 5)?,
                 at: row.get::<_, i64>(6)? as f64,
             })
         })?;
