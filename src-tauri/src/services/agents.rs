@@ -104,9 +104,9 @@ pub struct SkillConfig {
     pub model: String,
     /// Container image; `None` uses the default runtime image
     pub image: Option<String>,
-    /// skill.md `memory_mb`; `None` uses `runtime::DEFAULT_MEMORY_MB`
+    /// skill.md `memory_mb`; `None` uses `sandbox::DEFAULT_MEMORY_MB`
     pub memory_mb: Option<u32>,
-    /// skill.md `cpu` (cores); `None` uses `runtime::DEFAULT_CPU`
+    /// skill.md `cpu` (cores); `None` uses `sandbox::DEFAULT_CPU`
     pub cpu: Option<f32>,
     /// skill.md `shell_timeout_s`; `None` leaves the runtime's 30s
     pub shell_timeout_s: Option<u32>,

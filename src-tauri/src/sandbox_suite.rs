@@ -654,7 +654,7 @@ async fn the_egress_relay_holds_nothing_and_is_replaced_when_wrong() {
         assert_eq!(host["Memory"], 64 * 1024 * 1024_i64);
         assert_eq!(host["PidsLimit"], 64);
         assert_eq!(host["Init"], true);
-        assert_eq!(info["Config"]["User"], runtime::IMAGE_USER);
+        assert_eq!(info["Config"]["User"], runtime::AgentUser::IMAGE.user());
         assert_eq!(
             info["Config"]["Labels"]["org.nandi.egress.target"],
             proxy.port.to_string()

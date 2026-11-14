@@ -22,11 +22,11 @@
 
 use std::collections::HashMap;
 
-use bollard::models::{
-    ContainerCreateBody, HostConfig, NetworkConnectRequest, NetworkCreateRequest,
-};
+use bollard::models::{ContainerCreateBody, NetworkConnectRequest, NetworkCreateRequest};
 use bollard::query_parameters::{CreateContainerOptions, RemoveContainerOptions};
 use bollard::Docker;
+
+use crate::sandbox::{SandboxSpec, BRIDGE_NETWORK};
 
 /// The internal network agents join
 pub const AGENT_NETWORK: &str = "nandi-agents";
@@ -37,7 +37,7 @@ pub const RELAY_PORT: u16 = 11435;
 /// Names the host proxy port the relay forwards to, so a relay left from
 /// a run whose proxy took another port is replaced
 const TARGET_LABEL: &str = "org.nandi.egress.target";
-const RELAY_MEMORY_BYTES: i64 = 64 * 1024 * 1024;
+const RELAY_MEMORY_MB: u32 = 64;
 
 /// How a sandbox image runs the relay
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,30 +215,19 @@ async fn ensure_relay(docker: &Docker, image: RelayImage) -> Result<(), String> 
 }
 
 fn relay_config(image: RelayImage, target_port: u16) -> ContainerCreateBody {
-    ContainerCreateBody {
-        image: Some(image.image().to_string()),
+    SandboxSpec::new(image.image())
         // Past the harness image's entrypoint (it only sets up Codex)
-        entrypoint: Some(Vec::new()),
-        cmd: Some(image.command(target_port)),
-        user: Some(crate::runtime::IMAGE_USER.to_string()),
-        labels: Some(HashMap::from([
-            ("nandi.egress".to_string(), "1".to_string()),
-            (TARGET_LABEL.to_string(), target_port.to_string()),
-        ])),
-        host_config: Some(HostConfig {
-            // The default bridge: its way to the host
-            network_mode: Some("bridge".to_string()),
-            extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
-            readonly_rootfs: Some(true),
-            cap_drop: Some(vec!["ALL".to_string()]),
-            security_opt: Some(vec!["no-new-privileges".to_string()]),
-            memory: Some(RELAY_MEMORY_BYTES),
-            pids_limit: Some(64),
-            init: Some(true),
-            ..Default::default()
-        }),
-        ..Default::default()
-    }
+        .entrypoint("")
+        .command(image.command(target_port))
+        .label("nandi.egress", "1")
+        .label(TARGET_LABEL, &target_port.to_string())
+        // The default bridge: its way to the host
+        .network(BRIDGE_NETWORK)
+        .reaches_host()
+        .memory_mb(RELAY_MEMORY_MB)
+        .pids(64)
+        .init()
+        .to_bollard()
 }
 
 async fn remove(docker: &Docker) {

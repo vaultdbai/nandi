@@ -47,6 +47,7 @@ use super::mcp::PilotTool;
 use super::{handover, refusal, sites, PilotDefinition};
 use crate::llm::ToolSpec;
 use crate::runtime::ProxyTokens;
+use crate::sandbox::{Access, SandboxSpec};
 use crate::services::domain::capability::PilotOptions;
 use crate::services::domain::policy::Refusal;
 use crate::services::domain::Agent;
@@ -714,46 +715,32 @@ fn container_args(
     profile: &Path,
     workdir: &Path,
 ) -> Vec<String> {
-    let mount = |source: &Path, target: &str, read_only: bool| {
-        format!(
-            "type=bind,source={},target={target}{}",
-            source.display(),
-            if read_only { ",readonly" } else { "" }
-        )
-    };
-    [
-        "run",
-        "-i",
-        "--rm",
-        "--name",
-        name,
-        "--label",
-        &format!("nandi.pilot={pilot}"),
-        "--label",
-        &format!("nandi.agent={agent}"),
-        "--cap-drop=ALL",
-        "--security-opt=no-new-privileges",
-        "--pids-limit=512",
-        "--memory=2048m",
-        "--shm-size=1g",
-        "--network",
-        crate::services::egress::relay::AGENT_NETWORK,
-        "--mount",
-        &mount(base, "/config", true),
-        "--mount",
-        &mount(profile, CONTAINER_PROFILE, false),
-        "--mount",
-        &mount(workdir, CONTAINER_WORKDIR, false),
-        "-w",
-        CONTAINER_WORKDIR,
-        IMAGE,
-        "--config",
-        CONTAINER_CONFIG,
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect()
+    let path = |path: &Path| path.display().to_string();
+    SandboxSpec::new(IMAGE)
+        .interactive()
+        .remove_on_exit()
+        .name(name)
+        .label("nandi.pilot", pilot)
+        .label("nandi.agent", agent)
+        // Microsoft's image runs as its own user and writes outside its
+        // mounts (Chrome's caches)
+        .image_user()
+        .writable_root()
+        .pids(512)
+        .memory_mb(2048)
+        .cpus(BROWSER_CPUS)
+        .shm_size_mb(1024)
+        .network(crate::services::egress::relay::AGENT_NETWORK)
+        .bind(&path(base), "/config", Access::ReadOnly)
+        .bind(&path(profile), CONTAINER_PROFILE, Access::ReadWrite)
+        .bind(&path(workdir), CONTAINER_WORKDIR, Access::ReadWrite)
+        .workdir(CONTAINER_WORKDIR)
+        .command(["--config", CONTAINER_CONFIG])
+        .to_cli_args()
 }
+
+/// Chrome renders pages on several cores
+const BROWSER_CPUS: f32 = 2.0;
 
 async fn shutdown(instance: Instance) {
     let Instance {
@@ -1371,11 +1358,13 @@ mod tests {
         );
         let joined = args.join(" ");
         assert!(joined.contains(&format!(
-            "--network {}",
+            "--network={}",
             crate::services::egress::relay::AGENT_NETWORK
         )));
-        assert!(joined.contains("--cap-drop=ALL"));
-        assert!(joined.contains("source=/b,target=/config,readonly"));
+        assert!(joined.contains("--cap-drop=ALL --security-opt=no-new-privileges"));
+        assert!(joined.contains("--pids-limit=512 --memory=2048m"));
+        assert!(joined.contains("--shm-size=1024m"));
+        assert!(joined.contains("--mount type=bind,source=/b,target=/config,readonly"));
         assert!(joined.ends_with(&format!("{IMAGE} --config {CONTAINER_CONFIG}")));
         assert!(!joined.contains("tok"), "no token on the command line");
     }

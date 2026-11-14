@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use crate::db::{self, role};
 use crate::model::RunStatus;
-use crate::runtime::{DEFAULT_CPU, DEFAULT_MEMORY_MB};
+use crate::sandbox::{DEFAULT_CPU, DEFAULT_MEMORY_MB};
 use crate::services::config::repo_config::{self, HarnessDefaults};
 use crate::services::domain::{Agent, AgentRuntimeKind};
 use crate::services::events::{EventBus, RunContext};
@@ -1524,7 +1524,7 @@ cpu: 2.5
             &plan.config.placement,
         );
         assert!(args.contains(&format!(
-            "{}:/opt/nandi-tools/claude-code:ro",
+            "type=volume,source={},target=/opt/nandi-tools/claude-code,readonly",
             bundle.volume()
         )));
 

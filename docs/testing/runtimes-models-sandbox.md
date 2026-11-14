@@ -81,7 +81,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-05 — Native container configuration (mounts, resources, no published ports)
 
 - **What:** The tool container mounts the agent folder read-only at `/agent/skill`, a per-agent workdir `~/.nandi/local/work/<agent>` at `/agent/workdir`, and its shared folders at `/agent/folders/<id>` (read-only unless granted write); memory default 1024 MB, 1 CPU (overridable in skill.md). skill.md `shell_timeout_s` reaches the container as `NANDI_SHELL_TIMEOUT_SECONDS` (absent when unset). Since #9 it joins only the internal `nandi-agents` network (SB-13), publishes no ports, has no `host.docker.internal` mapping, and runs with `init` so the shell tool's leftovers are reaped.
-- **Where:** `src-tauri/src/runtime.rs` (`container_config`, `folder_mounts`, `memory_limit_bytes`, `nano_cpus`; `relay::ensure_ready` before create).
+- **Where:** `src-tauri/src/runtime.rs` (`container_config`, `folder_mounts`; `relay::ensure_ready` before create), `src-tauri/src/sandbox.rs` (`SandboxSpec`, its limits and hardening).
 - **Preconditions:** Docker, `nandi-runtime` built, an agent with tools (and optionally a shared folder).
 - **Steps:** 1. Start the agent. 2. `docker inspect` the container; `docker port nandi-agent-<tag>-<id>` (`docs/developer/sandbox-test-checklist.md` 4.5). 3. From a tool call, write to `/agent/skill` and to a read-only shared folder.
 - **Expected:** Mounts as above; `HostConfig.NetworkMode` = `nandi-agents`, `Init: true`, no `PortBindings`, no `ExposedPorts`, no `ExtraHosts`; `docker port` prints nothing; env `NANDI_AGENT_ID` plus the egress variables (SB-11), no MCP token and no `NANDI_*` names; writes to read-only mounts fail.
@@ -597,7 +597,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### SB-01 — Container hardening (tool and coding-agent containers)
 
 - **What:** Both container kinds run with read-only root filesystem, tmpfs for `/tmp` and the home dir (owned by the container's user), the agent user set by the app (`runtime::AgentUser`: the image's `1000:1000` on Docker Desktop, the host user's own uid and gid on a Linux engine, never root, with `HOME` and `USER` set), `cap_drop ALL`, `no-new-privileges`, pids limit (256 native, 512 harness), memory and CPU limits from skill.md `memory_mb` and `cpu` (both kinds default to 1024 MB and 1 CPU), Docker's default seccomp; harness containers use `--rm --init`, native ones `init: true` (since #9). Network isolation is SB-13.
-- **Where:** `src-tauri/src/runtime.rs` (`AgentUser`, `container_config`), `services/harness/adapter.rs`; Dockerfiles label `org.nandi.sandbox="6"`. Stdio connector containers get the same hardening (CP-22).
+- **Where:** `src-tauri/src/runtime.rs` (`AgentUser`, `container_config`), `src-tauri/src/sandbox.rs` (`SandboxSpec`), `services/harness/adapter.rs`; Dockerfiles label `org.nandi.sandbox="6"`. Stdio connector containers get the same hardening (CP-22).
 - **Preconditions:** Docker, both images built (`sandbox=5`).
 - **Steps:** 1. Start a native agent container and a harness run. 2. `docker inspect` both. 3. From a tool call, `touch /usr/x`; `id`. (Same as `docs/developer/sandbox-test-checklist.md` 1.2–1.5.)
 - **Expected:** `ReadonlyRootfs: true`, `User: 1000:1000` on Docker Desktop (`<your uid>:<your gid>` on a Linux engine), `CapDrop: [ALL]`, `SecurityOpt: [no-new-privileges]`, `PidsLimit` set, tmpfs mounts; write to `/usr` fails; the workdir is writable.

@@ -31,6 +31,7 @@ use tokio::process::Child;
 
 use super::catalog::{config_list, config_str, ConnectorDefinition};
 use super::{Connector, ConnectorDecl, ToolDef};
+use crate::sandbox::{SandboxSpec, Tmpfs};
 use crate::services::secrets::Secrets;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -361,41 +362,22 @@ fn container_args(
     command: &str,
     args: &[String],
 ) -> Vec<String> {
-    let mut out: Vec<String> = [
-        "run",
-        "-i",
-        "--rm",
-        "--init",
-        "--name",
-        name,
-        "--label",
-        &format!("nandi.connector={id}"),
-        "--cap-drop=ALL",
-        "--security-opt=no-new-privileges",
-        "--pids-limit=256",
-        "--memory=1024m",
-        "--user=1000:1000",
-        "--read-only",
-        "--tmpfs=/tmp:rw,nosuid,nodev,size=512m",
+    SandboxSpec::new(image)
+        .interactive()
+        .remove_on_exit()
+        .init()
+        .name(name)
+        .label("nandi.connector", id)
+        .tmpfs(Tmpfs::scratch("/tmp", 512))
         // `exec`: Docker mounts a tmpfs noexec by default, and uvx runs the
         // server it installs into ~/.cache
-        "--tmpfs=/home/node:rw,exec,nosuid,nodev,size=512m,uid=1000,gid=1000",
-        "--network",
-        crate::services::egress::relay::AGENT_NETWORK,
+        .tmpfs(Tmpfs::home("/home/node", 512).exec())
+        .network(crate::services::egress::relay::AGENT_NETWORK)
+        .env_names(env.iter().map(|(name, _)| name))
         // Past any entrypoint the image has
-        "--entrypoint",
-        command,
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    for (name, _) in env {
-        out.push("-e".to_string());
-        out.push(name.clone());
-    }
-    out.push(image.to_string());
-    out.extend(args.iter().cloned());
-    out
+        .entrypoint(command)
+        .command(args)
+        .to_cli_args()
 }
 
 /// `docker pull` for a connector that names its own image
@@ -634,8 +616,10 @@ pub(crate) mod tests {
             "--security-opt=no-new-privileges",
             "--user=1000:1000",
             "--read-only",
-            "--network nandi-agents",
-            "--entrypoint npx",
+            "--pids-limit=256",
+            "--memory=1024m",
+            "--network=nandi-agents",
+            "--entrypoint=npx",
         ] {
             assert!(joined.contains(flag), "{flag}: {joined}");
         }

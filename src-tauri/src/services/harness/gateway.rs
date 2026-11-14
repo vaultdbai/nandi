@@ -17,9 +17,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use bollard::models::{
-    ContainerCreateBody, HostConfig, Mount, MountType, NetworkCreateRequest, PortBinding,
-};
+use bollard::models::NetworkCreateRequest;
 use bollard::query_parameters::{CreateContainerOptions, RemoveContainerOptions};
 use bollard::Docker;
 use serde::{Deserialize, Serialize};
@@ -28,6 +26,7 @@ use specta::Type;
 use super::adapter::{GatewayConfig, GatewayKind, HarnessCredentials};
 use crate::db::{now_ms, ts};
 use crate::model::Timestamp;
+use crate::sandbox::{self, SandboxSpec};
 use crate::services::events::{self, EventBus, NandiEvent};
 use crate::services::AppState;
 
@@ -37,6 +36,8 @@ pub const CONTAINER_NAME: &str = "nandi-litellm";
 /// The Docker network harness containers join to reach the gateway
 pub const NETWORK: &str = "nandi-harness";
 pub const PORT: u16 = 4000;
+/// LiteLLM is a Python server with many providers loaded
+const GATEWAY_MEMORY_MB: u32 = 2048;
 /// The model name Claude Code asks the gateway for
 pub const MODEL_ALIAS: &str = "nandi-bedrock";
 pub const SMALL_MODEL_ALIAS: &str = "nandi-bedrock-small";
@@ -112,6 +113,28 @@ fn container_env(credentials: &HarnessCredentials, master_key: &str) -> Vec<Stri
         env.push("AWS_REGION=us-east-1".to_string());
     }
     env
+}
+
+/// The gateway container: LiteLLM's own image as its own user, with a
+/// writable root (it writes its own files), on the harness network and the
+/// host's loopback. Its environment holds the provider credentials, so it
+/// is only ever created through bollard, never on a command line.
+fn container_spec(model: &str, config_file: &std::path::Path, env: Vec<String>) -> SandboxSpec {
+    SandboxSpec::new(LITELLM_IMAGE)
+        .image_user()
+        .writable_root()
+        .label("nandi.harness", "1")
+        .label("nandi.gateway.model", model)
+        .network(NETWORK)
+        .loopback_port(PORT)
+        .memory_mb(GATEWAY_MEMORY_MB)
+        .bind(
+            &config_file.display().to_string(),
+            CONFIG_PATH,
+            sandbox::Access::ReadOnly,
+        )
+        .env(env)
+        .command(["--config", CONFIG_PATH, "--port", &PORT.to_string()])
 }
 
 fn docker() -> Result<Docker, String> {
@@ -200,41 +223,8 @@ impl GatewayService {
         crate::services::egress::relay::ensure_agent_network().await?;
         remove(&docker).await;
         let master_key = format!("sk-nandi-{}", uuid::Uuid::new_v4().simple());
-        let body = ContainerCreateBody {
-            image: Some(LITELLM_IMAGE.to_string()),
-            cmd: Some(vec![
-                "--config".to_string(),
-                CONFIG_PATH.to_string(),
-                "--port".to_string(),
-                PORT.to_string(),
-            ]),
-            env: Some(container_env(credentials, &master_key)),
-            labels: Some(HashMap::from([
-                ("nandi.harness".to_string(), "1".to_string()),
-                ("nandi.gateway.model".to_string(), model.to_string()),
-            ])),
-            exposed_ports: Some(vec![format!("{PORT}/tcp")]),
-            host_config: Some(HostConfig {
-                mounts: Some(vec![Mount {
-                    typ: Some(MountType::BIND),
-                    source: Some(config_file.display().to_string()),
-                    target: Some(CONFIG_PATH.to_string()),
-                    read_only: Some(true),
-                    ..Default::default()
-                }]),
-                port_bindings: Some(HashMap::from([(
-                    format!("{PORT}/tcp"),
-                    Some(vec![PortBinding {
-                        host_ip: Some("127.0.0.1".to_string()),
-                        host_port: Some(PORT.to_string()),
-                    }]),
-                )])),
-                network_mode: Some(NETWORK.to_string()),
-                security_opt: Some(vec!["no-new-privileges".to_string()]),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
+        let body = container_spec(model, &config_file, container_env(credentials, &master_key))
+            .to_bollard();
         let options = CreateContainerOptions {
             name: Some(CONTAINER_NAME.to_string()),
             ..Default::default()
@@ -423,6 +413,34 @@ mod tests {
         assert!(env.contains(&"LITELLM_MASTER_KEY=sk-nandi-x".to_string()));
         let rendered = render_config("amazon.nova-pro-v1:0").unwrap();
         assert!(!rendered.contains("secret"));
+    }
+
+    #[test]
+    fn the_gateway_listens_on_loopback_only_and_reads_its_config() {
+        let body = container_spec(
+            "amazon.nova-pro-v1:0",
+            std::path::Path::new("/c/litellm.yaml"),
+            vec!["LITELLM_MASTER_KEY=sk-nandi-x".to_string()],
+        )
+        .to_bollard();
+        assert_eq!(body.image.as_deref(), Some(LITELLM_IMAGE));
+        assert_eq!(
+            body.labels.as_ref().unwrap()["nandi.gateway.model"],
+            "amazon.nova-pro-v1:0"
+        );
+        let host = body.host_config.unwrap();
+        assert_eq!(host.network_mode.as_deref(), Some(NETWORK));
+        assert_eq!(host.cap_drop, Some(vec!["ALL".to_string()]));
+        assert_eq!(
+            host.security_opt,
+            Some(vec!["no-new-privileges".to_string()])
+        );
+        let bindings = host.port_bindings.unwrap();
+        let binding = &bindings[&format!("{PORT}/tcp")].as_ref().unwrap()[0];
+        assert_eq!(binding.host_ip.as_deref(), Some("127.0.0.1"));
+        let config = &host.mounts.unwrap()[0];
+        assert_eq!(config.target.as_deref(), Some(CONFIG_PATH));
+        assert_eq!(config.read_only, Some(true));
     }
 
     #[tokio::test]

@@ -28,6 +28,7 @@ mod model;
 mod offline_suite;
 mod rpc;
 mod runtime;
+mod sandbox;
 #[cfg(test)]
 mod sandbox_suite;
 #[cfg(test)]

@@ -27,6 +27,7 @@ use specta::Type;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use super::SandboxImage;
+use crate::sandbox::{Access, SandboxSpec, Tmpfs, BRIDGE_NETWORK};
 use crate::services::events::{self, NandiEvent};
 
 /// What the harness image ships and the first use installs (keep the ACP
@@ -329,22 +330,12 @@ async fn check_ready(docker: &bollard::Docker, bundle: ToolBundle) -> bool {
 
 /// `docker run` that prints the volume's marker (no network, read-only)
 fn marker_args(bundle: ToolBundle) -> Vec<String> {
-    [
-        "run",
-        "--rm",
-        "--network=none",
-        "--read-only",
-        "--cap-drop=ALL",
-        "--entrypoint",
-        "cat",
-        "-v",
-        &format!("{}:/tools:ro", bundle.volume()),
-        bundle.image().tag(),
-        "/tools/.nandi-ready",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect()
+    SandboxSpec::new(bundle.image().tag())
+        .remove_on_exit()
+        .volume(&bundle.volume(), "/tools", Access::ReadOnly)
+        .entrypoint("cat")
+        .command(["/tools/.nandi-ready"])
+        .to_cli_args()
 }
 
 /// The one-off install container: Nandi's own script (not agent code), as
@@ -352,35 +343,26 @@ fn marker_args(bundle: ToolBundle) -> Vec<String> {
 /// network to reach the npm registry. A company proxy passes by name
 /// (`-e NAME`), as for image builds.
 fn install_args(bundle: ToolBundle, proxy_names: &[String]) -> Vec<String> {
-    let mut args: Vec<String> = [
-        "run",
-        "--rm",
-        "--name",
-        &format!("nandi-tools-install-{}", bundle.id()),
-        "--label",
-        "nandi.tools-install=1",
-        "--cap-drop=ALL",
-        "--security-opt=no-new-privileges",
-        "--pids-limit=512",
-        "--user=1000:1000",
-        "--read-only",
-        "--tmpfs=/tmp:rw,nosuid,nodev,size=2g",
-        "--tmpfs=/home/node:rw,nosuid,nodev,size=64m,uid=1000,gid=1000",
-        "-v",
-        &format!("{}:{}", bundle.volume(), bundle.mount_path()),
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    for name in proxy_names {
-        args.push("-e".to_string());
-        args.push(name.clone());
-    }
-    args.push(bundle.image().tag().to_string());
-    args.push("/opt/nandi/install-tools.sh".to_string());
-    args.push(bundle.id().to_string());
-    args
+    SandboxSpec::new(bundle.image().tag())
+        .remove_on_exit()
+        .name(&format!("nandi-tools-install-{}", bundle.id()))
+        .label("nandi.tools-install", "1")
+        .pids(512)
+        // npm's cache lives in the /tmp tmpfs, which counts as memory
+        .memory_mb(INSTALL_MEMORY_MB)
+        .cpus(INSTALL_CPUS)
+        .tmpfs(Tmpfs::scratch("/tmp", 2048))
+        .tmpfs(Tmpfs::home("/home/node", 64))
+        .network(BRIDGE_NETWORK)
+        .volume(&bundle.volume(), bundle.mount_path(), Access::ReadWrite)
+        .env_names(proxy_names)
+        .command(["/opt/nandi/install-tools.sh", bundle.id()])
+        .to_cli_args()
 }
+
+/// The install's limits: room for its 2 GB `/tmp` and npm itself
+const INSTALL_MEMORY_MB: u32 = 4096;
+const INSTALL_CPUS: f32 = 2.0;
 
 fn docker_command() -> tokio::process::Command {
     let mut command = tokio::process::Command::new("docker");
@@ -564,8 +546,9 @@ mod tests {
         let joined = args.join(" ");
         assert!(joined.contains("--user=1000:1000 --read-only"), "{joined}");
         assert!(joined.contains("--cap-drop=ALL"));
+        assert!(joined.contains("--security-opt=no-new-privileges --pids-limit=512"));
         assert!(joined.contains(&format!(
-            "-v {}:/opt/nandi-tools/claude-code -e HTTPS_PROXY",
+            "--mount type=volume,source={},target=/opt/nandi-tools/claude-code -e HTTPS_PROXY",
             ToolBundle::ClaudeCode.volume()
         )));
         assert!(joined.ends_with(&format!(
@@ -580,7 +563,12 @@ mod tests {
     fn the_check_reads_the_marker_read_only_without_network() {
         let joined = marker_args(ToolBundle::ClaudeCode).join(" ");
         assert!(joined.contains("--network=none"));
-        assert!(joined.contains(&format!("{}:/tools:ro", ToolBundle::ClaudeCode.volume())));
+        assert!(joined.contains("--read-only"));
+        assert!(joined.contains("--cap-drop=ALL"));
+        assert!(joined.contains(&format!(
+            "--mount type=volume,source={},target=/tools,readonly",
+            ToolBundle::ClaudeCode.volume()
+        )));
         assert!(joined.ends_with("/tools/.nandi-ready"));
     }
 

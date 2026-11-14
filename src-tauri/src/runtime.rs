@@ -15,10 +15,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use bollard::models::{ContainerCreateBody, HostConfig, Mount, MountType};
+use bollard::models::ContainerCreateBody;
 use bollard::query_parameters::{CreateContainerOptions, RemoveContainerOptions};
 use bollard::Docker;
 
+use crate::sandbox::{self, SandboxSpec, Tmpfs, DEFAULT_CPU, DEFAULT_MEMORY_MB};
 use crate::services::agents::{SkillConfig, AGENT_ID_LABEL, INSTANCE_LABEL};
 use crate::services::egress::relay::{self, RelayImage};
 use crate::services::egress::EgressState;
@@ -38,14 +39,6 @@ pub const HARNESS_IMAGE: &str = "ghcr.io/vaultdbai/nandi-harness:sandbox-6";
 /// Where published MCP connectors run (`runtimes/nandi-connectors`): Node
 /// LTS, Python and uv, nothing else
 pub const CONNECTORS_IMAGE: &str = "ghcr.io/vaultdbai/nandi-connectors:sandbox-6";
-/// Container limits when skill.md doesn't set `memory_mb` / `cpu`
-pub const DEFAULT_MEMORY_MB: u32 = 1024;
-pub const DEFAULT_CPU: f32 = 1.0;
-const PIDS_LIMIT: i64 = 256;
-/// The images' own user (`agent`, `node`): uid 1000. Containers that write
-/// nothing of the host's (the relay, connectors, tool installs) run as it,
-/// set here too so the uid never depends on the image alone
-pub const IMAGE_USER: &str = "1000:1000";
 
 /// Who an agent container runs as: the containers that write the host's
 /// folders (its workdir, shared folders it may write).
@@ -66,7 +59,10 @@ pub struct AgentUser {
 }
 
 impl AgentUser {
-    const IMAGE: Self = Self {
+    /// The images' own user (`agent`, `node`): uid 1000. Containers that
+    /// write nothing of the host's (the relay, connectors, tool installs)
+    /// run as it, set so the uid never depends on the image alone
+    pub const IMAGE: Self = Self {
         uid: 1000,
         gid: 1000,
     };
@@ -294,34 +290,25 @@ fn container_config(
     workdir: &str,
     egress_env: Vec<String>,
 ) -> ContainerCreateBody {
-    let user = AgentUser::current();
-    let bind = |source: String, target: &str, read_only: bool| Mount {
-        typ: Some(MountType::BIND),
-        source: Some(source),
-        target: Some(target.to_string()),
-        read_only: Some(read_only),
-        ..Default::default()
-    };
-
-    let mut mounts = vec![
-        bind(skill.dir.display().to_string(), "/agent/skill", true),
-        bind(workdir.to_string(), "/agent/workdir", false),
-    ];
-    // Its shared folders, read-only unless it may write (`agent_folders`)
-    for folder in folder_mounts(&skill.folders) {
-        mounts.push(bind(folder.source, &folder.target, folder.read_only));
-    }
-
-    ContainerCreateBody {
-        image: Some(image.to_string()),
-        labels: Some(HashMap::from([
-            (AGENT_ID_LABEL.to_string(), skill.id.clone()),
-            (
-                INSTANCE_LABEL.to_string(),
-                nandi_config::instance_tag().to_string(),
-            ),
-        ])),
-        env: Some(
+    let mut spec = SandboxSpec::new(image)
+        .label(AGENT_ID_LABEL, &skill.id)
+        .label(INSTANCE_LABEL, nandi_config::instance_tag())
+        .user(AgentUser::current())
+        // Internal: no route out but the relay, no published ports
+        .network(relay::AGENT_NETWORK)
+        // Reaps what the shell tool leaves behind
+        .init()
+        .bind(
+            &skill.dir.display().to_string(),
+            "/agent/skill",
+            sandbox::Access::ReadOnly,
+        )
+        .bind(workdir, "/agent/workdir", sandbox::Access::ReadWrite)
+        .tmpfs(Tmpfs::scratch("/tmp", 256))
+        .tmpfs(Tmpfs::home(HOME, 64))
+        .memory_mb(skill.memory_mb.unwrap_or(DEFAULT_MEMORY_MB))
+        .cpus(skill.cpu.unwrap_or(DEFAULT_CPU))
+        .env(
             std::iter::once(format!("NANDI_AGENT_ID={}", skill.id))
                 .chain(AgentUser::env(HOME, "agent"))
                 .chain(
@@ -329,33 +316,17 @@ fn container_config(
                         .shell_timeout_s
                         .map(|seconds| format!("NANDI_SHELL_TIMEOUT_SECONDS={seconds}")),
                 )
-                .chain(egress_env)
-                .collect(),
-        ),
-        user: Some(user.user()),
-        host_config: Some(HostConfig {
-            // Internal: no route out but the relay, no published ports
-            network_mode: Some(relay::AGENT_NETWORK.to_string()),
-            // Reaps what the shell tool leaves behind
-            init: Some(true),
-            mounts: Some(mounts),
-            readonly_rootfs: Some(true),
-            tmpfs: Some(HashMap::from([
-                ("/tmp".to_string(), "rw,nosuid,nodev,size=256m".to_string()),
-                (
-                    HOME.to_string(),
-                    user.home_tmpfs("rw,nosuid,nodev,size=64m"),
-                ),
-            ])),
-            cap_drop: Some(vec!["ALL".to_string()]),
-            security_opt: Some(vec!["no-new-privileges".to_string()]),
-            memory: Some(memory_limit_bytes(skill)),
-            nano_cpus: Some(nano_cpus(skill)),
-            pids_limit: Some(PIDS_LIMIT),
-            ..Default::default()
-        }),
-        ..Default::default()
+                .chain(egress_env),
+        );
+    // Its shared folders, read-only unless it may write (`agent_folders`)
+    for folder in folder_mounts(&skill.folders) {
+        spec = spec.bind(
+            &folder.source,
+            &folder.target,
+            sandbox::Access::read_only_if(folder.read_only),
+        );
     }
+    spec.to_bollard()
 }
 
 /// Where an agent's shared folders appear in its container
@@ -393,15 +364,6 @@ pub fn folder_mounts(
             })
         })
         .collect()
-}
-
-fn memory_limit_bytes(skill: &SkillConfig) -> i64 {
-    i64::from(skill.memory_mb.unwrap_or(DEFAULT_MEMORY_MB)) * 1024 * 1024
-}
-
-/// Docker's CPU quota, in billionths of a core
-fn nano_cpus(skill: &SkillConfig) -> i64 {
-    (f64::from(skill.cpu.unwrap_or(DEFAULT_CPU)) * 1e9).round() as i64
 }
 
 #[cfg(test)]
@@ -544,7 +506,7 @@ mod tests {
             }
         }
         #[cfg(not(target_os = "linux"))]
-        assert_eq!(user.user(), IMAGE_USER, "Docker Desktop: the image's user");
+        assert_eq!(user, AgentUser::IMAGE, "Docker Desktop: the image's user");
         assert_eq!(
             AgentUser {
                 uid: 1001,

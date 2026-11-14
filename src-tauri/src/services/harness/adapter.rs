@@ -18,6 +18,8 @@ use tokio::sync::mpsc;
 
 use super::acp::AcpSessionUpdate;
 use crate::model::Timestamp;
+use crate::runtime::AgentUser;
+use crate::sandbox::{Access, SandboxSpec, Tmpfs, BRIDGE_NETWORK};
 
 /// Turn updates from `HarnessAdapter::send`, ending with `TurnFinished` or
 /// `Error` (then the channel closes)
@@ -127,9 +129,11 @@ pub enum Placement {
         name: String,
         /// Host directory mounted at `/agent/workdir`
         host_workdir: PathBuf,
+        /// `None`: the sandbox's default limits (`sandbox::Limits`)
         memory_mb: Option<u32>,
         cpu: Option<f32>,
-        /// A Docker network to join (`nandi-harness`, to reach the gateway)
+        /// A Docker network to join (`nandi-harness`, to reach the gateway);
+        /// `None`: Docker's default bridge
         network: Option<String>,
         /// The agent's shared folders (`runtime::folder_mounts`)
         folders: Vec<crate::runtime::FolderMount>,
@@ -481,67 +485,45 @@ pub fn docker_args(
     else {
         return Vec::new();
     };
-    // The same hardening as the native runtime container
-    let mut args: Vec<String> = [
-        "run",
-        "-i",
-        "--rm",
-        "--init",
-        "--name",
-        name,
-        "--label",
-        "nandi.harness=1",
-        "--cap-drop=ALL",
-        "--security-opt=no-new-privileges",
-        "--pids-limit=512",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
     // The agent user (the host user's uid on a Linux engine, the image's
     // `node` on Docker Desktop); the CLIs' state lives in a home tmpfs
-    let user = crate::runtime::AgentUser::current();
-    args.push(format!("--user={}", user.user()));
-    args.push("--read-only".to_string());
-    args.push("--tmpfs=/tmp:rw,nosuid,nodev,size=512m".to_string());
-    args.push(format!(
-        "--tmpfs={CONTAINER_HOME}:{}",
-        user.home_tmpfs("rw,nosuid,nodev,size=512m")
-    ));
-    for var in crate::runtime::AgentUser::env(CONTAINER_HOME, "node") {
-        args.push("-e".to_string());
-        args.push(var);
-    }
-    args.push("-w".to_string());
-    args.push(CONTAINER_WORKDIR.to_string());
-    args.push("-v".to_string());
-    args.push(format!("{}:{CONTAINER_WORKDIR}", host_workdir.display()));
+    let mut spec = SandboxSpec::new(image)
+        .interactive()
+        .remove_on_exit()
+        .init()
+        .name(name)
+        .label("nandi.harness", "1")
+        .pids(512)
+        .user(AgentUser::current())
+        .tmpfs(Tmpfs::scratch("/tmp", 512))
+        .tmpfs(Tmpfs::home(CONTAINER_HOME, 512))
+        .env(AgentUser::env(CONTAINER_HOME, "node"))
+        .workdir(CONTAINER_WORKDIR)
+        .bind(
+            &host_workdir.display().to_string(),
+            CONTAINER_WORKDIR,
+            Access::ReadWrite,
+        );
     for folder in folders {
-        args.push("-v".to_string());
-        let mode = if folder.read_only { ":ro" } else { "" };
-        args.push(format!("{}:{}{mode}", folder.source, folder.target));
+        spec = spec.bind(
+            &folder.source,
+            &folder.target,
+            Access::read_only_if(folder.read_only),
+        );
     }
     for tool in tools {
-        args.push("-v".to_string());
-        args.push(format!("{}:{}:ro", tool.volume, tool.target));
+        spec = spec.volume(&tool.volume, &tool.target, Access::ReadOnly);
     }
     if let Some(memory) = memory_mb {
-        args.push(format!("--memory={memory}m"));
+        spec = spec.memory_mb(*memory);
     }
     if let Some(cpu) = cpu {
-        args.push(format!("--cpus={cpu}"));
+        spec = spec.cpus(*cpu);
     }
-    if let Some(network) = network {
-        args.push(format!("--network={network}"));
-    }
-    for name in env_names {
-        args.push("-e".to_string());
-        args.push(name.to_string());
-    }
-    args.push(image.to_string());
-    args.push(invocation.program.clone());
-    args.extend(invocation.args.iter().cloned());
-    args
+    spec.network(network.as_deref().unwrap_or(BRIDGE_NETWORK))
+        .env_names(env_names)
+        .command(std::iter::once(&invocation.program).chain(&invocation.args))
+        .to_cli_args()
 }
 
 /// Spawns `invocation` with `env` (which may hold credentials) where
@@ -1038,7 +1020,14 @@ mod tests {
         );
         let joined = args.join(" ");
         assert!(joined.starts_with("run -i --rm --init --name nandi-harness-writer"));
-        assert!(joined.contains("-v nandi-tools-claude-code-abc:/opt/nandi-tools/claude-code:ro"));
+        let has_pair = |flag: &str, value: &str| {
+            args.windows(2)
+                .any(|pair| pair[0] == flag && pair[1] == value)
+        };
+        assert!(has_pair(
+            "--mount",
+            "type=volume,source=nandi-tools-claude-code-abc,target=/opt/nandi-tools/claude-code,readonly"
+        ));
         assert!(joined.contains("--cap-drop=ALL --security-opt=no-new-privileges"));
         let user = crate::runtime::AgentUser::current();
         assert!(joined.contains(&format!("--user={} --read-only", user.user())));
@@ -1050,9 +1039,16 @@ mod tests {
         assert!(joined.contains("-e HOME=/home/node -e USER=node"));
         assert!(joined.contains("--network=nandi-harness"));
         assert!(joined.contains("-e ANTHROPIC_API_KEY -e AWS_SESSION_TOKEN"));
-        assert!(joined.contains("/work/writer:/agent/workdir"));
-        assert!(joined.contains("-v /home/a/docs:/agent/folders/docs:ro"));
-        assert!(joined.contains("--memory=2048m --cpus=1.5"));
+        assert!(has_pair(
+            "--mount",
+            "type=bind,source=/work/writer,target=/agent/workdir"
+        ));
+        assert!(has_pair(
+            "--mount",
+            "type=bind,source=/home/a/docs,target=/agent/folders/docs,readonly"
+        ));
+        assert!(!args.contains(&"-v".to_string()), "--mount, never -v");
+        assert!(joined.contains("--pids-limit=512 --memory=2048m --cpus=1.5"));
         assert!(joined.ends_with("nandi-harness:latest claude-agent-acp"));
         let passed: Vec<&String> = args
             .windows(2)
