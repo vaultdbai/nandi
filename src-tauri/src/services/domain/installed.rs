@@ -35,6 +35,7 @@
 //! for updates.
 
 use serde::{Deserialize, Serialize};
+use strum::{EnumString, IntoStaticStr};
 
 use super::{AgentId, DomainError, DomainResult, PackId, PublisherHandle, WorkflowId};
 
@@ -107,30 +108,23 @@ pub struct InstalledAgent {
 }
 
 /// What a vendored folder was installed as.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum InstallKind {
     Pack,
     Agent,
 }
 
 impl InstallKind {
+    /// The name in the installed file
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Pack => "pack",
-            Self::Agent => "agent",
-        }
+        self.into()
     }
 
     pub fn parse(value: &str) -> DomainResult<Self> {
-        match value {
-            "pack" => Ok(Self::Pack),
-            "agent" => Ok(Self::Agent),
-            other => Err(DomainError::invalid(
-                FILE,
-                "kind",
-                format!("'{other}' is not 'pack' or 'agent'"),
-            )),
-        }
+        value.parse().map_err(|_| {
+            DomainError::invalid(FILE, "kind", format!("'{value}' is not 'pack' or 'agent'"))
+        })
     }
 }
 

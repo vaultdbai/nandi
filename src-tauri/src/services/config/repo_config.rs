@@ -40,6 +40,7 @@ use std::time::SystemTime;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
 use crate::db::{self, Db};
 use crate::model::Timestamp;
@@ -61,8 +62,11 @@ pub const PROVIDER_ENV: &str = "NANDI_LLM_PROVIDER";
 /// Overrides the model (environment beats the repo)
 pub const MODEL_ENV: &str = "NANDI_LLM_MODEL";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "snake_case")]
 pub enum LlmProviderKind {
     Bedrock,
     Azure,
@@ -73,15 +77,9 @@ pub enum LlmProviderKind {
 }
 
 impl LlmProviderKind {
+    /// The name in the repo's LLM config
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Bedrock => "bedrock",
-            Self::Azure => "azure",
-            Self::Litellm => "litellm",
-            Self::Anthropic => "anthropic",
-            Self::Openai => "openai",
-            Self::Ollama => "ollama",
-        }
+        self.into()
     }
 
     /// The `<prefix>:` of Nandi's native model refs, for providers native

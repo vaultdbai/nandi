@@ -38,6 +38,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use strum::{EnumString, IntoStaticStr};
 
 use super::agent::{model_ref_mapping, ModelRef, Provider};
 use super::grant::Grants;
@@ -95,8 +96,11 @@ impl fmt::Display for SecretRef {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "snake_case")]
 pub enum Theme {
     #[default]
     System,
@@ -105,25 +109,19 @@ pub enum Theme {
 }
 
 impl Theme {
+    /// The name in settings
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::System => "system",
-            Self::Light => "light",
-            Self::Dark => "dark",
-        }
+        self.into()
     }
 
     pub fn parse(value: &str) -> DomainResult<Self> {
-        match value {
-            "system" => Ok(Self::System),
-            "light" => Ok(Self::Light),
-            "dark" => Ok(Self::Dark),
-            other => Err(DomainError::invalid(
+        value.parse().map_err(|_| {
+            DomainError::invalid(
                 "settings",
                 "theme",
-                format!("'{other}' is not system, light, or dark"),
-            )),
-        }
+                format!("'{value}' is not system, light, or dark"),
+            )
+        })
     }
 }
 
@@ -150,8 +148,11 @@ impl Default for NotificationPrefs {
 /// The public registry every install starts with.
 pub const DEFAULT_REGISTRY: &str = "github.com/vaultdbai/nandi-registry";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "snake_case")]
 pub enum RegistryKind {
     /// The curated public registry
     Public,
@@ -162,25 +163,19 @@ pub enum RegistryKind {
 }
 
 impl RegistryKind {
+    /// The name in settings
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Public => "public",
-            Self::Community => "community",
-            Self::Personal => "personal",
-        }
+        self.into()
     }
 
     pub fn parse(value: &str) -> DomainResult<Self> {
-        match value {
-            "public" => Ok(Self::Public),
-            "community" => Ok(Self::Community),
-            "personal" => Ok(Self::Personal),
-            other => Err(DomainError::invalid(
+        value.parse().map_err(|_| {
+            DomainError::invalid(
                 "settings",
                 "marketplace.registries.kind",
-                format!("'{other}' is not public, community, or personal"),
-            )),
-        }
+                format!("'{value}' is not public, community, or personal"),
+            )
+        })
     }
 }
 

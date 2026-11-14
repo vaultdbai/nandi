@@ -19,6 +19,7 @@ use std::collections::{BTreeMap, HashMap};
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
 use super::definition::ProviderKind;
 use crate::db::{now_ms, Db};
@@ -65,19 +66,20 @@ impl CapabilityEvidence {
 }
 
 /// Which side of the task this instance was on
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum EvidenceRole {
     Requester,
     Provider,
 }
 
 impl EvidenceRole {
+    /// The text stored in the database
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Requester => "requester",
-            Self::Provider => "provider",
-        }
+        self.into()
     }
 }
 

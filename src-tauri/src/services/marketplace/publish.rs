@@ -15,6 +15,7 @@
 use std::path::Path;
 
 use serde_json::{json, Value};
+use strum::{EnumString, IntoStaticStr};
 
 use super::github::{FileCommit, GitHubApi};
 use super::manifest::{parse_version, NANDI_VERSION};
@@ -117,7 +118,8 @@ pub fn entry(
 }
 
 /// Which list of the registry an entry goes in
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum EntryList {
     Agents,
     Connectors,
@@ -126,10 +128,7 @@ pub enum EntryList {
 impl EntryList {
     /// The folder and the `index.json` list
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Agents => "agents",
-            Self::Connectors => "connectors",
-        }
+        self.into()
     }
 }
 

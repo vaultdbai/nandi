@@ -32,6 +32,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
 use super::agent::split_frontmatter;
 use super::connector::Connector;
@@ -58,19 +59,20 @@ pub enum RunSpec {
     Url { url: String },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum PackageRunner {
     Npx,
     Uvx,
 }
 
 impl PackageRunner {
+    /// The command that runs the package
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Npx => "npx",
-            Self::Uvx => "uvx",
-        }
+        self.into()
     }
 }
 
@@ -84,8 +86,21 @@ pub enum Placement {
     Host,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Type,
+    EnumString,
+    IntoStaticStr,
+)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum AuthKind {
     #[default]
     None,
@@ -95,13 +110,9 @@ pub enum AuthKind {
 }
 
 impl AuthKind {
+    /// The name in connector files
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::ApiKey => "api_key",
-            Self::Oauth => "oauth",
-            Self::DeviceCode => "device_code",
-        }
+        self.into()
     }
 }
 

@@ -28,6 +28,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
 use super::ConnectorDecl;
 
@@ -35,9 +36,22 @@ use super::ConnectorDecl;
 const MAX_ID_CHARS: usize = 40;
 
 #[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Type,
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    Type,
+    EnumString,
+    IntoStaticStr,
 )]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum Access {
     #[default]
     Read,
@@ -46,11 +60,9 @@ pub enum Access {
 }
 
 impl Access {
+    /// The access's name
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Read => "read",
-            Self::Write => "write",
-        }
+        self.into()
     }
 }
 

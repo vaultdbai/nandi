@@ -40,6 +40,7 @@ use futures_util::future::BoxFuture;
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use strum::{EnumString, IntoStaticStr};
 use tokio::sync::oneshot;
 
 use super::delegator::{instance_of, USER_REQUESTER};
@@ -101,7 +102,8 @@ paragraph. If they don't tell you the answer, reply with exactly UNKNOWN and not
 person will answer instead. Never invent facts, credentials, or approvals.";
 
 /// Where an incoming question goes
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum Route {
     /// The requester agent's LLM answers
     Auto,
@@ -110,11 +112,9 @@ pub enum Route {
 }
 
 impl Route {
+    /// The text logged and shown for the route
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Auto => "auto",
-            Self::Escalate => "escalate",
-        }
+        self.into()
     }
 }
 

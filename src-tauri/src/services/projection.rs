@@ -407,19 +407,11 @@ fn hashes(conn: &Connection) -> rusqlite::Result<HashMap<(EntityKind, String), S
     let mut stmt = conn.prepare("SELECT entity_kind, entity_id, file_hash FROM sync_state")?;
     let rows = stmt.query_map([], |row| {
         Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
+            (db::text_enum(row, 0)?, row.get::<_, String>(1)?),
             row.get::<_, String>(2)?,
         ))
     })?;
-    let mut out = HashMap::new();
-    for row in rows {
-        let (kind, id, hash) = row?;
-        if let Some(kind) = EntityKind::parse(&kind) {
-            out.insert((kind, id), hash);
-        }
-    }
-    Ok(out)
+    rows.collect()
 }
 
 fn needs_rebuild(conn: &Connection) -> rusqlite::Result<bool> {

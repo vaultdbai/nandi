@@ -22,6 +22,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use strum::{EnumString, IntoStaticStr};
+
 use super::aws::{AwsConnector, CliRunner};
 use super::filesystem::FilesystemConnector;
 use super::github::{self, GithubConnector};
@@ -32,17 +34,17 @@ use super::{Connector, ConnectorDecl, ToolDef};
 use crate::services::domain::ConnectorId;
 use crate::services::secrets::Secrets;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum ConnectorKind {
     /// An MCP server (in-process built-in or external process / URL)
     Mcp,
 }
 
 impl ConnectorKind {
+    /// The kind's name
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Mcp => "mcp",
-        }
+        self.into()
     }
 }
 

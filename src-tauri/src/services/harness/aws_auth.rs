@@ -29,6 +29,7 @@ use aws_types::os_shim_internal::{Env, Fs};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
 mod setup;
 pub(crate) use setup::{configure_answers, valid_region};
@@ -60,8 +61,11 @@ pub struct AwsCliInfo {
     pub supports_login: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "camelCase")]
 pub enum AwsProfileKind {
     /// `sso_session` (or legacy `sso_start_url`) with an account and role
     Sso,
@@ -77,15 +81,9 @@ pub enum AwsProfileKind {
 }
 
 impl AwsProfileKind {
+    /// The kind's name
     fn as_str(self) -> &'static str {
-        match self {
-            Self::Sso => "sso",
-            Self::StaticKeys => "staticKeys",
-            Self::AssumeRole => "assumeRole",
-            Self::CredentialProcess => "credentialProcess",
-            Self::ConsoleLogin => "consoleLogin",
-            Self::Other => "other",
-        }
+        self.into()
     }
 
     fn source(self) -> CredentialSource {

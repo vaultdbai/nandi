@@ -30,6 +30,7 @@ pub mod tool;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use specta::Type;
+use strum::{EnumString, IntoStaticStr, VariantNames};
 
 use crate::model::Timestamp;
 use crate::services::events::NandiEvent;
@@ -44,8 +45,21 @@ pub const MAX_TEXT_CHARS: usize = 500;
 pub const MAX_FILES: usize = 10;
 
 /// What a step does: decides which risky calls it covers
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Type,
+    EnumString,
+    IntoStaticStr,
+    VariantNames,
+)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum RunStepKind {
     Navigate,
     Read,
@@ -61,41 +75,27 @@ pub enum RunStepKind {
 }
 
 impl RunStepKind {
-    pub const ALL: [RunStepKind; 10] = [
-        Self::Navigate,
-        Self::Read,
-        Self::Fill,
-        Self::Submit,
-        Self::Handover,
-        Self::Approval,
-        Self::Delegate,
-        Self::Verify,
-        Self::Cleanup,
-        Self::Other,
-    ];
-
+    /// The kind's name
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Navigate => "navigate",
-            Self::Read => "read",
-            Self::Fill => "fill",
-            Self::Submit => "submit",
-            Self::Handover => "handover",
-            Self::Approval => "approval",
-            Self::Delegate => "delegate",
-            Self::Verify => "verify",
-            Self::Cleanup => "cleanup",
-            Self::Other => "other",
-        }
-    }
-
-    fn parse(text: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|kind| kind.as_str() == text)
+        self.into()
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Type,
+    EnumString,
+    IntoStaticStr,
+    VariantNames,
+)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum RunStepStatus {
     Pending,
     Doing,
@@ -105,26 +105,9 @@ pub enum RunStepStatus {
 }
 
 impl RunStepStatus {
-    pub const ALL: [RunStepStatus; 5] = [
-        Self::Pending,
-        Self::Doing,
-        Self::Done,
-        Self::Skipped,
-        Self::Failed,
-    ];
-
+    /// The status's name
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::Doing => "doing",
-            Self::Done => "done",
-            Self::Skipped => "skipped",
-            Self::Failed => "failed",
-        }
-    }
-
-    fn parse(text: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|status| status.as_str() == text)
+        self.into()
     }
 
     /// Still to do: the finish check wants it closed
@@ -290,11 +273,8 @@ fn parse_step(item: &Value) -> Result<RunPlanStep, String> {
     let kind = item
         .get("kind")
         .and_then(Value::as_str)
-        .and_then(RunStepKind::parse)
-        .ok_or_else(|| {
-            let kinds: Vec<&str> = RunStepKind::ALL.iter().map(|k| k.as_str()).collect();
-            format!("`kind` must be one of {}", kinds.join(", "))
-        })?;
+        .and_then(|text| text.parse().ok())
+        .ok_or_else(|| format!("`kind` must be one of {}", RunStepKind::VARIANTS.join(", ")))?;
     let evidence = match item.get("evidence").and_then(Value::as_str) {
         None | Some("none") => RunStepEvidence::None,
         Some("screenshot") => RunStepEvidence::Screenshot,
@@ -345,9 +325,11 @@ pub fn apply_update(plan: &mut RunPlan, args: &Value) -> Result<(), String> {
             )
         })?;
     let status = match args.get("status").and_then(Value::as_str) {
-        Some(text) => Some(RunStepStatus::parse(text).ok_or_else(|| {
-            let all: Vec<&str> = RunStepStatus::ALL.iter().map(|s| s.as_str()).collect();
-            format!("`status` must be one of {}", all.join(", "))
+        Some(text) => Some(text.parse().map_err(|_| {
+            format!(
+                "`status` must be one of {}",
+                RunStepStatus::VARIANTS.join(", ")
+            )
         })?),
         None => None,
     };
@@ -438,6 +420,23 @@ mod tests {
             { "title": "Pay", "kind": "handover" },
             { "title": "Close the browser", "kind": "cleanup" },
         ]))
+    }
+
+    #[test]
+    fn an_unknown_kind_or_status_lists_the_names_the_model_may_use() {
+        let error =
+            parse_steps(&json!({ "steps": [{ "title": "Go", "kind": "teleport" }] })).unwrap_err();
+        assert!(error.ends_with(
+            "`kind` must be one of navigate, read, fill, submit, handover, approval, \
+             delegate, verify, cleanup, other"
+        ));
+        let mut plan = bill();
+        let error =
+            apply_update(&mut plan, &json!({ "step": 1, "status": "finished" })).unwrap_err();
+        assert_eq!(
+            error,
+            "`status` must be one of pending, doing, done, skipped, failed"
+        );
     }
 
     #[test]

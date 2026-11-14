@@ -720,7 +720,7 @@ impl RepoStore {
     pub fn load_entity_json(&self, kind: &str, id: &str) -> Result<Value, String> {
         let kind = match kind {
             "connector" => EntityKind::Connectors,
-            other => EntityKind::parse(other).ok_or_else(|| {
+            other => other.parse().map_err(|_| {
                 format!("Unknown entity kind '{other}': use agent, workflow, trigger, connector, or settings")
             })?,
         };

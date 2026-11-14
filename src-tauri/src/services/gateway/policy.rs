@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use chrono::{TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::Serialize;
+use strum::{EnumString, IntoStaticStr};
 
 use super::{CallerPolicy, GatewayPolicy, GatewayUsage, GATEWAY_RATE_LIMITED};
 use crate::services::a2a::task::ReasonKind;
@@ -51,18 +52,17 @@ pub enum PolicyDecision {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum LimitKind {
     RateLimit,
     MonthlyBudget,
 }
 
 impl LimitKind {
+    /// The limit's name
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::RateLimit => "rate_limit",
-            Self::MonthlyBudget => "monthly_budget",
-        }
+        self.into()
     }
 }
 

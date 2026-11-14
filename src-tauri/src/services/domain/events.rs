@@ -3,9 +3,12 @@
 
 use std::path::PathBuf;
 
+use strum::{EnumString, IntoStaticStr};
+
 use super::EntityKind;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum ChangeAction {
     Created,
     Updated,
@@ -13,17 +16,15 @@ pub enum ChangeAction {
 }
 
 impl ChangeAction {
+    /// The action's name in change events
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Created => "created",
-            Self::Updated => "updated",
-            Self::Deleted => "deleted",
-        }
+        self.into()
     }
 }
 
 /// Where a change came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum ChangedBy {
     /// A command from the UI or API
     User,
@@ -34,12 +35,9 @@ pub enum ChangedBy {
 }
 
 impl ChangedBy {
+    /// The source's name in change events
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::User => "user",
-            Self::Watcher => "watcher",
-            Self::Git => "git",
-        }
+        self.into()
     }
 }
 

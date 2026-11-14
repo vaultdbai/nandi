@@ -12,9 +12,12 @@
 use std::cmp::Ordering;
 use std::fmt;
 
+use strum::{EnumString, IntoStaticStr};
+
 use crate::services::capability::definition::CapabilityDefinition;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumString, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum Bump {
     None,
     Patch,
@@ -23,13 +26,9 @@ pub enum Bump {
 }
 
 impl Bump {
+    /// The bump's name
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::Patch => "patch",
-            Self::Minor => "minor",
-            Self::Major => "major",
-        }
+        self.into()
     }
 }
 

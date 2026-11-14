@@ -53,9 +53,12 @@ pub use settings::Settings;
 pub use trigger::Trigger;
 pub use workflow::Workflow;
 
+use strum::{EnumString, IntoStaticStr};
+
 /// The kinds of entity in the gold copy. Each maps to files (see
 /// `services::repos::RepoLayout`) and to projection rows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, EnumString, IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum EntityKind {
     Agent,
     Workflow,
@@ -66,28 +69,9 @@ pub enum EntityKind {
 }
 
 impl EntityKind {
-    pub const ALL: [EntityKind; 6] = [
-        Self::Agent,
-        Self::Workflow,
-        Self::Trigger,
-        Self::Settings,
-        Self::Connectors,
-        Self::Manifest,
-    ];
-
+    /// The kind's name in files, rows and events
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Agent => "agent",
-            Self::Workflow => "workflow",
-            Self::Trigger => "trigger",
-            Self::Settings => "settings",
-            Self::Connectors => "connectors",
-            Self::Manifest => "manifest",
-        }
-    }
-
-    pub fn parse(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|kind| kind.as_str() == s)
+        self.into()
     }
 
     /// Singletons have one instance per repo, keyed by this ID.
@@ -137,6 +121,15 @@ pub(crate) fn has_conflict_markers(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::EntityKind;
+
+    #[test]
+    fn entity_kind_text_round_trips_and_an_unknown_kind_is_an_error() {
+        assert_eq!(EntityKind::Connectors.as_str(), "connectors");
+        assert_eq!("manifest".parse(), Ok(EntityKind::Manifest));
+        assert!("connector".parse::<EntityKind>().is_err());
+    }
+
     /// The domain must stay free of I/O and infrastructure crates.
     #[test]
     fn domain_has_no_io_deps() {

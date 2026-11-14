@@ -17,31 +17,46 @@
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use strum::{EnumString, IntoStaticStr};
 
 use super::{AgentId, DomainError, DomainResult};
 
 /// Read or write access, kept apart: a write grant doesn't let an agent read
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Type,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    Type,
+    EnumString,
+    IntoStaticStr,
 )]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum GrantAccess {
     Read,
     Write,
 }
 
 impl GrantAccess {
+    /// The access's name
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Read => "read",
-            Self::Write => "write",
-        }
+        self.into()
     }
 }
 
 /// Where a grant is kept
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "snake_case")]
 pub enum GrantScope {
     /// This computer only (`~/.nandi/settings.local.yaml`)
     Local,
@@ -50,11 +65,9 @@ pub enum GrantScope {
 }
 
 impl GrantScope {
+    /// The scope's name
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Local => "local",
-            Self::Saved => "saved",
-        }
+        self.into()
     }
 }
 
