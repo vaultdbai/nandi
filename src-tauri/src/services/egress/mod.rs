@@ -9,6 +9,8 @@
 //! - `/anthropic/v1/messages` — a harness CLI's model calls, with the
 //!   host's credential swapped in for the session's proxy token
 //!   ([`model_proxy`])
+//! - `/bedrock/model/{model}/{action}` — the same for Bedrock, signed with
+//!   the host's AWS identity ([`sigv4`])
 //! - `POST /aws/{service}/{action}` — AWS calls as the agent's AWS identity
 //! - `POST /fetch` — HTTP requests to hosts in the agent's `network.allow`
 //! - `CONNECT host:443` — HTTPS tunnels for `HTTPS_PROXY`, same allowlist
@@ -28,6 +30,7 @@ mod http_proxy;
 mod llm_proxy;
 pub mod model_proxy;
 pub mod relay;
+pub mod sigv4;
 mod tunnel;
 
 use std::convert::Infallible;
@@ -337,6 +340,7 @@ fn routes() -> Vec<EgressRoute> {
     [
         (EgressKind::Llm, "POST", "/llm"),
         (EgressKind::Llm, "POST", "/anthropic/v1/messages"),
+        (EgressKind::Llm, "POST", "/bedrock/model/{model}/{action}"),
         (EgressKind::Aws, "POST", "/aws/{service}/{action}"),
         (EgressKind::Fetch, "POST", "/fetch"),
         (EgressKind::Tunnel, "CONNECT", "host:443"),

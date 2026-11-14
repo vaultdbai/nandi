@@ -10,7 +10,9 @@
 //! - new profiles and replaced keys: through the AWS CLI too (`setup`)
 //! - identity: STS `GetCallerIdentity`
 //! - a Bedrock API key: `AWS_BEARER_TOKEN_BEDROCK` from the environment or
-//!   Claude Code's settings `env`, passed through as is
+//!   Claude Code's settings `env`, used by the egress proxy on the host
+//! - Bedrock harness sessions: the egress proxy signs their model calls on
+//!   the host (`bedrock_upstream`); only the LiteLLM gateway gets keys
 //!
 //! Credentials go into `HarnessCredentials` or `SignInKeys` (never
 //! serialized, never logged) and reach only a harness's environment or
@@ -40,6 +42,8 @@ use super::detection::{self, DetectEnv};
 use crate::db::{now_ms, ts, Db};
 use crate::model::Timestamp;
 use crate::services::egress::credentials::{SignInFn, SignInKeys};
+use crate::services::egress::model_proxy::{ModelUpstream, Secret, UpstreamAuth};
+use crate::services::egress::sigv4::AwsSigner;
 use crate::services::events::{self, EventBus, NandiEvent};
 use crate::services::AppState;
 
@@ -646,8 +650,8 @@ impl AwsAuthService {
         }
     }
 
-    /// What a Bedrock session's environment gets: the profile's credentials
-    /// exported to temporary keys, else the Bedrock API key
+    /// What the LiteLLM gateway's environment gets: the profile's
+    /// credentials exported to temporary keys, else the Bedrock API key
     pub async fn bedrock_credentials(
         &self,
         profile: Option<String>,
@@ -673,6 +677,41 @@ impl AwsAuthService {
                 ..HarnessCredentials::default()
             }),
             Err(error) => Err(self.explain(profile, error).await),
+        }
+    }
+
+    /// Where a Bedrock harness session's model calls go, and its region:
+    /// the egress proxy signs them on the host as the profile's identity
+    /// (SigV4, keys re-resolved as they expire), else sends them with the
+    /// Bedrock API key. Neither reaches the container.
+    pub async fn bedrock_upstream(
+        self: &Arc<Self>,
+        profile: Option<String>,
+        region: Option<String>,
+    ) -> Result<(ModelUpstream, String), String> {
+        let profile = self.profile_name(profile);
+        match self.resolve(profile.as_deref(), region.as_deref()).await {
+            Ok(resolved) => {
+                let signer = AwsSigner::new(
+                    "bedrock",
+                    &resolved.region,
+                    profile,
+                    agent_sign_in(self.clone()),
+                );
+                let upstream =
+                    ModelUpstream::bedrock(&resolved.region, UpstreamAuth::AwsSigV4(signer));
+                Ok((upstream, resolved.region))
+            }
+            Err(error) => match self.bearer_token() {
+                Some((token, _)) => {
+                    let region = region
+                        .or_else(|| not_empty(self.user_env().get("AWS_REGION")))
+                        .unwrap_or_else(|| DEFAULT_REGION.to_string());
+                    let auth = UpstreamAuth::Bearer(Secret::new(token));
+                    Ok((ModelUpstream::bedrock(&region, auth), region))
+                }
+                None => Err(self.explain(profile, error).await),
+            },
         }
     }
 
@@ -899,7 +938,7 @@ pub fn agent_sign_in(service: Arc<AwsAuthService>) -> SignInFn {
     })
 }
 
-/// The AWS credentials a Bedrock session (or the gateway) gets
+/// The AWS credentials the LiteLLM gateway gets
 pub async fn bedrock_credentials(
     state: &AppState,
     profile: Option<String>,
@@ -1050,6 +1089,42 @@ mod tests {
         assert!(status.valid, "{status:?}");
         assert_eq!(status.source, CredentialSource::SharedCredentials);
         assert!(!status.expired);
+    }
+
+    #[tokio::test]
+    async fn a_bedrock_session_is_signed_on_the_host_never_handed_keys() {
+        use crate::services::egress::model_proxy::{ModelApi, UpstreamAuth};
+        let f = fixture(&[], None);
+        let service = Arc::new(f.service);
+        let (upstream, region) = service
+            .bedrock_upstream(Some("keys".into()), None)
+            .await
+            .unwrap();
+        assert_eq!(region, "eu-west-1");
+        assert_eq!(upstream.api, ModelApi::Bedrock);
+        assert_eq!(
+            upstream.base_url,
+            "https://bedrock-runtime.eu-west-1.amazonaws.com"
+        );
+        assert!(matches!(upstream.auth, UpstreamAuth::AwsSigV4(_)));
+        let printed = format!("{upstream:?}");
+        assert!(!printed.contains("AKIATESTKEY") && !printed.contains("test-secret-value"));
+
+        // Without a usable profile, the Bedrock API key, sent by the host
+        let f = fixture(
+            &[
+                ("AWS_BEARER_TOKEN_BEDROCK", "bedrock-key-value"),
+                ("AWS_REGION", "us-east-2"),
+            ],
+            None,
+        );
+        let service = Arc::new(f.service);
+        let (upstream, region) = service
+            .bedrock_upstream(Some("sso".into()), None)
+            .await
+            .unwrap();
+        assert_eq!(region, "us-east-2");
+        assert!(matches!(upstream.auth, UpstreamAuth::Bearer(_)));
     }
 
     #[tokio::test]

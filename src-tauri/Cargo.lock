@@ -3980,6 +3980,7 @@ dependencies = [
  "aws-sdk-sso",
  "aws-sdk-ssooidc",
  "aws-sdk-sts",
+ "aws-sigv4",
  "aws-types",
  "axum",
  "base64 0.22.1",

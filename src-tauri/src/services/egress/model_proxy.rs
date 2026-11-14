@@ -1,8 +1,10 @@
-//! Model passthrough for harness CLIs: `/anthropic/...`.
+//! Model passthrough for harness CLIs: `/anthropic/...` and `/bedrock/...`.
 //!
 //! A harness CLI speaks its provider's own API, pointed at the proxy
 //! (`ANTHROPIC_BASE_URL=http://nandi-egress:11435/anthropic`) with its
-//! session's proxy token where the provider key would go. The host checks
+//! session's proxy token where the provider key would go (Bedrock:
+//! `ANTHROPIC_BEDROCK_BASE_URL=…/bedrock` with
+//! `CLAUDE_CODE_SKIP_BEDROCK_AUTH=1`, so the host signs). The host checks
 //! the token, finds the session's [`ModelUpstream`], swaps in the real
 //! credential and forwards the call, streaming the answer back. Provider
 //! keys, subscription tokens and gateway keys stay on the host: the
@@ -30,6 +32,7 @@ use axum::response::Response;
 use axum::routing::any;
 use axum::Router;
 
+use super::sigv4::AwsSigner;
 use super::{error, record, EgressKind, EgressLogEntry};
 use crate::runtime::ProxyTokens;
 
@@ -53,7 +56,19 @@ const DROPPED_HEADERS: &[&str] = &[
     "trailer",
     "transfer-encoding",
     "upgrade",
+    "x-amz-content-sha256",
+    "x-amz-date",
+    "x-amz-security-token",
     "x-api-key",
+];
+
+/// The Bedrock runtime calls a Claude model session makes
+const BEDROCK_ACTIONS: &[&str] = &[
+    "invoke",
+    "invoke-with-response-stream",
+    "converse",
+    "converse-stream",
+    "count-tokens",
 ];
 
 /// The provider APIs the proxy passes through, each under its own prefix
@@ -62,6 +77,9 @@ pub enum ModelApi {
     /// Anthropic Messages: Anthropic, Microsoft Foundry, LiteLLM, a team's
     /// own Anthropic-compatible gateway
     Anthropic,
+    /// Bedrock runtime's own API, signed with the host's AWS identity or
+    /// its Bedrock API key
+    Bedrock,
 }
 
 impl ModelApi {
@@ -69,6 +87,7 @@ impl ModelApi {
     pub fn prefix(self) -> &'static str {
         match self {
             Self::Anthropic => "/anthropic",
+            Self::Bedrock => "/bedrock",
         }
     }
 
@@ -79,6 +98,18 @@ impl ModelApi {
                 path,
                 "/v1/messages" | "/v1/messages/count_tokens" | "/v1/models"
             ),
+            // `/model/{model id}/{action}`, the model ID percent-encoded
+            Self::Bedrock => match path.strip_prefix("/model/").map(|p| p.split('/')) {
+                Some(mut parts) => {
+                    let model = parts.next().unwrap_or_default();
+                    let action = parts.next().unwrap_or_default();
+                    !model.is_empty()
+                        && !model.starts_with('.')
+                        && BEDROCK_ACTIONS.contains(&action)
+                        && parts.next().is_none()
+                }
+                None => false,
+            },
         }
     }
 }
@@ -113,6 +144,8 @@ pub enum UpstreamAuth {
     /// A Claude subscription token: a bearer token plus Anthropic's OAuth
     /// beta
     ClaudeSubscription(Secret),
+    /// AWS SigV4 as the host's own AWS identity
+    AwsSigV4(AwsSigner),
 }
 
 /// Where a session's model calls go, and the credential the host adds
@@ -136,6 +169,15 @@ impl ModelUpstream {
         }
     }
 
+    /// Bedrock runtime in `region`
+    pub fn bedrock(region: &str, auth: UpstreamAuth) -> Self {
+        Self {
+            api: ModelApi::Bedrock,
+            base_url: format!("https://bedrock-runtime.{region}.amazonaws.com"),
+            auth,
+        }
+    }
+
     fn url(&self, path: &str, query: Option<&str>) -> String {
         let base = self.base_url.trim_end_matches('/');
         match query {
@@ -144,28 +186,42 @@ impl ModelUpstream {
         }
     }
 
-    /// Adds the host's credential to an outgoing call, and the CLI's
-    /// `anthropic-beta` list (with the OAuth beta for a subscription)
-    fn authorize(
+    /// The headers that carry the host's credential on a call to `url`
+    /// with `body`, and the CLI's `anthropic-beta` list (with the OAuth beta
+    /// for a subscription)
+    async fn credential_headers(
         &self,
-        outgoing: reqwest::RequestBuilder,
+        method: &str,
+        url: &str,
         headers: &HeaderMap,
-    ) -> reqwest::RequestBuilder {
-        let betas = headers.get("anthropic-beta");
-        let (outgoing, betas) = match &self.auth {
-            UpstreamAuth::ApiKey(key) => {
-                (outgoing.header("x-api-key", key.expose()), betas.cloned())
-            }
-            UpstreamAuth::Bearer(token) => (outgoing.bearer_auth(token.expose()), betas.cloned()),
-            UpstreamAuth::ClaudeSubscription(token) => (
-                outgoing.bearer_auth(token.expose()),
-                HeaderValue::from_str(&with_oauth_beta(betas)).ok(),
-            ),
+        body: &[u8],
+    ) -> Result<Vec<(String, String)>, String> {
+        let betas = headers
+            .get("anthropic-beta")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        let bearer = |token: &Secret| {
+            (
+                "authorization".to_string(),
+                format!("Bearer {}", token.expose()),
+            )
         };
-        match betas {
-            Some(betas) => outgoing.header("anthropic-beta", betas),
-            None => outgoing,
-        }
+        let mut added = match &self.auth {
+            UpstreamAuth::ApiKey(key) => vec![("x-api-key".to_string(), key.expose().to_string())],
+            UpstreamAuth::Bearer(token) => vec![bearer(token)],
+            UpstreamAuth::ClaudeSubscription(token) => {
+                let betas = with_oauth_beta(headers.get("anthropic-beta"));
+                return Ok(vec![bearer(token), ("anthropic-beta".to_string(), betas)]);
+            }
+            UpstreamAuth::AwsSigV4(signer) => {
+                let content_type = headers
+                    .get(axum::http::header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok());
+                signer.sign(method, url, content_type, body).await?
+            }
+        };
+        added.extend(betas.map(|betas| ("anthropic-beta".to_string(), betas)));
+        Ok(added)
     }
 }
 
@@ -258,6 +314,12 @@ impl ModelProxyState {
 pub(super) fn router(state: ModelProxyState) -> Router {
     Router::new()
         .route(
+            "/bedrock/{*path}",
+            any(|state: State<ModelProxyState>, request: Request| {
+                forward(state, ModelApi::Bedrock, request)
+            }),
+        )
+        .route(
             "/anthropic/{*path}",
             any(|state: State<ModelProxyState>, request: Request| {
                 forward(state, ModelApi::Anthropic, request)
@@ -324,13 +386,25 @@ async fn forward(
         Ok(body) => body,
         Err(_) => return error(StatusCode::PAYLOAD_TOO_LARGE, "request body too large"),
     };
+    let credential = match upstream
+        .credential_headers(method.as_str(), &url, &parts.headers, &body)
+        .await
+    {
+        Ok(credential) => credential,
+        Err(message) => {
+            record(entry(true, None, Some(message.clone()))).await;
+            return error(StatusCode::BAD_GATEWAY, &message);
+        }
+    };
     let mut outgoing = state.client.request(method, url).body(body);
     for (name, value) in &parts.headers {
         if !DROPPED_HEADERS.contains(&name.as_str()) && name != "anthropic-beta" {
             outgoing = outgoing.header(name, value);
         }
     }
-    let outgoing = upstream.authorize(outgoing, &parts.headers);
+    for (name, value) in credential {
+        outgoing = outgoing.header(name, value);
+    }
 
     let answer = match outgoing.send().await {
         Ok(answer) => answer,
@@ -393,7 +467,8 @@ pub(crate) mod tests {
         let app = Router::new()
             .route("/v1/messages", post(echo))
             .route("/v1/messages/count_tokens", post(echo))
-            .route("/foundry/v1/messages", post(echo));
+            .route("/foundry/v1/messages", post(echo))
+            .route("/model/{model}/invoke-with-response-stream", post(echo));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -568,6 +643,62 @@ pub(crate) mod tests {
             .await
             .unwrap();
         assert_eq!(counted.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn bedrock_calls_are_signed_on_the_host() {
+        let base = fake_upstream().await;
+        let (tokens, sessions) = (ProxyTokens::default(), ModelSessions::default());
+        let token = tokens.issue("writer");
+        let keys: crate::services::egress::credentials::SignInFn = Arc::new(|_| {
+            Box::pin(async {
+                Ok(crate::services::egress::credentials::SignInKeys {
+                    access_key: "AKIDHOST".into(),
+                    secret_key: "host-secret-key".into(),
+                    session_token: Some("host-session".into()),
+                    expires_at: None,
+                    region: "us-east-1".into(),
+                })
+            })
+        });
+        let upstream = ModelUpstream {
+            base_url: base,
+            ..ModelUpstream::bedrock(
+                "us-east-1",
+                UpstreamAuth::AwsSigV4(AwsSigner::new("bedrock", "us-east-1", None, keys)),
+            )
+        };
+        let _session = sessions.open("writer", upstream);
+        let bearer = format!("Bearer {token}");
+        let path = "/bedrock/model/us.anthropic.claude-sonnet-5%3A0/invoke-with-response-stream";
+
+        let response = proxy(&tokens, &sessions)
+            .oneshot(messages_call(path, Some(("authorization", &bearer))))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let seen = json_of(response).await;
+        let authorization = seen["authorization"].as_str().unwrap();
+        assert!(authorization.starts_with("AWS4-HMAC-SHA256 Credential=AKIDHOST/"));
+        assert!(!authorization.contains(&token), "the proxy token stays");
+        assert!(!seen.to_string().contains("host-secret-key"));
+        assert_eq!(
+            seen["path"],
+            "/model/us.anthropic.claude-sonnet-5%3A0/invoke-with-response-stream"
+        );
+    }
+
+    #[test]
+    fn bedrock_forwards_only_model_actions() {
+        let allows = |path| ModelApi::Bedrock.allows(path);
+        assert!(allows("/model/anthropic.claude-v2/invoke"));
+        assert!(allows("/model/us.anthropic.claude%3A0/converse-stream"));
+        assert!(!allows("/model/x/invoke/extra"));
+        assert!(!allows("/model//invoke"));
+        assert!(!allows("/model/../guardrails"));
+        assert!(!allows("/guardrail/g/version/1/apply"));
+        assert!(!allows("/foundation-models"));
     }
 
     #[test]

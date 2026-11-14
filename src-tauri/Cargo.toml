@@ -124,6 +124,8 @@ aws-sdk-ssooidc = { version = "1", default-features = false, features = ["defaul
 aws-sdk-sso = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio", "behavior-version-latest"] }
 aws-sdk-bedrock = { version = "1", default-features = false, features = ["rt-tokio", "behavior-version-latest"] }
 aws-types = { version = "1", default-features = false }
+# Signs the Bedrock calls the egress proxy makes for harness sessions
+aws-sigv4 = { version = "1", default-features = false, features = ["sign-http"] }
 aws-credential-types = { version = "1", default-features = false }
 aws-runtime = { version = "1", default-features = false }
 

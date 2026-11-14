@@ -236,6 +236,8 @@ pub enum ModelRoute {
     /// Microsoft Foundry: Anthropic Messages too, in the CLI's Foundry mode
     /// (it sends only what Foundry accepts)
     Foundry,
+    /// Bedrock runtime's own API, which the host signs
+    Bedrock,
 }
 
 impl ModelRoute {
@@ -244,6 +246,7 @@ impl ModelRoute {
         use crate::services::egress::model_proxy::ModelApi;
         match self {
             Self::Anthropic | Self::Foundry => ModelApi::Anthropic,
+            Self::Bedrock => ModelApi::Bedrock,
         }
     }
 }

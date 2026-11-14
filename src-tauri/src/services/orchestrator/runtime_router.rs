@@ -139,6 +139,8 @@ impl ToolGrant {
 pub struct ModelAccess {
     pub route: ModelRoute,
     pub upstream: ModelUpstream,
+    /// The AWS region the CLI names its Bedrock models in (`AWS_REGION`)
+    pub region: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -319,8 +321,10 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
     let provider = provider(agent, None)
         .or_else(|| repo.provider.clone().filter(|p| p != REPO_GATEWAY))
         .or_else(|| {
-            (credentials.aws_access_key_id.is_some() || credentials.aws_bearer_token.is_some())
-                .then(|| "bedrock".to_string())
+            let bedrock = model_access
+                .as_ref()
+                .is_some_and(|access| access.route == ModelRoute::Bedrock);
+            bedrock.then(|| "bedrock".to_string())
         });
     // The model the CLI really uses: through the gateway, its Bedrock model
     let named = if config.gateway.is_some() {
@@ -341,10 +345,15 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         // Its model calls go to the proxy, which is always reachable
         Vec::new()
     } else {
-        model_hosts(&harness_id, &credentials, gateway.as_ref())
+        model_hosts(&harness_id, gateway.as_ref())
     };
     let (model_route, upstream) = match model_access {
-        Some(access) => (Some(access.route), Some(access.upstream)),
+        Some(access) => {
+            if let Some(region) = access.region {
+                env.insert("AWS_REGION".to_string(), region);
+            }
+            (Some(access.route), Some(access.upstream))
+        }
         None => (None, None),
     };
     let grant = inputs.tools.unwrap_or_else(|| ToolGrant::of(agent));
@@ -381,22 +390,13 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
 /// Where a CLI's own model calls go, given how it's signed in: allowed
 /// through the egress proxy on top of the agent's `network.allow`. Nothing
 /// for the LiteLLM gateway, which coding agents reach on their network.
-fn model_hosts(
-    harness_id: &str,
-    credentials: &HarnessCredentials,
-    gateway: Option<&GatewayConfig>,
-) -> Vec<String> {
+fn model_hosts(harness_id: &str, gateway: Option<&GatewayConfig>) -> Vec<String> {
     if gateway.is_some() {
         return Vec::new();
     }
     let hosts: &[&str] = match harness_id {
-        "claude-code" => {
-            if credentials.aws_access_key_id.is_some() || credentials.aws_bearer_token.is_some() {
-                &["*.amazonaws.com"]
-            } else {
-                &["api.anthropic.com"]
-            }
-        }
+        // Vertex from Claude Code's own settings
+        "claude-code" => &["api.anthropic.com"],
         "codex" => &["api.openai.com", "chatgpt.com", "auth.openai.com"],
         "gemini-cli" => &[
             "generativelanguage.googleapis.com",
@@ -574,10 +574,11 @@ async fn inputs_for(
                     .and_then(|d| d.health.configured_provider.as_deref())
             }),
     );
-    let credentials = credentials(app, agent, provider.as_deref(), &repo).await?;
-    let model_access = match harness_id.as_str() {
-        "claude-code" if config.gateway.is_none() => {
-            claude_code_access(provider.as_deref(), &repo, &DetectEnv::current(), || {
+    let model_access = match (harness_id.as_str(), provider.as_deref()) {
+        ("claude-code", _) if config.gateway.is_some() => None,
+        ("claude-code", Some("bedrock")) => Some(bedrock_access(app, agent, &repo).await?),
+        ("claude-code", provider) => {
+            claude_code_access(provider, &repo, &DetectEnv::current(), || {
                 crate::services::llm_keys::require_api_key(
                     app.secrets(),
                     crate::llm::Provider::Anthropic,
@@ -586,6 +587,11 @@ async fn inputs_for(
             })
         }
         _ => None,
+    };
+    // The LiteLLM gateway's AWS identity, and keys for the other CLIs
+    let credentials = match model_access {
+        Some(_) => HarnessCredentials::default(),
+        None => credentials(app, agent, provider.as_deref(), &repo).await?,
     };
     let gateway = match &config.gateway {
         Some(_) => {
@@ -706,19 +712,10 @@ async fn credentials(
     use crate::llm::Provider;
     use crate::services::llm_keys::require_api_key;
 
-    let config = agent.runtime_config();
     match provider {
         Some("bedrock") => {
-            crate::services::harness::aws_auth::bedrock_credentials(
-                app,
-                config
-                    .and_then(|c| c.aws_profile.clone())
-                    .or_else(|| repo.aws_profile.clone()),
-                config
-                    .and_then(|c| c.aws_region.clone())
-                    .or_else(|| repo.aws_region.clone()),
-            )
-            .await
+            let (profile, region) = aws_choice(agent, repo);
+            crate::services::harness::aws_auth::bedrock_credentials(app, profile, region).await
         }
         Some("openai") if *agent.runtime() == AgentRuntimeKind::Codex => Ok(HarnessCredentials {
             openai_api_key: require_api_key(app.secrets(), Provider::OpenAi).ok(),
@@ -726,6 +723,37 @@ async fn credentials(
         }),
         _ => Ok(HarnessCredentials::default()),
     }
+}
+
+/// The AWS profile and region a Bedrock session uses: the agent's, else
+/// the repo's (`.nandi/llm.yaml`)
+fn aws_choice(agent: &Agent, repo: &HarnessDefaults) -> (Option<String>, Option<String>) {
+    let config = agent.runtime_config();
+    (
+        config
+            .and_then(|c| c.aws_profile.clone())
+            .or_else(|| repo.aws_profile.clone()),
+        config
+            .and_then(|c| c.aws_region.clone())
+            .or_else(|| repo.aws_region.clone()),
+    )
+}
+
+/// A Bedrock session's model access: the egress proxy signs its calls on
+/// the host as the user's AWS identity (`aws_auth::bedrock_upstream`), so
+/// no AWS key enters the container
+async fn bedrock_access(
+    app: &AppState,
+    agent: &Agent,
+    repo: &HarnessDefaults,
+) -> Result<ModelAccess, String> {
+    let (profile, region) = aws_choice(agent, repo);
+    let (upstream, region) = app.aws_auth().bedrock_upstream(profile, region).await?;
+    Ok(ModelAccess {
+        route: ModelRoute::Bedrock,
+        upstream,
+        region: Some(region),
+    })
 }
 
 /// How a Claude Code session reaches its model through the egress proxy
@@ -745,7 +773,13 @@ pub fn claude_code_access(
     nandi_key: impl FnOnce() -> Option<String>,
 ) -> Option<ModelAccess> {
     use crate::services::harness::{claude_code, detection};
-    let access = |route, upstream| Some(ModelAccess { route, upstream });
+    let access = |route, upstream| {
+        Some(ModelAccess {
+            route,
+            upstream,
+            region: None,
+        })
+    };
     let own = detection::claude_code_env(env);
     let setting = |name: &str| own.get(name).filter(|v| !v.trim().is_empty()).cloned();
     if provider == Some("bedrock") {
@@ -1167,15 +1201,18 @@ cpu: 2.5
         let agent =
             agent("runtime: claude-code\nruntime_config:\n  model: us.anthropic.claude-sonnet-5\n");
         let mut inputs = inputs();
-        inputs.credentials = HarnessCredentials {
-            aws_region: Some("us-west-2".into()),
-            aws_access_key_id: Some("ASIA".into()),
-            aws_secret_access_key: Some("secret".into()),
-            aws_session_token: Some("token".into()),
-            aws_profile: Some("work".into()),
-            ..HarnessCredentials::default()
-        };
+        inputs.proxy_token = "tok".into();
+        inputs.model_access = Some(ModelAccess {
+            route: ModelRoute::Bedrock,
+            upstream: ModelUpstream::bedrock(
+                "us-west-2",
+                UpstreamAuth::Bearer(Secret::new("bedrock-key")),
+            ),
+            region: Some("us-west-2".into()),
+        });
         let plan = harness_plan(plan(&agent, inputs));
+        assert_eq!(plan.provider.as_deref(), Some("bedrock"));
+        assert!(plan.egress_hosts.is_empty(), "only the proxy");
         let home = tempfile::tempdir().unwrap();
         let profile_env = DetectEnv {
             home: home.path().to_path_buf(),
@@ -1187,8 +1224,9 @@ cpu: 2.5
         let env: HashMap<_, _> = adapter.profile().env(&plan.config).into_iter().collect();
         assert_eq!(env["CLAUDE_CODE_USE_BEDROCK"], "1");
         assert_eq!(env["AWS_REGION"], "us-west-2");
-        assert_eq!(env["AWS_SESSION_TOKEN"], "token");
+        assert_eq!(env["ANTHROPIC_AUTH_TOKEN"], "tok");
         assert_eq!(env["ANTHROPIC_MODEL"], "us.anthropic.claude-sonnet-5");
+        assert!(!env.values().any(|v| v.contains("bedrock-key")));
         assert!(
             !env.contains_key("AWS_PROFILE"),
             "no ~/.aws in the container"
@@ -1245,6 +1283,7 @@ cpu: 2.5
                 ModelUpstream::ANTHROPIC_URL,
                 UpstreamAuth::ApiKey(Secret::new(key)),
             ),
+            region: None,
         }
     }
 
@@ -1265,6 +1304,7 @@ cpu: 2.5
                     "https://llm.acme.internal",
                     UpstreamAuth::Bearer(Secret::new("sk-team")),
                 ),
+                region: None,
             }
         );
 
@@ -1322,6 +1362,7 @@ cpu: 2.5
                     "https://team.services.ai.azure.com/anthropic",
                     UpstreamAuth::ApiKey(Secret::new("az-key")),
                 ),
+                region: None,
             })
         );
     }

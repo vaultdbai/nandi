@@ -16,8 +16,11 @@
 //! - Microsoft Foundry: `CLAUDE_CODE_USE_FOUNDRY=1`, the same base in
 //!   `ANTHROPIC_FOUNDRY_BASE_URL` and the token in
 //!   `ANTHROPIC_FOUNDRY_API_KEY` ([`ModelRoute::Foundry`])
-//! - Bedrock: `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION`, and exported STS
-//!   keys or `AWS_BEARER_TOKEN_BEDROCK`
+//! - Bedrock: `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION`,
+//!   `ANTHROPIC_BEDROCK_BASE_URL=http://nandi-egress:11435/bedrock`,
+//!   `CLAUDE_CODE_SKIP_BEDROCK_AUTH=1` and the token in
+//!   `ANTHROPIC_AUTH_TOKEN`: the host signs each call as the user's AWS
+//!   identity ([`ModelRoute::Bedrock`])
 //! - The LiteLLM gateway (third-party Bedrock models): `ANTHROPIC_BASE_URL`
 //!   and no provider switch
 //! - The model: `ANTHROPIC_MODEL`
@@ -30,8 +33,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::adapter::{
-    common_credential_env, forward_env, proxy_token, CliAdapter, CliProfile, HarnessConfig,
-    Invocation, ModelRef, ModelRoute,
+    forward_env, proxy_token, CliAdapter, CliProfile, HarnessConfig, Invocation, ModelRef,
+    ModelRoute,
 };
 use super::detection::{self, DetectEnv};
 use crate::services::egress::model_proxy::{ModelUpstream, Secret, UpstreamAuth};
@@ -46,10 +49,7 @@ pub const ACP_BINARY: &str = "claude-agent-acp";
 pub const FORWARDED: &[&str] = &[
     "CLAUDE_CODE_USE_BEDROCK",
     "CLAUDE_CODE_USE_VERTEX",
-    "CLAUDE_CODE_SKIP_BEDROCK_AUTH",
     "AWS_REGION",
-    "AWS_PROFILE",
-    "AWS_BEARER_TOKEN_BEDROCK",
     "ANTHROPIC_MODEL",
     "ANTHROPIC_SMALL_FAST_MODEL",
     "ANTHROPIC_DEFAULT_OPUS_MODEL",
@@ -169,6 +169,12 @@ fn route_through_proxy(env: &mut BTreeMap<String, String>, route: ModelRoute, to
             env.insert("ANTHROPIC_FOUNDRY_BASE_URL".into(), url);
             env.insert("ANTHROPIC_FOUNDRY_API_KEY".into(), token.into());
         }
+        ModelRoute::Bedrock => {
+            env.insert("CLAUDE_CODE_USE_BEDROCK".into(), "1".into());
+            env.insert("CLAUDE_CODE_SKIP_BEDROCK_AUTH".into(), "1".into());
+            env.insert("ANTHROPIC_BEDROCK_BASE_URL".into(), url);
+            env.insert("ANTHROPIC_AUTH_TOKEN".into(), token.into());
+        }
     }
 }
 
@@ -200,18 +206,13 @@ impl CliProfile for ClaudeCode {
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".into(),
             "1".into(),
         );
-        let credentials = &config.credentials;
-        if credentials.aws_access_key_id.is_some() || credentials.aws_bearer_token.is_some() {
-            for name in PROVIDER_SWITCHES {
-                env.remove(*name);
-            }
-            env.insert("CLAUDE_CODE_USE_BEDROCK".into(), "1".into());
-        }
-        env.extend(common_credential_env(credentials));
-        // No ~/.aws in the container: a profile name would only fail
-        if credentials.aws_access_key_id.is_some() {
-            env.remove("AWS_PROFILE");
-        }
+        env.extend(
+            config
+                .credentials
+                .custom_env
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
         if let (Some(route), Some(token)) = (config.model_route, proxy_token(config)) {
             route_through_proxy(&mut env, route, token);
         }
@@ -238,8 +239,7 @@ mod tests {
 
     use super::*;
     use crate::services::harness::adapter::{
-        GatewayConfig, GatewayKind, HarnessAdapter, HarnessCredentials, Placement, TestSpawn,
-        UserMessage,
+        GatewayConfig, GatewayKind, HarnessAdapter, Placement, TestSpawn, UserMessage,
     };
 
     const PROXY_TOKEN: &str = "proxy-token-for-this-session";
@@ -447,26 +447,37 @@ mod tests {
     }
 
     #[test]
-    fn bedrock_credentials_switch_the_provider_and_drop_the_profile_in_containers() {
-        let (profile, _home) = profile(None, &[("AWS_PROFILE", "work")]);
-        let config = HarnessConfig {
+    fn bedrock_goes_through_the_proxy_which_signs_on_the_host() {
+        let (profile, _home) = profile(
+            Some(r#"{"env":{"AWS_BEARER_TOKEN_BEDROCK":"bedrock-api-key"}}"#),
+            &[
+                ("AWS_PROFILE", "work"),
+                ("AWS_SECRET_ACCESS_KEY", "host-secret"),
+            ],
+        );
+        let mut config = HarnessConfig {
             model: Some("us.anthropic.claude-sonnet-5".into()),
-            credentials: HarnessCredentials {
-                aws_region: Some("eu-west-1".into()),
-                aws_access_key_id: Some("AKIA".into()),
-                aws_secret_access_key: Some("secret".into()),
-                aws_session_token: Some("token".into()),
-                aws_profile: Some("work".into()),
-                ..HarnessCredentials::default()
-            },
-            ..in_container()
+            ..routed(ModelRoute::Bedrock)
         };
+        config.env.insert("AWS_REGION".into(), "eu-west-1".into());
         let env = env_map(&profile, &config);
         assert_eq!(env["CLAUDE_CODE_USE_BEDROCK"], "1");
+        assert_eq!(env["CLAUDE_CODE_SKIP_BEDROCK_AUTH"], "1");
+        assert_eq!(
+            env["ANTHROPIC_BEDROCK_BASE_URL"],
+            "http://nandi-egress:11435/bedrock"
+        );
+        assert_eq!(env["ANTHROPIC_AUTH_TOKEN"], PROXY_TOKEN);
         assert_eq!(env["AWS_REGION"], "eu-west-1");
-        assert_eq!(env["AWS_SESSION_TOKEN"], "token");
         assert_eq!(env["ANTHROPIC_MODEL"], "us.anthropic.claude-sonnet-5");
-        assert!(!env.contains_key("AWS_PROFILE"));
+        for name in [
+            "AWS_PROFILE",
+            "AWS_BEARER_TOKEN_BEDROCK",
+            "AWS_SECRET_ACCESS_KEY",
+        ] {
+            assert!(!env.contains_key(name), "{name}");
+        }
+        assert_no_value(&env, &["bedrock-api-key", "host-secret"]);
     }
 
     #[test]
