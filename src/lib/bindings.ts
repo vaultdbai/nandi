@@ -4090,13 +4090,13 @@ workspaceChanged: "workspace://changed"
 
 /** user-defined constants **/
 
-export const PEER_KEY_MISSING = "peer_key_missing" as const;
-export const SEAL_REFUSED = "seal_refused" as const;
-export const NO_SHARED_GROUP = "no_shared_group" as const;
-export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const DAILY_LIMIT = "daily_limit" as const;
+export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const NO_SHARED_GROUP = "no_shared_group" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
+export const PEER_KEY_MISSING = "peer_key_missing" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
+export const SEAL_REFUSED = "seal_refused" as const;
 
 /** user-defined types **/
 
@@ -4342,7 +4342,7 @@ compatible: boolean;
  */
 installedVersion: string | null; 
 /**
- * The publisher's signature was verified (Phase 6; always false now)
+ * The signature verifies against the publisher's trusted key (`trust`)
  */
 verified: boolean }
 /**
@@ -4749,7 +4749,7 @@ id: string; kind: AttentionKind; agentId: string; agentName: string; runId: stri
 messageId: string | null; detail: string; createdAt: number }
 export type AttentionKind = "approval" | "error" | 
 /**
- * A workflow waits on a manual step (wave EF): `agent_name` is the
+ * A workflow waits on a manual step: `agent_name` is the
  * workflow's name, `run_id` the workflow run
  */
 "manualStep"
@@ -5515,8 +5515,9 @@ export type ConsentCategory = {
  */
 key: string; 
 /**
- * What the agent requests (`*` in tools: every tool; `docs:write` in
- * folders: the folder `docs`, read and write)
+ * What the agent requests (`*` in tools: every tool; `api.example.com
+ * (GET, POST)` in network: only those methods on that host;
+ * `docs:write` in folders: the folder `docs`, read and write)
  */
 items: string[]; 
 /**
@@ -5713,7 +5714,8 @@ claudeSignIn: HarnessAuth | null;
  */
 trial: TrialStatus | null }
 /**
- * Whether we asked (`Outbound`) or served (`Inbound`).
+ * Whether we asked (`Outbound`) or served (`Inbound`). Its text (strum) is
+ * its serde name: both are camelCase.
  */
 export type DelegationDirection = "outbound" | "inbound"
 /**
@@ -5924,9 +5926,14 @@ export type FederationConfig = { enabled: boolean; trustedPeers: OwnerRef[] }
 export type FileAction = "created" | "updated" | "deleted"
 /**
  * The status of the run a fire dispatched, agent or workflow run, so a
- * fire reads "Completed" rather than staying "Queued"
+ * fire reads "Completed" rather than staying "Queued". Parsed from
+ * `runs.status` or `workflow_runs.status` as stored.
  */
-export type FireRunStatus = "queued" | "running" | "awaitingApproval" | 
+export type FireRunStatus = "queued" | 
+/**
+ * Deliberately also `compacted`: a compacted run carries on in a child run
+ */
+"running" | "awaitingApproval" | 
 /**
  * A workflow run at a manual step
  */
@@ -7722,7 +7729,8 @@ plan: ActionPlan | null }
 /**
  * Why a task waits or was refused: the Blocker kinds of work-model §2.3,
  * plus `declined` (the owner said no to a held request). Set where the
- * decision is made, so nothing downstream parses reason text.
+ * decision is made, so nothing downstream parses reason text. Its text
+ * (strum) is its serde name: both are camelCase.
  */
 export type ReasonKind = "needsMyApproval" | "needsTheirApproval" | "needsMyAnswer" | "needsTheirAnswer" | "notTrusted" | "notAccepting" | "pausedOrBlocked" | "queued" | "offline" | "noModel" | "runtimeAuth" | "timedOut" | "failed" | "declined"
 /**
@@ -8854,7 +8862,7 @@ export type TaskSourceKind =
  */
 "failover" | 
 /**
- * The provider handed the task to a teammate (wave EF)
+ * The provider handed the task to a teammate
  */
 "reassign"
 /**
@@ -8862,11 +8870,19 @@ export type TaskSourceKind =
  * policy → approval → slot → route → dispatch → child → result)
  */
 export type TaskStage = "admit" | "policy" | "approval" | "slot" | "route" | "dispatch" | "child" | "result"
+/**
+ * Where a task is in its lifecycle. Its text (strum) is its serde name:
+ * both are camelCase.
+ */
 export type TaskState = "submitted" | "delivered" | "acknowledged" | "working" | "inputRequired" | "completed" | "failed" | "rejected" | "cancelled" | "timedOut" | "abandoned" | 
 /**
  * Handed to another provider (wave EF); the next attempt carries on
  */
 "reassigned"
+/**
+ * A delegated task's outcome. Its text (strum) is its serde name: both are
+ * camelCase.
+ */
 export type TaskStatus = 
 /**
  * Sent, no result yet
@@ -9384,7 +9400,7 @@ export type WorkflowRunStatus = "running" | "awaitingApproval" | "completed" | "
  */
 "cancelled" | 
 /**
- * Suspended at a manual step until a person completes it (wave EF)
+ * Suspended at a manual step until a person completes it
  */
 "waiting"
 export type WorkflowStep = { id: string; 
@@ -9393,7 +9409,7 @@ export type WorkflowStep = { id: string;
  */
 agent: string; 
 /**
- * `manual`: waits for a person (wave EF)
+ * `manual`: waits for a person
  */
 manual?: boolean; 
 /**
@@ -9440,7 +9456,7 @@ export type WorkflowStepDone = { workflowId: string; runId: string; stepId: stri
  */
 export type WorkflowStepRun = { stepId: string; agentId: string; template: string; requiresApproval: boolean; critical?: boolean; continueOnFailure?: boolean; approved?: boolean; 
 /**
- * Waits for a person instead of messaging an agent (wave EF)
+ * Waits for a person instead of messaging an agent
  */
 manual?: boolean; 
 /**
@@ -9485,7 +9501,7 @@ agentRunId: string | null; error: string | null; startedAt: number | null; ended
 export type WorkflowStepStarted = { workflowId: string; runId: string; stepId: string; agentId: string; agentRunId: string; input: string }
 export type WorkflowStepStatus = "pending" | "awaitingApproval" | 
 /**
- * A manual step waiting for a person (wave EF)
+ * A manual step waiting for a person
  */
 "awaitingInput" | "running" | "done" | "failed" | "rejected"
 export type WorkflowSummary = { id: string; name: string; definition: JsonValue; createdAt: number }

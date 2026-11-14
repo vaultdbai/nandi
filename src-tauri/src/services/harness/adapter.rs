@@ -276,7 +276,7 @@ pub struct HarnessAuth {
     pub plan: Option<String>,
     /// The organization the sign-in belongs to
     pub organization: Option<String>,
-    /// Bedrock: the AWS profile (SSO, assume-role, keysâ€¦) and region
+    /// Bedrock: the AWS profile (SSO, assume-role, keys…) and region
     pub aws_profile: Option<String>,
     pub aws_region: Option<String>,
 }
@@ -434,7 +434,7 @@ impl Invocation {
     }
 }
 
-/// A spawned harness process (`docker run -i â€¦` for container placement)
+/// A spawned harness process (`docker run -i …` for container placement)
 pub struct SpawnedHarness {
     pub child: tokio::process::Child,
     pub pid: u32,

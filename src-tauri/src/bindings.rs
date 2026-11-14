@@ -536,14 +536,14 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             "RELAY_UNAVAILABLE",
             crate::services::relay::RELAY_UNAVAILABLE,
         )
-        // The code a send's error starts with when the member's key changed
-        // and the user hasn't accepted it (`services::network::peer_keys`)
         // The code a refusal starts with when a groups relay keeps you
         // from someone you share no group with
         .constant("NO_SHARED_GROUP", nandi_protocol::NO_SHARED_GROUP)
         // The code a refusal starts with past a public relay's messages a
         // day: `daily_limit@<reset ms>: ...` (`services::relay::limits`)
         .constant("DAILY_LIMIT", crate::services::relay::limits::DAILY_LIMIT)
+        // The code a send's error starts with when the member's key changed
+        // and the user hasn't accepted it (`services::network::peer_keys`)
         .constant(
             "PEER_KEY_CHANGED",
             crate::services::network::peer_keys::PEER_KEY_CHANGED,
@@ -570,6 +570,39 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
 const TAURI_INVOKE_IMPORT: &str = "\tinvoke as TAURI_INVOKE,\n";
 const CLIENT_INVOKE_IMPORT: &str = "import { invoke as TAURI_INVOKE } from \"./client/invoke\";\n";
 
+/// The lines around the generated constants (`export const NAME = …;`)
+#[cfg(debug_assertions)]
+const CONSTANTS_START: &str = "/** user-defined constants **/\n\n";
+#[cfg(debug_assertions)]
+const CONSTANTS_END: &str = "\n\n/** user-defined types **/";
+
+/// `bindings` with its constants sorted by name. tauri-specta keeps the
+/// constants in a `HashMap`, so each export would list them in a new order
+/// and `bindings.ts` would churn.
+#[cfg(debug_assertions)]
+fn sort_constants(bindings: &str) -> String {
+    let Some(start) = bindings
+        .find(CONSTANTS_START)
+        .map(|at| at + CONSTANTS_START.len())
+    else {
+        return bindings.to_string();
+    };
+    let Some(length) = bindings[start..].find(CONSTANTS_END) else {
+        return bindings.to_string();
+    };
+    let end = start + length;
+    // One constant per line, each `export const NAME = …`: sorting the
+    // lines sorts the names
+    let mut constants: Vec<&str> = bindings[start..end].lines().collect();
+    constants.sort_unstable();
+    format!(
+        "{}{}{}",
+        &bindings[..start],
+        constants.join("\n"),
+        &bindings[end..]
+    )
+}
+
 /// Export TypeScript bindings to the frontend.
 /// Run with: cargo test export_bindings -- --ignored
 #[cfg(debug_assertions)]
@@ -586,7 +619,7 @@ pub fn export_ts_bindings() {
     );
     std::fs::write(
         "../src/lib/bindings.ts",
-        bindings.replacen(TAURI_INVOKE_IMPORT, "", 1),
+        sort_constants(&bindings.replacen(TAURI_INVOKE_IMPORT, "", 1)),
     )
     .expect("Failed to write TypeScript bindings");
 }
@@ -604,5 +637,29 @@ mod tests {
     fn export_bindings() {
         export_ts_bindings();
         println!("✓ TypeScript bindings exported to ../src/lib/bindings.ts");
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    fn constants_are_sorted_by_name_and_nothing_else_moves() {
+        let generated = "commands\n\n/** user-defined constants **/\n\n\
+            export const SEAL_REFUSED = \"seal_refused\" as const;\n\
+            export const PEER_KEY_MISSING = \"peer_key_missing\" as const;\n\
+            export const PEER_KEY = \"peer_key\" as const;\n\
+            export const RELAY_UNAVAILABLE = \"relay_unavailable\" as const;\n\n\
+            /** user-defined types **/\n\nexport type Z = 1;\nexport type A = 2;\n";
+        let sorted = "commands\n\n/** user-defined constants **/\n\n\
+            export const PEER_KEY = \"peer_key\" as const;\n\
+            export const PEER_KEY_MISSING = \"peer_key_missing\" as const;\n\
+            export const RELAY_UNAVAILABLE = \"relay_unavailable\" as const;\n\
+            export const SEAL_REFUSED = \"seal_refused\" as const;\n\n\
+            /** user-defined types **/\n\nexport type Z = 1;\nexport type A = 2;\n";
+        assert_eq!(sort_constants(generated), sorted);
+        assert_eq!(sort_constants(sorted), sorted);
+        // No constants section: unchanged
+        assert_eq!(
+            sort_constants("export type A = 1;\n"),
+            "export type A = 1;\n"
+        );
     }
 }
