@@ -466,8 +466,12 @@ pub struct WorkflowRun {
 }
 
 /// What `workflow_runs.context` holds.
+///
+/// Deliberate default: `{}` is the column's `DEFAULT` (a run inserted
+/// before its first step), so a missing field reads as empty. Text that
+/// isn't JSON, or a field of the wrong shape, still fails the read.
 #[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 struct RunContext {
     steps: Vec<WorkflowStepRun>,
     error: Option<String>,
@@ -557,9 +561,13 @@ event!(WorkflowsChanged, "workflow://changed");
 
 const RUN_COLUMNS: &str = "id, workflow_id, status, started_at, ended_at, context";
 
+/// A bad column fails the read and names the run (`db::named_row`)
 fn run_row(row: &Row) -> rusqlite::Result<WorkflowRun> {
-    let context: String = row.get(5)?;
-    let context: RunContext = serde_json::from_str(&context).unwrap_or_default();
+    db::named_row(row, "workflow_runs", 0, read_run_row)
+}
+
+fn read_run_row(row: &Row) -> rusqlite::Result<WorkflowRun> {
+    let context: RunContext = db::json_col(row, 5)?;
     Ok(WorkflowRun {
         id: row.get(0)?,
         workflow_id: row.get(1)?,
@@ -1878,6 +1886,44 @@ mod tests {
             get_run(&conn, "r1").unwrap().unwrap().status,
             WorkflowRunStatus::Completed
         );
+    }
+
+    #[test]
+    fn a_bad_run_context_fails_the_read_and_names_the_run() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        db::init_db(&conn).unwrap();
+        let cases = [
+            ("not JSON", "{oops"),
+            ("not an object", "[1, 2]"),
+            ("steps of the wrong shape", r#"{"steps": 5}"#),
+        ];
+        for (case, context) in cases {
+            conn.execute(
+                "INSERT OR REPLACE INTO workflow_runs (id, workflow_id, status, started_at, context)
+                 VALUES ('r1', 'w', 'completed', 1, ?1)",
+                [context],
+            )
+            .unwrap();
+            let error = get_run(&conn, "r1").unwrap_err().to_string();
+            assert!(error.contains("workflow_runs row 'r1'"), "{case}: {error}");
+            assert!(error.contains("column 'context'"), "{case}: {error}");
+        }
+    }
+
+    #[test]
+    fn the_column_default_context_reads_as_an_empty_run() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        db::init_db(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO workflow_runs (id, workflow_id, status, started_at)
+             VALUES ('r1', 'w', 'running', 1)",
+            [],
+        )
+        .unwrap();
+        let run = get_run(&conn, "r1").unwrap().unwrap();
+        assert!(run.steps.is_empty());
+        assert_eq!(run.error, None);
+        assert_eq!(run.source, None);
     }
 
     const TWO_STEPS: &str = r#"

@@ -17,7 +17,7 @@ use super::{
     DelegationDirection, DelegationTaskCompleted, DelegationTaskFailed, DelegationTaskStarted,
     TaskResult, TaskStatus,
 };
-use crate::db::{now_ms, Db};
+use crate::db::{self, now_ms, Db};
 use crate::services::events::{self, EventBus};
 use crate::utils::nandi_config;
 
@@ -122,27 +122,27 @@ pub async fn list(db: &Db, limit: u32) -> Result<Vec<TaskResult>, String> {
     .await
 }
 
-fn json(text: Option<String>) -> Value {
-    text.and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or(Value::Null)
+/// A bad column fails the read and names the delegation (`db::named_row`)
+fn from_row(row: &Row<'_>) -> rusqlite::Result<TaskResult> {
+    db::named_row(row, "delegations", 0, read_row)
 }
 
-fn from_row(row: &Row<'_>) -> rusqlite::Result<TaskResult> {
+fn read_row(row: &Row<'_>) -> rusqlite::Result<TaskResult> {
     let started_at: i64 = row.get(10)?;
     let ended_at: Option<i64> = row.get(11)?;
-    let direction: String = row.get(1)?;
-    let status: String = row.get(9)?;
     Ok(TaskResult {
         task_id: row.get(0)?,
-        direction: DelegationDirection::parse(&direction),
+        direction: db::text_enum(row, 1)?,
         capability: row.get(2)?,
         provider_agent: row.get(3)?,
         requester_agent: row.get(4)?,
         provider_owner: row.get(5)?,
         requester_owner: row.get(6)?,
-        input: json(row.get(7)?),
-        output: json(row.get(8)?),
-        status: TaskStatus::parse(&status),
+        input: db::json_col(row, 7)?,
+        // Deliberate: `upsert` stores "no output yet" as NULL, so NULL reads
+        // back as `null`. Text that isn't JSON still fails the read.
+        output: db::opt_json_col(row, 8)?.unwrap_or(Value::Null),
+        status: db::text_enum(row, 9)?,
         started_at: started_at as f64,
         ended_at: ended_at.map(|t| t as f64),
         duration_ms: ended_at.map_or(0, |end| (end - started_at).clamp(0, u32::MAX as i64) as u32),
@@ -403,6 +403,46 @@ mod tests {
         assert_eq!(ids, ["t2", "t1"]);
         assert_eq!(rows[0].direction, DelegationDirection::Inbound);
         assert_eq!(list(&db, 1).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_running_row_without_output_reads_as_null() {
+        let db = Db::in_memory();
+        insert(&db, &placeholder("t1", "summarize", &json!("a"), None))
+            .await
+            .unwrap();
+        assert_eq!(get(&db, "t1").await.unwrap().unwrap().output, Value::Null);
+    }
+
+    #[tokio::test]
+    async fn a_bad_delegation_column_fails_the_read_and_names_the_row() {
+        let cases = [
+            (
+                "unknown direction",
+                "direction = 'sideways'",
+                "column 'direction'",
+            ),
+            ("unknown status", "status = 'lost'", "column 'status'"),
+            ("input not JSON", "input = '{oops'", "column 'input'"),
+            ("output not JSON", "output = 'nope'", "column 'output'"),
+        ];
+        for (case, set, column) in cases {
+            let db = Db::in_memory();
+            insert(&db, &placeholder("t1", "summarize", &json!("a"), None))
+                .await
+                .unwrap();
+            let sql = format!("UPDATE delegations SET {set}");
+            db.call(move |conn| conn.execute(&sql, []).map(|_| ()))
+                .await
+                .unwrap();
+            for error in [
+                get(&db, "t1").await.unwrap_err(),
+                list(&db, 10).await.unwrap_err(),
+            ] {
+                assert!(error.contains("delegations row 't1'"), "{case}: {error}");
+                assert!(error.contains(column), "{case}: {error}");
+            }
+        }
     }
 
     #[tokio::test]

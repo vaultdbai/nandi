@@ -415,11 +415,12 @@ const COLUMNS: &str = "id, requester_instance, requester_agent, provider_instanc
     acknowledged_at, completed_at, error, result, parent_task_id, source_kind, attempt_number,
     previous_attempt_id";
 
-fn json_of(text: Option<String>) -> Option<Value> {
-    text.and_then(|t| serde_json::from_str(&t).ok())
+/// A bad column fails the read and names the task (`db::named_row`)
+fn from_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
+    db::named_row(row, "tasks", 0, read_row)
 }
 
-fn from_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
+fn read_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
     let ms = |i: usize| -> rusqlite::Result<Option<f64>> {
         Ok(row.get::<_, Option<i64>>(i)?.map(|t| t as f64))
     };
@@ -430,7 +431,7 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
         provider_instance: row.get(3)?,
         provider_agent: row.get(4)?,
         capability: row.get(5)?,
-        input: json_of(row.get(6)?).unwrap_or(Value::Null),
+        input: db::json_col(row, 6)?,
         state: db::text_enum_with(row, 7, TaskState::parse)?,
         eta_seconds: row.get(8)?,
         deadline: ms(9)?,
@@ -440,7 +441,7 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
         acknowledged_at: ms(13)?,
         completed_at: ms(14)?,
         error: row.get(15)?,
-        result: json_of(row.get(16)?),
+        result: db::opt_json_col(row, 16)?,
         parent_task_id: row.get(17)?,
         source_kind: db::text_enum(row, 18)?,
         attempt_number: row.get(19)?,
@@ -544,13 +545,12 @@ pub fn latest_message(
     kind: &str,
 ) -> rusqlite::Result<Option<Value>> {
     conn.query_row(
-        "SELECT payload FROM task_messages WHERE task_id = ?1 AND kind = ?2
+        "SELECT id, payload FROM task_messages WHERE task_id = ?1 AND kind = ?2
           ORDER BY id DESC LIMIT 1",
         params![task_id, kind],
-        |row| row.get::<_, String>(0),
+        |row| db::named_row(row, "task_messages", 0, |row| db::json_col(row, 1)),
     )
     .optional()
-    .map(json_of)
 }
 
 /// Inserts a new row (`None → Submitted` event, and the wire task as a
@@ -606,7 +606,10 @@ pub async fn request_of(db: &Db, task_id: &str) -> Result<Option<Task>, String> 
     let value = db
         .call(move |conn| latest_message(conn, &id, REQUEST_KIND))
         .await?;
-    Ok(value.and_then(|v| serde_json::from_value(v).ok()))
+    value
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|e| format!("Task '{task_id}': its stored request is not a task: {e}"))
 }
 
 /// Oldest first
@@ -617,15 +620,18 @@ pub async fn events_of(db: &Db, task_id: &str) -> Result<Vec<TaskEvent>, String>
             "SELECT task_id, from_state, to_state, reason, reason_kind, stage, at
                FROM task_events WHERE task_id = ?1 ORDER BY id",
         )?;
+        // Named by the task's ID: an event row has no ID of its own here
         let rows = stmt.query_map([id], |row| {
-            Ok(TaskEvent {
-                task_id: row.get(0)?,
-                from_state: db::opt_text_enum_with(row, 1, TaskState::parse)?,
-                to_state: db::text_enum_with(row, 2, TaskState::parse)?,
-                reason: row.get(3)?,
-                reason_kind: db::opt_text_enum_with(row, 4, ReasonKind::parse)?,
-                stage: db::opt_text_enum(row, 5)?,
-                at: row.get::<_, i64>(6)? as f64,
+            db::named_row(row, "task_events", 0, |row| {
+                Ok(TaskEvent {
+                    task_id: row.get(0)?,
+                    from_state: db::opt_text_enum_with(row, 1, TaskState::parse)?,
+                    to_state: db::text_enum_with(row, 2, TaskState::parse)?,
+                    reason: row.get(3)?,
+                    reason_kind: db::opt_text_enum_with(row, 4, ReasonKind::parse)?,
+                    stage: db::opt_text_enum(row, 5)?,
+                    at: row.get::<_, i64>(6)? as f64,
+                })
             })
         })?;
         rows.collect()
@@ -642,11 +648,13 @@ pub async fn messages_of(db: &Db, task_id: &str) -> Result<Vec<TaskMessage>, Str
               WHERE task_id = ?1 AND substr(kind, 1, 1) != '_' ORDER BY id",
         )?;
         let rows = stmt.query_map([id], |row| {
-            Ok(TaskMessage {
-                id: row.get(0)?,
-                kind: row.get(1)?,
-                payload: json_of(row.get(2)?).unwrap_or(Value::Null),
-                at: row.get::<_, i64>(3)? as f64,
+            db::named_row(row, "task_messages", 0, |row| {
+                Ok(TaskMessage {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    payload: db::json_col(row, 2)?,
+                    at: row.get::<_, i64>(3)? as f64,
+                })
             })
         })?;
         rows.collect()
@@ -1843,6 +1851,102 @@ pub(crate) mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].from_state, None);
         assert_eq!(events[0].to_state, TaskState::Submitted);
+    }
+
+    /// Runs `sql` against the database, to break a stored row on purpose
+    async fn corrupt(db: &Db, sql: &'static str) {
+        db.call(move |conn| conn.execute(sql, []).map(|_| ()))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_bad_task_column_fails_the_read_and_names_the_row() {
+        let cases = [
+            (
+                "input not JSON",
+                "UPDATE tasks SET input = '{oops'",
+                "column 'input'",
+            ),
+            (
+                "result not JSON",
+                "UPDATE tasks SET result = 'nope'",
+                "column 'result'",
+            ),
+            (
+                "unknown state",
+                "UPDATE tasks SET state = 'lost'",
+                "column 'state'",
+            ),
+            (
+                "unknown source",
+                "UPDATE tasks SET source_kind = 'magic'",
+                "column 'source_kind'",
+            ),
+        ];
+        for (case, sql, column) in cases {
+            let db = Db::in_memory();
+            store(&db, &record("t1")).await;
+            corrupt(&db, sql).await;
+            let error = get_row(&db, "t1").await.unwrap_err();
+            assert!(error.contains("tasks row 't1'"), "{case}: {error}");
+            assert!(error.contains(column), "{case}: {error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_null_result_reads_as_none() {
+        let db = Db::in_memory();
+        store(&db, &record("t1")).await;
+        assert_eq!(get_row(&db, "t1").await.unwrap().unwrap().result, None);
+    }
+
+    #[tokio::test]
+    async fn a_bad_message_fails_the_read_and_names_the_row() {
+        let db = Db::in_memory();
+        let (bus, _) = crate::services::events::tests::bus();
+        create(&db, &bus, &record("t1"), None).await.unwrap();
+        add_message(&db, "t1", PROGRESS_KIND, json!({"note": "half"}))
+            .await
+            .unwrap();
+        add_message(&db, "t1", RUN_KIND, json!({"runId": "r"}))
+            .await
+            .unwrap();
+        corrupt(&db, "UPDATE task_messages SET payload = '{oops'").await;
+
+        let listed = messages_of(&db, "t1").await.unwrap_err();
+        assert!(listed.contains("task_messages row '"), "{listed}");
+        assert!(listed.contains("column 'payload'"), "{listed}");
+        let latest = db
+            .call(|conn| latest_message(conn, "t1", RUN_KIND))
+            .await
+            .unwrap_err();
+        assert!(latest.contains("column 'payload'"), "{latest}");
+    }
+
+    #[tokio::test]
+    async fn a_stored_request_that_is_not_a_task_is_an_error() {
+        let db = Db::in_memory();
+        store(&db, &record("t1")).await;
+        add_message(&db, "t1", REQUEST_KIND, json!({"not": "a task"}))
+            .await
+            .unwrap();
+        let error = request_of(&db, "t1").await.unwrap_err();
+        assert!(error.contains("Task 't1'"), "{error}");
+        // No request stored is not an error
+        store(&db, &record("t2")).await;
+        assert_eq!(request_of(&db, "t2").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn a_bad_event_fails_the_read_and_names_the_task() {
+        let db = Db::in_memory();
+        let (bus, _) = crate::services::events::tests::bus();
+        create(&db, &bus, &record("t1"), None).await.unwrap();
+        corrupt(&db, "UPDATE task_events SET to_state = 'lost'").await;
+        let error = events_of(&db, "t1").await.unwrap_err();
+        assert!(error.contains("task_events row 't1'"), "{error}");
+        assert!(error.contains("column 'to_state'"), "{error}");
     }
 
     #[test]

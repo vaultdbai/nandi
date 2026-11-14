@@ -34,7 +34,7 @@ use super::team::trust::TrustFilter;
 use super::team::{TeamManager, TeamShare};
 use super::trust::{self, TrustPolicy, TrustRule};
 use super::AppState;
-use crate::db::{now_ms, Db};
+use crate::db::{self, now_ms, Db};
 use crate::model::Timestamp;
 
 /// Call counts cover the last 30 days
@@ -707,18 +707,20 @@ pub fn load_stats(db: &Db, since_ms: i64) -> Result<HashMap<String, ProviderStat
     let conn = db.conn()?;
     let mut stmt = conn
         .prepare(
-            "SELECT target_agent, status, started_at, ended_at FROM delegations
+            "SELECT id, target_agent, status, started_at, ended_at FROM delegations
               WHERE direction = 'outbound' AND started_at >= ?1 AND target_agent != ''",
         )
         .map_err(|e| format!("Database error: {e}"))?;
     let rows = stmt
         .query_map(params![since_ms], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, Option<i64>>(3)?,
-            ))
+            db::named_row(row, "delegations", 0, |row| {
+                Ok((
+                    row.get::<_, String>(1)?,
+                    db::text_enum::<TaskStatus>(row, 2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                ))
+            })
         })
         .map_err(|e| format!("Database error: {e}"))?;
     let mut totals: HashMap<String, (ProviderStats, u64)> = HashMap::new();
@@ -726,7 +728,7 @@ pub fn load_stats(db: &Db, since_ms: i64) -> Result<HashMap<String, ProviderStat
         let (target, status, started, ended) = row.map_err(|e| format!("Database error: {e}"))?;
         let (stats, total_ms) = totals.entry(target).or_default();
         stats.calls += 1;
-        match TaskStatus::parse(&status) {
+        match status {
             TaskStatus::Completed => {
                 stats.succeeded += 1;
                 if let Some(ended) = ended {
@@ -1115,6 +1117,23 @@ mod tests {
             }
         );
         assert_eq!(stats["them/b"].failed, 1);
+    }
+
+    #[test]
+    fn an_unknown_status_fails_the_stats_and_names_the_row() {
+        let db = Db::in_memory();
+        db.conn()
+            .unwrap()
+            .execute(
+                "INSERT INTO delegations (id, direction, capability, target_agent,
+                   requester_agent, status, started_at)
+                 VALUES ('t1', 'outbound', 'summarize', 'them/a', 'me/_user', 'lost', 0)",
+                [],
+            )
+            .unwrap();
+        let error = load_stats(&db, 0).unwrap_err();
+        assert!(error.contains("delegations row 't1'"), "{error}");
+        assert!(error.contains("column 'status'"), "{error}");
     }
 
     #[test]

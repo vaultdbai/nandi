@@ -21,8 +21,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::types::Type;
+use rusqlite::types::{Type, ValueRef};
 use rusqlite::{params, Connection, OptionalExtension, Row, RowIndex};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -1019,11 +1020,86 @@ fn init_schema(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-/// Reads a text column holding JSON. Text that isn't JSON fails the read: a
-/// bad row is reported, never read as `null`.
-pub fn json_col(row: &Row, column: impl RowIndex + Copy) -> rusqlite::Result<Value> {
+/// Reads a text column holding JSON, as a [`Value`] or a typed shape. Text
+/// that isn't JSON, or isn't a `T`, fails the read: a bad row is reported,
+/// never read as `null` or a default.
+pub fn json_col<T: DeserializeOwned>(
+    row: &Row,
+    column: impl RowIndex + Copy,
+) -> rusqlite::Result<T> {
     let text: String = row.get(column)?;
     serde_json::from_str(&text).map_err(|e| conversion_error(row, column, e))
+}
+
+/// [`json_col`] for a nullable column: `NULL` reads as `None`, text that
+/// isn't JSON still fails the read.
+pub fn opt_json_col<T: DeserializeOwned>(
+    row: &Row,
+    column: impl RowIndex + Copy,
+) -> rusqlite::Result<Option<T>> {
+    let text: Option<String> = row.get(column)?;
+    text.map(|text| serde_json::from_str(&text).map_err(|e| conversion_error(row, column, e)))
+        .transpose()
+}
+
+/// Reads one row of `table` with `read`. When a column fails to convert, the
+/// error names the row by its `key_column` and the column by its name
+/// (`tasks row 't1', column 'input': ...`), so the bad row can be found.
+/// Other errors pass through unchanged.
+pub fn named_row<T>(
+    row: &Row,
+    table: &'static str,
+    key_column: usize,
+    read: impl FnOnce(&Row) -> rusqlite::Result<T>,
+) -> rusqlite::Result<T> {
+    read(row).map_err(|error| match error {
+        rusqlite::Error::FromSqlConversionFailure(index, kind, source) => {
+            let bad_row = BadRow {
+                table,
+                key: row_key(row, key_column),
+                column: row.as_ref().column_name(index).unwrap_or("?").to_string(),
+                source,
+            };
+            rusqlite::Error::FromSqlConversionFailure(index, kind, Box::new(bad_row))
+        }
+        other => other,
+    })
+}
+
+/// The text of a row's key column, for an error message
+fn row_key(row: &Row, column: usize) -> String {
+    match row.get_ref(column) {
+        Ok(ValueRef::Text(text)) => String::from_utf8_lossy(text).into_owned(),
+        Ok(ValueRef::Integer(number)) => number.to_string(),
+        _ => "?".to_string(),
+    }
+}
+
+/// A column of a named row that failed to convert
+#[derive(Debug)]
+struct BadRow {
+    table: &'static str,
+    key: String,
+    column: String,
+    source: Box<dyn std::error::Error + Send + Sync>,
+}
+
+impl std::fmt::Display for BadRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            table,
+            key,
+            column,
+            source,
+        } = self;
+        write!(f, "{table} row '{key}', column '{column}': {source}")
+    }
+}
+
+impl std::error::Error for BadRow {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
 }
 
 /// Reads a text column holding an enum's stored name (`as_str`). An unknown
@@ -1050,7 +1126,8 @@ where
 }
 
 /// [`text_enum`] for an enum whose own `parse` returns an `Option` (the wire
-/// enums of `nandi-protocol`, which this crate can't derive `FromStr` for).
+/// enums `TaskState` and `ReasonKind` of `nandi-protocol`, which have no
+/// `FromStr`).
 pub fn text_enum_with<T>(
     row: &Row,
     column: impl RowIndex + Copy,
@@ -2331,6 +2408,58 @@ pub fn list_agent_memory(
 pub(crate) mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Reads the single row `SELECT 'k1' AS id, ?1 AS doc, ?2 AS maybe`
+    fn read_doc<T>(
+        doc: &str,
+        maybe: Option<&str>,
+        read: impl FnOnce(&Row) -> rusqlite::Result<T>,
+    ) -> rusqlite::Result<T> {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.query_row(
+            "SELECT 'k1' AS id, ?1 AS doc, ?2 AS maybe",
+            params![doc, maybe],
+            |row| named_row(row, "docs", 0, read),
+        )
+    }
+
+    #[test]
+    fn json_columns_read_json_and_fail_on_anything_else() {
+        let doc = |text: &str| read_doc(text, None, |row| json_col::<Value>(row, 1));
+        assert_eq!(doc(r#"{"a": 1}"#).unwrap(), json!({"a": 1}));
+        assert_eq!(doc("null").unwrap(), Value::Null);
+        for bad in ["", "{oops", "nope"] {
+            assert!(doc(bad).is_err(), "{bad:?}");
+        }
+
+        let maybe = |text: Option<&str>| read_doc("1", text, |row| opt_json_col::<Value>(row, 2));
+        assert_eq!(maybe(None).unwrap(), None);
+        assert_eq!(maybe(Some("[1]")).unwrap(), Some(json!([1])));
+        assert!(maybe(Some("{oops")).is_err());
+
+        // A typed read fails on JSON of the wrong shape
+        assert!(read_doc(r#""text""#, None, |row| json_col::<u32>(row, 1)).is_err());
+    }
+
+    #[test]
+    fn a_named_row_names_its_table_key_and_column_and_keeps_the_index() {
+        let error = read_doc("{oops", None, |row| json_col::<Value>(row, 1)).unwrap_err();
+        let rusqlite::Error::FromSqlConversionFailure(index, Type::Text, _) = &error else {
+            panic!("not a conversion failure: {error:?}");
+        };
+        assert_eq!(*index, 1);
+        assert!(
+            error.to_string().contains("docs row 'k1', column 'doc': "),
+            "{error}"
+        );
+
+        // Errors other than a failed conversion pass through unchanged
+        let error = read_doc("1", None, |row| row.get::<_, String>(9)).unwrap_err();
+        assert!(
+            matches!(error, rusqlite::Error::InvalidColumnIndex(9)),
+            "{error:?}"
+        );
+    }
 
     pub fn start_run(conn: &Connection, agent_id: &str, run_id: &str) -> String {
         let conversation_id = ensure_agent_conversation(conn, agent_id).unwrap();
