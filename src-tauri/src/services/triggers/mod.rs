@@ -615,6 +615,13 @@ impl TriggerEngine {
             .ok_or_else(|| format!("Trigger '{id}' not found"))
     }
 
+    /// Holds the dispatcher: no fire is processed until the guard drops.
+    /// Lets a test prove a receiver answers without waiting for dispatch.
+    #[cfg(test)]
+    pub(crate) async fn hold_dispatch(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.dispatching.lock().await
+    }
+
     /// Fires a trigger by hand (even if disabled; no storm or rate limit).
     pub async fn test_fire(&self, id: &str, payload: Value) -> Result<TriggerFire, String> {
         let trigger = self.get(id)?;

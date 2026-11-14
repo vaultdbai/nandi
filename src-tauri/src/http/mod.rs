@@ -319,6 +319,10 @@ mod tests {
         state.shutdown();
     }
 
+    /// Long enough never to fire on a slow machine: it only stops a
+    /// regression from hanging the suite
+    const HANG_GUARD: std::time::Duration = std::time::Duration::from_secs(30);
+
     #[tokio::test]
     async fn webhooks_use_the_trigger_secret_instead_of_the_token() {
         let (state, app) = app();
@@ -347,14 +351,41 @@ mod tests {
             }
             request.body(Body::from(body.to_string())).unwrap()
         };
-        let started = std::time::Instant::now();
-        let accepted = app
-            .clone()
-            .oneshot(hook(Some(&secret), r#"{"order": 1}"#))
-            .await
-            .unwrap();
+        // The webhook answers 202 without waiting for the dispatch: with the
+        // dispatcher held it can't dispatch, so the answer comes while
+        // nothing has fired; the fire follows once it's let go.
+        let triggers = state.triggers().clone();
+        triggers.start().await.unwrap();
+        let fires = || async {
+            let listed = app
+                .clone()
+                .oneshot(authed(
+                    "POST",
+                    "/api/rpc/list_trigger_fires",
+                    &format!(r#"{{"triggerId": "{id}"}}"#),
+                ))
+                .await
+                .unwrap();
+            json(listed).await.as_array().unwrap().len()
+        };
+        let held = triggers.hold_dispatch().await;
+        let accepted = tokio::time::timeout(
+            HANG_GUARD,
+            app.clone().oneshot(hook(Some(&secret), r#"{"order": 1}"#)),
+        )
+        .await
+        .expect("the webhook answers without waiting for the dispatch")
+        .unwrap();
         assert_eq!(accepted.status(), StatusCode::ACCEPTED);
-        assert!(started.elapsed() < std::time::Duration::from_millis(100));
+        assert_eq!(fires().await, 0, "nothing is dispatched while it's held");
+        drop(held);
+        tokio::time::timeout(HANG_GUARD, async {
+            while fires().await == 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the accepted fire is dispatched once the dispatcher is free");
 
         for (secret, body, status) in [
             (None, "{}", StatusCode::UNAUTHORIZED),
