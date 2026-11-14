@@ -848,12 +848,12 @@ enum Inbound {
     Reseal(ResealRequest),
 }
 
-/// Services by instance ID, so a delegator built before `task::init` (and
+/// Services by instance ID, so a delegator built before `task::start` (and
 /// without an `AppState`) can find its instance's service
 static SERVICES: LazyLock<Mutex<HashMap<String, Weak<TaskService>>>> =
     LazyLock::new(Mutex::default);
 
-/// The task service of a local instance, once `task::init` ran
+/// The task service of a local instance, once `task::start` ran
 pub fn service_for(instance_id: &str) -> Option<Arc<TaskService>> {
     SERVICES
         .lock()
@@ -1691,29 +1691,16 @@ pub(super) async fn send_progress(
     Ok(true)
 }
 
-/// Builds the service, starts the timeout/abandon sweeps, the
-/// offline-queue flusher, heartbeats, and restart resume. Must not block.
-pub fn init(state: &AppState) -> Option<Arc<TaskService>> {
-    let deps = match A2aDeps::from_state(state) {
-        Ok(deps) => deps,
-        Err(e) => {
-            log::error!("The task lifecycle is unavailable: {e}");
-            return None;
-        }
-    };
-    let service = TaskService::new(
-        deps,
-        Some(state.selection().clone()),
-        TaskConfig::default(),
-        state.runtime(),
-    );
+/// Registers the service for its instance, then starts the timeout and
+/// abandon sweeps, the offline-queue flusher, heartbeats, and restart
+/// resume. Must not block.
+pub fn start(state: &AppState, service: &Arc<TaskService>) {
     service.register();
     let starting = service.clone();
     state.runtime().spawn(async move {
         starting.listen().await;
         starting.start();
     });
-    Some(service)
 }
 
 fn service(state: &AppState) -> Result<&Arc<TaskService>, TaskError> {

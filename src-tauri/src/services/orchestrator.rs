@@ -162,7 +162,7 @@ impl RunSource {
 
 /// The delegator the `delegate_to_agent` tool calls, set by `a2a::start`,
 /// and the clarification service `ask_requester` calls,
-/// set by `a2a::clarification::init`. Weak: `AppState` owns both, and
+/// set by `a2a::clarification::start`. Weak: `AppState` owns both, and
 /// the delegator holds the orchestrators.
 #[derive(Clone, Default)]
 pub struct DelegationSlot {
@@ -3593,7 +3593,7 @@ mod middleware_tests {
         }));
         save_agent(&state, "writer", "");
         start(&state, "writer", "r1").await;
-        // `a2a::clarification::init` gave the orchestrators its service
+        // `a2a::clarification::start` gave the orchestrators its service
         let clarifier = state.orchestrators().clarifier().expect("set by init");
         assert!(Arc::ptr_eq(&clarifier, state.clarifications().unwrap()));
         let slots = DelegationSlot::default();

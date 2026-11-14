@@ -2545,7 +2545,7 @@ async fn gateway_tasks_go_to_the_gateway_handler() {
     let target = AgentCard::card_id(&me, crate::services::gateway::GATEWAY_AGENT_ID);
     let delegator = state.a2a_delegator().unwrap().clone();
 
-    // The hook `gateway::init` registered: the gateway answers (whatever it
+    // The hook `gateway::start` registered: the gateway answers (whatever it
     // says without NANDI.md or a model), never "no such agent"
     let result = delegator
         .delegate_to(&target, "summarize", json!("hi"))

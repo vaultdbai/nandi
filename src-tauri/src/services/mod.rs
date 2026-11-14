@@ -176,7 +176,6 @@ struct Inner {
     analysis: Arc<dyn RunAnalyzer>,
     palette: Arc<PaletteService>,
     remote: Arc<dyn remote::RemoteService>,
-    selection: Arc<dyn selection::SelectionService>,
     network: Arc<network::NetworkService>,
     studio: Arc<studio::StudioService>,
     work: Arc<work::WorkService>,
@@ -185,10 +184,12 @@ struct Inner {
     aws_auth: Arc<harness::aws_auth::AwsAuthService>,
     bedrock_models: Arc<harness::bedrock_models::BedrockModelService>,
     litellm_gateway: Arc<harness::gateway::GatewayService>,
-    // Set once at startup by each service's `init` (`init_wave_final`)
-    tasks: OnceLock<Arc<a2a::task::TaskService>>,
-    clarifications: OnceLock<Arc<a2a::clarification::ClarificationService>>,
-    gateway: OnceLock<Arc<gateway::GatewayService>>,
+    /// The task lifecycle. `None` without an instance ID.
+    tasks: Option<Arc<a2a::task::TaskService>>,
+    /// Clarification and escalation. `None` without an instance ID.
+    clarifications: Option<Arc<a2a::clarification::ClarificationService>>,
+    /// The gateway agent. `None` without an instance ID.
+    gateway: Option<Arc<gateway::GatewayService>>,
     capability_registries: Arc<capability::registry::CapabilityRegistryService>,
     harnesses: Arc<harness::HarnessService>,
     // Set once at startup by each service's `init` (`init_wave_a`)
@@ -405,6 +406,7 @@ impl AppState {
             store.clone(),
             nandi_dir.clone(),
         ));
+        // Capability selection and circuit breakers, for the task lifecycle
         let selection: Arc<dyn selection::SelectionService> =
             Arc::new(selection::DbSelection::new(db.clone(), Some(bus.clone())));
         let network = Arc::new(network::NetworkService::new(&db));
@@ -469,8 +471,8 @@ impl AppState {
             config.secrets.clone(),
             team::TeamConfig::in_repo(&store),
         ));
-        let a2a_delegator = instance_id.as_ref().map(|id| {
-            Delegator::new(A2aDeps::new(
+        let a2a_deps = instance_id.as_ref().map(|id| {
+            A2aDeps::new(
                 db.clone(),
                 bus.clone(),
                 orchestrators.clone(),
@@ -479,6 +481,39 @@ impl AppState {
                 id.clone(),
                 capability_index.clone(),
                 relay_client.clone(),
+            )
+        });
+        let a2a_delegator = a2a_deps.clone().map(Delegator::new);
+        let tasks = a2a_deps.map(|deps| {
+            a2a::task::TaskService::new(
+                deps,
+                Some(selection),
+                a2a::task::TaskConfig::default(),
+                &config.runtime,
+            )
+        });
+        let clarifications = instance_id.as_ref().map(|id| {
+            a2a::clarification::ClarificationService::new(
+                a2a::clarification::ClarificationDeps::new(
+                    db.clone(),
+                    bus.clone(),
+                    store.clone(),
+                    &config.secrets,
+                    id.clone(),
+                    relay_client.clone(),
+                    config.runtime.clone(),
+                ),
+            )
+        });
+        let gateway = instance_id.as_ref().map(|id| {
+            Arc::new(gateway::GatewayService::for_app(
+                &store,
+                &db,
+                &bus,
+                &config.secrets,
+                id.clone(),
+                relay_client.clone(),
+                capability_index.clone(),
             ))
         });
         Self(Arc::new_cyclic(|inner| Inner {
@@ -489,7 +524,6 @@ impl AppState {
             analysis,
             palette: Arc::default(),
             remote,
-            selection,
             network,
             repo_config,
             aws_auth,
@@ -527,9 +561,9 @@ impl AppState {
             relay_client,
             a2a_delegator,
             team_manager,
-            tasks: OnceLock::new(),
-            clarifications: OnceLock::new(),
-            gateway: OnceLock::new(),
+            tasks,
+            clarifications,
+            gateway,
             capabilities: OnceLock::new(),
             tools: OnceLock::new(),
         }))
@@ -700,24 +734,19 @@ impl AppState {
     /// The task lifecycle
     #[allow(dead_code)]
     pub fn tasks(&self) -> Option<&Arc<a2a::task::TaskService>> {
-        self.0.tasks.get()
+        self.0.tasks.as_ref()
     }
 
     /// Clarification and escalation
     #[allow(dead_code)]
     pub fn clarifications(&self) -> Option<&Arc<a2a::clarification::ClarificationService>> {
-        self.0.clarifications.get()
+        self.0.clarifications.as_ref()
     }
 
     /// The gateway agent
     #[allow(dead_code)]
     pub fn gateway(&self) -> Option<&Arc<gateway::GatewayService>> {
-        self.0.gateway.get()
-    }
-
-    /// Capability selection and circuit breakers
-    pub fn selection(&self) -> &Arc<dyn selection::SelectionService> {
-        &self.0.selection
+        self.0.gateway.as_ref()
     }
 
     /// The network directory
@@ -728,14 +757,14 @@ impl AppState {
     /// Starts the delegation services, in dependency order (tasks before
     /// the gateway, which dispatches child tasks). Must not block.
     fn init_wave_final(&self) {
-        if let Some(service) = a2a::task::init(self) {
-            let _ = self.0.tasks.set(service);
+        if let Some(service) = self.tasks() {
+            a2a::task::start(self, service);
         }
-        if let Some(service) = a2a::clarification::init(self) {
-            let _ = self.0.clarifications.set(service);
+        if let Some(service) = self.clarifications() {
+            a2a::clarification::start(self, service);
         }
-        if let Some(service) = gateway::init(self) {
-            let _ = self.0.gateway.set(service);
+        if let Some(service) = self.gateway() {
+            gateway::start(self, service);
         }
         network::watch_directory(self);
         triggers::handover::init(self);

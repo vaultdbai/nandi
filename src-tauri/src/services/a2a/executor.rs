@@ -27,7 +27,7 @@
 //! How delegation meets the gateway, trust and clarification:
 //! - A task for `<instance>/gateway` (`gateway::GATEWAY_AGENT_ID`) isn't an
 //!   agent turn: it goes to the gateway's handler (`set_gateway_handler`,
-//!   registered by `gateway::init`), which applies its policy, routes it,
+//!   registered by `gateway::start`), which applies its policy, routes it,
 //!   and sends `RejectTask` itself when it refuses.
 //! - Tasks from an instance whose delegations we paused, or from one of its
 //!   agents we blocked (`team::trust`), are rejected.
@@ -73,7 +73,7 @@ pub type GatewayHandler =
     Arc<dyn Fn(Task) -> BoxFuture<'static, Result<TaskResult, Refusal>> + Send + Sync>;
 
 /// Gateway handlers by instance ID: the delegator's and the task service's
-/// executors (built before `gateway::init`, without an `AppState`) find
+/// executors (built before `gateway::start`, without an `AppState`) find
 /// their instance's gateway here
 static GATEWAY_HANDLERS: LazyLock<Mutex<HashMap<String, GatewayHandler>>> =
     LazyLock::new(Mutex::default);

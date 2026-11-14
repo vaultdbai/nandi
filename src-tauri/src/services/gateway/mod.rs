@@ -41,11 +41,11 @@ use crate::services::domain::agent_card::OwnerRef;
 use crate::services::domain::AgentCard;
 use crate::services::events::{self, EventBus, NandiEvent};
 use crate::services::inbox::audit::Decided;
-use crate::services::network;
 use crate::services::relay::client::split_token;
 use crate::services::relay::protocol::PeerMessage;
 use crate::services::relay::RelayClient;
 use crate::services::repo_store::RepoStore;
+use crate::services::secrets::Secrets;
 use crate::services::AppState;
 
 // The wire shape lives in `nandi-protocol`
@@ -914,49 +914,55 @@ fn service(state: &AppState) -> Result<&Arc<GatewayService>, GatewayError> {
         .ok_or_else(|| "The gateway is unavailable".to_string())
 }
 
-/// Ensures NANDI.md exists (see `manifest::DEFAULT_TEMPLATE`), then
-/// registers the card when `relay.enabled` and starts the heartbeat and
-/// change polling. Must not block: relay work runs in the background.
-pub fn init(state: &AppState) -> Option<Arc<GatewayService>> {
-    let root = state.store().repos().layout().root.clone();
-    let instance_id = match network::local_instance_id(state.db()) {
-        Ok(id) => id,
-        Err(e) => {
-            log::error!("Gateway disabled: no instance ID ({e})");
-            return None;
-        }
-    };
+impl GatewayService {
+    /// The gateway of this install, over its relay client and capability
+    /// index. Only builds it: nothing runs until [`start`].
+    pub fn for_app(
+        store: &RepoStore,
+        db: &Db,
+        bus: &EventBus,
+        secrets: &Secrets,
+        instance_id: String,
+        relay: Option<Arc<dyn RelayClient>>,
+        index: Option<Arc<RwLock<CapabilityIndex>>>,
+    ) -> Self {
+        let router_llm: Arc<dyn GatewayLlm> =
+            Arc::new(LlmGatewayModel::new(secrets.clone(), store.clone()));
+        let chat_llm: Arc<dyn GatewayLlm> =
+            Arc::new(LlmGatewayModel::for_chat(secrets.clone(), store.clone()));
+        Self::new(GatewayDeps {
+            root: store.repos().layout().root.clone(),
+            db: db.clone(),
+            bus: bus.clone(),
+            store: store.clone(),
+            instance_id,
+            relay,
+            index,
+            router: Arc::new(DefaultRouter::new(router_llm)),
+            chat: chat_llm,
+        })
+    }
+}
+
+/// Ensures NANDI.md exists (see `manifest::DEFAULT_TEMPLATE`), takes the
+/// tasks addressed to the gateway, then registers the card when
+/// `relay.enabled` and starts the heartbeat and change polling. Must not
+/// block: relay work runs in the background.
+pub fn start(state: &AppState, service: &Arc<GatewayService>) {
+    let root = &service.deps.root;
     // Test states start without NANDI.md, so tests of the repo's git status
     // see only their own files (`ensure_default` has its own tests)
     if !cfg!(test) {
-        match manifest::ensure_default(&root) {
-            Ok(true) => log::info!("Created {}", manifest::manifest_path(&root).display()),
+        match manifest::ensure_default(root) {
+            Ok(true) => log::info!("Created {}", manifest::manifest_path(root).display()),
             Ok(false) => {}
             Err(e) => log::error!("{e}"),
         }
     }
-    let router_llm: Arc<dyn GatewayLlm> = Arc::new(LlmGatewayModel::new(
-        state.secrets().clone(),
-        state.store().clone(),
-    ));
-    let chat_llm: Arc<dyn GatewayLlm> = Arc::new(LlmGatewayModel::for_chat(
-        state.secrets().clone(),
-        state.store().clone(),
-    ));
-    register_executor_hook(state, &instance_id);
-    let service = Arc::new(GatewayService::new(GatewayDeps {
-        root,
-        db: state.db().clone(),
-        bus: state.bus().clone(),
-        store: state.store().clone(),
-        instance_id,
-        relay: state.relay_client().cloned(),
-        index: state.capability_index().cloned(),
-        router: Arc::new(DefaultRouter::new(router_llm)),
-        chat: chat_llm,
-    }));
-    spawn_background(&service, state.runtime());
-    Some(service)
+    // As NANDI.md is now, so polling sees only later edits
+    service.lock().modified = manifest::modified(root);
+    register_executor_hook(state, &service.deps.instance_id);
+    spawn_background(service, state.runtime());
 }
 
 /// Tasks for `<instance>/gateway` reach the executor (delegation and the

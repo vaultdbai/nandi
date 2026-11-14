@@ -56,7 +56,6 @@ use crate::model::{ApprovalStatus, SourceType};
 use crate::services::domain::{Agent, AgentCard, EntityKind};
 use crate::services::events::{self, EventBus, NandiEvent};
 use crate::services::llm_keys;
-use crate::services::network;
 use crate::services::relay::protocol::{PeerDelivery, PeerMessage};
 use crate::services::relay::RelayClient;
 use crate::services::repo_store::RepoStore;
@@ -544,23 +543,43 @@ pub struct ClarificationDeps {
 }
 
 impl ClarificationDeps {
-    pub fn from_state(state: &AppState) -> Result<Self, String> {
-        let db = state.db().clone();
-        let instance_id = network::local_instance_id(&db)?;
-        Ok(Self {
+    /// Clarification's dependencies as this install's `AppState` wires them
+    pub fn new(
+        db: Db,
+        bus: EventBus,
+        store: RepoStore,
+        secrets: &Secrets,
+        instance_id: String,
+        relay: Option<Arc<dyn RelayClient>>,
+        runtime: tokio::runtime::Handle,
+    ) -> Self {
+        Self {
             db,
-            bus: state.bus().clone(),
-            store: state.store().clone(),
-            instance_id,
-            relay: state.relay_client().cloned(),
+            bus,
             answerer: Arc::new(LlmAnswerer {
-                secrets: state.secrets().clone(),
-                store: state.store().clone(),
+                secrets: secrets.clone(),
+                store: store.clone(),
             }),
+            store,
+            instance_id,
+            relay,
             log: ClarificationLog::default_location(),
-            runtime: state.runtime().clone(),
+            runtime,
             provider_wait: DEFAULT_PROVIDER_WAIT,
-        })
+        }
+    }
+
+    #[cfg(test)]
+    pub fn from_state(state: &AppState) -> Result<Self, String> {
+        Ok(Self::new(
+            state.db().clone(),
+            state.bus().clone(),
+            state.store().clone(),
+            state.secrets(),
+            crate::services::network::local_instance_id(state.db())?,
+            state.relay_client().cloned(),
+            state.runtime().clone(),
+        ))
     }
 }
 
@@ -1708,23 +1727,14 @@ pub async fn get_pending_clarifications(
     Ok(service(state)?.pending())
 }
 
-/// Builds the service and listens on the relay (in a spawned task).
-/// Must not block.
-pub fn init(state: &AppState) -> Option<Arc<ClarificationService>> {
-    let deps = match ClarificationDeps::from_state(state) {
-        Ok(deps) => deps,
-        Err(e) => {
-            log::error!("Clarification is unavailable: {e}");
-            return None;
-        }
-    };
-    let service = ClarificationService::new(deps);
-    state.orchestrators().set_clarifier(&service);
+/// Hands the service to the orchestrators' `ask_requester` tool and
+/// listens on the relay (in a spawned task). Must not block.
+pub fn start(state: &AppState, service: &Arc<ClarificationService>) {
+    state.orchestrators().set_clarifier(service);
     let registering = service.clone();
     state
         .runtime()
         .spawn(async move { registering.register().await });
-    Some(service)
 }
 
 #[cfg(test)]
