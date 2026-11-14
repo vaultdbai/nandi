@@ -37,6 +37,7 @@ async fn public_relay(idp: &FakeIdp, limits: Limits) -> String {
         local(),
         RelayServerConfig::new(SECRET.to_vec())
             .public(config)
+            .with_seats(nandi_relay::testing::public_relay_seats())
             .with_limits(limits),
     )
     .await
