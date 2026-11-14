@@ -22,19 +22,13 @@
 //! (from `claude setup-token`), else the access token of the host's
 //! current sign-in (`detection::claude_code_oauth_token`).
 
-use futures_util::future::BoxFuture;
-use futures_util::FutureExt;
-
 use super::adapter::{
-    common_credential_env, forward_env, CliAdapter, CliProfile, HarnessConfig, HarnessHealth,
-    Invocation, ModelRef, Placement,
+    common_credential_env, forward_env, CliAdapter, CliProfile, HarnessConfig, Invocation, ModelRef,
 };
 use super::detection::{self, DetectEnv};
 
-/// The wrapper's npm package and the version Nandi is tested with (also
-/// pinned in `runtimes/nandi-harness/Dockerfile`)
-pub const ACP_PACKAGE: &str = "@agentclientprotocol/claude-agent-acp";
-pub const ACP_VERSION: &str = "0.93.0";
+/// The ACP wrapper the tools volume installs (`images::tools`, which pins
+/// its package and version)
 pub const ACP_BINARY: &str = "claude-agent-acp";
 
 /// Claude Code settings Nandi forwards: provider switches, regions,
@@ -117,25 +111,8 @@ impl CliProfile for ClaudeCode {
         ]
     }
 
-    fn invocation(
-        &self,
-        placement: &Placement,
-        _host_version: Option<&semver::Version>,
-        _model: Option<&str>,
-    ) -> Invocation {
-        match placement {
-            Placement::Container { .. } => Invocation::new(ACP_BINARY, &[]),
-            // On the host: the wrapper if it's installed, else npx runs the
-            // pinned release
-            Placement::Host => {
-                if detection::find_executable(&[ACP_BINARY], &self.env).is_some() {
-                    Invocation::new(ACP_BINARY, &[])
-                } else {
-                    let package = format!("{ACP_PACKAGE}@{ACP_VERSION}");
-                    Invocation::new(npx(), &["-y", &package])
-                }
-            }
-        }
+    fn invocation(&self, _model: Option<&str>) -> Invocation {
+        Invocation::new(ACP_BINARY, &[])
     }
 
     fn env(&self, config: &HarnessConfig) -> Vec<(String, String)> {
@@ -169,25 +146,23 @@ impl CliProfile for ClaudeCode {
             env.insert("ANTHROPIC_FOUNDRY_API_KEY".into(), key.clone());
         }
         env.extend(common_credential_env(credentials));
-        if matches!(config.placement, Placement::Container { .. }) {
-            // No ~/.aws in the container: a profile name would only fail
-            if credentials.aws_access_key_id.is_some() {
-                env.remove("AWS_PROFILE");
-            }
-            // Nothing else to sign in with: the host's subscription token
-            const SIGN_IN: &[&str] = &[
-                "ANTHROPIC_API_KEY",
-                "ANTHROPIC_AUTH_TOKEN",
-                "CLAUDE_CODE_OAUTH_TOKEN",
-                "CLAUDE_CODE_USE_BEDROCK",
-                "CLAUDE_CODE_USE_VERTEX",
-                "CLAUDE_CODE_USE_FOUNDRY",
-            ];
-            let signed_in = SIGN_IN.iter().any(|name| env.contains_key(*name));
-            if !signed_in && config.gateway.is_none() {
-                if let Some(token) = detection::claude_code_oauth_token(&self.env) {
-                    env.insert("CLAUDE_CODE_OAUTH_TOKEN".into(), token);
-                }
+        // No ~/.aws in the container: a profile name would only fail
+        if credentials.aws_access_key_id.is_some() {
+            env.remove("AWS_PROFILE");
+        }
+        // Nothing else to sign in with: the host's subscription token
+        const SIGN_IN: &[&str] = &[
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_CODE_USE_BEDROCK",
+            "CLAUDE_CODE_USE_VERTEX",
+            "CLAUDE_CODE_USE_FOUNDRY",
+        ];
+        let signed_in = SIGN_IN.iter().any(|name| env.contains_key(*name));
+        if !signed_in && config.gateway.is_none() {
+            if let Some(token) = detection::claude_code_oauth_token(&self.env) {
+                env.insert("CLAUDE_CODE_OAUTH_TOKEN".into(), token);
             }
         }
         if let Some(gateway) = config.gateway.as_ref().and_then(|g| g.endpoint.as_ref()) {
@@ -205,23 +180,6 @@ impl CliProfile for ClaudeCode {
         env.extend(config.env.iter().map(|(k, v)| (k.clone(), v.clone())));
         env.into_iter().collect()
     }
-
-    fn health(&self) -> BoxFuture<'_, HarnessHealth> {
-        async move {
-            let spec = detection::spec("claude-code").expect("built-in");
-            detection::detect(spec, &self.env).await.health
-        }
-        .boxed()
-    }
-}
-
-/// `npx` (`npx.cmd` on Windows)
-pub fn npx() -> &'static str {
-    if cfg!(windows) {
-        "npx.cmd"
-    } else {
-        "npx"
-    }
 }
 
 #[cfg(test)]
@@ -230,7 +188,8 @@ mod tests {
 
     use super::*;
     use crate::services::harness::adapter::{
-        GatewayConfig, GatewayKind, HarnessAdapter, HarnessCredentials, TestSpawn, UserMessage,
+        GatewayConfig, GatewayKind, HarnessAdapter, HarnessCredentials, Placement, TestSpawn,
+        UserMessage,
     };
 
     fn profile(settings: Option<&str>, vars: &[(&str, &str)]) -> (ClaudeCode, tempfile::TempDir) {
@@ -254,17 +213,9 @@ mod tests {
         profile.env(config).into_iter().collect()
     }
 
-    fn container() -> Placement {
-        Placement::Container {
-            image: "nandi-harness:latest".into(),
-            name: "n".into(),
-            host_workdir: "/w".into(),
-            memory_mb: None,
-            cpu: None,
-            network: None,
-            folders: Vec::new(),
-            tools: Vec::new(),
-        }
+    /// A session config in the test container
+    fn in_container() -> HarnessConfig {
+        HarnessConfig::new("/w".into(), Placement::for_tests())
     }
 
     #[test]
@@ -290,27 +241,20 @@ mod tests {
         )
         .unwrap();
         assert!(detection::container_auth("claude-code", &signed_in.env));
-        let in_container = HarnessConfig {
-            placement: container(),
-            ..HarnessConfig::default()
-        };
-        let env = env_map(&signed_in, &in_container);
+        let plain = in_container();
+        let env = env_map(&signed_in, &plain);
         assert_eq!(env["CLAUDE_CODE_OAUTH_TOKEN"], "sk-ant-oat");
         assert!(
             !env.values().any(|v| v == "never"),
             "the refresh token stays"
         );
-        // On the host the CLI reads its own login
-        let on_host = env_map(&signed_in, &HarnessConfig::default());
-        assert!(!on_host.contains_key("CLAUDE_CODE_OAUTH_TOKEN"));
         // A Nandi key wins
         let keyed = HarnessConfig {
-            placement: container(),
             credentials: HarnessCredentials {
                 anthropic_api_key: Some("sk-ant".into()),
                 ..HarnessCredentials::default()
             },
-            ..HarnessConfig::default()
+            ..in_container()
         };
         assert!(!env_map(&signed_in, &keyed).contains_key("CLAUDE_CODE_OAUTH_TOKEN"));
 
@@ -321,13 +265,13 @@ mod tests {
         )
         .unwrap();
         assert!(!detection::container_auth("claude-code", &signed_in.env));
-        assert!(!env_map(&signed_in, &in_container).contains_key("CLAUDE_CODE_OAUTH_TOKEN"));
+        assert!(!env_map(&signed_in, &plain).contains_key("CLAUDE_CODE_OAUTH_TOKEN"));
 
         // A `claude setup-token` token in the environment is forwarded as is
         let (setup_token, _home) = profile(None, &[("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-long")]);
         assert!(forwards_credentials(&setup_token.env));
         assert_eq!(
-            env_map(&setup_token, &in_container)["CLAUDE_CODE_OAUTH_TOKEN"],
+            env_map(&setup_token, &plain)["CLAUDE_CODE_OAUTH_TOKEN"],
             "sk-ant-long"
         );
     }
@@ -340,7 +284,7 @@ mod tests {
             ),
             &[("HOME_SECRET", "not forwarded")],
         );
-        let env = env_map(&profile, &HarnessConfig::default());
+        let env = env_map(&profile, &in_container());
         assert_eq!(
             env.get("CLAUDE_CODE_USE_BEDROCK").map(String::as_str),
             Some("1")
@@ -354,7 +298,6 @@ mod tests {
     fn bedrock_credentials_switch_the_provider_and_drop_the_profile_in_containers() {
         let (profile, _home) = profile(None, &[("AWS_PROFILE", "work")]);
         let config = HarnessConfig {
-            placement: container(),
             model: Some("us.anthropic.claude-sonnet-5".into()),
             credentials: HarnessCredentials {
                 aws_region: Some("eu-west-1".into()),
@@ -364,7 +307,7 @@ mod tests {
                 aws_profile: Some("work".into()),
                 ..HarnessCredentials::default()
             },
-            ..HarnessConfig::default()
+            ..in_container()
         };
         let env = env_map(&profile, &config);
         assert_eq!(env["CLAUDE_CODE_USE_BEDROCK"], "1");
@@ -382,7 +325,7 @@ mod tests {
                 anthropic_api_key: Some("sk-ant".into()),
                 ..HarnessCredentials::default()
             },
-            ..HarnessConfig::default()
+            ..in_container()
         };
         let env = env_map(&profile, &anthropic);
         assert_eq!(env["ANTHROPIC_API_KEY"], "sk-ant");
@@ -397,7 +340,7 @@ mod tests {
                 azure_api_key: Some("az".into()),
                 ..HarnessCredentials::default()
             },
-            ..HarnessConfig::default()
+            ..in_container()
         };
         let env = env_map(&profile, &azure);
         assert_eq!(env["CLAUDE_CODE_USE_FOUNDRY"], "1");
@@ -413,7 +356,7 @@ mod tests {
                 kind: GatewayKind::Litellm,
                 endpoint: Some("http://host.docker.internal:4000".into()),
             }),
-            ..HarnessConfig::default()
+            ..in_container()
         };
         let env = env_map(&profile, &config);
         assert_eq!(
@@ -428,14 +371,8 @@ mod tests {
     fn invocations() {
         let (profile, _home) = profile(None, &[]);
         assert_eq!(
-            profile.invocation(&container(), None, None),
+            profile.invocation(None),
             Invocation::new("claude-agent-acp", &[])
-        );
-        let host = profile.invocation(&Placement::Host, None, None);
-        assert_eq!(host.program, npx());
-        assert_eq!(
-            host.args,
-            vec!["-y".to_string(), format!("{ACP_PACKAGE}@{ACP_VERSION}")]
         );
     }
 
@@ -451,11 +388,7 @@ mod tests {
             });
             Box::new(adapter)
         };
-        let config = HarnessConfig {
-            placement: container(),
-            working_dir: "/agent/workdir".into(),
-            ..HarnessConfig::default()
-        };
+        let config = HarnessConfig::new("/agent/workdir".into(), Placement::for_tests());
         let session = adapter.start(config.clone()).await.unwrap();
         assert_eq!(session.adapter_id, "claude-code");
         assert!(

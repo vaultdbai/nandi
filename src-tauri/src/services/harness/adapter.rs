@@ -19,7 +19,7 @@ use tokio::sync::mpsc;
 use super::acp::AcpSessionUpdate;
 use crate::model::Timestamp;
 use crate::runtime::AgentUser;
-use crate::sandbox::{Access, SandboxSpec, Tmpfs, BRIDGE_NETWORK};
+use crate::sandbox::{Access, SandboxSpec, Tmpfs};
 
 /// Turn updates from `HarnessAdapter::send`, ending with `TurnFinished` or
 /// `Error` (then the channel closes)
@@ -74,10 +74,12 @@ impl UserMessage {
 }
 
 /// Everything a session needs. Holds credentials: never serialized, and
-/// `Debug` redacts them.
-#[derive(Clone, Default)]
+/// `Debug` redacts them. There is no default: every session names its
+/// container (`runtime_router::plan`).
+#[derive(Clone)]
 pub struct HarnessConfig {
-    /// The CLI's cwd (inside the container: the mounted workdir)
+    /// The session's workdir on the host, recorded with the session (the
+    /// CLI sees `placement.host_workdir` at `/agent/workdir`)
     pub working_dir: PathBuf,
     /// Non-secret environment for the CLI (provider switches, model)
     pub env: HashMap<String, String>,
@@ -101,6 +103,29 @@ pub struct HarnessConfig {
     pub request_timeout: Option<Duration>,
 }
 
+#[cfg(test)]
+impl HarnessConfig {
+    /// Tests: a session in `placement` with nothing else set (no
+    /// credentials, no tool limits, no prompt, no turn limit)
+    pub(crate) fn new(working_dir: PathBuf, placement: Placement) -> Self {
+        Self {
+            working_dir,
+            env: HashMap::new(),
+            mcp_servers: Vec::new(),
+            max_turns: 0,
+            allowed_tools: Vec::new(),
+            denied_tools: Vec::new(),
+            approvals: super::acp::Approvals::default(),
+            model: None,
+            gateway: None,
+            credentials: HarnessCredentials::default(),
+            system_prompt: None,
+            placement,
+            request_timeout: None,
+        }
+    }
+}
+
 impl fmt::Debug for HarnessConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HarnessConfig")
@@ -119,30 +144,44 @@ impl fmt::Debug for HarnessConfig {
     }
 }
 
-/// Where a harness CLI runs
-#[derive(Debug, Clone, Default, PartialEq)]
-pub enum Placement {
-    /// `docker run -i <image>` with the CLI as the entrypoint's child
-    Container {
-        image: String,
-        /// Container name (for `docker kill`)
-        name: String,
-        /// Host directory mounted at `/agent/workdir`
-        host_workdir: PathBuf,
-        /// `None`: the sandbox's default limits (`sandbox::Limits`)
-        memory_mb: Option<u32>,
-        cpu: Option<f32>,
-        /// A Docker network to join (`nandi-harness`, to reach the gateway);
-        /// `None`: Docker's default bridge
-        network: Option<String>,
-        /// The agent's shared folders (`runtime::folder_mounts`)
-        folders: Vec<crate::runtime::FolderMount>,
-        /// Tool volumes fetched on first use (`images::tools`), read-only
-        tools: Vec<crate::services::images::tools::VolumeMount>,
-    },
-    /// Directly on the host (health checks, explicit opt-in)
-    #[default]
-    Host,
+/// The container a harness CLI runs in: `docker run -i <image>` with the
+/// CLI as the entrypoint's child. Agents run only in the container, so a
+/// session has no host placement and no default one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placement {
+    pub image: String,
+    /// Container name (for `docker kill`)
+    pub name: String,
+    /// Host directory mounted at `/agent/workdir`
+    pub host_workdir: PathBuf,
+    /// Memory and CPU limits (`runtime_router::plan` gives the native
+    /// runtime's defaults when skill.md sets none)
+    pub memory_mb: u32,
+    pub cpu: f32,
+    /// The Docker network it joins: `nandi-agents` for runs, whose only way
+    /// out is the egress relay
+    pub network: String,
+    /// The agent's shared folders (`runtime::folder_mounts`)
+    pub folders: Vec<crate::runtime::FolderMount>,
+    /// Tool volumes fetched on first use (`images::tools`), read-only
+    pub tools: Vec<crate::services::images::tools::VolumeMount>,
+}
+
+#[cfg(test)]
+impl Placement {
+    /// A container for unit tests, which never start it
+    pub(crate) fn for_tests() -> Self {
+        Self {
+            image: "nandi-harness:latest".into(),
+            name: "nandi-harness-test".into(),
+            host_workdir: "/w".into(),
+            memory_mb: crate::sandbox::DEFAULT_MEMORY_MB,
+            cpu: crate::sandbox::DEFAULT_CPU,
+            network: crate::services::egress::relay::AGENT_NETWORK.into(),
+            folders: Vec::new(),
+            tools: Vec::new(),
+        }
+    }
 }
 
 /// An MCP server the harness should connect to (ACP `session/new`)
@@ -472,7 +511,7 @@ pub fn docker_args(
     env_names: &[&str],
     placement: &Placement,
 ) -> Vec<String> {
-    let Placement::Container {
+    let Placement {
         image,
         name,
         host_workdir,
@@ -481,10 +520,7 @@ pub fn docker_args(
         network,
         folders,
         tools,
-    } = placement
-    else {
-        return Vec::new();
-    };
+    } = placement;
     // The agent user (the host user's uid on a Linux engine, the image's
     // `node` on Docker Desktop); the CLIs' state lives in a home tmpfs
     let mut spec = SandboxSpec::new(image)
@@ -494,6 +530,8 @@ pub fn docker_args(
         .name(name)
         .label("nandi.harness", "1")
         .pids(512)
+        .memory_mb(*memory_mb)
+        .cpus(*cpu)
         .user(AgentUser::current())
         .tmpfs(Tmpfs::scratch("/tmp", 512))
         .tmpfs(Tmpfs::home(CONTAINER_HOME, 512))
@@ -514,41 +552,36 @@ pub fn docker_args(
     for tool in tools {
         spec = spec.volume(&tool.volume, &tool.target, Access::ReadOnly);
     }
-    if let Some(memory) = memory_mb {
-        spec = spec.memory_mb(*memory);
-    }
-    if let Some(cpu) = cpu {
-        spec = spec.cpus(*cpu);
-    }
-    spec.network(network.as_deref().unwrap_or(BRIDGE_NETWORK))
+    spec.network(network)
         .env_names(env_names)
         .command(std::iter::once(&invocation.program).chain(&invocation.args))
         .to_cli_args()
 }
 
-/// Spawns `invocation` with `env` (which may hold credentials) where
-/// `placement` says, stdio piped. Only the child process gets `env`.
-pub fn spawn_with_env(
+/// Spawns `invocation` in `placement`'s container with `env` (which may
+/// hold credentials), stdio piped. Only the `docker` process gets `env`,
+/// and it passes each variable on by name.
+pub fn spawn_in_container(
     invocation: &Invocation,
     env: &[(String, String)],
     placement: &Placement,
-    working_dir: &std::path::Path,
+) -> Result<SpawnedHarness, HarnessError> {
+    let names: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
+    let mut command = tokio::process::Command::new("docker");
+    command.args(docker_args(invocation, &names, placement));
+    spawn_piped(command, env, "Docker", Some(placement.name.clone()))
+}
+
+/// Spawns `command` with `env`, stdio piped, keeping the tail of its
+/// stderr. `program` names what is missing when it can't be found.
+pub(super) fn spawn_piped(
+    mut command: tokio::process::Command,
+    env: &[(String, String)],
+    program: &str,
+    container_name: Option<String>,
 ) -> Result<SpawnedHarness, HarnessError> {
     use std::process::Stdio;
 
-    let (mut command, container_name) = match placement {
-        Placement::Host => {
-            let mut command = tokio::process::Command::new(&invocation.program);
-            command.args(&invocation.args).current_dir(working_dir);
-            (command, None)
-        }
-        Placement::Container { name, .. } => {
-            let names: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
-            let mut command = tokio::process::Command::new("docker");
-            command.args(docker_args(invocation, &names, placement));
-            (command, Some(name.clone()))
-        }
-    };
     command
         .envs(env.iter().map(|(k, v)| (k, v)))
         .stdin(Stdio::piped())
@@ -561,10 +594,7 @@ pub fn spawn_with_env(
         command.creation_flags(0x0800_0000);
     }
     let mut child = command.spawn().map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => HarnessError::NotInstalled(match placement {
-            Placement::Host => invocation.program.clone(),
-            Placement::Container { .. } => "Docker".to_string(),
-        }),
+        std::io::ErrorKind::NotFound => HarnessError::NotInstalled(program.to_string()),
         _ => HarnessError::Spawn(e.to_string()),
     })?;
     let pid = child.id().unwrap_or_default();
@@ -601,8 +631,8 @@ pub struct LiveSession {
 }
 
 impl LiveSession {
-    /// Spawns the CLI and opens an ACP session on it. `cwd` is the agent's
-    /// view of the workdir (the container path for container placement).
+    /// Spawns the CLI in its container and opens an ACP session on it, in
+    /// the container's workdir.
     pub async fn open(
         adapter_id: &str,
         invocation: &Invocation,
@@ -612,25 +642,19 @@ impl LiveSession {
     ) -> Result<Self, HarnessError> {
         use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-        let cwd = match &config.placement {
-            Placement::Host => config.working_dir.clone(),
-            Placement::Container { .. } => PathBuf::from(CONTAINER_WORKDIR),
-        };
         // Its network and the relay out of it, or it doesn't start at all
-        if let Placement::Container { .. } = &config.placement {
-            crate::services::egress::relay::ensure_ready(
-                crate::services::egress::relay::RelayImage::Harness,
-            )
-            .await
-            .map_err(HarnessError::Spawn)?;
-        }
-        let mut process = spawn_with_env(invocation, env, &config.placement, &config.working_dir)?;
+        crate::services::egress::relay::ensure_ready(
+            crate::services::egress::relay::RelayImage::Harness,
+        )
+        .await
+        .map_err(HarnessError::Spawn)?;
+        let mut process = spawn_in_container(invocation, env, &config.placement)?;
         let (Some(stdin), Some(stdout)) = (process.child.stdin.take(), process.child.stdout.take())
         else {
             return Err(HarnessError::Spawn("no stdio".to_string()));
         };
         let options = super::acp::SessionOptions {
-            cwd,
+            cwd: PathBuf::from(CONTAINER_WORKDIR),
             mcp_servers: config.mcp_servers.clone(),
             timeout: config
                 .request_timeout
@@ -783,19 +807,11 @@ pub fn parse_version(output: &str) -> Option<semver::Version> {
 pub trait CliProfile: Send + Sync + 'static {
     fn id(&self) -> &'static str;
     fn supported_models(&self) -> Vec<ModelRef>;
-    /// The ACP command for `placement`; `host_version` is the CLI's version
-    /// on the host (detected), for invocations that changed over time
-    fn invocation(
-        &self,
-        placement: &Placement,
-        host_version: Option<&semver::Version>,
-        model: Option<&str>,
-    ) -> Invocation;
+    /// The ACP command in the harness container, which pins each CLI
+    fn invocation(&self, model: Option<&str>) -> Invocation;
     /// The CLI's environment: provider switches, model, credentials. Only
     /// the child process sees it.
     fn env(&self, config: &HarnessConfig) -> Vec<(String, String)>;
-    /// Installed, version, provider, signed in
-    fn health(&self) -> futures_util::future::BoxFuture<'_, HarnessHealth>;
     /// The ACP `authenticate` method for the credentials in `env`, for CLIs
     /// that want one before `session/new`
     fn auth_method(&self, _env: &[(String, String)]) -> Option<String> {
@@ -882,20 +898,7 @@ impl<P: CliProfile> HarnessAdapter for CliAdapter<P> {
                 "This adapter already has a session".to_string(),
             ));
         }
-        let host_version = match config.placement {
-            Placement::Host => self
-                .profile
-                .health()
-                .await
-                .version
-                .and_then(|v| semver::Version::parse(&v).ok()),
-            Placement::Container { .. } => None,
-        };
-        let invocation = self.profile.invocation(
-            &config.placement,
-            host_version.as_ref(),
-            config.model.as_deref(),
-        );
+        let invocation = self.profile.invocation(config.model.as_deref());
         let env = self.profile.env(&config);
         let access = SessionAccess {
             permissions: super::acp::PermissionPolicy::from_tools(
@@ -1000,13 +1003,13 @@ mod tests {
         let args = docker_args(
             &Invocation::new("claude-agent-acp", &[]),
             &["ANTHROPIC_API_KEY", "AWS_SESSION_TOKEN"],
-            &Placement::Container {
+            &Placement {
                 image: "nandi-harness:latest".into(),
                 name: "nandi-harness-writer".into(),
                 host_workdir: "/work/writer".into(),
-                memory_mb: Some(2048),
-                cpu: Some(1.5),
-                network: Some("nandi-harness".into()),
+                memory_mb: 2048,
+                cpu: 1.5,
+                network: "nandi-harness".into(),
                 folders: vec![crate::runtime::FolderMount {
                     source: "/home/a/docs".into(),
                     target: "/agent/folders/docs".into(),
@@ -1074,7 +1077,7 @@ mod tests {
         let config = HarnessConfig {
             credentials: credentials.clone(),
             env: [("PLAIN".to_string(), "value-secret".to_string())].into(),
-            ..HarnessConfig::default()
+            ..HarnessConfig::new("/w".into(), Placement::for_tests())
         };
         let printed = format!("{credentials:?} {config:?}");
         for secret in [
@@ -1107,12 +1110,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_missing_program_is_not_installed() {
-        let result = spawn_with_env(
-            &Invocation::new("definitely-not-a-real-harness-cli", &[]),
-            &[],
-            &Placement::Host,
-            &std::env::temp_dir(),
-        );
-        assert!(matches!(result, Err(HarnessError::NotInstalled(_))));
+        let missing = "definitely-not-a-real-harness-cli";
+        let result = spawn_piped(tokio::process::Command::new(missing), &[], missing, None);
+        assert!(matches!(result, Err(HarnessError::NotInstalled(name)) if name == missing));
     }
 }

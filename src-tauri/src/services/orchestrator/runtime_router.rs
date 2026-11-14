@@ -11,6 +11,8 @@
 //!   decision (tested without Docker)
 //! - `resolve_runtime` gathers those inputs: the image, the detected CLI,
 //!   the default harness, credentials, and the gateway
+//! - `plan_test_session` plans Settings' "Test harness" session the same
+//!   way, so it runs where and how a run does
 //! - `execute_harness_run` drives one run through an adapter
 //!
 //! A harness that can't start fails the run, unless the agent opts into
@@ -23,7 +25,7 @@ use crate::db::{self, role};
 use crate::model::RunStatus;
 use crate::sandbox::{DEFAULT_CPU, DEFAULT_MEMORY_MB};
 use crate::services::config::repo_config::{self, HarnessDefaults};
-use crate::services::domain::{Agent, AgentRuntimeKind};
+use crate::services::domain::{Agent, AgentId, AgentRuntimeKind};
 use crate::services::events::{EventBus, RunContext};
 use crate::services::harness::acp::{AcpSessionUpdate, AcpUsage};
 use crate::services::harness::adapter::{
@@ -230,15 +232,15 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         Sandbox::Ready(tools) => tools.clone(),
         Sandbox::Unavailable(reason) => return fallback(reason.clone()),
     };
-    let placement = Placement::Container {
+    let placement = Placement {
         image: HARNESS_IMAGE.to_string(),
         name: container_name(agent.id().as_str()),
         host_workdir: inputs.workdir.clone(),
         // The native runtime's limits when skill.md sets none
-        memory_mb: Some(agent.container().memory_mb().unwrap_or(DEFAULT_MEMORY_MB)),
-        cpu: Some(agent.container().cpu().unwrap_or(DEFAULT_CPU)),
+        memory_mb: agent.container().memory_mb().unwrap_or(DEFAULT_MEMORY_MB),
+        cpu: agent.container().cpu().unwrap_or(DEFAULT_CPU),
         // Internal: its way out is the egress relay (`HTTPS_PROXY` below)
-        network: Some(crate::services::egress::relay::AGENT_NETWORK.to_string()),
+        network: crate::services::egress::relay::AGENT_NETWORK.to_string(),
         folders: inputs.folders.clone(),
         tools,
     };
@@ -402,21 +404,24 @@ fn model_hosts(
     hosts.iter().map(|h| h.to_string()).collect()
 }
 
+/// What a run takes from the agent's own setup (its workdir, its policies,
+/// its proxy identity), on top of what the machine has
+struct AgentSetup {
+    workdir: PathBuf,
+    folders: Vec<crate::runtime::FolderMount>,
+    folder_prompt: String,
+    /// Who the egress proxy token is issued to (`ProxyTokens::issue`)
+    proxy_identity: String,
+    tools: Option<ToolGrant>,
+    model_rules: Vec<(Vec<String>, String)>,
+}
+
 /// Gathers `plan`'s inputs for `agent` and decides. Starts the gateway for
 /// an agent that needs it.
 pub async fn resolve_runtime(app: &AppState, agent: &Agent) -> RuntimeDecision {
     if agent.runtime().is_native() {
         return RuntimeDecision::Native;
     }
-    let harness_id = agent.runtime().as_str().into_owned();
-    let config = agent.runtime_config().cloned().unwrap_or_default();
-    let service = app.harnesses();
-    let detected = service
-        .detector()
-        .stored_one(&harness_id)
-        .await
-        .ok()
-        .flatten();
     let workdir = match crate::utils::nandi_config::work_dir() {
         Ok(dir) => dir.join(agent.id().as_str()),
         Err(e) => return RuntimeDecision::Unavailable(e),
@@ -427,6 +432,123 @@ pub async fn resolve_runtime(app: &AppState, agent: &Agent) -> RuntimeDecision {
             workdir.display()
         ));
     }
+    // skill.md narrowed by its policies (folders, tools); a broken policy
+    // or a refused model stops it
+    let skill = match app.store().skill(agent.id().as_str()) {
+        Ok(skill) => skill,
+        Err(e) => return RuntimeDecision::Unavailable(e),
+    };
+    let shared = &skill.folders;
+    let setup = AgentSetup {
+        workdir,
+        folders: crate::runtime::folder_mounts(shared),
+        folder_prompt: crate::services::connectors::folders::prompt(
+            shared,
+            crate::runtime::FOLDERS_MOUNT,
+        ),
+        proxy_identity: agent.id().as_str().to_string(),
+        tools: Some(ToolGrant {
+            allowed: skill.allowed_tools.clone(),
+            denied: skill.denied_tools.clone(),
+            approval: skill.requires_approval.clone(),
+        }),
+        model_rules: skill.model_rules.clone(),
+    };
+    match inputs_for(app, agent, setup).await {
+        Ok(inputs) => plan(agent, inputs),
+        Err(reason) => RuntimeDecision::Unavailable(reason),
+    }
+}
+
+/// The agent ID the "Test harness" session plans as. Only its runtime is
+/// read: the session gets its own container name and proxy identity.
+const TEST_AGENT_ID: &str = "harness-test";
+
+/// How long the "Test harness" session waits for each ACP answer
+const TEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+
+/// The throwaway agent the "Test harness" session plans as: `harness_id`'s
+/// runtime and nothing else (no folders, no `network.allow`, no tool limits)
+fn test_agent(harness_id: &str) -> Result<Agent, String> {
+    let id = AgentId::parse(TEST_AGENT_ID).map_err(|e| e.to_string())?;
+    Agent::from_skill_md(
+        id,
+        &format!("---\nname: Test harness\nruntime: {harness_id}\n---\n"),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Settings' "Test harness" session for `harness_id`, planned the way a run
+/// is (`inputs_for`, then [`test_session_plan`]). Its proxy identity is
+/// `harness::test_identity`, which reaches only the CLI's model hosts, and
+/// only while the session is open (`HarnessService::test`).
+pub async fn plan_test_session(app: &AppState, harness_id: &str) -> Result<HarnessPlan, String> {
+    let agent = test_agent(harness_id)?;
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let workdir = std::env::temp_dir().join(format!("nandi-harness-test-{suffix}"));
+    tokio::fs::create_dir_all(&workdir)
+        .await
+        .map_err(|e| format!("Could not create {}: {e}", workdir.display()))?;
+    let setup = AgentSetup {
+        workdir: workdir.clone(),
+        folders: Vec::new(),
+        folder_prompt: String::new(),
+        proxy_identity: crate::services::harness::test_identity(harness_id),
+        tools: None,
+        model_rules: Vec::new(),
+    };
+    let planned = match inputs_for(app, &agent, setup).await {
+        Ok(inputs) => test_session_plan(harness_id, inputs, &suffix),
+        Err(reason) => Err(reason),
+    };
+    if planned.is_err() {
+        let _ = tokio::fs::remove_dir_all(&workdir).await;
+    }
+    planned
+}
+
+/// The "Test harness" session given a run's `inputs` (pure): `plan` for a
+/// throwaway agent with `harness_id`'s runtime, so it runs in the harness
+/// container on the run network, with the egress proxy env, the default
+/// limits and the credentials a run would get. Then its own container name
+/// (`nandi-harness-test-<suffix>`, never an agent's), one turn and a
+/// shorter timeout.
+pub fn test_session_plan(
+    harness_id: &str,
+    inputs: RouterInputs,
+    suffix: &str,
+) -> Result<HarnessPlan, String> {
+    match plan(&test_agent(harness_id)?, inputs) {
+        RuntimeDecision::Harness(plan) => {
+            let mut plan = *plan;
+            plan.config.placement.name = format!("nandi-harness-test-{}", &suffix[..12]);
+            plan.config.max_turns = 1;
+            plan.config.request_timeout = Some(TEST_TIMEOUT);
+            Ok(plan)
+        }
+        RuntimeDecision::Unavailable(reason) => Err(reason),
+        // The test agent sets no fallback, so a harness never plans native
+        RuntimeDecision::Native => Err("This runtime runs natively".to_string()),
+    }
+}
+
+/// `plan`'s inputs: the agent's `setup` and the machine's side (the image,
+/// the detected CLI, the default harness, credentials, the gateway).
+/// Starts the gateway for an agent that needs it.
+async fn inputs_for(
+    app: &AppState,
+    agent: &Agent,
+    setup: AgentSetup,
+) -> Result<RouterInputs, String> {
+    let harness_id = agent.runtime().as_str().into_owned();
+    let config = agent.runtime_config().cloned().unwrap_or_default();
+    let service = app.harnesses();
+    let detected = service
+        .detector()
+        .stored_one(&harness_id)
+        .await
+        .ok()
+        .flatten();
     let default_model = service
         .default()
         .await
@@ -447,62 +569,38 @@ pub async fn resolve_runtime(app: &AppState, agent: &Agent) -> RuntimeDecision {
                     .and_then(|d| d.health.configured_provider.as_deref())
             }),
     );
-    let credentials = match credentials(app, agent, provider.as_deref(), &repo).await {
-        Ok(credentials) => credentials,
-        Err(e) => return RuntimeDecision::Unavailable(e),
-    };
-    // skill.md narrowed by its policies (folders, tools); a broken policy
-    // or a refused model stops it
-    let skill = match app.store().skill(agent.id().as_str()) {
-        Ok(skill) => skill,
-        Err(e) => return RuntimeDecision::Unavailable(e),
-    };
-    let shared = skill.folders.clone();
+    let credentials = credentials(app, agent, provider.as_deref(), &repo).await?;
     let gateway = match &config.gateway {
         Some(_) => {
             let gateway = app.litellm_gateway();
-            let Some(bedrock_model) = config.model.clone() else {
-                return RuntimeDecision::Unavailable(
-                    "runtime_config.model must name the Bedrock model for the gateway".to_string(),
-                );
-            };
+            let bedrock_model = config.model.clone().ok_or_else(|| {
+                "runtime_config.model must name the Bedrock model for the gateway".to_string()
+            })?;
             if gateway.model().as_deref() != Some(bedrock_model.as_str()) {
-                if let Err(e) = gateway.start(&bedrock_model, &credentials).await {
-                    return RuntimeDecision::Unavailable(e);
-                }
+                gateway.start(&bedrock_model, &credentials).await?;
             }
             gateway.session_gateway(true)
         }
         None => None,
     };
-    plan(
-        agent,
-        RouterInputs {
-            sandbox: sandbox_ready(&harness_id).await,
-            default_model,
-            workdir,
-            credentials,
-            gateway,
-            repo,
-            host_only_sign_in: harness_id == "claude-code"
-                && !crate::services::harness::detection::container_auth(
-                    &harness_id,
-                    &crate::services::harness::detection::DetectEnv::current(),
-                ),
-            folders: crate::runtime::folder_mounts(&shared),
-            proxy_token: app.proxy_tokens().issue(agent.id().as_str()),
-            tools: Some(ToolGrant {
-                allowed: skill.allowed_tools.clone(),
-                denied: skill.denied_tools.clone(),
-                approval: skill.requires_approval.clone(),
-            }),
-            model_rules: skill.model_rules.clone(),
-            folder_prompt: crate::services::connectors::folders::prompt(
-                &shared,
-                crate::runtime::FOLDERS_MOUNT,
+    Ok(RouterInputs {
+        sandbox: sandbox_ready(&harness_id).await,
+        default_model,
+        workdir: setup.workdir,
+        credentials,
+        gateway,
+        repo,
+        host_only_sign_in: harness_id == "claude-code"
+            && !crate::services::harness::detection::container_auth(
+                &harness_id,
+                &crate::services::harness::detection::DetectEnv::current(),
             ),
-        },
-    )
+        folders: setup.folders,
+        proxy_token: app.proxy_tokens().issue(&setup.proxy_identity),
+        tools: setup.tools,
+        model_rules: setup.model_rules,
+        folder_prompt: setup.folder_prompt,
+    })
 }
 
 /// The steps a harness run may take: `runtime_config.max_turns`, else
@@ -672,8 +770,8 @@ impl Drop for SessionGuard<'_> {
     }
 }
 
-/// Takes a run's model hosts back when it ends, however it ends
-struct SessionHostsGuard(String);
+/// Takes a session's model hosts back when it ends, however it ends
+pub(crate) struct SessionHostsGuard(pub(crate) String);
 
 impl Drop for SessionHostsGuard {
     fn drop(&mut self) {
@@ -717,10 +815,7 @@ pub async fn execute_harness_run(
     config.approvals.asker = Some(std::sync::Arc::new(
         crate::services::harness::approvals::RunApprover::new(bus.clone(), ctx.clone(), ended),
     ));
-    let container_name = match &plan.config.placement {
-        Placement::Container { name, .. } => Some(name.clone()),
-        Placement::Host => None,
-    };
+    let container_name = Some(plan.config.placement.name.clone());
     let started = service
         .start_session(
             adapter.as_ref(),
@@ -912,19 +1007,53 @@ mod tests {
         assert_eq!(plan.provider.as_deref(), Some("bedrock"));
         assert_eq!(plan.config.allowed_tools, vec!["execute", "read", "search"]);
         assert_eq!(plan.config.system_prompt.as_deref(), Some("You write."));
-        let Placement::Container {
+        let Placement {
             name,
             host_workdir,
             network,
             ..
-        } = &plan.config.placement
-        else {
-            panic!("container placement")
-        };
+        } = &plan.config.placement;
         assert_eq!(name, &container_name("writer"));
         assert_eq!(host_workdir, &PathBuf::from("/work/writer"));
         // Always the internal network, gateway or not
-        assert_eq!(network.as_deref(), Some("nandi-agents"));
+        assert_eq!(network, "nandi-agents");
+    }
+
+    #[test]
+    fn the_test_session_is_planned_like_a_run_in_its_own_container() {
+        for harness_id in ["claude-code", "codex", "gemini-cli"] {
+            let mut inputs = inputs();
+            inputs.proxy_token = "test-token".to_string();
+            let plan = test_session_plan(harness_id, inputs, "0123456789abcdef").unwrap();
+            let placement = &plan.config.placement;
+            assert_eq!(placement.network, "nandi-agents", "{harness_id}");
+            assert_eq!(
+                (placement.memory_mb, placement.cpu),
+                (DEFAULT_MEMORY_MB, DEFAULT_CPU),
+                "{harness_id}"
+            );
+            assert_eq!(
+                placement.name, "nandi-harness-test-0123456789ab",
+                "{harness_id}: never an agent's container"
+            );
+            assert!(placement.folders.is_empty(), "{harness_id}");
+            assert!(
+                plan.config.env["HTTPS_PROXY"].contains("test-token"),
+                "{harness_id}: through the egress proxy"
+            );
+            assert_eq!(plan.config.max_turns, 1, "{harness_id}");
+            assert_eq!(plan.config.request_timeout, Some(TEST_TIMEOUT));
+        }
+    }
+
+    #[test]
+    fn a_test_session_that_cannot_start_says_why() {
+        let mut inputs = inputs();
+        inputs.sandbox = Sandbox::Unavailable("Docker isn't running".to_string());
+        assert_eq!(
+            test_session_plan("claude-code", inputs, "0123456789abcdef").unwrap_err(),
+            "Docker isn't running"
+        );
     }
 
     #[test]
@@ -949,14 +1078,8 @@ cpu: 2.5
 {limits}"
             ));
             let plan = harness_plan(plan(&agent, inputs()));
-            let Placement::Container { memory_mb, cpu, .. } = &plan.config.placement else {
-                panic!("container placement")
-            };
-            assert_eq!(
-                (*memory_mb, *cpu),
-                (Some(expected.0), Some(expected.1)),
-                "{limits:?}"
-            );
+            let Placement { memory_mb, cpu, .. } = &plan.config.placement;
+            assert_eq!((*memory_mb, *cpu), expected, "{limits:?}");
         }
     }
 
@@ -1071,10 +1194,7 @@ cpu: 2.5
             plan.config.credentials.aws_access_key_id, None,
             "the gateway holds AWS"
         );
-        assert!(matches!(
-            &plan.config.placement,
-            Placement::Container { network: Some(n), .. } if n == "nandi-agents"
-        ));
+        assert_eq!(plan.config.placement.network, "nandi-agents");
         assert!(
             plan.egress_hosts.is_empty(),
             "the gateway is on its network"
@@ -1164,10 +1284,7 @@ cpu: 2.5
         keyed.proxy_token = "tok".into();
         keyed.credentials.anthropic_api_key = Some("sk-ant".into());
         let plan = harness_plan(plan(&agent("runtime: claude-code\n"), keyed));
-        assert!(matches!(
-            &plan.config.placement,
-            Placement::Container { network: Some(n), .. } if n == "nandi-agents"
-        ));
+        assert_eq!(plan.config.placement.network, "nandi-agents");
         assert_eq!(
             plan.config.env["HTTPS_PROXY"],
             "http://nandi:tok@nandi-egress:11435"
@@ -1471,10 +1588,9 @@ cpu: 2.5
             )),
             inputs,
         ));
-        if let Placement::Container { network, name, .. } = &mut plan.config.placement {
-            *network = None;
-            *name = format!("nandi-harness-live-{harness_id}");
-        }
+        // Live CLIs reach their providers directly, not through a proxy
+        plan.config.placement.network = crate::sandbox::BRIDGE_NETWORK.to_string();
+        plan.config.placement.name = format!("nandi-harness-live-{harness_id}");
         plan.config.working_dir = workdir.to_path_buf();
         plan
     }
@@ -1514,10 +1630,7 @@ cpu: 2.5
             "install log tail: {:?}",
             installed.log.iter().rev().take(3).collect::<Vec<_>>()
         );
-        let Placement::Container { tools: mounts, .. } = &plan.config.placement else {
-            panic!("runs in the container");
-        };
-        assert_eq!(mounts, &vec![bundle.mount()]);
+        assert_eq!(plan.config.placement.tools, vec![bundle.mount()]);
         let args = crate::services::harness::adapter::docker_args(
             &crate::services::harness::adapter::Invocation::new("claude-agent-acp", &[]),
             &[],
@@ -1560,10 +1673,10 @@ cpu: 2.5
         let workdir = tempfile::tempdir().unwrap();
         let started = std::time::Instant::now();
         let plan = live_plan("codex", workdir.path()).await;
-        let Placement::Container { tools, .. } = &plan.config.placement else {
-            panic!("runs in the container");
-        };
-        assert!(tools.is_empty(), "Codex mounts nothing extra");
+        assert!(
+            plan.config.placement.tools.is_empty(),
+            "Codex mounts nothing extra"
+        );
         let adapter = CodexAdapter::with_env(signed_out());
         let outcome =
             crate::services::harness::adapter::test_session(Box::new(adapter), plan.config).await;

@@ -252,6 +252,15 @@ fn session_hosts(agent_id: &str) -> Option<Vec<capabilities::HostRule>> {
         .cloned()
 }
 
+/// What an identity with no capabilities of its own reaches: only the
+/// hosts its running session was allowed (`allow_session_hosts`)
+fn session_capabilities(identity: &str) -> Option<Capabilities> {
+    session_hosts(identity).map(|allow| Capabilities {
+        aws: None,
+        network: capabilities::NetworkCapabilities { allow },
+    })
+}
+
 /// `capabilities` plus the hosts `agent_id`'s running session needs
 fn with_session_hosts(agent_id: &str, mut capabilities: Capabilities) -> Capabilities {
     if let Some(hosts) = SESSION_HOSTS
@@ -289,11 +298,7 @@ fn connector_capabilities(
 ) -> Result<Capabilities, String> {
     let Some(decl) = store.read(|repo| repo.connectors().get(id).cloned()) else {
         let identity = crate::services::connectors::proxy_identity(id);
-        return session_hosts(&identity)
-            .map(|allow| Capabilities {
-                aws: None,
-                network: capabilities::NetworkCapabilities { allow },
-            })
+        return session_capabilities(&identity)
             .ok_or_else(|| format!("Connector '{id}' isn't installed"));
     };
     Ok(Capabilities {
@@ -527,6 +532,33 @@ pub fn bind_proxy_listener() -> std::io::Result<std::net::TcpListener> {
     })
 }
 
+/// What the holder of a proxy token for `identity` may reach
+fn capabilities_of(
+    store: &crate::services::repo_store::RepoStore,
+    identity: &str,
+) -> Result<Capabilities, String> {
+    // A stdio connector's container (`connectors::mcp`)
+    if let Some(id) = crate::services::connectors::connector_of_identity(identity) {
+        return connector_capabilities(store, id);
+    }
+    // Settings' "Test harness" session: its CLI's model hosts while it is
+    // open, nothing else
+    if crate::services::harness::is_test_identity(identity) {
+        return session_capabilities(identity)
+            .ok_or_else(|| "No harness test is running".to_string());
+    }
+    // A browser pilot (`browser:<agent>`): that agent's own sites, plus any
+    // a person allowed once in its current run
+    if let Some(agent) = crate::services::pilots::browser::agent_of_identity(identity) {
+        return store
+            .skill(agent)
+            .map(|s| crate::services::pilots::sites::with_run_sites(agent, s.capabilities));
+    }
+    store
+        .skill(identity)
+        .map(|s| with_session_hosts(identity, s.capabilities))
+}
+
 /// Starts the proxy in the background. Binds first, on the calling thread,
 /// so `proxy_env` names the right port before any container starts. A bind
 /// failure is logged, not fatal: agents just can't reach the outside.
@@ -535,22 +567,7 @@ pub fn start_server(state: &AppState) {
         tokens: state.proxy_tokens().clone(),
         capabilities: {
             let store = state.store().clone();
-            Arc::new(move |agent_id| {
-                // A stdio connector's container (`connectors::mcp`)
-                if let Some(id) = crate::services::connectors::connector_of_identity(agent_id) {
-                    return connector_capabilities(&store, id);
-                }
-                // A browser pilot (`browser:<agent>`): that agent's own sites,
-                // plus any a person allowed once in its current run
-                if let Some(agent) = crate::services::pilots::browser::agent_of_identity(agent_id) {
-                    return store.skill(agent).map(|s| {
-                        crate::services::pilots::sites::with_run_sites(agent, s.capabilities)
-                    });
-                }
-                store
-                    .skill(agent_id)
-                    .map(|s| with_session_hosts(agent_id, s.capabilities))
-            })
+            Arc::new(move |identity| capabilities_of(&store, identity))
         },
     };
     let router = llm_proxy::router(llm_proxy::ProxyState::new(state))
@@ -766,6 +783,22 @@ pub(crate) mod tests {
         assert!(probe.allows_tunnel("pypi.org", 443));
         assert!(!probe.allows_tunnel("api.notes.dev", 443));
         assert!(connector_capabilities(&store, "ghost").is_err());
+    }
+
+    #[test]
+    fn a_harness_test_session_reaches_only_its_model_hosts_while_it_is_open() {
+        let store = crate::services::repo_store::RepoStore::for_tests(crate::db::Db::in_memory());
+        let identity = crate::services::harness::test_identity("claude-code");
+        let closed = capabilities_of(&store, &identity).unwrap_err();
+        assert!(closed.contains("No harness test is running"), "{closed}");
+
+        allow_session_hosts(&identity, &["api.anthropic.com".to_string()]);
+        let open = capabilities_of(&store, &identity).unwrap();
+        clear_session_hosts(&identity);
+        assert!(open.allows_tunnel("api.anthropic.com", 443));
+        assert!(!open.allows_tunnel("evil.example", 443));
+        assert!(open.aws.is_none());
+        assert!(capabilities_of(&store, &identity).is_err());
     }
 
     #[test]

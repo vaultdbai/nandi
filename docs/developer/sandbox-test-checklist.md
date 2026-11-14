@@ -31,6 +31,7 @@ Each check says what to do, what you should see, and where the code is. Tick it 
 | --- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------- |
 | 2.1 | Agent page › Settings for a Claude Code agent                                                | "Where it runs" is text, "In an isolated container…"; no Host / Container choice | `AgentSettingsTab.tsx` |
 | 2.2 | With only a Claude Code sign-in on this computer (no Anthropic key), run a Claude Code agent | The run fails with "Claude Code needs an API key to run in the container…"       | `runtime_router::plan` |
+| 2.3 | Settings › Models & runtimes › Test connection, then `docker inspect nandi-harness-test-…`   | It runs on `nandi-agents` with `HTTPS_PROXY` set and the default limits          | `plan_test_session`    |
 
 ## 3. Coding agents ask first (#8)
 
@@ -112,5 +113,4 @@ Use an MCP connector in `connectors.yaml`, for example `{id: everything, kind: m
 ## Known gaps (not tested here)
 
 - API keys still go into coding-agent containers (wave 3, model access through the gateway).
-- The harness **Test** button falls back to the host when the image is missing, and its container isn't on `nandi-agents`.
 - Gemini CLI also calls `play.googleapis.com` (telemetry), which the proxy refuses.

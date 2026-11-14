@@ -44,7 +44,7 @@ use tokio::process::ChildStdout;
 use tokio::sync::mpsc;
 
 use super::acp::{AcpSessionUpdate, AcpUsage};
-use super::adapter::{spawn_with_env, HarnessError, Invocation, Placement, SpawnedHarness};
+use super::adapter::{spawn_piped, HarnessError, SpawnedHarness};
 use super::detection::{self, DetectEnv};
 
 /// The SDK version Nandi is tested with (also in
@@ -361,11 +361,13 @@ async fn spawn_bridge(
         claude_path: claude.display().to_string(),
         ..config
     };
-    let invocation = Invocation {
-        program: node.display().to_string(),
-        args: vec![script.display().to_string()],
-    };
-    let mut process = spawn_with_env(&invocation, extra_env, &Placement::Host, working_dir)?;
+    // The one harness process on the host: Nandi's own tool-less model call
+    // (no tools, no settings, one turn; see the module docs). Agents' CLIs
+    // run only in their container (`adapter::spawn_in_container`).
+    let program = node.display().to_string();
+    let mut command = tokio::process::Command::new(&program);
+    command.arg(&script).current_dir(working_dir);
+    let mut process = spawn_piped(command, extra_env, &program, None)?;
     let (Some(mut stdin), Some(stdout)) = (process.child.stdin.take(), process.child.stdout.take())
     else {
         return Err(HarnessError::Spawn("no stdio".to_string()));

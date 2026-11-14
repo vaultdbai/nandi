@@ -15,6 +15,7 @@ agent ──nandi-agents──▶ nandi-egress:11435 ──bridge──▶ host 
 - A pre-existing `nandi-agents` that isn't internal is refused, not used.
 - The LiteLLM gateway joins `nandi-agents` too, so coding agents reach `nandi-litellm:4000` directly.
 - Stdio MCP connectors run in their own container on `nandi-agents` too (`connectors/mcp.rs`, `Placement::Container`). Their proxy identity is `connector:<id>` (`ProxyTokens`, issued when the container starts). They may reach the package registries (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`) and the hosts in their `config.network` list in `connectors.yaml`, nothing else. A connector runs on the host only for agents whose policy lists it in `connectors.run_on_host`.
+- Settings' "Test harness" session runs on `nandi-agents` like a run (`runtime_router::plan_test_session`). Its proxy identity is `harness-test:<harness id>` (`harness::test_identity`): it has no `network.allow`, so it reaches only its CLI's model hosts while the session is open, and its token is revoked when the test ends.
 - Coding agents' own model calls go through the `CONNECT` tunnel. The hosts their provider needs (`api.anthropic.com`, `api.openai.com`, …; `runtime_router::model_hosts`) are allowed on top of `network.allow` while their run lasts (`egress::allow_session_hosts`).
 
 | Route                          | Module          | What it does                                             |

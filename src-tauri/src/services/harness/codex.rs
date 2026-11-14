@@ -8,18 +8,11 @@
 //! on the host needs none. The model goes in as a config override
 //! (`-c model="…"`), the same flag the Codex CLI takes.
 
-use futures_util::future::BoxFuture;
-use futures_util::FutureExt;
-
 use super::adapter::{
-    common_credential_env, forward_env, CliAdapter, CliProfile, HarnessConfig, HarnessHealth,
-    Invocation, ModelRef, Placement,
+    common_credential_env, forward_env, CliAdapter, CliProfile, HarnessConfig, Invocation, ModelRef,
 };
-use super::claude_code::npx;
-use super::detection::{self, DetectEnv};
+use super::detection::DetectEnv;
 
-pub const ACP_PACKAGE: &str = "@zed-industries/codex-acp";
-pub const ACP_VERSION: &str = "0.16.0";
 pub const ACP_BINARY: &str = "codex-acp";
 
 /// What Codex reads from the environment
@@ -55,19 +48,8 @@ impl CliProfile for Codex {
         ]
     }
 
-    fn invocation(
-        &self,
-        placement: &Placement,
-        _host_version: Option<&semver::Version>,
-        model: Option<&str>,
-    ) -> Invocation {
-        let mut invocation = match placement {
-            Placement::Host if detection::find_executable(&[ACP_BINARY], &self.env).is_none() => {
-                let package = format!("{ACP_PACKAGE}@{ACP_VERSION}");
-                Invocation::new(npx(), &["-y", &package])
-            }
-            _ => Invocation::new(ACP_BINARY, &[]),
-        };
+    fn invocation(&self, model: Option<&str>) -> Invocation {
+        let mut invocation = Invocation::new(ACP_BINARY, &[]);
         if let Some(model) = model {
             invocation.args.push("-c".to_string());
             invocation
@@ -95,14 +77,6 @@ impl CliProfile for Codex {
         env.into_iter().collect()
     }
 
-    fn health(&self) -> BoxFuture<'_, HarnessHealth> {
-        async move {
-            let spec = detection::spec("codex").expect("built-in");
-            detection::detect(spec, &self.env).await.health
-        }
-        .boxed()
-    }
-
     fn auth_method(&self, env: &[(String, String)]) -> Option<String> {
         let has = |name: &str| env.iter().any(|(k, _)| k == name);
         if has("CODEX_API_KEY") {
@@ -123,7 +97,11 @@ fn toml_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::harness::adapter::HarnessCredentials;
+    use crate::services::harness::adapter::{HarnessCredentials, Placement};
+
+    fn in_container() -> HarnessConfig {
+        HarnessConfig::new("/w".into(), Placement::for_tests())
+    }
 
     fn codex(vars: &[(&str, &str)]) -> Codex {
         Codex {
@@ -140,20 +118,7 @@ mod tests {
 
     #[test]
     fn the_model_is_a_config_override() {
-        let invocation = codex(&[]).invocation(
-            &Placement::Container {
-                image: "i".into(),
-                name: "n".into(),
-                host_workdir: "/w".into(),
-                memory_mb: None,
-                cpu: None,
-                network: None,
-                folders: Vec::new(),
-                tools: Vec::new(),
-            },
-            None,
-            Some("gpt-5-codex"),
-        );
+        let invocation = codex(&[]).invocation(Some("gpt-5-codex"));
         assert_eq!(invocation.program, "codex-acp");
         assert_eq!(invocation.args, vec!["-c", "model=\"gpt-5-codex\""]);
     }
@@ -161,7 +126,7 @@ mod tests {
     #[test]
     fn api_keys_pick_the_auth_method() {
         let profile = codex(&[("OPENAI_API_KEY", "from-env"), ("UNRELATED", "x")]);
-        let env = profile.env(&HarnessConfig::default());
+        let env = profile.env(&in_container());
         assert_eq!(
             env,
             vec![("OPENAI_API_KEY".to_string(), "from-env".to_string())]
@@ -173,7 +138,7 @@ mod tests {
                 openai_api_key: Some("from-nandi".into()),
                 ..HarnessCredentials::default()
             },
-            ..HarnessConfig::default()
+            ..in_container()
         };
         let env: std::collections::HashMap<_, _> = profile.env(&config).into_iter().collect();
         assert_eq!(env["OPENAI_API_KEY"], "from-nandi");
@@ -188,7 +153,7 @@ mod tests {
                 azure_endpoint: Some("https://x.openai.azure.com".into()),
                 ..HarnessCredentials::default()
             },
-            ..HarnessConfig::default()
+            ..in_container()
         };
         let env: std::collections::HashMap<_, _> = codex(&[]).env(&config).into_iter().collect();
         assert_eq!(env["AZURE_OPENAI_API_KEY"], "az");

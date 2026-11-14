@@ -58,13 +58,13 @@ Claude Code is **not** in the image. Anthropic's licence (`SEE LICENSE IN README
 | First use | A one-off harness container (as `node`, read-only root, `--cap-drop=ALL`, Docker's default network, the host's proxy variables by name) runs `install-tools.sh claude-code`: `npm ci` from the lockfile into the volume `nandi-tools-claude-code-<12 hex>` |
 | Integrity | `npm ci` checks every package against the lockfile's `sha512` hashes. The script then writes the lockfile's sha256 to `.nandi-ready`                                                                                                                       |
 | Check     | Once per app session, a `--network=none` container reads `.nandi-ready` and compares it with the app's embedded lockfile                                                                                                                                   |
-| Runs      | `--mount type=volume,source=nandi-tools-claude-code-<hex>,target=/opt/nandi-tools/claude-code,readonly` (`Placement::Container.tools`). The image's `PATH` starts with its `node_modules/.bin`. The root filesystem stays read-only                        |
+| Runs      | `--mount type=volume,source=nandi-tools-claude-code-<hex>,target=/opt/nandi-tools/claude-code,readonly` (`adapter::Placement.tools`). The image's `PATH` starts with its `node_modules/.bin`. The root filesystem stays read-only                          |
 | Update    | A new lockfile is a new volume name (its hash). After an install, the bundle's other volumes (label `org.nandi.tools=claude-code`) are removed; one still in use stays                                                                                     |
 
 - The adapter runs the SDK's bundled Claude Code (`@anthropic-ai/claude-agent-sdk-linux-<arch>`), never a separate `@anthropic-ai/claude-code` package. So the lockfile pins `claude-agent-acp@0.93.0` and, through it, SDK 0.3.300 (Claude Code 2.1.300). The script removes the musl build npm also installs (the image is glibc).
 - `images::tools::ensure` is called by `runtime_router::sandbox_ready` for `runtime: claude-code` (the run waits; progress on `images://tools`), by the harness Test button, and by Settings' **Get it now** / **Try again** (`install_tools`).
 - The user accepts Anthropic's terms when they sign in to Claude Code, as before.
-- To bump: change `ACP_VERSION` in `services/harness/claude_code.rs` and `claude-code/package.json`, then regenerate the lockfile in a container (`npm install --package-lock-only` in `node:22.20.0-bookworm-slim` with the folder mounted). A test checks the three agree and that every entry has an integrity hash.
+- To bump: change `ACP_VERSION` in the `services/images/tools.rs` tests and `claude-code/package.json`, then regenerate the lockfile in a container (`npm install --package-lock-only` in `node:22.20.0-bookworm-slim` with the folder mounted). A test checks the three agree and that every entry has an integrity hash.
 
 ## How a session runs
 
@@ -96,6 +96,10 @@ docker run -i --rm --init --name nandi-harness-<tag>-<agent>
   & runtimes shows "From an older Nandi").
 - Agents never run on the host: `placement: host` in older files is
   ignored (`runtime_router::plan`) and rewritten to `container` on save.
+- A harness session has no host placement and no default one:
+  `adapter::Placement` is the container (image, name, network, limits),
+  and every `HarnessConfig` names it. Only Nandi's own tool-less Claude SDK
+  bridge runs a process on the host (`claude_sdk`, `adapter::spawn_piped`).
 
 ## Credentials in the container
 

@@ -49,6 +49,7 @@ pub use adapter::{
 use crate::db::{now_ms, ts, Db};
 use crate::model::Timestamp;
 use crate::services::events::{self, EventBus, NandiEvent};
+use crate::services::orchestrator::runtime_router::{self, HarnessPlan, SessionHostsGuard};
 use crate::services::AppState;
 use detection::{DetectEnv, Detection, HarnessDetector};
 use strum::{EnumString, IntoStaticStr};
@@ -687,15 +688,21 @@ impl HarnessService {
     }
 
     /// Whether a run can start here: the harness's detection, then a
-    /// session that opens and closes on its adapter
-    pub async fn test(&self, harness_id: &str) -> Result<HarnessTestResult, String> {
+    /// session that opens and closes on its adapter. `session` plans it the
+    /// way a run is planned (`runtime_router::plan_test_session`); it is
+    /// only awaited when the CLI is installed.
+    pub async fn test(
+        &self,
+        harness_id: &str,
+        session: impl std::future::Future<Output = Result<HarnessPlan, String>>,
+    ) -> Result<HarnessTestResult, String> {
         let runtime = HarnessRuntime::parse(harness_id)
             .ok_or_else(|| format!("Unknown harness '{harness_id}'"))?;
         let started = std::time::Instant::now();
         let health = self.health(harness_id).await?;
         let outcome = match self.get_adapter(harness_id).await {
-            Ok(adapter) if health.installed => match self.test_config(harness_id).await {
-                Ok(config) => adapter::test_session(adapter, config).await,
+            Ok(adapter) if health.installed => match session.await {
+                Ok(plan) => test_planned_session(adapter, plan).await,
                 Err(error) => Err(HarnessError::Other(error)),
             },
             Ok(_) => Err(HarnessError::NotInstalled(runtime.display_name())),
@@ -722,38 +729,31 @@ impl HarnessService {
     }
 }
 
-impl HarnessService {
-    /// A throwaway session config: an empty temp folder, in the harness
-    /// container (its image and tools fetched first, if they aren't here)
-    async fn test_config(&self, harness_id: &str) -> Result<HarnessConfig, String> {
-        use crate::services::images::{self, tools::ToolBundle, SandboxImage};
-        let tools = match ToolBundle::for_harness(harness_id) {
-            Some(bundle) => vec![images::tools::ensure(bundle).await?],
-            None => {
-                images::ensure(SandboxImage::Harness).await?;
-                Vec::new()
-            }
-        };
-        let suffix = uuid::Uuid::new_v4().simple().to_string();
-        let dir = std::env::temp_dir().join(format!("nandi-harness-test-{suffix}"));
-        let _ = tokio::fs::create_dir_all(&dir).await;
-        Ok(HarnessConfig {
-            working_dir: dir.clone(),
-            max_turns: 1,
-            placement: adapter::Placement::Container {
-                image: HARNESS_IMAGE.to_string(),
-                name: format!("nandi-harness-test-{}", &suffix[..12]),
-                host_workdir: dir,
-                memory_mb: None,
-                cpu: None,
-                network: None,
-                folders: Vec::new(),
-                tools,
-            },
-            request_timeout: Some(std::time::Duration::from_secs(90)),
-            ..HarnessConfig::default()
-        })
-    }
+/// Who a "Test harness" session is to the egress proxy. It isn't an agent,
+/// so it has no `network.allow`: it reaches only its CLI's model hosts, and
+/// only while the session is open (`test_planned_session`).
+pub fn test_identity(harness_id: &str) -> String {
+    format!("{TEST_IDENTITY_PREFIX}{harness_id}")
+}
+
+/// Whether a proxy identity is a [`test_identity`]
+pub fn is_test_identity(identity: &str) -> bool {
+    identity.starts_with(TEST_IDENTITY_PREFIX)
+}
+
+/// Agent IDs have no `:`, so no agent can take this identity
+const TEST_IDENTITY_PREFIX: &str = "harness-test:";
+
+/// Opens and closes the planned test session, letting its proxy identity
+/// reach the CLI's model hosts while it does
+async fn test_planned_session(
+    adapter: Box<dyn HarnessAdapter>,
+    plan: HarnessPlan,
+) -> Result<String, HarnessError> {
+    let identity = test_identity(&plan.harness_id);
+    crate::services::egress::allow_session_hosts(&identity, &plan.egress_hosts);
+    let _hosts = SessionHostsGuard(identity);
+    adapter::test_session(adapter, plan.config).await
 }
 
 fn same_health(a: &HarnessHealth, b: &HarnessHealth) -> bool {
@@ -778,7 +778,7 @@ pub fn new_adapter(
         HarnessRuntime::Custom(id) => {
             let invocation =
                 custom.ok_or_else(|| format!("Custom harness '{id}' has no command"))?;
-            Box::new(custom::CustomAdapter::with_command(invocation, env))
+            Box::new(custom::CustomAdapter::with_command(invocation))
         }
     })
 }
@@ -888,8 +888,13 @@ fn with_nandi_keys(state: &AppState, harness_id: &str, health: &mut HarnessHealt
     }
 }
 
+/// Tests `harness_id` with a session planned like a run, then revokes the
+/// session's proxy token
 pub async fn test_harness(state: &AppState, harness_id: &str) -> Result<HarnessTestResult, String> {
-    state.harnesses().test(harness_id).await
+    let session = runtime_router::plan_test_session(state, harness_id);
+    let result = state.harnesses().test(harness_id, session).await;
+    state.proxy_tokens().revoke(&test_identity(harness_id));
+    result
 }
 
 pub async fn set_harness_default(

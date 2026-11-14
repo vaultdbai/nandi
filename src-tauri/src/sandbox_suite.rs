@@ -499,7 +499,7 @@ async fn the_native_container_is_locked_down() {
 #[ignore = "needs Docker and the sandbox images (pnpm run test:sandbox)"]
 async fn the_coding_agent_container_is_locked_down() {
     use crate::services::domain::{Agent, AgentId};
-    use crate::services::harness::adapter::{spawn_with_env, CliProfile, Invocation, Placement};
+    use crate::services::harness::adapter::{spawn_in_container, CliProfile, Invocation};
     use crate::services::harness::claude_code::ClaudeCodeAdapter;
     use crate::services::harness::detection::DetectEnv;
     use crate::services::orchestrator::runtime_router::{
@@ -531,10 +531,7 @@ async fn the_coding_agent_container_is_locked_down() {
         ) else {
             panic!("a harness plan");
         };
-        let Placement::Container { name, .. } = &plan.config.placement else {
-            panic!("runs in the container");
-        };
-        let name = name.clone();
+        let name = plan.config.placement.name.clone();
         let adapter = ClaudeCodeAdapter::with_env(DetectEnv {
             home: home.path().to_path_buf(),
             path: None,
@@ -548,11 +545,10 @@ async fn the_coding_agent_container_is_locked_down() {
         docker(&["rm", "-f", RELAY_NAME]).await;
         relay::ensure_ready(RelayImage::Harness).await.unwrap();
         let _remove = Remove(vec![name.clone()]);
-        let mut sleeper = spawn_with_env(
+        let mut sleeper = spawn_in_container(
             &Invocation::new("sleep", &["300"]),
             &env,
             &plan.config.placement,
-            &workdir,
         )
         .unwrap();
         let deadline = Instant::now() + Duration::from_secs(60);
@@ -604,6 +600,78 @@ async fn the_coding_agent_container_is_locked_down() {
         assert_ne!(code, 0);
         assert!(stderr.contains("403"), "refused by the proxy: {stderr}");
 
+        let _ = sleeper.child.start_kill();
+    })
+    .await;
+}
+
+/// RT-10: Settings' "Test harness" session runs where a run does: on the
+/// internal agents' network, through the egress relay, with the default
+/// limits (`runtime_router::test_session_plan`)
+#[tokio::test]
+#[ignore = "needs Docker and the sandbox images (pnpm run test:sandbox)"]
+async fn the_test_harness_session_runs_on_the_agents_network() {
+    use crate::services::harness::adapter::{spawn_in_container, Invocation};
+    use crate::services::orchestrator::runtime_router::{self, RouterInputs, Sandbox};
+
+    with_relay(|proxy| async move {
+        crate::services::images::ensure(crate::services::images::SandboxImage::Harness)
+            .await
+            .unwrap();
+        let workdir = tempfile::tempdir().unwrap();
+        let identity = crate::services::harness::test_identity("claude-code");
+        let plan = runtime_router::test_session_plan(
+            "claude-code",
+            RouterInputs {
+                sandbox: Sandbox::Ready(Vec::new()),
+                workdir: workdir.path().to_path_buf(),
+                proxy_token: proxy.tokens.issue(&identity),
+                ..RouterInputs::default()
+            },
+            &uuid::Uuid::new_v4().simple().to_string(),
+        )
+        .unwrap();
+        let name = plan.config.placement.name.clone();
+        relay::ensure_ready(RelayImage::Harness).await.unwrap();
+        let _remove = Remove(vec![name.clone()]);
+        let env: Vec<(String, String)> = plan.config.env.clone().into_iter().collect();
+        let mut sleeper = spawn_in_container(
+            &Invocation::new("sleep", &["300"]),
+            &env,
+            &plan.config.placement,
+        )
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let info = loop {
+            if let Some(info) = inspect(&name)
+                .await
+                .filter(|i| i["State"]["Running"] == true)
+            {
+                break info;
+            }
+            assert!(Instant::now() < deadline, "the test container never ran");
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        };
+
+        assert_eq!(info["HostConfig"]["NetworkMode"], AGENT_NETWORK);
+        let networks: Vec<&String> = info["NetworkSettings"]["Networks"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect();
+        assert_eq!(networks, [AGENT_NETWORK], "never Docker's default bridge");
+        let mb = |bytes: &Value| bytes.as_i64().unwrap() / (1024 * 1024);
+        assert_eq!(
+            mb(&info["HostConfig"]["Memory"]),
+            i64::from(crate::sandbox::DEFAULT_MEMORY_MB)
+        );
+        let container_env = strings(&info["Config"]["Env"]);
+        assert!(
+            container_env
+                .iter()
+                .any(|v| v.starts_with("HTTPS_PROXY=") && v.contains(RELAY_NAME)),
+            "{container_env:?}"
+        );
         let _ = sleeper.child.start_kill();
     })
     .await;

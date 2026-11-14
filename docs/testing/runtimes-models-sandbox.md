@@ -142,13 +142,13 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### RT-10 — Test connection for a runtime
 
-- **What:** "Test connection" checks detection, then opens and closes a one-turn ACP session in a throwaway folder (in the harness container when its image is built, else on the host), returning OK/failed, latency, version and provider.
-- **Where:** Settings → Models & runtimes → Coding agents → card → Test connection. `rpc/harnesses.rs` (`test_harness`), `services/harness/mod.rs` (`HarnessService::test`, `test_config`). HTTP `POST /api/rpc/test_harness`.
+- **What:** "Test connection" checks detection, then opens and closes a one-turn ACP session in a throwaway folder, returning OK/failed, latency, version and provider. The session is planned like a run (`runtime_router::plan_test_session`, `test_session_plan`): in the harness container on `nandi-agents`, with the egress proxy env, the default limits and a run's credentials. It never runs on the host.
+- **Where:** Settings → Models & runtimes → Coding agents → card → Test connection. `rpc/harnesses.rs` (`test_harness`), `services/harness/mod.rs` (`HarnessService::test`, `test_identity`), `services/orchestrator/runtime_router.rs` (`plan_test_session`, `test_session_plan`), `services/egress/mod.rs` (`capabilities_of`). HTTP `POST /api/rpc/test_harness`.
 - **Preconditions:** CLI detected; a sign-in.
 - **Steps:** 1. Click Test connection on Claude Code. 2. Repeat with no sign-in. 3. Repeat with the CLI uninstalled.
-- **Expected:** "Connection works" or "Connection failed" with the error; uninstalled gives `NotInstalled`. Temp folder `nandi-harness-test-<uuid>` under the OS temp dir; container `nandi-harness-test-<12 chars>`. Request timeout 90 s.
-- **Edge / negative cases:** image missing (test runs the CLI on the host: documented exception to "agents run only in the container"); the test container is not put on `nandi-agents` (`test_config` sets no network), so it has the default bridge's direct internet, unlike a real run (checklist "Known gaps"); custom harness without a registered command.
-- **Automation:** Covered by: `harness-ui.test.tsx` | Layer: manual (real CLI and sign-in) | Gap: no backend test of `test`.
+- **Expected:** "Connection works" or "Connection failed" with the error; uninstalled gives `NotInstalled`. Temp folder `nandi-harness-test-<uuid>` under the OS temp dir; container `nandi-harness-test-<12 chars>` on `nandi-agents`. Request timeout 90 s. Its proxy identity is `harness-test:<harness id>`: it reaches only the CLI's model hosts, only while the session is open, and its token is revoked after.
+- **Edge / negative cases:** image missing (the image is pulled first; if that fails the test fails with the reason, never runs on the host); Docker not running (fails with the reason); custom harness without a registered command.
+- **Automation:** Covered by: `harness-ui.test.tsx`; Rust `runtime_router` tests (`the_test_session_is_planned_like_a_run_in_its_own_container`, `a_test_session_that_cannot_start_says_why`), `egress` (`a_harness_test_session_reaches_only_its_model_hosts_while_it_is_open`); live `sandbox_suite::the_test_harness_session_runs_on_the_agents_network` (ignored: Docker) | Layer: unit + live | Gap: a real CLI and sign-in stay manual.
 - **Needs relay:** no
 - **Status:** Shipped
 

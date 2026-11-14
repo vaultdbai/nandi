@@ -31,7 +31,7 @@ use crate::sandbox::{Access, SandboxSpec, Tmpfs, BRIDGE_NETWORK};
 use crate::services::events::{self, NandiEvent};
 
 /// What the harness image ships and the first use installs (keep the ACP
-/// version in step with `harness::claude_code::ACP_VERSION`)
+/// version in step with `ACP_VERSION` in the tests)
 pub const CLAUDE_CODE_PACKAGE: &[u8] =
     include_bytes!("../../../../runtimes/nandi-harness/claude-code/package.json");
 pub const CLAUDE_CODE_LOCK: &[u8] =
@@ -517,14 +517,17 @@ mod tests {
         assert!(bundle.bin_dir().starts_with(bundle.mount_path()));
     }
 
+    /// Claude Code's ACP wrapper and the version Nandi is tested with
+    const ACP_PACKAGE: &str = "@agentclientprotocol/claude-agent-acp";
+    const ACP_VERSION: &str = "0.93.0";
+
     /// The lockfile pins the ACP adapter the app is tested with, with an
     /// integrity hash for every package
     #[test]
     fn the_lockfile_pins_the_tested_adapter_with_integrity() {
         let lock: serde_json::Value = serde_json::from_slice(CLAUDE_CODE_LOCK).unwrap();
         let package: serde_json::Value = serde_json::from_slice(CLAUDE_CODE_PACKAGE).unwrap();
-        let acp = crate::services::harness::claude_code::ACP_PACKAGE;
-        let version = crate::services::harness::claude_code::ACP_VERSION;
+        let (acp, version) = (ACP_PACKAGE, ACP_VERSION);
         assert_eq!(package["dependencies"][acp], version);
         assert_eq!(lock["packages"][""]["dependencies"][acp], version);
         assert_eq!(

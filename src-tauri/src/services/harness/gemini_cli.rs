@@ -1,5 +1,5 @@
-//! Gemini CLI over ACP: native, `gemini --acp` (`--experimental-acp`
-//! before 0.30).
+//! Gemini CLI over ACP: native, `gemini --acp` (the harness image pins a
+//! release that has it).
 //!
 //! Tested with Gemini CLI 0.64.0.
 //!
@@ -7,17 +7,10 @@
 //! with `GEMINI_API_KEY`, `vertex-ai` on Vertex, else the host's Google
 //! login (`oauth-personal`).
 
-use futures_util::future::BoxFuture;
-use futures_util::FutureExt;
-
 use super::adapter::{
-    common_credential_env, forward_env, CliAdapter, CliProfile, HarnessConfig, HarnessHealth,
-    Invocation, ModelRef, Placement,
+    common_credential_env, forward_env, CliAdapter, CliProfile, HarnessConfig, Invocation, ModelRef,
 };
-use super::detection::{self, DetectEnv};
-
-/// The first release whose ACP flag is `--acp`
-const STABLE_ACP_SINCE: semver::Version = semver::Version::new(0, 30, 0);
+use super::detection::DetectEnv;
 
 pub const FORWARDED: &[&str] = &[
     "GEMINI_API_KEY",
@@ -52,18 +45,8 @@ impl CliProfile for GeminiCli {
         ]
     }
 
-    fn invocation(
-        &self,
-        placement: &Placement,
-        host_version: Option<&semver::Version>,
-        model: Option<&str>,
-    ) -> Invocation {
-        // The image pins a current release; on the host, follow its version
-        let flag = match (placement, host_version) {
-            (Placement::Host, Some(version)) if *version < STABLE_ACP_SINCE => "--experimental-acp",
-            _ => "--acp",
-        };
-        let mut invocation = Invocation::new("gemini", &[flag]);
+    fn invocation(&self, model: Option<&str>) -> Invocation {
+        let mut invocation = Invocation::new("gemini", &["--acp"]);
         if let Some(model) = model {
             invocation
                 .args
@@ -83,14 +66,6 @@ impl CliProfile for GeminiCli {
         env.into_iter().collect()
     }
 
-    fn health(&self) -> BoxFuture<'_, HarnessHealth> {
-        async move {
-            let spec = detection::spec("gemini-cli").expect("built-in");
-            detection::detect(spec, &self.env).await.health
-        }
-        .boxed()
-    }
-
     fn auth_method(&self, env: &[(String, String)]) -> Option<String> {
         let value = |name: &str| env.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str());
         let method = if value("GOOGLE_GENAI_USE_VERTEXAI").is_some_and(|v| v == "true" || v == "1")
@@ -108,7 +83,11 @@ impl CliProfile for GeminiCli {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::harness::adapter::HarnessCredentials;
+    use crate::services::harness::adapter::{HarnessCredentials, Placement};
+
+    fn in_container() -> HarnessConfig {
+        HarnessConfig::new("/w".into(), Placement::for_tests())
+    }
 
     fn gemini(vars: &[(&str, &str)]) -> GeminiCli {
         GeminiCli {
@@ -124,18 +103,11 @@ mod tests {
     }
 
     #[test]
-    fn old_releases_use_the_experimental_flag() {
+    fn runs_acp_with_the_model() {
         let profile = gemini(&[]);
-        let old = semver::Version::new(0, 12, 0);
-        let new = semver::Version::new(0, 64, 0);
+        assert_eq!(profile.invocation(None).args, vec!["--acp"]);
         assert_eq!(
-            profile.invocation(&Placement::Host, Some(&old), None).args,
-            vec!["--experimental-acp"]
-        );
-        assert_eq!(
-            profile
-                .invocation(&Placement::Host, Some(&new), Some("gemini-2.5-pro"))
-                .args,
+            profile.invocation(Some("gemini-2.5-pro")).args,
             vec!["--acp", "--model", "gemini-2.5-pro"]
         );
     }
@@ -148,13 +120,13 @@ mod tests {
                 google_api_key: Some("g".into()),
                 ..HarnessCredentials::default()
             },
-            ..HarnessConfig::default()
+            ..in_container()
         };
         let env = profile.env(&config);
         assert_eq!(env, vec![("GEMINI_API_KEY".to_string(), "g".to_string())]);
         assert_eq!(profile.auth_method(&env).as_deref(), Some("gemini-api-key"));
         let vertex = gemini(&[("GOOGLE_GENAI_USE_VERTEXAI", "true")]);
-        let env = vertex.env(&HarnessConfig::default());
+        let env = vertex.env(&in_container());
         assert_eq!(vertex.auth_method(&env).as_deref(), Some("vertex-ai"));
         assert_eq!(profile.auth_method(&[]).as_deref(), Some("oauth-personal"));
     }
