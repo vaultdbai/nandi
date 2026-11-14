@@ -5,10 +5,10 @@
  * (another window, the web client) does too.
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { ArtifactRef, ArtifactSave } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Everything Studio caches lives under `['studio']` */
 export const studioKeys = {
@@ -37,19 +37,16 @@ export function useArtifact(artifact: ArtifactRef | null) {
     return subscription.unsubscribe
   }, [queryClient])
 
-  return useQuery({
-    queryKey: artifact ? studioKeys.artifact(artifact) : studioKeys.all,
-    queryFn: async () =>
-      unwrapResult(await client.loadArtifact(artifact as ArtifactRef)),
-    enabled: artifact !== null,
-  })
+  return useClientQuery(
+    artifact ? studioKeys.artifact(artifact) : studioKeys.all,
+    () => client.loadArtifact(artifact as ArtifactRef),
+    { enabled: artifact !== null }
+  )
 }
 
 export function useSaveArtifact() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (save: ArtifactSave) =>
-      unwrapResult(await client.saveArtifact(save)),
+  return useClientMutation((save: ArtifactSave) => client.saveArtifact(save), {
     onSuccess: result =>
       queryClient.invalidateQueries({
         queryKey: studioKeys.artifact(result.artifact),
@@ -65,19 +62,14 @@ export function useArtifactValidation(
   artifact: ArtifactRef,
   content: string | null
 ) {
-  return useQuery({
-    queryKey: [...studioKeys.artifact(artifact), 'validate', content],
-    queryFn: async () =>
-      unwrapResult(await client.validateArtifact(artifact, content ?? '')),
-    enabled: content !== null,
-    placeholderData: previous => previous,
-  })
+  return useClientQuery(
+    [...studioKeys.artifact(artifact), 'validate', content],
+    () => client.validateArtifact(artifact, content ?? ''),
+    { enabled: content !== null, placeholderData: previous => previous }
+  )
 }
 
 /** Local commit, push to `<prefix>/<slug>`, push + pull request */
 export function usePushTargets() {
-  return useQuery({
-    queryKey: studioKeys.pushTargets,
-    queryFn: async () => unwrapResult(await client.listPushTargets()),
-  })
+  return useClientQuery(studioKeys.pushTargets, () => client.listPushTargets())
 }

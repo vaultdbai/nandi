@@ -4,10 +4,10 @@
  */
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import { isMascotPhrase, nandiState } from '@/lib/mascot'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 import { useAgentStore } from '@/store/agent-store'
 import { useUIStore } from '@/store/ui-store'
 import { useAllPendingApprovals } from './useInbox'
@@ -15,9 +15,7 @@ import { useAllPendingApprovals } from './useInbox'
 export const mascotKeys = { info: ['mascot'] as const }
 
 export function useMascot() {
-  return useQuery({
-    queryKey: mascotKeys.info,
-    queryFn: async () => unwrapResult(await client.mascotGet()),
+  return useClientQuery(mascotKeys.info, () => client.mascotGet(), {
     staleTime: Infinity,
   })
 }
@@ -29,9 +27,7 @@ export function useMascotName(): string {
 
 export function useRenameMascot() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (name: string | null) =>
-      unwrapResult(await client.mascotSet(name)),
+  return useClientMutation((name: string | null) => client.mascotSet(name), {
     onSuccess: info => queryClient.setQueryData(mascotKeys.info, info),
   })
 }

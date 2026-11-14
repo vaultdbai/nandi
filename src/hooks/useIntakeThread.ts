@@ -5,10 +5,10 @@
  * Staff's notes into it (queued, approved, dismissed).
  */
 import { useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import { loadConversation } from '@/lib/agent-sync'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 
 export const intakeThreadKeys = {
   detail: (conversationId: string) =>
@@ -29,10 +29,9 @@ export function useIntakeThread(conversationId: string) {
     })
     return () => subscription.unsubscribe()
   }, [queryClient, conversationId])
-  return useQuery({
-    queryKey: intakeThreadKeys.detail(conversationId),
-    queryFn: async () =>
-      unwrapResult(await client.getIntakeThread(conversationId)),
-    retry: false,
-  })
+  return useClientQuery(
+    intakeThreadKeys.detail(conversationId),
+    () => client.getIntakeThread(conversationId),
+    { retry: false }
+  )
 }

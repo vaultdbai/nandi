@@ -4,10 +4,10 @@
  * `config://repo_llm_changed`.
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { RepoLlmConfigStatus } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 export const repoConfigQueryKey = ['repo-config', 'llm'] as const
 
@@ -24,17 +24,13 @@ export function useRepoLlmConfig() {
     })
     return subscription.unsubscribe
   }, [queryClient])
-  return useQuery({
-    queryKey: repoConfigQueryKey,
-    queryFn: async () => unwrapResult(await client.getRepoLlmConfig()),
-  })
+  return useClientQuery(repoConfigQueryKey, () => client.getRepoLlmConfig())
 }
 
 /** Re-reads `.nandi/llm.yaml` now ("Sync") */
 export function useSyncRepoLlmConfig() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async () => unwrapResult(await client.reloadRepoLlmConfig()),
+  return useClientMutation(() => client.reloadRepoLlmConfig(), {
     onSuccess: status => queryClient.setQueryData(repoConfigQueryKey, status),
   })
 }

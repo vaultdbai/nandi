@@ -3,19 +3,19 @@
  * Refresh action. `live://changed` keeps the list current
  * (`lib/live-changes.ts`), so it never polls.
  */
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { ChangeArea, LiveChange } from '@/lib/bindings'
 import { liveQueryKeys, refreshFromDisk } from '@/lib/live-changes'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 
 /** Newest first */
 export function useRecentChanges() {
-  return useQuery({
-    queryKey: liveQueryKeys.recent,
-    queryFn: async () => unwrapResult(await client.listRecentChanges()),
-    staleTime: Infinity,
-  })
+  return useClientQuery(
+    liveQueryKeys.recent,
+    () => client.listRecentChanges(),
+    { staleTime: Infinity }
+  )
 }
 
 /**

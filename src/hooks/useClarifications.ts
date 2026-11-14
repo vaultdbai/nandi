@@ -6,12 +6,7 @@
  * Question IDs are `r<round>-q<n>` (the provider's `ask_requester` tool
  * numbers them), so the round can be read off a pending question.
  */
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { client, type NandiEventName } from '@/lib/client'
 import { useInvalidateOn } from '@/hooks/useInvalidateOn'
 import type {
@@ -19,7 +14,7 @@ import type {
   ClarificationResponse,
   PendingClarification,
 } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 import { taskQueryKeys } from './useTasks'
 
 /** Answers with a meaning (mirrors `services::a2a::clarification`) */
@@ -100,12 +95,14 @@ export function useClarificationEvents() {
 /** Questions waiting for the user, optionally for one task */
 export function usePendingClarifications(taskId?: string) {
   useClarificationEvents()
-  return useQuery({
-    queryKey: clarificationQueryKeys.pending,
-    queryFn: async () => unwrapResult(await client.getPendingClarifications()),
-    select: (rows: PendingClarification[]) =>
-      taskId === undefined ? rows : rows.filter(row => row.taskId === taskId),
-  })
+  return useClientQuery(
+    clarificationQueryKeys.pending,
+    () => client.getPendingClarifications(),
+    {
+      select: (rows: PendingClarification[]) =>
+        taskId === undefined ? rows : rows.filter(row => row.taskId === taskId),
+    }
+  )
 }
 
 /**
@@ -125,49 +122,45 @@ function invalidatePending(queryClient: QueryClient) {
 /** Answers questions (text, or one of the special answers) */
 export function useRespondToClarification() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (response: ClarificationResponse) =>
-      unwrapResult(await client.respondToClarification(response)),
-    onSettled: () => invalidatePending(queryClient),
-  })
+  return useClientMutation(
+    (response: ClarificationResponse) =>
+      client.respondToClarification(response),
+    { onSettled: () => invalidatePending(queryClient) }
+  )
 }
 
 /** Sends a question to the user even if the agent would answer it */
 export function useEscalateClarification() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
-      taskId,
-      questionId,
-    }: {
-      taskId: string
-      questionId: string
-    }) => unwrapResult(await client.escalateClarification(taskId, questionId)),
-    onSettled: () => invalidatePending(queryClient),
-  })
+  return useClientMutation(
+    ({ taskId, questionId }: { taskId: string; questionId: string }) =>
+      client.escalateClarification(taskId, questionId),
+    { onSettled: () => invalidatePending(queryClient) }
+  )
 }
 
 /** A local agent's clarification policy; off for `enabled: false` */
 export function useClarificationPolicy(agentId: string, enabled = true) {
-  return useQuery({
-    queryKey: clarificationQueryKeys.policy(agentId),
-    queryFn: async () =>
-      unwrapResult(await client.getClarificationPolicy(agentId)),
-    enabled: enabled && agentId.length > 0,
-  })
+  return useClientQuery(
+    clarificationQueryKeys.policy(agentId),
+    () => client.getClarificationPolicy(agentId),
+    { enabled: enabled && agentId.length > 0 }
+  )
 }
 
 /** Saves an agent's clarification policy to its skill.md */
 export function useSetClarificationPolicy(agentId: string) {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (policy: ClarificationPolicy) =>
-      unwrapResult(await client.setClarificationPolicy(agentId, policy)),
-    onSuccess: saved => {
-      queryClient.setQueryData(clarificationQueryKeys.policy(agentId), saved)
-      void queryClient.invalidateQueries({
-        queryKey: clarificationQueryKeys.policy(agentId),
-      })
-    },
-  })
+  return useClientMutation(
+    (policy: ClarificationPolicy) =>
+      client.setClarificationPolicy(agentId, policy),
+    {
+      onSuccess: saved => {
+        queryClient.setQueryData(clarificationQueryKeys.policy(agentId), saved)
+        void queryClient.invalidateQueries({
+          queryKey: clarificationQueryKeys.policy(agentId),
+        })
+      },
+    }
+  )
 }

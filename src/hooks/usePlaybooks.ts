@@ -4,10 +4,10 @@
  * (`['agent-definition', id]`), so every file change, live change and
  * Refresh that updates the agent updates its playbooks too.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { PlaybookInput } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 export const playbooksQueryKeys = {
   agent: (agentId: string) =>
@@ -15,10 +15,9 @@ export const playbooksQueryKeys = {
 }
 
 export function usePlaybooks(agentId: string) {
-  return useQuery({
-    queryKey: playbooksQueryKeys.agent(agentId),
-    queryFn: async () => unwrapResult(await client.repoAgentPlaybooks(agentId)),
-  })
+  return useClientQuery(playbooksQueryKeys.agent(agentId), () =>
+    client.repoAgentPlaybooks(agentId)
+  )
 }
 
 function useInvalidatePlaybooks(agentId: string) {
@@ -34,23 +33,17 @@ function useInvalidatePlaybooks(agentId: string) {
 /** Saves one playbook; `previous` is its name before the edit (`null`: new) */
 export function useSavePlaybook(agentId: string) {
   const invalidate = useInvalidatePlaybooks(agentId)
-  return useMutation({
-    mutationFn: async (args: {
-      input: PlaybookInput
-      previous: string | null
-    }) =>
-      unwrapResult(
-        await client.repoSaveAgentPlaybook(agentId, args.input, args.previous)
-      ),
-    onSuccess: invalidate,
-  })
+  return useClientMutation(
+    (args: { input: PlaybookInput; previous: string | null }) =>
+      client.repoSaveAgentPlaybook(agentId, args.input, args.previous),
+    { onSuccess: invalidate }
+  )
 }
 
 export function useDeletePlaybook(agentId: string) {
   const invalidate = useInvalidatePlaybooks(agentId)
-  return useMutation({
-    mutationFn: async (name: string) =>
-      unwrapResult(await client.repoDeleteAgentPlaybook(agentId, name)),
-    onSuccess: invalidate,
-  })
+  return useClientMutation(
+    (name: string) => client.repoDeleteAgentPlaybook(agentId, name),
+    { onSuccess: invalidate }
+  )
 }

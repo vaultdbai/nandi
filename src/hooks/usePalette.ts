@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -17,7 +17,7 @@ import { openNewChat, sendToStudio } from '@/lib/agent-actions'
 import { client } from '@/lib/client'
 import { executeCommand, getAllCommands } from '@/lib/commands/registry'
 import { useCommandContext } from '@/hooks/use-command-context'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 import { parseView, useNavigationStore } from '@/store/navigation-store'
 
 /** Wait this long after the last keystroke before searching */
@@ -52,13 +52,11 @@ export function usePalette(open: boolean) {
   const { commandMode, text } = parseQuery(query)
   const serverQuery = debounced.trim()
 
-  const search = useQuery({
-    queryKey: paletteQueryKeys.search(serverQuery),
-    queryFn: async () => unwrapResult(await client.searchPalette(serverQuery)),
-    enabled: open,
-    staleTime: STALE_MS,
-    placeholderData: keepPreviousData,
-  })
+  const search = useClientQuery(
+    paletteQueryKeys.search(serverQuery),
+    () => client.searchPalette(serverQuery),
+    { enabled: open, staleTime: STALE_MS, placeholderData: keepPreviousData }
+  )
 
   const local = getAllCommands(commandContext)
     .map(command => fromCommand(command, t))
