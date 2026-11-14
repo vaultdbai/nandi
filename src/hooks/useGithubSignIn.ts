@@ -4,15 +4,10 @@
  * and capability registries, marketplace sources, and publishing.
  */
 import { useState } from 'react'
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { DeviceFlowState, GithubSignIn } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 import { logger } from '@/lib/logger'
 import { connectorsQueryKeys } from './useConnectors'
 import { useDevicePoll } from './useDevicePoll'
@@ -22,10 +17,9 @@ export const githubSignInQueryKeys = {
 }
 
 export function useGithubSignIn() {
-  return useQuery<GithubSignIn>({
-    queryKey: githubSignInQueryKeys.all,
-    queryFn: async () => unwrapResult(await client.getGithubSignIn()),
-  })
+  return useClientQuery(githubSignInQueryKeys.all, () =>
+    client.getGithubSignIn()
+  )
 }
 
 /** Everything that reads with the sign-in */
@@ -89,8 +83,7 @@ export function useGithubSignInFlow() {
 
 export function useSignOutGithub() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async () => unwrapResult(await client.signOutGithub()),
+  return useClientMutation(() => client.signOutGithub(), {
     onSuccess: status => invalidateSignIn(queryClient, status),
   })
 }

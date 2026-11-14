@@ -2,16 +2,14 @@ import { useQuery } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { KeyedProvider } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 
 /** Shared key so saving a key in Preferences refreshes every consumer */
 export const llmKeyStatusQueryKey = ['llmKeyStatus'] as const
 
 /** Which LLM providers have an API key configured (never the keys). */
 export function useLlmKeyStatus() {
-  return useQuery({
-    queryKey: llmKeyStatusQueryKey,
-    queryFn: async () => unwrapResult(await client.getLlmKeyStatus()),
-  })
+  return useClientQuery(llmKeyStatusQueryKey, () => client.getLlmKeyStatus())
 }
 
 /**
@@ -20,10 +18,9 @@ export function useLlmKeyStatus() {
  * the key-status key so saving a key refreshes it too.
  */
 export function useDefaultModel() {
-  return useQuery({
-    queryKey: [...llmKeyStatusQueryKey, 'defaultModel'],
-    queryFn: async () => unwrapResult(await client.getDefaultModel()),
-  })
+  return useClientQuery([...llmKeyStatusQueryKey, 'defaultModel'], () =>
+    client.getDefaultModel()
+  )
 }
 
 /**
@@ -50,9 +47,7 @@ export const ollamaQueryKey = ['ollama'] as const
 
 /** Whether Ollama runs on this computer (`refetch` is "Check again") */
 export function useOllama() {
-  return useQuery({
-    queryKey: ollamaQueryKey,
-    queryFn: async () => unwrapResult(await client.detectOllama()),
+  return useClientQuery(ollamaQueryKey, () => client.detectOllama(), {
     retry: false,
     staleTime: 30_000,
   })
@@ -65,11 +60,9 @@ export function useOllama() {
  * as "can't reach", not retried.
  */
 export function useFreeTrialAccount(enabled: boolean) {
-  return useQuery({
-    queryKey: [...llmKeyStatusQueryKey, 'trialAccount'],
-    queryFn: async () => unwrapResult(await client.getFreeTrialAccount()),
-    enabled,
-    retry: false,
-    staleTime: 60_000,
-  })
+  return useClientQuery(
+    [...llmKeyStatusQueryKey, 'trialAccount'],
+    () => client.getFreeTrialAccount(),
+    { enabled, retry: false, staleTime: 60_000 }
+  )
 }

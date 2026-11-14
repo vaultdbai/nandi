@@ -4,15 +4,10 @@
  * when invalidated under `capabilityQueryKeys.all`.
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type {
-  AgentCard,
-  CapabilityDefinition,
-  CapabilityListing,
-  CapabilityOwner,
-} from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import type { CapabilityDefinition, CapabilityOwner } from '@/lib/bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Everything capability-related lives under `['capabilities']` */
 export const capabilityQueryKeys = {
@@ -33,32 +28,28 @@ export const capabilityQueryKeys = {
 
 /** Every capability a local agent serves, sorted */
 export function useCapabilities() {
-  return useQuery({
-    queryKey: capabilityQueryKeys.list,
-    queryFn: async (): Promise<string[]> =>
-      unwrapResult(await client.listDeclaredCapabilities()),
-  })
+  return useClientQuery(capabilityQueryKeys.list, () =>
+    client.listDeclaredCapabilities()
+  )
 }
 
 /** Cards of the local agents serving `capability` (idle while `null`) */
 export function useAgentsByCapability(capability: string | null) {
   const name = capability?.trim() ?? ''
-  return useQuery({
-    queryKey: capabilityQueryKeys.agents(name),
-    queryFn: async (): Promise<AgentCard[]> =>
-      unwrapResult(await client.findAgentsByCapability(name)),
-    enabled: name !== '',
-  })
+  return useClientQuery(
+    capabilityQueryKeys.agents(name),
+    () => client.findAgentsByCapability(name),
+    { enabled: name !== '' }
+  )
 }
 
 /** The card other instances see for a local agent (idle while `null`) */
 export function useAgentCard(agentId: string | null) {
-  return useQuery({
-    queryKey: capabilityQueryKeys.card(agentId ?? ''),
-    queryFn: async (): Promise<AgentCard> =>
-      unwrapResult(await client.getAgentCard(agentId ?? '')),
-    enabled: !!agentId,
-  })
+  return useClientQuery(
+    capabilityQueryKeys.card(agentId ?? ''),
+    () => client.getAgentCard(agentId ?? ''),
+    { enabled: !!agentId }
+  )
 }
 
 // Capability definitions (`.nandi/capabilities/`, registries, and the
@@ -98,21 +89,18 @@ export function useCapabilityEvents() {
 
 /** Every capability with this instance's relation (Capabilities page) */
 export function useCapabilityListings() {
-  return useQuery({
-    queryKey: capabilityQueryKeys.listings,
-    queryFn: async (): Promise<CapabilityListing[]> =>
-      unwrapResult(await client.listCapabilities()),
-  })
+  return useClientQuery(capabilityQueryKeys.listings, () =>
+    client.listCapabilities()
+  )
 }
 
 /** One definition (idle while `null`) */
 export function useCapability(id: string | null) {
-  return useQuery({
-    queryKey: capabilityQueryKeys.definition(id ?? ''),
-    queryFn: async (): Promise<CapabilityDefinition> =>
-      unwrapResult(await client.getCapability(id ?? '')),
-    enabled: !!id,
-  })
+  return useClientQuery(
+    capabilityQueryKeys.definition(id ?? ''),
+    () => client.getCapability(id ?? ''),
+    { enabled: !!id }
+  )
 }
 
 /** Caches a saved definition and marks the listings stale */
@@ -132,31 +120,18 @@ function useStoreDefinition() {
 /** Creates or replaces the definition's file; resolves with it as saved */
 export function useSaveCapability() {
   const store = useStoreDefinition()
-  return useMutation({
-    mutationFn: async (
-      definition: CapabilityDefinition
-    ): Promise<CapabilityDefinition> =>
-      unwrapResult(await client.saveCapability(definition)),
-    onSuccess: store,
-  })
+  return useClientMutation(
+    (definition: CapabilityDefinition) => client.saveCapability(definition),
+    { onSuccess: store }
+  )
 }
 
 /** Hands the capability to `newOwner`; the file keeps the history */
 export function useTransferCapabilityOwnership() {
   const store = useStoreDefinition()
-  return useMutation({
-    mutationFn: async (vars: {
-      id: string
-      newOwner: CapabilityOwner
-      reason: string | null
-    }): Promise<CapabilityDefinition> =>
-      unwrapResult(
-        await client.transferCapabilityOwnership(
-          vars.id,
-          vars.newOwner,
-          vars.reason
-        )
-      ),
-    onSuccess: store,
-  })
+  return useClientMutation(
+    (vars: { id: string; newOwner: CapabilityOwner; reason: string | null }) =>
+      client.transferCapabilityOwnership(vars.id, vars.newOwner, vars.reason),
+    { onSuccess: store }
+  )
 }

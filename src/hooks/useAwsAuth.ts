@@ -4,20 +4,14 @@
  * and SSO login. No hook ever sees key material.
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type {
-  AwsCliInfo,
-  AwsProfile,
-  BedrockApiKeyStatus,
-  CredentialStatus,
   KeyProfileInput,
-  SsoLoginResult,
-  SsoSetup,
   SsoSetupFinish,
   SsoSetupInput,
 } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 export const awsQueryKeys = {
   all: ['aws'] as const,
@@ -49,48 +43,36 @@ function useAwsEvents() {
 }
 
 export function useAwsCli() {
-  return useQuery({
-    queryKey: awsQueryKeys.cli,
-    queryFn: async (): Promise<AwsCliInfo> =>
-      unwrapResult(await client.detectAwsCli()),
+  return useClientQuery(awsQueryKeys.cli, () => client.detectAwsCli(), {
     staleTime: 5 * 60_000,
   })
 }
 
 export function useAwsProfiles() {
   useAwsEvents()
-  return useQuery({
-    queryKey: awsQueryKeys.profiles,
-    queryFn: async (): Promise<AwsProfile[]> =>
-      unwrapResult(await client.listAwsProfiles()),
-  })
+  return useClientQuery(awsQueryKeys.profiles, () => client.listAwsProfiles())
 }
 
 /** Resolves the profile's credentials and asks STS whose they are */
 export function useAwsCredentials(profile: string | null, enabled = true) {
-  return useQuery({
-    queryKey: awsQueryKeys.credentials(profile),
-    queryFn: async (): Promise<CredentialStatus> =>
-      unwrapResult(await client.checkAwsCredentials(profile, null)),
-    enabled,
-    retry: false,
-  })
+  return useClientQuery(
+    awsQueryKeys.credentials(profile),
+    () => client.checkAwsCredentials(profile, null),
+    { enabled, retry: false }
+  )
 }
 
 export function useBedrockApiKeyStatus() {
-  return useQuery({
-    queryKey: awsQueryKeys.apiKey,
-    queryFn: async (): Promise<BedrockApiKeyStatus> =>
-      unwrapResult(await client.getAwsBedrockApiKeyStatus()),
-  })
+  return useClientQuery(awsQueryKeys.apiKey, () =>
+    client.getAwsBedrockApiKeyStatus()
+  )
 }
 
 /** Starts `aws sso login --profile <profile>` (the browser opens) */
 export function useStartSsoLogin() {
-  return useMutation({
-    mutationFn: async (profile: string): Promise<SsoLoginResult> =>
-      unwrapResult(await client.startAwsSsoLogin(profile)),
-  })
+  return useClientMutation((profile: string) =>
+    client.startAwsSsoLogin(profile)
+  )
 }
 
 /** After a profile is written: the list and every credential check */
@@ -105,55 +87,54 @@ function useRefreshProfiles() {
 /** Writes an access-key profile through `aws configure` */
 export function useSaveKeyProfile() {
   const refresh = useRefreshProfiles()
-  return useMutation({
-    mutationFn: async (input: KeyProfileInput): Promise<AwsProfile> =>
-      unwrapResult(await client.saveAwsKeyProfile(input)),
-    onSuccess: refresh,
-  })
+  return useClientMutation(
+    (input: KeyProfileInput) => client.saveAwsKeyProfile(input),
+    { onSuccess: refresh }
+  )
 }
 
 /** Starts the IAM Identity Center sign-in for a new SSO profile */
 export function useStartSsoSetup() {
-  return useMutation({
-    mutationFn: async (input: SsoSetupInput): Promise<SsoSetup> =>
-      unwrapResult(await client.startAwsSsoSetup(input)),
-  })
+  return useClientMutation((input: SsoSetupInput) =>
+    client.startAwsSsoSetup(input)
+  )
 }
 
 /** Polls a setup until it's no longer pending (then it lists accounts) */
 export function useSsoSetup(setupId: string | null) {
-  return useQuery({
-    queryKey: awsQueryKeys.setup(setupId ?? ''),
-    queryFn: async (): Promise<SsoSetup> =>
-      unwrapResult(await client.pollAwsSsoSetup(setupId ?? '')),
-    enabled: !!setupId,
-    retry: false,
-    refetchInterval: q =>
-      q.state.data && q.state.data.status !== 'pending' ? false : SSO_POLL_MS,
-  })
+  return useClientQuery(
+    awsQueryKeys.setup(setupId ?? ''),
+    () => client.pollAwsSsoSetup(setupId ?? ''),
+    {
+      enabled: !!setupId,
+      retry: false,
+      refetchInterval: q =>
+        q.state.data && q.state.data.status !== 'pending' ? false : SSO_POLL_MS,
+    }
+  )
 }
 
 /** Writes the SSO profile for the picked account and role */
 export function useFinishSsoSetup() {
   const refresh = useRefreshProfiles()
-  return useMutation({
-    mutationFn: async (finish: SsoSetupFinish): Promise<AwsProfile> =>
-      unwrapResult(await client.finishAwsSsoSetup(finish)),
-    onSuccess: refresh,
-  })
+  return useClientMutation(
+    (finish: SsoSetupFinish) => client.finishAwsSsoSetup(finish),
+    { onSuccess: refresh }
+  )
 }
 
 /** Polls a login until it's no longer pending; then refreshes credentials */
 export function useSsoLogin(loginId: string | null) {
   const queryClient = useQueryClient()
-  const query = useQuery({
-    queryKey: awsQueryKeys.login(loginId ?? ''),
-    queryFn: async (): Promise<SsoLoginResult> =>
-      unwrapResult(await client.pollAwsSsoLogin(loginId ?? '')),
-    enabled: !!loginId,
-    refetchInterval: q =>
-      q.state.data && q.state.data.status !== 'pending' ? false : SSO_POLL_MS,
-  })
+  const query = useClientQuery(
+    awsQueryKeys.login(loginId ?? ''),
+    () => client.pollAwsSsoLogin(loginId ?? ''),
+    {
+      enabled: !!loginId,
+      refetchInterval: q =>
+        q.state.data && q.state.data.status !== 'pending' ? false : SSO_POLL_MS,
+    }
+  )
   const done = query.data?.status === 'succeeded'
   useEffect(() => {
     if (done) {

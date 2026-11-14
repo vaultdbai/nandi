@@ -5,10 +5,10 @@
  * `capabilityQueryKeys.all`.
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { RegistryKind } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 import { capabilityQueryKeys } from './useCapabilities'
 
 export const capabilityRegistryQueryKeys = {
@@ -43,10 +43,9 @@ export function useCapabilityRegistries() {
     return () => subscription.unsubscribe()
   }, [queryClient])
 
-  return useQuery({
-    queryKey: capabilityRegistryQueryKeys.all,
-    queryFn: async () => unwrapResult(await client.listCapabilityRegistries()),
-  })
+  return useClientQuery(capabilityRegistryQueryKeys.all, () =>
+    client.listCapabilityRegistries()
+  )
 }
 
 function useInvalidate() {
@@ -62,35 +61,31 @@ function useInvalidate() {
 /** Subscribes and does the first sync */
 export function useAddCapabilityRegistry() {
   const invalidate = useInvalidate()
-  return useMutation({
-    mutationFn: async (input: AddCapabilityRegistryInput) =>
-      unwrapResult(
-        await client.addCapabilityRegistry(
-          input.url,
-          input.kind,
-          input.branchPrefix,
-          input.userSlug
-        )
+  return useClientMutation(
+    (input: AddCapabilityRegistryInput) =>
+      client.addCapabilityRegistry(
+        input.url,
+        input.kind,
+        input.branchPrefix,
+        input.userSlug
       ),
-    onSettled: invalidate,
-  })
+    { onSettled: invalidate }
+  )
 }
 
 export function useRemoveCapabilityRegistry() {
   const invalidate = useInvalidate()
-  return useMutation({
-    mutationFn: async (url: string) =>
-      unwrapResult(await client.removeCapabilityRegistry(url)),
-    onSettled: invalidate,
-  })
+  return useClientMutation(
+    (url: string) => client.removeCapabilityRegistry(url),
+    { onSettled: invalidate }
+  )
 }
 
 /** Resolves with the `SyncResult` (whose `error` is set when it failed) */
 export function useSyncCapabilityRegistry() {
   const invalidate = useInvalidate()
-  return useMutation({
-    mutationFn: async (url: string) =>
-      unwrapResult(await client.syncCapabilityRegistry(url)),
-    onSettled: invalidate,
-  })
+  return useClientMutation(
+    (url: string) => client.syncCapabilityRegistry(url),
+    { onSettled: invalidate }
+  )
 }

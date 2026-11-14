@@ -4,21 +4,20 @@
  * every check) and after a resync.
  */
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client, type NandiEventName } from '@/lib/client'
 import { useInvalidateOn } from '@/hooks/useInvalidateOn'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 import { logger } from '@/lib/logger'
-import {
-  unwrapResult,
-  type BackfillAction,
-  type BackfillRange,
-  type DeviceFlowState,
-  type EmailSignInPoll,
-  type EmailSettingsInput,
-  type EmailStatus,
-  type MailProvider,
-  type Result,
-  type SignInProblem,
+import type {
+  BackfillAction,
+  BackfillRange,
+  DeviceFlowState,
+  EmailSignInPoll,
+  EmailSettingsInput,
+  MailProvider,
+  Result,
+  SignInProblem,
 } from '@/lib/tauri-bindings'
 import { useDevicePoll } from './useDevicePoll'
 
@@ -30,17 +29,14 @@ const EMAIL_EVENTS: readonly NandiEventName[] = ['email://changed']
 
 export function useEmailStatus() {
   useInvalidateOn(EMAIL_EVENTS, emailKeys.status)
-  return useQuery({
-    queryKey: emailKeys.status,
-    queryFn: async () => unwrapResult(await client.getEmailStatus()),
-  })
+  return useClientQuery(emailKeys.status, () => client.getEmailStatus())
 }
 
 /** Status-returning actions: Check now, Pause, Disconnect, settings */
 export function useEmailAction() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (
+  return useClientMutation(
+    (
       action:
         | { kind: 'check' }
         | { kind: 'pause'; provider: MailProvider; paused: boolean }
@@ -51,37 +47,33 @@ export function useEmailAction() {
             provider: MailProvider
             action: BackfillAction
           }
-    ): Promise<EmailStatus> => {
+    ) => {
       switch (action.kind) {
         case 'check':
-          return unwrapResult(await client.checkEmailNow())
+          return client.checkEmailNow()
         case 'pause':
-          return unwrapResult(
-            await client.setEmailPaused(action.provider, action.paused)
-          )
+          return client.setEmailPaused(action.provider, action.paused)
         case 'disconnect':
-          return unwrapResult(await client.disconnectEmail(action.provider))
+          return client.disconnectEmail(action.provider)
         case 'settings':
-          return unwrapResult(await client.setEmailSettings(action.settings))
+          return client.setEmailSettings(action.settings)
         case 'backfill':
-          return unwrapResult(
-            await client.setEmailBackfill(action.provider, action.action)
-          )
+          return client.setEmailBackfill(action.provider, action.action)
       }
     },
-    onSuccess: status => queryClient.setQueryData(emailKeys.status, status),
-  })
+    {
+      onSuccess: status => queryClient.setQueryData(emailKeys.status, status),
+    }
+  )
 }
 
 /** About how much older mail `range` covers (only asked while connected) */
 export function useBackfillEstimate(range: BackfillRange, enabled: boolean) {
-  return useQuery({
-    queryKey: ['email', 'backfillEstimate', range],
-    queryFn: async () =>
-      unwrapResult(await client.estimateEmailBackfill(range)),
-    enabled: enabled && range !== 'off',
-    staleTime: 5 * 60_000,
-  })
+  return useClientQuery(
+    ['email', 'backfillEstimate', range],
+    () => client.estimateEmailBackfill(range),
+    { enabled: enabled && range !== 'off', staleTime: 5 * 60_000 }
+  )
 }
 
 export type EmailSignInState =

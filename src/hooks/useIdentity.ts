@@ -3,15 +3,9 @@
  * Kept live by `identity://changed`.
  */
 import { useEffect } from 'react'
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type { IdentityStatus, VerifiedIdentity } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 export const identityQueryKeys = {
   all: ['identity'] as const,
@@ -37,10 +31,9 @@ export function useVerifiedIdentity() {
     return () => subscription.unsubscribe()
   }, [queryClient])
 
-  return useQuery<VerifiedIdentity | null>({
-    queryKey: identityQueryKeys.verified,
-    queryFn: async () => unwrapResult(await client.getVerifiedIdentity()),
-  })
+  return useClientQuery(identityQueryKeys.verified, () =>
+    client.getVerifiedIdentity()
+  )
 }
 
 export function useIdentity() {
@@ -55,10 +48,9 @@ export function useIdentity() {
     return () => subscription.unsubscribe()
   }, [queryClient])
 
-  return useQuery<IdentityStatus>({
-    queryKey: identityQueryKeys.status,
-    queryFn: async () => unwrapResult(await client.getIdentityStatus()),
-  })
+  return useClientQuery(identityQueryKeys.status, () =>
+    client.getIdentityStatus()
+  )
 }
 
 /** The slug (and so the push branch) can change with the name */
@@ -70,19 +62,16 @@ function invalidateIdentity(queryClient: QueryClient) {
 /** Writes the display name to NANDI.md; derives the slug if none is set */
 export function useSetDisplayName() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (name: string) =>
-      unwrapResult(await client.setDisplayName(name.trim())),
-    onSuccess: () => invalidateIdentity(queryClient),
-  })
+  return useClientMutation(
+    (name: string) => client.setDisplayName(name.trim()),
+    { onSuccess: () => invalidateIdentity(queryClient) }
+  )
 }
 
 /** `^[a-z0-9][a-z0-9-]{0,30}[a-z0-9]$`; names the branch pushes go to */
 export function useSetUserSlug() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (slug: string) =>
-      unwrapResult(await client.setUserSlug(slug.trim())),
+  return useClientMutation((slug: string) => client.setUserSlug(slug.trim()), {
     onSuccess: () => invalidateIdentity(queryClient),
   })
 }
