@@ -403,20 +403,9 @@ fn spawn_rebuild(weak: &WeakAppState) {
     });
 }
 
-/// Builds the catalog, subscribes to connector and pilot changes. Must not
-/// block: the first full rebuild runs in the background.
-pub fn init(state: &AppState) -> Option<Arc<ToolService>> {
-    let service = match ToolService::new(
-        state.db().clone(),
-        state.bus().clone(),
-        Some(state.downgrade()),
-    ) {
-        Ok(service) => Arc::new(service),
-        Err(e) => {
-            log::error!("Tool catalog disabled: {e}");
-            return None;
-        }
-    };
+/// Subscribes the catalog to connector and pilot changes. Must not block:
+/// the first full rebuild runs in the background.
+pub fn start(state: &AppState) {
     state
         .store()
         .subscribe(Arc::new(ConnectorWatch(state.downgrade())));
@@ -428,7 +417,6 @@ pub fn init(state: &AppState) -> Option<Arc<ToolService>> {
                 break;
             };
             let print = (connectors::fingerprint(&state), pilots::fingerprint(&state));
-            // `tools()` is set right after `init` returns
             if let Some(tools) = state.tools() {
                 if last.as_ref() != Some(&print) {
                     if let Err(e) = tools.rebuild().await {
@@ -441,7 +429,6 @@ pub fn init(state: &AppState) -> Option<Arc<ToolService>> {
             tokio::time::sleep(POLL_INTERVAL).await;
         }
     });
-    Some(service)
 }
 
 fn service(state: &AppState) -> Result<&Arc<ToolService>, String> {

@@ -34,7 +34,6 @@ use crate::services::a2a::task::TaskState;
 use crate::services::auth;
 use crate::services::domain::{Agent, ChangedBy, DomainEvent, EntityKind, Problem};
 use crate::services::events::{self, EventBus, NandiEvent};
-use crate::services::network;
 use crate::services::repo_store::{EventPublisher, RepoStore};
 use crate::services::repos::capability_repo::CapabilityRepository;
 use crate::services::tools::builtin::builtin_tools;
@@ -1117,30 +1116,15 @@ impl EventPublisher for ProviderRefresher {
     fn invalid(&self, _problem: &Problem, _changed_by: ChangedBy) {}
 }
 
-/// Builds the service, projects the files and the local providers in the
-/// background, subscribes to agent changes, and takes the watcher's
+/// Projects the files and the local providers in the background,
+/// subscribes to agent changes, and takes the watcher's
 /// `.nandi/capabilities/` changes. Doesn't block.
-pub fn init(state: &AppState) -> Option<Arc<CapabilityService>> {
-    let instance_id = match network::local_instance_id(state.db()) {
-        Ok(id) => id,
-        Err(e) => {
-            log::error!("Capabilities disabled: no instance ID ({e})");
-            return None;
-        }
-    };
-    let repo = CapabilityRepository::new(state.store().repos().layout().clone());
-    let service = Arc::new(
-        CapabilityService::new(state.db().clone(), state.bus().clone(), repo)
-            .with_instance_id(instance_id)
-            .with_store(state.store().clone())
-            .with_registries(Some(state.capability_registries().clone()))
-            .with_tools(state.tools().cloned()),
-    );
+pub fn start(state: &AppState, service: &Arc<CapabilityService>) {
     state.store().subscribe(Arc::new(ProviderRefresher {
-        service: Arc::downgrade(&service),
+        service: Arc::downgrade(service),
         runtime: state.runtime().clone(),
     }));
-    let weak = Arc::downgrade(&service);
+    let weak = Arc::downgrade(service);
     let runtime = state.runtime().clone();
     watcher::set_capability_handler(
         &state.store().layout().root,
@@ -1168,7 +1152,6 @@ pub fn init(state: &AppState) -> Option<Arc<CapabilityService>> {
             log::error!("Failed to register the local capability providers: {e}");
         }
     });
-    Some(service)
 }
 
 /// Picks up the user's slug (it can change after onboarding)

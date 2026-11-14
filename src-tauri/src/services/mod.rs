@@ -106,6 +106,7 @@ use pilots::PilotRegistry;
 use relay::RelayClient;
 use repo_service::GitService;
 use repo_store::RepoStore;
+use repos::capability_repo::CapabilityRepository;
 use repos::{RepoLayout, Repos};
 use run_analysis::RunAnalyzer;
 use runtimes::AgentRuntimes;
@@ -192,9 +193,10 @@ struct Inner {
     gateway: Option<Arc<gateway::GatewayService>>,
     capability_registries: Arc<capability::registry::CapabilityRegistryService>,
     harnesses: Arc<harness::HarnessService>,
-    // Set once at startup by each service's `init` (`init_wave_a`)
-    capabilities: OnceLock<Arc<capability::CapabilityService>>,
-    tools: OnceLock<Arc<tools::ToolService>>,
+    /// `None` without an instance ID
+    capabilities: Option<Arc<capability::CapabilityService>>,
+    /// The unified tool catalog. `None` when its tables can't be read.
+    tools: Option<Arc<tools::ToolService>>,
 }
 
 /// Shared handle to everything the services need. Cheap to clone.
@@ -266,10 +268,7 @@ impl AppState {
         state.orchestrators().ensure(STUDIO_AGENT_ID);
         state.watch_repo();
         images::init(state.bus());
-        network::start(&state);
-        state.init_wave_final();
-        state.init_wave_a();
-        state.init_wave_b();
+        state.start_background_services();
 
         let workflows = state.workflows().clone();
         state.runtime().spawn(async move {
@@ -516,56 +515,74 @@ impl AppState {
                 capability_index.clone(),
             ))
         });
-        Self(Arc::new_cyclic(|inner| Inner {
-            // Services that call back into the app hold it weakly
-            studio: Arc::new(studio::StudioService::new(WeakAppState(inner.clone()))),
-            work: Arc::new(work::WorkService::new(WeakAppState(inner.clone()))),
-            ask: Arc::new(ask::AskService::new(WeakAppState(inner.clone()), ask_llm)),
-            analysis,
-            palette: Arc::default(),
-            remote,
-            network,
-            repo_config,
-            aws_auth,
-            bedrock_models,
-            litellm_gateway,
-            capability_registries,
-            harnesses,
-            nandi_dir,
-            db,
-            built_in_relay: config.built_in_relay,
-            bus,
-            orchestrators,
-            secrets: config.secrets,
-            proxy_tokens,
-            runtimes,
-            broadcast,
-            app_data_dir: config.app_data_dir,
-            runtime: config.runtime,
-            http_port: OnceLock::new(),
-            egress,
-            workflows,
-            triggers,
-            store,
-            watcher: std::sync::Mutex::new(None),
-            live: live::LiveService::new(feed),
-            marketplace,
-            pilots,
-            connectors,
-            github_sign_in_flows: Default::default(),
-            email: Arc::new(email::EmailService::default()),
-            workspace: Arc::new(workspace::WorkspaceService::default()),
-            audit_store: Arc::new(AuditStore::new()),
-            git_service,
-            capability_index,
-            relay_client,
-            a2a_delegator,
-            team_manager,
-            tasks,
-            clarifications,
-            gateway,
-            capabilities: OnceLock::new(),
-            tools: OnceLock::new(),
+        Self(Arc::new_cyclic(|inner| {
+            // `None` when the tool tables can't be read
+            let tools =
+                tools::ToolService::new(db.clone(), bus.clone(), Some(WeakAppState(inner.clone())))
+                    .inspect_err(|e| log::error!("Tool catalog disabled: {e}"))
+                    .ok()
+                    .map(Arc::new);
+            let capabilities = instance_id.map(|id| {
+                let repo = CapabilityRepository::new(store.repos().layout().clone());
+                Arc::new(
+                    capability::CapabilityService::new(db.clone(), bus.clone(), repo)
+                        .with_instance_id(id)
+                        .with_store(store.clone())
+                        .with_registries(Some(capability_registries.clone()))
+                        .with_tools(tools.clone()),
+                )
+            });
+            Inner {
+                // Services that call back into the app hold it weakly
+                studio: Arc::new(studio::StudioService::new(WeakAppState(inner.clone()))),
+                work: Arc::new(work::WorkService::new(WeakAppState(inner.clone()))),
+                ask: Arc::new(ask::AskService::new(WeakAppState(inner.clone()), ask_llm)),
+                analysis,
+                palette: Arc::default(),
+                remote,
+                network,
+                repo_config,
+                aws_auth,
+                bedrock_models,
+                litellm_gateway,
+                capability_registries,
+                harnesses,
+                nandi_dir,
+                db,
+                built_in_relay: config.built_in_relay,
+                bus,
+                orchestrators,
+                secrets: config.secrets,
+                proxy_tokens,
+                runtimes,
+                broadcast,
+                app_data_dir: config.app_data_dir,
+                runtime: config.runtime,
+                http_port: OnceLock::new(),
+                egress,
+                workflows,
+                triggers,
+                store,
+                watcher: std::sync::Mutex::new(None),
+                live: live::LiveService::new(feed),
+                marketplace,
+                pilots,
+                connectors,
+                github_sign_in_flows: Default::default(),
+                email: Arc::new(email::EmailService::default()),
+                workspace: Arc::new(workspace::WorkspaceService::default()),
+                audit_store: Arc::new(AuditStore::new()),
+                git_service,
+                capability_index,
+                relay_client,
+                a2a_delegator,
+                team_manager,
+                tasks,
+                clarifications,
+                gateway,
+                capabilities,
+                tools,
+            }
         }))
     }
 
@@ -597,10 +614,7 @@ impl AppState {
             },
             layout,
         );
-        network::start(&state);
-        state.init_wave_final();
-        state.init_wave_a();
-        state.init_wave_b();
+        state.start_background_services();
         state
     }
 
@@ -732,19 +746,16 @@ impl AppState {
     }
 
     /// The task lifecycle
-    #[allow(dead_code)]
     pub fn tasks(&self) -> Option<&Arc<a2a::task::TaskService>> {
         self.0.tasks.as_ref()
     }
 
     /// Clarification and escalation
-    #[allow(dead_code)]
     pub fn clarifications(&self) -> Option<&Arc<a2a::clarification::ClarificationService>> {
         self.0.clarifications.as_ref()
     }
 
     /// The gateway agent
-    #[allow(dead_code)]
     pub fn gateway(&self) -> Option<&Arc<gateway::GatewayService>> {
         self.0.gateway.as_ref()
     }
@@ -754,9 +765,19 @@ impl AppState {
         &self.0.network
     }
 
-    /// Starts the delegation services, in dependency order (tasks before
-    /// the gateway, which dispatches child tasks). Must not block.
-    fn init_wave_final(&self) {
+    /// Starts what the constructor built, in dependency order. Must not
+    /// block: anything slow or networked runs in spawned tasks.
+    fn start_background_services(&self) {
+        network::start(self);
+        self.start_delegation();
+        self.start_tools_and_capabilities();
+        self.start_harnesses();
+    }
+
+    /// Starts the delegation services, after the network ones they use, in
+    /// dependency order (tasks before the gateway, which dispatches child
+    /// tasks). Must not block.
+    fn start_delegation(&self) {
         if let Some(service) = self.tasks() {
             a2a::task::start(self, service);
         }
@@ -772,15 +793,13 @@ impl AppState {
     }
 
     /// The capability service
-    #[allow(dead_code)]
     pub fn capabilities(&self) -> Option<&Arc<capability::CapabilityService>> {
-        self.0.capabilities.get()
+        self.0.capabilities.as_ref()
     }
 
     /// The unified tool catalog
-    #[allow(dead_code)]
     pub fn tools(&self) -> Option<&Arc<tools::ToolService>> {
-        self.0.tools.get()
+        self.0.tools.as_ref()
     }
 
     /// Subscribed capability registries
@@ -788,17 +807,18 @@ impl AppState {
         &self.0.capability_registries
     }
 
-    /// Starts the tool and capability services, after `init_wave_final`, in dependency
-    /// order (tools and registries before capabilities, which resolve
-    /// required tools and merge registry definitions). Must not block.
-    fn init_wave_a(&self) {
+    /// Starts the tool and capability services, after the delegation ones,
+    /// in dependency order (tools and registries before capabilities, which
+    /// resolve required tools and merge registry definitions). Must not
+    /// block.
+    fn start_tools_and_capabilities(&self) {
         capability::ensure_capabilities_dir(self);
-        if let Some(service) = tools::init(self) {
-            let _ = self.0.tools.set(service);
+        if self.tools().is_some() {
+            tools::start(self);
         }
         capability::registry::start(self);
-        if let Some(service) = capability::init(self) {
-            let _ = self.0.capabilities.set(service);
+        if let Some(service) = self.capabilities() {
+            capability::start(self, service);
         }
         capability::aggregation::start(self);
     }
@@ -823,9 +843,9 @@ impl AppState {
         &self.0.litellm_gateway
     }
 
-    /// Starts the harnesses and the browser pilot, after `init_wave_a`. Must
-    /// not block.
-    fn init_wave_b(&self) {
+    /// Starts the harnesses and the browser pilot, after the tools and
+    /// capabilities. Must not block.
+    fn start_harnesses(&self) {
         harness::start(self);
         pilots::browser::init(pilots::browser::Host {
             proxy_tokens: self.proxy_tokens().clone(),
