@@ -573,15 +573,26 @@ impl Orchestrator {
             StepOutcome::Ok => {
                 // Completed, or suspended for approval (still current)
                 let id = run_id.to_string();
-                let finished = self
+                let status = self
                     .bus
                     .db
                     .call(move |conn| db::get_run(conn, &id))
                     .await
-                    .map(|run| run.is_none_or(|r| r.status.is_finished()))
-                    .unwrap_or(true);
-                if finished {
-                    self.turn_ended(run_id).await;
+                    .ok()
+                    .flatten()
+                    .map(|run| run.status);
+                match status {
+                    None => self.turn_ended(run_id).await,
+                    Some(status) if status.is_finished() => self.turn_ended(run_id).await,
+                    Some(RunStatus::AwaitingApproval) => {}
+                    // Running again: its approval was answered while this
+                    // step was still finishing, so `close_approval` found
+                    // the executor busy and couldn't resume it. It resumes
+                    // now.
+                    Some(_) if self.current.as_deref() == Some(run_id) => {
+                        self.start_executor(run_id.to_string());
+                    }
+                    Some(_) => {}
                 }
                 return;
             }
@@ -3091,6 +3102,55 @@ mod middleware_tests {
             .unwrap();
         drive(&state, "writer", "r1", &pipeline).await;
         assert_eq!(run_of(&state, "r1").await.status, RunStatus::Completed);
+        state.shutdown();
+    }
+
+    /// The race the pilots hand-over test hit: the person answers in the
+    /// moment between the step writing its approval and the orchestrator
+    /// hearing that the step finished. The approval closes while the
+    /// executor is still busy, and the run resumes once it's free.
+    #[tokio::test]
+    async fn an_approval_answered_before_its_step_reports_back_still_resumes_the_run() {
+        let (state, _sink) = setup(two_steps());
+        save_agent(&state, "writer", "");
+        start(&state, "writer", "r1").await;
+        let pipeline: Vec<Box<dyn TurnMiddleware>> = vec![Box::new(PauseFirst)];
+        drive(&state, "writer", "r1", &pipeline).await;
+        let approval = pause_approval(&state, "r1").await;
+
+        // The step that wrote the approval is still in flight
+        let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
+        let in_flight = InFlightSlot::default();
+        let step = tokio::spawn(std::future::pending::<()>());
+        *in_flight.lock() = Some(InFlight {
+            run_id: "r1".into(),
+            abort: step.abort_handle(),
+        });
+        let mut orchestrator = Orchestrator {
+            agent_id: "writer".into(),
+            rx,
+            tx,
+            bus: state.bus().clone(),
+            deps: deps(&state),
+            in_flight: in_flight.clone(),
+            current: Some("r1".into()),
+            delegation: DelegationSlot::default(),
+        };
+        orchestrator
+            .close_approval(&approval.id, ApprovalStatus::Approved)
+            .await
+            .unwrap();
+        assert_eq!(run_of(&state, "r1").await.status, RunStatus::Running);
+
+        // Then the step reports back: the run carries on to the end
+        orchestrator.step_finished("r1", StepOutcome::Ok).await;
+        let reported = tokio::time::timeout(Duration::from_secs(10), orchestrator.rx.recv()).await;
+        let Ok(Some(OrchestratorCommand::StepFinished { run_id, outcome })) = reported else {
+            panic!("the resumed step never reported back");
+        };
+        orchestrator.step_finished(&run_id, outcome).await;
+        assert_eq!(run_of(&state, "r1").await.status, RunStatus::Completed);
+        step.abort();
         state.shutdown();
     }
 
