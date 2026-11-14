@@ -570,11 +570,8 @@ pub fn build_profile(
 // Service functions
 // ---------------------------------------------------------------------------
 
-fn manager(state: &AppState) -> Result<&dyn TeamManager, String> {
-    state
-        .team_manager()
-        .map(|manager| manager.as_ref())
-        .ok_or_else(|| "Teams aren't available".to_string())
+fn manager(state: &AppState) -> &dyn TeamManager {
+    state.team_manager().as_ref()
 }
 
 /// The directory, or an empty one when it can't be read
@@ -601,7 +598,7 @@ pub async fn get_team_roster(state: &AppState, team_id: &str) -> Result<TeamRost
             fetched_at: now as Timestamp,
         });
     }
-    let manager = manager(state)?;
+    let manager = manager(state);
     let teams = manager.list_teams().await?;
     let team = teams
         .iter()
@@ -637,7 +634,7 @@ pub async fn get_member_profile(
     if handle.is_empty() {
         return Err("Choose a member".to_string());
     }
-    let manager = manager(state)?;
+    let manager = manager(state);
     let teams = manager.list_teams().await?;
     let team = teams
         .iter()
@@ -705,14 +702,12 @@ async fn profile(
         .members
         .iter()
         .find(|m| m.instance_id == instance_id);
-    let team_cards: Vec<(String, AgentCard)> = match state.team_manager() {
-        Some(manager) => crate::services::shared::team_cards(manager.as_ref())
+    let team_cards: Vec<(String, AgentCard)> =
+        crate::services::shared::team_cards(state.team_manager().as_ref())
             .await
             .into_iter()
             .filter(|(_, card)| card.instance_id == instance_id)
-            .collect(),
-        None => Vec::new(),
-    };
+            .collect();
     let direct: Vec<AgentCard> = relay::list_online_agents(state, None)
         .await
         .unwrap_or_default()

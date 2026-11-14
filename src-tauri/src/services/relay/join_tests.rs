@@ -61,7 +61,7 @@ fn instance_id(state: &AppState) -> String {
 async fn a_fresh_install_with_a_build_relay_enrolls_only_when_it_joins() {
     let data = tempfile::tempdir().unwrap();
     let relay = company_relay(data.path()).await;
-    // Booting runs `relay::init`, as a launch does
+    // Booting starts the relay client, as a launch does
     let state = AppState::for_tests_with_relay(vec![], BuiltInRelay::new(Some(&relay), Some(CODE)));
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert!(enrolled(data.path()).is_empty(), "enrolled before joining");

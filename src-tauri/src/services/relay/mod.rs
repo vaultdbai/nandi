@@ -79,11 +79,12 @@ use super::capability_index::CapabilityIndex;
 use super::domain::agent_card::card_from_agent;
 use super::domain::AgentCard;
 use super::domain::{ChangedBy, DomainEvent, EntityKind, Problem};
-use super::events::NandiEvent;
+use super::events::{EventBus, NandiEvent};
 use super::gateway::manifest as gateway_manifest;
 use super::gateway::registration;
 use super::network;
 use super::repo_store::{EventPublisher, RepoStore};
+use super::secrets::Secrets;
 use super::AppState;
 use crate::db::Db;
 use crate::model::Timestamp;
@@ -347,39 +348,42 @@ impl NandiEvent for MemberKeyChanged {
     const NAME: &'static str = "network://member_key_changed";
 }
 
-/// Builds the relay client and, if a relay URL is set, connects in the
-/// background. Never touches the network on the calling thread.
-pub fn init(state: &AppState) -> Option<Arc<dyn RelayClient>> {
-    let instance_id = match network::local_instance_id(state.db()) {
-        Ok(id) => id,
-        Err(e) => {
-            log::error!("Relay disabled: no instance ID: {e}");
-            return None;
-        }
-    };
-    let db = state.db().clone();
-    let keyring = DeviceKeyring::new(state.secrets().clone());
-    let client: Arc<dyn RelayClient> = Arc::new(WsRelayClient::with_options(
-        Some(state.bus().clone()),
+/// The relay client for this install. Only builds it: nothing connects
+/// until [`start`].
+pub fn client(
+    db: &Db,
+    bus: &EventBus,
+    secrets: &Secrets,
+    built_in_relay: &BuiltInRelay,
+    instance_id: String,
+) -> Arc<dyn RelayClient> {
+    let presence_db = db.clone();
+    let keyring = DeviceKeyring::new(secrets.clone());
+    Arc::new(WsRelayClient::with_options(
+        Some(bus.clone()),
         instance_id,
         ClientOptions {
             presence_store: Some(Box::new(move |cards: &[AgentCard]| {
-                if let Err(e) = write_state(&db, ONLINE_AGENTS_KEY, cards) {
+                if let Err(e) = write_state(&presence_db, ONLINE_AGENTS_KEY, cards) {
                     log::warn!("Failed to save the online agents: {e}");
                 }
             })),
             // Read on the first connect, not here: no keyring at startup
             device_keys: Some(Arc::new(move || keyring.device_keys())),
-            peer_keys: Some(Arc::new(network::peer_keys::PinnedKeys::new(
-                state.db().clone(),
-            ))),
+            peer_keys: Some(Arc::new(network::peer_keys::PinnedKeys::new(db.clone()))),
             offered: client::OfferedRelays {
-                built_in: state.built_in_relay().url().map(str::to_string),
-                public: state.built_in_relay().public_url().map(str::to_string),
+                built_in: built_in_relay.url().map(str::to_string),
+                public: built_in_relay.public_url().map(str::to_string),
             },
             ..ClientOptions::default()
         },
-    ));
+    ))
+}
+
+/// Re-registers the cards as agents change and, if a relay URL is set,
+/// connects in the background. Never touches the network on the calling
+/// thread.
+pub fn start(state: &AppState, client: &Arc<dyn RelayClient>) {
     state.store().subscribe(Arc::new(Reregister {
         client: client.clone(),
         index: state.capability_index().cloned(),
@@ -398,7 +402,6 @@ pub fn init(state: &AppState) -> Option<Arc<dyn RelayClient>> {
         Ok(None) => {}
         Err(e) => log::warn!("Failed to read the relay URL: {e}"),
     }
-    Some(client)
 }
 
 pub async fn get_relay_status(state: &AppState) -> Result<RelayStatus, String> {
@@ -728,9 +731,14 @@ fn env_url() -> Option<String> {
 /// The relay this instance uses, without its instance token: for the
 /// endpoints on agent cards. `None` when there is none.
 pub fn configured_url(state: &AppState) -> Option<String> {
+    configured_url_in(state.nandi_dir())
+}
+
+/// [`configured_url`] for the `config.json` in `nandi_dir`
+pub fn configured_url_in(nandi_dir: &std::path::Path) -> Option<String> {
     env_url()
         .or_else(|| {
-            nandi_config::load_from(state.nandi_dir())
+            nandi_config::load_from(nandi_dir)
                 .ok()?
                 .relay_url
                 .filter(|url| !url.trim().is_empty())

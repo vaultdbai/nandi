@@ -33,7 +33,9 @@ use crate::services::a2a::assignment::ASSIGN_ME;
 use crate::services::a2a::clarification::{AskedQuestion, DelegatedTurn};
 use crate::services::a2a::task::{self, ReasonKind, Refusal, TaskStage};
 use crate::services::a2a::task_state::Change;
-use crate::services::a2a::{DelegationDirection, DelegationRequest, Task, TaskResult, TaskStatus};
+use crate::services::a2a::{
+    A2ADelegator, DelegationDirection, DelegationRequest, Task, TaskResult, TaskStatus,
+};
 use crate::services::domain::group::Decision as GroupDecision;
 use crate::services::domain::AgentCard;
 use crate::services::events;

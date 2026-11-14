@@ -17,7 +17,6 @@ pub mod trust_requests;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use futures_util::future::BoxFuture;
 use rusqlite::OptionalExtension;
@@ -237,9 +236,10 @@ pub struct TeamConfig {
 }
 
 impl TeamConfig {
-    pub fn for_state(state: &AppState) -> Self {
+    /// Teams under the repo's `teams/` folder
+    pub fn in_repo(store: &RepoStore) -> Self {
         Self {
-            teams_root: state.store().layout().root.join("teams"),
+            teams_root: store.layout().root.join("teams"),
             username: None,
         }
     }
@@ -324,14 +324,30 @@ fn team_id_from_url(url: &str) -> Result<String, String> {
 }
 
 impl TeamService {
-    pub fn new(state: &AppState, config: TeamConfig) -> Self {
+    pub fn new(
+        db: Db,
+        bus: EventBus,
+        store: RepoStore,
+        secrets: Secrets,
+        config: TeamConfig,
+    ) -> Self {
         Self {
-            db: state.db().clone(),
-            bus: state.bus().clone(),
-            store: state.store().clone(),
-            secrets: state.secrets().clone(),
+            db,
+            bus,
+            store,
+            secrets,
             config,
         }
+    }
+
+    pub fn for_state(state: &AppState, config: TeamConfig) -> Self {
+        Self::new(
+            state.db().clone(),
+            state.bus().clone(),
+            state.store().clone(),
+            state.secrets().clone(),
+            config,
+        )
     }
 
     /// The GitHub sign-in's token, for a github.com registry
@@ -884,17 +900,8 @@ impl TeamManager for TeamService {
     }
 }
 
-/// The team service. No network here: teams talk to their registry only
-/// when the user acts (or syncs).
-pub fn init(state: &AppState) -> Option<Arc<dyn TeamManager>> {
-    Some(Arc::new(TeamService::new(
-        state,
-        TeamConfig::for_state(state),
-    )))
-}
-
 fn service(state: &AppState) -> TeamService {
-    TeamService::new(state, TeamConfig::for_state(state))
+    TeamService::for_state(state, TeamConfig::in_repo(state.store()))
 }
 
 pub async fn list_teams(state: &AppState) -> Result<Vec<Team>, String> {
@@ -944,7 +951,7 @@ mod tests {
     use crate::services::repos::Repository as _;
 
     fn team_service(state: &AppState, root: &Path, username: Option<&str>) -> TeamService {
-        TeamService::new(
+        TeamService::for_state(
             state,
             TeamConfig {
                 teams_root: root.join("teams"),

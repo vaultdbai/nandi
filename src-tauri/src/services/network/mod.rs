@@ -1,16 +1,16 @@
 //! Wiring for teams, cross-user agent sharing, and delegation.
 //!
-//! Each service fills in its own module's `init`; `AppState` calls
-//! them in dependency order when it starts:
+//! `AppState`'s constructor builds the capability index, the relay client,
+//! the team manager and the delegator. [`start`] then starts them, in
+//! dependency order:
 //!
-//! 1. `capability_index::init`
-//! 2. `relay::init`
-//! 3. `team::init`
-//! 4. `a2a::init`, which may use the three above
+//! 1. the capability index, from the loaded agents
+//! 2. the relay client, which registers the index's cards
+//! 3. the delegator, which listens on the relay client
 //!
-//! An `init` returns `None` when its service is not available. It must not block or
-//! touch the network on the calling thread: connecting happens in tasks it
-//! spawns, and only when the user configured it.
+//! Starting must not block or touch the network on the calling thread:
+//! connecting happens in tasks it spawns, and only when the user
+//! configured it.
 
 pub mod peer_keys;
 
@@ -18,32 +18,28 @@ use std::sync::Arc;
 
 use rusqlite::{params, OptionalExtension};
 
-use super::a2a::{self};
-use super::capability_index::{self};
+use super::a2a;
+use super::capability_index;
 use super::relay::{self, RelayClient};
-use super::team::{self};
 use super::AppState;
 use crate::db::Db;
 
 /// `relay_state` key holding this install's instance ID
 pub const INSTANCE_ID_KEY: &str = "instance_id";
 
-/// Runs each service's `init`, in dependency order, storing each result in
-/// `AppState` before the next one runs.
-pub(super) fn init(state: &AppState) {
-    if let Some(index) = capability_index::init(state) {
-        state.set_capability_index(index);
+/// Starts the network services `AppState` built, in dependency order.
+/// Each is absent only without an instance ID.
+pub(super) fn start(state: &AppState) {
+    if let Some(index) = state.capability_index() {
+        capability_index::start(state, index);
     }
-    if let Some(client) = relay::init(state) {
+    if let Some(client) = state.relay_client() {
+        relay::start(state, client);
         state.workflows().use_relay(client.clone());
-        super::groups::watch(state, &client);
-        state.set_relay_client(client);
+        super::groups::watch(state, client);
     }
-    if let Some(manager) = team::init(state) {
-        state.set_team_manager(manager);
-    }
-    if let Some(delegator) = a2a::init(state) {
-        state.set_a2a_delegator(delegator);
+    if let Some(delegator) = state.a2a_delegator() {
+        a2a::start(state, delegator);
     }
 }
 
@@ -250,16 +246,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn init_runs_without_a_relay_configured() {
-        // Each slot may be `None`; either way, starting
-        // must not need the network
+    async fn starts_without_a_relay_configured() {
+        // Starting must not need the network
         let state = AppState::for_tests(vec![]);
-        let _ = (
-            state.capability_index().is_some(),
-            state.relay_client().is_some(),
-            state.a2a_delegator().is_some(),
-            state.team_manager().is_some(),
-        );
+        assert!(state.capability_index().is_some());
+        assert!(state.relay_client().is_some());
+        assert!(state.a2a_delegator().is_some());
         state.shutdown();
     }
 }

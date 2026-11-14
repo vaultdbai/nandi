@@ -244,30 +244,21 @@ impl NandiEvent for DelegationTaskFailed {
 // Services
 // ---------------------------------------------------------------------------
 
-/// Builds the delegator over the capability index and relay client, and
-/// registers the provider-side handlers when a relay client exists.
+/// Registers the provider-side handlers when a relay client exists, and
+/// hands the delegator to the orchestrators' `delegate_to_agent` tool.
 /// Doesn't block: handlers are registered in a spawned task.
-pub fn init(state: &AppState) -> Option<Arc<dyn A2ADelegator>> {
-    let deps = match A2aDeps::from_state(state) {
-        Ok(deps) => deps,
-        Err(e) => {
-            log::error!("Delegation is unavailable: {e}");
-            return None;
-        }
-    };
-    let delegator = Delegator::new(deps);
+pub fn start(state: &AppState, delegator: &Arc<Delegator>) {
     if delegator.deps().relay.is_some() {
         let registering = delegator.clone();
         state
             .runtime()
             .spawn(async move { registering.register_relay_handlers().await });
     }
-    let delegator: Arc<dyn A2ADelegator> = delegator;
+    let delegator: Arc<dyn A2ADelegator> = delegator.clone();
     state.orchestrators().set_delegator(&delegator);
-    Some(delegator)
 }
 
-fn delegator(state: &AppState) -> Result<&Arc<dyn A2ADelegator>, String> {
+fn delegator(state: &AppState) -> Result<&Arc<Delegator>, String> {
     state
         .a2a_delegator()
         .ok_or_else(|| "Delegation is unavailable".to_string())

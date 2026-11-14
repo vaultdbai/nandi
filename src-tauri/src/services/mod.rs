@@ -95,7 +95,7 @@ use crate::model::STUDIO_AGENT_ID;
 use crate::runtime::ProxyTokens;
 use crate::utils::nandi_config;
 
-use a2a::A2ADelegator;
+use a2a::{A2aDeps, Delegator};
 use capability_index::CapabilityIndex;
 use connectors::ConnectorRegistry;
 use egress::EgressState;
@@ -165,11 +165,14 @@ struct Inner {
     workspace: Arc<workspace::WorkspaceService>,
     audit_store: Arc<AuditStore>,
     git_service: Arc<GitService>,
-    // Set once by `network::init`
-    capability_index: OnceLock<Arc<RwLock<CapabilityIndex>>>,
-    relay_client: OnceLock<Arc<dyn RelayClient>>,
-    a2a_delegator: OnceLock<Arc<dyn A2ADelegator>>,
-    team_manager: OnceLock<Arc<dyn TeamManager>>,
+    /// Local agent cards by capability. `None` without an instance ID.
+    capability_index: Option<Arc<RwLock<CapabilityIndex>>>,
+    /// `None` without an instance ID. Present even when no relay is
+    /// configured: it then reports "not connected".
+    relay_client: Option<Arc<dyn RelayClient>>,
+    /// Cross-user delegation. `None` without an instance ID.
+    a2a_delegator: Option<Arc<Delegator>>,
+    team_manager: Arc<dyn TeamManager>,
     analysis: Arc<dyn RunAnalyzer>,
     palette: Arc<PaletteService>,
     remote: Arc<dyn remote::RemoteService>,
@@ -262,7 +265,7 @@ impl AppState {
         state.orchestrators().ensure(STUDIO_AGENT_ID);
         state.watch_repo();
         images::init(state.bus());
-        network::init(&state);
+        network::start(&state);
         state.init_wave_final();
         state.init_wave_a();
         state.init_wave_b();
@@ -437,6 +440,47 @@ impl AppState {
         ));
         let ask_llm: Arc<dyn ask::AskLlm> =
             Arc::new(ask::ModelAskLlm::new(config.secrets.clone(), store.clone()));
+        // The network services need this install's instance ID. Without
+        // one (the database can't give it), they stay off.
+        let instance_id = network::local_instance_id(&db)
+            .inspect_err(|e| log::error!("Network services disabled: no instance ID ({e})"))
+            .ok();
+        let capability_index = instance_id.as_ref().map(|id| {
+            let relay_url = relay::configured_url_in(&nandi_dir).unwrap_or_default();
+            Arc::new(RwLock::new(CapabilityIndex::new(
+                db.clone(),
+                id.clone(),
+                relay_url,
+            )))
+        });
+        let relay_client = instance_id.as_ref().map(|id| {
+            relay::client(
+                &db,
+                &bus,
+                &config.secrets,
+                &config.built_in_relay,
+                id.clone(),
+            )
+        });
+        let team_manager: Arc<dyn TeamManager> = Arc::new(team::TeamService::new(
+            db.clone(),
+            bus.clone(),
+            store.clone(),
+            config.secrets.clone(),
+            team::TeamConfig::in_repo(&store),
+        ));
+        let a2a_delegator = instance_id.as_ref().map(|id| {
+            Delegator::new(A2aDeps::new(
+                db.clone(),
+                bus.clone(),
+                orchestrators.clone(),
+                broadcast.clone(),
+                &config.secrets,
+                id.clone(),
+                capability_index.clone(),
+                relay_client.clone(),
+            ))
+        });
         Self(Arc::new_cyclic(|inner| Inner {
             // Services that call back into the app hold it weakly
             studio: Arc::new(studio::StudioService::new(WeakAppState(inner.clone()))),
@@ -479,10 +523,10 @@ impl AppState {
             workspace: Arc::new(workspace::WorkspaceService::default()),
             audit_store: Arc::new(AuditStore::new()),
             git_service,
-            capability_index: OnceLock::new(),
-            relay_client: OnceLock::new(),
-            a2a_delegator: OnceLock::new(),
-            team_manager: OnceLock::new(),
+            capability_index,
+            relay_client,
+            a2a_delegator,
+            team_manager,
             tasks: OnceLock::new(),
             clarifications: OnceLock::new(),
             gateway: OnceLock::new(),
@@ -519,7 +563,7 @@ impl AppState {
             },
             layout,
         );
-        network::init(&state);
+        network::start(&state);
         state.init_wave_final();
         state.init_wave_a();
         state.init_wave_b();
@@ -615,7 +659,7 @@ impl AppState {
 
     /// Local agent cards by capability
     pub fn capability_index(&self) -> Option<&Arc<RwLock<CapabilityIndex>>> {
-        self.0.capability_index.get()
+        self.0.capability_index.as_ref()
     }
 
     /// The relay this build comes with
@@ -625,34 +669,17 @@ impl AppState {
 
     /// Connection to the relay
     pub fn relay_client(&self) -> Option<&Arc<dyn RelayClient>> {
-        self.0.relay_client.get()
+        self.0.relay_client.as_ref()
     }
 
     /// Cross-user delegation
-    pub fn a2a_delegator(&self) -> Option<&Arc<dyn A2ADelegator>> {
-        self.0.a2a_delegator.get()
+    pub fn a2a_delegator(&self) -> Option<&Arc<Delegator>> {
+        self.0.a2a_delegator.as_ref()
     }
 
     /// Teams and their private registries
-    pub fn team_manager(&self) -> Option<&Arc<dyn TeamManager>> {
-        self.0.team_manager.get()
-    }
-
-    // Set once, by `network::init`
-    fn set_capability_index(&self, index: Arc<RwLock<CapabilityIndex>>) {
-        let _ = self.0.capability_index.set(index);
-    }
-
-    fn set_relay_client(&self, client: Arc<dyn RelayClient>) {
-        let _ = self.0.relay_client.set(client);
-    }
-
-    fn set_a2a_delegator(&self, delegator: Arc<dyn A2ADelegator>) {
-        let _ = self.0.a2a_delegator.set(delegator);
-    }
-
-    fn set_team_manager(&self, manager: Arc<dyn TeamManager>) {
-        let _ = self.0.team_manager.set(manager);
+    pub fn team_manager(&self) -> &Arc<dyn TeamManager> {
+        &self.0.team_manager
     }
 
     /// "Ask about this run"

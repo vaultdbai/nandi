@@ -160,7 +160,7 @@ impl RunSource {
 
 // --- A2A delegation -----------------------------------------------
 
-/// The delegator the `delegate_to_agent` tool calls, set by `a2a::init`,
+/// The delegator the `delegate_to_agent` tool calls, set by `a2a::start`,
 /// and the clarification service `ask_requester` calls,
 /// set by `a2a::clarification::init`. Weak: `AppState` owns both, and
 /// the delegator holds the orchestrators.

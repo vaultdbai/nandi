@@ -274,28 +274,21 @@ impl EventPublisher for Reindexer {
     fn invalid(&self, _problem: &Problem, _changed_by: ChangedBy) {}
 }
 
-/// Builds the index from the loaded agents and subscribes it to agent
+/// Fills the index from the loaded agents and subscribes it to agent
 /// changes. Local only: never touches the network.
-pub fn init(state: &AppState) -> Option<Arc<RwLock<CapabilityIndex>>> {
-    let instance_id = match network::local_instance_id(state.db()) {
-        Ok(id) => id,
-        Err(e) => {
-            log::error!("Capability index disabled: no instance ID ({e})");
-            return None;
-        }
-    };
-    let relay_url = super::relay::configured_url(state).unwrap_or_default();
-    let mut index = CapabilityIndex::new(state.db().clone(), instance_id, relay_url);
+pub fn start(state: &AppState, index: &Arc<RwLock<CapabilityIndex>>) {
     let agents: Vec<Agent> = state.store().read(|repo| repo.agents().cloned().collect());
-    if let Err(e) = index.rebuild_from_local(&agents) {
+    if let Err(e) = index
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .rebuild_from_local(&agents)
+    {
         log::error!("Failed to build the capability index: {e}");
     }
-    let index = Arc::new(RwLock::new(index));
     state.store().subscribe(Arc::new(Reindexer {
         index: index.clone(),
         store: state.store().clone(),
     }));
-    Some(index)
 }
 
 fn read_index(state: &AppState) -> Result<RwLockReadGuard<'_, CapabilityIndex>, String> {
@@ -533,11 +526,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn init_indexes_agents_already_on_disk() {
+    async fn start_indexes_agents_already_on_disk() {
         let state = AppState::for_tests(vec![]);
         save(&state, &papers());
-        // A second index over the same state rebuilds from the aggregate
-        let index = init(&state).unwrap();
+        // A second index over the same state fills from the aggregate
+        let instance_id = network::local_instance_id(state.db()).unwrap();
+        let index = Arc::new(RwLock::new(CapabilityIndex::new(
+            state.db().clone(),
+            instance_id,
+            "",
+        )));
+        start(&state, &index);
         let index = index.read().unwrap();
         assert_eq!(index.find_local("find-papers").len(), 1);
         assert_eq!(

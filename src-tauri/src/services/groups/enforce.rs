@@ -179,14 +179,28 @@ impl GroupRules {
     }
 
     pub fn of(state: &crate::services::AppState) -> Result<Self, String> {
-        let keyring =
-            crate::services::relay::device_keys::DeviceKeyring::new(state.secrets().clone());
-        Ok(Self::new(
-            state.store().repos().groups.clone(),
+        Ok(Self::for_install(
+            state.store(),
             state.db().clone(),
+            state.secrets(),
             crate::services::network::local_instance_id(state.db())?,
-            std::sync::Arc::new(move || keyring.public_keys()),
         ))
+    }
+
+    /// The rules for this install, signed with its own device keys
+    pub fn for_install(
+        store: &crate::services::repo_store::RepoStore,
+        db: Db,
+        secrets: &crate::services::secrets::Secrets,
+        me: String,
+    ) -> Self {
+        let keyring = crate::services::relay::device_keys::DeviceKeyring::new(secrets.clone());
+        Self::new(
+            store.repos().groups.clone(),
+            db,
+            me,
+            std::sync::Arc::new(move || keyring.public_keys()),
+        )
     }
 
     /// The groups' say on a request from `requester` for `capability`, now

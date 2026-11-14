@@ -324,22 +324,19 @@ pub struct OverviewData {
 impl OverviewData {
     /// Pins from the gold copy, teammates from my teams, my history of the
     /// last 30 days. A source that fails is left empty.
-    pub async fn gather(store: &RepoStore, db: &Db, teams: Option<&dyn TeamManager>) -> Self {
+    pub async fn gather(store: &RepoStore, db: &Db, teams: &dyn TeamManager) -> Self {
         let pins = store.read(|repo| repo.settings().preferred_providers().clone());
-        let teammates = match teams {
-            Some(teams) => match teams.list_teams().await {
-                Ok(teams) => teams
-                    .iter()
-                    .flat_map(|team| &team.members)
-                    .map(|member| member.github_handle.to_lowercase())
-                    .filter(|handle| !handle.is_empty())
-                    .collect(),
-                Err(e) => {
-                    log::debug!("Providers without teammates: {e}");
-                    HashSet::new()
-                }
-            },
-            None => HashSet::new(),
+        let teammates = match teams.list_teams().await {
+            Ok(teams) => teams
+                .iter()
+                .flat_map(|team| &team.members)
+                .map(|member| member.github_handle.to_lowercase())
+                .filter(|handle| !handle.is_empty())
+                .collect(),
+            Err(e) => {
+                log::debug!("Providers without teammates: {e}");
+                HashSet::new()
+            }
         };
         let stats = load_stats(db, window_start()).unwrap_or_else(|e| {
             log::debug!("Providers without history: {e}");
@@ -553,15 +550,16 @@ pub async fn team_cards(manager: &dyn TeamManager) -> Vec<(String, AgentCard)> {
     cards
 }
 
-/// My shares to teams; empty without a manager or when it fails.
+/// My shares to teams; empty when they can't be read.
 async fn my_team_shares(state: &AppState) -> Vec<TeamShare> {
-    let Some(manager) = state.team_manager() else {
-        return Vec::new();
-    };
-    manager.shares_by_me().await.unwrap_or_else(|error| {
-        log::debug!("Shared views: shares unavailable: {error}");
-        Vec::new()
-    })
+    state
+        .team_manager()
+        .shares_by_me()
+        .await
+        .unwrap_or_else(|error| {
+            log::debug!("Shared views: shares unavailable: {error}");
+            Vec::new()
+        })
 }
 
 /// Delegations in `direction` since `since_ms`, grouped by `target_agent`.
@@ -638,10 +636,7 @@ fn window_start() -> i64 {
 
 pub async fn list_agents_shared_with_me(state: &AppState) -> Result<Vec<SharedAgent>, String> {
     let instance_id = network::local_instance_id(state.db())?;
-    let team = match state.team_manager() {
-        Some(manager) => team_cards(manager.as_ref()).await,
-        None => Vec::new(),
-    };
+    let team = team_cards(state.team_manager().as_ref()).await;
     let online = relay::list_online_agents(state, None)
         .await
         .unwrap_or_else(|error| {
@@ -675,12 +670,8 @@ pub async fn list_capability_providers(
     let mine = local_cards(state, &instance_id);
     let trust = TrustFilter::load(state.db())?;
     let others = apply_trust(list_agents_shared_with_me(state).await?, &trust, true);
-    let mut data = OverviewData::gather(
-        state.store(),
-        state.db(),
-        state.team_manager().map(|manager| manager.as_ref()),
-    )
-    .await;
+    let mut data =
+        OverviewData::gather(state.store(), state.db(), state.team_manager().as_ref()).await;
     // The relay plans each capability someone else serves online
     let mut remote: Vec<String> = others
         .iter()
@@ -1028,11 +1019,6 @@ mod tests {
         state.gateway().unwrap().sync().await;
         let list = list_agents_shared_by_me(&state).await.unwrap();
         assert!(list.iter().all(|s| s.card.owner.github_handle == "ada-l"));
-
-        // Without a team manager or relay, "with me" is empty, not an error
-        if state.team_manager().is_none() && state.relay_client().is_none() {
-            assert!(list_agents_shared_with_me(&state).await.unwrap().is_empty());
-        }
 
         // Trust policies by agent ID or local card ID; unknown agents fail
         set_trust_policy(&state, "other/x", "papers", TrustPolicy::Allow)

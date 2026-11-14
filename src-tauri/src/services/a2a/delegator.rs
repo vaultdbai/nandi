@@ -52,6 +52,7 @@ use crate::services::events::{BroadcastSink, EventBus, NandiEvent, WireEvent};
 use crate::services::gateway::assignments::GatewayAssignmentChanged;
 use crate::services::gateway::holds::{GatewayHoldChanged, HoldStatus};
 use crate::services::gateway::GATEWAY_AGENT_ID;
+use crate::services::groups::enforce::GroupRules;
 use crate::services::network;
 use crate::services::orchestrator::Orchestrators;
 use crate::services::relay::client_api::UNANSWERED_BY_RELAY;
@@ -60,6 +61,7 @@ use crate::services::relay::protocol::MAX_CANDIDATES;
 use crate::services::relay::unavailable::{self, RelayUnavailable};
 use crate::services::relay::RelayClient;
 use crate::services::repo_store::RepoStore;
+use crate::services::secrets::Secrets;
 use crate::services::team::trust as member_trust;
 use crate::services::AppState;
 
@@ -73,7 +75,7 @@ pub const USER_REQUESTER: &str = "_user";
 /// Providers one auto-picked delegation tries before giving up
 pub const MAX_ATTEMPTS: usize = 3;
 
-/// What delegation needs from the app. Built once by `a2a::init`; tests
+/// What delegation needs from the app. Built with `AppState`; tests
 /// build their own (e.g. with a mock relay or a short timeout).
 #[derive(Clone)]
 pub struct A2aDeps {
@@ -111,9 +113,18 @@ impl A2aDeps {
             .unwrap_or_default()
     }
 
-    pub fn from_state(state: &AppState) -> Result<Self, String> {
-        let db = state.db().clone();
-        let instance_id = network::local_instance_id(&db)?;
+    /// Delegation's dependencies as this install's `AppState` wires them
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        db: Db,
+        bus: EventBus,
+        orchestrators: Orchestrators,
+        broadcast: BroadcastSink,
+        secrets: &Secrets,
+        instance_id: String,
+        index: Option<Arc<RwLock<CapabilityIndex>>>,
+        relay: Option<Arc<dyn RelayClient>>,
+    ) -> Self {
         let timeout = db
             .conn()
             .ok()
@@ -121,20 +132,39 @@ impl A2aDeps {
             .and_then(|value| value.as_u64())
             .filter(|secs| *secs > 0)
             .unwrap_or(DEFAULT_TIMEOUT_SECS);
-        Ok(Self {
+        let store = orchestrators.store().clone();
+        Self {
+            groups: Some(GroupRules::for_install(
+                &store,
+                db.clone(),
+                secrets,
+                instance_id.clone(),
+            )),
+            decisions: store.repos().decisions.clone(),
             db,
-            bus: state.bus().clone(),
-            orchestrators: state.orchestrators().clone(),
-            broadcast: state.broadcast().clone(),
+            bus,
+            orchestrators,
+            broadcast,
             instance_id,
-            index: state.capability_index().cloned(),
-            relay: state.relay_client().cloned(),
+            index,
+            relay,
             audit: AuditLog::default_location(),
             timeout: Duration::from_secs(timeout),
             dequeue_interval: Duration::from_secs(queue::DEQUEUE_INTERVAL_SECS),
-            groups: crate::services::groups::enforce::GroupRules::of(state).ok(),
-            decisions: state.store().repos().decisions.clone(),
-        })
+        }
+    }
+
+    pub fn from_state(state: &AppState) -> Result<Self, String> {
+        Ok(Self::new(
+            state.db().clone(),
+            state.bus().clone(),
+            state.orchestrators().clone(),
+            state.broadcast().clone(),
+            state.secrets(),
+            network::local_instance_id(state.db())?,
+            state.capability_index().cloned(),
+            state.relay_client().cloned(),
+        ))
     }
 
     pub fn store(&self) -> &RepoStore {

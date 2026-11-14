@@ -691,7 +691,7 @@ pub struct WorkflowEngine {
     store: RepoStore,
     /// Runs with a driver task, so approvals and resumes never double-drive
     driving: Mutex<HashSet<String>>,
-    /// The relay an ask by topic searches (set by `network::init`)
+    /// The relay an ask by topic searches (set by `network::start`)
     relay: RwLock<Option<Arc<dyn RelayClient>>>,
 }
 
