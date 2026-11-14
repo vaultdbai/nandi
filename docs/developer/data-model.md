@@ -125,6 +125,26 @@ store.commit(EntityKind::Agent, id)?;
 
 Bump `PROJECTION_VERSION` (`services/projection.rs`) whenever the shape of a projected row changes: every install then rebuilds on its next start.
 
+## Schema Changes
+
+The owner set this rule on 2026-11-14 (decision 5).
+
+| What changes                               | What to do                                                                                                                                         |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Config and definitions (the gold copy)     | No migrations. Change the file format and the domain; bump `PROJECTION_VERSION` so the projection rebuilds from the files                          |
+| A projected table                          | No migrations. Bump `PROJECTION_VERSION`                                                                                                           |
+| A runtime table in `state.db`, from v1 on  | A real schema migration is allowed. The run trail still restores `run_events` and approval decisions into a new database ([Run Trail](#run-trail)) |
+| A serde shape, a name, an env var, a route | No serde aliases, old-name fallbacks or shims. When renaming, just change it                                                                       |
+
+```rust
+// ❌ BAD: an alias that keeps an old name alive
+#[serde(alias = "agentName")]
+pub display_name: String,
+
+// ✅ GOOD: rename it everywhere; config and definitions rebuild from the gold copy
+pub display_name: String,
+```
+
 ## Secrets Boundary
 
 `settings.yaml`, `connectors.yaml`, and trigger files hold **keyring references only** (`secret_refs: {deepseek_api_key: nandi.llm.deepseek}`, trigger `secretRef`, default `nandi.trigger.<id>`). The domain rejects a `secret` key in trigger configs and credential-looking connector config keys, and `settings.yaml` rejects unknown top-level keys, so a pasted API key fails validation instead of being committed.

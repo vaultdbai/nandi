@@ -27,7 +27,7 @@ Nandi is the desktop agent runner (Apache-2.0): Tauri v2, React 19, Rust, pnpm. 
 6. **No Dev Server**: Ask the user to run it and report back
 7. **No Unsolicited Commits**: Only when explicitly requested. Never force-push
 8. **Conventional Commits**: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, with a scope where it helps (`fix(network): ...`)
-9. **No Legacy Code**: Nothing is released, so no migrations, fallbacks or aliases. When renaming, just change it
+9. **No Legacy Code**: No migrations for config and definitions: the gold copy rebuilds them. From v1 on, real schema migrations are allowed for `state.db`. Still no serde aliases, old-name fallbacks or shims. When renaming, just change it (see `docs/developer/data-model.md#schema-changes`)
 10. **Clean OOP/OOD, MVC in the UI**: Clear objects and responsibilities, as pure as possible
 11. **Documentation**: Update relevant `docs/developer/` files for new patterns
 12. **Feature Test Catalog**: When user-visible behavior is added, changed or removed, update its entry in `docs/testing/` in the same change (see `docs/testing/README.md`)
