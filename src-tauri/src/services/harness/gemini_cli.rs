@@ -3,23 +3,21 @@
 //!
 //! Tested with Gemini CLI 0.64.0.
 //!
-//! Gemini wants an ACP `authenticate` before `session/new`: `gemini-api-key`
-//! with `GEMINI_API_KEY`, `vertex-ai` on Vertex, else the host's Google
-//! login (`oauth-personal`).
+//! Not supported in the container yet: every way Gemini CLI signs in
+//! (`GEMINI_API_KEY`, Vertex AI's credentials, a Google login) would put
+//! a credential in the container, and the egress proxy has no Gemini route
+//! to sign for it on the host. `runtime_router::plan` refuses Gemini CLI
+//! sessions with a reason until it does. Newer Gemini CLI releases read
+//! `GOOGLE_GEMINI_BASE_URL`, which is the way in.
 
-use super::adapter::{
-    common_credential_env, forward_env, CliAdapter, CliProfile, HarnessConfig, Invocation, ModelRef,
-};
+use super::adapter::{forward_env, CliAdapter, CliProfile, HarnessConfig, Invocation, ModelRef};
 use super::detection::DetectEnv;
 
-pub const FORWARDED: &[&str] = &[
-    "GEMINI_API_KEY",
-    "GOOGLE_API_KEY",
-    "GOOGLE_GENAI_USE_VERTEXAI",
-    "GOOGLE_CLOUD_PROJECT",
-    "GOOGLE_CLOUD_LOCATION",
-    "GEMINI_MODEL",
-];
+/// Why a Gemini CLI session can't start (see the module docs)
+pub const UNSUPPORTED: &str = "Gemini CLI can't run in the container yet: it would need your      Google key or login inside it, and Nandi keeps credentials out of containers. Use Claude      Code or Codex, or the native runtime.";
+
+/// What Gemini CLI reads from the environment: no keys
+pub const FORWARDED: &[&str] = &["GEMINI_MODEL"];
 
 pub struct GeminiCli {
     env: DetectEnv,
@@ -56,34 +54,16 @@ impl CliProfile for GeminiCli {
     }
 
     fn env(&self, config: &HarnessConfig) -> Vec<(String, String)> {
-        let mut env: std::collections::BTreeMap<String, String> =
-            forward_env(&self.env.vars, FORWARDED).into_iter().collect();
-        if let Some(key) = &config.credentials.google_api_key {
-            env.insert("GEMINI_API_KEY".into(), key.clone());
-        }
-        env.extend(common_credential_env(&config.credentials));
+        let mut env = forward_env(&self.env.vars, FORWARDED);
         env.extend(config.env.iter().map(|(k, v)| (k.clone(), v.clone())));
-        env.into_iter().collect()
-    }
-
-    fn auth_method(&self, env: &[(String, String)]) -> Option<String> {
-        let value = |name: &str| env.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str());
-        let method = if value("GOOGLE_GENAI_USE_VERTEXAI").is_some_and(|v| v == "true" || v == "1")
-        {
-            "vertex-ai"
-        } else if value("GEMINI_API_KEY").is_some() || value("GOOGLE_API_KEY").is_some() {
-            "gemini-api-key"
-        } else {
-            "oauth-personal"
-        };
-        Some(method.to_string())
+        env
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::harness::adapter::{HarnessCredentials, Placement};
+    use crate::services::harness::adapter::Placement;
 
     fn in_container() -> HarnessConfig {
         HarnessConfig::new("/w".into(), Placement::for_tests())
@@ -113,21 +93,15 @@ mod tests {
     }
 
     #[test]
-    fn credentials_pick_the_auth_method() {
-        let profile = gemini(&[]);
-        let config = HarnessConfig {
-            credentials: HarnessCredentials {
-                google_api_key: Some("g".into()),
-                ..HarnessCredentials::default()
-            },
-            ..in_container()
-        };
-        let env = profile.env(&config);
-        assert_eq!(env, vec![("GEMINI_API_KEY".to_string(), "g".to_string())]);
-        assert_eq!(profile.auth_method(&env).as_deref(), Some("gemini-api-key"));
-        let vertex = gemini(&[("GOOGLE_GENAI_USE_VERTEXAI", "true")]);
-        let env = vertex.env(&in_container());
-        assert_eq!(vertex.auth_method(&env).as_deref(), Some("vertex-ai"));
-        assert_eq!(profile.auth_method(&[]).as_deref(), Some("oauth-personal"));
+    fn no_key_reaches_the_container() {
+        let profile = gemini(&[
+            ("GEMINI_API_KEY", "g-key"),
+            ("GEMINI_MODEL", "gemini-2.5-pro"),
+        ]);
+        let env = profile.env(&in_container());
+        assert_eq!(
+            env,
+            vec![("GEMINI_MODEL".to_string(), "gemini-2.5-pro".to_string())]
+        );
     }
 }

@@ -25,7 +25,7 @@ use crate::db::{self, role};
 use crate::model::RunStatus;
 use crate::sandbox::{DEFAULT_CPU, DEFAULT_MEMORY_MB};
 use crate::services::config::repo_config::{self, HarnessDefaults};
-use crate::services::domain::{Agent, AgentId, AgentRuntimeKind};
+use crate::services::domain::{Agent, AgentId};
 use crate::services::egress::model_proxy::{ModelUpstream, Secret, UpstreamAuth};
 use crate::services::events::{EventBus, RunContext};
 use crate::services::harness::acp::{AcpSessionUpdate, AcpUsage};
@@ -278,6 +278,10 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         .clone()
         .or(repo.model.clone())
         .or(inputs.default_model);
+    // Gemini CLI has no proxy route yet: its credentials would go in
+    if harness_id == "gemini-cli" {
+        return fallback(crate::services::harness::gemini_cli::UNSUPPORTED.to_string());
+    }
     let through_gateway = config.gateway.is_some();
     let model_access = if through_gateway {
         let Some(upstream) = inputs.gateway else {
@@ -333,6 +337,13 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
             agent.id().as_str()
         ));
     }
+    if harness_id == "codex" && model_access.is_none() {
+        return fallback(
+            "Codex has no OpenAI key to sign in with: add one in Settings › Models & runtimes. \
+             A ChatGPT login can't be used in the container."
+                .to_string(),
+        );
+    }
     let egress_hosts = if model_access.is_some() {
         // Its model calls go to the proxy, which is always reachable
         Vec::new()
@@ -384,12 +395,6 @@ fn model_hosts(harness_id: &str) -> Vec<String> {
     let hosts: &[&str] = match harness_id {
         // Vertex from Claude Code's own settings
         "claude-code" => &["api.anthropic.com"],
-        "codex" => &["api.openai.com", "chatgpt.com", "auth.openai.com"],
-        "gemini-cli" => &[
-            "generativelanguage.googleapis.com",
-            "cloudcode-pa.googleapis.com",
-            "oauth2.googleapis.com",
-        ],
         // A custom CLI gets what its skill.md allows
         _ => &[],
     };
@@ -573,9 +578,13 @@ async fn inputs_for(
                 .ok()
             })
         }
+        ("codex", _) => codex_access(&DetectEnv::current(), || {
+            crate::services::llm_keys::require_api_key(app.secrets(), crate::llm::Provider::OpenAi)
+                .ok()
+        }),
         _ => None,
     };
-    // The LiteLLM gateway's AWS identity, and keys for the other CLIs
+    // The LiteLLM gateway's AWS identity
     let credentials = match model_access {
         Some(_) => HarnessCredentials::default(),
         None => credentials(app, agent, provider.as_deref(), &repo).await?,
@@ -701,18 +710,11 @@ async fn credentials(
     provider: Option<&str>,
     repo: &HarnessDefaults,
 ) -> Result<HarnessCredentials, String> {
-    use crate::llm::Provider;
-    use crate::services::llm_keys::require_api_key;
-
     match provider {
         Some("bedrock") => {
             let (profile, region) = aws_choice(agent, repo);
             crate::services::harness::aws_auth::bedrock_credentials(app, profile, region).await
         }
-        Some("openai") if *agent.runtime() == AgentRuntimeKind::Codex => Ok(HarnessCredentials {
-            openai_api_key: require_api_key(app.secrets(), Provider::OpenAi).ok(),
-            ..HarnessCredentials::default()
-        }),
         _ => Ok(HarnessCredentials::default()),
     }
 }
@@ -820,6 +822,23 @@ pub fn claude_code_access(
             UpstreamAuth::ApiKey(Secret::new(key)),
         ),
     )
+}
+
+/// How a Codex session reaches OpenAI through the egress proxy: Nandi's
+/// OpenAI key, else one in Nandi's environment (`codex::host_upstream`)
+pub fn codex_access(
+    env: &DetectEnv,
+    nandi_key: impl FnOnce() -> Option<String>,
+) -> Option<ModelAccess> {
+    let upstream = match nandi_key() {
+        Some(key) => ModelUpstream::openai(UpstreamAuth::Bearer(Secret::new(key))),
+        None => crate::services::harness::codex::host_upstream(env)?,
+    };
+    Some(ModelAccess {
+        route: ModelRoute::OpenAi,
+        upstream,
+        region: None,
+    })
 }
 
 /// The first prompt: the agent's system prompt, then the run's input (ACP
@@ -1059,6 +1078,7 @@ mod tests {
 
     use super::*;
     use crate::services::domain::AgentId;
+    use crate::services::domain::AgentRuntimeKind;
     use crate::services::events::tests::{bus, started};
     use crate::services::harness::adapter::{
         CliProfile, EventStream, HarnessError, HarnessSession, ModelRef,
@@ -1126,9 +1146,10 @@ mod tests {
 
     #[test]
     fn the_test_session_is_planned_like_a_run_in_its_own_container() {
-        for harness_id in ["claude-code", "codex", "gemini-cli"] {
+        for harness_id in ["claude-code", "codex"] {
             let mut inputs = inputs();
             inputs.proxy_token = "test-token".to_string();
+            inputs.model_access = Some(anthropic_key("sk-ant"));
             let plan = test_session_plan(harness_id, inputs, "0123456789abcdef").unwrap();
             let placement = &plan.config.placement;
             assert_eq!(placement.network, "nandi-agents", "{harness_id}");
@@ -1412,14 +1433,14 @@ cpu: 2.5
         };
         // Default: shell and write_file
         assert_eq!(
-            kinds("runtime: codex\n"),
+            kinds("runtime: custom:mine\n"),
             ["delete", "edit", "execute", "move"]
         );
         assert_eq!(
-            kinds("runtime: codex\nrequires_approval: [fetch, deploy]\n"),
+            kinds("runtime: custom:mine\nrequires_approval: [fetch, deploy]\n"),
             ["deploy", "fetch"]
         );
-        assert!(kinds("runtime: codex\nrequires_approval: []\n").is_empty());
+        assert!(kinds("runtime: custom:mine\nrequires_approval: []\n").is_empty());
     }
 
     #[test]
@@ -1430,7 +1451,7 @@ cpu: 2.5
             denied: vec!["shell".into()],
             approval: vec!["fetch".into()],
         });
-        let plan = harness_plan(plan(&agent("runtime: codex\n"), narrowed));
+        let plan = harness_plan(plan(&agent("runtime: custom:mine\n"), narrowed));
         assert_eq!(plan.config.denied_tools, ["execute"]);
         assert_eq!(plan.config.approvals.kinds, ["fetch"]);
         assert!(plan.config.allowed_tools.is_empty(), "everything else");
@@ -1478,8 +1499,11 @@ cpu: 2.5
         );
         assert!(plan.egress_hosts.is_empty(), "its model is the proxy's");
 
-        let codex = harness_plan(plan_for("runtime: codex\n"));
-        assert!(codex.egress_hosts.contains(&"api.openai.com".to_string()));
+        let mut keyed = inputs();
+        keyed.model_access = codex_access(&DetectEnv::default(), || Some("sk-openai".into()));
+        let codex = harness_plan(super::plan(&agent("runtime: codex\n"), keyed));
+        assert_eq!(codex.config.model_route, Some(ModelRoute::OpenAi));
+        assert!(codex.egress_hosts.is_empty(), "its model is the proxy's");
         let custom = harness_plan(plan_for("runtime: custom:mine\n"));
         assert!(custom.egress_hosts.is_empty(), "its network.allow only");
     }
@@ -1506,6 +1530,22 @@ cpu: 2.5
         let mut keyed = host_login;
         keyed.model_access = Some(anthropic_key("sk-ant"));
         assert!(matches!(plan(&strict, keyed), RuntimeDecision::Harness(_)));
+    }
+
+    #[test]
+    fn codex_without_a_key_and_gemini_cli_are_refused_with_a_reason() {
+        let codex = plan(&agent("runtime: codex\n"), inputs());
+        assert!(matches!(
+            codex,
+            RuntimeDecision::Unavailable(reason) if reason.contains("OpenAI key")
+        ));
+        let gemini = plan(&agent("runtime: gemini-cli\n"), inputs());
+        assert!(matches!(
+            gemini,
+            RuntimeDecision::Unavailable(reason) if reason.contains("Gemini CLI can't run")
+        ));
+        let lenient = agent("runtime: gemini-cli\nruntime_config:\n  fallback: native\n");
+        assert!(matches!(plan(&lenient, inputs()), RuntimeDecision::Native));
     }
 
     #[test]
@@ -1864,7 +1904,7 @@ cpu: 2.5
             plan.config.placement.tools.is_empty(),
             "Codex mounts nothing extra"
         );
-        let adapter = CodexAdapter::with_env(signed_out());
+        let adapter = CodexAdapter::create();
         let outcome =
             crate::services::harness::adapter::test_session(Box::new(adapter), plan.config).await;
         println!(

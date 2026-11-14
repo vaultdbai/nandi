@@ -220,6 +220,8 @@ pub enum ModelRoute {
     Foundry,
     /// Bedrock runtime's own API, which the host signs
     Bedrock,
+    /// OpenAI's API (Codex)
+    OpenAi,
 }
 
 impl ModelRoute {
@@ -229,6 +231,7 @@ impl ModelRoute {
         match self {
             Self::Anthropic | Self::Foundry => ModelApi::Anthropic,
             Self::Bedrock => ModelApi::Bedrock,
+            Self::OpenAi => ModelApi::OpenAi,
         }
     }
 }

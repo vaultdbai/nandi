@@ -42,7 +42,7 @@ impl DetectEnv {
         }
     }
 
-    fn var(&self, name: &str) -> Option<&str> {
+    pub(crate) fn var(&self, name: &str) -> Option<&str> {
         self.vars
             .get(name)
             .map(String::as_str)
@@ -323,12 +323,9 @@ const OAUTH_MIN_REMAINING_MS: i64 = 15 * 60 * 1000;
 pub fn container_auth(runtime_id: &str, env: &DetectEnv) -> bool {
     match runtime_id {
         "claude-code" => super::claude_code::forwards_credentials(env) || has_oauth_token(env),
-        "codex" => ["OPENAI_API_KEY", "CODEX_API_KEY", "AZURE_OPENAI_API_KEY"]
-            .iter()
-            .any(|name| env.var(name).is_some()),
-        "gemini-cli" => ["GEMINI_API_KEY", "GOOGLE_API_KEY"]
-            .iter()
-            .any(|name| env.var(name).is_some()),
+        "codex" => super::codex::host_upstream(env).is_some(),
+        // No proxy route yet: its key would have to go in (`gemini_cli`)
+        "gemini-cli" => false,
         _ => false,
     }
 }

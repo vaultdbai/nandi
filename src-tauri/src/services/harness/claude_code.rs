@@ -175,6 +175,8 @@ fn route_through_proxy(env: &mut BTreeMap<String, String>, route: ModelRoute, to
             env.insert("ANTHROPIC_BEDROCK_BASE_URL".into(), url);
             env.insert("ANTHROPIC_AUTH_TOKEN".into(), token.into());
         }
+        // Not a Claude Code route
+        ModelRoute::OpenAi => {}
     }
 }
 

@@ -774,7 +774,7 @@ pub fn new_adapter(
 ) -> Result<Box<dyn HarnessAdapter>, String> {
     Ok(match runtime {
         HarnessRuntime::ClaudeCode => Box::new(claude_code::ClaudeCodeAdapter::with_env(env)),
-        HarnessRuntime::Codex => Box::new(codex::CodexAdapter::with_env(env)),
+        HarnessRuntime::Codex => Box::new(codex::CodexAdapter::create()),
         HarnessRuntime::GeminiCli => Box::new(gemini_cli::GeminiCliAdapter::with_env(env)),
         HarnessRuntime::Custom(id) => {
             let invocation =

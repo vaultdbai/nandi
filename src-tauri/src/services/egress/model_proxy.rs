@@ -1,4 +1,5 @@
-//! Model passthrough for harness CLIs: `/anthropic/...` and `/bedrock/...`.
+//! Model passthrough for harness CLIs: `/anthropic/...`, `/bedrock/...`
+//! and `/openai/...`.
 //!
 //! A harness CLI speaks its provider's own API, pointed at the proxy
 //! (`ANTHROPIC_BASE_URL=http://nandi-egress:11435/anthropic`) with its
@@ -80,6 +81,8 @@ pub enum ModelApi {
     /// Bedrock runtime's own API, signed with the host's AWS identity or
     /// its Bedrock API key
     Bedrock,
+    /// OpenAI's Responses and Chat Completions (Codex)
+    OpenAi,
 }
 
 impl ModelApi {
@@ -88,6 +91,7 @@ impl ModelApi {
         match self {
             Self::Anthropic => "/anthropic",
             Self::Bedrock => "/bedrock",
+            Self::OpenAi => "/openai",
         }
     }
 
@@ -97,6 +101,10 @@ impl ModelApi {
             Self::Anthropic => matches!(
                 path,
                 "/v1/messages" | "/v1/messages/count_tokens" | "/v1/models"
+            ),
+            Self::OpenAi => matches!(
+                path,
+                "/v1/responses" | "/v1/chat/completions" | "/v1/models"
             ),
             // `/model/{model id}/{action}`, the model ID percent-encoded
             Self::Bedrock => match path.strip_prefix("/model/").map(|p| p.split('/')) {
@@ -165,6 +173,15 @@ impl ModelUpstream {
         Self {
             api: ModelApi::Anthropic,
             base_url: base_url.into(),
+            auth,
+        }
+    }
+
+    /// OpenAI's own API
+    pub fn openai(auth: UpstreamAuth) -> Self {
+        Self {
+            api: ModelApi::OpenAi,
+            base_url: "https://api.openai.com".to_string(),
             auth,
         }
     }
@@ -313,6 +330,12 @@ impl ModelProxyState {
 
 pub(super) fn router(state: ModelProxyState) -> Router {
     Router::new()
+        .route(
+            "/openai/{*path}",
+            any(|state: State<ModelProxyState>, request: Request| {
+                forward(state, ModelApi::OpenAi, request)
+            }),
+        )
         .route(
             "/bedrock/{*path}",
             any(|state: State<ModelProxyState>, request: Request| {
@@ -468,7 +491,8 @@ pub(crate) mod tests {
             .route("/v1/messages", post(echo))
             .route("/v1/messages/count_tokens", post(echo))
             .route("/foundry/v1/messages", post(echo))
-            .route("/model/{model}/invoke-with-response-stream", post(echo));
+            .route("/model/{model}/invoke-with-response-stream", post(echo))
+            .route("/v1/responses", post(echo));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -687,6 +711,45 @@ pub(crate) mod tests {
             seen["path"],
             "/model/us.anthropic.claude-sonnet-5%3A0/invoke-with-response-stream"
         );
+    }
+
+    #[tokio::test]
+    async fn openai_calls_carry_the_host_key() {
+        let base = fake_upstream().await;
+        let (tokens, sessions) = (ProxyTokens::default(), ModelSessions::default());
+        let token = tokens.issue("coder");
+        let upstream = ModelUpstream {
+            base_url: base,
+            ..ModelUpstream::openai(UpstreamAuth::Bearer(Secret::new("sk-host-openai")))
+        };
+        let _session = sessions.open("coder", upstream);
+        let bearer = format!("Bearer {token}");
+
+        let response = proxy(&tokens, &sessions)
+            .oneshot(messages_call(
+                "/openai/v1/responses",
+                Some(("authorization", &bearer)),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json_of(response).await["authorization"],
+            "Bearer sk-host-openai"
+        );
+        // An Anthropic session's token doesn't open the OpenAI route
+        let anthropic =
+            ModelUpstream::anthropic("http://unused", UpstreamAuth::ApiKey(Secret::new("k")));
+        let _other = sessions.open("coder", anthropic);
+        let refused = proxy(&tokens, &sessions)
+            .oneshot(messages_call(
+                "/openai/v1/responses",
+                Some(("authorization", &bearer)),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), StatusCode::FORBIDDEN);
     }
 
     #[test]
