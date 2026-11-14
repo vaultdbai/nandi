@@ -11,7 +11,7 @@ pnpm run test:run       # TypeScript tests (single run)
 pnpm run rust:test      # Rust tests
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same gates as `check:all` on every pull request and on pushes to `main`. Rust tests marked `#[ignore]` (Docker containers, network fetches, live CLIs, binding export) are skipped there and locally; run them with `cargo test -- --ignored <name>`.
+CI (`.github/workflows/ci.yml`) runs the same gates as `check:all` on every pull request and on pushes to `main`. Rust tests marked `#[ignore]` (Docker containers, network fetches, live CLIs, binding export) are skipped there and locally; run them with `cargo test -- --ignored <name>`. `runtime_router::tests::a_container_calls_its_model_with_only_the_proxy_token_live` proves the credential rule end to end: a harness container's env holds no provider key while its model call succeeds through the proxy against a local fake provider.
 
 ## TypeScript Testing
 

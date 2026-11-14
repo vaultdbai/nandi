@@ -2054,4 +2054,114 @@ cpu: 2.5
             "{outcome:?}"
         );
     }
+
+    /// Live (Docker and the harness image): a Claude Code container's env
+    /// holds no provider key, and a model call made with what it does hold
+    /// succeeds through the proxy, which swaps in the host's key. The
+    /// provider is a local fake that answers only the host's key; the
+    /// container is on the default bridge, reaching the proxy at
+    /// `host.docker.internal` (in a run, the relay is `nandi-egress`).
+    /// `cargo test --lib proxy_token_live -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn a_container_calls_its_model_with_only_the_proxy_token_live() {
+        use crate::runtime::ProxyTokens;
+        use crate::services::egress::model_proxy::{serve_for_tests, ModelSessions};
+        use crate::services::harness::adapter::{docker_args, CliProfile, Invocation};
+        const HOST_KEY: &str = "fake-host-key-for-the-live-check";
+
+        // A provider that answers only the host's key, and never echoes it
+        let provider = axum::Router::new().route(
+            "/v1/messages",
+            axum::routing::post(|headers: axum::http::HeaderMap| async move {
+                let key = headers.get("x-api-key").and_then(|v| v.to_str().ok());
+                let bearer = headers.contains_key("authorization");
+                if key == Some(HOST_KEY) && !bearer {
+                    (
+                        axum::http::StatusCode::OK,
+                        r#"{"id":"msg_fake","type":"message"}"#,
+                    )
+                } else {
+                    (
+                        axum::http::StatusCode::UNAUTHORIZED,
+                        r#"{"error":"wrong key"}"#,
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let provider_url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, provider).await.unwrap() });
+
+        // The session as a run plans it, with its model session open
+        let tokens = ProxyTokens::default();
+        let token = tokens.issue("live-agent");
+        let sessions = ModelSessions::default();
+        let access = ModelAccess {
+            route: ModelRoute::Anthropic,
+            upstream: ModelUpstream::anthropic(
+                &provider_url,
+                UpstreamAuth::ApiKey(Secret::new(HOST_KEY)),
+            ),
+            region: None,
+        };
+        let _session = sessions.open("live-agent", access.upstream.clone());
+        let proxy = serve_for_tests(tokens, sessions).await;
+        let mut inputs = inputs();
+        inputs.proxy_token = token;
+        inputs.model_access = Some(access);
+        let mut plan = harness_plan(plan(&agent("runtime: claude-code\n"), inputs));
+        let workdir = tempfile::tempdir().unwrap();
+        plan.config.placement.host_workdir = workdir.path().to_path_buf();
+        plan.config.placement.name = format!(
+            "nandi-harness-live-{}",
+            &uuid::Uuid::new_v4().simple().to_string()[..8]
+        );
+        plan.config.placement.network = crate::sandbox::BRIDGE_NETWORK.to_string();
+        let (host, _home) = claude_code_host(None);
+        let profile = crate::services::harness::claude_code::ClaudeCodeAdapter::with_env(host);
+        let mut env = profile.profile().env(&plan.config);
+        for (name, value) in env.iter_mut() {
+            if name == "ANTHROPIC_BASE_URL" {
+                *value = format!("http://host.docker.internal:{}/anthropic", proxy.port());
+            }
+        }
+
+        // The container prints its env, then calls its model as Claude Code
+        // would: the base URL and ANTHROPIC_AUTH_TOKEN, nothing else
+        let script = "env; node -e \"fetch(process.env.ANTHROPIC_BASE_URL + '/v1/messages', \
+            {method: 'POST', headers: {authorization: 'Bearer ' + process.env.ANTHROPIC_AUTH_TOKEN, \
+            'content-type': 'application/json'}, body: '{}'}).then(async r => \
+            console.log('MODEL-CALL ' + r.status + ' ' + await r.text()))\"";
+        let invocation = Invocation::new("sh", &["-c", script]);
+        let names: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
+        let output = tokio::process::Command::new("docker")
+            .args(docker_args(&invocation, &names, &plan.config.placement))
+            .envs(env.iter().map(|(k, v)| (k, v)))
+            .stdin(std::process::Stdio::null())
+            .output()
+            .await
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(
+            !stdout.contains(HOST_KEY),
+            "the host's key reached the container"
+        );
+        assert!(
+            stdout.contains("ANTHROPIC_AUTH_TOKEN="),
+            "{stdout}\n{stderr}"
+        );
+        assert!(
+            stdout.contains(r#"MODEL-CALL 200 {"id":"msg_fake","type":"message"}"#),
+            "{stdout}\n{stderr}"
+        );
+        let names: Vec<&str> = stdout
+            .lines()
+            .filter_map(|line| line.split_once('=').map(|(name, _)| name))
+            .collect();
+        println!("Container env names: {names:?}");
+        println!("Model call through the proxy: 200, answered for the host's key");
+    }
 }

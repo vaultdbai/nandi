@@ -68,15 +68,19 @@ execute_run ─▶ harness_run (orchestrator.rs)
 
 ## Credentials by provider
 
-Credentials come from the user's own setup and reach only the CLI's
-process (see `harness-container.md`):
+Credentials come from the user's own setup and stay on the host. The
+plan's `ModelAccess` says which proxy route the CLI uses and what the host
+signs with (see `harness-container.md` and "Model passthrough" in
+`egress.md`):
 
-| Provider           | From                                                                   |
-| ------------------ | ---------------------------------------------------------------------- |
-| bedrock            | the AWS identity (`aws_auth::bedrock_credentials`): exported STS keys  |
-| anthropic (Claude) | Claude Code's own sign-in first; Nandi's Anthropic key only without it |
-| openai (Codex)     | Nandi's OpenAI key in the keyring, if any                              |
-| anything else      | nothing from Nandi: the CLI's own config and environment               |
+| Provider            | The host signs with                                                        |
+| ------------------- | -------------------------------------------------------------------------- |
+| bedrock             | the AWS identity, SigV4 (`aws_auth::bedrock_upstream`), or the Bedrock key |
+| anthropic (Claude)  | Claude Code's own setup first; Nandi's Anthropic key only without it       |
+| azure (Claude)      | Foundry at the repo's endpoint, with Claude Code's Foundry key             |
+| openai (Codex)      | Nandi's OpenAI key, else one in Nandi's environment                        |
+| the LiteLLM gateway | the gateway's master key                                                   |
+| anything else       | nothing: a custom CLI has the `/llm` proxy; Gemini CLI is refused          |
 
 The provider is `runtime_config.provider`, else `bedrock` with a gateway,
 else what detection found in the CLI's own config. That is how a machine

@@ -101,26 +101,30 @@ docker run -i --rm --init --name nandi-harness-<tag>-<agent>
   and every `HarnessConfig` names it. Only Nandi's own tool-less Claude SDK
   bridge runs a process on the host (`claude_sdk`, `adapter::spawn_piped`).
 
-## Credentials in the container
+## Credentials stay on the host
 
-The container has no `~/.aws`, `~/.claude`, `~/.codex`, or `~/.gemini`.
-What a session gets:
+The container has no `~/.aws`, `~/.claude`, `~/.codex`, or `~/.gemini`,
+and no provider key in its env. It gets the session's proxy token, and its
+CLI calls its model through the egress proxy, which adds the real
+credential on the host ("Model passthrough" in `egress.md`). What the
+host signs with, in order:
 
-- **Bedrock**: `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION`, and either
-  temporary STS keys resolved on the host from the user's AWS config (SSO,
-  static keys, assume-role, credential_process) or `AWS_BEARER_TOKEN_BEDROCK`.
-- **Claude Code subscription** (before any key): `CLAUDE_CODE_OAUTH_TOKEN`,
-  the one in the environment or Claude Code's settings (from
-  `claude setup-token`, long-lived), else the access token of the host's
-  sign-in (`~/.claude/.credentials.json`, or the macOS keychain item
+- **Bedrock**: the user's AWS identity from their AWS config (SSO, static
+  keys, assume-role, credential_process), signing each call with SigV4,
+  else `AWS_BEARER_TOKEN_BEDROCK`.
+- **Claude Code's own setup**: Foundry, a gateway token or key in its
+  settings, else a subscription: `CLAUDE_CODE_OAUTH_TOKEN` (from
+  `claude setup-token`), else the access token of the host's sign-in
+  (`~/.claude/.credentials.json`, or the macOS keychain item
   `Claude Code-credentials`) while it has 15+ minutes left. The refresh
   token never leaves the host.
-- **Anthropic, OpenAI, Gemini keys, last**: `ANTHROPIC_API_KEY` from
-  Nandi's keyring only when Claude Code has no sign-in of its own;
-  `OPENAI_API_KEY`, `GEMINI_API_KEY` from the keyring or the environment.
+- **Anthropic and OpenAI keys, last**: Nandi's Anthropic key only when
+  Claude Code has nothing of its own; for Codex, Nandi's OpenAI key, else
+  `CODEX_API_KEY` or `OPENAI_API_KEY` from Nandi's environment.
   With nothing to sign in with, a container run is refused before it
   starts.
-- **Not supported in the container**: ChatGPT and Google OAuth logins.
+- **Not supported in the container**: Gemini CLI, a ChatGPT login and
+  Azure OpenAI for Codex, Vertex for Claude Code.
 
 The order and the reasons (no mounts of `~/.claude` or `~/.aws`) are in
 `sign-in.md`. `HarnessHealth.auth` names the sign-in, and
@@ -144,9 +148,11 @@ and others on Bedrock, Nandi runs the official LiteLLM image
 - Config rendered from `litellm-config-template.yaml`. Model aliases
   `nandi-bedrock` and `nandi-bedrock-small` map to `bedrock/<model>`, and the
   file holds no secrets.
-- AWS credentials and a per-start master key go into the container's
-  environment. Claude Code gets `ANTHROPIC_BASE_URL=http://nandi-litellm:4000`
-  and the master key as `ANTHROPIC_AUTH_TOKEN`.
+- AWS credentials (`GatewayAwsKeys`) and a per-start master key go into
+  the gateway container's environment, never an agent's. The gateway is not
+  on `nandi-agents`: Claude Code reaches it through the proxy's
+  `/anthropic` route with its proxy token, and the host adds the master
+  key (`GatewayService::session_upstream`).
 
 ```bash
 docker pull ghcr.io/berriai/litellm:v1.102.0

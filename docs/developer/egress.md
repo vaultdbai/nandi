@@ -13,17 +13,42 @@ agent ──nandi-agents──▶ nandi-egress:11435 ──bridge──▶ host 
 - The relay runs from the image starting an agent (`relay.py` in `nandi-runtime`, `relay.mjs` in `nandi-harness`), read-only, no capabilities, no env. It's recreated when the proxy took another port (label `org.nandi.egress.target`).
 - Where the relay reaches the proxy: Docker Desktop (Windows, macOS) forwards `host.docker.internal` to the host's loopback. On a Linux engine `host-gateway` is the default bridge's gateway (`172.17.0.1` usually), so `relay::ensure_ready` reads it (`docker network inspect bridge`) and `egress::listen_on_bridge_gateway` binds the proxy's port on that one address as well, once per address, before the relay starts. Never `0.0.0.0` or another interface; the token check stays the guard. Nothing happens when this process runs no proxy or the relay is pointed at another process's port; an address that isn't the host's (Docker Desktop for Linux keeps the bridge in its VM) is skipped; any other bind failure stops the agent from starting.
 - A pre-existing `nandi-agents` that isn't internal is refused, not used.
-- The LiteLLM gateway joins `nandi-agents` too, so coding agents reach `nandi-litellm:4000` directly.
+- The LiteLLM gateway is not on `nandi-agents`. Coding agents reach it only through the proxy's `/anthropic` route (see "Model passthrough").
 - Stdio MCP connectors run in their own container on `nandi-agents` too (`connectors/mcp.rs`, `Placement::Container`). Their proxy identity is `connector:<id>` (`ProxyTokens`, issued when the container starts). They may reach the package registries (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`) and the hosts in their `config.network` list in `connectors.yaml`, nothing else. A connector runs on the host only for agents whose policy lists it in `connectors.run_on_host`.
-- Settings' "Test harness" session runs on `nandi-agents` like a run (`runtime_router::plan_test_session`). Its proxy identity is `harness-test:<harness id>` (`harness::test_identity`): it has no `network.allow`, so it reaches only its CLI's model hosts while the session is open, and its token is revoked when the test ends.
-- Coding agents' own model calls go through the `CONNECT` tunnel. The hosts their provider needs (`api.anthropic.com`, `api.openai.com`, …; `runtime_router::model_hosts`) are allowed on top of `network.allow` while their run lasts (`egress::allow_session_hosts`).
+- Settings' "Test harness" session runs on `nandi-agents` like a run (`runtime_router::plan_test_session`). Its proxy identity is `harness-test:<harness id>` (`harness::test_identity`): it has no `network.allow`, so it reaches only its model route while the session is open, and its token is revoked when the test ends.
+- Coding agents' own model calls go to the proxy's model routes, never through the tunnel (see "Model passthrough"). Only Claude Code on Vertex from its own settings still needs a model host (`runtime_router::model_hosts`, allowed while the run lasts by `egress::allow_session_hosts`).
 
-| Route                          | Module          | What it does                                             |
-| ------------------------------ | --------------- | -------------------------------------------------------- |
-| `POST /llm`                    | `llm_proxy.rs`  | LLM completions with host-held provider keys             |
-| `POST /aws/{service}/{action}` | `aws_proxy.rs`  | AWS calls as the agent's identity (MVP: S3 Get/Put/List) |
-| `POST /fetch`                  | `http_proxy.rs` | HTTP requests to hosts in `network.allow`                |
-| `CONNECT host:443`             | `tunnel.rs`     | HTTPS tunnels for tools that honor `HTTPS_PROXY`         |
+| Route                          | Module           | What it does                                             |
+| ------------------------------ | ---------------- | -------------------------------------------------------- |
+| `POST /llm`                    | `llm_proxy.rs`   | LLM completions with host-held provider keys             |
+| `/anthropic/v1/messages`, …    | `model_proxy.rs` | A harness CLI's model calls; the host adds the key       |
+| `/bedrock/model/{id}/{action}` | `model_proxy.rs` | Bedrock calls the host signs with SigV4 (`sigv4.rs`)     |
+| `/openai/v1/responses`, …      | `model_proxy.rs` | Codex's model calls; the host adds the OpenAI key        |
+| `POST /aws/{service}/{action}` | `aws_proxy.rs`   | AWS calls as the agent's identity (MVP: S3 Get/Put/List) |
+| `POST /fetch`                  | `http_proxy.rs`  | HTTP requests to hosts in `network.allow`                |
+| `CONNECT host:443`             | `tunnel.rs`      | HTTPS tunnels for tools that honor `HTTPS_PROXY`         |
+
+## Model passthrough
+
+Harness CLIs (Claude Code, Codex) never hold a provider credential. Each
+speaks its provider's own API to the proxy, with the session's proxy token
+where the key would go (`services/egress/model_proxy.rs`):
+
+| CLI and provider               | Container env                                                                                                                           | The host adds                             |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Claude Code: key, subscription | `ANTHROPIC_BASE_URL=http://nandi-egress:11435/anthropic`, token in `ANTHROPIC_AUTH_TOKEN`                                               | `x-api-key`, or the subscription bearer   |
+| Claude Code: team gateway      | the same                                                                                                                                | the gateway's token                       |
+| Claude Code: LiteLLM gateway   | the same                                                                                                                                | the master key                            |
+| Claude Code: Foundry           | `CLAUDE_CODE_USE_FOUNDRY=1`, `ANTHROPIC_FOUNDRY_BASE_URL=…/anthropic`, token in `ANTHROPIC_FOUNDRY_API_KEY`                             | the Foundry key                           |
+| Claude Code: Bedrock           | `CLAUDE_CODE_USE_BEDROCK=1`, `CLAUDE_CODE_SKIP_BEDROCK_AUTH=1`, `ANTHROPIC_BEDROCK_BASE_URL=…/bedrock`, token in `ANTHROPIC_AUTH_TOKEN` | a SigV4 signature, or the Bedrock API key |
+| Codex                          | a `nandi` model provider at `…/openai/v1` (`-c` overrides), token in `OPENAI_API_KEY`                                                   | the OpenAI key                            |
+
+- **The plan holds the upstream.** `runtime_router` decides each session's `ModelAccess`: the `ModelRoute` the CLI is told (no secret) and the `ModelUpstream` the host signs with. `execute_harness_run` and the test session open it with `ModelSessions::open` and the guard closes it when the session ends.
+- **Refusals.** A missing, wrong or revoked token gets 401. A token whose session is closed, or open on another API, gets 403. A path that isn't a model call gets 404, so LiteLLM's admin routes stay out of reach although the host holds the master key.
+- **Bedrock is signed on the host.** STS could narrow only long-term keys, and SSO keys can't be narrowed without a role, so the host signs each call as the user's own identity instead (`sigv4::AwsSigner`, keys re-resolved before they expire). Nothing AWS goes into the container.
+- **LiteLLM virtual keys** need a Postgres database in v1.102.0. The per-session proxy token gives the same isolation without one.
+- **Not supported in the container:** Gemini CLI (no route yet: each of its sign-ins would put a credential in), a ChatGPT login and Azure OpenAI for Codex, Vertex for Claude Code.
+- Calls are audited to `egress.log` as `llm` entries (method and path, no query).
 
 ## Rules
 
@@ -79,14 +104,14 @@ Sessions are cached per `(agent_id, sha256(policy), profile)` until 60s before t
 
 `runtime::start_container` takes its proxy env from `EgressState::container_env`; harness containers get the same (`egress::proxy_env`, through `runtime_router::plan`):
 
-| Variable                                    | Value                                            |
-| ------------------------------------------- | ------------------------------------------------ |
-| `NANDI_LLM_PROXY`, `NANDI_LLM_PROXY_URL`    | `http://nandi-egress:11435/llm`                  |
-| `NANDI_LLM_PROXY_TOKEN`                     | Per-container proxy token                        |
-| `NANDI_AWS_PROXY`                           | `http://nandi-egress:11435/aws`                  |
-| `NANDI_FETCH_PROXY`                         | `http://nandi-egress:11435/fetch`                |
-| `HTTPS_PROXY`, `HTTP_PROXY` (and lowercase) | `http://nandi:<token>@nandi-egress:11435`        |
-| `NO_PROXY`, `no_proxy`                      | `nandi-egress,nandi-litellm,localhost,127.0.0.1` |
+| Variable                                    | Value                                     |
+| ------------------------------------------- | ----------------------------------------- |
+| `NANDI_LLM_PROXY`, `NANDI_LLM_PROXY_URL`    | `http://nandi-egress:11435/llm`           |
+| `NANDI_LLM_PROXY_TOKEN`                     | Per-container proxy token                 |
+| `NANDI_AWS_PROXY`                           | `http://nandi-egress:11435/aws`           |
+| `NANDI_FETCH_PROXY`                         | `http://nandi-egress:11435/fetch`         |
+| `HTTPS_PROXY`, `HTTP_PROXY` (and lowercase) | `http://nandi:<token>@nandi-egress:11435` |
+| `NO_PROXY`, `no_proxy`                      | `nandi-egress,localhost,127.0.0.1`        |
 
 ## Testing
 

@@ -351,6 +351,19 @@ pub(super) fn router(state: ModelProxyState) -> Router {
         .with_state(state)
 }
 
+/// The model routes alone on a loopback port, for live tests
+#[cfg(test)]
+pub(crate) async fn serve_for_tests(
+    tokens: ProxyTokens,
+    sessions: ModelSessions,
+) -> std::net::SocketAddr {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let app = router(ModelProxyState::new(tokens, sessions));
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    address
+}
+
 /// The proxy token a CLI sends where its provider key would go
 fn proxy_token(headers: &HeaderMap) -> Option<&str> {
     super::llm_proxy::bearer_token(headers).or_else(|| {

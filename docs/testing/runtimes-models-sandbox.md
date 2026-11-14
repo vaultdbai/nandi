@@ -146,7 +146,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - **Where:** Settings → Models & runtimes → Coding agents → card → Test connection. `rpc/harnesses.rs` (`test_harness`), `services/harness/mod.rs` (`HarnessService::test`, `test_identity`), `services/orchestrator/runtime_router.rs` (`plan_test_session`, `test_session_plan`), `services/egress/mod.rs` (`capabilities_of`). HTTP `POST /api/rpc/test_harness`.
 - **Preconditions:** CLI detected; a sign-in.
 - **Steps:** 1. Click Test connection on Claude Code. 2. Repeat with no sign-in. 3. Repeat with the CLI uninstalled.
-- **Expected:** "Connection works" or "Connection failed" with the error; uninstalled gives `NotInstalled`. Temp folder `nandi-harness-test-<uuid>` under the OS temp dir; container `nandi-harness-test-<12 chars>` on `nandi-agents`. Request timeout 90 s. Its proxy identity is `harness-test:<harness id>`: it reaches only the CLI's model hosts, only while the session is open, and its token is revoked after.
+- **Expected:** "Connection works" or "Connection failed" with the error; uninstalled gives `NotInstalled`. Temp folder `nandi-harness-test-<uuid>` under the OS temp dir; container `nandi-harness-test-<12 chars>` on `nandi-agents`. Request timeout 90 s. Its proxy identity is `harness-test:<harness id>`: it reaches only its model route on the proxy, only while the session is open, and its token is revoked after.
 - **Edge / negative cases:** image missing (the image is pulled first; if that fails the test fails with the reason, never runs on the host); Docker not running (fails with the reason); custom harness without a registered command.
 - **Automation:** Covered by: `harness-ui.test.tsx`; Rust `runtime_router` tests (`the_test_session_is_planned_like_a_run_in_its_own_container`, `a_test_session_that_cannot_start_says_why`), `egress` (`a_harness_test_session_reaches_only_its_model_hosts_while_it_is_open`); live `sandbox_suite::the_test_harness_session_runs_on_the_agents_network` (ignored: Docker) | Layer: unit + live | Gap: a real CLI and sign-in stay manual.
 - **Needs relay:** no
@@ -218,15 +218,15 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - **Needs relay:** no
 - **Status:** Removed (2026-10-22, no legacy support)
 
-### RT-17 — Credentials handed to the harness container (company identity first, keys last)
+### RT-17 — Credentials stay on the host; the harness container gets only a proxy token (company identity first, keys last)
 
-- **What:** The container gets only env values for one session, passed as `-e NAME` (value from the docker process env, never on a command line): Bedrock (team/agent choice) as temporary STS keys plus `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION` (or `AWS_BEARER_TOKEN_BEDROCK`); else Claude Code's own sign-in (`CLAUDE_CODE_OAUTH_TOKEN` from env/settings or the host login's access token with 15+ min left); else `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` from the keyring or env. No `~/.claude`, `~/.aws`, `~/.codex`, `~/.gemini` mounts. With nothing to sign in with, the run is refused before the container starts.
-- **Where:** `services/orchestrator/runtime_router.rs` (`credentials`), `services/harness/claude_code.rs` (`env`), `services/harness/detection.rs` (`claude_code_oauth_token`), `services/harness/aws_auth.rs` (`bedrock_credentials`). Docs `sign-in.md`, `harness-container.md`.
+- **What:** No provider credential enters a harness container. The CLI calls its model through the egress proxy with its session's proxy token, and the host adds the credential: Bedrock signed with SigV4 as the user's AWS identity (or the Bedrock API key); else Claude Code's own setup (Foundry, a gateway token or key, a subscription token from `CLAUDE_CODE_OAUTH_TOKEN` or the host login with 15+ min left); else Nandi's Anthropic key. Codex: Nandi's OpenAI key, else `CODEX_API_KEY` / `OPENAI_API_KEY` from Nandi's environment. Gemini CLI is refused with a reason. No `~/.claude`, `~/.aws`, `~/.codex`, `~/.gemini` mounts. With nothing to sign in with, the run is refused before the container starts.
+- **Where:** `services/orchestrator/runtime_router.rs` (`claude_code_access`, `bedrock_access`, `codex_access`, `ModelAccess`), `services/egress/model_proxy.rs` (`/anthropic`, `/bedrock`, `/openai`), `services/egress/sigv4.rs`, `services/harness/claude_code.rs` (`host_upstream`, `env`), `services/harness/codex.rs`, `services/harness/aws_auth.rs` (`bedrock_upstream`), `services/harness/detection.rs` (`claude_code_oauth_token`). Docs `sign-in.md`, `harness-container.md`, `egress.md` ("Model passthrough").
 - **Preconditions:** Docker + image; one of: AWS profile, Claude Code login, API key.
-- **Steps:** 1. Run with only a Claude Code login. 2. With `.nandi/llm.yaml provider: bedrock` and an SSO profile. 3. With an expired SSO session. 4. With nothing.
-- **Expected:** `docker inspect` shows env names with values only inside the container; no host config mounts. 3 fails with `aws sso login --profile <p>`. 4 refused up front with guidance (fix `918d712`).
-- **Edge / negative cases:** refresh token never leaves the host; ChatGPT/Google OAuth not supported in the container.
-- **Automation:** Covered by: `claude_code.rs`, `aws_auth.rs`, `runtime_router.rs`, `detection.rs` tests | Layer: unit + manual | Gap: raw keys are still readable by agent code in the container (moved to Wave 3, model access through the gateway; see Gaps and planned).
+- **Steps:** 1. Run with only a Claude Code login. 2. With `.nandi/llm.yaml provider: bedrock` and an SSO profile. 3. With an expired SSO session. 4. With nothing. 5. During a run, `docker exec <container> env`.
+- **Expected:** 1 and 2 answer. 5 shows `ANTHROPIC_BASE_URL` (or `ANTHROPIC_BEDROCK_BASE_URL`) at `http://nandi-egress:11435/...` and the proxy token in `ANTHROPIC_AUTH_TOKEN`; no key, no AWS keys, no OAuth token. 3 fails with `aws sso login --profile <p>`. 4 refused up front with guidance. After the run the token gets 401.
+- **Edge / negative cases:** refresh token never leaves the host; a wrong or revoked token gets 401, a closed session 403, a non-model path 404; ChatGPT login, Azure OpenAI, Vertex and Gemini CLI not supported in the container.
+- **Automation:** Covered by: `runtime_router.rs` (`no_harness_container_gets_a_secret_whatever_the_host_holds`: every session with every credential source set), `model_proxy.rs` and `sigv4.rs` tests (token swap, refusals, SigV4), `claude_code.rs`, `codex.rs`, `aws_auth.rs`, `detection.rs` tests; live `a_container_calls_its_model_with_only_the_proxy_token_live` (ignored: Docker; a fake provider) | Layer: unit + live | Gap: a real provider call stays manual.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -570,12 +570,12 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### MD-21 — LiteLLM gateway for third-party Bedrock models
 
-- **What:** For a third-party Bedrock model, "Start gateway" runs `ghcr.io/berriai/litellm:v1.102.0` as `nandi-litellm` on Docker network `nandi-harness` (its way to Bedrock) and, since #9, also on the internal `nandi-agents` (so coding agents reach it directly, and it is in their `NO_PROXY`), published on `127.0.0.1:4000` for its health check, with aliases `nandi-bedrock` / `nandi-bedrock-small`, AWS credentials and a per-start master key in its env (config file has no secrets); Claude Code gets `ANTHROPIC_BASE_URL=http://nandi-litellm:4000`. Status shows running/stopped and "Serving <model> at <endpoint>", with Stop.
+- **What:** For a third-party Bedrock model, "Start gateway" runs `ghcr.io/berriai/litellm:v1.102.0` as `nandi-litellm` on Docker network `nandi-harness` (its way to Bedrock) only, published on `127.0.0.1:4000`, with aliases `nandi-bedrock` / `nandi-bedrock-small`, AWS credentials and a per-start master key in its env (config file has no secrets). Coding agents reach it only through the egress proxy's `/anthropic` route with their proxy token; the host adds the master key and forwards only model calls. Status shows running/stopped and "Serving <model> at <endpoint>", with Stop.
 - **Where:** Bedrock models block → Start gateway / `LitellmGatewayStatus.tsx`; `rpc/bedrock.rs` (`start_litellm_gateway`, `stop_litellm_gateway`, `get_litellm_gateway_status`), `services/harness/gateway.rs`, `runtimes/nandi-harness/litellm-config-template.yaml`. HTTP `POST /api/rpc/get_litellm_gateway_status`, `POST /api/rpc/start_litellm_gateway`, `POST /api/rpc/stop_litellm_gateway`. Event `bedrock://gateway_status`.
 - **Preconditions:** Docker, AWS sign-in, image pullable.
 - **Steps:** 1. Pick a Llama model, Start gateway. 2. `docker ps`. 3. Run a `runtime: claude-code` agent with `runtime_config.gateway: litellm`. 4. Stop.
-- **Expected:** Ready within 90 s; container on `127.0.0.1:4000`; `docker inspect nandi-litellm` lists both `nandi-harness` and `nandi-agents` (checklist 4.10); agent run goes through it with no model hosts opened on the proxy (SB-15); Stop removes it.
-- **Edge / negative cases:** invalid model id rejected (`valid_model_id`); readiness timeout; agent needing a different model restarts it; attaching to `nandi-agents` fails ("Could not attach the gateway to the agents' network", container removed).
+- **Expected:** Ready within 90 s; container on `127.0.0.1:4000`; `docker inspect nandi-litellm` lists only `nandi-harness`; agent run goes through it with no model hosts opened on the proxy (SB-15) and no master key in the agent container's env; Stop removes it.
+- **Edge / negative cases:** invalid model id rejected (`valid_model_id`); readiness timeout; agent needing a different model restarts it; a call to a LiteLLM admin route through the proxy gets 404.
 - **Automation:** Covered by: `gateway.rs` tests | Layer: manual | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
@@ -766,7 +766,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### SB-11 — Egress environment injected into agent containers
 
-- **What:** Native and (since #9) coding-agent containers get `NANDI_LLM_PROXY`, `NANDI_LLM_PROXY_URL` (`http://nandi-egress:11435/llm`), `NANDI_LLM_PROXY_TOKEN`, `NANDI_AWS_PROXY`, `NANDI_FETCH_PROXY`, `HTTPS_PROXY`/`https_proxy` and `HTTP_PROXY`/`http_proxy` (`http://nandi:<token>@nandi-egress:11435`), `NO_PROXY`/`no_proxy` (`nandi-egress,nandi-litellm,localhost,127.0.0.1`), and `AWS_*` for `sts` native agents. Only `NANDI_*` names.
+- **What:** Native and (since #9) coding-agent containers get `NANDI_LLM_PROXY`, `NANDI_LLM_PROXY_URL` (`http://nandi-egress:11435/llm`), `NANDI_LLM_PROXY_TOKEN`, `NANDI_AWS_PROXY`, `NANDI_FETCH_PROXY`, `HTTPS_PROXY`/`https_proxy` and `HTTP_PROXY`/`http_proxy` (`http://nandi:<token>@nandi-egress:11435`), `NO_PROXY`/`no_proxy` (`nandi-egress,localhost,127.0.0.1`), and `AWS_*` for `sts` native agents. Only `NANDI_*` names.
 - **Where:** `services/egress/mod.rs` (`proxy_env`, `container_env`), `runtime.rs` (`start_container`), `services/orchestrator/runtime_router.rs` (`plan`, for harness containers).
 - **Preconditions:** Running native container.
 - **Steps:** 1. Run `env` via a native agent's shell tool. 2. Ask a claude-code agent to run `env`.
@@ -819,7 +819,6 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ## Gaps and planned (not testable yet)
 
-- No raw keys in coding-agent containers: they still receive `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `AWS_*` readable by agent code. Moved from Wave 1 to Wave 3, "model access through the gateway": every provider through the LiteLLM gateway with a per-run key; open question whether a Claude subscription sign-in works through a gateway (`docs/tasks-todo/task-x-enforced-policies.md`).
 - Harness Test connection: falls back to the host when the image is missing, and its container isn't on `nandi-agents` (RT-10; checklist "Known gaps").
 - Gemini CLI telemetry host `play.googleapis.com` is refused by the proxy (SB-15).
 - Policy work still open (workflow steps, the gateway): see [policies.md](./policies.md) "Gaps and planned".

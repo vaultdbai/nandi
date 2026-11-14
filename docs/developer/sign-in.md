@@ -17,19 +17,24 @@ Two rules shape this:
 
 ## Coding agents in the container
 
-`runtime_router::credentials` and `claude_code::ClaudeCode::env`, in order:
+What the host signs a Claude Code session's model calls with
+(`runtime_router::claude_code_access`, `bedrock_access`), in order. None
+of it enters the container: the CLI calls the egress proxy with its
+session's proxy token, and the proxy adds the credential ("Model
+passthrough" in `egress.md`).
 
 1. **The team's or agent's Bedrock choice** (`.nandi/llm.yaml`
    `provider: bedrock`, or `runtime_config.provider: bedrock`). The host
    resolves the AWS profile with the AWS SDK's own chain (SSO cache, SAML
-   or `credential_process` helpers, assume-role, keys) into temporary STS
-   keys (`aws_auth::bedrock_credentials`). Only those keys and
-   `CLAUDE_CODE_USE_BEDROCK=1` enter the container. An expired SSO session
-   fails the run with `aws sso login --profile <p>`.
-2. **Claude Code's own setup**: the provider switches in its settings
-   (Bedrock, Vertex, Foundry, including IT-managed ones), or the host
-   login's access token as `CLAUDE_CODE_OAUTH_TOKEN`. The token comes from
-   `~/.claude/.credentials.json`, or on macOS from the `Claude
+   or `credential_process` helpers, assume-role, keys) and signs each call
+   with SigV4 (`aws_auth::bedrock_upstream`). The container gets only
+   `CLAUDE_CODE_USE_BEDROCK=1`, `CLAUDE_CODE_SKIP_BEDROCK_AUTH=1`,
+   `AWS_REGION` and the proxy URL. An expired SSO session fails the run
+   with `aws sso login --profile <p>`.
+2. **Claude Code's own setup** (`claude_code::host_upstream`): Foundry, a
+   gateway token or key in its settings, else the host login's access
+   token. The token comes from `CLAUDE_CODE_OAUTH_TOKEN`, else
+   `~/.claude/.credentials.json`, or on macOS the `Claude
 Code-credentials` keychain item. It must have 15+ minutes left. The
    refresh token never leaves the host.
 3. **Nandi's Anthropic key**, only when 2 found nothing.
