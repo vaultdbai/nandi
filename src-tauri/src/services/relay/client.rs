@@ -117,7 +117,8 @@ fn not_acked(mail_id: u64, why: &str) {
 /// How often the client heartbeats
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
-/// How long `register`, `query_capability`, and `delegate_task` wait
+/// How long `register`, `query_capability`, and `delegate_task` wait by
+/// default ([`ClientOptions::request_timeout`])
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The longest wait between reconnect attempts
@@ -220,16 +221,20 @@ impl<K: Eq + Hash, V: Clone> Pending<K, V> {
     }
 }
 
-/// Waits up to [`REQUEST_TIMEOUT`] for the relay to answer what `rx` was
-/// parked for. A call dropped unanswered means the connection went
+/// Waits up to `within` for the relay to answer what `rx` was parked for.
+/// A call dropped unanswered means the connection went
 /// ([`super::RelayUnavailable`]); a timeout says the relay didn't `what`.
-async fn await_reply<V>(rx: oneshot::Receiver<Result<V, String>>, what: &str) -> Result<V, String> {
-    match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
+async fn await_reply<V>(
+    rx: oneshot::Receiver<Result<V, String>>,
+    what: &str,
+    within: Duration,
+) -> Result<V, String> {
+    match tokio::time::timeout(within, rx).await {
         Ok(Ok(answer)) => answer,
         Ok(Err(_)) => Err(super::RelayUnavailable.into()),
         Err(_) => Err(format!(
             "The relay didn't {what} within {}s",
-            REQUEST_TIMEOUT.as_secs()
+            within.as_secs_f32()
         )),
     }
 }
@@ -335,6 +340,7 @@ struct Inner {
     handlers: Mutex<Handlers>,
     bus: Option<EventBus>,
     heartbeat_every: Duration,
+    request_timeout: Duration,
     presence_store: Option<PresenceStore>,
     device_keys: Option<DeviceKeysSource>,
     peer_keys: Arc<dyn PeerKeyBook>,
@@ -354,6 +360,9 @@ pub struct WsRelayClient {
 /// stores nothing.
 pub struct ClientOptions {
     pub heartbeat_every: Duration,
+    /// How long a call waits for the relay's answer ([`REQUEST_TIMEOUT`];
+    /// tests of a lost answer shorten it)
+    pub request_timeout: Duration,
     /// Called with every card at the relay whenever presence changes
     pub presence_store: Option<PresenceStore>,
     /// This device's keys: what it seals and opens with, and the public
@@ -378,6 +387,7 @@ impl Default for ClientOptions {
     fn default() -> Self {
         Self {
             heartbeat_every: HEARTBEAT_INTERVAL,
+            request_timeout: REQUEST_TIMEOUT,
             presence_store: None,
             device_keys: None,
             peer_keys: None,
@@ -408,6 +418,7 @@ impl WsRelayClient {
                 handlers: Mutex::new(Handlers::default()),
                 bus,
                 heartbeat_every: options.heartbeat_every,
+                request_timeout: options.request_timeout,
                 presence_store: options.presence_store,
                 device_keys: options.device_keys,
                 peer_keys: options
@@ -422,6 +433,15 @@ impl WsRelayClient {
 }
 
 impl Inner {
+    /// [`await_reply`] within this client's request timeout
+    async fn await_reply<V>(
+        &self,
+        rx: oneshot::Receiver<Result<V, String>>,
+        what: &str,
+    ) -> Result<V, String> {
+        await_reply(rx, what, self.request_timeout).await
+    }
+
     fn lock(&self) -> MutexGuard<'_, Shared> {
         self.shared.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -593,7 +613,8 @@ impl Inner {
         self.send(RelayMessage::PublicKeysQuery {
             instance_ids: vec![instance.to_string()],
         })?;
-        await_reply(rx, &format!("answer for {instance}'s keys")).await
+        self.await_reply(rx, &format!("answer for {instance}'s keys"))
+            .await
     }
 
     /// Starts the opener task, once
@@ -989,7 +1010,7 @@ impl Inner {
             attempts,
         };
         self.send(message)?;
-        let held = await_reply(rx, "take the task").await.map_err(|e| {
+        let held = self.await_reply(rx, "take the task").await.map_err(|e| {
             if e.starts_with(REFUSED_BY_RELAY) {
                 e
             } else {
@@ -1003,7 +1024,7 @@ impl Inner {
     async fn reassign_at_relay(&self, message: RelayMessage, task_id: &str) -> Result<(), String> {
         let rx = self.lock().waiting_reassign.insert(task_id.to_string());
         self.send(message)?;
-        await_reply(rx, "answer").await
+        self.await_reply(rx, "answer").await
     }
 
     /// Asks for what waits in our mailbox, when registered
@@ -1268,10 +1289,10 @@ impl Inner {
         let request_id = uuid::Uuid::new_v4().to_string();
         let rx = self.lock().waiting_groups.insert(request_id.clone());
         self.send(RelayMessage::GroupRequest { request_id, op })?;
-        await_reply(rx, "answer").await
+        self.await_reply(rx, "answer").await
     }
 
-    /// Waits (up to [`REQUEST_TIMEOUT`]) until the relay confirms our
+    /// Waits (up to the request timeout) until the relay confirms our
     /// registration: it refuses queries before that, and on a fresh
     /// connection presence and the network directory ask right away
     async fn until_registered(&self) -> Result<(), String> {
@@ -1285,7 +1306,7 @@ impl Inner {
             }
             shared.waiting_registered.insert(())
         };
-        match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
+        match tokio::time::timeout(self.request_timeout, rx).await {
             Ok(Ok(result)) => result,
             // Dropped, or connected but still not registered: as good as
             // not connected
@@ -1305,7 +1326,7 @@ impl Inner {
             (rx, message)
         };
         self.send(message)?;
-        await_reply(rx, "answer").await
+        self.await_reply(rx, "answer").await
     }
 
     async fn refresh_presence(self: Arc<Self>) {
@@ -1624,7 +1645,7 @@ impl RelayClient for WsRelayClient {
                     .map_err(|_| String::from(super::RelayUnavailable))?;
                 rx
             };
-            await_reply(rx, "confirm the registration").await
+            self.inner.await_reply(rx, "confirm the registration").await
         }
         .boxed()
     }
@@ -1901,7 +1922,7 @@ impl RelayClient for WsRelayClient {
             let rx = self.inner.lock().waiting_directory.insert(());
             self.inner
                 .send(RelayMessage::QueryDirectory { since: None })?;
-            await_reply(rx, "list its members").await
+            self.inner.await_reply(rx, "list its members").await
         }
         .boxed()
     }
@@ -1922,7 +1943,7 @@ impl RelayClient for WsRelayClient {
                 topic: topic.to_string(),
                 limit,
             })?;
-            await_reply(rx, "search").await
+            self.inner.await_reply(rx, "search").await
         }
         .boxed()
     }
@@ -1962,7 +1983,7 @@ impl RelayClient for WsRelayClient {
                 query_id,
                 query: query.clone(),
             })?;
-            await_reply(rx, "route").await
+            self.inner.await_reply(rx, "route").await
         }
         .boxed()
     }
@@ -1999,7 +2020,7 @@ impl RelayClient for WsRelayClient {
                 (rx, message)
             };
             self.inner.send(message)?;
-            await_reply(rx, "answer").await
+            self.inner.await_reply(rx, "answer").await
         }
         .boxed()
     }
@@ -2107,7 +2128,9 @@ mod tests {
         let mut pending: Pending<(), ()> = Pending::default();
         let dropped = pending.insert(());
         drop(pending);
-        let error = await_reply(dropped, "answer").await.unwrap_err();
+        let error = await_reply(dropped, "answer", REQUEST_TIMEOUT)
+            .await
+            .unwrap_err();
         assert!(super::super::RelayUnavailable::is(&error), "{error}");
     }
 
