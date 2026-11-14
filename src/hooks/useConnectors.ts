@@ -2,19 +2,15 @@
  * Connector list and status, kept live by `connector://` events.
  */
 import { useEffect } from 'react'
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { AgentConnectorChoice, JsonValue } from '@/lib/bindings'
-import {
-  unwrapResult,
-  type ConnectorInfo,
-  type ConnectorStatus,
+import type {
+  ConnectorInfo,
+  ConnectorStatus,
+  Result,
 } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /**
  * Fields the backend adds to `ConnectorInfo`/`ConnectorStatus` that the
@@ -92,92 +88,70 @@ function useConnectorEvents() {
 /** The catalog plus everything declared in `.nandi/connectors.yaml` */
 export function useConnectors() {
   useConnectorEvents()
-  return useQuery({
-    queryKey: connectorsQueryKeys.list,
-    queryFn: async () =>
-      (await client.listConnectors().then(unwrapResult)) as ConnectorDetails[],
-  })
+  return useClientQuery(
+    connectorsQueryKeys.list,
+    () => client.listConnectors() as Promise<Result<ConnectorDetails[], string>>
+  )
 }
 
 export type ConnectorAction = 'install' | 'start' | 'stop'
 
 /** Install, start, or stop; the list refreshes from the events */
 export function useConnectorAction() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, action }: { id: string; action: ConnectorAction }) => {
+  return useClientMutation(
+    ({ id, action }: { id: string; action: ConnectorAction }) => {
       switch (action) {
         case 'install':
-          return client.installConnector(id).then(unwrapResult)
+          return client.installConnector(id)
         case 'start':
-          return client.startConnector(id).then(unwrapResult)
+          return client.startConnector(id)
         case 'stop':
-          return client.stopConnector(id).then(unwrapResult)
+          return client.stopConnector(id)
       }
     },
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),
-  })
+    { invalidates: connectorsQueryKeys.all }
+  )
 }
 
 /** Saves a secret (an empty value clears it); the value never comes back */
 export function useSetConnectorSecret() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      id,
-      key,
-      value,
-    }: {
-      id: string
-      key: string
-      value: string
-    }) => client.setConnectorSecret(id, key, value).then(unwrapResult),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),
-  })
+  return useClientMutation(
+    ({ id, key, value }: { id: string; key: string; value: string }) =>
+      client.setConnectorSecret(id, key, value),
+    { invalidates: connectorsQueryKeys.all }
+  )
 }
 
 /** Replaces an installed connector's settings (written to the gold copy) */
 export function useConfigureConnector() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      id,
-      config,
-    }: {
-      id: string
-      config: Record<string, JsonValue>
-    }) => client.configureConnector(id, config).then(unwrapResult),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),
-  })
+  return useClientMutation(
+    ({ id, config }: { id: string; config: Record<string, JsonValue> }) =>
+      client.configureConnector(id, config),
+    { invalidates: connectorsQueryKeys.all }
+  )
 }
 
 /** Which agents get each of a filesystem connector's shared folders */
 export function useFolderUsers(connectorId: string) {
-  return useQuery({
-    queryKey: [...connectorsQueryKeys.all, 'folder-users', connectorId],
-    queryFn: () => client.listFolderUsers(connectorId).then(unwrapResult),
-  })
+  return useClientQuery(
+    [...connectorsQueryKeys.all, 'folder-users', connectorId],
+    () => client.listFolderUsers(connectorId)
+  )
 }
 
 /** The connectors an agent's skill.md declares, with its folders */
 export function useAgentConnectors(agentId: string) {
-  return useQuery({
-    queryKey: connectorsQueryKeys.agent(agentId),
-    queryFn: () => client.getAgentConnectors(agentId).then(unwrapResult),
-  })
+  return useClientQuery(connectorsQueryKeys.agent(agentId), () =>
+    client.getAgentConnectors(agentId)
+  )
 }
 
 /** Replaces them (writes the agent's skill.md) */
 export function useSetAgentConnectors(agentId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (connectors: AgentConnectorChoice[]) =>
-      client.setAgentConnectors(agentId, connectors).then(unwrapResult),
-    onSettled: () =>
-      // The agent's own list, and who uses each folder
-      queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),
-  })
+  return useClientMutation(
+    (connectors: AgentConnectorChoice[]) =>
+      client.setAgentConnectors(agentId, connectors),
+    // The agent's own list, and who uses each folder
+    { invalidates: connectorsQueryKeys.all }
+  )
 }

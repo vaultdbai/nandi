@@ -4,14 +4,11 @@
  * re-detects every five minutes, and on Refresh).
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type {
-  HarnessDefault,
-  HarnessInfo,
-  HarnessTestResult,
-} from '@/lib/bindings'
+import type { HarnessDefault } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Everything harness-related lives under `['harnesses']` */
 export const harnessQueryKeys = {
@@ -39,19 +36,13 @@ function useHarnessEvents() {
 /** Built-in and custom harnesses with their last detected health */
 export function useHarnesses() {
   useHarnessEvents()
-  return useQuery({
-    queryKey: harnessQueryKeys.list,
-    queryFn: async (): Promise<HarnessInfo[]> =>
-      unwrapResult(await client.listHarnesses()),
-  })
+  return useClientQuery(harnessQueryKeys.list, () => client.listHarnesses())
 }
 
 /** Probes the machine again */
 export function useDetectHarnesses() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (): Promise<HarnessInfo[]> =>
-      unwrapResult(await client.detectHarnesses()),
+  return useClientMutation(() => client.detectHarnesses(), {
     onSuccess: harnesses =>
       queryClient.setQueryData(harnessQueryKeys.list, harnesses),
   })
@@ -59,10 +50,7 @@ export function useDetectHarnesses() {
 
 /** Opens and closes a session on the harness */
 export function useTestHarness() {
-  return useMutation({
-    mutationFn: async (harnessId: string): Promise<HarnessTestResult> =>
-      unwrapResult(await client.testHarness(harnessId)),
-  })
+  return useClientMutation((harnessId: string) => client.testHarness(harnessId))
 }
 
 /** `harnessId` `null` clears the default */

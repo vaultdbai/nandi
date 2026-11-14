@@ -1,14 +1,10 @@
 import { useEffect } from 'react'
-import {
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { PilotDefinition, PilotStatus } from '@/lib/bindings'
 import { queryClient as appQueryClient } from '@/lib/query-client'
 import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Everything pilot-related lives under `['pilots']` */
 export const pilotQueryKeys = {
@@ -39,9 +35,7 @@ export function runsOn(pilot: PilotDefinition, platform: string): boolean {
 export function usePilots() {
   const queryClient = useQueryClient()
 
-  const list = useQuery({
-    queryKey: pilotQueryKeys.list,
-    queryFn: async () => unwrapResult(await client.listPilots()),
+  const list = useClientQuery(pilotQueryKeys.list, () => client.listPilots(), {
     staleTime: Infinity,
   })
   const pilots = list.data ?? []
@@ -82,31 +76,24 @@ type PilotAction = 'install' | 'start' | 'stop'
 /** Install / start / stop. Status arrives as `pilot://changed` too. */
 export function usePilotAction() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
-      pilotId,
-      action,
-    }: {
-      pilotId: string
-      action: PilotAction
-    }) => {
+  return useClientMutation(
+    ({ pilotId, action }: { pilotId: string; action: PilotAction }) => {
       switch (action) {
         case 'install':
-          unwrapResult(await client.installPilot(pilotId))
-          return
+          return client.installPilot(pilotId)
         case 'start':
-          unwrapResult(await client.startPilot(pilotId))
-          return
+          return client.startPilot(pilotId)
         case 'stop':
-          unwrapResult(await client.stopPilot(pilotId))
-          return
+          return client.stopPilot(pilotId)
       }
     },
-    onSettled: (_data, _error, { pilotId }) =>
-      queryClient.invalidateQueries({
-        queryKey: pilotQueryKeys.status(pilotId),
-      }),
-  })
+    {
+      onSettled: (_data, _error, { pilotId }) =>
+        queryClient.invalidateQueries({
+          queryKey: pilotQueryKeys.status(pilotId),
+        }),
+    }
+  )
 }
 
 /** Grants an agent each listed capability of a pilot, in order. */
@@ -134,18 +121,15 @@ export async function grantPilotCapabilities(
 
 /** The pilots an agent declares, and which capabilities it was granted */
 export function useAgentPilotPermissions(agentId: string) {
-  return useQuery({
-    queryKey: pilotQueryKeys.permissions(agentId),
-    queryFn: async () =>
-      unwrapResult(await client.agentPilotPermissions(agentId)),
-  })
+  return useClientQuery(pilotQueryKeys.permissions(agentId), () =>
+    client.agentPilotPermissions(agentId)
+  )
 }
 
 /** Saves (or, empty, removes) a secret the agent's browser types */
 export function useSetPilotSecret(agentId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
+  return useClientMutation(
+    ({
       pilotId,
       name,
       value,
@@ -153,20 +137,15 @@ export function useSetPilotSecret(agentId: string) {
       pilotId: string
       name: string
       value: string
-    }) =>
-      unwrapResult(await client.setPilotSecret(agentId, pilotId, name, value)),
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: pilotQueryKeys.permissions(agentId),
-      }),
-  })
+    }) => client.setPilotSecret(agentId, pilotId, name, value),
+    { invalidates: pilotQueryKeys.permissions(agentId) }
+  )
 }
 
 /** Adds a site secret to the agent's browser (skill.md + keychain) */
 export function useAddPilotSecret(agentId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
+  return useClientMutation(
+    ({
       pilotId,
       name,
       value,
@@ -174,33 +153,23 @@ export function useAddPilotSecret(agentId: string) {
       pilotId: string
       name: string
       value: string
-    }) =>
-      unwrapResult(await client.addPilotSecret(agentId, pilotId, name, value)),
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: pilotQueryKeys.permissions(agentId),
-      }),
-  })
+    }) => client.addPilotSecret(agentId, pilotId, name, value),
+    { invalidates: pilotQueryKeys.permissions(agentId) }
+  )
 }
 
 /** Sign out everywhere: clears the agent's browser profile */
 export function useClearBrowserProfile(agentId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (pilotId: string) =>
-      unwrapResult(await client.clearBrowserProfile(agentId, pilotId)),
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: pilotQueryKeys.permissions(agentId),
-      }),
-  })
+  return useClientMutation(
+    (pilotId: string) => client.clearBrowserProfile(agentId, pilotId),
+    { invalidates: pilotQueryKeys.permissions(agentId) }
+  )
 }
 
 /** Grants or revokes one capability of a pilot for an agent */
 export function useSetPilotGrant(agentId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
+  return useClientMutation(
+    ({
       pilotId,
       capability,
       granted,
@@ -208,15 +177,10 @@ export function useSetPilotGrant(agentId: string) {
       pilotId: string
       capability: string
       granted: boolean
-    }) => {
-      const result = granted
-        ? await client.grantPilotCapability(agentId, pilotId, capability)
-        : await client.revokePilotCapability(agentId, pilotId, capability)
-      unwrapResult(result)
-    },
-    onSettled: () =>
-      queryClient.invalidateQueries({
-        queryKey: pilotQueryKeys.permissions(agentId),
-      }),
-  })
+    }) =>
+      granted
+        ? client.grantPilotCapability(agentId, pilotId, capability)
+        : client.revokePilotCapability(agentId, pilotId, capability),
+    { invalidates: pilotQueryKeys.permissions(agentId) }
+  )
 }

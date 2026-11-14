@@ -4,10 +4,10 @@
  * when connectors or pilots are installed, started, or stopped).
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { ToolEntry } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Everything tool-related lives under `['tools']` */
 export const toolQueryKeys = {
@@ -33,33 +33,24 @@ function useToolEvents() {
 /** Every tool in the catalog, sorted by ID, with 30-day usage */
 export function useTools() {
   useToolEvents()
-  return useQuery({
-    queryKey: toolQueryKeys.list,
-    queryFn: async (): Promise<ToolEntry[]> =>
-      unwrapResult(await client.listTools()),
-  })
+  return useClientQuery(toolQueryKeys.list, () => client.listTools())
 }
 
 /** Turns a tool on or off; it stays in the catalog either way */
 export function useSetToolEnabled() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
-      toolId,
-      enabled,
-    }: {
-      toolId: string
-      enabled: boolean
-    }): Promise<ToolEntry> =>
-      unwrapResult(await client.setToolEnabled(toolId, enabled)),
-    onSuccess: updated => {
-      queryClient.setQueryData<ToolEntry[]>(toolQueryKeys.list, current =>
-        current?.map(entry =>
-          entry.definition.id === updated.definition.id ? updated : entry
+  return useClientMutation(
+    ({ toolId, enabled }: { toolId: string; enabled: boolean }) =>
+      client.setToolEnabled(toolId, enabled),
+    {
+      invalidates: toolQueryKeys.all,
+      onSuccess: updated => {
+        queryClient.setQueryData<ToolEntry[]>(toolQueryKeys.list, current =>
+          current?.map(entry =>
+            entry.definition.id === updated.definition.id ? updated : entry
+          )
         )
-      )
-    },
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: toolQueryKeys.all }),
-  })
+      },
+    }
+  )
 }

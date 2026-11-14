@@ -5,11 +5,12 @@
  * registry connectors on `connectors://changed`.
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { connectorsQueryKeys } from '@/hooks/useConnectors'
 import { useSignInFlow } from '@/hooks/useEmail'
 import { client } from '@/lib/client'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
+import type { Result } from '@/lib/tauri-bindings'
 import type {
   AccountKind,
   GrantAccess,
@@ -47,10 +48,7 @@ function useHubEvents() {
 /** Every grant, saved and this computer's */
 export function useConnectorGrants() {
   useHubEvents()
-  return useQuery({
-    queryKey: hubKeys.grants,
-    queryFn: async () => unwrapResult(await client.listConnectorGrants()),
-  })
+  return useClientQuery(hubKeys.grants, () => client.listConnectorGrants())
 }
 
 export type GrantChange =
@@ -64,56 +62,51 @@ export type GrantChange =
   | { kind: 'revoke'; grant: GrantInfo }
 
 export function useChangeGrant() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (change: GrantChange) =>
-      unwrapResult(
-        change.kind === 'grant'
-          ? await client.grantConnectorAccess(
-              change.agentId,
-              change.connectorId,
-              change.access,
-              change.scope
-            )
-          : await client.revokeConnectorAccess(change.grant)
-      ),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: hubKeys.grants }),
-  })
+  return useClientMutation(
+    (change: GrantChange) =>
+      change.kind === 'grant'
+        ? client.grantConnectorAccess(
+            change.agentId,
+            change.connectorId,
+            change.access,
+            change.scope
+          )
+        : client.revokeConnectorAccess(change.grant),
+    { invalidates: hubKeys.grants }
+  )
 }
 
 /** Calendars and drives, and the calendar check */
 export function useWorkspaceStatus() {
   useHubEvents()
-  return useQuery({
-    queryKey: hubKeys.workspace,
-    queryFn: async () => unwrapResult(await client.getWorkspaceStatus()),
-  })
+  return useClientQuery(hubKeys.workspace, () => client.getWorkspaceStatus())
 }
 
 export function useWorkspaceAction() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (
+  return useClientMutation(
+    (
       action:
         | { kind: 'check' }
         | { kind: 'interval'; minutes: number }
         | { kind: 'disconnect'; account: AccountKind }
-    ): Promise<WorkspaceStatus> => {
+    ): Promise<Result<WorkspaceStatus, string>> => {
       switch (action.kind) {
         case 'check':
-          return unwrapResult(await client.checkCalendarNow())
+          return client.checkCalendarNow()
         case 'interval':
-          return unwrapResult(await client.setCalendarInterval(action.minutes))
+          return client.setCalendarInterval(action.minutes)
         case 'disconnect':
-          return unwrapResult(await client.disconnectWorkspace(action.account))
+          return client.disconnectWorkspace(action.account)
       }
     },
-    onSuccess: status => {
-      queryClient.setQueryData(hubKeys.workspace, status)
-      void queryClient.invalidateQueries({ queryKey: hubKeys.grants })
-    },
-  })
+    {
+      onSuccess: status => {
+        queryClient.setQueryData(hubKeys.workspace, status)
+        void queryClient.invalidateQueries({ queryKey: hubKeys.grants })
+      },
+    }
+  )
 }
 
 export function useWorkspaceSignIn(account: AccountKind) {
@@ -128,81 +121,63 @@ export function useWorkspaceSignIn(account: AccountKind) {
 /** Connectors listed in the configured registries */
 export function useRegistryConnectors() {
   useHubEvents()
-  return useQuery({
-    queryKey: hubKeys.registry,
-    queryFn: async () =>
-      unwrapResult(await client.listRegistryConnectors(false)),
-  })
+  return useClientQuery(hubKeys.registry, () =>
+    client.listRegistryConnectors(false)
+  )
 }
 
 /** What installing one would mean, for the consent dialog */
 export function useConnectorConsent(
   target: { registryUrl: string; connectorId: string } | null
 ) {
-  return useQuery({
-    queryKey: [
+  return useClientQuery(
+    [
       ...hubKeys.registry,
       'consent',
       target?.registryUrl ?? '',
       target?.connectorId ?? '',
     ],
-    enabled: target !== null,
-    queryFn: async () =>
-      unwrapResult(
-        await client.getConnectorConsent(
-          target?.registryUrl ?? '',
-          target?.connectorId ?? ''
-        )
+    () =>
+      client.getConnectorConsent(
+        target?.registryUrl ?? '',
+        target?.connectorId ?? ''
       ),
-  })
+    { enabled: target !== null }
+  )
 }
 
 export function useInstallRegistryConnector() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: {
+  return useClientMutation(
+    (input: {
       registryUrl: string
       connectorId: string
       apiKey: string | null
     }) =>
-      unwrapResult(
-        await client.installRegistryConnector(
-          input.registryUrl,
-          input.connectorId,
-          input.apiKey
-        )
+      client.installRegistryConnector(
+        input.registryUrl,
+        input.connectorId,
+        input.apiKey
       ),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),
-  })
+    { invalidates: connectorsQueryKeys.all }
+  )
 }
 
 export function useRemoveConnector() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (id: string) =>
-      unwrapResult(await client.removeConnector(id)),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),
+  return useClientMutation((id: string) => client.removeConnector(id), {
+    invalidates: connectorsQueryKeys.all,
   })
 }
 
 export function useScaffoldConnector() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: ScaffoldConnectorInput) =>
-      unwrapResult(await client.scaffoldConnector(input)),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),
-  })
+  return useClientMutation(
+    (input: ScaffoldConnectorInput) => client.scaffoldConnector(input),
+    { invalidates: connectorsQueryKeys.all }
+  )
 }
 
 export function usePublishConnector() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: PublishConnectorInput) =>
-      unwrapResult(await client.publishConnector(input)),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: connectorsQueryKeys.all }),
-  })
+  return useClientMutation(
+    (input: PublishConnectorInput) => client.publishConnector(input),
+    { invalidates: connectorsQueryKeys.all }
+  )
 }

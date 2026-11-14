@@ -4,10 +4,9 @@
  * on every `harness://turn_delta`.
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type { HarnessSessionSummary } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Everything session-related lives under `['harness-sessions']` */
 export const harnessSessionKeys = {
@@ -38,20 +37,15 @@ function useSessionEvents() {
 /** Newest first; `agentId` `null` for every agent's */
 export function useHarnessSessions(agentId: string | null) {
   useSessionEvents()
-  return useQuery({
-    queryKey: harnessSessionKeys.list(agentId),
-    queryFn: async (): Promise<HarnessSessionSummary[]> =>
-      unwrapResult(await client.listHarnessSessions(agentId, null)),
-  })
+  return useClientQuery(harnessSessionKeys.list(agentId), () =>
+    client.listHarnessSessions(agentId, null)
+  )
 }
 
 /** Stops a live session's CLI (and container); its run fails */
 export function useKillHarnessSession() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (sessionId: string) =>
-      unwrapResult(await client.killHarnessSession(sessionId)),
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: harnessSessionKeys.all }),
-  })
+  return useClientMutation(
+    (sessionId: string) => client.killHarnessSession(sessionId),
+    { invalidates: harnessSessionKeys.all }
+  )
 }
