@@ -5,16 +5,20 @@
 //! hosts, AWS services, pilots, connectors, shared folders with their
 //! access, and taking tasks from others. What was approved is recorded in
 //! `settings.yaml` (`consent.<agent>`), item by item, so a later version
-//! that asks for more is blocked again until approved. The user's own
-//! agents (created or forked) never need consent.
+//! that asks for more (a new host, a new method on a host, a folder made
+//! writable) is blocked again until approved. Asking for less keeps the
+//! approval. The user's own agents (created or forked) never need consent.
 //!
 //! The check runs where every run starts (`chat::submit`), so chat,
 //! workflows, and triggers are all covered.
+
+use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::services::connectors::{self, folders::Access};
+use crate::services::domain::capability::NetworkPolicy;
 use crate::services::domain::settings::AgentConsent;
 use crate::services::domain::{Agent, AgentId, EntityKind};
 use crate::services::repo_store::RepoStore;
@@ -32,8 +36,9 @@ const ACCEPTS_DELEGATION: &str = "accepts_delegation";
 pub struct ConsentCategory {
     /// tools | network | aws | pilots | connectors | folders | delegation
     pub key: String,
-    /// What the agent requests (`*` in tools: every tool; `docs:write` in
-    /// folders: the folder `docs`, read and write)
+    /// What the agent requests (`*` in tools: every tool; `api.example.com
+    /// (GET, POST)` in network: only those methods on that host;
+    /// `docs:write` in folders: the folder `docs`, read and write)
     pub items: Vec<String>,
     /// Already approved (all of `items`)
     pub granted: bool,
@@ -137,10 +142,76 @@ impl Category {
     fn covers(self, approved: &[String], requested: &str) -> bool {
         approved.iter().any(|item| match self {
             Self::Tools => item == ALL_TOOLS || item == requested,
+            Self::Network => host_covers(item, requested),
             Self::Folders => folder_covers(item, requested),
             _ => item == requested,
         })
     }
+}
+
+/// A network item: `api.example.com` for any method, or
+/// `api.example.com (GET, POST)` for only those methods. The methods are
+/// sorted, so the same access always reads the same.
+fn host_item(host: &str, methods: Option<&BTreeSet<String>>) -> String {
+    match methods {
+        None => host.to_string(),
+        Some(methods) => {
+            let methods: Vec<&str> = methods.iter().map(String::as_str).collect();
+            format!("{host} ({})", methods.join(", "))
+        }
+    }
+}
+
+/// A network item's host and methods (`None`: any method).
+fn parse_host_item(item: &str) -> (&str, Option<BTreeSet<&str>>) {
+    match item
+        .strip_suffix(')')
+        .and_then(|rest| rest.split_once(" ("))
+    {
+        Some((host, methods)) => (host, Some(methods.split(", ").collect())),
+        None => (item, None),
+    }
+}
+
+/// The host a network item is about (`api.example.com (GET)` →
+/// `api.example.com`), as the registry entry lists it.
+pub fn network_host(item: &str) -> &str {
+    parse_host_item(item).0
+}
+
+/// Approved any method covers every method on the host; approved methods
+/// cover only a request for some of those methods, never any method.
+fn host_covers(approved: &str, requested: &str) -> bool {
+    let (approved_host, approved_methods) = parse_host_item(approved);
+    let (requested_host, requested_methods) = parse_host_item(requested);
+    approved_host == requested_host
+        && match (approved_methods, requested_methods) {
+            (None, _) => true,
+            (Some(_), None) => false,
+            (Some(approved), Some(requested)) => requested.is_subset(&approved),
+        }
+}
+
+/// One item per host. Rules for the same host add up, as at the proxy,
+/// where a call passes if any rule matches: a rule with no methods makes
+/// the host any-method.
+fn requested_hosts(network: &NetworkPolicy) -> Vec<String> {
+    // Host → its methods (`None`: any method), in the order first named
+    let mut hosts: Vec<(&str, Option<BTreeSet<String>>)> = Vec::new();
+    for rule in &network.allow {
+        let methods = (!rule.methods.is_empty()).then(|| rule.methods.iter().cloned().collect());
+        match hosts.iter_mut().find(|(host, _)| *host == rule.host) {
+            None => hosts.push((&rule.host, methods)),
+            Some((_, known)) => match (known.as_mut(), methods) {
+                (Some(known), Some(methods)) => known.extend(methods),
+                _ => *known = None,
+            },
+        }
+    }
+    hosts
+        .into_iter()
+        .map(|(host, methods)| host_item(host, methods.as_ref()))
+        .collect()
 }
 
 /// A folder item: `docs:read` or `docs:write`.
@@ -176,12 +247,7 @@ pub fn requested(agent: &Agent) -> AgentConsent {
             .tools()
             .allowed()
             .map_or_else(|| vec![ALL_TOOLS.to_string()], <[String]>::to_vec),
-        network: capabilities
-            .network()
-            .allow
-            .iter()
-            .map(|rule| rule.host.clone())
-            .collect(),
+        network: requested_hosts(capabilities.network()),
         aws: capabilities
             .aws()
             .map(|aws| aws.services.iter().map(|s| s.service.clone()).collect())
@@ -318,6 +384,7 @@ pub fn forget(store: &RepoStore, agent_id: &str) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::db::Db;
+    use crate::services::marketplace::manifest::ManifestCapabilities;
     use crate::services::repos::{RepoLayout, Repos};
     use std::fs;
 
@@ -373,6 +440,16 @@ mod tests {
 
     fn skill(frontmatter: &str) -> String {
         format!("---\nname: ArXiv\n{frontmatter}---\nGo.")
+    }
+
+    /// `network.allow` frontmatter: one rule per (host, methods) pair, with
+    /// `[]` for any method.
+    fn network(rules: &[(&str, &str)]) -> String {
+        let rules: String = rules
+            .iter()
+            .map(|(host, methods)| format!("    - host: {host}\n      methods: {methods}\n"))
+            .collect();
+        format!("network:\n  allow:\n{rules}")
     }
 
     fn category<'a>(status: &'a ConsentStatus, key: &str) -> &'a ConsentCategory {
@@ -454,6 +531,123 @@ mod tests {
             assert_eq!(ungranted(&current), [widened], "{change}");
             assert!(check(&store, "arxiv").is_err(), "{change}: blocked");
         }
+    }
+
+    #[test]
+    fn updates_that_widen_network_access_need_approval_again() {
+        let cases = [
+            (
+                "a new method on a host",
+                network(&[("api.example.com", "[GET]")]),
+                network(&[("api.example.com", "[GET, POST]")]),
+            ),
+            (
+                "a method-limited host opened to every method",
+                network(&[("api.example.com", "[GET]")]),
+                network(&[("api.example.com", "[]")]),
+            ),
+            (
+                "a second rule adding a method to a host",
+                network(&[("api.example.com", "[GET]")]),
+                network(&[
+                    ("api.example.com", "[GET]"),
+                    ("api.example.com", "[DELETE]"),
+                ]),
+            ),
+            (
+                "a new host",
+                network(&[("api.example.com", "[GET]")]),
+                network(&[("api.example.com", "[GET]"), ("cdn.example.com", "[GET]")]),
+            ),
+        ];
+        for (change, before, after) in cases {
+            let (_tmp, store) = store_with(&skill(&before), true);
+            assert!(approve_all(&store).satisfied, "{change}: approved");
+            update_skill(&store, &skill(&after));
+            let current = super::status(&store, "arxiv").unwrap();
+            assert_eq!(ungranted(&current), ["network"], "{change}");
+            assert!(check(&store, "arxiv").is_err(), "{change}: blocked");
+        }
+    }
+
+    #[test]
+    fn updates_that_narrow_network_access_keep_their_approval() {
+        let cases = [
+            (
+                "every method narrowed to some",
+                network(&[("api.example.com", "[]")]),
+                network(&[("api.example.com", "[GET]")]),
+            ),
+            (
+                "a method dropped",
+                network(&[("api.example.com", "[GET, POST]")]),
+                network(&[("api.example.com", "[POST]")]),
+            ),
+            (
+                "the same methods in another order and case",
+                network(&[("api.example.com", "[GET, POST]")]),
+                network(&[("api.example.com", "[post, get]")]),
+            ),
+            (
+                "a host dropped",
+                network(&[("api.example.com", "[]"), ("cdn.example.com", "[GET]")]),
+                network(&[("api.example.com", "[]")]),
+            ),
+        ];
+        for (change, before, after) in cases {
+            let (_tmp, store) = store_with(&skill(&before), true);
+            assert!(approve_all(&store).satisfied, "{change}: approved");
+            update_skill(&store, &skill(&after));
+            assert!(
+                super::status(&store, "arxiv").unwrap().satisfied,
+                "{change}"
+            );
+        }
+    }
+
+    #[test]
+    fn network_items_name_each_host_once_with_its_methods() {
+        let cases = [
+            (
+                "any method",
+                network(&[("a.example.com", "[]")]),
+                vec!["a.example.com"],
+            ),
+            (
+                "sorted methods",
+                network(&[("a.example.com", "[post, GET]")]),
+                vec!["a.example.com (GET, POST)"],
+            ),
+            (
+                "rules for one host add up",
+                network(&[("a.example.com", "[GET]"), ("a.example.com", "[POST]")]),
+                vec!["a.example.com (GET, POST)"],
+            ),
+            (
+                "a rule with no methods opens the host",
+                network(&[("a.example.com", "[GET]"), ("a.example.com", "[]")]),
+                vec!["a.example.com"],
+            ),
+            (
+                "hosts in the order named",
+                network(&[("b.example.com", "[GET]"), ("a.example.com", "[]")]),
+                vec!["b.example.com (GET)", "a.example.com"],
+            ),
+        ];
+        for (case, frontmatter, expected) in cases {
+            let (_tmp, store) = store_with(&skill(&frontmatter), true);
+            let current = super::status(&store, "arxiv").unwrap();
+            assert_eq!(category(&current, "network").items, expected, "{case}");
+        }
+    }
+
+    #[test]
+    fn registry_capabilities_list_hosts_without_their_methods() {
+        let rules = network(&[("a.example.com", "[GET]"), ("b.example.com", "[]")]);
+        let (_tmp, store) = store_with(&skill(&rules), true);
+        let mut listed = ManifestCapabilities::default();
+        listed.include(requested(&store.agent("arxiv").unwrap()));
+        assert_eq!(listed.network, ["a.example.com", "b.example.com"]);
     }
 
     #[test]

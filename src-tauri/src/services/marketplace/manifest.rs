@@ -86,11 +86,17 @@ pub struct ManifestCapabilities {
 
 impl ManifestCapabilities {
     /// Adds what one agent requests (its first-use consent items) to the
-    /// list, each item once.
+    /// list, each item once. Network items become their hosts, as the
+    /// registry entry lists them; consent asks about the methods.
     pub fn include(&mut self, requested: AgentConsent) {
+        let hosts = requested
+            .network
+            .iter()
+            .map(|item| super::consent::network_host(item).to_string())
+            .collect();
         for (into, items) in [
             (&mut self.tools, requested.tools),
-            (&mut self.network, requested.network),
+            (&mut self.network, hosts),
             (&mut self.aws, requested.aws),
             (&mut self.pilots, requested.pilots),
             (&mut self.connectors, requested.connectors),

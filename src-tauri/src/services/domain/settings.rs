@@ -294,6 +294,8 @@ pub struct AgentConsent {
     /// `*` means every runtime tool
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<String>,
+    /// Hosts, `api.example.com` for any method or `api.example.com (GET,
+    /// POST)` for only those methods
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub network: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
