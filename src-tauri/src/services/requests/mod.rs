@@ -1051,10 +1051,10 @@ fn events_all(conn: &Connection, task_id: &str) -> rusqlite::Result<Vec<TaskEven
     let rows = stmt.query_map([task_id], |row| {
         Ok(TaskEvent {
             task_id: row.get(0)?,
-            from_state: db::opt_text_enum_with(row, 1, TaskState::parse)?,
-            to_state: db::text_enum_with(row, 2, TaskState::parse)?,
+            from_state: db::opt_text_enum(row, 1)?,
+            to_state: db::text_enum(row, 2)?,
             reason: row.get(3)?,
-            reason_kind: db::opt_text_enum_with(row, 4, task::ReasonKind::parse)?,
+            reason_kind: db::opt_text_enum(row, 4)?,
             stage: db::opt_text_enum(row, 5)?,
             at: row.get::<_, i64>(6)? as f64,
         })

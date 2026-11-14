@@ -17,6 +17,7 @@ use std::collections::{HashMap, VecDeque};
 use rusqlite::{params, Connection};
 use serde::Serialize;
 use serde_json::Value;
+use strum::VariantArray;
 
 use super::task::{
     self, ReasonKind, Refusal, TaskEvent, TaskRecord, TaskStage, TaskState, TaskStateChanged,
@@ -62,7 +63,7 @@ pub fn path(from: TaskState, to: TaskState) -> Option<Vec<TaskState>> {
     let mut came_from: HashMap<TaskState, TaskState> = HashMap::new();
     let mut queue = VecDeque::from([from]);
     while let Some(state) = queue.pop_front() {
-        for next in TaskState::ALL {
+        for &next in TaskState::VARIANTS {
             if next == from || came_from.contains_key(&next) || !is_legal(state, next) {
                 continue;
             }
@@ -448,12 +449,12 @@ mod tests {
 
     #[test]
     fn the_table_matches_the_spec() {
-        for from in TaskState::ALL {
-            for to in TaskState::ALL {
+        for &from in TaskState::VARIANTS {
+            for &to in TaskState::VARIANTS {
                 assert_eq!(is_legal(from, to), expected(from, to), "{from:?} → {to:?}");
             }
             if from.is_terminal() {
-                assert!(TaskState::ALL.iter().all(|to| !is_legal(from, *to)));
+                assert!(TaskState::VARIANTS.iter().all(|to| !is_legal(from, *to)));
             }
         }
     }
@@ -463,8 +464,8 @@ mod tests {
         let sink = Arc::new(RecordingSink::default());
         let db = Db::in_memory();
         let bus = EventBus::new(db.clone(), sink.clone());
-        for from in TaskState::ALL {
-            for to in TaskState::ALL {
+        for &from in TaskState::VARIANTS {
+            for &to in TaskState::VARIANTS {
                 let id = format!("{}-{}", from.as_str(), to.as_str());
                 let mut row = record(&id);
                 row.state = from;

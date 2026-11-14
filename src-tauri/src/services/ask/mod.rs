@@ -625,7 +625,8 @@ async fn record(
     .await
 }
 
-/// Recent asks, newest first; rows that no longer parse are skipped
+/// Recent asks, newest first; rows whose context or response no longer
+/// parses are skipped, never read with the part that failed left out
 pub async fn list_ask_history(
     state: &AppState,
     limit: Option<u32>,
@@ -656,7 +657,7 @@ pub async fn list_ask_history(
             Some(AskHistoryEntry {
                 id,
                 request_text,
-                context: context.and_then(|c| serde_json::from_str(&c).ok()),
+                context: context.map(|c| serde_json::from_str(&c)).transpose().ok()?,
                 response: serde_json::from_str(&payload).ok()?,
                 at: crate::db::ts(at),
             })

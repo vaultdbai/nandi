@@ -27,6 +27,7 @@ use std::sync::{Arc, RwLock};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use strum::VariantArray;
 
 use crate::db::{now_ms, Db};
 use crate::model::Timestamp;
@@ -794,7 +795,7 @@ impl CapabilityService {
     /// Unfinished tasks per (provider instance, provider) for `id`
     async fn open_task_counts(&self, id: &str) -> Result<HashMap<(String, String), u32>, String> {
         let capability = id.to_string();
-        let terminal: Vec<&'static str> = TaskState::ALL
+        let terminal: Vec<&'static str> = TaskState::VARIANTS
             .iter()
             .filter(|s| s.is_terminal())
             .map(|s| s.as_str())

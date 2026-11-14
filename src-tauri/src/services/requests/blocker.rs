@@ -273,6 +273,8 @@ pub fn blocker(input: &BlockerInput<'_>) -> Option<BlockerMatch> {
 
 #[cfg(test)]
 mod tests {
+    use strum::VariantArray;
+
     use super::*;
     use BlockerKind::*;
     use BlockerWho::*;
@@ -330,7 +332,7 @@ mod tests {
             (R::Failed, Failed, Me, Me),
             (R::Declined, Declined, Me, Them),
         ];
-        assert_eq!(rows.len(), ReasonKind::ALL.len(), "a row per kind");
+        assert_eq!(rows.len(), ReasonKind::VARIANTS.len(), "a row per kind");
         for (kind, expected, incoming, outgoing) in rows {
             for (outgoing_side, who) in [(false, incoming), (true, outgoing)] {
                 assert_eq!(

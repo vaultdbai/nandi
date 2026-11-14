@@ -189,7 +189,7 @@ fn task_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRecord> {
         provider_agent: row.get(4)?,
         capability: row.get(5)?,
         input: json(row.get(6)?).unwrap_or(serde_json::Value::Null),
-        state: db::text_enum_with(row, 7, TaskState::parse)?,
+        state: db::text_enum(row, 7)?,
         eta_seconds: row
             .get::<_, Option<i64>>(8)?
             .and_then(|s| u32::try_from(s).ok()),

@@ -1125,41 +1125,6 @@ where
         .transpose()
 }
 
-/// [`text_enum`] for an enum whose own `parse` returns an `Option` (the wire
-/// enums `TaskState` and `ReasonKind` of `nandi-protocol`, which have no
-/// `FromStr`).
-pub fn text_enum_with<T>(
-    row: &Row,
-    column: impl RowIndex + Copy,
-    parse: impl Fn(&str) -> Option<T>,
-) -> rusqlite::Result<T> {
-    let text: String = row.get(column)?;
-    parse(&text).ok_or_else(|| conversion_error(row, column, UnknownValue(text)))
-}
-
-/// [`text_enum_with`] for a nullable column.
-pub fn opt_text_enum_with<T>(
-    row: &Row,
-    column: impl RowIndex + Copy,
-    parse: impl Fn(&str) -> Option<T>,
-) -> rusqlite::Result<Option<T>> {
-    let text: Option<String> = row.get(column)?;
-    text.map(|text| parse(&text).ok_or_else(|| conversion_error(row, column, UnknownValue(text))))
-        .transpose()
-}
-
-/// A stored text value that no variant of the enum read from it matches
-#[derive(Debug)]
-struct UnknownValue(String);
-
-impl std::fmt::Display for UnknownValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "unknown stored value '{}'", self.0)
-    }
-}
-
-impl std::error::Error for UnknownValue {}
-
 fn conversion_error(
     row: &Row,
     column: impl RowIndex,

@@ -411,14 +411,10 @@ pub fn running_tasks(
         .prepare("SELECT state FROM tasks WHERE provider_instance = ?1 AND provider_agent = ?2")?;
     let states = stmt
         .query_map(params![instance_id, provider_id], |row| {
-            row.get::<_, String>(0)
+            crate::db::text_enum::<TaskState>(row, 0)
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(states
-        .iter()
-        .filter_map(|s| TaskState::parse(s))
-        .filter(|s| !s.is_terminal())
-        .count() as u32)
+    Ok(states.iter().filter(|s| !s.is_terminal()).count() as u32)
 }
 
 /// History for one provider of `capability_id`
@@ -443,11 +439,10 @@ pub fn provider_facts(
                 capability_id,
                 SUCCESS_WINDOW
             ],
-            |row| row.get::<_, String>(0),
+            |row| crate::db::text_enum::<TaskState>(row, 0),
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?
-        .iter()
-        .filter_map(|s| TaskState::parse(s))
+        .into_iter()
         .filter(|s| s.is_terminal() && *s != TaskState::Cancelled)
         .collect();
     let succeeded = finished

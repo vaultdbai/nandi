@@ -432,7 +432,7 @@ fn read_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
         provider_agent: row.get(4)?,
         capability: row.get(5)?,
         input: db::json_col(row, 6)?,
-        state: db::text_enum_with(row, 7, TaskState::parse)?,
+        state: db::text_enum(row, 7)?,
         eta_seconds: row.get(8)?,
         deadline: ms(9)?,
         priority: row.get(10)?,
@@ -625,10 +625,10 @@ pub async fn events_of(db: &Db, task_id: &str) -> Result<Vec<TaskEvent>, String>
             db::named_row(row, "task_events", 0, |row| {
                 Ok(TaskEvent {
                     task_id: row.get(0)?,
-                    from_state: db::opt_text_enum_with(row, 1, TaskState::parse)?,
-                    to_state: db::text_enum_with(row, 2, TaskState::parse)?,
+                    from_state: db::opt_text_enum(row, 1)?,
+                    to_state: db::text_enum(row, 2)?,
                     reason: row.get(3)?,
-                    reason_kind: db::opt_text_enum_with(row, 4, ReasonKind::parse)?,
+                    reason_kind: db::opt_text_enum(row, 4)?,
                     stage: db::opt_text_enum(row, 5)?,
                     at: row.get::<_, i64>(6)? as f64,
                 })
@@ -681,7 +681,7 @@ pub async fn list_rows(
 ) -> Result<Vec<TaskRecord>, String> {
     let state = match filter.state.as_deref().filter(|s| !s.is_empty()) {
         Some(state) => {
-            Some(TaskState::parse(state).ok_or_else(|| format!("Unknown task state '{state}'"))?)
+            Some(TaskState::parse(state).map_err(|_| format!("Unknown task state '{state}'"))?)
         }
         None => None,
     };

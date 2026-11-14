@@ -1041,5 +1041,29 @@ async fn asks_are_remembered_newest_first() {
         Some("agent:writer")
     );
     assert_eq!(list_ask_history(&state, Some(1)).await.unwrap().len(), 1);
+
+    // A row whose context or response no longer parses is skipped whole,
+    // never read without the part that failed
+    state
+        .db()
+        .call(|conn| {
+            for (id, context, payload) in [
+                ("bad-context", "'not json'", "response_payload"),
+                ("bad-response", "context", "'not json'"),
+            ] {
+                conn.execute(
+                    &format!(
+                        "INSERT INTO ask_history (id, request_text, context, response_kind, response_payload, at)
+                         SELECT '{id}', request_text, {context}, response_kind, {payload}, at + 1
+                         FROM ask_history WHERE request_text = 'What''s running?' LIMIT 1"
+                    ),
+                    [],
+                )?;
+            }
+            Ok(())
+        })
+        .await
+        .unwrap();
+    assert_eq!(list_ask_history(&state, None).await.unwrap().len(), 2);
     state.shutdown();
 }
