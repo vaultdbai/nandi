@@ -474,12 +474,11 @@ impl Executor {
         let group = if screen_only {
             None
         } else {
-            self.deps
-                .groups
-                .as_ref()
-                .and_then(|rules| rules.decide(&task.requester.instance_id, &task.capability))
+            self.deps.groups.as_ref().and_then(|rules| {
+                rules.decide(&task.id, &task.requester.instance_id, &task.capability)
+            })
         };
-        let group_say = match group.as_ref().map(|gate| &gate.decision) {
+        let group_say = match &group {
             None => intake::GroupSay::None,
             Some(Decision::Auto) => intake::GroupSay::Auto,
             Some(Decision::Ask(why)) => intake::GroupSay::Ask(why),
@@ -518,12 +517,7 @@ impl Executor {
                 &self.deps.decisions,
                 &team_task,
             ) {
-                Ok(intake::Gate::Go) => {
-                    if let (Some(rules), Some(gate)) = (self.deps.groups.as_ref(), group.as_ref()) {
-                        rules.went_ahead(gate, &task.requester.instance_id);
-                    }
-                    return None;
-                }
+                Ok(intake::Gate::Go) => return None,
                 Ok(intake::Gate::Refuse(why)) => return Some(refuse(why)),
                 Ok(intake::Gate::Declined) => {
                     return Some(Refusal::new(
@@ -1399,13 +1393,25 @@ pub async fn register(executor: &Arc<Executor>, relay: &Arc<dyn RelayClient>) {
     let runtime = tokio::runtime::Handle::current();
     relay
         .on_task_assigned(Box::new(move |assigned: TaskAssigned| {
-            let task = assigned.task;
+            let TaskAssigned {
+                task,
+                first_time_groups,
+                ..
+            } = assigned;
             let (executor, sender) = (executor.clone(), sender.clone());
             let runtime = runtime.clone();
             Box::pin(async move {
                 let Some(executor) = executor.upgrade() else {
                     return false;
                 };
+                // The relay's first-request marks, kept before the task so
+                // a resend after a crash can't run it unmarked
+                if let Some(rules) = executor.deps.groups.as_ref() {
+                    if let Err(e) = rules.first_request(&task.id, &first_time_groups) {
+                        log::warn!("Task {}: not taken, the relay sends it again: {e}", task.id);
+                        return false;
+                    }
+                }
                 // Sent again (a delivery the relay sent before our ack): a
                 // running task isn't run twice, a finished one answers again
                 let Some(handling) = Handling::claim(&executor.deps.instance_id, &task.id) else {

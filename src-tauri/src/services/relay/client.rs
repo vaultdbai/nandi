@@ -102,7 +102,10 @@ use crate::services::events::{self, EventBus};
 use crate::services::gateway::{registration, GatewayCard};
 use crate::services::network::peer_keys::PEER_KEY_CHANGED;
 use nandi_protocol::{self as wire, PROBE_PAYLOAD};
-use nandi_protocol::{GroupOp, GroupOutcome, PublicKeys, KEY_MISMATCH, NO_SHARED_GROUP};
+use nandi_protocol::{
+    GroupOp, GroupOutcome, PublicKeys, GROUP_DAILY_LIMIT, KEY_MISMATCH, NEEDS_FIRST_TIME_APPROVAL,
+    NO_SHARED_GROUP,
+};
 use nandi_seal::DeviceKeys;
 
 /// What a request to someone we share no group with (on a relay whose
@@ -110,6 +113,23 @@ use nandi_seal::DeviceKeys;
 pub fn no_shared_group() -> String {
     format!("{NO_SHARED_GROUP}: You don't share a group with them on this relay")
 }
+
+/// A coded refusal as the app passes it on: its code first, which the UI
+/// matches to a calm line (`friendly-error.ts`), then the relay's words.
+/// Without a code it's the relay's words.
+pub fn told(code: Option<&str>, message: &str) -> String {
+    match code {
+        Some(NO_SHARED_GROUP) => no_shared_group(),
+        Some(super::limits::DAILY_LIMIT) => super::limits::daily_limit(message),
+        Some(GROUP_DAILY_LIMIT) => super::limits::group_daily_limit(message),
+        Some(NEEDS_FIRST_TIME_APPROVAL) => format!("{NEEDS_FIRST_TIME_APPROVAL}: {message}"),
+        _ => message.to_string(),
+    }
+}
+
+/// The codes whose `Error` comes before a refusal that carries no code of
+/// its own (a `ReassignResult`)
+const ANNOUNCED: [&str; 2] = [NO_SHARED_GROUP, super::limits::DAILY_LIMIT];
 
 /// Leaves delivery `mail_id` unacked: it couldn't be opened yet, and the
 /// next `InboxSync` brings it again
@@ -305,12 +325,9 @@ struct Shared {
     waiting_groups: Pending<String, GroupOutcome>,
     /// Who sees whom, from the relay's last `Registered`
     visibility: Option<super::RelayVisibility>,
-    /// The relay's `no_shared_group` errors, by message: the refusal that
-    /// follows each is told as [`no_shared_group`]
-    no_shared_group: HashSet<String>,
-    /// The relay's `daily_limit` errors, by message: the refusal that
-    /// follows each is told as [`super::limits::daily_limit`]
-    daily_limit: HashSet<String>,
+    /// The codes of the relay's [`ANNOUNCED`] errors, by their words: the
+    /// refusal without a code that follows is told by that code
+    announced: HashMap<String, &'static str>,
 }
 
 impl Shared {
@@ -328,16 +345,11 @@ impl Shared {
         self.waiting_groups.fail_all(error);
     }
 
-    /// A refusal's words as the app tells them: the coded ones the relay
-    /// announced in an `Error` just before
-    fn retell(&mut self, message: &str) -> String {
-        if self.no_shared_group.remove(message) {
-            no_shared_group()
-        } else if self.daily_limit.remove(message) {
-            super::limits::daily_limit(message)
-        } else {
-            message.to_string()
-        }
+    /// A refusal's words as the app tells them ([`told`]): by its own
+    /// code, else by the one the relay announced in an `Error` just before
+    fn retell(&mut self, code: Option<&str>, message: &str) -> String {
+        let announced = self.announced.remove(message);
+        told(code.or(announced), message)
     }
 }
 
@@ -671,6 +683,7 @@ impl Inner {
             wire::Delivery::Task { task: sealed } => {
                 let (task_id, requester) =
                     (sealed.id.clone(), sealed.requester.instance_id.clone());
+                let first_time_groups = sealed.first_time_groups.clone();
                 let envelope = sealed.envelope.clone();
                 let handlers = self.handlers().assigned.clone();
                 let mut stored = !handlers.is_empty();
@@ -685,6 +698,7 @@ impl Inner {
                             task_id,
                             provider_instance: me,
                             task,
+                            first_time_groups,
                         };
                         for handler in handlers.iter() {
                             stored &= handler(assigned.clone()).await;
@@ -855,9 +869,9 @@ impl Inner {
                 target,
                 held,
             },
-            wire::TaskEvent::Refused { task_id, message } => {
-                TaskEvent::Refused { task_id, message }
-            }
+            wire::TaskEvent::Refused {
+                task_id, message, ..
+            } => TaskEvent::Refused { task_id, message },
             wire::TaskEvent::FailedOver {
                 task_id,
                 from_instance,
@@ -1195,8 +1209,12 @@ impl Inner {
                         wire::TaskEvent::Accepted { task_id, held, .. } => {
                             Some((task_id.clone(), Ok(*held)))
                         }
-                        wire::TaskEvent::Refused { task_id, message } => {
-                            let said = self.lock().retell(message);
+                        wire::TaskEvent::Refused {
+                            task_id,
+                            message,
+                            code,
+                        } => {
+                            let said = self.lock().retell(code.as_deref(), message);
                             Some((task_id.clone(), Err(format!("{REFUSED_BY_RELAY}{said}"))))
                         }
                         _ => None,
@@ -1209,7 +1227,7 @@ impl Inner {
             }
             RelayMessage::ReassignResult { task_id, error } => {
                 let mut shared = self.lock();
-                let error = error.map(|error| shared.retell(&error));
+                let error = error.map(|error| shared.retell(None, &error));
                 shared
                     .waiting_reassign
                     .resolve(&task_id, error.map_or(Ok(()), Err));
@@ -1239,19 +1257,14 @@ impl Inner {
                     }
                 }
                 let mut shared = self.lock();
-                if code == NO_SHARED_GROUP {
-                    // A refusal with these words follows
-                    shared.no_shared_group.insert(message);
-                    return;
-                }
-                if code == super::limits::DAILY_LIMIT {
+                if let Some(announced) = ANNOUNCED.into_iter().find(|c| *c == code) {
                     // A refusal with these words follows a request or a
-                    // reassignment; a clarification gets none, so the set
+                    // reassignment; a clarification gets none, so the map
                     // is kept small
-                    if shared.daily_limit.len() >= 32 {
-                        shared.daily_limit.clear();
+                    if shared.announced.len() >= 32 {
+                        shared.announced.clear();
                     }
-                    shared.daily_limit.insert(message);
+                    shared.announced.insert(message, announced);
                     return;
                 }
                 if code == "unauthorized" || code == VERSION_MISMATCH || code == KEY_MISMATCH {
@@ -2295,20 +2308,52 @@ mod tests {
     }
 
     #[test]
-    fn coded_refusals_are_retold_once() {
+    fn coded_refusals_are_told_by_their_code() {
+        let resets = "It resets at 2026-11-11T00:00:00Z";
+        let cases = [
+            (
+                Some("daily_limit"),
+                resets,
+                format!("daily_limit@1794355200000: {resets}"),
+            ),
+            (
+                Some("group_daily_limit"),
+                resets,
+                format!("group_daily_limit@1794355200000: {resets}"),
+            ),
+            (
+                Some("needs_first_time_approval"),
+                "Waits for them",
+                "needs_first_time_approval: Waits for them".to_string(),
+            ),
+            (Some("no_shared_group"), "No group", no_shared_group()),
+            (
+                Some("something_new"),
+                "Their words",
+                "Their words".to_string(),
+            ),
+            (None, "Their words", "Their words".to_string()),
+        ];
+        for (code, words, want) in cases {
+            assert_eq!(Shared::default().retell(code, words), want, "{code:?}");
+        }
+    }
+
+    #[test]
+    fn an_announced_code_tells_the_uncoded_refusal_after_it_once() {
         let mut shared = Shared::default();
         let words = "You've sent the 500 messages a day this relay allows                      (counted across your Nandis). It resets at 2026-11-11T00:00:00Z";
-        shared.daily_limit.insert(words.to_string());
+        shared.announced.insert(words.to_string(), "daily_limit");
         shared
-            .no_shared_group
-            .insert("No group with bob".to_string());
+            .announced
+            .insert("No group with bob".to_string(), NO_SHARED_GROUP);
         assert_eq!(
-            shared.retell(words),
+            shared.retell(None, words),
             format!("daily_limit@1794355200000: {words}")
         );
         // Told once: the same words again are the relay's own
-        assert_eq!(shared.retell(words), words);
-        assert_eq!(shared.retell("No group with bob"), no_shared_group());
-        assert_eq!(shared.retell("Something else"), "Something else");
+        assert_eq!(shared.retell(None, words), words);
+        assert_eq!(shared.retell(None, "No group with bob"), no_shared_group());
+        assert_eq!(shared.retell(None, "Something else"), "Something else");
     }
 }

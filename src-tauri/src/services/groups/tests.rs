@@ -3,16 +3,23 @@
 //! person with its own keys and files, as the delegation tests do
 //! (`a2a::relay_world`)
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use nandi_protocol::{GroupPolicy, Visibility};
+use nandi_protocol::{
+    GroupPolicy, OwnerRef, ServesCapability, Visibility, NEEDS_FIRST_TIME_APPROVAL,
+};
 use nandi_relay::RelayServerConfig;
+use serde_json::json;
 
 use super::*;
 use crate::services::a2a::relay_world::{wait_until, TestRelay};
+use crate::services::a2a::Task;
 use crate::services::domain::group::POLICY_TEMPLATE;
+use crate::services::domain::AgentCard;
 use crate::services::relay::client::{ClientOptions, WsRelayClient};
+use crate::services::relay::client_api::{stored_at_once, REFUSED_BY_RELAY};
+use crate::services::relay::protocol::TaskAssigned;
 use crate::services::repos::{RepoLayout, Repos};
 
 /// A group request, as the relay's frames name it
@@ -50,12 +57,17 @@ impl World {
 
     /// `me`'s Nandi, connected and registered with its keys
     async fn member(&self, me: &str) -> Member {
-        Member::on(&self.relay, me, true).await
+        Member::on(&self.relay, me, Some(Vec::new())).await
+    }
+
+    /// `me`'s Nandi with an agent `papers` serving `find-papers`
+    async fn provider(&self, me: &str) -> Member {
+        Member::on(&self.relay, me, Some(vec![papers(me)])).await
     }
 
     /// `me`'s Nandi with a relay client that never connected
     async fn offline_member(&self, me: &str) -> Member {
-        Member::on(&self.relay, me, false).await
+        Member::on(&self.relay, me, None).await
     }
 
     /// Alice's group "Finance", and Bob joined through her invite
@@ -79,7 +91,8 @@ impl World {
 }
 
 impl Member {
-    async fn on(relay: &TestRelay, me: &str, connected: bool) -> Self {
+    /// Registered with `cards`; `None`: never connected
+    async fn on(relay: &TestRelay, me: &str, cards: Option<Vec<AgentCard>>) -> Self {
         let tmp = tempfile::tempdir().unwrap();
         let repos = Repos::new(RepoLayout::new(tmp.path(), tmp.path().join("trash")));
         let db = Db::in_memory();
@@ -92,12 +105,13 @@ impl Member {
             peer_keys: Some(Arc::new(peer_keys::PinnedKeys::new(db.clone()))),
             ..ClientOptions::default()
         };
-        let client = if connected {
-            let client = relay.client_with(me, options).await;
-            client.register(Vec::new()).await.unwrap();
-            client
-        } else {
-            TestRelay::unconnected_client(me, options)
+        let client = match cards {
+            Some(cards) => {
+                let client = relay.client_with(me, options).await;
+                client.register(cards).await.unwrap();
+                client
+            }
+            None => TestRelay::unconnected_client(me, options),
         };
         let groups = Groups::new(
             Some(client.clone() as Arc<dyn RelayClient>),
@@ -184,7 +198,7 @@ async fn creating_signs_version_one_over_the_id_it_picks() {
     assert_eq!(view.group.summary.name, "Finance");
     assert!(view.policy.verified, "{:?}", view.policy.problem);
     assert_eq!(view.policy.version, 1);
-    assert_eq!(view.policy.approval, Some(Approval::Always));
+    assert_eq!(view.policy.approval, Some(GroupApproval::Always));
     assert_eq!(view.my_role, Some(GroupRole::Admin));
     assert_eq!(view.my_access, AccessLevel::AskFirst);
     // The relay refused the first ID as taken: another was tried
@@ -222,7 +236,7 @@ async fn a_policy_change_is_the_next_version_signed_by_me() {
     let view = me.groups.set_policy(&id, LOOSER).await.unwrap();
     assert_eq!(view.policy.version, 2);
     assert!(view.policy.verified);
-    assert_eq!(view.policy.approval, Some(Approval::PerMember));
+    assert_eq!(view.policy.approval, Some(GroupApproval::PerMember));
     assert_eq!(me.repos.groups.load(&id).unwrap().unwrap().text, LOOSER);
     let refused = me.groups.set_policy(&id, "---\nrequests: 3\n---\n").await;
     assert!(refused.is_err());
@@ -324,4 +338,84 @@ fn group_ids_are_g_and_sixteen_hex() {
         assert!(is_group_id(&new_group_id()));
     }
     assert_ne!(new_group_id(), new_group_id());
+}
+
+/// `instance`'s agent `papers`, serving `find-papers`
+fn papers(instance: &str) -> AgentCard {
+    AgentCard {
+        id: AgentCard::card_id(instance, "papers"),
+        name: "papers".into(),
+        description: String::new(),
+        instance_id: instance.into(),
+        endpoint: String::new(),
+        capabilities: vec![ServesCapability {
+            name: "find-papers".into(),
+            description: String::new(),
+            input_schema: None,
+            output_schema: None,
+        }],
+        accepts_delegation: true,
+        max_concurrent: 1,
+        current_load: 0,
+        owner: OwnerRef::default(),
+        signature: None,
+        issued_at: 0.0,
+    }
+}
+
+/// Bob's request `id` for Alice's `papers`
+fn ask_alice(id: &str) -> Task {
+    Task {
+        id: id.into(),
+        requester: papers("bob-1"),
+        target: "alice-1/papers".into(),
+        capability: "find-papers".into(),
+        input: json!({"q": "relays"}),
+        created_at: 1.0,
+        deadline: None,
+    }
+}
+
+#[tokio::test]
+async fn the_relay_marks_a_first_request_and_refuses_the_next_while_it_waits() {
+    let world = World::start().await;
+    let alice = world.provider("alice-1").await;
+    let bob = world.member("bob-1").await;
+    let first_time =
+        "---\nrequests:\n  approval: first-time\n  daily_limit: 5\n---\nNew people wait.\n";
+    let view = alice
+        .groups
+        .create("Finance", "", first_time)
+        .await
+        .unwrap();
+    let group = view.group.summary.id;
+    bob.join_through(&alice, &group).await;
+    let delivered: Arc<Mutex<Vec<TaskAssigned>>> = Arc::default();
+    let sink = delivered.clone();
+    alice
+        .client
+        .on_task_assigned(stored_at_once(move |assigned| {
+            sink.lock().unwrap().push(assigned)
+        }))
+        .await;
+
+    bob.client
+        .delegate_task(&ask_alice("t1"), &[])
+        .await
+        .unwrap();
+    wait_until("Alice has Bob's first request", || async {
+        !delivered.lock().unwrap().is_empty()
+    })
+    .await;
+    assert_eq!(delivered.lock().unwrap()[0].first_time_groups, [group]);
+
+    // The next waits for her answer to the first, told by its code
+    let refused = bob
+        .client
+        .delegate_task(&ask_alice("t2"), &[])
+        .await
+        .unwrap_err();
+    let coded = format!("{REFUSED_BY_RELAY}{NEEDS_FIRST_TIME_APPROVAL}: ");
+    assert!(refused.starts_with(&coded), "{refused}");
+    assert!(refused.contains("Finance"), "{refused}");
 }

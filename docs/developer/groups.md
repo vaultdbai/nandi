@@ -58,12 +58,14 @@ The same Markdown + YAML frontmatter as `.nandi/policies/`, plus a `requests:` b
 requests:
   approval: always # always | first-time | per-member (my own level decides)
   capabilities: { allow: [review-*], deny: [review-secret] } # globs; deny wins
-  daily_limit: 20 # per member per day; 0 is refused
+  daily_limit: 20 # per member to each person per UTC day, counted by the relay; 0 is refused
   hours: 'Mon-Fri 08:00-18:00' # local time; outside it requests wait
   always_ask: [send, payment] # capability, glob or a word in it: waits
 ```
 
 No `requests:` block means `approval: always`.
+
+`daily_limit` and `approval: first-time` involve the other person, so the relay enforces them at `SubmitTask` from metadata only (it reads just those two keys, with `nandi_protocol::GroupRequestRules::read`, and refuses a policy where they don't read). The app checks them with the same function so a policy it writes reads the same at the relay. Everything else in `requests:` is applied here.
 
 ## Signatures
 
@@ -73,24 +75,25 @@ Verification (`domain::group::verify`) uses my own public key for my policies, e
 
 ## Enforcement on incoming work
 
-`Enforcer::decide(requester, capability, now)`:
+`Enforcer::decide(requester, capability, first_time, now)`:
 
-1. Groups whose copy lists both me and the requester. None: `None`, and nothing changes (company relay trust rules, intake, auto-approve rules).
-2. Per group: unverified or unreadable policy → `Refuse`; else `RequestRules::decide` (deny/allow → refuse; daily limit → refuse; outside `hours` → ask; `always_ask` → ask; `approval`) **stricter of** `AccessLevel::decide` (fully automated → auto; ask first → ask; questions only → `ask-me` auto, else refuse; send me info → `ask-me` waits, else refuse; none → refuse).
-3. Across groups: the strictest (`Decision::strictest`; refuse > ask > auto). Each reason is prefixed with the group's name.
+1. Groups whose copy lists both me and the requester. None, and no mark: `None`, and nothing changes (company relay trust rules, intake, auto-approve rules).
+2. Per group: unverified or unreadable policy → `Refuse`; else `RequestRules::decide` (deny/allow → refuse; outside `hours` → ask; `always_ask` → ask; `approval: always` → ask) **stricter of** `AccessLevel::decide` (fully automated → auto; ask first → ask; questions only → `ask-me` auto, else refuse; send me info → `ask-me` waits, else refuse; none → refuse), **stricter of** the relay's first-request mark (marked → ask).
+3. Across groups: the strictest (`Decision::strictest`; refuse > ask > auto). Each reason is prefixed with the group's name. A mark for a group I have no copy of still asks.
+
+**The relay's part.** Past a shared group's `daily_limit` the relay refuses the request (`group_daily_limit`). A requester's first request to me through a first-time group arrives marked (`SealedTask.first_time_groups` → `TaskAssigned.first_time_groups`); the executor keeps the marks by task in `group_first_requests` (`GroupRules::first_request`) before it stores the task, so a restart keeps them, and `GroupRules::decide(task_id, …)` reads them. While it waits, the relay refuses the requester's next one to me (`needs_first_time_approval`). Once I take it on (`AcknowledgeTask`), the relay counts the requester as approved.
 
 Where it plugs in:
 
 - **Executor intake** (`a2a/executor.rs`, tasks to my agents, `ask-me` included): `Refuse` → `ReasonKind::NotAccepting` ("Not accepted here. Finance: …"); `Ask` → `intake::GroupSay::Ask`, the item waits in the queue even for trusted peers and auto-approve rules, with the reason as a thread note; `Auto` → `GroupSay::Auto`, a clean request is approved on the queue (so the trust check passes) with "your groups' policies and your access level let it run"; suspicious screening still waits.
 - **Gateway** (`gateway/router.rs`, tasks to `<me>/gateway`): `Refuse` → rejected at the policy stage; `Ask` → held for approval (`hold_for_approval`) unless it's `assign-me`, which waits for the owner's Done anyway.
-- Requests that went ahead are counted per group, member and day in `group_requests` (SQLite, runtime) for `daily_limit` and `first-time`.
 - A held or queued request is an Inbox item like any other, so it can be decided in its Ask chat ([interaction-layer](./interaction-layer.md#inbox-ask-chats)): the chat's decision waits for the owner's confirm and then calls the same `decide_gateway_hold` / `intake::approve` as the button, so a group's "Ask first" still holds it and chat never loosens a policy.
 
 A copy that doesn't read at all is skipped and logged (its members are unknown); the next refresh rewrites it.
 
 ## Visibility
 
-`Registered { visibility }` is kept in the client and exposed as `RelayStatus.visibility` (`company` | `groups`, `None` before registering). With `groups`, People shows a note. The relay answers a submission to someone outside my groups with an `Error` `no_shared_group` and the task's `refused` event; the client remembers the error's message and turns that refusal into `no_shared_group: You don't share a group with them on this relay` (after `REFUSED_BY_RELAY`), which `friendly-error.ts` maps to `errors.noSharedGroup` (`NO_SHARED_GROUP` is exported to `bindings.ts`).
+`Registered { visibility }` is kept in the client and exposed as `RelayStatus.visibility` (`company` | `groups`, `None` before registering). With `groups`, People shows a note. The relay answers a submission to someone outside my groups with an `Error` `no_shared_group` and the task's `refused` event, which carries the code; the client tells it by the code (`relay::client::told`) as `no_shared_group: You don't share a group with them on this relay` (after `REFUSED_BY_RELAY`), which `friendly-error.ts` maps to `errors.noSharedGroup` (`NO_SHARED_GROUP` is exported to `bindings.ts`). A group's refusals are told the same way: `group_daily_limit@<reset ms>: …` (`errors.groupDailyLimit`, with the reset in the user's clock) and `needs_first_time_approval: …` (`errors.needsFirstTimeApproval`). Never match a refusal by its words.
 
 **Relay limits per person.** A relay limits groups per person and people per group (`group_limit`; the public relay: 10 and 50, counted per account across its Nandis), and a public relay also messages a day (`daily_limit`, 500). `groups::refusal` words `group_limit` as a per-person limit and turns a `daily_limit` refusal into `daily_limit@<reset ms>: …` (`relay::limits::daily_limit`), which `toastGroupError` shows calmly with the reset time. See "The public relay" in `relay-defaults.md`.
 

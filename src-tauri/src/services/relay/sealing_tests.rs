@@ -50,6 +50,7 @@ fn sealed_task(ada: &Sealer, task: &Task, to: (&str, &Sealer)) -> SealedTask {
         created_at: task.created_at,
         deadline: task.deadline,
         envelope: ada.seal_task(task, (to.0, to.1.public_keys())).unwrap(),
+        first_time_groups: Vec::new(),
     }
 }
 

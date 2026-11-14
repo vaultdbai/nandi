@@ -4104,6 +4104,8 @@ workspaceChanged: "workspace://changed"
 
 export const DAILY_LIMIT = "daily_limit" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const GROUP_DAILY_LIMIT = "group_daily_limit" as const;
+export const NEEDS_FIRST_TIME_APPROVAL = "needs_first_time_approval" as const;
 export const NO_SHARED_GROUP = "no_shared_group" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
@@ -4588,22 +4590,6 @@ workTrayVisible?: boolean | null }
  * An update that was applied.
  */
 export type AppliedUpdate = { kind: string; id: string; fromVersion: string; toVersion: string }
-/**
- * When a group's members may have work done without asking
- */
-export type Approval = 
-/**
- * Every request waits for the owner
- */
-"always" | 
-/**
- * A member's first request waits; later ones follow the owner's level
- */
-"first-time" | 
-/**
- * Each owner's own access level decides
- */
-"per-member"
 export type ApprovalDecision = "approved" | "rejected"
 export type ApprovalStatus = "pending" | "approved" | "rejected" | 
 /**
@@ -6193,6 +6179,24 @@ input: string | null;
  */
 output: string | null; error: string | null; critical: boolean; continueOnFailure: boolean }
 /**
+ * When a group's members may have work done for each other without the
+ * provider's approval (`requests.approval` in the policy)
+ */
+export type GroupApproval = 
+/**
+ * Every request waits for the provider
+ */
+"always" | 
+/**
+ * A requester's first request to a provider waits for them (the
+ * relay marks it); later ones follow the provider's own level
+ */
+"first-time" | 
+/**
+ * Each provider's own access level decides
+ */
+"per-member"
+/**
  * A group as its members see it
  */
 export type GroupDetail = { summary: GroupSummary; members: GroupMember[]; policy: GroupPolicy; 
@@ -7371,7 +7375,7 @@ authorName: string;
 /**
  * The policy's `approval:` (`None`: the text doesn't read)
  */
-approval: Approval | null }
+approval: GroupApproval | null }
 /**
  * One policy file as a picker lists it
  */

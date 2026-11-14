@@ -5,6 +5,8 @@
 import {
   DAILY_LIMIT,
   ENVELOPE_TOO_LARGE,
+  GROUP_DAILY_LIMIT,
+  NEEDS_FIRST_TIME_APPROVAL,
   NO_SHARED_GROUP,
   PEER_KEY_CHANGED,
   PEER_KEY_MISSING,
@@ -21,6 +23,8 @@ export type ErrorKind =
   | 'envelopeTooLarge'
   | 'noSharedGroup'
   | 'dailyLimit'
+  | 'groupDailyLimit'
+  | 'needsFirstTimeApproval'
   | 'offline'
   | 'timeout'
   | 'notFound'
@@ -96,8 +100,11 @@ export function errorKind(error: unknown): ErrorKind {
   const raw = rawError(error)
   const sealing = SEALING.find(([, code]) => raw.startsWith(code))
   if (sealing) return sealing[0]
-  // After "The relay refused it: " (`relay::client::no_shared_group`)
+  // After "The relay refused it: " (`relay::client::told`)
   if (raw.includes(`${NO_SHARED_GROUP}:`)) return 'noSharedGroup'
+  if (raw.includes(`${NEEDS_FIRST_TIME_APPROVAL}:`))
+    return 'needsFirstTimeApproval'
+  if (resetsAt(GROUP_DAILY_LIMIT, error) !== null) return 'groupDailyLimit'
   if (dailyLimitResetsAt(error) !== null) return 'dailyLimit'
   return PATTERNS.find(([, pattern]) => pattern.test(raw))?.[0] ?? 'other'
 }
@@ -107,7 +114,16 @@ export function errorKind(error: unknown): ErrorKind {
  * (`daily_limit@<ms>: …`, `services::relay::limits`); `null` otherwise
  */
 export function dailyLimitResetsAt(error: unknown): number | null {
-  const match = new RegExp(`${DAILY_LIMIT}@(\\d+):`).exec(rawError(error))
+  return resetsAt(DAILY_LIMIT, error)
+}
+
+/**
+ * When the count behind a `<code>@<ms>: …` refusal resets; `null` when
+ * the error isn't one. `\b` keeps `daily_limit` from matching inside
+ * `group_daily_limit`.
+ */
+function resetsAt(code: string, error: unknown): number | null {
+  const match = new RegExp(`\\b${code}@(\\d+):`).exec(rawError(error))
   return match?.[1] ? Number(match[1]) : null
 }
 
@@ -121,6 +137,6 @@ export function friendlyErrorParams(
   error: unknown,
   locale: string
 ): Record<string, string> {
-  const resetsAt = dailyLimitResetsAt(error)
-  return resetsAt === null ? {} : { time: formatResetTime(resetsAt, locale) }
+  const at = resetsAt(GROUP_DAILY_LIMIT, error) ?? dailyLimitResetsAt(error)
+  return at === null ? {} : { time: formatResetTime(at, locale) }
 }

@@ -29,8 +29,8 @@ use nandi_protocol::group::{
     GROUP_NOT_ADMIN, GROUP_NOT_FOUND, GROUP_NOT_MEMBER, GROUP_POLICY_MAX_BYTES, GROUP_POLICY_STALE,
 };
 use nandi_protocol::{
-    is_group_id, GroupChange, GroupDetail, GroupInvite, GroupOp, GroupOutcome, GroupPolicy,
-    GroupRole, GroupSummary, PublicKeys,
+    is_group_id, GroupApproval, GroupChange, GroupDetail, GroupInvite, GroupOp, GroupOutcome,
+    GroupPolicy, GroupRole, GroupSummary, PublicKeys,
 };
 use nandi_seal::DeviceKeys;
 use serde::{Deserialize, Serialize};
@@ -38,7 +38,7 @@ use specta::Type;
 
 use crate::db::Db;
 use crate::services::domain::group::{
-    verify, AccessLevel, Approval, CopyMember, GroupCopy, GroupPolicyText, POLICY_TEMPLATE,
+    verify, AccessLevel, CopyMember, GroupCopy, GroupPolicyText, POLICY_TEMPLATE,
 };
 use crate::services::events::{self, EventBus, NandiEvent};
 use crate::services::network::{self, peer_keys};
@@ -86,7 +86,7 @@ pub struct PolicyCheck {
     /// The author's name from the member list (empty: unknown)
     pub author_name: String,
     /// The policy's `approval:` (`None`: the text doesn't read)
-    pub approval: Option<Approval>,
+    pub approval: Option<GroupApproval>,
 }
 
 /// One group as its member sees it here

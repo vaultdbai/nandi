@@ -4922,6 +4922,8 @@
   "onboarding.relay.publicConnected": "Joined: Nandi is connected to the public relay.",
   "network.connection.relayTrust.public": "Anyone with an email can join the public relay, so you trust people one by one.",
   "errors.dailyLimit": "You've sent today's messages on the public relay. You can send again from {{time}}.",
+  "errors.groupDailyLimit": "You've sent this person as many requests today as your group allows. You can ask again from {{time}}.",
+  "errors.needsFirstTimeApproval": "Your first request to this person is still waiting for their approval. You can ask again once they've answered it.",
   "publicRelay.title": "Public relay",
   "publicRelay.description": "No company relay? Join VaultDB.ai's public relay with the email you connected. You see only people you share a group with.",
   "publicRelay.join": "Join the public relay",

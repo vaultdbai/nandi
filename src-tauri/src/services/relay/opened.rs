@@ -126,6 +126,9 @@ pub struct TaskAssigned {
     pub task_id: String,
     pub provider_instance: String,
     pub task: Task,
+    /// The groups the relay marked it as the requester's first request in:
+    /// it waits for my approval (`services::groups::enforce`)
+    pub first_time_groups: Vec<String>,
 }
 
 /// A provider's result, opened

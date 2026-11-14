@@ -14,13 +14,18 @@
 //!   ([`Decision::stricter`]), so I can tighten a group's policy, never
 //!   loosen it. Across several groups I share with the requester, the
 //!   strictest applies.
+//! - **The relay's part**: `requests.daily_limit` and `approval:
+//!   first-time` involve the other person, so the relay enforces them at
+//!   `SubmitTask` ([`GroupRequestRules`]); a first request it marks waits
+//!   for me (`services::groups::enforce`). Here they are only checked to
+//!   read the way the relay reads them.
 //!
 //! A copy is trusted only when its signature checks out against the
 //! author's key ([`verify`]); anything else fails closed.
 
 use std::collections::BTreeMap;
 
-use nandi_protocol::{GroupPolicy, GroupRole, PublicKeys};
+use nandi_protocol::{GroupApproval, GroupPolicy, GroupRequestRules, GroupRole, PublicKeys};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -106,19 +111,6 @@ impl Decision {
     pub fn strictest(decisions: impl IntoIterator<Item = Self>) -> Option<Self> {
         decisions.into_iter().reduce(Self::stricter)
     }
-}
-
-/// When a group's members may have work done without asking
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "kebab-case")]
-pub enum Approval {
-    /// Every request waits for the owner
-    #[default]
-    Always,
-    /// A member's first request waits; later ones follow the owner's level
-    FirstTime,
-    /// Each owner's own access level decides
-    PerMember,
 }
 
 /// Capabilities a group lets its members ask for
@@ -228,13 +220,11 @@ fn minutes(text: &str) -> Result<u16, String> {
 }
 
 /// The `requests:` block of a group's policy: what members may have done
-/// for each other, and how
+/// for each other, and how (`daily_limit` is the relay's)
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RequestRules {
-    pub approval: Approval,
+    pub approval: GroupApproval,
     pub capabilities: CapabilityRules,
-    /// Per member per day
-    pub daily_limit: Option<u32>,
     pub hours: Option<Hours>,
     /// Capabilities (or words in them) that always wait for the owner
     pub always_ask: Vec<String>,
@@ -244,11 +234,12 @@ pub struct RequestRules {
 #[serde(deny_unknown_fields)]
 struct RequestsYaml {
     #[serde(default)]
-    approval: Option<Approval>,
+    approval: Option<GroupApproval>,
     #[serde(default)]
     capabilities: Option<CapabilityRules>,
-    #[serde(default)]
-    daily_limit: Option<u32>,
+    /// The relay counts it ([`GroupRequestRules::read`] checks it)
+    #[serde(default, rename = "daily_limit")]
+    _daily_limit: Option<serde::de::IgnoredAny>,
     #[serde(default)]
     hours: Option<String>,
     #[serde(default)]
@@ -262,10 +253,6 @@ pub struct RequestFacts<'a> {
     pub capability: &'a str,
     /// A question to the owner (`ask-me`)
     pub is_question: bool,
-    /// No earlier request from this member through this group went ahead
-    pub first_time: bool,
-    /// Requests from this member through this group that went ahead today
-    pub today: u32,
     /// 0 = Monday, local time
     pub weekday: u8,
     /// Minutes since midnight, local time
@@ -311,13 +298,6 @@ impl RequestRules {
         {
             return Decision::Refuse(format!("the group's policy doesn't allow '{capability}'"));
         }
-        if let Some(limit) = self.daily_limit {
-            if facts.today >= limit {
-                return Decision::Refuse(format!(
-                    "the group's limit of {limit} requests a day per member is reached"
-                ));
-            }
-        }
         if let Some(hours) = &self.hours {
             if !hours.contains(facts.weekday, facts.minute) {
                 return Decision::Ask(format!(
@@ -330,13 +310,12 @@ impl RequestRules {
             return Decision::Ask(format!("the group's policy always asks first for '{term}'"));
         }
         match self.approval {
-            Approval::Always => {
+            GroupApproval::Always => {
                 Decision::Ask("the group's policy has the owner approve every request".into())
             }
-            Approval::FirstTime if facts.first_time => Decision::Ask(
-                "the group's policy has the owner approve a member's first request".into(),
-            ),
-            Approval::FirstTime | Approval::PerMember => Decision::Auto,
+            // A member's first request is the relay's to mark; after it,
+            // each owner's level decides
+            GroupApproval::FirstTime | GroupApproval::PerMember => Decision::Auto,
         }
     }
 }
@@ -369,6 +348,8 @@ impl GroupPolicyText {
             }
             None => RequestRules::default(),
         };
+        // The rules the relay enforces read here as they read there
+        GroupRequestRules::read(text).map_err(|e| DomainError::invalid(&what, "requests", e))?;
         // The other blocks (tools, connectors, network, …) follow the
         // policy format; `requests` is a note to it
         Policy::parse(&format!("group-{group_id}"), text)?;
@@ -392,13 +373,6 @@ fn rules_from(what: &str, raw: RequestsYaml) -> DomainResult<RequestRules> {
         .hours
         .map(|h| Hours::parse(&h).map_err(|e| DomainError::invalid(what, "requests.hours", e)))
         .transpose()?;
-    if raw.daily_limit == Some(0) {
-        return Err(DomainError::invalid(
-            what,
-            "requests.daily_limit",
-            "is 0; leave it out for no limit, or deny the capabilities instead",
-        ));
-    }
     let always_ask: Vec<String> = raw
         .always_ask
         .into_iter()
@@ -409,7 +383,6 @@ fn rules_from(what: &str, raw: RequestsYaml) -> DomainResult<RequestRules> {
     Ok(RequestRules {
         approval: raw.approval.unwrap_or_default(),
         capabilities,
-        daily_limit: raw.daily_limit,
         hours,
         always_ask,
     })
@@ -422,12 +395,12 @@ pub const POLICY_TEMPLATE: &str = r#"---
 # Each person can be stricter for themselves (My access level), never looser.
 requests:
   # always: every request waits for the person's approval
-  # first-time: a member's first request waits; later ones follow each person's level
+  # first-time: a member's first request to each person waits (the relay marks it); later ones follow each person's level
   # per-member: each person's own access level decides
   approval: always
   # Capabilities members may ask for (globs; empty allows any) and never ask for
   capabilities: { allow: [], deny: [] }
-  # Most requests one member may send each person per day (leave out for no limit)
+  # Most requests one member may send each person per day, counted by the relay (leave out for no limit)
   # daily_limit: 20
   # When requests may run without waiting (local time); outside them they wait
   # hours: "Mon-Fri 08:00-18:00"
@@ -657,8 +630,6 @@ mod tests {
         RequestFacts {
             capability,
             is_question: capability == "ask-me",
-            first_time: false,
-            today: 0,
             // A Wednesday at 10:00
             weekday: 2,
             minute: 600,
@@ -682,7 +653,7 @@ mod tests {
     #[test]
     fn the_template_parses_and_asks_every_time() {
         let parsed = GroupPolicyText::parse("g1", POLICY_TEMPLATE).unwrap();
-        assert_eq!(parsed.requests.approval, Approval::Always);
+        assert_eq!(parsed.requests.approval, GroupApproval::Always);
         assert_eq!(parsed.requests.always_ask, ["send", "payment"]);
         assert!(ask(&parsed.requests.decide(&facts("summarize"))));
     }
@@ -692,7 +663,7 @@ mod tests {
         let parsed = GroupPolicyText::parse("g1", "Just prose.\n").unwrap();
         assert_eq!(parsed.requests, RequestRules::default());
         let parsed = GroupPolicyText::parse("g1", "---\nname: x\n---\n").unwrap();
-        assert_eq!(parsed.requests.approval, Approval::Always);
+        assert_eq!(parsed.requests.approval, GroupApproval::Always);
     }
 
     #[test]
@@ -700,13 +671,12 @@ mod tests {
         let r = rules(
             "requests:\n  approval: per-member\n  capabilities: { allow: [review-*, ask-me], deny: [review-secret] }\n  daily_limit: 20\n  hours: \"Mon-Fri 08:00-18:00\"\n  always_ask: [send]\n",
         );
-        assert_eq!(r.approval, Approval::PerMember);
+        assert_eq!(r.approval, GroupApproval::PerMember);
         assert_eq!(r.capabilities.allow, ["review-*", "ask-me"]);
-        assert_eq!(r.daily_limit, Some(20));
         assert_eq!(r.hours.as_ref().unwrap().as_str(), "Mon-Fri 08:00-18:00");
         assert_eq!(
             rules("requests:\n  approval: first-time\n").approval,
-            Approval::FirstTime
+            GroupApproval::FirstTime
         );
     }
 
@@ -755,10 +725,6 @@ mod tests {
         assert_eq!(r.decide(&facts("review-pr")), Decision::Auto);
         assert!(refused(&r.decide(&facts("review-secret"))), "deny wins");
         assert!(refused(&r.decide(&facts("summarize"))), "not allowed");
-        assert!(refused(&r.decide(&RequestFacts {
-            today: 2,
-            ..facts("review-pr")
-        })));
         assert!(ask(&r.decide(&RequestFacts {
             weekday: 6,
             ..facts("review-pr")
@@ -776,11 +742,8 @@ mod tests {
                 .decide(&facts("sender-check")),
             Decision::Auto
         );
-        let first = rules("requests:\n  approval: first-time\n");
-        assert!(ask(&first.decide(&RequestFacts {
-            first_time: true,
-            ..facts("x")
-        })));
+        // A first request is the relay's to mark (`groups::enforce`)
+        let first = rules("requests:\n  approval: first-time\n  daily_limit: 2\n");
         assert_eq!(first.decide(&facts("x")), Decision::Auto);
     }
 

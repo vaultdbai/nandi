@@ -4,7 +4,7 @@
  */
 import type {
   AccessLevel,
-  Approval,
+  GroupApproval,
   GroupSummary,
   GroupView,
 } from '@/lib/bindings'
@@ -56,7 +56,7 @@ export function sortMembers(members: Member[]): Member[] {
  * automated. `null` approval (an unreadable policy) refuses everything.
  */
 export function policyIsStricter(
-  approval: Approval | null,
+  approval: GroupApproval | null,
   level: AccessLevel
 ): boolean {
   if (approval === null) return level !== 'none'

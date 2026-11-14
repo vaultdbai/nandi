@@ -543,6 +543,15 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         // The code a refusal starts with past a public relay's messages a
         // day: `daily_limit@<reset ms>: ...` (`services::relay::limits`)
         .constant("DAILY_LIMIT", crate::services::relay::limits::DAILY_LIMIT)
+        // The codes a request's refusal starts with when a group both
+        // people are in holds it at the relay: past the group's daily
+        // limit (`group_daily_limit@<reset ms>: ...`), or while the first
+        // request waits for approval (`services::relay::client::told`)
+        .constant("GROUP_DAILY_LIMIT", nandi_protocol::GROUP_DAILY_LIMIT)
+        .constant(
+            "NEEDS_FIRST_TIME_APPROVAL",
+            nandi_protocol::NEEDS_FIRST_TIME_APPROVAL,
+        )
         // The code a send's error starts with when the member's key changed
         // and the user hasn't accepted it (`services::network::peer_keys`)
         .constant(

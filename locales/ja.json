@@ -4922,6 +4922,8 @@
   "onboarding.relay.publicConnected": "参加済み: Nandi は公開リレーに接続しています。",
   "network.connection.relayTrust.public": "メールがあれば誰でも公開リレーに参加できるため、信頼は一人ずつ設定します。",
   "errors.dailyLimit": "公開リレーで今日送れるメッセージを使い切りました。{{time}} からまた送れます。",
+  "errors.groupDailyLimit": "今日はグループで認められた数の依頼をこの人に送りました。{{time}} からまた依頼できます。",
+  "errors.needsFirstTimeApproval": "この人への最初の依頼は、まだ承認を待っています。返事があってから、また依頼できます。",
   "publicRelay.title": "公開リレー",
   "publicRelay.description": "会社のリレーがない場合は、接続したメールで VaultDB.ai の公開リレーに参加できます。表示されるのは同じグループの人だけです。",
   "publicRelay.join": "公開リレーに参加",

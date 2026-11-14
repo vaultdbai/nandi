@@ -11,6 +11,12 @@
 //! `daily_limit@<reset, ms since the epoch>: <the relay's words>`, so the
 //! UI shows a calm line with the reset time in the user's own clock
 //! (`errors.dailyLimit`), wherever the action was taken.
+//!
+//! A group's own `daily_limit` (requests from one member to one person a
+//! UTC day) is refused with [`GROUP_DAILY_LIMIT`] and retold the same way
+//! by [`group_daily_limit`] (`errors.groupDailyLimit`).
+
+pub use nandi_protocol::GROUP_DAILY_LIMIT;
 
 /// The relay's refusal code past the messages a person may send a day
 pub const DAILY_LIMIT: &str = "daily_limit";
@@ -20,8 +26,19 @@ const DAY_MS: i64 = 24 * 3600 * 1000;
 /// A daily-limit refusal as the app passes it on: the reset time the
 /// relay named (else the next 00:00 UTC), then its words
 pub fn daily_limit(message: &str) -> String {
+    with_reset(DAILY_LIMIT, message)
+}
+
+/// A group's daily-limit refusal as the app passes it on, like
+/// [`daily_limit`]
+pub fn group_daily_limit(message: &str) -> String {
+    with_reset(GROUP_DAILY_LIMIT, message)
+}
+
+/// `<code>@<reset ms>: <words>`
+fn with_reset(code: &str, message: &str) -> String {
     let resets = resets_at(message).unwrap_or_else(|| next_utc_midnight(now_ms()));
-    format!("{DAILY_LIMIT}@{resets}: {message}")
+    format!("{code}@{resets}: {message}")
 }
 
 /// The reset time a refusal names ("… It resets at 2026-11-11T00:00:00Z")
@@ -57,6 +74,15 @@ mod tests {
         assert_eq!(
             daily_limit(said),
             format!("daily_limit@{}: {said}", NOV_10 + DAY_MS)
+        );
+    }
+
+    #[test]
+    fn a_groups_limit_is_told_with_its_own_code() {
+        let said = "Finance allows 2 requests a day to one person, and you've sent them 2. It resets at 2026-11-11T00:00:00Z";
+        assert_eq!(
+            group_daily_limit(said),
+            format!("group_daily_limit@{}: {said}", NOV_10 + DAY_MS)
         );
     }
 

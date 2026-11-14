@@ -90,4 +90,26 @@ describe('friendly errors', () => {
     expect(dailyLimitResetsAt(words)).toBeNull()
     expect(friendlyErrorParams('timed out', 'en')).toEqual({})
   })
+
+  it("tells a group's refusals at the relay apart by their codes", () => {
+    const resetsAt = Date.UTC(2026, 10, 11)
+    const refused = 'The relay refused it: '
+    const cases: [string, string][] = [
+      [
+        `${refused}group_daily_limit@${resetsAt}: Finance allows 2 requests a day`,
+        'errors.groupDailyLimit',
+      ],
+      [
+        `${refused}needs_first_time_approval: Your first request still waits`,
+        'errors.needsFirstTimeApproval',
+      ],
+      [`${refused}daily_limit@${resetsAt}: 500 a day`, 'errors.dailyLimit'],
+    ]
+    for (const [raw, key] of cases) expect(friendlyErrorKey(raw)).toBe(key)
+    // A group's limit isn't the public relay's
+    expect(dailyLimitResetsAt(`group_daily_limit@${resetsAt}: x`)).toBeNull()
+    expect(
+      friendlyErrorParams(`group_daily_limit@${resetsAt}: x`, 'en').time
+    ).toMatch(/\d/)
+  })
 })

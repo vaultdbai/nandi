@@ -10,12 +10,15 @@
 //! good version arrives. A copy that doesn't read at all is skipped (its
 //! members are unknown) and logged; the next refresh rewrites it.
 //!
-//! Requests that went ahead are counted per group, member and day
-//! (`group_requests`), for `daily_limit` and `approval: first-time`.
+//! The rules that involve the other person are the relay's: it counts
+//! `daily_limit` and holds `approval: first-time` at `SubmitTask`. A first
+//! request it marks (`SealedTask.first_time_groups`) is kept here by task
+//! (`group_first_requests`, from delivery on, so a restart keeps it) and
+//! waits for me whatever my level says.
 
 use chrono::{Datelike, Local, Timelike};
 use nandi_protocol::PublicKeys;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::params;
 
 use crate::db::Db;
 use crate::services::domain::group::{
@@ -25,19 +28,13 @@ use crate::services::network::peer_keys;
 use crate::services::relay::protocol::ASK_ME;
 use crate::services::repos::GroupRepository;
 
-/// What the groups I share with a requester say about one request
-#[derive(Debug, Clone, PartialEq)]
-pub struct GroupGate {
-    /// The strictest decision, its reason naming the group
-    pub decision: Decision,
-    /// The groups it came through (counted when it goes ahead)
-    pub groups: Vec<String>,
-}
+/// Why a first request the relay marked waits
+const FIRST_REQUEST: &str =
+    "the group's policy has you approve a member's first request (the relay marked this one)";
 
 /// When it is (local time), as the rules read it
 #[derive(Debug, Clone, Copy)]
 pub struct Moment {
-    pub day: chrono::NaiveDate,
     pub weekday: u8,
     pub minute: u16,
 }
@@ -46,7 +43,6 @@ impl Moment {
     pub fn now() -> Self {
         let now = Local::now();
         Self {
-            day: now.date_naive(),
             weekday: u8::try_from(now.weekday().num_days_from_monday()).unwrap_or(0),
             minute: u16::try_from(now.hour() * 60 + now.minute()).unwrap_or(0),
         }
@@ -64,9 +60,17 @@ pub struct Enforcer<'a> {
 }
 
 impl Enforcer<'_> {
-    /// The groups' say on a request for `capability` from `requester`;
-    /// `None` when I share no group with them
-    pub fn decide(&self, requester: &str, capability: &str, at: Moment) -> Option<GroupGate> {
+    /// The groups' say on a request for `capability` from `requester`,
+    /// which the relay marked as their first in `first_time` (group IDs),
+    /// with its reason naming the group; `None` when I share no group with
+    /// them and nothing is marked
+    pub fn decide(
+        &self,
+        requester: &str,
+        capability: &str,
+        first_time: &[String],
+        at: Moment,
+    ) -> Option<Decision> {
         if requester == self.me {
             return None;
         }
@@ -88,8 +92,14 @@ impl Enforcer<'_> {
             .iter()
             .filter(|c| c.has_member(requester) && c.has_member(self.me))
             .collect();
+        // A mark for a group I have no copy of still waits for me
+        let unknown_marks = first_time
+            .iter()
+            .filter(|id| !shared.iter().any(|c| &c.group_id == *id))
+            .map(|id| Decision::Ask(format!("Group {id}: {FIRST_REQUEST}")));
+        let unknown_marks: Vec<Decision> = unknown_marks.collect();
         if shared.is_empty() {
-            return None;
+            return Decision::strictest(unknown_marks);
         }
         let access = self.repo.load_access().unwrap_or_else(|e| {
             log::warn!("Groups: my access levels don't read ({e}); asking first everywhere");
@@ -116,23 +126,21 @@ impl Enforcer<'_> {
                     ));
                 }
             };
-            let (today, ever) = counts(self.db, &copy.group_id, requester, at.day);
             let facts = RequestFacts {
                 capability,
                 is_question: capability == ASK_ME,
-                first_time: ever == 0,
-                today,
                 weekday: at.weekday,
                 minute: at.minute,
             };
             let mine = access.level(&copy.group_id).decide(&facts);
-            named(rules.decide(&facts).stricter(mine))
+            let first = if first_time.contains(&copy.group_id) {
+                Decision::Ask(FIRST_REQUEST.to_string())
+            } else {
+                Decision::Auto
+            };
+            named(rules.decide(&facts).stricter(mine).stricter(first))
         });
-        let decision = Decision::strictest(decisions)?;
-        Some(GroupGate {
-            decision,
-            groups: shared.iter().map(|c| c.group_id.clone()).collect(),
-        })
+        Decision::strictest(decisions.chain(unknown_marks))
     }
 
     /// Whether a copy's policy is signed by its author's key
@@ -203,77 +211,61 @@ impl GroupRules {
         )
     }
 
-    /// The groups' say on a request from `requester` for `capability`, now
-    pub fn decide(&self, requester: &str, capability: &str) -> Option<GroupGate> {
+    /// The groups' say on task `task_id`, a request from `requester` for
+    /// `capability`, now
+    pub fn decide(&self, task_id: &str, requester: &str, capability: &str) -> Option<Decision> {
         // Only read when a policy I signed needs checking
         let own = if self.repo.dir().exists() {
             (self.own_keys)().ok()
         } else {
             None
         };
+        let first_time = first_requests(&self.db, task_id);
         Enforcer {
             repo: &self.repo,
             db: &self.db,
             me: &self.me,
             own_keys: own.as_ref(),
         }
-        .decide(requester, capability, Moment::now())
+        .decide(requester, capability, &first_time, Moment::now())
     }
 
-    /// The request `gate` decided went ahead
-    pub fn went_ahead(&self, gate: &GroupGate, requester: &str) {
-        went_ahead(&self.db, &gate.groups, requester, Moment::now().day);
-    }
-}
-
-/// `(today, ever)`: requests from `instance` through `group` that went ahead
-fn counts(db: &Db, group: &str, instance: &str, day: chrono::NaiveDate) -> (u32, u32) {
-    let day = day.to_string();
-    let read = || -> Result<(u32, u32), String> {
-        let conn = db.conn()?;
-        let today: Option<u32> = conn
-            .query_row(
-                "SELECT count FROM group_requests WHERE group_id = ?1 AND instance_id = ?2 AND day = ?3",
-                params![group, instance, day],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|e| e.to_string())?;
-        let ever: u32 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(count), 0) FROM group_requests WHERE group_id = ?1 AND instance_id = ?2",
-                params![group, instance],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        Ok((today.unwrap_or(0), ever))
-    };
-    read().unwrap_or_else(|e| {
-        // Unknown counts: treated as the limit reached is too harsh;
-        // first time (asks) is the safe side
-        log::warn!("Groups: couldn't read request counts: {e}");
-        (0, 0)
-    })
-}
-
-/// A request from `instance` through `groups` went ahead: counted
-pub fn went_ahead(db: &Db, groups: &[String], instance: &str, day: chrono::NaiveDate) {
-    let day = day.to_string();
-    let write = || -> Result<(), String> {
-        let conn = db.conn()?;
+    /// The relay delivered `task_id` as a member's first request through
+    /// `groups`: kept until it's decided, over a restart
+    pub fn first_request(&self, task_id: &str, groups: &[String]) -> Result<(), String> {
+        let conn = self.db.conn()?;
         for group in groups {
             conn.execute(
-                "INSERT INTO group_requests (group_id, instance_id, day, count) VALUES (?1, ?2, ?3, 1)
-                 ON CONFLICT(group_id, instance_id, day) DO UPDATE SET count = count + 1",
-                params![group, instance, day],
+                "INSERT OR IGNORE INTO group_first_requests (task_id, group_id) VALUES (?1, ?2)",
+                params![task_id, group],
             )
             .map_err(|e| e.to_string())?;
         }
         Ok(())
-    };
-    if let Err(e) = write() {
-        log::warn!("Groups: couldn't count a request: {e}");
     }
+}
+
+/// The groups the relay marked `task_id` as a member's first request in
+fn first_requests(db: &Db, task_id: &str) -> Vec<String> {
+    let read = || -> Result<Vec<String>, String> {
+        let conn = db.conn()?;
+        let mut statement = conn
+            .prepare(
+                "SELECT group_id FROM group_first_requests WHERE task_id = ?1 ORDER BY group_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map(params![task_id], |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<rusqlite::Result<Vec<String>>>()
+            .map_err(|e| e.to_string())
+    };
+    read().unwrap_or_else(|e| {
+        // Unknown: the groups' own rules still apply; the relay holds the
+        // requester's next one until this is decided
+        log::warn!("Groups: couldn't read task {task_id}'s first-request marks: {e}");
+        Vec::new()
+    })
 }
 
 #[cfg(test)]
@@ -341,41 +333,42 @@ mod tests {
             self.repos.groups.save_access(&access).unwrap();
         }
 
-        fn decide(&self, from: &str, capability: &str) -> Option<GroupGate> {
+        fn decide(&self, from: &str, capability: &str) -> Option<Decision> {
+            self.decide_marked(from, capability, &[])
+        }
+
+        /// As the relay delivered it, marked first in `first_time`
+        fn decide_marked(
+            &self,
+            from: &str,
+            capability: &str,
+            first_time: &[&str],
+        ) -> Option<Decision> {
+            let first_time: Vec<String> = first_time.iter().map(|g| g.to_string()).collect();
             Enforcer {
                 repo: &self.repos.groups,
                 db: &self.db,
                 me: "me-1",
                 own_keys: Some(self.me.public_keys()),
             }
-            .decide(from, capability, wednesday())
+            .decide(from, capability, &first_time, wednesday())
         }
     }
 
     fn wednesday() -> Moment {
         Moment {
-            day: chrono::NaiveDate::from_ymd_opt(2026, 11, 11).unwrap(),
             weekday: 2,
             minute: 600,
         }
     }
 
-    fn is_ask(gate: &Option<GroupGate>) -> bool {
-        matches!(
-            gate,
-            Some(GroupGate {
-                decision: Decision::Ask(_),
-                ..
-            })
-        )
+    fn is_ask(decision: &Option<Decision>) -> bool {
+        matches!(decision, Some(Decision::Ask(_)))
     }
 
-    fn refusal(gate: &Option<GroupGate>) -> String {
-        match gate {
-            Some(GroupGate {
-                decision: Decision::Refuse(why),
-                ..
-            }) => why.clone(),
+    fn refusal(decision: &Option<Decision>) -> String {
+        match decision {
+            Some(Decision::Refuse(why)) => why.clone(),
             other => panic!("expected a refusal, got {other:?}"),
         }
     }
@@ -401,14 +394,9 @@ mod tests {
         // Joined: ask first
         assert!(is_ask(&w.decide("bob-1", "review")));
         w.level(G1, AccessLevel::FullyAutomated);
-        let gate = w.decide("bob-1", "review").unwrap();
-        assert_eq!(gate.decision, Decision::Auto);
-        assert_eq!(gate.groups, [G1]);
+        assert_eq!(w.decide("bob-1", "review"), Some(Decision::Auto));
         w.level(G1, AccessLevel::QuestionsOnly);
-        assert_eq!(
-            w.decide("bob-1", "ask-me").unwrap().decision,
-            Decision::Auto
-        );
+        assert_eq!(w.decide("bob-1", "ask-me"), Some(Decision::Auto));
         assert!(refusal(&w.decide("bob-1", "review")).starts_with("Finance: "));
         w.level(G1, AccessLevel::SendMeInfo);
         assert!(is_ask(&w.decide("bob-1", "ask-me")));
@@ -438,9 +426,7 @@ mod tests {
         w.level(G1, AccessLevel::FullyAutomated);
         w.level(G2, AccessLevel::FullyAutomated);
         assert!(refusal(&w.decide("bob-1", "review")).starts_with("Ops: "));
-        let gate = w.decide("bob-1", "summarize").unwrap();
-        assert_eq!(gate.decision, Decision::Auto);
-        assert_eq!(gate.groups, [G1, G2]);
+        assert_eq!(w.decide("bob-1", "summarize"), Some(Decision::Auto));
     }
 
     #[test]
@@ -472,7 +458,7 @@ mod tests {
     }
 
     #[test]
-    fn daily_limits_and_first_time_count_what_went_ahead() {
+    fn a_first_request_the_relay_marked_waits_whatever_my_level() {
         let w = world();
         w.group(
             G1,
@@ -480,29 +466,58 @@ mod tests {
             "  approval: first-time\n  daily_limit: 2\n",
             &["me-1", "bob-1"],
         );
+        w.group(G2, "Ops", "  approval: per-member\n", &["me-1", "bob-1"]);
         w.level(G1, AccessLevel::FullyAutomated);
-        assert!(is_ask(&w.decide("bob-1", "review")), "first time");
-        let day = wednesday().day;
-        went_ahead(&w.db, &[G1.to_string()], "bob-1", day);
-        assert_eq!(
-            w.decide("bob-1", "review").unwrap().decision,
-            Decision::Auto
-        );
-        went_ahead(&w.db, &[G1.to_string()], "bob-1", day);
-        assert!(refusal(&w.decide("bob-1", "review")).contains("limit of 2"));
-        // Another day
-        went_ahead(&w.db, &[G1.to_string()], "bob-1", day.pred_opt().unwrap());
-        let tomorrow = Moment {
-            day: day.succ_opt().unwrap(),
-            ..wednesday()
+        w.level(G2, AccessLevel::FullyAutomated);
+        let ask = |decision: Option<Decision>| match decision {
+            Some(Decision::Ask(why)) => why,
+            other => panic!("expected to ask, got {other:?}"),
         };
-        let gate = Enforcer {
-            repo: &w.repos.groups,
-            db: &w.db,
-            me: "me-1",
-            own_keys: None,
+        // (marked in, from, what it decides)
+        let cases: [(&[&str], &str, Option<&str>); 5] = [
+            (&[], "bob-1", None),
+            (&[G1], "bob-1", Some("Finance: ")),
+            (&[G2], "bob-1", Some("Ops: ")),
+            // A group I have no copy of (or don't share) still waits
+            (
+                &["g_00000000000000ff"],
+                "bob-1",
+                Some("Group g_00000000000000ff: "),
+            ),
+            (
+                &["g_00000000000000ff"],
+                "carol-1",
+                Some("Group g_00000000000000ff: "),
+            ),
+        ];
+        for (marked, from, asks) in cases {
+            let decision = w.decide_marked(from, "review", marked);
+            match asks {
+                None => assert_eq!(decision, Some(Decision::Auto), "{marked:?}"),
+                Some(prefix) => {
+                    let why = ask(decision);
+                    assert!(why.starts_with(prefix), "{marked:?}: {why}");
+                    assert!(why.contains("first request"), "{marked:?}: {why}");
+                }
+            }
         }
-        .decide("bob-1", "review", tomorrow);
-        assert_eq!(gate.unwrap().decision, Decision::Auto);
+        // A refusal stays a refusal
+        w.level(G1, AccessLevel::None);
+        refusal(&w.decide_marked("bob-1", "review", &[G1]));
+    }
+
+    #[test]
+    fn marks_are_kept_by_task() {
+        let w = world();
+        let rules = GroupRules::new(
+            w.repos.groups.clone(),
+            w.db.clone(),
+            "me-1".into(),
+            std::sync::Arc::new(|| Err("no keys".to_string())),
+        );
+        rules.first_request("t1", &[G2.into(), G1.into()]).unwrap();
+        rules.first_request("t1", &[G1.into()]).unwrap();
+        assert_eq!(first_requests(&w.db, "t1"), [G1, G2]);
+        assert!(first_requests(&w.db, "t2").is_empty());
     }
 }

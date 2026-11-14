@@ -588,11 +588,12 @@ pub async fn handle_gateway_task(state: &AppState, task: Task) -> Result<TaskRes
         .flatten();
     let group = groups.as_ref().and_then(|rules| {
         rules.decide(
+            &task.id,
             &caller_instance,
             capability.as_deref().unwrap_or(GATEWAY_AGENT_ID),
         )
     });
-    let decision = match (&group.as_ref().map(|g| &g.decision), decision) {
+    let decision = match (&group, decision) {
         (Some(GroupDecision::Refuse(why)), PolicyDecision::Allow { .. }) => {
             PolicyDecision::Reject {
                 reason: format!("Not accepted here. {why}"),
@@ -663,9 +664,6 @@ pub async fn handle_gateway_task(state: &AppState, task: Task) -> Result<TaskRes
             }
         }
         PolicyDecision::Allow { .. } => {}
-    }
-    if let (Some(rules), Some(gate)) = (groups.as_ref(), group.as_ref()) {
-        rules.went_ahead(gate, &caller_instance);
     }
     // Not a turn: it takes no slot while it waits on the owner
     if lasting {
