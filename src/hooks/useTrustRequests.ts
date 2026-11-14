@@ -5,10 +5,10 @@
  * `trust://relationship_updated` (trusting them elsewhere clears it).
  */
 import { useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { TrustAnswer, TrustRequest } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 export const trustRequestKeys = {
   all: ['trust', 'requests'] as const,
@@ -31,38 +31,35 @@ export function useTrustRequests() {
     return () => subscription.unsubscribe()
   }, [queryClient])
 
-  return useQuery({
-    queryKey: trustRequestKeys.all,
-    queryFn: async (): Promise<TrustRequest[]> =>
-      unwrapResult(await client.listTrustRequests()),
-    // Unavailable (e.g. no relay yet): nothing is waiting
-    retry: false,
-  })
+  return useClientQuery(
+    trustRequestKeys.all,
+    () => client.listTrustRequests(),
+    {
+      // Unavailable (e.g. no relay yet): nothing is waiting
+      retry: false,
+    }
+  )
 }
 
 export function useRespondTrustRequest() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: {
-      instanceId: string
-      answer: TrustAnswer
-      block?: boolean
-    }) =>
-      unwrapResult(
-        await client.respondTrustRequest(
-          input.instanceId,
-          input.answer,
-          input.block ?? false
-        )
+  return useClientMutation(
+    (input: { instanceId: string; answer: TrustAnswer; block?: boolean }) =>
+      client.respondTrustRequest(
+        input.instanceId,
+        input.answer,
+        input.block ?? false
       ),
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: trustRequestKeys.all })
-      // Trusted or blocked: profiles, the directory and callers change too
-      for (const queryKey of [['members'], ['network'], ['gateway']]) {
-        void queryClient.invalidateQueries({ queryKey })
-      }
-    },
-  })
+    {
+      onSettled: () => {
+        void queryClient.invalidateQueries({ queryKey: trustRequestKeys.all })
+        // Trusted or blocked: profiles, the directory and callers change too
+        for (const queryKey of [['members'], ['network'], ['gateway']]) {
+          void queryClient.invalidateQueries({ queryKey })
+        }
+      },
+    }
+  )
 }
 
 /** "Sam K. (@sam)", or the handle alone, or a plain fallback, never an ID */

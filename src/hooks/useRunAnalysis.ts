@@ -5,10 +5,10 @@
  * summary query never goes stale here and re-asking a question is cheap.
  * Answers asked this session stay in the query cache for the Analysis tab.
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import type { AnalysisResponse } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 export const runAnalysisKeys = {
   summary: (runId: string) => ['runAnalysis', runId, 'summary'] as const,
@@ -29,13 +29,15 @@ export function analysisErrorMessage(error: unknown): string {
 export function useRunAnalysis(runId: string, { enabled = true } = {}) {
   const queryClient = useQueryClient()
 
-  const summary = useQuery({
-    queryKey: runAnalysisKeys.summary(runId),
-    queryFn: async () => unwrapResult(await client.summarizeRun(runId)),
-    enabled,
-    staleTime: Infinity,
-    retry: false,
-  })
+  const summary = useClientQuery(
+    runAnalysisKeys.summary(runId),
+    () => client.summarizeRun(runId),
+    {
+      enabled,
+      staleTime: Infinity,
+      retry: false,
+    }
+  )
 
   // Client-side list: filled by `ask`, never fetched
   const answers = useQuery({
@@ -49,19 +51,20 @@ export function useRunAnalysis(runId: string, { enabled = true } = {}) {
     gcTime: Infinity,
   })
 
-  const ask = useMutation({
-    mutationFn: async (question: string) =>
-      unwrapResult(await client.analyzeRun(runId, question)),
-    onSuccess: response => {
-      queryClient.setQueryData<AnalysisResponse[]>(
-        runAnalysisKeys.answers(runId),
-        (previous = []) => [
-          ...previous.filter(a => a.question !== response.question),
-          response,
-        ]
-      )
-    },
-  })
+  const ask = useClientMutation(
+    (question: string) => client.analyzeRun(runId, question),
+    {
+      onSuccess: response => {
+        queryClient.setQueryData<AnalysisResponse[]>(
+          runAnalysisKeys.answers(runId),
+          (previous = []) => [
+            ...previous.filter(a => a.question !== response.question),
+            response,
+          ]
+        )
+      },
+    }
+  )
 
   return { summary, answers: answers.data, ask }
 }

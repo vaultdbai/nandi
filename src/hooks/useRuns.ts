@@ -1,5 +1,6 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData } from '@tanstack/react-query'
 import { client } from '@/lib/client'
+import { useClientQuery } from '@/hooks/useClientQuery'
 import {
   unwrapResult,
   type DateRange,
@@ -71,13 +72,14 @@ export function useRuns(
 ) {
   const normalized = normalizeRunFilters(filters)
   const offset = page * pageSize
-  return useQuery({
-    queryKey: runsQueryKeys.page(normalized, pageSize, offset),
-    queryFn: async () =>
-      unwrapResult(await client.listAllRuns(normalized, pageSize, offset)),
-    // Keep the current page on screen while the next one loads
-    placeholderData: keepPreviousData,
-  })
+  return useClientQuery(
+    runsQueryKeys.page(normalized, pageSize, offset),
+    () => client.listAllRuns(normalized, pageSize, offset),
+    {
+      // Keep the current page on screen while the next one loads
+      placeholderData: keepPreviousData,
+    }
+  )
 }
 
 /** Every run matching `filters` (up to `max`), page by page. */

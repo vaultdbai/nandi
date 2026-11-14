@@ -5,7 +5,6 @@
  */
 import { useEffect } from 'react'
 import {
-  useMutation,
   useQuery,
   useQueryClient,
   type QueryClient,
@@ -13,15 +12,13 @@ import {
 import { client, type NandiEvent } from '@/lib/client'
 import type {
   JsonValue,
-  PendingClarification,
   TaskEvent,
   TaskFilter,
   TaskMessage,
   TaskRecord,
   TaskState,
-  TaskStatusReport,
 } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 /** Payload of `task://state_changed` (`services::a2a::task::TaskStateChanged`) */
 export interface TaskStateChangedPayload {
@@ -141,40 +138,40 @@ function useTaskLiveUpdates() {
 /** Tasks matching `filter` (`null`: the most recent, any role) */
 export function useTasks(filter: TaskFilter | null) {
   useTaskLiveUpdates()
-  return useQuery<TaskRecord[]>({
-    queryKey: taskQueryKeys.list(filter),
-    queryFn: async () => unwrapResult(await client.listTasks(filter)),
-    retry: false,
-  })
+  return useClientQuery(
+    taskQueryKeys.list(filter),
+    () => client.listTasks(filter),
+    { retry: false }
+  )
 }
 
 export function useTask(taskId: string) {
   useTaskLiveUpdates()
-  return useQuery<TaskRecord>({
-    queryKey: taskQueryKeys.detail(taskId),
-    queryFn: async () => unwrapResult(await client.getTask(taskId)),
-    retry: false,
-  })
+  return useClientQuery(
+    taskQueryKeys.detail(taskId),
+    () => client.getTask(taskId),
+    { retry: false }
+  )
 }
 
 /** The task's state transitions, oldest first */
 export function useTaskEvents(taskId: string) {
   useTaskLiveUpdates()
-  return useQuery<TaskEvent[]>({
-    queryKey: taskQueryKeys.events(taskId),
-    queryFn: async () => unwrapResult(await client.getTaskEvents(taskId)),
-    retry: false,
-  })
+  return useClientQuery(
+    taskQueryKeys.events(taskId),
+    () => client.getTaskEvents(taskId),
+    { retry: false }
+  )
 }
 
 /** Progress, status, clarification, … traffic about the task */
 export function useTaskMessages(taskId: string) {
   useTaskLiveUpdates()
-  return useQuery<TaskMessage[]>({
-    queryKey: taskQueryKeys.messages(taskId),
-    queryFn: async () => unwrapResult(await client.getTaskMessages(taskId)),
-    retry: false,
-  })
+  return useClientQuery(
+    taskQueryKeys.messages(taskId),
+    () => client.getTaskMessages(taskId),
+    { retry: false }
+  )
 }
 
 /** The newest `progress` message as a `task://progress` payload, or `null` */
@@ -233,31 +230,30 @@ export function useTaskProgress(taskId: string) {
  */
 export function useTaskPendingClarifications(taskId?: string) {
   useTaskLiveUpdates()
-  return useQuery<PendingClarification[], unknown, PendingClarification[]>({
-    queryKey: taskQueryKeys.pendingClarifications,
-    queryFn: async () => unwrapResult(await client.getPendingClarifications()),
-    select: all =>
-      taskId === undefined ? all : all.filter(c => c.taskId === taskId),
-    retry: false,
-  })
+  return useClientQuery(
+    taskQueryKeys.pendingClarifications,
+    () => client.getPendingClarifications(),
+    {
+      select: all =>
+        taskId === undefined ? all : all.filter(c => c.taskId === taskId),
+      retry: false,
+    }
+  )
 }
 
 /** Cancels a task (requester side); the provider is told over the relay */
 export function useCancelTask() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
-      taskId,
-      reason = null,
-    }: {
-      taskId: string
-      reason?: string | null
-    }) => unwrapResult(await client.cancelTask(taskId, reason)),
-    onSuccess: task => {
-      queryClient.setQueryData(taskQueryKeys.detail(task.id), task)
-      void queryClient.invalidateQueries({ queryKey: taskQueryKeys.lists })
-    },
-  })
+  return useClientMutation(
+    ({ taskId, reason = null }: { taskId: string; reason?: string | null }) =>
+      client.cancelTask(taskId, reason),
+    {
+      onSuccess: task => {
+        queryClient.setQueryData(taskQueryKeys.detail(task.id), task)
+        void queryClient.invalidateQueries({ queryKey: taskQueryKeys.lists })
+      },
+    }
+  )
 }
 
 /** States a provider can hand a task on from (mirrors `reassign::reassignable`) */
@@ -270,44 +266,42 @@ export const isReassignable = (state: TaskState): boolean =>
 /** Online teammates who serve the task's capability (provider side) */
 export function useReassignCandidates(taskId: string, enabled: boolean) {
   useTaskLiveUpdates()
-  return useQuery({
-    queryKey: taskQueryKeys.reassignCandidates(taskId),
-    queryFn: async () =>
-      unwrapResult(await client.listReassignCandidates(taskId)),
-    enabled,
-    staleTime: 15_000,
-  })
+  return useClientQuery(
+    taskQueryKeys.reassignCandidates(taskId),
+    () => client.listReassignCandidates(taskId),
+    {
+      enabled,
+      staleTime: 15_000,
+    }
+  )
 }
 
 /** Hands a task we're serving to a teammate */
 export function useReassignTask() {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (request: {
+  return useClientMutation(
+    (request: {
       taskId: string
       newProviderInstance: string
       reason?: string | null
     }) =>
-      unwrapResult(
-        await client.reassignTask({
-          taskId: request.taskId,
-          newProviderInstance: request.newProviderInstance,
-          reason: request.reason ?? null,
-        })
-      ),
-    onSuccess: task => {
-      queryClient.setQueryData(taskQueryKeys.detail(task.id), task)
-      void queryClient.invalidateQueries({ queryKey: taskQueryKeys.lists })
-    },
-  })
+      client.reassignTask({
+        taskId: request.taskId,
+        newProviderInstance: request.newProviderInstance,
+        reason: request.reason ?? null,
+      }),
+    {
+      onSuccess: task => {
+        queryClient.setQueryData(taskQueryKeys.detail(task.id), task)
+        void queryClient.invalidateQueries({ queryKey: taskQueryKeys.lists })
+      },
+    }
+  )
 }
 
 /** Asks the provider how the task is going (falls back to the local row) */
 export function useQueryTaskStatus() {
-  return useMutation<TaskStatusReport, unknown, string>({
-    mutationFn: async taskId =>
-      unwrapResult(await client.queryTaskStatus(taskId)),
-  })
+  return useClientMutation((taskId: string) => client.queryTaskStatus(taskId))
 }
 
 /** `unwrapResult` throws the error string (or, in tests, the `Result`) */

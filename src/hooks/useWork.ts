@@ -4,15 +4,10 @@
  * and task events, so the view follows runs live.
  */
 import { useEffect } from 'react'
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { client, type NandiEvent } from '@/lib/client'
 import type { WorkState } from '@/lib/bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 
 export const workKeys = {
   all: ['work'] as const,
@@ -51,36 +46,30 @@ function useWorkEvents(queryClient: QueryClient) {
 export function useWork(stateFilter: WorkState | null) {
   const queryClient = useQueryClient()
   useWorkEvents(queryClient)
-  return useQuery({
-    queryKey: workKeys.list(stateFilter),
-    queryFn: async () => unwrapResult(await client.listWork(stateFilter)),
-  })
+  return useClientQuery(workKeys.list(stateFilter), () =>
+    client.listWork(stateFilter)
+  )
 }
 
 export function useWorkItem(id: string) {
   const queryClient = useQueryClient()
   useWorkEvents(queryClient)
-  return useQuery({
-    queryKey: workKeys.item(id),
-    queryFn: async () => unwrapResult(await client.getWorkItem(id)),
-  })
+  return useClientQuery(workKeys.item(id), () => client.getWorkItem(id))
 }
 
 /** Manual workflow steps waiting for someone, oldest first */
 export function useManualSteps() {
   const queryClient = useQueryClient()
   useWorkEvents(queryClient)
-  return useQuery({
-    queryKey: workKeys.manualSteps,
-    queryFn: async () => unwrapResult(await client.listPendingManualSteps()),
-  })
+  return useClientQuery(workKeys.manualSteps, () =>
+    client.listPendingManualSteps()
+  )
 }
 
 /** Completes a manual step; its run picks up where it stopped */
 export function useCompleteManualStep() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
+  return useClientMutation(
+    ({
       runId,
       stepId,
       output,
@@ -91,21 +80,18 @@ export function useCompleteManualStep() {
       output: string | null
       attachmentIds?: string[]
     }) =>
-      unwrapResult(
-        await client.completeManualStep(runId, stepId, {
-          output,
-          attachmentIds,
-        })
-      ),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: workKeys.all }),
-  })
+      client.completeManualStep(runId, stepId, {
+        output,
+        attachmentIds,
+      }),
+    { invalidates: workKeys.all }
+  )
 }
 
 /** Pause, resume, cancel, or rate a work item */
 export function useWorkAction() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
+  return useClientMutation(
+    ({
       id,
       action,
       rating,
@@ -116,15 +102,15 @@ export function useWorkAction() {
     }) => {
       switch (action) {
         case 'pause':
-          return unwrapResult(await client.pauseWork(id))
+          return client.pauseWork(id)
         case 'resume':
-          return unwrapResult(await client.resumeWork(id))
+          return client.resumeWork(id)
         case 'cancel':
-          return unwrapResult(await client.cancelWork(id))
+          return client.cancelWork(id)
         case 'rate':
-          return unwrapResult(await client.rateWork(id, rating ?? 0))
+          return client.rateWork(id, rating ?? 0)
       }
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: workKeys.all }),
-  })
+    { invalidates: workKeys.all }
+  )
 }
