@@ -789,6 +789,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | DT-45 | Recent changes on Home                                       | Shipped                                                                                    | unit       | no          |                 |
 | DT-46 | Refresh, F5 and Ctrl+R                                       | Shipped                                                                                    | unit       | no          |                 |
 | DT-47 | Re-scan when the OS drops file events                        | Shipped                                                                                    | unit       | no          |                 |
+| DT-48 | Run trail: run events and approval decisions survive a reset | Shipped                                                                                    | unit       | no          |                 |
 | PL-01 | CLI usage, help and argument validation                      | Shipped                                                                                    | unit       | no          |                 |
 | PL-02 | `--server` and `--port`                                      | Shipped                                                                                    | unit       | no          |                 |
 | PL-03 | Headless mode                                                | Shipped                                                                                    | api        | no          |                 |

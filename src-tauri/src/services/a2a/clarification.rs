@@ -1017,7 +1017,7 @@ impl ClarificationService {
         let replaced = lock(&self.rounds).insert(task_id.clone(), round);
         if let Some(old) = replaced {
             escalation::close_approvals(
-                &self.db,
+                &self.bus,
                 old.approvals.into_values().collect(),
                 ApprovalStatus::Expired,
             )
@@ -1228,7 +1228,7 @@ impl ClarificationService {
                 .await;
         }
         escalation::close_approvals(
-            &self.db,
+            &self.bus,
             done.approvals.into_values().collect(),
             ApprovalStatus::Approved,
         )
@@ -1261,7 +1261,7 @@ impl ClarificationService {
 
     /// Resolves an ended round's approvals and tells the UI
     async fn close(&self, round: Round, status: ApprovalStatus, outcome: &'static str) {
-        escalation::close_approvals(&self.db, round.approvals.into_values().collect(), status)
+        escalation::close_approvals(&self.bus, round.approvals.into_values().collect(), status)
             .await;
         self.log
             .record(&round.task_id, round.round, outcome, None, None)
@@ -1401,7 +1401,7 @@ impl ClarificationService {
                 }
             }
         }
-        escalation::close_approvals(&self.db, resolved, ApprovalStatus::Approved).await;
+        escalation::close_approvals(&self.bus, resolved, ApprovalStatus::Approved).await;
         if let (Some(agent_id), false) = (&agent_id, learn.is_empty()) {
             if let Err(e) = self.learn_topics(agent_id, learn) {
                 log::warn!("Failed to update the clarification policy of '{agent_id}': {e}");

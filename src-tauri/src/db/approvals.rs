@@ -6,7 +6,7 @@ use super::*;
 // Approvals
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApprovalRow {
     pub id: String,
     pub agent_id: String,
@@ -41,6 +41,57 @@ fn approval_row(row: &Row) -> rusqlite::Result<ApprovalRow> {
         expires_at: row.get("expires_at")?,
         decided_by: row.get("decided_by")?,
     })
+}
+
+/// A closed approval as the run trail keeps it (`services::run_trail`):
+/// the whole row, with who decided it and when it closed
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DecidedApproval {
+    #[serde(flatten)]
+    pub approval: ApprovalRow,
+    /// Epoch ms
+    pub resolved_at: Option<i64>,
+}
+
+/// `id` as it stands, with when it closed. `None`: no such approval.
+pub fn decided_approval(conn: &Connection, id: &str) -> rusqlite::Result<Option<DecidedApproval>> {
+    conn.query_row(
+        &format!("SELECT {APPROVAL_COLUMNS}, resolved_at FROM approvals WHERE id = ?1"),
+        [id],
+        |row| {
+            Ok(DecidedApproval {
+                approval: approval_row(row)?,
+                resolved_at: row.get("resolved_at")?,
+            })
+        },
+    )
+    .optional()
+}
+
+/// Puts back a decision from the run trail. A later decision of the same
+/// approval replaces an earlier one.
+pub fn restore_approval(conn: &Connection, decided: &DecidedApproval) -> rusqlite::Result<()> {
+    let approval = &decided.approval;
+    conn.execute(
+        "INSERT OR REPLACE INTO approvals (id, agent_id, run_id, message_id, tool_call_id, tool,
+             args, status, created_at, resolved_at, expires_at, decided_by)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![
+            approval.id,
+            approval.agent_id,
+            approval.run_id,
+            approval.message_id,
+            approval.tool_call_id,
+            approval.tool,
+            approval.args.to_string(),
+            approval.status.as_str(),
+            approval.created_at,
+            decided.resolved_at,
+            approval.expires_at,
+            approval.decided_by,
+        ],
+    )?;
+    Ok(())
 }
 
 /// Records who decided `id`, before the decision closes it

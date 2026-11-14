@@ -16,6 +16,7 @@ use super::clarification::ClarificationService;
 use super::Question;
 use crate::db::{self, ApprovalRow, Db};
 use crate::model::{ApprovalDecision, ApprovalStatus};
+use crate::services::events::EventBus;
 use crate::services::AppState;
 
 /// The `approvals.tool` of an escalated question
@@ -53,24 +54,13 @@ pub(super) async fn insert_approval(
     db.call(move |conn| db::insert_approval(conn, &row)).await
 }
 
-/// Resolves the still-pending ones among `ids`
-pub(super) async fn close_approvals(db: &Db, ids: Vec<String>, status: ApprovalStatus) {
+/// Resolves the still-pending ones among `ids` (through the bus, so each
+/// decision reaches the run trail)
+pub(super) async fn close_approvals(bus: &EventBus, ids: Vec<String>, status: ApprovalStatus) {
     if ids.is_empty() {
         return;
     }
-    let closed = db
-        .call(move |conn| {
-            for id in ids {
-                if let Some(row) = db::get_approval(conn, &id)? {
-                    if row.status == ApprovalStatus::Pending {
-                        db::set_approval_status(conn, &row, status)?;
-                    }
-                }
-            }
-            Ok(())
-        })
-        .await;
-    if let Err(e) = closed {
+    if let Err(e) = bus.close_approvals(ids, status).await {
         log::warn!("Failed to resolve clarification approvals: {e}");
     }
 }

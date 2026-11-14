@@ -74,32 +74,59 @@ pub struct AuditHealth {
 pub async fn append(path: PathBuf, entry: &impl Serialize) {
     let entry = serde_json::to_value(entry).map_err(|e| e.to_string());
     let target = path.clone();
-    let written = tokio::task::spawn_blocking(move || append_blocking(&target, entry?))
+    let written = tokio::task::spawn_blocking(move || write_lines(&target, vec![entry?]))
         .await
         .unwrap_or_else(|e| Err(e.to_string()));
     if let Err(e) = written {
-        log::error!("Audit degraded: failed to write {}: {e}", path.display());
-        let mut logs = logs();
-        let log = logs.entry(path).or_default();
-        log.lost += 1;
-        log.last_error = Some(e);
+        note_lost(path, 1, e);
     }
 }
 
-fn append_blocking(path: &Path, entry: Value) -> Result<(), String> {
-    let Value::Object(mut fields) = entry else {
-        return Err("An audit entry must be a JSON object".to_string());
-    };
+/// Appends `entries` (JSON objects) in order, each chained to the one
+/// before, with one fsync for them all. It runs on the calling thread, for
+/// a caller already off the async runtime (a database transaction that
+/// commits a batch). Failures are counted as in [`append`].
+pub fn append_all_blocking(path: &Path, entries: Vec<Value>) {
+    if entries.is_empty() {
+        return;
+    }
+    let count = entries.len() as u32;
+    if let Err(e) = write_lines(path, entries) {
+        note_lost(path.to_path_buf(), count, e);
+    }
+}
+
+fn note_lost(path: PathBuf, count: u32, error: String) {
+    log::error!(
+        "Audit degraded: failed to write {}: {error}",
+        path.display()
+    );
+    let mut logs = logs();
+    let log = logs.entry(path).or_default();
+    log.lost += count;
+    log.last_error = Some(error);
+}
+
+fn write_lines(path: &Path, entries: Vec<Value>) -> Result<(), String> {
     let mut logs = logs();
     let log = logs.entry(path.to_path_buf()).or_default();
     // Taken, so a failed write re-reads the head from the file: the write
     // may have got part of the way
-    let prev = match log.head.take() {
+    let mut prev = match log.head.take() {
         Some(head) => head,
         None => last_line(path)?.map_or_else(|| GENESIS.to_string(), |line| sha256_hex(&line)),
     };
-    fields.insert(PREV_FIELD.to_string(), Value::String(prev));
-    let line = serde_json::to_string(&fields).map_err(|e| e.to_string())?;
+    let mut text = String::new();
+    for entry in entries {
+        let Value::Object(mut fields) = entry else {
+            return Err("An audit entry must be a JSON object".to_string());
+        };
+        fields.insert(PREV_FIELD.to_string(), Value::String(prev));
+        let line = serde_json::to_string(&fields).map_err(|e| e.to_string())?;
+        prev = sha256_hex(line.as_bytes());
+        text.push_str(&line);
+        text.push('\n');
+    }
 
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -109,10 +136,9 @@ fn append_blocking(path: &Path, entry: Value) -> Result<(), String> {
         .append(true)
         .open(path)
         .map_err(|e| e.to_string())?;
-    file.write_all(format!("{line}\n").as_bytes())
-        .map_err(|e| e.to_string())?;
+    file.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
     file.sync_data().map_err(|e| e.to_string())?;
-    log.head = Some(sha256_hex(line.as_bytes()));
+    log.head = Some(prev);
     Ok(())
 }
 
@@ -290,6 +316,26 @@ mod tests {
         let log = logs.get(&path).unwrap();
         assert_eq!(log.lost, 2);
         assert!(log.last_error.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_batch_is_chained_line_by_line_and_continues_the_log() {
+        let (_dir, path) = log_with(1).await;
+        append_all_blocking(&path, vec![json!({ "ts": 2 }), json!({ "ts": 3 })]);
+        append(path.clone(), &json!({ "ts": 4 })).await;
+        assert_eq!(verify(&path).unwrap(), ChainCheck::Intact { lines: 4 });
+        // An empty batch writes nothing
+        append_all_blocking(&path, Vec::new());
+        assert_eq!(read_lines(&path).len(), 4);
+    }
+
+    #[test]
+    fn a_failed_batch_counts_every_entry_lost() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("blocked.log");
+        std::fs::create_dir(&path).unwrap();
+        append_all_blocking(&path, vec![json!({ "ts": 1 }), json!({ "ts": 2 })]);
+        assert_eq!(logs().get(&path).unwrap().lost, 2);
     }
 
     #[tokio::test]

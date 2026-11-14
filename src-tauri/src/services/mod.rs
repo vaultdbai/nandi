@@ -66,6 +66,7 @@ pub mod repo_store;
 pub mod repos;
 pub mod run_analysis;
 pub mod run_plan;
+pub mod run_trail;
 pub mod run_waiter;
 pub mod runs;
 pub mod runtimes;
@@ -229,17 +230,20 @@ impl AppState {
             log::error!("Failed to set up {}: {e}", layout.root.display());
         }
         let db = Db::open(&nandi_config::state_db_path()?)?;
+        let local = nandi_config::local_dir()?;
         // Before anything reads it: the instance ID outlives the database
-        match crate::utils::nandi_config::local_dir() {
-            Ok(local) => network::keep_instance_id(&db, &local),
-            Err(e) => log::warn!("Instance ID not kept on disk: {e}"),
+        network::keep_instance_id(&db, &local);
+        // A new `state.db` gets its run history and decisions back
+        let trail = run_trail::RunTrail::in_local_dir(&local);
+        if let Err(e) = db.conn().and_then(|mut conn| trail.restore(&mut conn)) {
+            log::error!("{e}");
         }
         // The free trial signs its calls as this instance
         match network::local_instance_id(&db) {
             Ok(id) => llm_trial::init(id),
             Err(e) => log::warn!("No free trial without an instance ID: {e}"),
         }
-        let state = Self::build(db, config, layout);
+        let state = Self::build(db, trail, config, layout);
         match state.store().load() {
             Ok(stats) => log::info!(
                 "Loaded the repo: {} agents, {} workflows re-projected",
@@ -332,7 +336,7 @@ impl AppState {
         Ok(state)
     }
 
-    fn build(db: Db, config: Config, layout: RepoLayout) -> Self {
+    fn build(db: Db, trail: run_trail::RunTrail, config: Config, layout: RepoLayout) -> Self {
         // `~/.nandi/local/cache` (the repo is `~/.nandi/repo`)
         let cache_dir = layout.root.parent().map_or_else(
             || layout.root.join(".cache"),
@@ -344,7 +348,7 @@ impl AppState {
         let broadcast = BroadcastSink::new();
         let mut sinks = config.sinks;
         sinks.push(Arc::new(broadcast.clone()));
-        let bus = EventBus::new(db.clone(), Arc::new(FanoutSink::new(sinks)));
+        let bus = EventBus::new(db.clone(), Arc::new(FanoutSink::new(sinks))).with_trail(trail);
         store.subscribe(Arc::new(bus.clone()));
         let feed = live::ChangeFeed::new(bus.clone());
         live::StoreChanges::subscribe(&feed, &store);
@@ -605,6 +609,7 @@ impl AppState {
         let layout = RepoLayout::new(app_data_dir.join("repo"), app_data_dir.join("trash"));
         let state = Self::build(
             Db::in_memory(),
+            run_trail::RunTrail::off(),
             Config {
                 app_data_dir,
                 runtime: tokio::runtime::Handle::current(),

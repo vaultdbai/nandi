@@ -219,17 +219,65 @@ pub fn running_runs(conn: &Connection) -> rusqlite::Result<Vec<RunSummary>> {
 // Run events
 // ---------------------------------------------------------------------------
 
+/// One `run_events` row, as stored and as the run trail keeps it
+/// (`services::run_trail`)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RunEventRow {
+    pub id: i64,
+    pub run_id: String,
+    /// The event's name (`agent://tool_call`, ...)
+    pub kind: String,
+    pub payload: Value,
+    /// Epoch ms
+    pub created_at: i64,
+}
+
+/// Records an event of `run_id` and returns the row written
 pub fn insert_run_event(
     conn: &Connection,
     run_id: &str,
     kind: &str,
     payload: &Value,
-) -> rusqlite::Result<()> {
+) -> rusqlite::Result<RunEventRow> {
+    let created_at = now_ms();
     conn.execute(
         "INSERT INTO run_events (run_id, kind, payload, created_at) VALUES (?1, ?2, ?3, ?4)",
-        params![run_id, kind, payload.to_string(), now_ms()],
+        params![run_id, kind, payload.to_string(), created_at],
+    )?;
+    Ok(RunEventRow {
+        id: conn.last_insert_rowid(),
+        run_id: run_id.to_string(),
+        kind: kind.to_string(),
+        payload: payload.clone(),
+        created_at,
+    })
+}
+
+/// Puts back a row from the run trail with its own ID. A row already
+/// there is kept.
+pub fn restore_run_event(conn: &Connection, row: &RunEventRow) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO run_events (id, run_id, kind, payload, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            row.id,
+            row.run_id,
+            row.kind,
+            row.payload.to_string(),
+            row.created_at
+        ],
     )?;
     Ok(())
+}
+
+/// Whether the tables the run trail rebuilds (`run_events`, `approvals`)
+/// are both empty, as in a new `state.db`
+pub fn run_trail_tables_empty(conn: &Connection) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT NOT EXISTS (SELECT 1 FROM run_events) AND NOT EXISTS (SELECT 1 FROM approvals)",
+        [],
+        |row| row.get(0),
+    )
 }
 
 /// The latest events across an agent's runs, oldest first.

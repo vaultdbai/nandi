@@ -78,9 +78,7 @@ use crate::services::agents::SkillConfig;
 use crate::services::builtin_agents::CHIEF_OF_STAFF;
 use crate::services::connectors::{self, ConnectorRegistry};
 use crate::services::email;
-use crate::services::events::{
-    self, AgentMessageAdded, AgentWarning, EventBus, NandiEvent, RunContext,
-};
+use crate::services::events::{self, AgentWarning, EventBus, RunContext};
 use crate::services::history;
 use crate::services::inbox;
 use crate::services::intake;

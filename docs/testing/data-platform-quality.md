@@ -183,7 +183,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **Where:** `src-tauri/src/db/schema.rs` (`SCHEMA`, `SCHEMA_VERSION`, `init_db`), `services/events.rs` (`EventBus::fail_interrupted_runs`), `services/mod.rs` (`AppState::start`), `src-tauri/src/verify.rs`.
 - **Preconditions:** None (fresh `NANDI_HOME`). `sqlite3` (or another SQLite client) for steps 2 and 4.
 - **Steps:** 1. Start the app on an empty home. 2. Quit, then run `PRAGMA user_version` on `HOME/local/state.db`. 3. Start the app again. 4. Quit, set `PRAGMA user_version = 1`, run `nandi verify --agent <id>`, then start the app (best with `nandi --headless` from a terminal so the error is visible). 5. Delete `state.db`, `state.db-wal` and `state.db-shm` and start again.
-- **Expected:** 2: `user_version` = 2 and the tables exist. 3: nothing changes and existing runs, messages and approvals stay readable; log "Marked N interrupted runs as failed" when applicable. 4: verify reports "... has schema v1, but this build of Nandi uses v2"; the app refuses to start with the "another Nandi build" message above and leaves the file alone. 5: the app starts, and agents, workflows, triggers and settings come back from the repo (run history does not).
+- **Expected:** 2: `user_version` = 2 and the tables exist. 3: nothing changes and existing runs, messages and approvals stay readable; log "Marked N interrupted runs as failed" when applicable. 4: verify reports "... has schema v1, but this build of Nandi uses v2"; the app refuses to start with the "another Nandi build" message above and leaves the file alone. 5: the app starts, and agents, workflows, triggers and settings come back from the repo; run events and approval decisions come back from the run trail (DT-48); runs and messages do not.
 - **Edge / negative cases:** `user_version` 0 (a new or empty file) is initialized, not refused. Moving `HOME/local` aside (DT-41) also starts clean. In the desktop app the refusal shows no dialog (see Gaps).
 - **Automation:** Covered by: `src-tauri/src/db.rs` (`init_is_idempotent_and_seeds_settings`, `a_database_from_another_schema_is_refused_with_what_to_do`); `services/events.rs` (`interrupted_runs_close_like_a_failed_turn`) | Layer: unit | Gap: no test of verify's schema check; no test of how the desktop app shows the refusal.
 - **Needs relay:** no
@@ -607,6 +607,18 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **Expected:** The log shows one "Re-scanning …" line; the screens end up current.
 - **Edge / negative cases:** A Windows change buffer overflow is silent; the burst rule covers it.
 - **Automation:** Covered by: `watcher.rs` `events_the_os_may_have_dropped_rescan_everything`; `live/folders.rs` `a_batch_that_lost_events_rescans_every_area` | Layer: unit | Gap: no test makes the OS really drop events.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### DT-48 — Run trail: run events and approval decisions survive a `state.db` reset
+
+- **What:** Every `run_events` row and every approval decision (approved, rejected or expired, with who decided and when) is appended to `~/.nandi/local/run-trail.jsonl` as its transaction commits, hash-chained like the audit logs. When `state.db` is new, the app puts those rows back at start. A broken chain or an unreadable line is logged as an error; every line that can be read is still restored.
+- **Where:** `services/run_trail.rs` (`RunTrail::append`, `RunTrail::restore`), `services/events.rs` (`transact`, `Outbox::keep`, `Outbox::approval_decided`), `audit/chain.rs` (`append_all_blocking`), `services/mod.rs` (`AppState::start`). See `docs/developer/data-model.md#run-trail`.
+- **Preconditions:** App running; an agent that asks for an approval.
+- **Steps:** 1. Run the agent, approve its call, let the run finish. 2. Look at `run-trail.jsonl`. 3. Quit, delete `state.db` with its `-wal` and `-shm` files, start again. 4. Quit, edit one line of the trail, delete `state.db` again, start.
+- **Expected:** 2: one `run_event` line per run event and one `approval_decision` line with `decided_by`. 3: the app log says "Restored N run events and M approval decisions"; the agent's run log shows the events again. 4: the app log has "Run trail … is broken at line N"; the rows are still restored.
+- **Edge / negative cases:** A database that already has run events is never restored over. Streamed tokens write nothing to the trail. A failed transaction writes nothing. A failed append marks the trail degraded and doesn't fail the commit.
+- **Automation:** Covered by: `services/run_trail/tests.rs` (`each_commit_is_in_the_trail_when_it_returns`, `streamed_tokens_never_touch_the_trail`, `an_expired_approval_is_a_decision_in_the_trail`, `a_new_state_db_gets_its_rows_back_from_the_trail`, `a_broken_trail_is_reported_and_what_can_be_read_is_restored`), `services/events.rs` (`a_failed_transaction_writes_nothing_to_the_run_trail`), `audit/chain.rs` (`a_batch_is_chained_line_by_line_and_continues_the_log`) | Layer: unit | Gap: the Logs view doesn't show the trail's health yet.
 - **Needs relay:** no
 - **Status:** Shipped
 

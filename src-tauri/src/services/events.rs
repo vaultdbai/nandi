@@ -31,6 +31,7 @@ use crate::model::{
     ActivityAction, ActivityItem, ApprovalStatus, AttentionItem, AttentionKind, ChatMessage,
     QueueEntry, RunStatus, RunSummary, ToolCallStatus, STUDIO_AGENT_ID,
 };
+use crate::services::run_trail::{RunTrail, TrailEntry};
 
 // ---------------------------------------------------------------------------
 // Event payloads
@@ -385,14 +386,18 @@ pub struct RunContext {
     pub run_id: String,
 }
 
-/// Events to emit once a transaction commits.
+/// What a transaction leaves to do once it commits: the events to emit,
+/// and the run trail entries to append (`services::run_trail`).
 #[derive(Default)]
-struct Outbox(Vec<(&'static str, Value)>);
+struct Outbox {
+    events: Vec<(&'static str, Value)>,
+    trail: Vec<TrailEntry>,
+}
 
 impl Outbox {
     fn push<E: NandiEvent>(&mut self, event: &E) {
         match serde_json::to_value(event) {
-            Ok(value) => self.0.push((E::NAME, value)),
+            Ok(value) => self.events.push((E::NAME, value)),
             Err(e) => log::error!("Failed to serialize {}: {e}", E::NAME),
         }
     }
@@ -421,9 +426,37 @@ impl Outbox {
         run_id: &str,
         event: &E,
     ) -> rusqlite::Result<()> {
-        if let Ok(value) = serde_json::to_value(event) {
-            db::insert_run_event(conn, run_id, E::NAME, &value)?;
-            self.0.push((E::NAME, value));
+        if let Some(value) = self.keep(conn, run_id, event)? {
+            self.events.push((E::NAME, value));
+        }
+        Ok(())
+    }
+
+    /// Records the event in `run_events` and stages it for the run trail,
+    /// without emitting it. `None`: it couldn't be serialized (logged).
+    fn keep<E: NandiEvent>(
+        &mut self,
+        conn: &Connection,
+        run_id: &str,
+        event: &E,
+    ) -> rusqlite::Result<Option<Value>> {
+        let value = match serde_json::to_value(event) {
+            Ok(value) => value,
+            Err(e) => {
+                log::error!("Failed to serialize {}: {e}", E::NAME);
+                return Ok(None);
+            }
+        };
+        let row = db::insert_run_event(conn, run_id, E::NAME, &value)?;
+        self.trail.push(TrailEntry::RunEvent(row));
+        Ok(Some(value))
+    }
+
+    /// Stages the decision on `approval_id` for the run trail, as this
+    /// transaction leaves it (status, who decided, when it closed)
+    fn approval_decided(&mut self, conn: &Connection, approval_id: &str) -> rusqlite::Result<()> {
+        if let Some(decided) = db::decided_approval(conn, approval_id)? {
+            self.trail.push(TrailEntry::ApprovalDecision(decided));
         }
         Ok(())
     }
@@ -433,7 +466,14 @@ impl Outbox {
 const INTERRUPTED: &str = "Interrupted: the app was closed while this run was in progress.";
 
 /// Runs `write` in one immediate transaction and returns what it queued.
-fn transact<T, F>(conn: &mut Connection, write: F) -> rusqlite::Result<(T, Outbox)>
+/// Once it commits, the run trail entries it staged are appended to
+/// `trail` in the same step (one fsync for the batch); a failed
+/// transaction writes none.
+fn transact<T, F>(
+    conn: &mut Connection,
+    trail: &RunTrail,
+    write: F,
+) -> rusqlite::Result<(T, Outbox)>
 where
     F: FnOnce(&Connection, &mut Outbox) -> rusqlite::Result<T>,
 {
@@ -441,6 +481,7 @@ where
     let mut outbox = Outbox::default();
     let value = write(&tx, &mut outbox)?;
     tx.commit()?;
+    trail.append(std::mem::take(&mut outbox.trail));
     Ok((value, outbox))
 }
 
@@ -448,11 +489,25 @@ where
 pub struct EventBus {
     pub db: Db,
     sink: Arc<dyn EventSink>,
+    /// Where run events and approval decisions are kept beyond `state.db`
+    trail: RunTrail,
 }
 
 impl EventBus {
+    /// A bus with no run trail (see [`Self::with_trail`])
     pub fn new(db: Db, sink: Arc<dyn EventSink>) -> Self {
-        Self { db, sink }
+        Self {
+            db,
+            sink,
+            trail: RunTrail::off(),
+        }
+    }
+
+    /// Also appends every run event and approval decision it commits to
+    /// `trail`
+    pub fn with_trail(mut self, trail: RunTrail) -> Self {
+        self.trail = trail;
+        self
     }
 
     /// Runs `write` in a transaction, then emits what it queued.
@@ -461,7 +516,11 @@ impl EventBus {
         T: Send + 'static,
         F: FnOnce(&Connection, &mut Outbox) -> rusqlite::Result<T> + Send + 'static,
     {
-        let (value, outbox) = self.db.call(move |conn| transact(conn, write)).await?;
+        let trail = self.trail.clone();
+        let (value, outbox) = self
+            .db
+            .call(move |conn| transact(conn, &trail, write))
+            .await?;
         self.emit(outbox);
         Ok(value)
     }
@@ -474,13 +533,13 @@ impl EventBus {
     {
         let mut conn = self.db.conn()?;
         let (value, outbox) =
-            transact(&mut conn, write).map_err(|e| format!("Database error: {e}"))?;
+            transact(&mut conn, &self.trail, write).map_err(|e| format!("Database error: {e}"))?;
         self.emit(outbox);
         Ok(value)
     }
 
     fn emit(&self, outbox: Outbox) {
-        for (name, payload) in outbox.0 {
+        for (name, payload) in outbox.events {
             self.sink.emit_json(name, payload);
         }
     }
@@ -496,6 +555,50 @@ impl EventBus {
         let run_id = run_id.to_string();
         self.commit(move |conn, outbox| outbox.record(conn, &run_id, &event))
             .await
+    }
+
+    /// Adds a `post_turn` continuation to the run as a user-role message
+    /// and records it in the run's log, without emitting it: the user
+    /// didn't write it (`MessageRow::is_continuation`).
+    pub async fn add_continuation(
+        &self,
+        ctx: &RunContext,
+        message: MessageRow,
+    ) -> Result<(), String> {
+        let ctx = ctx.clone();
+        self.commit(move |conn, outbox| {
+            db::insert_message(conn, &message)?;
+            let event = AgentMessageAdded {
+                agent_id: ctx.agent_id.clone(),
+                conversation_id: ctx.conversation_id.clone(),
+                message: message.to_chat(),
+            };
+            outbox.keep(conn, &ctx.run_id, &event).map(drop)
+        })
+        .await
+    }
+
+    /// Closes the still-pending ones among `ids` with `status` (a
+    /// clarification's approvals once it is answered or ends). No event:
+    /// the clarification's own events tell the UI.
+    pub async fn close_approvals(
+        &self,
+        ids: Vec<String>,
+        status: ApprovalStatus,
+    ) -> Result<(), String> {
+        self.commit(move |conn, outbox| {
+            for id in ids {
+                let Some(approval) = db::get_approval(conn, &id)? else {
+                    continue;
+                };
+                if approval.status == ApprovalStatus::Pending {
+                    db::set_approval_status(conn, &approval, status)?;
+                    outbox.approval_decided(conn, &approval.id)?;
+                }
+            }
+            Ok(())
+        })
+        .await
     }
 
     /// Records a run that starts right away, with its user message (called
@@ -921,6 +1024,7 @@ impl EventBus {
         let ctx = ctx.clone();
         self.commit(move |conn, outbox| {
             db::set_approval_status(conn, &approval, status)?;
+            outbox.approval_decided(conn, &approval.id)?;
             let run = db::set_run_status(conn, &ctx.run_id, RunStatus::Running, None)?;
             outbox.record(
                 conn,
@@ -1043,6 +1147,7 @@ fn close_run(
 ) -> rusqlite::Result<()> {
     for approval in db::pending_approvals_for_run(conn, &ctx.run_id)? {
         db::set_approval_status(conn, &approval, ApprovalStatus::Expired)?;
+        outbox.approval_decided(conn, &approval.id)?;
         outbox.record(
             conn,
             &ctx.run_id,
@@ -1354,6 +1459,33 @@ pub mod tests {
             .unwrap();
         assert_eq!(message.content, "Hello world");
         assert_eq!(message.run_id.as_deref(), Some("r1"));
+    }
+
+    #[test]
+    fn a_failed_transaction_writes_nothing_to_the_run_trail() {
+        let dir = tempfile::tempdir().unwrap();
+        let trail = RunTrail::in_local_dir(dir.path());
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        db::init_db(&conn).unwrap();
+        let removed = DashboardAttention::Remove {
+            item_id: "a1".into(),
+        };
+
+        let failed = transact(&mut conn, &trail, |conn, outbox| {
+            outbox.record(conn, "r1", &removed)?;
+            conn.execute("INSERT INTO no_such_table VALUES (1)", [])
+        });
+        assert!(failed.is_err());
+        assert!(!trail.path().unwrap().exists());
+
+        let (_, outbox) = transact(&mut conn, &trail, |conn, outbox| {
+            outbox.record(conn, "r1", &removed)
+        })
+        .unwrap();
+        assert_eq!(outbox.events.len(), 1);
+        assert!(outbox.trail.is_empty(), "appended at the commit");
+        let text = std::fs::read_to_string(trail.path().unwrap()).unwrap();
+        assert_eq!(text.lines().count(), 1);
     }
 
     #[tokio::test]

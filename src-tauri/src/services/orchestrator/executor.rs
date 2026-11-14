@@ -514,20 +514,5 @@ async fn append_continuation(bus: &EventBus, ctx: &RunContext, text: String) -> 
         text,
         serde_json::json!({ "attachments": [], "continuation": true }),
     );
-    let event = AgentMessageAdded {
-        agent_id: ctx.agent_id.clone(),
-        conversation_id: ctx.conversation_id.clone(),
-        message: message.to_chat(),
-    };
-    let payload = serde_json::to_value(&event).map_err(|e| e.to_string())?;
-    let run_id = ctx.run_id.clone();
-    bus.db
-        .call(move |conn| {
-            db::insert_message(conn, &message)?;
-            db::insert_run_event(conn, &run_id, AgentMessageAdded::NAME, &payload)
-        })
-        .await?;
-    // Recorded for the run, but not emitted to the chat: the user didn't
-    // write it (`MessageRow::is_continuation`)
-    Ok(())
+    bus.add_continuation(ctx, message).await
 }
