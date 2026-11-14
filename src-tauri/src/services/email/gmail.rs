@@ -4,15 +4,15 @@
 //! history is too old: 404) saves the current `historyId` from the profile
 //! and lists the window's inbox and sent mail; later checks read
 //! `users.history.list` for added messages. Promotions, Social, Updates and
-//! Forums count as bulk, as does mail with list headers.
+//! Forums count as bulk, as does mail with `List-Unsubscribe` or a bulk
+//! `Precedence` ([`ListHeaders`]).
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine as _;
 use serde_json::{json, Value};
 
 use super::api::{MailApi, MailError};
-use super::filter::is_bulk_by_headers;
-use super::mail::{rfc3339_of, str_of, Changes, Folder, Header, Identity, Message};
+use super::mail::{rfc3339_of, str_of, Changes, Folder, Header, Identity, ListHeaders, Message};
 use super::text::{self, parse_addresses};
 
 const PREFIX: &str = "gmail:";
@@ -395,25 +395,24 @@ fn header(message: &Value) -> Option<Header> {
     } else {
         Folder::Other
     };
-    Some(
-        Header {
-            id: format!("{PREFIX}{id}"),
-            thread_id: format!("{PREFIX}{}", str_of(message, "threadId")),
-            folder,
-            from: parse_addresses(get("From")).into_iter().next(),
-            to: parse_addresses(get("To")),
-            cc: parse_addresses(get("Cc")),
-            subject: get("Subject").to_string(),
-            date: rfc3339_of(at),
-            preview: html_entities(str_of(message, "snippet")),
-            bulk: folder != Folder::Sent
-                && (labels.iter().any(|l| BULK_LABELS.contains(l))
-                    || is_bulk_by_headers(pairs.iter().copied())),
-            unread: folder != Folder::Sent && labels.contains(&"UNREAD"),
-            at,
-        }
-        .tidy(),
-    )
+    let mut header = Header {
+        id: format!("{PREFIX}{id}"),
+        thread_id: format!("{PREFIX}{}", str_of(message, "threadId")),
+        folder,
+        from: parse_addresses(get("From")).into_iter().next(),
+        to: parse_addresses(get("To")),
+        cc: parse_addresses(get("Cc")),
+        subject: get("Subject").to_string(),
+        date: rfc3339_of(at),
+        preview: html_entities(str_of(message, "snippet")),
+        bulk: folder != Folder::Sent && labels.iter().any(|l| BULK_LABELS.contains(l)),
+        unread: folder != Folder::Sent && labels.contains(&"UNREAD"),
+        list_id: None,
+        auto_submitted: None,
+        at,
+    };
+    header.add_list_headers(ListHeaders::read(pairs.iter().copied()));
+    Some(header.tidy())
 }
 
 /// Gmail snippets come HTML-escaped
@@ -490,6 +489,23 @@ mod tests {
         assert_eq!(header.preview, "Due Friday & don't forget");
         assert_eq!(header.at, 1_793_800_000);
         assert!(!header.bulk);
+    }
+
+    #[test]
+    fn reads_unread_and_the_list_headers_as_facts() {
+        let header = header(&metadata(
+            "m",
+            &["INBOX", "UNREAD"],
+            &[
+                ("List-Id", "<team.contoso.com>"),
+                ("Auto-Submitted", "auto-generated"),
+            ],
+        ))
+        .unwrap();
+        assert!(header.unread);
+        assert!(!header.bulk, "a mailing list alone isn't bulk");
+        assert_eq!(header.list_id.as_deref(), Some("<team.contoso.com>"));
+        assert_eq!(header.auto_submitted.as_deref(), Some("auto-generated"));
     }
 
     #[test]

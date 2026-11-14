@@ -818,7 +818,7 @@ async fn run_check(
                 // for what's left (Outlook only)
                 found.retain(|h| filter.keep(h));
                 found.truncate(batch::MAX_BATCH * 2);
-                mailbox.mark_bulk(&mut found).await;
+                mailbox.add_list_headers(&mut found).await;
                 found.retain(|h| filter.keep(h));
                 first_read |= cursor.is_null();
                 headers.extend(found);

@@ -57,7 +57,7 @@ impl Mailbox {
         }
     }
 
-    /// New mail since `cursor`, bulk marked (not yet filtered)
+    /// New mail since `cursor`, not yet filtered
     pub async fn changes(&self, cursor: &Value, since: i64) -> Result<Changes, MailError> {
         match self.provider() {
             MailProvider::Outlook => self.outlook().changes(cursor, since).await,
@@ -66,9 +66,9 @@ impl Mailbox {
     }
 
     /// Looks up the list headers Outlook leaves out of its change list
-    pub async fn mark_bulk(&self, headers: &mut [Header]) {
+    pub async fn add_list_headers(&self, headers: &mut [Header]) {
         if self.provider() == MailProvider::Outlook {
-            self.outlook().mark_bulk(headers).await;
+            self.outlook().add_list_headers(headers).await;
         }
     }
 

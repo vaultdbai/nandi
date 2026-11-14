@@ -10,8 +10,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::api::{MailApi, MailError};
-use super::filter::is_bulk_by_headers;
-use super::mail::{rfc3339_of, str_of, unix_of, Changes, Folder, Header, Identity, Message};
+use super::mail::{
+    rfc3339_of, str_of, unix_of, Changes, Folder, Header, Identity, ListHeaders, Message,
+};
 use super::profile::Profile;
 use super::text::Address;
 
@@ -185,9 +186,10 @@ impl<'a> Outlook<'a> {
         ))
     }
 
-    /// Marks inbox mail sent to a list (`List-Unsubscribe` and the like) as
-    /// bulk. Graph has these headers only per message.
-    pub async fn mark_bulk(&self, headers: &mut [Header]) {
+    /// Adds the list headers (`List-Unsubscribe`, `List-Id`,
+    /// `Auto-Submitted` …) to inbox mail not already bulk. Graph has these
+    /// headers only per message.
+    pub async fn add_list_headers(&self, headers: &mut [Header]) {
         for header in headers
             .iter_mut()
             .filter(|h| h.folder == Folder::Inbox && !h.bulk)
@@ -207,7 +209,7 @@ impl<'a> Outlook<'a> {
                         .into_iter()
                         .flatten()
                         .map(|h| (str_of(h, "name"), str_of(h, "value")));
-                    header.bulk = is_bulk_by_headers(pairs);
+                    header.add_list_headers(ListHeaders::read(pairs));
                 }
                 Err(e) => log::debug!("Outlook headers unavailable for one message: {e}"),
             }
@@ -431,6 +433,8 @@ fn header(item: &Value, folder: Folder) -> Option<Header> {
             bulk: str_of(item, "inferenceClassification").eq_ignore_ascii_case("other"),
             unread: folder != Folder::Sent
                 && item.get("isRead").and_then(Value::as_bool) == Some(false),
+            list_id: None,
+            auto_submitted: None,
             at: unix_of(date),
         }
         .tidy(),

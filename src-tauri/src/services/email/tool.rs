@@ -5,7 +5,7 @@
 //! | Tool               | Arguments                    | Returns                                  |
 //! | ------------------ | ---------------------------- | ---------------------------------------- |
 //! | `mail_list_new`    | `{since_hours?, limit?}`     | recent inbox and sent mail, filtered     |
-//! | `mail_get_message` | `{id}`                       | one message's text, quoted replies cut   |
+//! | `mail_get_message` | `{id}`                       | one message's text, size capped          |
 //! | `mail_get_thread`  | `{thread_id}`                | the thread's headers and previews        |
 //! | `mail_search`      | `{query, limit?}`            | matching headers                         |
 //!
@@ -92,7 +92,8 @@ fn spec(name: &str) -> Option<ToolSpec> {
     let (description, schema) = match name {
         LIST_NEW => (
             "List the user's recent email (inbox and sent), newest first, without newsletters \
-and notifications: id, thread_id, from, to, subject, date and a short preview. Read-only.",
+and notes to self: id, thread_id, from, to, subject, date, a short preview, and unread, list_id \
+or auto_submitted when the mailbox reports them. Read-only.",
             json!({"type": "object", "properties": {
                 "since_hours": {"type": "integer", "minimum": 1, "maximum": MAX_SINCE_HOURS},
                 "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT},
@@ -100,8 +101,8 @@ and notifications: id, thread_id, from, to, subject, date and a short preview. R
         ),
         GET_MESSAGE => (
             "Read one email's text by its id (from the email check or another mail tool), \
-quoted replies cut and size capped. Use it only for emails worth noting. Read-only: it isn't \
-marked read.",
+size capped. Quoted replies are included: read the new part. Use it only for emails worth \
+noting. Read-only: it isn't marked read.",
             json!({"type": "object", "required": ["id"], "properties": {
                 "id": {"type": "string"},
             }}),

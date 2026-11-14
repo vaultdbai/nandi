@@ -3,9 +3,9 @@
 //!
 //! - It starts where the first read stopped and walks older, newest
 //!   first: Inbox and Sent, one batch of at most [`BATCH`] emails per pass,
-//!   every [`BACKFILL_EVERY`]. It only builds the profile, so it reads less
-//!   than new mail does ([`MailFilter::keep_older`]): nothing the user never
-//!   opened, no system updates, no phishing.
+//!   every [`BACKFILL_EVERY`]. It only builds the profile: the same filter
+//!   as new mail ([`MailFilter::keep`]), and the Chief of Staff passes over
+//!   what the user never opened and machines' updates itself.
 //! - Its position is its own (`local_settings` `email.<provider>.backfill`:
 //!   the oldest time reached); it never touches the change cursor.
 //! - A pass runs only when no email check and no other Chief of Staff run
@@ -273,11 +273,9 @@ pub async fn pass(state: &AppState) -> Option<String> {
             emit_changed(state);
             continue;
         };
-        // Only what tells who the user is: not what they never opened,
-        // machines' updates or phishing
-        headers.retain(|h| filter.keep_older(h));
-        mailbox.mark_bulk(&mut headers).await;
-        headers.retain(|h| filter.keep_older(h));
+        headers.retain(|h| filter.keep(h));
+        mailbox.add_list_headers(&mut headers).await;
+        headers.retain(|h| filter.keep(h));
         if headers.is_empty() {
             // Nothing worth reading in this stretch: move on without a run
             backfill.before = Some(oldest);

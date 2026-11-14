@@ -13,6 +13,8 @@ pub const PREVIEW_CHARS: usize = 240;
 pub const SUBJECT_CHARS: usize = 200;
 /// Longest body `mail_get_message` returns
 pub const BODY_CHARS: usize = 4_000;
+/// Longest `List-Id` or `Auto-Submitted` value a header carries
+pub const LIST_HEADER_CHARS: usize = 120;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,12 +41,20 @@ pub struct Header {
     /// RFC 3339
     pub date: String,
     pub preview: String,
-    /// Newsletters and notifications, by the provider's signals
-    #[serde(skip)]
+    /// Newsletters and marketing, by the provider's category or the
+    /// message's list headers ([`ListHeaders::bulk`]). Only watched senders'
+    /// bulk mail reaches the Chief of Staff (`filter`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub bulk: bool,
     /// Never opened by the user (never true for sent mail)
-    #[serde(skip)]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub unread: bool,
+    /// The mailing list it came through (`List-Id`), as sent
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub list_id: Option<String>,
+    /// Sent by a machine (`Auto-Submitted` other than `no`), as sent
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_submitted: Option<String>,
     /// Unix seconds, for ordering
     #[serde(skip)]
     pub at: i64,
@@ -57,9 +67,64 @@ impl Header {
         self.preview = text::one_line(&self.preview, PREVIEW_CHARS);
         self
     }
+
+    /// Adds what the message's own list headers say. The user's own sent
+    /// mail is never bulk and carries none of them.
+    pub fn add_list_headers(&mut self, list: ListHeaders) {
+        if self.folder == Folder::Sent {
+            return;
+        }
+        self.bulk |= list.bulk;
+        self.list_id = list.list_id;
+        self.auto_submitted = list.auto_submitted;
+    }
 }
 
-/// A message with its text, quoted replies cut and size capped
+/// What a message's list headers say about how it was sent. Facts read as
+/// sent: Nandi leaves out declared bulk mail, and the Chief of Staff weighs
+/// the rest itself (`batch`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ListHeaders {
+    /// Sent in bulk: a `List-Unsubscribe` header, or `Precedence: bulk`,
+    /// `list` or `junk`
+    pub bulk: bool,
+    /// `List-Id`: sent through a mailing list, which may be a team's own
+    pub list_id: Option<String>,
+    /// `Auto-Submitted` other than `no`: sent by a machine (`auto-generated`,
+    /// `auto-replied` …)
+    pub auto_submitted: Option<String>,
+}
+
+impl ListHeaders {
+    /// Reads the list headers among a message's headers. Pure.
+    pub fn read<'a>(headers: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
+        let mut list = Self::default();
+        for (name, value) in headers {
+            let value = text::one_line(value, LIST_HEADER_CHARS);
+            if value.is_empty() {
+                continue;
+            }
+            match name.to_ascii_lowercase().as_str() {
+                "list-unsubscribe" => list.bulk = true,
+                "precedence" => {
+                    list.bulk |= matches!(
+                        value.to_ascii_lowercase().as_str(),
+                        "bulk" | "list" | "junk"
+                    );
+                }
+                "list-id" => list.list_id = Some(value),
+                "auto-submitted" if !value.eq_ignore_ascii_case("no") => {
+                    list.auto_submitted = Some(value);
+                }
+                _ => {}
+            }
+        }
+        list
+    }
+}
+
+/// A message with its text, size capped. Quoted replies stay in: the
+/// Chief of Staff tells the new part from the old itself.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Message {
     #[serde(flatten)]
@@ -76,7 +141,7 @@ pub struct Message {
 
 impl Message {
     pub fn new(header: Header, raw_body: &str) -> Self {
-        let (body, truncated) = text::cap(&text::trim_quoted(raw_body), BODY_CHARS);
+        let (body, truncated) = text::cap(raw_body.trim(), BODY_CHARS);
         Self {
             header: header.tidy(),
             body,
@@ -163,4 +228,85 @@ pub fn str_of<'a>(value: &'a Value, key: &str) -> &'a str {
 pub struct Identity {
     pub name: Option<String>,
     pub email: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn header(folder: Folder) -> Header {
+        Header {
+            id: "gmail:1".into(),
+            thread_id: "gmail:t".into(),
+            folder,
+            from: None,
+            to: Vec::new(),
+            cc: Vec::new(),
+            subject: String::new(),
+            date: String::new(),
+            preview: String::new(),
+            bulk: false,
+            unread: false,
+            list_id: None,
+            auto_submitted: None,
+            at: 0,
+        }
+    }
+
+    #[test]
+    fn list_headers_say_bulk_list_and_machine() {
+        assert!(ListHeaders::read([("List-Unsubscribe", "<mailto:u@x.com>")]).bulk);
+        assert!(ListHeaders::read([("Precedence", "Bulk")]).bulk);
+        assert!(!ListHeaders::read([("Precedence", "first-class")]).bulk);
+        assert!(!ListHeaders::read([("Subject", "List-Unsubscribe")]).bulk);
+
+        // A mailing list and a machine sender are facts, not bulk
+        let team = ListHeaders::read([
+            ("List-Id", "Platform team <platform.contoso.com>"),
+            ("Auto-Submitted", "auto-generated"),
+        ]);
+        assert!(!team.bulk);
+        assert_eq!(
+            team.list_id.as_deref(),
+            Some("Platform team <platform.contoso.com>")
+        );
+        assert_eq!(team.auto_submitted.as_deref(), Some("auto-generated"));
+        assert_eq!(
+            ListHeaders::read([("Auto-Submitted", "no")]).auto_submitted,
+            None
+        );
+    }
+
+    #[test]
+    fn list_header_values_are_one_short_line() {
+        let long = format!("a\n{}", "x".repeat(500));
+        let list = ListHeaders::read([("List-Id", long.as_str())]);
+        let id = list.list_id.unwrap();
+        assert!(!id.contains('\n'));
+        assert_eq!(id.chars().count(), LIST_HEADER_CHARS);
+    }
+
+    #[test]
+    fn the_users_sent_mail_takes_no_list_headers() {
+        let mut header = header(Folder::Sent);
+        let list = ListHeaders::read([("List-Unsubscribe", "<x>"), ("List-Id", "<l.x.com>")]);
+        header.add_list_headers(list.clone());
+        assert!(!header.bulk && header.list_id.is_none());
+        header.folder = Folder::Inbox;
+        header.add_list_headers(list);
+        assert!(header.bulk);
+        assert_eq!(header.list_id.as_deref(), Some("<l.x.com>"));
+    }
+
+    #[test]
+    fn a_body_keeps_its_quoted_reply_and_is_capped() {
+        let header = header(Folder::Inbox);
+        let reply = "Approved.\n\nOn Mon, Sam wrote:\n> Please approve a < b";
+        let message = Message::new(header.clone(), reply);
+        assert_eq!(message.body, reply, "the model reads the quote itself");
+        assert!(!message.truncated);
+        let long = Message::new(header, &"word ".repeat(2_000));
+        assert!(long.truncated);
+        assert_eq!(long.body.chars().count(), BODY_CHARS);
+    }
 }

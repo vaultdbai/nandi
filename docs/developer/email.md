@@ -75,15 +75,26 @@ The loopback redirect is per provider (`LoopbackRedirect`). For `localhost`, the
 | Outlook  | `GET /me/mailFolders/{inbox,sentitems}/messages/delta?$select=…&$filter=receivedDateTime ge <14 days>`, following `@odata.nextLink` | the stored `@odata.deltaLink` per folder                          | 410: read the window |
 | Gmail    | `historyId` from `GET users/me/profile` first, then `GET users/me/messages?q=after:<14 days> (in:inbox OR in:sent) …`               | `GET users/me/history?startHistoryId=…&historyTypes=messageAdded` | 404: read the window |
 
-Headers come from `$select` (Outlook) and `format=metadata` with named headers (Gmail). Outlook's `List-Unsubscribe` is read per message (`$select=internetMessageHeaders`), only for inbox mail that passed the cheap filters. Catching up after a long time still keeps only the last 14 days.
+Headers come from `$select` (Outlook) and `format=metadata` with named headers (Gmail). Outlook's list headers are read per message (`$select=internetMessageHeaders`), only for inbox mail that passed the cheap filters. Catching up after a long time still keeps only the last 14 days.
 
 ### Filters (before the model sees anything)
 
-`email/filter.rs`:
+`email/filter.rs` holds only deterministic rules:
 
-- Bulk: Outlook `inferenceClassification = other`; Gmail `CATEGORY_PROMOTIONS`, `SOCIAL`, `UPDATES`, `FORUMS`; any `List-Unsubscribe`, `List-Id`, `Precedence: bulk|list|junk`, `Auto-Submitted` other than `no`. The user's sent mail is never bulk.
+- Bulk: Outlook `inferenceClassification = other`; Gmail `CATEGORY_PROMOTIONS`, `SOCIAL`, `UPDATES`, `FORUMS`; any `List-Unsubscribe` or `Precedence: bulk|list|junk` (`mail::ListHeaders`). The user's sent mail is never bulk.
 - Notes to self: from the user, to only the user.
 - **Always include** (`email.watch`): senders (`lena@contoso.com`) or domains (`contoso.com`, subdomains too) that pass even when they look like bulk.
+
+Everything else reaches the Chief of Staff with the facts it needs to judge it. Machine senders, mail the user never opened and phishing are the model's call, not a word list's (owner decision 9):
+
+| Fact             | From                                      | On the batch line       |
+| ---------------- | ----------------------------------------- | ----------------------- |
+| `unread`         | Outlook `isRead`, Gmail `UNREAD`          | `unread`                |
+| `list_id`        | `List-Id`, as sent (a team list, maybe)   | `list: <id>`            |
+| `auto_submitted` | `Auto-Submitted` other than `no`, as sent | `auto-submitted: <val>` |
+| `bulk`           | the rules above (watched senders only)    | `bulk`                  |
+
+The check message says what each fact means and what phishing looks like (`batch::FACTS`); the `email-triage` playbook says the same for chats. The background read of older mail uses the same filter.
 
 ## Tokens and errors
 
@@ -101,7 +112,7 @@ Sign-in failures are sorted by `classify_sign_in_error` into `adminApproval` (AA
 
 ## The run
 
-`email::check_all` builds the message with `batch::Batch::prompt`: who the user is (each connected account's name and address, the Chief of Staff's "me"), whether it's the first read, then one line per email (id, folder, date, from, to, cc, subject, a 240-character preview) inside `<email-data>`. Each check has its own conversation (`email:<uuid>`), so mail never enters the user's chat history.
+`email::check_all` builds the message with `batch::Batch::prompt`: who the user is (each connected account's name and address, the Chief of Staff's "me"), whether it's the first read, then one line per email (id, folder, the facts above, date, from, to, cc, subject, a 240-character preview) inside `<email-data>`. Each check has its own conversation (`email:<uuid>`), so mail never enters the user's chat history.
 
 `orchestrator::llm_step` sees `source_type = email` (`is_email_run`) and offers only the notes tools (`filesystem__read_file`, `list_dir`, `write_file`), the mail tools and the Chief of Staff's work tools (`work_open`, `work_start`, `work_update`: it acts on what the mail calls for, see [the interaction layer](./interaction-layer.md#the-chief-of-staff-acts-on-what-arrives)), without starting the container. Tool dispatch refuses anything else in that run.
 
@@ -114,7 +125,7 @@ Offered to any agent with a read grant on a connected mailbox (`email::tool::off
 | Tool               | Arguments                | Returns                                           |
 | ------------------ | ------------------------ | ------------------------------------------------- |
 | `mail_list_new`    | `since_hours?`, `limit?` | Recent inbox and sent mail, filtered              |
-| `mail_get_message` | `id`                     | Text with quoted replies cut, at most 4,000 chars |
+| `mail_get_message` | `id`                     | Text with its quoted replies, at most 4,000 chars |
 | `mail_get_thread`  | `thread_id`              | The thread's headers and previews                 |
 | `mail_search`      | `query`, `limit?`        | Matching headers                                  |
 

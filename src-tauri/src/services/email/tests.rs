@@ -858,7 +858,7 @@ async fn tools_are_only_for_an_agent_with_a_grant() {
 }
 
 #[tokio::test]
-async fn reading_a_message_trims_quotes_and_marks_it_untrusted() {
+async fn reading_a_message_keeps_its_quote_and_marks_it_untrusted() {
     let mock = mock(outlook_api).await;
     let (state, _recorder) = state_with(&mock).await;
     connected(&state, MailProvider::Outlook).await;
@@ -873,10 +873,8 @@ async fn reading_a_message_trims_quotes_and_marks_it_untrusted() {
     assert!(outcome.result.contains("untrusted data"));
     assert!(outcome.result.contains("<email-data>"));
     assert!(outcome.result.contains("evidence list by Friday"));
-    assert!(
-        !outcome.result.contains("old text"),
-        "the quoted reply is cut"
-    );
+    // The model tells the new part from the quoted reply itself
+    assert!(outcome.result.contains(r"Lena wrote:\n> old text"));
     // Wrong prefixes and missing mailboxes are refused calmly
     let bad = tool::call(
         &state,

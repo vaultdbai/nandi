@@ -1,6 +1,6 @@
 //! Turning mail into the little text the Chief of Staff needs: one-line
-//! previews, bodies without quoted replies, size caps, addresses, and
-//! nothing that could close the untrusted-data block it's put in.
+//! previews, size caps, addresses, HTML as plain text, and nothing that
+//! could close the untrusted-data block it's put in.
 
 use serde::Serialize;
 
@@ -118,115 +118,19 @@ pub fn neutralize_tag(text: &str, tag: &str, replacement: &str) -> String {
     out
 }
 
-/// The new part of a reply: quoted lines and the quoted message under
-/// "On … wrote:", "-----Original Message-----" or an Outlook "From: … Sent:"
-/// block are cut.
-pub fn trim_quoted(body: &str) -> String {
-    let lines: Vec<&str> = body.lines().collect();
-    let mut kept = Vec::new();
-    for (index, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
-        if starts_quote(trimmed, &lines[index + 1..]) {
-            break;
-        }
-        if trimmed.starts_with('>') {
-            continue;
-        }
-        kept.push(*line);
-    }
-    let text = kept.join("\n");
-    collapse_blank_lines(text.trim())
-}
+/// Wraps the plain text of an HTML body at this many columns
+const HTML_TEXT_WIDTH: usize = 100;
 
-fn starts_quote(line: &str, rest: &[&str]) -> bool {
-    let lower = line.to_ascii_lowercase();
-    if lower.starts_with("-----original message-----")
-        || lower.starts_with("________________________________")
-        || (lower.starts_with("on ") && lower.ends_with("wrote:"))
-    {
-        return true;
-    }
-    // Outlook: "From: …" with "Sent:" or "Date:" in the next few lines
-    lower.starts_with("from:")
-        && rest.iter().take(3).any(|next| {
-            let next = next.trim().to_ascii_lowercase();
-            next.starts_with("sent:") || next.starts_with("date:")
-        })
-}
-
-fn collapse_blank_lines(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut blank = 0;
-    for line in text.lines() {
-        if line.trim().is_empty() {
-            blank += 1;
-            if blank > 1 {
-                continue;
-            }
-        } else {
-            blank = 0;
-        }
-        out.push_str(line.trim_end());
-        out.push('\n');
-    }
-    out.trim().to_string()
-}
-
-/// Plain text from an HTML body: no tags, scripts or styles; common
-/// entities decoded; block ends become line breaks
+/// Plain text from an HTML body, links kept as numbered footnotes so
+/// screening still sees them (`intake::screen`). Read by `html2text`, a
+/// real HTML parser; HTML it can't read comes back as it is, for the
+/// Chief of Staff to read.
 pub fn html_to_text(html: &str) -> String {
-    let mut out = String::with_capacity(html.len() / 2);
-    let mut rest = html;
-    while let Some(open) = rest.find('<') {
-        out.push_str(&rest[..open]);
-        let after = &rest[open..];
-        let Some(close) = after.find('>') else {
-            rest = "";
-            break;
-        };
-        let tag = after[1..close].trim().to_ascii_lowercase();
-        let name = tag
-            .trim_start_matches('/')
-            .split(|c: char| c.is_whitespace() || c == '/')
-            .next()
-            .unwrap_or_default()
-            .to_string();
-        rest = &after[close + 1..];
-        if (name == "script" || name == "style") && !tag.starts_with('/') {
-            let end = format!("</{name}");
-            match rest.to_ascii_lowercase().find(&end) {
-                Some(at) => {
-                    rest = &rest[at..];
-                    if let Some(gt) = rest.find('>') {
-                        rest = &rest[gt + 1..];
-                    }
-                }
-                None => rest = "",
-            }
-            continue;
-        }
-        if matches!(
-            name.as_str(),
-            "br" | "p" | "div" | "tr" | "li" | "h1" | "h2" | "h3" | "blockquote"
-        ) {
-            out.push('\n');
-        }
-    }
-    out.push_str(rest);
-    let decoded = out
-        .replace("&nbsp;", " ")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&amp;", "&");
-    collapse_blank_lines(
-        &decoded
-            .lines()
-            .map(str::trim)
-            .collect::<Vec<_>>()
-            .join("\n"),
-    )
+    html2text::config::plain_no_decorate()
+        .link_footnotes(true)
+        .string_from_read(html.as_bytes(), HTML_TEXT_WIDTH)
+        .map(|text| text.trim().to_string())
+        .unwrap_or_else(|_| html.to_string())
 }
 
 #[cfg(test)]
@@ -271,27 +175,15 @@ mod tests {
     }
 
     #[test]
-    fn quoted_replies_are_trimmed() {
-        let gmail = "Sounds good, Friday works.\n\nOn Mon, Nov 3, 2026 at 9:00 AM Lena <lena@x.com> wrote:\n> Can you send the list?\n> Thanks";
-        assert_eq!(trim_quoted(gmail), "Sounds good, Friday works.");
-        let outlook = "Approved.\n\nFrom: Sam Lee <sam@x.com>\nSent: Monday, November 3, 2026 9:00 AM\nTo: Dev\nSubject: Budget\n\nPlease approve.";
-        assert_eq!(trim_quoted(outlook), "Approved.");
-        let inline = "Yes\n> old line\nNo\n\n\n\nMaybe";
-        assert_eq!(trim_quoted(inline), "Yes\nNo\n\nMaybe");
-        // "From:" in the text itself, not a quote header
-        assert_eq!(
-            trim_quoted("From: the team\nThanks all"),
-            "From: the team\nThanks all"
-        );
-    }
-
-    #[test]
-    fn html_becomes_text() {
+    fn html_becomes_text_without_losing_the_rest() {
         let html = "<html><head><style>p{color:red}</style><script>alert(1)</script></head>\
-                    <body><p>Hello&nbsp;Dev,</p><div>Due <b>Friday</b> &amp; Monday</div>Line<br>two</body></html>";
-        assert_eq!(
-            html_to_text(html),
-            "Hello Dev,\n\nDue Friday & Monday\nLine\ntwo"
-        );
+                    <body><p>Hello Dev,</p><p>Due if a < b &amp; Monday.</p>\
+                    <p>See <a href=\"https://x.com/doc\">the doc</a></p></body></html>";
+        let text = html_to_text(html);
+        assert!(text.starts_with("Hello Dev,"), "{text}");
+        // A bare `<` no longer cuts the body (E-17)
+        assert!(text.contains("Due if a < b & Monday."), "{text}");
+        assert!(text.contains("https://x.com/doc"), "links stay: {text}");
+        assert!(!text.contains("alert(1)") && !text.contains("color:red"));
     }
 }
