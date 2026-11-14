@@ -1481,14 +1481,13 @@ async fn on_the_real_relay_a_member_verifies_and_enforces_the_policy() {
     assert!(joined.policy.verified, "{:?}", joined.policy.problem);
     assert_eq!(joined.group.members.len(), 2);
 
-    // Bob's Nandi holds Alice's requests for his approval (approval: always)
+    // Bob's Nandi asks him first about Alice's requests: his level for a
+    // group he just joined
     let decision = enforce::Enforcer {
         repo: &bob_world.repos.groups,
-        db: &bob_world.db,
         me: "bob-1",
-        own_keys: Some(bob_keys.public_keys()),
     }
-    .decide("alice-1", "review-pr", &[], enforce::Moment::now());
+    .decide("alice-1", "review-pr", &[]);
     assert!(matches!(decision, Some(Decision::Ask(_))));
 
     // A new version from Alice reaches Bob verified

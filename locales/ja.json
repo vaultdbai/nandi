@@ -4924,6 +4924,7 @@
   "errors.dailyLimit": "公開リレーで今日送れるメッセージを使い切りました。{{time}} からまた送れます。",
   "errors.groupDailyLimit": "今日はグループで認められた数の依頼をこの人に送りました。{{time}} からまた依頼できます。",
   "errors.needsFirstTimeApproval": "この人への最初の依頼は、まだ承認を待っています。返事があってから、また依頼できます。",
+  "errors.groupCapabilityNotAllowed": "このグループでは、メンバー同士でこの依頼はできません。別の依頼にするか、グループの外で依頼してください。",
   "publicRelay.title": "公開リレー",
   "publicRelay.description": "会社のリレーがない場合は、接続したメールで VaultDB.ai の公開リレーに参加できます。表示されるのは同じグループの人だけです。",
   "publicRelay.join": "公開リレーに参加",

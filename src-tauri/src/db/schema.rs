@@ -422,13 +422,15 @@ CREATE TABLE IF NOT EXISTS gateway_usage (
     PRIMARY KEY (caller_instance, month)
 );
 
--- Tasks the relay delivered as a member's first request through a group
--- whose policy says `approval: first-time` (`SealedTask.first_time_groups`):
--- each waits for my approval whatever my level (`services::groups::enforce`)
-CREATE TABLE IF NOT EXISTS group_first_requests (
+-- Tasks the relay delivered held for my approval by a group's policy:
+-- a member's first request (`SealedTask.first_time_groups`, code
+-- `first_request`) or a hold (`SealedTask.group_holds`, its code). Each
+-- waits for my approval whatever my level (`services::groups::enforce`)
+CREATE TABLE IF NOT EXISTS group_holds (
     task_id  TEXT NOT NULL,
     group_id TEXT NOT NULL,
-    PRIMARY KEY (task_id, group_id)
+    code     TEXT NOT NULL,
+    PRIMARY KEY (task_id, group_id, code)
 );
 
 -- Gateway requests held for the owner's approval

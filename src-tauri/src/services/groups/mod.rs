@@ -13,12 +13,15 @@
 //!   so even version 1 is signed over the real ID:
 //!   `GroupPolicy::signed_bytes(id, version, text)` with this device's key.
 //!   Every version is checked against its author's pinned key; one that
-//!   doesn't check out refuses the group's work ([`enforce`]).
-//! - Incoming work from someone I share groups with goes through
-//!   [`enforce::Enforcer::decide`] (the executor's intake and the gateway).
+//!   doesn't check out shows unverified on the groups screen.
+//! - **Request rules.** The relay enforces a policy's `requests:` rules
+//!   and holds what a group has me approve first. Incoming work from
+//!   someone I share groups with goes through [`enforce::Enforcer::decide`]
+//!   (the executor's intake and the gateway): my access level per group
+//!   and the relay's holds.
 //!
-//! Without a relay every call answers `RelayUnavailable`; the copies still
-//! apply to work that arrives later.
+//! Without a relay every call answers `RelayUnavailable`; my access levels
+//! still apply to work that arrives later.
 
 pub mod enforce;
 

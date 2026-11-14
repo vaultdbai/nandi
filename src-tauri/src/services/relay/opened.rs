@@ -129,6 +129,8 @@ pub struct TaskAssigned {
     /// The groups the relay marked it as the requester's first request in:
     /// it waits for my approval (`services::groups::enforce`)
     pub first_time_groups: Vec<String>,
+    /// The groups whose policy holds it for my approval, and why
+    pub group_holds: Vec<nandi_protocol::GroupHold>,
 }
 
 /// A provider's result, opened

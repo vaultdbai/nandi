@@ -4104,6 +4104,7 @@ workspaceChanged: "workspace://changed"
 
 export const DAILY_LIMIT = "daily_limit" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
+export const GROUP_CAPABILITY_NOT_ALLOWED = "group_capability_not_allowed" as const;
 export const GROUP_DAILY_LIMIT = "group_daily_limit" as const;
 export const NEEDS_FIRST_TIME_APPROVAL = "needs_first_time_approval" as const;
 export const NO_SHARED_GROUP = "no_shared_group" as const;
@@ -4138,7 +4139,7 @@ export type AccessChoice =
 export type AccessLevel = 
 /**
  * Their requests run without asking me, when screening is clean and
- * the group's policy allows it
+ * the relay didn't hold them for the group's policy
  */
 "fully-automated" | 
 /**

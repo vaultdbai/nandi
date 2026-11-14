@@ -480,7 +480,6 @@ impl AppState {
                 bus.clone(),
                 orchestrators.clone(),
                 broadcast.clone(),
-                &config.secrets,
                 id.clone(),
                 capability_index.clone(),
                 relay_client.clone(),

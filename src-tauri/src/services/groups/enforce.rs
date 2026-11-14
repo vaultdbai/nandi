@@ -1,75 +1,61 @@
 //! Group policies on incoming work: for a request from someone I share
-//! groups with, the stricter of each group's `requests:` rules and my own
-//! access level for that group, then the strictest across those groups.
-//! No shared group: `None`, and everything stays as it was (the company
-//! relay's trust rules and intake).
+//! groups with, my own access level for each group, and the relay's marks,
+//! then the strictest of those. No shared group and no mark: `None`, and
+//! everything stays as it was (the company relay's trust rules and
+//! intake).
 //!
-//! Read from the copies in `.nandi/groups/` on every request. A copy whose
-//! signature doesn't check out against its author's pinned key, or whose
-//! text doesn't parse, refuses that group's work (fail closed) until a
-//! good version arrives. A copy that doesn't read at all is skipped (its
-//! members are unknown) and logged; the next refresh rewrites it.
+//! The rules in a group's policy are the relay's (owner, 2026-11-14): it
+//! refuses what a group doesn't allow at `SubmitTask`, and marks what a
+//! group has me approve first (`SealedTask.first_time_groups` for a first
+//! request, `SealedTask.group_holds` for hours, `always_ask` and
+//! `approval: always`). A marked task waits for me whatever my level says.
+//! The marks are kept here by task (`group_holds`, from delivery on, so a
+//! restart keeps them).
 //!
-//! The rules that involve the other person are the relay's: it counts
-//! `daily_limit` and holds `approval: first-time` at `SubmitTask`. A first
-//! request it marks (`SealedTask.first_time_groups`) is kept here by task
-//! (`group_first_requests`, from delivery on, so a restart keeps it) and
-//! waits for me whatever my level says.
+//! Who is in a group comes from the copies in `.nandi/groups/`, read on
+//! every request. A copy that doesn't read is skipped (its members are
+//! unknown) and logged; the next refresh rewrites it.
 
-use chrono::{Datelike, Local, Timelike};
-use nandi_protocol::PublicKeys;
+use nandi_protocol::{GroupHold, HOLD_ALWAYS_ASK, HOLD_APPROVAL_ALWAYS, HOLD_OUTSIDE_HOURS};
 use rusqlite::params;
 
 use crate::db::Db;
-use crate::services::domain::group::{
-    verify, Decision, GroupAccess, GroupCopy, GroupPolicyText, RequestFacts,
-};
-use crate::services::network::peer_keys;
+use crate::services::domain::group::{Decision, GroupAccess, GroupCopy};
 use crate::services::relay::protocol::ASK_ME;
 use crate::services::repos::GroupRepository;
 
-/// Why a first request the relay marked waits
-const FIRST_REQUEST: &str =
-    "the group's policy has you approve a member's first request (the relay marked this one)";
+/// The code a first request the relay marked is kept under: the relay
+/// marks it apart from the other holds (`SealedTask.first_time_groups`)
+const FIRST_REQUEST: &str = "first_request";
 
-/// When it is (local time), as the rules read it
-#[derive(Debug, Clone, Copy)]
-pub struct Moment {
-    pub weekday: u8,
-    pub minute: u16,
-}
-
-impl Moment {
-    pub fn now() -> Self {
-        let now = Local::now();
-        Self {
-            weekday: u8::try_from(now.weekday().num_days_from_monday()).unwrap_or(0),
-            minute: u16::try_from(now.hour() * 60 + now.minute()).unwrap_or(0),
-        }
+/// Why the relay held a request, as the owner reads it, by its code
+fn why_held(code: &str) -> &'static str {
+    match code {
+        FIRST_REQUEST => "the group's policy has you approve a member's first request",
+        HOLD_OUTSIDE_HOURS => "it came outside the group's hours",
+        HOLD_ALWAYS_ASK => "the group's policy always asks you first for this",
+        HOLD_APPROVAL_ALWAYS => "the group's policy has you approve every request",
+        // A code this Nandi doesn't know still holds
+        _ => "the group's policy has you approve it",
     }
 }
 
-/// Everything [`decide`] reads
+/// Everything [`decide`](Enforcer::decide) reads
 pub struct Enforcer<'a> {
     pub repo: &'a GroupRepository,
-    pub db: &'a Db,
     /// This Nandi's instance ID
     pub me: &'a str,
-    /// This device's public keys (for policies I signed)
-    pub own_keys: Option<&'a PublicKeys>,
 }
 
 impl Enforcer<'_> {
     /// The groups' say on a request for `capability` from `requester`,
-    /// which the relay marked as their first in `first_time` (group IDs),
-    /// with its reason naming the group; `None` when I share no group with
-    /// them and nothing is marked
+    /// which the relay held for me in `holds`; each reason names its
+    /// group. `None` when I share no group with them and nothing is held.
     pub fn decide(
         &self,
         requester: &str,
         capability: &str,
-        first_time: &[String],
-        at: Moment,
+        holds: &[GroupHold],
     ) -> Option<Decision> {
         if requester == self.me {
             return None;
@@ -78,7 +64,7 @@ impl Enforcer<'_> {
             Ok(loaded) => loaded,
             Err(e) => {
                 log::warn!("Groups: couldn't read the group copies: {e}");
-                return None;
+                (Vec::new(), Vec::new())
             }
         };
         for copy in &broken {
@@ -92,65 +78,38 @@ impl Enforcer<'_> {
             .iter()
             .filter(|c| c.has_member(requester) && c.has_member(self.me))
             .collect();
-        // A mark for a group I have no copy of still waits for me
-        let unknown_marks = first_time
+        // A hold for a group I have no copy of still waits for me
+        let held_label = |group_id: &str| match shared.iter().find(|c| c.group_id == group_id) {
+            Some(copy) => label(copy),
+            None => format!("Group {group_id}"),
+        };
+        let held: Vec<Decision> = holds
             .iter()
-            .filter(|id| !shared.iter().any(|c| &c.group_id == *id))
-            .map(|id| Decision::Ask(format!("Group {id}: {FIRST_REQUEST}")));
-        let unknown_marks: Vec<Decision> = unknown_marks.collect();
+            .map(|hold| {
+                Decision::Ask(format!(
+                    "{}: {}",
+                    held_label(&hold.group_id),
+                    why_held(&hold.code)
+                ))
+            })
+            .collect();
         if shared.is_empty() {
-            return Decision::strictest(unknown_marks);
+            return Decision::strictest(held);
         }
         let access = self.repo.load_access().unwrap_or_else(|e| {
             log::warn!("Groups: my access levels don't read ({e}); asking first everywhere");
             GroupAccess::default()
         });
-        let decisions = shared.iter().map(|copy| {
-            let named = |decision: Decision| match decision {
-                Decision::Auto => Decision::Auto,
-                Decision::Ask(why) => Decision::Ask(format!("{}: {why}", label(copy))),
-                Decision::Refuse(why) => Decision::Refuse(format!("{}: {why}", label(copy))),
-            };
-            if let Err(e) = self.verified(copy) {
-                log::warn!("Groups: {}'s policy isn't verified: {e}", copy.group_id);
-                return named(Decision::Refuse(
-                    "this group's policy couldn't be verified".to_string(),
-                ));
-            }
-            let rules = match GroupPolicyText::parse(&copy.group_id, &copy.text) {
-                Ok(text) => text.requests,
-                Err(e) => {
-                    log::warn!("Groups: {}'s policy doesn't read: {e}", copy.group_id);
-                    return named(Decision::Refuse(
-                        "this group's policy couldn't be read".to_string(),
-                    ));
-                }
-            };
-            let facts = RequestFacts {
-                capability,
-                is_question: capability == ASK_ME,
-                weekday: at.weekday,
-                minute: at.minute,
-            };
-            let mine = access.level(&copy.group_id).decide(&facts);
-            let first = if first_time.contains(&copy.group_id) {
-                Decision::Ask(FIRST_REQUEST.to_string())
-            } else {
-                Decision::Auto
-            };
-            named(rules.decide(&facts).stricter(mine).stricter(first))
-        });
-        Decision::strictest(decisions.chain(unknown_marks))
-    }
-
-    /// Whether a copy's policy is signed by its author's key
-    pub fn verified(&self, copy: &GroupCopy) -> Result<(), String> {
-        let keys = if copy.author == self.me {
-            self.own_keys.cloned()
-        } else {
-            peer_keys::pinned(self.db, &copy.author)?
-        };
-        verify(&copy.group_id, &copy.policy(), keys.as_ref())
+        let is_question = capability == ASK_ME;
+        let mine =
+            shared.iter().map(
+                |copy| match access.level(&copy.group_id).decide(is_question) {
+                    Decision::Auto => Decision::Auto,
+                    Decision::Ask(why) => Decision::Ask(format!("{}: {why}", label(copy))),
+                    Decision::Refuse(why) => Decision::Refuse(format!("{}: {why}", label(copy))),
+                },
+            );
+        Decision::strictest(mine.chain(held))
     }
 }
 
@@ -168,76 +127,57 @@ pub struct GroupRules {
     repo: GroupRepository,
     db: Db,
     me: String,
-    own_keys: super::PublicKeySource,
 }
 
 impl GroupRules {
-    pub fn new(
-        repo: GroupRepository,
-        db: Db,
-        me: String,
-        own_keys: super::PublicKeySource,
-    ) -> Self {
-        Self {
-            repo,
-            db,
-            me,
-            own_keys,
-        }
+    pub fn new(repo: GroupRepository, db: Db, me: String) -> Self {
+        Self { repo, db, me }
     }
 
     pub fn of(state: &crate::services::AppState) -> Result<Self, String> {
         Ok(Self::for_install(
             state.store(),
             state.db().clone(),
-            state.secrets(),
             crate::services::network::local_instance_id(state.db())?,
         ))
     }
 
-    /// The rules for this install, signed with its own device keys
-    pub fn for_install(
-        store: &crate::services::repo_store::RepoStore,
-        db: Db,
-        secrets: &crate::services::secrets::Secrets,
-        me: String,
-    ) -> Self {
-        let keyring = crate::services::relay::device_keys::DeviceKeyring::new(secrets.clone());
-        Self::new(
-            store.repos().groups.clone(),
-            db,
-            me,
-            std::sync::Arc::new(move || keyring.public_keys()),
-        )
+    /// The rules for this install
+    pub fn for_install(store: &crate::services::repo_store::RepoStore, db: Db, me: String) -> Self {
+        Self::new(store.repos().groups.clone(), db, me)
     }
 
     /// The groups' say on task `task_id`, a request from `requester` for
-    /// `capability`, now
+    /// `capability`
     pub fn decide(&self, task_id: &str, requester: &str, capability: &str) -> Option<Decision> {
-        // Only read when a policy I signed needs checking
-        let own = if self.repo.dir().exists() {
-            (self.own_keys)().ok()
-        } else {
-            None
-        };
-        let first_time = first_requests(&self.db, task_id);
+        let holds = held(&self.db, task_id);
         Enforcer {
             repo: &self.repo,
-            db: &self.db,
             me: &self.me,
-            own_keys: own.as_ref(),
         }
-        .decide(requester, capability, &first_time, Moment::now())
+        .decide(requester, capability, &holds)
     }
 
-    /// The relay delivered `task_id` as a member's first request through
-    /// `groups`: kept until it's decided, over a restart
-    pub fn first_request(&self, task_id: &str, groups: &[String]) -> Result<(), String> {
+    /// The relay delivered `task_id` marked as a member's first request in
+    /// `first_time_groups` and held in `holds`: kept until it's decided,
+    /// over a restart
+    pub fn keep_holds(
+        &self,
+        task_id: &str,
+        first_time_groups: &[String],
+        holds: &[GroupHold],
+    ) -> Result<(), String> {
+        let first = first_time_groups
+            .iter()
+            .map(|group| (group.as_str(), FIRST_REQUEST));
+        let others = holds
+            .iter()
+            .map(|hold| (hold.group_id.as_str(), hold.code.as_str()));
         let conn = self.db.conn()?;
-        for group in groups {
+        for (group, code) in first.chain(others) {
             conn.execute(
-                "INSERT OR IGNORE INTO group_first_requests (task_id, group_id) VALUES (?1, ?2)",
-                params![task_id, group],
+                "INSERT OR IGNORE INTO group_holds (task_id, group_id, code) VALUES (?1, ?2, ?3)",
+                params![task_id, group, code],
             )
             .map_err(|e| e.to_string())?;
         }
@@ -245,26 +185,33 @@ impl GroupRules {
     }
 }
 
-/// The groups the relay marked `task_id` as a member's first request in
-fn first_requests(db: &Db, task_id: &str) -> Vec<String> {
-    let read = || -> Result<Vec<String>, String> {
+/// The holds the relay put on `task_id`, by group and code
+fn held(db: &Db, task_id: &str) -> Vec<GroupHold> {
+    let read = || -> Result<Vec<GroupHold>, String> {
         let conn = db.conn()?;
         let mut statement = conn
             .prepare(
-                "SELECT group_id FROM group_first_requests WHERE task_id = ?1 ORDER BY group_id",
+                "SELECT group_id, code FROM group_holds WHERE task_id = ?1 ORDER BY group_id, code",
             )
             .map_err(|e| e.to_string())?;
         let rows = statement
-            .query_map(params![task_id], |row| row.get(0))
+            .query_map(params![task_id], |row| {
+                Ok(GroupHold {
+                    group_id: row.get(0)?,
+                    code: row.get(1)?,
+                })
+            })
             .map_err(|e| e.to_string())?;
-        rows.collect::<rusqlite::Result<Vec<String>>>()
+        rows.collect::<rusqlite::Result<Vec<GroupHold>>>()
             .map_err(|e| e.to_string())
     };
     read().unwrap_or_else(|e| {
-        // Unknown: the groups' own rules still apply; the relay holds the
-        // requester's next one until this is decided
-        log::warn!("Groups: couldn't read task {task_id}'s first-request marks: {e}");
-        Vec::new()
+        // Unknown: it waits for me, the safe side
+        log::warn!("Groups: couldn't read task {task_id}'s holds: {e}");
+        vec![GroupHold {
+            group_id: "unknown".to_string(),
+            code: String::new(),
+        }]
     })
 }
 
@@ -273,39 +220,31 @@ mod tests {
     use super::*;
     use crate::services::domain::group::{AccessLevel, CopyMember};
     use crate::services::repos::{RepoLayout, Repos};
-    use nandi_protocol::{GroupPolicy, GroupRole};
-    use nandi_seal::DeviceKeys;
+    use nandi_protocol::GroupRole;
 
     const G1: &str = "g_0000000000000001";
     const G2: &str = "g_0000000000000002";
+    const UNKNOWN: &str = "g_00000000000000ff";
 
     struct World {
         _tmp: tempfile::TempDir,
         repos: Repos,
         db: Db,
-        alice: DeviceKeys,
-        me: DeviceKeys,
     }
 
     fn world() -> World {
         let tmp = tempfile::tempdir().unwrap();
         let repos = Repos::new(RepoLayout::new(tmp.path(), tmp.path().join("trash")));
-        let db = Db::in_memory();
-        let alice = DeviceKeys::generate().unwrap();
-        peer_keys::learn(&db, "alice-1", alice.public_keys()).unwrap();
         World {
             _tmp: tmp,
             repos,
-            db,
-            alice,
-            me: DeviceKeys::generate().unwrap(),
+            db: Db::in_memory(),
         }
     }
 
     impl World {
-        fn group(&self, id: &str, name: &str, requests: &str, members: &[&str]) {
-            let text = format!("---\nrequests:\n{requests}---\nWhy.\n");
-            let mut copy = GroupCopy {
+        fn group(&self, id: &str, name: &str, members: &[&str]) {
+            let copy = GroupCopy {
                 group_id: id.into(),
                 name: name.into(),
                 version: 3,
@@ -319,11 +258,8 @@ mod tests {
                         role: GroupRole::Member,
                     })
                     .collect(),
-                text,
+                text: "---\nrequests:\n  approval: always\n---\nWhy.\n".into(),
             };
-            copy.signature = self
-                .alice
-                .sign(&GroupPolicy::signed_bytes(id, 3, &copy.text));
             self.repos.groups.save(&copy).unwrap();
         }
 
@@ -333,191 +269,228 @@ mod tests {
             self.repos.groups.save_access(&access).unwrap();
         }
 
-        fn decide(&self, from: &str, capability: &str) -> Option<Decision> {
-            self.decide_marked(from, capability, &[])
-        }
-
-        /// As the relay delivered it, marked first in `first_time`
-        fn decide_marked(
-            &self,
-            from: &str,
-            capability: &str,
-            first_time: &[&str],
-        ) -> Option<Decision> {
-            let first_time: Vec<String> = first_time.iter().map(|g| g.to_string()).collect();
+        /// As the relay delivered it, held in `holds` (group, code)
+        fn decide(&self, from: &str, capability: &str, holds: &[(&str, &str)]) -> Option<Decision> {
+            let holds: Vec<GroupHold> = holds
+                .iter()
+                .map(|(group_id, code)| GroupHold {
+                    group_id: (*group_id).into(),
+                    code: (*code).into(),
+                })
+                .collect();
             Enforcer {
                 repo: &self.repos.groups,
-                db: &self.db,
                 me: "me-1",
-                own_keys: Some(self.me.public_keys()),
             }
-            .decide(from, capability, &first_time, wednesday())
+            .decide(from, capability, &holds)
+        }
+
+        fn rules(&self) -> GroupRules {
+            GroupRules::new(self.repos.groups.clone(), self.db.clone(), "me-1".into())
         }
     }
 
-    fn wednesday() -> Moment {
-        Moment {
-            weekday: 2,
-            minute: 600,
+    /// What a decision is, and the start of its reason
+    #[derive(Debug, PartialEq)]
+    enum Says {
+        Nothing,
+        Auto,
+        Ask(&'static str),
+        Refuse(&'static str),
+    }
+
+    fn says(decision: Option<Decision>, expected: &Says) -> bool {
+        match (decision, expected) {
+            (None, Says::Nothing) => true,
+            (Some(Decision::Auto), Says::Auto) => true,
+            (Some(Decision::Ask(why)), Says::Ask(start)) => why.starts_with(start),
+            (Some(Decision::Refuse(why)), Says::Refuse(start)) => why.starts_with(start),
+            _ => false,
         }
     }
 
-    fn is_ask(decision: &Option<Decision>) -> bool {
-        matches!(decision, Some(Decision::Ask(_)))
-    }
-
-    fn refusal(decision: &Option<Decision>) -> String {
-        match decision {
-            Some(Decision::Refuse(why)) => why.clone(),
-            other => panic!("expected a refusal, got {other:?}"),
+    #[test]
+    fn my_level_and_the_relays_holds_the_strictest_wins() {
+        struct Case {
+            name: &'static str,
+            /// My level in Finance (G1); Ops (G2) stays fully automated
+            level: AccessLevel,
+            from: &'static str,
+            capability: &'static str,
+            holds: &'static [(&'static str, &'static str)],
+            says: Says,
         }
-    }
-
-    #[test]
-    fn no_shared_group_changes_nothing() {
-        let w = world();
-        assert_eq!(w.decide("bob-1", "review"), None);
-        w.group(G1, "Finance", "  approval: always\n", &["me-1", "alice-1"]);
-        assert_eq!(w.decide("bob-1", "review"), None, "bob isn't in it");
-        assert_eq!(w.decide("me-1", "review"), None, "my own work");
-    }
-
-    #[test]
-    fn my_level_and_the_policy_the_stricter_wins() {
-        let w = world();
-        w.group(
-            G1,
-            "Finance",
-            "  approval: per-member\n",
-            &["me-1", "bob-1"],
-        );
-        // Joined: ask first
-        assert!(is_ask(&w.decide("bob-1", "review")));
-        w.level(G1, AccessLevel::FullyAutomated);
-        assert_eq!(w.decide("bob-1", "review"), Some(Decision::Auto));
-        w.level(G1, AccessLevel::QuestionsOnly);
-        assert_eq!(w.decide("bob-1", "ask-me"), Some(Decision::Auto));
-        assert!(refusal(&w.decide("bob-1", "review")).starts_with("Finance: "));
-        w.level(G1, AccessLevel::SendMeInfo);
-        assert!(is_ask(&w.decide("bob-1", "ask-me")));
-        w.level(G1, AccessLevel::None);
-        refusal(&w.decide("bob-1", "ask-me"));
-        // A policy that always asks can't be loosened
-        w.group(G1, "Finance", "  approval: always\n", &["me-1", "bob-1"]);
-        w.level(G1, AccessLevel::FullyAutomated);
-        assert!(is_ask(&w.decide("bob-1", "review")));
-    }
-
-    #[test]
-    fn across_groups_the_strictest_applies() {
-        let w = world();
-        w.group(
-            G1,
-            "Finance",
-            "  approval: per-member\n",
-            &["me-1", "bob-1"],
-        );
-        w.group(
-            G2,
-            "Ops",
-            "  approval: per-member\n  capabilities: { deny: [review] }\n",
-            &["me-1", "bob-1"],
-        );
-        w.level(G1, AccessLevel::FullyAutomated);
-        w.level(G2, AccessLevel::FullyAutomated);
-        assert!(refusal(&w.decide("bob-1", "review")).starts_with("Ops: "));
-        assert_eq!(w.decide("bob-1", "summarize"), Some(Decision::Auto));
-    }
-
-    #[test]
-    fn an_unverifiable_policy_fails_closed() {
-        let w = world();
-        w.group(
-            G1,
-            "Finance",
-            "  approval: per-member\n",
-            &["me-1", "bob-1"],
-        );
-        w.level(G1, AccessLevel::FullyAutomated);
-        // Edited on disk: the signature no longer covers it
-        let path = w.repos.groups.path(G1);
-        let text = std::fs::read_to_string(&path).unwrap();
-        std::fs::write(&path, text.replace("Why.", "Why not.")).unwrap();
-        assert!(refusal(&w.decide("bob-1", "review")).contains("couldn't be verified"));
-        // An author whose key isn't known
-        w.group(
-            G1,
-            "Finance",
-            "  approval: per-member\n",
-            &["me-1", "bob-1"],
-        );
-        let mut copy = w.repos.groups.load(G1).unwrap().unwrap();
-        copy.author = "stranger-1".into();
-        w.repos.groups.save(&copy).unwrap();
-        assert!(refusal(&w.decide("bob-1", "review")).contains("couldn't be verified"));
-    }
-
-    #[test]
-    fn a_first_request_the_relay_marked_waits_whatever_my_level() {
-        let w = world();
-        w.group(
-            G1,
-            "Finance",
-            "  approval: first-time\n  daily_limit: 2\n",
-            &["me-1", "bob-1"],
-        );
-        w.group(G2, "Ops", "  approval: per-member\n", &["me-1", "bob-1"]);
-        w.level(G1, AccessLevel::FullyAutomated);
-        w.level(G2, AccessLevel::FullyAutomated);
-        let ask = |decision: Option<Decision>| match decision {
-            Some(Decision::Ask(why)) => why,
-            other => panic!("expected to ask, got {other:?}"),
-        };
-        // (marked in, from, what it decides)
-        let cases: [(&[&str], &str, Option<&str>); 5] = [
-            (&[], "bob-1", None),
-            (&[G1], "bob-1", Some("Finance: ")),
-            (&[G2], "bob-1", Some("Ops: ")),
-            // A group I have no copy of (or don't share) still waits
-            (
-                &["g_00000000000000ff"],
-                "bob-1",
-                Some("Group g_00000000000000ff: "),
-            ),
-            (
-                &["g_00000000000000ff"],
-                "carol-1",
-                Some("Group g_00000000000000ff: "),
-            ),
+        use AccessLevel::{AskFirst, FullyAutomated, None as NoAccess, QuestionsOnly, SendMeInfo};
+        let cases = [
+            Case {
+                name: "someone I share no group with",
+                level: FullyAutomated,
+                from: "carol-1",
+                capability: "review",
+                holds: &[],
+                says: Says::Nothing,
+            },
+            Case {
+                name: "my own work",
+                level: NoAccess,
+                from: "me-1",
+                capability: "review",
+                holds: &[],
+                says: Says::Nothing,
+            },
+            Case {
+                name: "fully automated, nothing held",
+                level: FullyAutomated,
+                from: "bob-1",
+                capability: "review",
+                holds: &[],
+                says: Says::Auto,
+            },
+            Case {
+                name: "ask first",
+                level: AskFirst,
+                from: "bob-1",
+                capability: "review",
+                holds: &[],
+                says: Says::Ask("Finance: the owner approves"),
+            },
+            Case {
+                name: "questions only, a question",
+                level: QuestionsOnly,
+                from: "bob-1",
+                capability: ASK_ME,
+                holds: &[],
+                says: Says::Auto,
+            },
+            Case {
+                name: "questions only, work",
+                level: QuestionsOnly,
+                from: "bob-1",
+                capability: "review",
+                holds: &[],
+                says: Says::Refuse("Finance: "),
+            },
+            Case {
+                name: "send me info, a question",
+                level: SendMeInfo,
+                from: "bob-1",
+                capability: ASK_ME,
+                holds: &[],
+                says: Says::Ask("Finance: "),
+            },
+            Case {
+                name: "held for approval: always, whatever my level",
+                level: FullyAutomated,
+                from: "bob-1",
+                capability: "review",
+                holds: &[(G1, HOLD_APPROVAL_ALWAYS)],
+                says: Says::Ask("Finance: the group's policy has you approve every request"),
+            },
+            Case {
+                name: "held outside the hours, named by the other group",
+                level: FullyAutomated,
+                from: "bob-1",
+                capability: "review",
+                holds: &[(G2, HOLD_OUTSIDE_HOURS)],
+                says: Says::Ask("Ops: it came outside the group's hours"),
+            },
+            Case {
+                name: "held for always_ask",
+                level: FullyAutomated,
+                from: "bob-1",
+                capability: "send-email",
+                holds: &[(G1, HOLD_ALWAYS_ASK)],
+                says: Says::Ask("Finance: the group's policy always asks"),
+            },
+            Case {
+                name: "a first request",
+                level: FullyAutomated,
+                from: "bob-1",
+                capability: "review",
+                holds: &[(G1, FIRST_REQUEST)],
+                says: Says::Ask("Finance: the group's policy has you approve a member's first"),
+            },
+            Case {
+                name: "a code this Nandi doesn't know still holds",
+                level: FullyAutomated,
+                from: "bob-1",
+                capability: "review",
+                holds: &[(G1, "something_new")],
+                says: Says::Ask("Finance: the group's policy has you approve it"),
+            },
+            Case {
+                name: "a hold for a group I have no copy of",
+                level: FullyAutomated,
+                from: "carol-1",
+                capability: "review",
+                holds: &[(UNKNOWN, HOLD_APPROVAL_ALWAYS)],
+                says: Says::Ask("Group g_00000000000000ff: "),
+            },
+            Case {
+                name: "a refusal stays a refusal when held",
+                level: NoAccess,
+                from: "bob-1",
+                capability: "review",
+                holds: &[(G1, HOLD_APPROVAL_ALWAYS)],
+                says: Says::Refuse("Finance: the owner takes no requests"),
+            },
         ];
-        for (marked, from, asks) in cases {
-            let decision = w.decide_marked(from, "review", marked);
-            match asks {
-                None => assert_eq!(decision, Some(Decision::Auto), "{marked:?}"),
-                Some(prefix) => {
-                    let why = ask(decision);
-                    assert!(why.starts_with(prefix), "{marked:?}: {why}");
-                    assert!(why.contains("first request"), "{marked:?}: {why}");
-                }
-            }
+        for case in cases {
+            let w = world();
+            w.group(G1, "Finance", &["me-1", "bob-1"]);
+            w.group(G2, "Ops", &["me-1", "bob-1"]);
+            w.level(G1, case.level);
+            w.level(G2, FullyAutomated);
+            let decision = w.decide(case.from, case.capability, case.holds);
+            assert!(
+                says(decision.clone(), &case.says),
+                "{}: got {decision:?}, want {:?}",
+                case.name,
+                case.says
+            );
         }
-        // A refusal stays a refusal
-        w.level(G1, AccessLevel::None);
-        refusal(&w.decide_marked("bob-1", "review", &[G1]));
     }
 
     #[test]
-    fn marks_are_kept_by_task() {
+    fn a_copy_without_a_name_is_named_by_its_id() {
         let w = world();
-        let rules = GroupRules::new(
-            w.repos.groups.clone(),
-            w.db.clone(),
-            "me-1".into(),
-            std::sync::Arc::new(|| Err("no keys".to_string())),
+        w.group(G1, " ", &["me-1", "bob-1"]);
+        let decision = w.decide("bob-1", "review", &[]);
+        assert!(says(decision, &Says::Ask("Group g_0000000000000001: ")));
+    }
+
+    #[test]
+    fn holds_are_kept_by_task() {
+        let w = world();
+        let rules = w.rules();
+        let held_for = |task: &str| -> Vec<(String, String)> {
+            held(&w.db, task)
+                .into_iter()
+                .map(|hold| (hold.group_id, hold.code))
+                .collect()
+        };
+        let always = GroupHold {
+            group_id: G2.into(),
+            code: HOLD_APPROVAL_ALWAYS.into(),
+        };
+        rules
+            .keep_holds("t1", &[G1.into()], std::slice::from_ref(&always))
+            .unwrap();
+        // Delivered again: kept once
+        rules.keep_holds("t1", &[G1.into()], &[always]).unwrap();
+        assert_eq!(
+            held_for("t1"),
+            [
+                (G1.to_string(), FIRST_REQUEST.to_string()),
+                (G2.to_string(), HOLD_APPROVAL_ALWAYS.to_string()),
+            ]
         );
-        rules.first_request("t1", &[G2.into(), G1.into()]).unwrap();
-        rules.first_request("t1", &[G1.into()]).unwrap();
-        assert_eq!(first_requests(&w.db, "t1"), [G1, G2]);
-        assert!(first_requests(&w.db, "t2").is_empty());
+        assert!(held_for("t2").is_empty());
+        // Read back as the task's say
+        w.group(G1, "Finance", &["me-1", "bob-1"]);
+        w.level(G1, AccessLevel::FullyAutomated);
+        let decision = rules.decide("t1", "bob-1", "review");
+        assert!(says(decision, &Says::Ask("Finance: ")));
+        assert!(says(rules.decide("t2", "bob-1", "review"), &Says::Auto));
     }
 }

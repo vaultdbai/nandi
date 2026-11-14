@@ -5,6 +5,7 @@
 import {
   DAILY_LIMIT,
   ENVELOPE_TOO_LARGE,
+  GROUP_CAPABILITY_NOT_ALLOWED,
   GROUP_DAILY_LIMIT,
   NEEDS_FIRST_TIME_APPROVAL,
   NO_SHARED_GROUP,
@@ -25,6 +26,7 @@ export type ErrorKind =
   | 'dailyLimit'
   | 'groupDailyLimit'
   | 'needsFirstTimeApproval'
+  | 'groupCapabilityNotAllowed'
   | 'offline'
   | 'timeout'
   | 'notFound'
@@ -104,6 +106,8 @@ export function errorKind(error: unknown): ErrorKind {
   if (raw.includes(`${NO_SHARED_GROUP}:`)) return 'noSharedGroup'
   if (raw.includes(`${NEEDS_FIRST_TIME_APPROVAL}:`))
     return 'needsFirstTimeApproval'
+  if (raw.includes(`${GROUP_CAPABILITY_NOT_ALLOWED}:`))
+    return 'groupCapabilityNotAllowed'
   if (resetsAt(GROUP_DAILY_LIMIT, error) !== null) return 'groupDailyLimit'
   if (dailyLimitResetsAt(error) !== null) return 'dailyLimit'
   return PATTERNS.find(([, pattern]) => pattern.test(raw))?.[0] ?? 'other'

@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use nandi_protocol::{
-    GroupPolicy, OwnerRef, ServesCapability, Visibility, NEEDS_FIRST_TIME_APPROVAL,
+    GroupHold, GroupPolicy, OwnerRef, ServesCapability, Visibility, GROUP_CAPABILITY_NOT_ALLOWED,
+    HOLD_ALWAYS_ASK, HOLD_APPROVAL_ALWAYS, NEEDS_FIRST_TIME_APPROVAL,
 };
 use nandi_relay::RelayServerConfig;
 use serde_json::json;
@@ -15,7 +16,7 @@ use serde_json::json;
 use super::*;
 use crate::services::a2a::relay_world::{wait_until, TestRelay};
 use crate::services::a2a::Task;
-use crate::services::domain::group::POLICY_TEMPLATE;
+use crate::services::domain::group::{AccessLevel, Decision, POLICY_TEMPLATE};
 use crate::services::domain::AgentCard;
 use crate::services::relay::client::{ClientOptions, WsRelayClient};
 use crate::services::relay::client_api::{stored_at_once, REFUSED_BY_RELAY};
@@ -418,4 +419,87 @@ async fn the_relay_marks_a_first_request_and_refuses_the_next_while_it_waits() {
     let coded = format!("{REFUSED_BY_RELAY}{NEEDS_FIRST_TIME_APPROVAL}: ");
     assert!(refused.starts_with(&coded), "{refused}");
     assert!(refused.contains("Finance"), "{refused}");
+}
+
+#[tokio::test]
+async fn the_relay_holds_or_refuses_by_the_groups_rules_and_my_nandi_honours_it() {
+    enum Outcome {
+        /// Delivered with this hold, and it waits for Alice's approval
+        Held(&'static str),
+        /// Refused at the relay, told by this code
+        Refused(&'static str),
+    }
+    use Outcome::{Held, Refused};
+    let cases = [
+        ("  approval: always\n", Held(HOLD_APPROVAL_ALWAYS)),
+        (
+            "  approval: per-member\n  always_ask: [papers]\n",
+            Held(HOLD_ALWAYS_ASK),
+        ),
+        (
+            "  approval: per-member\n  capabilities: { deny: [\"find-*\"] }\n",
+            Refused(GROUP_CAPABILITY_NOT_ALLOWED),
+        ),
+    ];
+    for (requests, outcome) in cases {
+        let world = World::start().await;
+        let alice = world.provider("alice-1").await;
+        let bob = world.member("bob-1").await;
+        let policy = format!("---\nrequests:\n{requests}---\nFinance.\n");
+        let view = alice.groups.create("Finance", "", &policy).await.unwrap();
+        let group = view.group.summary.id;
+        bob.join_through(&alice, &group).await;
+        // Alice's copy names Bob, and she lets the group's work run, so
+        // only a hold makes it wait
+        alice.groups.refresh_group(&group).await.unwrap();
+        alice
+            .groups
+            .set_access(&group, AccessLevel::FullyAutomated)
+            .unwrap();
+        let delivered: Arc<Mutex<Vec<TaskAssigned>>> = Arc::default();
+        let sink = delivered.clone();
+        alice
+            .client
+            .on_task_assigned(stored_at_once(move |assigned| {
+                sink.lock().unwrap().push(assigned)
+            }))
+            .await;
+
+        let sent = bob.client.delegate_task(&ask_alice("t1"), &[]).await;
+        match outcome {
+            Refused(code) => {
+                let refused = sent.unwrap_err();
+                let coded = format!("{REFUSED_BY_RELAY}{code}: ");
+                assert!(refused.starts_with(&coded), "{requests}: {refused}");
+                assert!(refused.contains("Finance"), "{refused}");
+            }
+            Held(code) => {
+                sent.unwrap();
+                wait_until("Alice has Bob's request", || async {
+                    !delivered.lock().unwrap().is_empty()
+                })
+                .await;
+                let assigned = delivered.lock().unwrap()[0].clone();
+                let hold = GroupHold {
+                    group_id: group.clone(),
+                    code: code.to_string(),
+                };
+                assert_eq!(assigned.group_holds, [hold], "{requests}");
+                let rules = enforce::GroupRules::new(
+                    alice.repos.groups.clone(),
+                    alice.db.clone(),
+                    alice.id.clone(),
+                );
+                let task = &assigned.task;
+                rules
+                    .keep_holds(&task.id, &assigned.first_time_groups, &assigned.group_holds)
+                    .unwrap();
+                let decision = rules.decide(&task.id, "bob-1", &task.capability);
+                assert!(
+                    matches!(&decision, Some(Decision::Ask(why)) if why.starts_with("Finance: ")),
+                    "{requests}: {decision:?}"
+                );
+            }
+        }
+    }
 }

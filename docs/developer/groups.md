@@ -48,7 +48,7 @@ members:
 
 `.nandi/groups/access.yaml` holds my level per group (`fully-automated`, `ask-first`, `questions-only`, `send-me-info`, `none`); a group not listed is `ask-first`, and joining or creating writes `ask-first` explicitly.
 
-Copies are refreshed after every registration (`GroupSignal::Registered`: list, then get each of my groups, drop copies of groups I'm no longer in) and on every `GroupChanged` for that group; then `network://group_changed` (`GroupsChanged { groupId }`, `null` after a reconnect) tells the screens, whose queries live under `['network', 'groups']`. Getting a group pins its policy author's key (`peer_keys::learn`) so enforcement can verify offline. The watcher ignores the folder (nothing is projected).
+Copies are refreshed after every registration (`GroupSignal::Registered`: list, then get each of my groups, drop copies of groups I'm no longer in) and on every `GroupChanged` for that group; then `network://group_changed` (`GroupsChanged { groupId }`, `null` after a reconnect) tells the screens, whose queries live under `['network', 'groups']`. Getting a group pins its policy author's key (`peer_keys::learn`) so the screen can verify offline. The watcher ignores the folder (nothing is projected).
 
 ## The policy format
 
@@ -58,30 +58,32 @@ The same Markdown + YAML frontmatter as `.nandi/policies/`, plus a `requests:` b
 requests:
   approval: always # always | first-time | per-member (my own level decides)
   capabilities: { allow: [review-*], deny: [review-secret] } # globs; deny wins
-  daily_limit: 20 # per member to each person per UTC day, counted by the relay; 0 is refused
-  hours: 'Mon-Fri 08:00-18:00' # local time; outside it requests wait
+  daily_limit: 20 # per member to each person per UTC day; 0 is refused
+  hours: 'Mon-Fri 08:00-18:00' # outside it requests wait
+  time_zone: Europe/London # the hours' IANA zone; UTC when left out
   always_ask: [send, payment] # capability, glob or a word in it: waits
 ```
 
 No `requests:` block means `approval: always`.
 
-`daily_limit` and `approval: first-time` involve the other person, so the relay enforces them at `SubmitTask` from metadata only (it reads just those two keys, with `nandi_protocol::GroupRequestRules::read`, and refuses a policy where they don't read). The app checks them with the same function so a policy it writes reads the same at the relay. Everything else in `requests:` is applied here.
+Every rule in `requests:` involves the other person, so the relay enforces them all at `SubmitTask` from metadata only (owner, 2026-11-14). It reads the block with `nandi_protocol::GroupRequestRules::read` and refuses a policy where it doesn't read, an unknown key included. The app checks a policy with the same function, so a policy it writes reads the same at the relay. The app applies only my access level per group.
 
 ## Signatures
 
 `GroupPolicy::signed_bytes(group_id, version, text)` signed with this device's key (`DeviceKeys::sign`). The creating Nandi picks the group ID (`g_` + 16 lowercase hex, `nandi_protocol::is_group_id`), so version 1 is signed over the real ID like every later one; a taken ID (`group_invalid`) is retried once with a new one. `set_policy` signs `max(policy_version, policy.version) + 1` and, on `group_policy_stale`, re-reads and signs once more.
 
-Verification (`domain::group::verify`) uses my own public key for my policies, else the author's pinned key (`peer_keys::pinned`). No key, a changed key (`PEER_KEY_CHANGED`), or a signature that doesn't match: **fail closed**, every request through that group is refused with "this group's policy couldn't be verified" and the detail shows the warning.
+Verification (`domain::group::verify`) uses my own public key for my policies, else the author's pinned key (`peer_keys::pinned`). No key, a changed key (`PEER_KEY_CHANGED`), or a signature that doesn't match: the group's detail shows the policy unverified, with the warning. The relay enforces the policy, so verification no longer gates incoming work.
 
 ## Enforcement on incoming work
 
-`Enforcer::decide(requester, capability, first_time, now)`:
+`Enforcer::decide(requester, capability, holds)`:
 
-1. Groups whose copy lists both me and the requester. None, and no mark: `None`, and nothing changes (company relay trust rules, intake, auto-approve rules).
-2. Per group: unverified or unreadable policy → `Refuse`; else `RequestRules::decide` (deny/allow → refuse; outside `hours` → ask; `always_ask` → ask; `approval: always` → ask) **stricter of** `AccessLevel::decide` (fully automated → auto; ask first → ask; questions only → `ask-me` auto, else refuse; send me info → `ask-me` waits, else refuse; none → refuse), **stricter of** the relay's first-request mark (marked → ask).
-3. Across groups: the strictest (`Decision::strictest`; refuse > ask > auto). Each reason is prefixed with the group's name. A mark for a group I have no copy of still asks.
+1. Groups whose copy lists both me and the requester. None, and no hold: `None`, and nothing changes (company relay trust rules, intake, auto-approve rules).
+2. Per group: `AccessLevel::decide` (fully automated → auto; ask first → ask; questions only → `ask-me` auto, else refuse; send me info → `ask-me` waits, else refuse; none → refuse).
+3. Each hold the relay put on the task → ask, whatever my level, with the reason for its code. A hold with a code this Nandi doesn't know still asks.
+4. All of these: the strictest (`Decision::strictest`; refuse > ask > auto). Each reason is prefixed with the group's name, or `Group <id>` for a group I have no copy of.
 
-**The relay's part.** Past a shared group's `daily_limit` the relay refuses the request (`group_daily_limit`). A requester's first request to me through a first-time group arrives marked (`SealedTask.first_time_groups` → `TaskAssigned.first_time_groups`); the executor keeps the marks by task in `group_first_requests` (`GroupRules::first_request`) before it stores the task, so a restart keeps them, and `GroupRules::decide(task_id, …)` reads them. While it waits, the relay refuses the requester's next one to me (`needs_first_time_approval`). Once I take it on (`AcknowledgeTask`), the relay counts the requester as approved.
+**The relay's part** (`group_rules.rs` in the relay). It refuses a request for a capability a shared group doesn't allow (`group_capability_not_allowed`) or past its `daily_limit` (`group_daily_limit`). It holds a request outside the group's `hours` (in its `time_zone`, UTC when none), for an `always_ask` capability, or under `approval: always`: the task arrives with `SealedTask.group_holds` (`GroupHold { groupId, code }`: `outside_hours`, `always_ask`, `approval_always`). A requester's first request to me through a first-time group arrives marked (`SealedTask.first_time_groups`). Both reach `TaskAssigned`; the executor keeps them by task in `group_holds` (`GroupRules::keep_holds`, a first request under the code `first_request`) before it stores the task, so a restart keeps them, and `GroupRules::decide(task_id, …)` reads them. While a first request waits, the relay refuses the requester's next one to me (`needs_first_time_approval`). Once I take it on (`AcknowledgeTask`), the relay counts the requester as approved.
 
 Where it plugs in:
 
@@ -93,7 +95,7 @@ A copy that doesn't read at all is skipped and logged (its members are unknown);
 
 ## Visibility
 
-`Registered { visibility }` is kept in the client and exposed as `RelayStatus.visibility` (`company` | `groups`, `None` before registering). With `groups`, People shows a note. The relay answers a submission to someone outside my groups with an `Error` `no_shared_group` and the task's `refused` event, which carries the code; the client tells it by the code (`relay::client::told`) as `no_shared_group: You don't share a group with them on this relay` (after `REFUSED_BY_RELAY`), which `friendly-error.ts` maps to `errors.noSharedGroup` (`NO_SHARED_GROUP` is exported to `bindings.ts`). A group's refusals are told the same way: `group_daily_limit@<reset ms>: …` (`errors.groupDailyLimit`, with the reset in the user's clock) and `needs_first_time_approval: …` (`errors.needsFirstTimeApproval`). Never match a refusal by its words.
+`Registered { visibility }` is kept in the client and exposed as `RelayStatus.visibility` (`company` | `groups`, `None` before registering). With `groups`, People shows a note. The relay answers a submission to someone outside my groups with an `Error` `no_shared_group` and the task's `refused` event, which carries the code; the client tells it by the code (`relay::client::told`) as `no_shared_group: You don't share a group with them on this relay` (after `REFUSED_BY_RELAY`), which `friendly-error.ts` maps to `errors.noSharedGroup` (`NO_SHARED_GROUP` is exported to `bindings.ts`). A group's refusals are told the same way: `group_daily_limit@<reset ms>: …` (`errors.groupDailyLimit`, with the reset in the user's clock) `needs_first_time_approval: …` (`errors.needsFirstTimeApproval`) and `group_capability_not_allowed: …` (`errors.groupCapabilityNotAllowed`). Never match a refusal by its words.
 
 **Relay limits per person.** A relay limits groups per person and people per group (`group_limit`; the public relay: 10 and 50, counted per account across its Nandis), and a public relay also messages a day (`daily_limit`, 500). `groups::refusal` words `group_limit` as a per-person limit and turns a `daily_limit` refusal into `daily_limit@<reset ms>: …` (`relay::limits::daily_limit`), which `toastGroupError` shows calmly with the reset time. See "The public relay" in `relay-defaults.md`.
 
@@ -112,9 +114,9 @@ A copy that doesn't read at all is skipped and logged (its members are unknown);
 
 ## Testing
 
-- `domain::group::tests::*` (parsing and errors, hours, each level, stricter / strictest, copy round trip, signatures)
+- `domain::group::tests::*` (parsing and errors as the relay reads them, each level, strictest, copy round trip, signatures)
 - `repos::group_repo::tests::*`
-- `groups::enforce::tests::*` (no shared group, levels vs policy, across groups, fail closed, limits and first time)
+- `groups::enforce::tests::*` (a table: no shared group, each level, each hold code, an unknown code, a group I have no copy of; holds kept by task)
 - `groups::tests::*` (fake relay: create signs v1 over its own ID and retries a taken one, set policy and stale retry, join/leave, forged policy, refresh drops old copies)
 - `intake::tests::a_group_that_*`
 - `relay::tests::group_calls_are_answered_by_request_id_and_fail_on_disconnect` (scripted socket)

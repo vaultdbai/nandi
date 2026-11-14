@@ -108,8 +108,8 @@ use crate::services::gateway::{registration, GatewayCard};
 use crate::services::network::peer_keys::PEER_KEY_CHANGED;
 use nandi_protocol::{self as wire, PROBE_PAYLOAD};
 use nandi_protocol::{
-    GroupOp, GroupOutcome, PublicKeys, GROUP_DAILY_LIMIT, KEY_MISMATCH, NEEDS_FIRST_TIME_APPROVAL,
-    NO_SHARED_GROUP,
+    GroupOp, GroupOutcome, PublicKeys, GROUP_CAPABILITY_NOT_ALLOWED, GROUP_DAILY_LIMIT,
+    KEY_MISMATCH, NEEDS_FIRST_TIME_APPROVAL, NO_SHARED_GROUP,
 };
 use nandi_seal::DeviceKeys;
 
@@ -127,7 +127,9 @@ pub fn told(code: Option<&str>, message: &str) -> String {
         Some(NO_SHARED_GROUP) => no_shared_group(),
         Some(super::limits::DAILY_LIMIT) => super::limits::daily_limit(message),
         Some(GROUP_DAILY_LIMIT) => super::limits::group_daily_limit(message),
-        Some(NEEDS_FIRST_TIME_APPROVAL) => format!("{NEEDS_FIRST_TIME_APPROVAL}: {message}"),
+        Some(code @ (NEEDS_FIRST_TIME_APPROVAL | GROUP_CAPABILITY_NOT_ALLOWED)) => {
+            format!("{code}: {message}")
+        }
         _ => message.to_string(),
     }
 }
@@ -694,6 +696,7 @@ impl Inner {
                 let (task_id, requester) =
                     (sealed.id.clone(), sealed.requester.instance_id.clone());
                 let first_time_groups = sealed.first_time_groups.clone();
+                let group_holds = sealed.group_holds.clone();
                 let envelope = sealed.envelope.clone();
                 let handlers = self.handlers().assigned.clone();
                 let mut stored = !handlers.is_empty();
@@ -709,6 +712,7 @@ impl Inner {
                             provider_instance: me,
                             task,
                             first_time_groups,
+                            group_holds,
                         };
                         for handler in handlers.iter() {
                             stored &= handler(assigned.clone()).await;
@@ -2364,6 +2368,12 @@ mod tests {
                 Some("needs_first_time_approval"),
                 "Waits for them",
                 "needs_first_time_approval: Waits for them".to_string(),
+            ),
+            (
+                Some("group_capability_not_allowed"),
+                "Finance doesn't let its members ask for it",
+                "group_capability_not_allowed: Finance doesn't let its members ask for it"
+                    .to_string(),
             ),
             (Some("no_shared_group"), "No group", no_shared_group()),
             (

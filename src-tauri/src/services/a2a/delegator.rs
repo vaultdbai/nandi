@@ -61,7 +61,6 @@ use crate::services::relay::protocol::MAX_CANDIDATES;
 use crate::services::relay::unavailable::{self, RelayUnavailable};
 use crate::services::relay::RelayClient;
 use crate::services::repo_store::RepoStore;
-use crate::services::secrets::Secrets;
 use crate::services::team::trust as member_trust;
 use crate::services::AppState;
 
@@ -120,7 +119,6 @@ impl A2aDeps {
         bus: EventBus,
         orchestrators: Orchestrators,
         broadcast: BroadcastSink,
-        secrets: &Secrets,
         instance_id: String,
         index: Option<Arc<RwLock<CapabilityIndex>>>,
         relay: Option<Arc<dyn RelayClient>>,
@@ -137,7 +135,6 @@ impl A2aDeps {
             groups: Some(GroupRules::for_install(
                 &store,
                 db.clone(),
-                secrets,
                 instance_id.clone(),
             )),
             decisions: store.repos().decisions.clone(),
@@ -160,7 +157,6 @@ impl A2aDeps {
             state.bus().clone(),
             state.orchestrators().clone(),
             state.broadcast().clone(),
-            state.secrets(),
             network::local_instance_id(state.db())?,
             state.capability_index().cloned(),
             state.relay_client().cloned(),

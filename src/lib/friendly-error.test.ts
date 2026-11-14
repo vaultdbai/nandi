@@ -103,6 +103,10 @@ describe('friendly errors', () => {
         `${refused}needs_first_time_approval: Your first request still waits`,
         'errors.needsFirstTimeApproval',
       ],
+      [
+        `${refused}group_capability_not_allowed: Finance doesn't let its members ask for it`,
+        'errors.groupCapabilityNotAllowed',
+      ],
       [`${refused}daily_limit@${resetsAt}: 500 a day`, 'errors.dailyLimit'],
     ]
     for (const [raw, key] of cases) expect(friendlyErrorKey(raw)).toBe(key)

@@ -544,10 +544,15 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         // day: `daily_limit@<reset ms>: ...` (`services::relay::limits`)
         .constant("DAILY_LIMIT", crate::services::relay::limits::DAILY_LIMIT)
         // The codes a request's refusal starts with when a group both
-        // people are in holds it at the relay: past the group's daily
-        // limit (`group_daily_limit@<reset ms>: ...`), or while the first
-        // request waits for approval (`services::relay::client::told`)
+        // people are in refuses it at the relay: past the group's daily
+        // limit (`group_daily_limit@<reset ms>: ...`), while the first
+        // request waits for approval, or for a capability the group
+        // doesn't allow (`services::relay::client::told`)
         .constant("GROUP_DAILY_LIMIT", nandi_protocol::GROUP_DAILY_LIMIT)
+        .constant(
+            "GROUP_CAPABILITY_NOT_ALLOWED",
+            nandi_protocol::GROUP_CAPABILITY_NOT_ALLOWED,
+        )
         .constant(
             "NEEDS_FIRST_TIME_APPROVAL",
             nandi_protocol::NEEDS_FIRST_TIME_APPROVAL,

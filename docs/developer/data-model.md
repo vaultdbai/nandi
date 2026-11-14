@@ -31,7 +31,7 @@ On every start, `services::migration::bootstrap` opens `~/.nandi/repo`, or creat
 | What was installed from where                                                       | `~/.nandi/repo/.nandi/installed.yaml`                 | ✅     | source                    |
 | Registry index cache, fetch scratch repos                                           | `~/.nandi/local/cache/`                               | ❌     | ✅ re-fetched             |
 | Projection (`agents`, `workflows`, `triggers`, …)                                   | `~/.nandi/local/state.db`                             | ❌     | ✅ `nandi rebuild`        |
-| Tasks the relay marked as a member's first request through a group                  | `state.db` → `group_first_requests`                   | ❌     | ❌ runtime history        |
+| Tasks the relay held for my approval by a group's policy                            | `state.db` → `group_holds`                            | ❌     | ❌ runtime history        |
 | Runs, messages, approvals, queue, fires, workflow runs                              | `~/.nandi/local/state.db`                             | ❌     | ❌ runtime history        |
 | Run events and approval decisions, kept beyond `state.db` ([run trail](#run-trail)) | `~/.nandi/local/run-trail.jsonl`                      | ❌     | source (append-only)      |
 | Inbox Ask chats (`inbox:<kind>:<id>`, `intake:<id>`): their messages                | `state.db` → `conversations`, `messages`              | ❌     | ❌ stays on this computer |

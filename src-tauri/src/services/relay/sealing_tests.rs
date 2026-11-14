@@ -51,6 +51,7 @@ fn sealed_task(ada: &Sealer, task: &Task, to: (&str, &Sealer)) -> SealedTask {
         deadline: task.deadline,
         envelope: ada.seal_task(task, (to.0, to.1.public_keys())).unwrap(),
         first_time_groups: Vec::new(),
+        group_holds: Vec::new(),
     }
 }
 

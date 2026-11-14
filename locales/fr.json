@@ -4924,6 +4924,7 @@
   "errors.dailyLimit": "Vous avez envoyé vos messages du jour sur le relais public. Vous pourrez en envoyer de nouveau à partir de {{time}}.",
   "errors.groupDailyLimit": "Vous avez envoyé à cette personne autant de demandes aujourd’hui que votre groupe le permet. Vous pourrez en envoyer de nouveau à partir de {{time}}.",
   "errors.needsFirstTimeApproval": "Votre première demande à cette personne attend encore son accord. Vous pourrez en envoyer une autre une fois qu’elle y aura répondu.",
+  "errors.groupCapabilityNotAllowed": "Votre groupe ne permet pas à ses membres de se demander cela. Demandez autre chose, ou en dehors du groupe.",
   "publicRelay.title": "Relais public",
   "publicRelay.description": "Pas de relais d’entreprise ? Rejoignez le relais public de VaultDB.ai avec l’e-mail que vous avez connecté. Vous ne voyez que les personnes avec qui vous partagez un groupe.",
   "publicRelay.join": "Rejoindre le relais public",

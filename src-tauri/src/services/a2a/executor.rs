@@ -1396,6 +1396,7 @@ pub async fn register(executor: &Arc<Executor>, relay: &Arc<dyn RelayClient>) {
             let TaskAssigned {
                 task,
                 first_time_groups,
+                group_holds,
                 ..
             } = assigned;
             let (executor, sender) = (executor.clone(), sender.clone());
@@ -1404,10 +1405,10 @@ pub async fn register(executor: &Arc<Executor>, relay: &Arc<dyn RelayClient>) {
                 let Some(executor) = executor.upgrade() else {
                     return false;
                 };
-                // The relay's first-request marks, kept before the task so
-                // a resend after a crash can't run it unmarked
+                // The relay's holds, kept before the task so a resend after
+                // a crash can't run it unheld
                 if let Some(rules) = executor.deps.groups.as_ref() {
-                    if let Err(e) = rules.first_request(&task.id, &first_time_groups) {
+                    if let Err(e) = rules.keep_holds(&task.id, &first_time_groups, &group_holds) {
                         log::warn!("Task {}: not taken, the relay sends it again: {e}", task.id);
                         return false;
                     }
