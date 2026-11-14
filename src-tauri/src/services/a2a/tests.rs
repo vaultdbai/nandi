@@ -873,6 +873,22 @@ pub(super) async fn wait_for_history_end(state: &AppState, task_id: &str) -> Tas
     .await
 }
 
+/// How many runs `agent` has had, ended or not
+async fn runs_of(state: &AppState, agent: &str) -> i64 {
+    let agent = agent.to_string();
+    state
+        .db()
+        .call(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM runs WHERE agent_id = ?1",
+                [agent],
+                |row| row.get(0),
+            )
+        })
+        .await
+        .unwrap()
+}
+
 /// Work assigned to the owner (your own gateway): the call returns once
 /// it's held or on the list, as it does for someone else. Approved, it
 /// isn't routed to an agent but waits in the Inbox until the owner marks it
@@ -930,19 +946,6 @@ async fn assigned_work_waits_for_the_owners_done_or_decline() {
     assert_eq!(assignment.request, "Upload the SOC 1 evidence");
     assert_eq!(assignment.status, AssignmentStatus::Open);
     assert!(assignment.due_at.is_some());
-    // The owner holds it: no run of the agent started for it
-    let runs: i64 = state
-        .db()
-        .call(|conn| {
-            conn.query_row(
-                "SELECT COUNT(*) FROM runs WHERE agent_id = 'papers'",
-                [],
-                |row| row.get(0),
-            )
-        })
-        .await
-        .unwrap();
-    assert_eq!(runs, 0, "no agent did it for the owner");
     assert_eq!(
         history::get(state.db(), &asked.task_id)
             .await
@@ -950,7 +953,7 @@ async fn assigned_work_waits_for_the_owners_done_or_decline() {
             .unwrap()
             .status,
         TaskStatus::Running,
-        "no agent did it for the owner"
+        "it waits for the owner"
     );
     let closed = gateway::close_gateway_assignment(
         &state,
@@ -965,6 +968,12 @@ async fn assigned_work_waits_for_the_owners_done_or_decline() {
     assert_eq!(result.status, TaskStatus::Completed, "{:?}", result.error);
     assert_eq!(result.output["status"], "done");
     assert_eq!(result.output["note"], "Uploaded to the audit folder");
+    // Handled to its end: no run of the agent ever started for it
+    assert_eq!(
+        runs_of(&state, "papers").await,
+        0,
+        "no agent did it for the owner"
+    );
     // Closed once only
     assert!(
         gateway::close_gateway_assignment(&state, assignment.task_id, false, None)
@@ -991,6 +1000,7 @@ async fn assigned_work_waits_for_the_owners_done_or_decline() {
     assert_eq!(result.status, TaskStatus::Failed);
     let error = result.error.unwrap_or_default();
     assert!(error.contains("declined it: Not my system"), "{error}");
+    assert_eq!(runs_of(&state, "papers").await, 0, "nor for a declined one");
     assert!(gateway::list_gateway_assignments(&state)
         .await
         .unwrap()
