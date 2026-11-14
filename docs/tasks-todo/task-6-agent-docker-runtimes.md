@@ -13,7 +13,7 @@ An agent can declare its own Docker workload: a prebuilt image **or** a Dockerfi
 - `services/harness/adapter.rs`: `Placement::Container`, `docker_args` (`run -i --rm --init`, env passed as `-e NAME`, never values on argv).
 - `services/egress/`: host proxy on `127.0.0.1:11435` with an allowlist and per-agent proxy tokens. `services/secrets.rs` is the keyring. `repos/git.rs` and `marketplace/source.rs` use git2.
 - `marketplace/install.rs`: file allowlist, validation, atomic write, `installed.yaml`.
-- `db.rs`: schema is at **v18**, so this task's migration is **v19** (or whatever is next when it starts).
+- `db/schema.rs`: schema is at **v18**, so this task's migration is **v19** (or whatever is next when it starts).
 - UI: `components/agents/AgentSettingsTab.tsx`, `AgentOverviewTab.tsx`, `agent-console/ContainerControls.tsx`, `use-container-control.ts`. `tauri-plugin-opener` is already a dependency.
 
 ## Decisions (critique of the drafts, folded in)

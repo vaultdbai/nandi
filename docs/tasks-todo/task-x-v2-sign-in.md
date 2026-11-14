@@ -13,7 +13,7 @@ The sign-in docs are kept for v2 and marked with a banner: `docs/developer/githu
 ## v1 cleanup (before the v1 release)
 
 - [ ] User guide: remove "Sync now", "Log out", Entra ID and GitHub-org teams from `docs/userguide/userguide.md` (§3, §5 "Editing an agent", §9 "GitHub-org teams" and "Entra ID groups", §12 reset steps) and `docs/userguide/quickstart.md`.
-- [ ] Remove leftover Entra code paths, or mark them dormant (`db.rs`, `services/harness/gateway.rs`).
+- [ ] Remove leftover Entra code paths, or mark them dormant (`db/schema.rs`, `services/harness/gateway.rs`).
 
 ## v2 scope
 

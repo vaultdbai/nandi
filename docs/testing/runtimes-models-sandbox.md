@@ -191,7 +191,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-14 — Runtime routing for a run (native vs harness, opt-in fallback)
 
 - **What:** Each run resolves the agent's runtime: native agents use Nandi's loop; CLI agents get a plan (image present, CLI detected, workdir, provider credentials, gateway) or fail with a reason; `fallback: native` runs natively when the harness can't start, otherwise the run fails.
-- **Where:** `src-tauri/src/services/orchestrator/runtime_router.rs` (`resolve_runtime`, `plan`, `provider`, `credentials`), `services/orchestrator.rs` (`harness_run`, `execute_harness_run`). Docs `docs/developer/runtime-routing.md`.
+- **Where:** `src-tauri/src/services/orchestrator/runtime_router.rs` (`resolve_runtime`, `plan`, `provider`, `credentials`), `services/orchestrator/executor.rs` (`harness_run`), `services/orchestrator/runtime_router.rs` (`execute_harness_run`). Docs `docs/developer/runtime-routing.md`.
 - **Preconditions:** A `runtime: claude-code` agent; variants with/without image and sign-in.
 - **Steps:** 1. Run with no harness image. 2. Run with image but no sign-in. 3. Add `fallback: native` and repeat 2. 4. Run with everything set.
 - **Expected:** 1–2: run fails with a plain reason (image missing / sign-in needed) before any container starts. 3: run completes natively. 4: run row has `runs.runtime = claude-code`. Provider order: `runtime_config.provider`, else `bedrock` with a gateway, else the CLI's own config; `.nandi/llm.yaml` default provider sits between agent and CLI.
@@ -245,7 +245,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-19 — Turn limit for harness runs (`max_turns`)
 
 - **What:** A harness run counts tool calls against `runtime_config.max_turns`, else skill.md `max_turns` (default 50); going over sends `session/cancel` and fails the run.
-- **Where:** `services/orchestrator/runtime_router.rs` (`max_turns` and the step counter), `services/orchestrator.rs` (`execute_harness_run`).
+- **Where:** `services/orchestrator/runtime_router.rs` (`max_turns` and the step counter, `execute_harness_run`).
 - **Preconditions:** A working CLI agent.
 - **Steps:** 1. Set `runtime_config.max_turns: 2`. 2. Ask for a task needing many tool calls.
 - **Expected:** Run fails after the third tool call with a turn-limit reason; container removed.
@@ -327,7 +327,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-27 — Canned turn engine (test fixture)
 
 - **What:** A scripted engine replays a script stored in the `settings` table (`canned_script`), re-read each step, so run state and events can be exercised without an LLM.
-- **Where:** `src-tauri/src/engine.rs`, seeded in `db.rs`; used by tests and `rpc/manual_steps.rs`.
+- **Where:** `src-tauri/src/engine.rs`, seeded in `db/schema.rs`; used by tests and `rpc/manual_steps.rs`.
 - **Preconditions:** Test or dev setup.
 - **Steps:** 1. Set `canned_script` to a JSON script, run the agent through the path that uses it.
 - **Expected:** Text streamed with ~35 ms per token, scripted tool calls executed.

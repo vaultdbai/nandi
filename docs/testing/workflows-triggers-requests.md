@@ -236,7 +236,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-17 — Run a workflow (sequential engine)
 
 - **What:** Run checks every agent step's agent exists, inserts a `workflow_runs` row, and a driver advances steps in order: each step renders `{{step.output}}` and is submitted as an ordinary agent run (source `workflow`, label "<workflow> · step n") in that agent's conversation, then waits for `agent://turn_done`. The step output is the run's last non-empty assistant message.
-- **Where:** Workflow → Run; command `run_workflow`; HTTP `POST /api/rpc/run_workflow`; `src-tauri/src/services/workflows.rs` (`run_workflow`, `start_run`, `drive`, `start_step`, `finish_step`).
+- **Where:** Workflow → Run; command `run_workflow`; HTTP `POST /api/rpc/run_workflow`; `src-tauri/src/services/workflows.rs` (`run_workflow`, `start_run`), `services/workflows/driver.rs` (`drive`, `start_step`, `finish_step`).
 - **Preconditions:** Two agents; a model or the canned engine (`engine` = `"canned"` in `local_settings`).
 - **Steps:** 1. Create the `echo-chain` workflow from `docs/developer/workflows.md`. 2. Run it. 3. Open each agent's chat.
 - **Expected:** `first` completes before `second` starts; `second`'s input contains `first`'s output; each agent's chat has exactly its step message; run status `completed`; `workflow_runs.context` holds per-step status, input, output, agent run id.
@@ -278,7 +278,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-20 — Critical steps and busy agents (queueing)
 
 - **What:** `critical: true` queues the step at priority 30 instead of 50. If the agent is busy, the step waits in the agent's queue; removing it from the queue fails the step and the run.
-- **Where:** `workflows.rs` (`start_step`), `src-tauri/src/services/queue.rs`.
+- **Where:** `workflows/driver.rs` (`start_step`), `src-tauri/src/services/queue.rs`.
 - **Preconditions:** An agent busy with a long turn.
 - **Steps:** 1. Start a long chat turn on agent A. 2. Run a workflow whose step uses A. 3. Cancel the queued step's run from A's queue.
 - **Expected:** Step stays `running` (queued) until A is free; cancelling it fails the workflow run.
@@ -290,7 +290,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-21 — Steps that may fail (`on_failure: continue`)
 
 - **What:** A step with `on_failure: continue` doesn't stop the workflow if it fails; later steps see an empty output.
-- **Where:** `workflows.rs` (`continue_on_failure`); shown in the step panel Details ("On failure": "Continue").
+- **Where:** `workflows/driver.rs` (`continue_on_failure`); shown in the step panel Details ("On failure": "Continue").
 - **Preconditions:** A step that will fail (e.g. agent stopped/erroring).
 - **Steps:** Run a 2-step workflow where step 1 fails and has `on_failure: continue`.
 - **Expected:** Step 1 `failed`, step 2 runs with `{{step1.output}}` empty, run completes.
@@ -302,7 +302,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-22 — Runs survive restarts
 
 - **What:** On startup `resume_interrupted` restarts drivers for `running` runs; a step whose agent run was interrupted fails; runs awaiting approval or waiting on a manual step simply keep waiting. One driver per run.
-- **Where:** `workflows.rs` (`resume_interrupted`, `spawn_driver`, `driving` set).
+- **Where:** `workflows.rs` (`resume_interrupted`), `workflows/driver.rs` (`spawn_driver`, `driving` set).
 - **Preconditions:** A run in progress.
 - **Steps:** 1. Start a run with an approval step at step 2; quit after step 1. 2. Relaunch. 3. Quit mid-step and relaunch.
 - **Expected:** (1-2) Run still awaiting approval after relaunch; (3) the interrupted step and run are failed.
@@ -398,7 +398,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### WF-30 — A step that asks a colleague
 
 - **What:** A workflow step with `ask:` (`find`, `person` or `capability`, plus `input` and optional `due`) sends one request to a colleague's Nandi and waits for the answer, which becomes `{{step.output}}`. With `find`, the owner approves who it goes to before it's sent. The run waits as `waiting` (step `awaitingInput`), across restarts, until the answer comes back or the request fails or expires; the step's deadline is the request's due date. The workflow editor keeps `ask:` blocks when saving, and their `{{…}}` references follow a renamed step.
-- **Where:** `services/domain/workflow.rs` (`AskStep`, `check`), `services/workflows.rs` (`WorkflowAsk`, `start_ask`, `resolve_ask`, `settle_asks`, `watch_asks`), `services/orchestrator.rs` (`delegator`), `services/mod.rs` (starts `watch_asks`), `src/components/workflow-builder/graph-model.ts` (`workflowToYaml`).
+- **Where:** `services/domain/workflow.rs` (`AskStep`, `check`), `services/workflows.rs` (`WorkflowAsk`), `services/workflows/asks.rs` (`start_ask`, `resolve_ask`, `settle_asks`, `watch_asks`), `services/orchestrator/registry.rs` (`delegator`), `services/mod.rs` (starts `watch_asks`), `src/components/workflow-builder/graph-model.ts` (`workflowToYaml`).
 - **Preconditions:** Two Nandis on a relay; the other person lists a responsibility (for `find`).
 - **Steps:**
   1. Save a workflow whose first step is `ask: {find: "<their topic>", input: "…"}` and whose second uses `{{ask.output}}`. Run it.
@@ -1062,7 +1062,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-28 — Told when a request comes back
 
 - **What:** A request you sent that comes back after the live wait (an answer, Done, Decline, an error, or no answer by its due date) is recorded (`request_returns`), shown in the Inbox as "Lena answered" with the answer and what you asked, and sent as `request://returned`. The companion turns it into an OS notification while hidden, unless Settings › Appearance › **Notify me when requests come back** is off (`companion.notifyResults`, on by default). **Dismiss** takes it out of the Inbox. A request that came back failed shows once, as the return, not also as a generic failure. Returns older than 7 days drop off.
-- **Where:** `services/a2a/returns.rs` (`from_result`, `insert`, `list`, `dismiss`), `history.rs` (`close`), `db.rs` (`request_returns`), commands `list_request_returns`, `dismiss_request_return`, `set_companion_notify_results`; HTTP `POST /api/rpc/list_request_returns`, `POST /api/rpc/dismiss_request_return`, `POST /api/rpc/set_companion_notify_results`. Frontend: `inbox-model.ts` (`requestReturn`), `Inbox.tsx` (`RequestReturnRow`), `useInbox.ts` (`useRequestReturns`), `companion-model.ts` (`noticesFor`, `results`), `useCompanionNotifications.ts`, `AppearancePane.tsx`.
+- **Where:** `services/a2a/returns.rs` (`from_result`, `insert`, `list`, `dismiss`), `history.rs` (`close`), `db/schema.rs` (`request_returns`), commands `list_request_returns`, `dismiss_request_return`, `set_companion_notify_results`; HTTP `POST /api/rpc/list_request_returns`, `POST /api/rpc/dismiss_request_return`, `POST /api/rpc/set_companion_notify_results`. Frontend: `inbox-model.ts` (`requestReturn`), `Inbox.tsx` (`RequestReturnRow`), `useInbox.ts` (`useRequestReturns`), `companion-model.ts` (`noticesFor`, `results`), `useCompanionNotifications.ts`, `AppearancePane.tsx`.
 - **Preconditions:** Two Nandis on a relay. The receiver doesn't answer within the live wait (for example, offline).
 - **Steps:**
   1. Ask the other person a question; their Nandi is off.
@@ -1234,7 +1234,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-35 — Decide an Inbox item in its chat, confirmed on its card
 
 - **What:** In an item's chat the user can decide in words, with conditions: "approve it, but only up to $200", "decline, Bea owns this", "tell them Friday works", "mark it done, sent to the auditors", "give this to Bob". The Chief of Staff proposes the matching decision tool (`inbox_approve` with `note`, `inbox_refuse` with `reason`, `inbox_answer` with `text`, `inbox_done` with `note`, `inbox_reassign` with `to`), offered only in that chat and only those that fit the item. Every call waits on an approval card in the chat, whatever the model or the agent's settings say: a sentence never decides anything. On confirm, the same service function as the item's button runs (`approve_action`, `access::answer` allow once, `approve_workflow_step`, `decide_gateway_hold`, `close_gateway_assignment`, `respond_to_clarification`, `complete_manual_step`, `respond_trust_request`, `dismiss_request_return`, `retry_task`, `dismiss_work`, `intake::approve` / `dismiss`, `reassign_task`), so group policies, typed reasons and the audit are the same. Conditions travel as the note or reason; policies and grants never change. The confirm card isn't an Inbox line of its own.
-- **Where:** `src-tauri/src/services/inbox/tool.rs` (`gate`, `offered`, `call`), `services/orchestrator.rs` (prompt, tools offered after deferral, `inbox::tool::gate`, the dispatcher arm), `services/chat.rs` (`list_pending_approvals` leaves the confirms out); `approval-model.ts` (`inboxDecision` summaries).
+- **Where:** `src-tauri/src/services/inbox/tool.rs` (`gate`, `offered`, `call`), `services/orchestrator/llm_step.rs` (prompt, tools offered after deferral), `services/orchestrator/executor.rs` (`inbox::tool::gate`), `services/orchestrator/tool_calls.rs` (the dispatcher arm), `services/chat.rs` (`list_pending_approvals` leaves the confirms out); `approval-model.ts` (`inboxDecision` summaries).
 - **Preconditions:** A model; a held `ask-me` from another Nandi (relay), or an assignment, or a failed delegation.
 - **Steps:**
   1. Open a held request's chat and say "decline it, ask Bea instead".

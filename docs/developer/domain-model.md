@@ -122,4 +122,4 @@ The reactor keeps running parts in step with any change, from a command or a fil
 
 1. Add it to the domain type with validation in the constructor, and to the file struct (`Frontmatter`/`FrontmatterOut`, `WorkflowFile`, `TriggerFile`, `SettingsFile`) with `skip_serializing_if` for defaults so existing files don't churn.
 2. Add a round-trip assertion to the entity's tests.
-3. If it should be queryable, add a projection column in `db.rs` (with a `migrate_v*` `ALTER`), write it in `projection::upsert_row`, and bump `PROJECTION_VERSION`.
+3. If it should be queryable, add a projection column in `db/schema.rs` (with a `migrate_v*` `ALTER`), write it in `projection::upsert_row`, and bump `PROJECTION_VERSION`.

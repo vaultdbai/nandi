@@ -1,6 +1,6 @@
 # Workflows
 
-Multi-agent pipelines: each step sends a message to an agent and waits for its reply before the next step starts. Code: `src-tauri/src/services/workflows.rs` (definition, engine, persistence) and `src/components/views/Workflow*View.tsx`.
+Multi-agent pipelines: each step sends a message to an agent and waits for its reply before the next step starts. Code: `src-tauri/src/services/workflows.rs` (definition, runs), `services/workflows/driver.rs` (engine), `services/workflows/store.rs` (persistence), `services/workflows/asks.rs` (ask steps) and `src/components/views/Workflow*View.tsx`.
 
 ## Definition
 

@@ -10,7 +10,7 @@
 - Everywhere else "Nandi" is hard-coded as the assistant:
   - Ask's system prompt: "You are Nandi, the assistant on the Ask page…" (`services/studio/prompt.rs`).
   - The companion's title and its "Open in Nandi" / Quit labels (`companion.title`, `companion.openInNandi`, `CompanionHeader.tsx`).
-  - Fallback display names in `orchestrator.rs`, `run_analysis.rs`, `snapshots.rs`.
+  - Fallback display names in `orchestrator/registry.rs`, `run_analysis.rs`, `snapshots.rs`.
   - The runtime label for native agents (`agent-page-model.ts`, `runtime-options.ts`).
   - Notifications and approval text that name the assistant.
 
@@ -27,7 +27,7 @@
 - [ ] Companion: header title, the orb's tooltip and its aria label, "Ask {alias}" placeholder; the main window keeps "Open in Nandi".
 - [ ] Ask page: the empty state, the New menu's "New chat with {alias}", starter prompts that name it.
 - [ ] Notifications and approval cards that name the assistant ("{alias} needs your approval to …").
-- [ ] Backend fallback names (`orchestrator.rs:1823`, `run_analysis.rs:178`, `snapshots.rs:282`): use the alias for the assistant's own messages only; agents keep their own names.
+- [ ] Backend fallback names (`orchestrator/registry.rs`, `run_analysis.rs:178`, `snapshots.rs:282`): use the alias for the assistant's own messages only; agents keep their own names.
 - [ ] CLI: `nandi mascot name` already reads it; make CLI messages that speak as the assistant use it.
 - [ ] i18n: every string that names the assistant takes `{{name}}` (en, fr, ar, ja). Grep the locales for "Nandi" and sort each hit into assistant (parameterise) or product (keep).
 - [ ] Validation stays as today (1–24 characters, letters, digits, spaces, `-`, `'`, `.`). Refuse names that are the same as an agent's name or ID, so "@name" stays unambiguous.

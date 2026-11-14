@@ -380,7 +380,7 @@ Shared preconditions used below:
   - It ships with no allowed sites. A new site shows the "allow this site?" card with its reason, and it waits.
   - Only the user's chats and intake threads get the browser. The email and calendar check runs never do.
   - Its behaviour is in its `skill.md` ("Website work", body 900 words or fewer).
-- **Where:** `resources/builtin-agents/chief-of-staff/skill.md` ("Website work", `pilots`), `services/orchestrator.rs` (`data_run_allows`, `agent_pilot_tools`).
+- **Where:** `resources/builtin-agents/chief-of-staff/skill.md` ("Website work", `pilots`), `services/orchestrator/llm_step.rs` (`data_run_allows`, `agent_pilot_tools`).
 - **Preconditions:** A new Nandi home. The Browser pilot installed and started in Library › Tools, with Chrome or Edge on the computer.
 - **Steps:**
   1. Ask Chief of Staff: "Check what example.com says on its home page."
@@ -409,7 +409,7 @@ Shared preconditions used below:
   - **Screenshots:** saved as `browser/<run>/<step>-<n>.png` in the agent's files and linked to the `doing` step; refused during a `handover` step; removed after 30 days; never in an S3 backup.
   - **Live checklist:** a card with each step, its status, its result and screenshot thumbnails (click opens the file on the desktop), in the chat, the intake thread and Run Detail › Overview, updated by `run://plan_updated`. `plan_update` calls are hidden; a refused plan call shows as a tool card.
   - skill.md `middlewares:` without `plan_first` / `finish_check` turns them off (they are on by default).
-- **Where:** `src-tauri/src/services/run_plan/` (`mod.rs` model, `classify.rs` what changes something, `store.rs`, `tool.rs`, `screenshots.rs`), `services/orchestrator/run_plan.rs` (the two middlewares), `services/orchestrator.rs` (`run_call`, `screenshot_call`), `services/orchestrator/call_gate.rs` (`plan_check`), `services/pilots/browser.rs` (`close_pages`, `has_open_pages`), `services/events.rs` (`turn_done`), `src/components/agent-console/RunPlanCard.tsx`, `run-plan-model.ts`, `src/hooks/useRunPlan.ts`.
+- **Where:** `src-tauri/src/services/run_plan/` (`mod.rs` model, `classify.rs` what changes something, `store.rs`, `tool.rs`, `screenshots.rs`), `services/orchestrator/run_plan.rs` (the two middlewares), `services/orchestrator/tool_calls.rs` (`run_call`, `screenshot_call`), `services/orchestrator/call_gate.rs` (`plan_check`), `services/pilots/browser.rs` (`close_pages`, `has_open_pages`), `services/events.rs` (`turn_done`), `src/components/agent-console/RunPlanCard.tsx`, `run-plan-model.ts`, `src/hooks/useRunPlan.ts`.
 - **Preconditions:** An agent with tools (Chief of Staff with the Browser pilot started for the browser cases).
 - **Steps:**
   1. Ask Chief of Staff to open example.com and take a screenshot of the home page.
@@ -426,7 +426,7 @@ Shared preconditions used below:
   - Ending with a step still pending: one continuation, never two.
   - Email and calendar check runs have no plan tools and are never refused for lack of a plan.
   - A screenshot older than 30 days shows "Screenshot removed".
-- **Automation:** Covered by: Rust tests in `run_plan/` (`plan_update_moves_one_step_at_a_time`, `effects_table`, `risky_calls_need_a_covering_doing_step`, `a_handover_step_refuses_screenshots`, `old_screenshots_go_and_recent_ones_stay`, `backups_leave_browser_files_out`, `a_later_plan_set_is_kept_as_a_revision`), `orchestrator.rs` (`a_change_before_a_plan_is_blocked_and_runs_once_planned`, `a_risky_call_needs_a_doing_step_that_covers_it`, `the_finish_check_fires_once_per_run`, `an_open_browser_gets_the_finish_check_and_is_closed_at_run_end`, `screenshots_are_named_per_step_linked_and_refused_during_a_handover`, `a_check_started_run_has_no_plan_tools`), Vitest `run-plan-model.test.ts`, `RunPlanCard.test.tsx` | Layer: unit, integration | Gap: no automated run with the real browser pilot.
+- **Automation:** Covered by: Rust tests in `run_plan/` (`plan_update_moves_one_step_at_a_time`, `effects_table`, `risky_calls_need_a_covering_doing_step`, `a_handover_step_refuses_screenshots`, `old_screenshots_go_and_recent_ones_stay`, `backups_leave_browser_files_out`, `a_later_plan_set_is_kept_as_a_revision`), `orchestrator/middleware_tests.rs` (`a_change_before_a_plan_is_blocked_and_runs_once_planned`, `a_risky_call_needs_a_doing_step_that_covers_it`, `the_finish_check_fires_once_per_run`, `an_open_browser_gets_the_finish_check_and_is_closed_at_run_end`, `screenshots_are_named_per_step_linked_and_refused_during_a_handover`), `orchestrator.rs` (`a_check_started_run_has_no_plan_tools`), Vitest `run-plan-model.test.ts`, `RunPlanCard.test.tsx` | Layer: unit, integration | Gap: no automated run with the real browser pilot.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -438,7 +438,7 @@ Shared preconditions used below:
   - **Playbooks tab** on the agent page: the list (name, description, when), the open playbook in a Markdown editor with a word count, **New playbook**, **Save playbook** (checks the same rules: taken name, kebab-case, required fields, word limit), **Delete** (asks first). Leaving with unsaved changes asks first. Broken files show with their error.
   - An installed agent's playbooks are read-only (no New, Save or Delete). Installs bring `skills/*.md`.
   - Chief of Staff ships eight, added once when it has no `skills/` folder: `web-task`, `pay-a-bill`, `sign-in-and-accounts`, `delegate-work`, `build-a-workflow`, `email-triage`, `meeting-prep`, `occasions`. Edits and deletions stay.
-- **Where:** `src-tauri/src/services/domain/playbook.rs`, `services/repos/agent_repo.rs` (`load_playbooks`, `save_playbook`, `delete_playbook`), `services/repo_service.rs`, `rpc/repo.rs`, `rpc/repo.rs`, `services/playbooks.rs`, `services/orchestrator.rs` (offer and `run_call`), `services/builtin_agents.rs`, `src-tauri/resources/builtin-agents/chief-of-staff/skills/`, `src/components/agents/AgentPlaybooksTab.tsx`, `playbooks-model.ts`, `src/hooks/usePlaybooks.ts`.
+- **Where:** `src-tauri/src/services/domain/playbook.rs`, `services/repos/agent_repo.rs` (`load_playbooks`, `save_playbook`, `delete_playbook`), `services/repo_service.rs`, `rpc/repo.rs`, `rpc/repo.rs`, `services/playbooks.rs`, `services/orchestrator/llm_step.rs` (offer), `services/orchestrator/tool_calls.rs` (`run_call`), `services/builtin_agents.rs`, `src-tauri/resources/builtin-agents/chief-of-staff/skills/`, `src/components/agents/AgentPlaybooksTab.tsx`, `playbooks-model.ts`, `src/hooks/usePlaybooks.ts`.
 - **Preconditions:** None (Chief of Staff is built in).
 - **Steps:**
   1. Open Agents › Chief of Staff › Playbooks.
@@ -458,7 +458,7 @@ Shared preconditions used below:
   - A file with `model:` or a name that isn't its file name shows as broken, and runs leave it out.
   - A body over 900 words can't be saved.
   - Deleting a built-in playbook and restarting doesn't bring it back.
-- **Automation:** Covered by: Rust tests in `domain/playbook.rs` (parse, name, required fields, 900 words, no `model:`, unique names, the index), `repos/agent_repo.rs` (`playbooks_are_written_read_renamed_and_removed`, `a_broken_playbook_is_a_problem_not_a_failure`, `an_installed_agents_playbooks_are_read_only`), `playbooks.rs` (`skill_list`, `skill_get`), `builtin_agents.rs` (`seeds_the_playbooks_once_and_keeps_the_users_changes`, `the_shipped_playbooks_parse_and_stay_short`, `the_shipped_playbooks_name_only_real_tools`), `orchestrator.rs` (`skill_get_answers_from_the_agents_playbooks`), `run_plan/classify.rs` (`effects_table`), `marketplace/install.rs` (`an_agent_brings_its_playbooks_but_no_scripts`), Vitest `playbooks-model.test.ts`, `AgentPlaybooksTab.test.tsx` | Layer: unit, integration | Gap: no check that a model actually follows a playbook.
+- **Automation:** Covered by: Rust tests in `domain/playbook.rs` (parse, name, required fields, 900 words, no `model:`, unique names, the index), `repos/agent_repo.rs` (`playbooks_are_written_read_renamed_and_removed`, `a_broken_playbook_is_a_problem_not_a_failure`, `an_installed_agents_playbooks_are_read_only`), `playbooks.rs` (`skill_list`, `skill_get`), `builtin_agents.rs` (`seeds_the_playbooks_once_and_keeps_the_users_changes`, `the_shipped_playbooks_parse_and_stay_short`, `the_shipped_playbooks_name_only_real_tools`), `orchestrator/middleware_tests.rs` (`skill_get_answers_from_the_agents_playbooks`), `run_plan/classify.rs` (`effects_table`), `marketplace/install.rs` (`an_agent_brings_its_playbooks_but_no_scripts`), Vitest `playbooks-model.test.ts`, `AgentPlaybooksTab.test.tsx` | Layer: unit, integration | Gap: no check that a model actually follows a playbook.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -500,7 +500,7 @@ Shared preconditions used below:
   - The approval card: "Save a new playbook: <name>", why, what it covers, when, and **Show the steps**. For a name it already has: "Change the playbook <name> (replaces the current one)", the old description or when struck through ("Was: …"), and **Show the changes** (a line diff). **Approve** writes `skills/<name>.md` and commits; **Reject** writes nothing.
   - It needs no run plan (not a change for the classifier).
   - From repeated work: when Chief of Staff does a step itself and did the same work itself before, it adds `- [ ] Add a playbook "<name>" (from <n> similar tasks)` to `my-notes/suggestions.md` once (never a dismissed one) and proposes the playbook when the user ticks it or says yes.
-- **Where:** `src-tauri/src/services/playbooks.rs` (`propose_spec`, `gate`, `check`, `apply`, `prompt_section`), `services/orchestrator.rs` (offer, gate, `run_call`), `services/run_plan/classify.rs`, `services/requests/recurrence.rs` (`playbook_hint`), `services/requests/self_step.rs` (`prompt`), `resources/builtin-agents/chief-of-staff/skill.md`, `skills/build-a-workflow.md`, `src/components/agent-console/ApprovalRequestCard.tsx`, `PlaybookProposalPreview.tsx`, `playbook-proposal-model.ts`, `src/components/inbox/approval-model.ts`.
+- **Where:** `src-tauri/src/services/playbooks.rs` (`propose_spec`, `gate`, `check`, `apply`, `prompt_section`), `services/orchestrator/llm_step.rs` (offer), `services/orchestrator/executor.rs` (gate), `services/orchestrator/tool_calls.rs` (`run_call`), `services/run_plan/classify.rs`, `services/requests/recurrence.rs` (`playbook_hint`), `services/requests/self_step.rs` (`prompt`), `resources/builtin-agents/chief-of-staff/skill.md`, `skills/build-a-workflow.md`, `src/components/agent-console/ApprovalRequestCard.tsx`, `PlaybookProposalPreview.tsx`, `playbook-proposal-model.ts`, `src/components/inbox/approval-model.ts`.
 - **Preconditions:** None (Chief of Staff is built in).
 - **Steps:**
   1. In Chief of Staff's chat: "Remember: I pay bills from Chase, never the card."
@@ -523,7 +523,7 @@ Shared preconditions used below:
   - A broken `skills/<name>.md` is never overwritten by a proposal.
   - An email or calendar check never proposes a playbook.
   - Dismissing the suggestion line: it's never added again.
-- **Automation:** Covered by: Rust `playbooks.rs` (`a_proposal_is_checked_by_the_domain_rules`, `the_card_sees_what_a_proposal_replaces_from_the_files`, `the_prompt_says_how_to_propose_when_the_agent_can`, `every_proposal_waits_for_the_user`, `an_approved_proposal_is_written_and_committed`, `a_broken_file_of_that_name_is_never_overwritten`, `an_installed_agent_cant_propose`), `orchestrator.rs` (`a_proposed_playbook_is_written_once_approved`, `a_rejected_proposal_writes_nothing`, `a_proposal_for_an_existing_name_shows_what_it_replaces`, `a_proposal_that_breaks_the_rules_never_reaches_the_user`), `run_plan/classify.rs` (`effects_table`), `requests/recurrence.rs` (`work_the_chief_of_staff_repeats_itself_hints_a_playbook`), `builtin_agents.rs` (shipped playbooks name only real tools), Vitest `playbook-proposal-model.test.ts`, `PlaybookProposalPreview.test.tsx`, `approval-model.test.ts` | Layer: unit, integration | Gap: no check that a model writes the suggestion line only once, or proposes when asked.
+- **Automation:** Covered by: Rust `playbooks.rs` (`a_proposal_is_checked_by_the_domain_rules`, `the_card_sees_what_a_proposal_replaces_from_the_files`, `the_prompt_says_how_to_propose_when_the_agent_can`, `every_proposal_waits_for_the_user`, `an_approved_proposal_is_written_and_committed`, `a_broken_file_of_that_name_is_never_overwritten`, `an_installed_agent_cant_propose`), `orchestrator/middleware_tests.rs` (`a_proposed_playbook_is_written_once_approved`, `a_rejected_proposal_writes_nothing`, `a_proposal_for_an_existing_name_shows_what_it_replaces`, `a_proposal_that_breaks_the_rules_never_reaches_the_user`), `run_plan/classify.rs` (`effects_table`), `requests/recurrence.rs` (`work_the_chief_of_staff_repeats_itself_hints_a_playbook`), `builtin_agents.rs` (shipped playbooks name only real tools), Vitest `playbook-proposal-model.test.ts`, `PlaybookProposalPreview.test.tsx`, `approval-model.test.ts` | Layer: unit, integration | Gap: no check that a model writes the suggestion line only once, or proposes when asked.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -750,7 +750,7 @@ Shared preconditions used below:
 ### CH-06 — Streaming and the model loop
 
 - **What:** Each step streams tokens (batched ~50 ms/256 bytes into the DB and `agent://token`), then records planned tool calls and runs them; a step with no tool calls completes the run. The system prompt is skill.md body + `instructions.md` + extras (memory, folders, and today's date with the UTC offset, `today_prompt`). History is rebuilt from the DB each step (every tool call answered: output, "rejected" or "not run"; DeepSeek reasoning replayed; last 200 messages). The model is the agent's `model:`, else the default; if that provider has no key, the first provider with one.
-- **Where:** `src-tauri/src/services/orchestrator.rs`, `services/history.rs`, `src-tauri/src/llm/*`.
+- **Where:** `src-tauri/src/services/orchestrator/` (`llm_step.rs`, `executor.rs`), `services/history.rs`, `src-tauri/src/llm/*`.
 - **Preconditions:** Docker + image, model key.
 - **Steps:** Follow `docs/developer/e2e-checklist.md` steps 1–9 with the echo-agent.
 - **Expected:** As in the checklist: tool call card, result with `hello from nandi`, final answer, run `completed`; one `llm.log` line per model call; everything still there after restart.
@@ -799,7 +799,7 @@ Shared preconditions used below:
 - **Steps:** Create a pending approval; set its `expires_at` to the past; wait up to 60 s.
 - **Expected:** Card shows Expired; `agent://approval_resolved` with status expired; the run continues (or ends) and the model reads that the call expired.
 - **Edge / negative cases:** A harness (CLI) approval nobody waits for any more is closed as stale and its run cancelled.
-- **Automation:** Covered by: Rust test `an_approval_nobody_decides_expires_and_the_run_goes_on` in `services/orchestrator.rs` | Layer: api | Gap: none.
+- **Automation:** Covered by: Rust test `an_approval_nobody_decides_expires_and_the_run_goes_on` in `services/orchestrator/middleware_tests.rs` | Layer: api | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -864,7 +864,7 @@ Shared preconditions used below:
 - **Steps:** Send a message needing a tool.
 - **Expected:** Banner with the reason; the agent answers in text only.
 - **Edge / negative cases:** A connector that can't start warns the agent the same way.
-- **Automation:** Covered by: Rust `agent_answers_text_only_when_its_container_cannot_start` (`services/chat.rs`), `a_connector_that_cant_start_warns_the_agent` (`services/orchestrator.rs`) | Layer: api | Gap: banner UI untested.
+- **Automation:** Covered by: Rust `agent_answers_text_only_when_its_container_cannot_start` (`services/chat.rs`), `a_connector_that_cant_start_warns_the_agent` (`services/orchestrator/connector_tests.rs`) | Layer: api | Gap: banner UI untested.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -876,7 +876,7 @@ Shared preconditions used below:
 - **Steps:** Set `max_turns: 2` and ask for a task needing several tool calls.
 - **Expected:** The run fails after 2 steps with a reason naming `max_turns`; queued work proceeds.
 - **Edge / negative cases:** Studio and agents with no definition keep only the three built-in limits.
-- **Automation:** Covered by: Rust `the_turn_limit_aborts_the_run_cleanly`, `the_cost_cap_aborts_once_the_run_costs_too_much` (`services/orchestrator.rs`), middleware tests | Layer: api | Gap: none.
+- **Automation:** Covered by: Rust `the_turn_limit_aborts_the_run_cleanly`, `the_cost_cap_aborts_once_the_run_costs_too_much` (`services/orchestrator/middleware_tests.rs`), middleware tests | Layer: api | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 

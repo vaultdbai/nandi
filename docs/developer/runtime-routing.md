@@ -23,7 +23,7 @@ Unknown `runtime_config` keys are kept on save.
 ## Flow
 
 ```text
-execute_run ─▶ harness_run (orchestrator.rs)
+execute_run ─▶ harness_run (orchestrator/executor.rs)
   native / Studio / no harness services ─▶ the native loop, unchanged
   else resolve_runtime (runtime_router.rs)
     gathers: harness image present? CLI detected? default harness model,

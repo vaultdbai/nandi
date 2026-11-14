@@ -78,8 +78,8 @@ Why this exists, in plain words. The body never grants anything; Studio and the 
 
 Each check reads `EffectivePermissions` and never reads the raw `skill.md` fields. **Done this way:** `RepoStore::skill` runs every `SkillConfig` through `services::policies::narrow`, so everything that reads it (orchestrator, egress proxy, container mounts, the harness router) gets the narrowed result, and a broken policy or a refused model stops the agent there.
 
-- [x] **Tools and approvals:** the orchestrator's `allows_tool` and approval flag (`orchestrator.rs`) for native runs, and the ACP permission bridge from Wave 1 for harness runs.
-- [x] **Connector tools:** (denied connector tools aren't offered or run; `ask` adds them to approvals) today they're checked before `allows_tool` (`orchestrator.rs`), so `tools.deny` doesn't reach them. Make `deny` and `ask` apply to `<connector>__<tool>` names too.
+- [x] **Tools and approvals:** the orchestrator's `allows_tool` and approval flag (`orchestrator/middleware.rs`) for native runs, and the ACP permission bridge from Wave 1 for harness runs.
+- [x] **Connector tools:** (denied connector tools aren't offered or run; `ask` adds them to approvals) today they're checked before `allows_tool` (`orchestrator/middleware.rs`), so `tools.deny` doesn't reach them. Make `deny` and `ask` apply to `<connector>__<tool>` names too.
 - [x] **Network and AWS:** the egress proxy enforces the effective allow-list and AWS grants, not the agent's own.
 - [ ] **Model access through the gateway** (was Wave 1 "no raw keys"). Coding agents' model calls go through the LiteLLM gateway for every provider, not only Bedrock: the container gets a per-run key that works only there, and the real Anthropic, OpenAI, Gemini and AWS credentials stay on the host (`harness/gateway.rs`).
   - **Done without the gateway:** `models.allow` is enforced for Nandi's own runs (`services::policies::narrow`) and for coding agents' CLI models before their run starts (`runtime_router::plan`, `cli_model_ref`). Still open here: keys out of containers, which needs every provider through LiteLLM and real keys to verify.

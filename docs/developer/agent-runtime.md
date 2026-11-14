@@ -62,7 +62,7 @@ On startup, runs left `running` are marked failed (their step died with the proc
 
 ## Engine
 
-Runs are planned by a real model by default (`settings.engine` absent or `"llm"`). Each step, `services/orchestrator.rs`:
+Runs are planned by a real model by default (`settings.engine` absent or `"llm"`). Each step, `services/orchestrator/llm_step.rs` and `tool_calls.rs`:
 
 1. loads skill.md (+ optional `instructions.md`) for the system prompt and model (`model:` frontmatter; default: the settings default model, `claude:claude-sonnet-5` out of the box). `llm::stream` calls that model when its provider has a key in the keychain, else the first provider with a key (Anthropic, OpenAI, DeepSeek; `llm_keys::usable_model`);
 2. for agents, gets the runtime container + MCP session (`services/runtimes.rs`, started on first use; needs Docker and the `nandi-runtime` image) and offers its tools, filtered by `allowed-tools` and its policies (`RepoStore::skill` → `services::policies::narrow`);
