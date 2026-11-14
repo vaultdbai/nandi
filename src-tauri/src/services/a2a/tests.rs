@@ -93,7 +93,7 @@ pub(crate) async fn lifecycle(
     service
 }
 
-pub(super) async fn wait_until<F, Fut>(what: &str, mut check: F)
+pub(crate) async fn wait_until<F, Fut>(what: &str, mut check: F)
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = bool>,
@@ -106,7 +106,7 @@ where
 }
 
 /// What `find` finds, once it finds something (or panics after ~5 s)
-pub(super) async fn eventually<T, F, Fut>(what: &str, mut find: F) -> T
+pub(crate) async fn eventually<T, F, Fut>(what: &str, mut find: F) -> T
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Option<T>>,

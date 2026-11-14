@@ -21,7 +21,8 @@ use serde_json::json;
 
 use super::delegator::{A2aDeps, Delegator};
 use super::history::AuditLog;
-use super::tests::{deps, echo_agents, from_writer, instance, lifecycle, save_agent, wait_until};
+pub(crate) use super::tests::wait_until;
+use super::tests::{deps, echo_agents, from_writer, instance, lifecycle, save_agent};
 use super::*;
 use crate::services::domain::agent_card::OwnerRef;
 use crate::services::events::tests::RecordingSink;
@@ -39,25 +40,34 @@ const ANSWER_TIMEOUT: Duration = Duration::from_secs(1);
 pub(super) const PAPERS: &str = "serves: [{name: summarize}]\naccepts_delegation: true\n";
 
 /// A relay of one test's own, with its fault handle
-pub(super) struct TestRelay {
+pub(crate) struct TestRelay {
     addr: SocketAddr,
     pub faults: Faults,
 }
 
 impl TestRelay {
     pub async fn start() -> Self {
+        Self::start_with(RelayServerConfig::open()).await
+    }
+
+    /// A relay set up as `config` says
+    pub async fn start_with(config: RelayServerConfig) -> Self {
         let bind = SocketAddr::from(([127, 0, 0, 1], 0));
-        let (addr, faults) = serve_with_faults(bind, RelayServerConfig::open())
-            .await
-            .unwrap();
+        let (addr, faults) = serve_with_faults(bind, config).await.unwrap();
         Self { addr, faults }
     }
 
     /// A client for `instance`, connected (not registered yet)
     pub async fn client(&self, instance: &str) -> Arc<WsRelayClient> {
+        self.client_with(instance, ClientOptions::default()).await
+    }
+
+    /// [`Self::client`] with `options` (the answer timeout is this
+    /// harness's)
+    pub async fn client_with(&self, instance: &str, options: ClientOptions) -> Arc<WsRelayClient> {
         let options = ClientOptions {
             request_timeout: ANSWER_TIMEOUT,
-            ..ClientOptions::default()
+            ..options
         };
         let client = Arc::new(WsRelayClient::with_options(None, instance, options));
         client.connect(&self.url(), instance).await.unwrap();
@@ -137,6 +147,13 @@ impl TestRelay {
         sent.iter()
             .filter(|message| matches!(message, RelayMessage::TaskResult { .. }))
             .count()
+    }
+
+    /// How many frames of `kind` (see [`nandi_relay::testing::frame_kind`])
+    /// `instance` sent the relay
+    pub fn frames_sent(&self, instance: &str, kind: &str) -> usize {
+        let kinds = self.faults.kinds(instance, Direction::Received);
+        kinds.iter().filter(|k| *k == kind).count()
     }
 
     /// How many `kind` peer messages `instance` sent

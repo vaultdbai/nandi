@@ -52,7 +52,7 @@ mod lifecycle_relay_tests;
 #[cfg(test)]
 mod relay_e2e_tests;
 #[cfg(test)]
-mod relay_world;
+pub(crate) mod relay_world;
 #[cfg(test)]
 mod tests;
 
