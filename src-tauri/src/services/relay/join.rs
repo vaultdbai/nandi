@@ -2,7 +2,7 @@
 //! and the invite a member copies for a teammate.
 //!
 //! [`join_relay`] asks the relay's `/health` first (reachable, a Nandi
-//! relay, the same protocol version), then:
+//! relay, a protocol range that takes this Nandi), then:
 //!
 //! | The relay                          | What joining does                                              |
 //! | ---------------------------------- | -------------------------------------------------------------- |
@@ -30,6 +30,7 @@ use specta::Type;
 use super::client::split_token;
 use super::device_keys::DeviceKeyring;
 use super::protocol::PROTOCOL_VERSION;
+use super::version::{update_needed, UpdateNeeded};
 use super::{instances_endpoint, saved_token_for, set_relay_url, validate_url, with_token};
 use crate::services::network;
 use crate::services::AppState;
@@ -56,8 +57,13 @@ pub enum JoinOutcome {
     InvalidUrl,
     /// Nothing answered at that address, or not as a Nandi relay
     Unreachable { detail: String },
-    /// The relay speaks another protocol version: update Nandi or the relay
-    VersionMismatch { relay: u32, app: u32 },
+    /// The relay doesn't accept this Nandi's protocol version: `update`
+    /// says which side is behind
+    VersionMismatch {
+        relay: u32,
+        app: u32,
+        update: UpdateNeeded,
+    },
     /// The relay is secured, and no join code was given
     CodeNeeded,
     /// The relay didn't accept the join code
@@ -110,10 +116,11 @@ pub async fn join_relay(
         Ok(health) => health,
         Err(outcome) => return Ok(outcome),
     };
-    if health.relay.protocol_version != PROTOCOL_VERSION {
+    if let Some(update) = update_needed(&health.relay) {
         return Ok(JoinOutcome::VersionMismatch {
             relay: health.relay.protocol_version,
             app: PROTOCOL_VERSION,
+            update,
         });
     }
     if health.public {

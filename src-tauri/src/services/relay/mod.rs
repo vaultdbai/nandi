@@ -55,6 +55,7 @@ pub mod sealing;
 pub mod presence;
 pub mod tls;
 pub mod unavailable;
+pub mod version;
 
 #[cfg(test)]
 mod keys_tests;
@@ -219,10 +220,14 @@ pub enum RelayUrlSource {
 pub struct RelayStatus {
     /// Registered and usable for person-to-person actions
     pub connected: bool,
-    /// The relay refused this Nandi for speaking another protocol version
-    /// ("Update Nandi or the relay")
+    /// The relay refused this Nandi's protocol version. The client stops
+    /// retrying until the URL or this Nandi's version changes
     #[serde(default)]
     pub version_mismatch: bool,
+    /// With `version_mismatch`: the side that must update, from the
+    /// relay's `/health`; `None` while unknown
+    #[serde(default)]
+    pub update_needed: Option<version::UpdateNeeded>,
     /// The relay has other keys pinned for this device (Nandi was
     /// reinstalled, or the keyring was reset): its operator must rekey it
     #[serde(default)]

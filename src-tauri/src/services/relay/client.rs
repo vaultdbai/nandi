@@ -21,10 +21,12 @@
 //! every card (`*`), and emits `relay://agent_online` and
 //! `relay://agent_offline` for the differences.
 //!
-//! Registration carries [`PROTOCOL_VERSION`]. A relay that speaks another
-//! version refuses it (`version_mismatch`): the status turns to `Error`
-//! with `version_mismatch` set, and the client counts as not connected
-//! until a later connection registers.
+//! Registration carries [`PROTOCOL_VERSION`]. A relay whose protocol range
+//! leaves it out refuses it (`version_mismatch`): the status turns to
+//! `Error` with `version_mismatch` set, and the client closes the socket
+//! and stops retrying, since no retry can succeed until the URL or this
+//! Nandi's version changes (a new `connect`). It reads the relay's
+//! `/health` once to say which side must update (`update_needed`).
 //!
 //! Registration also carries this device's public keys
 //! ([`ClientOptions::device_keys`], read on the first `connect`). A relay
@@ -88,6 +90,7 @@ use super::protocol::{
     TaskEvent, TaskFailed, TaskRefused, ALL_CAPABILITIES, PROTOCOL_VERSION, VERSION_MISMATCH,
 };
 use super::sealing::{self, MemoryKeyBook, Opening, PeerKeyBook, Sealer};
+use super::version::{self, UpdateNeeded};
 use super::{
     MemberKeyChanged, RelayAgentOffline, RelayAgentOnline, RelayConnectionState, RelaySealRefused,
     RelayStatus,
@@ -270,6 +273,9 @@ struct Shared {
     refused: bool,
     /// The refusal was for the protocol version
     version_mismatch: bool,
+    /// After a `version_mismatch`: the side that must update, from the
+    /// relay's `/health`; `None` until known
+    update_needed: Option<UpdateNeeded>,
     /// The refusal was for our keys (the relay pinned others)
     key_mismatch: bool,
     /// This device's public keys, read on the first `connect`
@@ -460,6 +466,7 @@ impl Inner {
         RelayStatus {
             connected: shared.outbound.is_some() && !shared.refused,
             version_mismatch: shared.version_mismatch,
+            update_needed: shared.update_needed,
             key_mismatch: shared.key_mismatch,
             state: shared.state,
             reason: shared.reason.clone(),
@@ -1080,6 +1087,7 @@ impl Inner {
             shared.handled_mail.clear();
             shared.refused = false;
             shared.version_mismatch = false;
+            shared.update_needed = None;
             shared.key_mismatch = false;
             shared.state = RelayConnectionState::Connected;
             shared.reason = None;
@@ -1105,6 +1113,28 @@ impl Inner {
             shared.fail_calls(&unavailable);
         }
         self.emit_status();
+    }
+
+    /// The relay of `generation` refused our protocol version and the
+    /// socket is closed: stay in `Error`, say which side must update, and
+    /// fail what waits on the connection
+    fn on_version_refused(&self, generation: u64, update: Option<UpdateNeeded>) {
+        {
+            let mut shared = self.lock();
+            if shared.generation != generation {
+                return;
+            }
+            shared.outbound = None;
+            shared.registered = false;
+            shared.update_needed = update;
+            shared.fail_calls(&super::RelayUnavailable.to_string());
+        }
+        self.emit_status();
+    }
+
+    /// Whether the relay refused this connection for its protocol version
+    fn version_refused(&self) -> bool {
+        self.lock().version_mismatch
     }
 
     fn handle_incoming(self: &Arc<Self>, text: &str) {
@@ -1493,10 +1523,18 @@ async fn supervise(
                 if let Some(first) = first.take() {
                     let _ = first.send(Ok(()));
                 }
-                let cancelled = run_socket(&inner, socket, queued, &mut cancel).await;
-                inner.on_disconnected(generation);
-                if cancelled {
-                    return;
+                match run_socket(&inner, socket, queued, &mut cancel).await {
+                    SocketEnd::Cancelled => {
+                        inner.on_disconnected(generation);
+                        return;
+                    }
+                    SocketEnd::VersionRefused => {
+                        // Retrying can't help: stop until a new `connect`
+                        let update = update_needed_at(&url).await;
+                        inner.on_version_refused(generation, update);
+                        return;
+                    }
+                    SocketEnd::Dropped => inner.on_disconnected(generation),
                 }
                 log::warn!("Lost the relay connection; reconnecting");
                 "Lost the relay connection".to_string()
@@ -1524,13 +1562,37 @@ async fn supervise(
     }
 }
 
-/// Pumps one socket; `true` when cancelled, `false` when it dropped.
+/// Which side must update, from the relay's `/health` at `dial`; `None`
+/// when it can't be read, or the relay's range takes this Nandi after all
+async fn update_needed_at(dial: &str) -> Option<UpdateNeeded> {
+    match super::join::health(dial).await {
+        Ok(report) => version::update_needed(&report.relay),
+        Err(outcome) => {
+            log::debug!("Relay: no /health after a version refusal: {outcome:?}");
+            None
+        }
+    }
+}
+
+/// How [`run_socket`] ended
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SocketEnd {
+    /// A new `connect` took over, or the client disconnected
+    Cancelled,
+    /// The socket closed or failed: reconnect with backoff
+    Dropped,
+    /// The relay refused our protocol version, and we closed the socket
+    VersionRefused,
+}
+
+/// Pumps one socket until it is cancelled, drops, or the relay refuses
+/// our protocol version.
 async fn run_socket<S>(
     inner: &Arc<Inner>,
     socket: tokio_tungstenite::WebSocketStream<S>,
     mut queued: mpsc::UnboundedReceiver<RelayMessage>,
     cancel: &mut watch::Receiver<()>,
-) -> bool
+) -> SocketEnd
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
@@ -1542,15 +1604,21 @@ where
     loop {
         tokio::select! {
             frame = stream.next() => match frame {
-                Some(Ok(Message::Text(text))) => inner.handle_incoming(text.as_str()),
-                Some(Ok(Message::Close(_)) | Err(_)) | None => return false,
+                Some(Ok(Message::Text(text))) => {
+                    inner.handle_incoming(text.as_str());
+                    if inner.version_refused() {
+                        let _ = sink.close().await;
+                        return SocketEnd::VersionRefused;
+                    }
+                }
+                Some(Ok(Message::Close(_)) | Err(_)) | None => return SocketEnd::Dropped,
                 Some(Ok(_)) => {}
             },
             message = queued.recv() => {
-                let Some(message) = message else { return false };
+                let Some(message) = message else { return SocketEnd::Dropped };
                 let Ok(text) = message.to_json() else { continue };
                 if sink.send(Message::Text(text.into())).await.is_err() {
-                    return false;
+                    return SocketEnd::Dropped;
                 }
             }
             _ = heartbeat.tick() => {
@@ -1560,14 +1628,14 @@ where
                 }
                 let Ok(text) = inner.heartbeat_message().to_json() else { continue };
                 if sink.send(Message::Text(text.into())).await.is_err() {
-                    return false;
+                    return SocketEnd::Dropped;
                 }
                 inner.emit_status();
                 tokio::spawn(inner.clone().refresh_presence());
             }
             _ = cancel.changed() => {
                 let _ = sink.close().await;
-                return true;
+                return SocketEnd::Cancelled;
             }
         }
     }

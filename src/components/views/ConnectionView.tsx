@@ -32,6 +32,7 @@ import { PublicRelayAccountCard } from '@/components/network/PublicRelayAccountC
 import { PublicRelayJoin } from '@/components/network/PublicRelayJoin'
 import { onPublicRelay } from '@/components/network/public-relay-model'
 import { HealthDot, Term } from '@/components/network/NetworkHelp'
+import { relayErrorKey } from '@/components/network/reachability-model'
 import {
   isRelayUrl,
   isUnencryptedRemoteRelay,
@@ -193,11 +194,7 @@ function RelayCard({
 
       {status?.state === 'error' && (
         <p className="text-sm text-destructive" data-testid="relay-error">
-          {status.versionMismatch
-            ? t('network.connection.versionMismatch')
-            : status.keyMismatch
-              ? t('network.connection.keyMismatch')
-              : t('network.connection.errorSummary')}
+          {t(relayErrorKey(status))}
         </p>
       )}
 

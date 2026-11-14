@@ -12,7 +12,7 @@ import { useNavigationStore } from '@/store/navigation-store'
 import { ConnectionView } from './ConnectionView'
 
 describe('ConnectionView', () => {
-  it('says to update Nandi or the relay when their versions differ', async () => {
+  it('says to update Nandi or the relay when the side is unknown', async () => {
     Object.assign(commands, {
       getRelayStatus: ok(
         relayStatusFixture({

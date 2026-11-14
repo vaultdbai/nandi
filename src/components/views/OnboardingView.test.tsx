@@ -880,7 +880,14 @@ describe('OnboardingView', () => {
         },
         'This relay is at its free limit of 20 users.',
       ],
-      [{ kind: 'versionMismatch', relay: 3, app: 2 }, 'Update Nandi'],
+      [
+        { kind: 'versionMismatch', relay: 3, app: 2, update: 'nandi' },
+        'Update Nandi',
+      ],
+      [
+        { kind: 'versionMismatch', relay: 2, app: 3, update: 'relay' },
+        'Ask whoever runs the relay to update it',
+      ],
     ])('says calmly why joining didn’t work: %o', async (outcome, words) => {
       const user = userEvent.setup()
       Object.assign(commands, { joinRelay: ok(outcome) })

@@ -1133,50 +1133,102 @@ async fn the_directory_keeps_members_who_left_and_people_are_found_at_the_relay(
     );
 }
 
-#[tokio::test]
-async fn a_relay_on_another_protocol_version_reads_as_not_connected() {
+/// A relay whose `/health` reports `min_supported..=current` and that
+/// refuses every frame with `version_mismatch`; returns its URL and a count
+/// of the sockets it accepted
+async fn version_refusing_relay(
+    min_supported: u32,
+    current: u32,
+) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
     use super::protocol::VERSION_MISMATCH;
-    // A relay that refuses every registration for its version
+    use axum::extract::ws::{self, WebSocket, WebSocketUpgrade};
+    use axum::routing::get;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    async fn refuse(mut socket: WebSocket) {
+        while let Some(Ok(frame)) = socket.recv().await {
+            if !matches!(frame, ws::Message::Text(_)) {
+                continue;
+            }
+            let refusal = RelayMessage::Error {
+                code: VERSION_MISMATCH.into(),
+                message:
+                    "This Nandi speaks relay protocol 2 and the relay accepts 3 to 3. Update Nandi."
+                        .into(),
+                task_id: None,
+            };
+            let text = refusal.to_json().unwrap();
+            if socket.send(ws::Message::Text(text.into())).await.is_err() {
+                return;
+            }
+        }
+    }
+
+    let sockets = Arc::new(AtomicUsize::new(0));
+    let counted = sockets.clone();
+    let health = json!({
+        "status": "ok", "instances_connected": 0, "uptime_seconds": 1,
+        "version": "9.9.9", "auth": "open",
+        "protocol_version": current, "min_supported_protocol": min_supported
+    });
+    let app = axum::Router::new()
+        .route("/health", get(move || async move { axum::Json(health) }))
+        .route(
+            "/relay",
+            get(move |upgrade: WebSocketUpgrade| async move {
+                counted.fetch_add(1, Ordering::SeqCst);
+                upgrade.on_upgrade(refuse)
+            }),
+        );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        while let Ok((stream, _)) = listener.accept().await {
-            tokio::spawn(async move {
-                let Ok(mut socket) = tokio_tungstenite::accept_async(stream).await else {
-                    return;
-                };
-                while let Some(Ok(frame)) = socket.next().await {
-                    if !frame.is_text() {
-                        continue;
-                    }
-                    let refusal = RelayMessage::Error {
-                        code: VERSION_MISMATCH.into(),
-                        message: "This Nandi speaks relay protocol 2 and the relay speaks 3. Update Nandi or the relay so they match.".into(),
-                        task_id: None,
-                    };
-                    let text = refusal.to_json().unwrap();
-                    if socket.send(Message::Text(text.into())).await.is_err() {
-                        return;
-                    }
-                }
-            });
-        }
-    });
-    let client: Arc<dyn RelayClient> = Arc::new(WsRelayClient::new(None, "me"));
-    client
-        .connect(&format!("ws://{addr}/relay"), "me")
-        .await
-        .unwrap();
-    let refused = client.register(Vec::new()).await.unwrap_err();
-    assert!(refused.contains("Update Nandi or the relay"), "{refused}");
-    let status = client.status();
-    assert_eq!(status.state, RelayConnectionState::Error);
-    assert!(status.version_mismatch);
-    assert!(!status.connected);
-    // Person-to-person actions: not connected
-    assert!(unavailable::connected(Some(&client)).is_err());
-    let searched = client.find_people("x", 5).await.unwrap_err();
-    assert!(RelayUnavailable::is(&searched), "{searched}");
+    tokio::spawn(async move { axum::serve(listener, app).await });
+    (format!("ws://{addr}/relay"), sockets)
+}
+
+#[tokio::test]
+async fn a_relay_that_refuses_our_version_says_who_updates_and_is_not_retried() {
+    use super::protocol::PROTOCOL_VERSION;
+    use super::version::UpdateNeeded;
+    use std::sync::atomic::Ordering;
+    let ours = PROTOCOL_VERSION;
+    // (relay's min_supported, relay's current, the side to update; None
+    // when the relay's /health takes us, so the refusal can't say)
+    let cases = [
+        (ours + 1, ours + 1, Some(UpdateNeeded::Nandi)),
+        (ours - 1, ours - 1, Some(UpdateNeeded::Relay)),
+        (ours, ours, None),
+    ];
+    let mut refused = Vec::new();
+    for (min, current, update) in cases {
+        let (url, sockets) = version_refusing_relay(min, current).await;
+        let client: Arc<dyn RelayClient> = Arc::new(WsRelayClient::new(None, "me"));
+        client.connect(&url, "me").await.unwrap();
+        let error = client.register(Vec::new()).await.unwrap_err();
+        assert!(error.contains("Update Nandi"), "{error}");
+        assert!(
+            eventually(
+                async || client.status().update_needed == update && !client.status().connected
+            )
+            .await,
+            "relay {min}..={current}: {:?}",
+            client.status()
+        );
+        let status = client.status();
+        assert_eq!(status.state, RelayConnectionState::Error);
+        assert!(status.version_mismatch);
+        // Person-to-person actions: not connected
+        assert!(unavailable::connected(Some(&client)).is_err());
+        let searched = client.find_people("x", 5).await.unwrap_err();
+        assert!(RelayUnavailable::is(&searched), "{searched}");
+        refused.push((client, sockets));
+    }
+    // The first retry would come after 1s: none comes
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    for (client, sockets) in refused {
+        assert_eq!(sockets.load(Ordering::SeqCst), 1);
+        assert_eq!(client.status().state, RelayConnectionState::Error);
+    }
 }
 
 /// A relay that registers everyone in `groups` visibility, answers every

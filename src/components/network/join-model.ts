@@ -36,7 +36,10 @@ export function joinMessage(outcome: JoinOutcome, url: string): JoinMessage {
     case 'versionMismatch':
       return {
         ...base,
-        key: 'relay.join.versionMismatch',
+        key:
+          outcome.update === 'nandi'
+            ? 'relay.join.versionMismatchNandi'
+            : 'relay.join.versionMismatchRelay',
         params: { host: host(url), relay: outcome.relay, app: outcome.app },
       }
     case 'codeNeeded':

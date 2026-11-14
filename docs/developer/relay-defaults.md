@@ -14,14 +14,18 @@ A fresh install connects nowhere and enrolls nowhere until the user joins a rela
 
 `nandi_protocol::PROTOCOL_VERSION` (4 since every payload is sealed) goes out on
 every `RegisterInstance`; the relay's `/health`
-reports its own as `protocol_version`. A relay on another version refuses the
-registration with the code `version_mismatch`. The client then keeps its
-socket but counts as not connected (`RelayStatus.connected` false,
-`versionMismatch` true, state Error, no heartbeats), so person-to-person
-actions answer `RelayUnavailable`. Connection shows "Update Nandi or the
-relay"; no other screen does. The next connection (the relay restarted
-after its update) registers again. App and relay land the same version
-together; nothing translates between versions.
+reports the range it accepts, `min_supported_protocol..=protocol_version`
+(`nandi_protocol::ProtocolRange`). A field added with `#[serde(default)]`
+needs no bump. A relay whose range leaves this Nandi out refuses the
+registration with the code `version_mismatch`. The client then closes the
+socket and stops retrying until the URL or this Nandi's version changes
+(a new `connect`: saving a URL, or a restart). It counts as not connected
+(`RelayStatus.connected` false, `versionMismatch` true, state Error), so
+person-to-person actions answer `RelayUnavailable`. It reads `/health` once
+to fill `RelayStatus.updateNeeded` (`services/relay/version.rs`): `nandi`
+("Update Nandi"), `relay` ("ask whoever runs the relay to update it"), or
+`null` when it can't tell ("Update Nandi or the relay"). Only Connection
+shows it.
 
 ## Device keys
 
@@ -61,7 +65,7 @@ There is no command-line flag for the relay URL; `NANDI_RELAY_URL` covers that c
 
 `services/relay/join.rs` (`join_relay`, the `join_relay` command, `POST /api/rpc/join_relay {url, joinCode}`) is the only place an install enrolls. Onboarding's network step (on **Join** or **Continue**) and Network › Connection (**Join a company relay**) call it. It never runs at startup.
 
-1. `GET /health` on the relay's host: unreachable or not a relay → `unreachable`; another `protocol_version` → `versionMismatch`.
+1. `GET /health` on the relay's host: unreachable or not a relay → `unreachable`; a range that leaves this Nandi out → `versionMismatch` with `update` (`nandi` or `relay`).
 2. Then, by the relay:
 
 | The relay                    | What joining does                                       |

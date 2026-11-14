@@ -6617,9 +6617,10 @@ export type JoinOutcome =
  */
 { kind: "unreachable"; detail: string } | 
 /**
- * The relay speaks another protocol version: update Nandi or the relay
+ * The relay doesn't accept this Nandi's protocol version: `update`
+ * says which side is behind
  */
-{ kind: "versionMismatch"; relay: number; app: number } | 
+{ kind: "versionMismatch"; relay: number; app: number; update: UpdateNeeded } | 
 /**
  * The relay is secured, and no join code was given
  */
@@ -7902,10 +7903,15 @@ export type RelayStatus = {
  */
 connected: boolean; 
 /**
- * The relay refused this Nandi for speaking another protocol version
- * ("Update Nandi or the relay")
+ * The relay refused this Nandi's protocol version. The client stops
+ * retrying until the URL or this Nandi's version changes
  */
 versionMismatch?: boolean; 
+/**
+ * With `version_mismatch`: the side that must update, from the
+ * relay's `/health`; `None` while unknown
+ */
+updateNeeded?: UpdateNeeded | null; 
 /**
  * The relay has other keys pinned for this device (Nandi was
  * reinstalled, or the keyring was reset): its operator must rekey it
@@ -9206,6 +9212,18 @@ export type UpdateAvailable = { kind: string; id: string; currentVersion: string
  * What to pass to `apply_update`
  */
 latestRef: string; currentCommit: string; latestCommit: string }
+/**
+ * The side that must update before this Nandi and a relay can talk
+ */
+export type UpdateNeeded = 
+/**
+ * This Nandi is older than the oldest version the relay accepts
+ */
+"nandi" | 
+/**
+ * This Nandi is newer than the relay: its operator must update it
+ */
+"relay"
 export type Verdict = "clean" | 
 /**
  * Warnings: the user sees them before approving

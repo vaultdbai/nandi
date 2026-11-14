@@ -49,7 +49,19 @@ describe('joinMessage', () => {
       })
     }
     expect(
-      joinMessage({ kind: 'versionMismatch', relay: 3, app: 2 }, URL).params
-    ).toEqual({ host: 'relay.acme.com', relay: 3, app: 2 })
+      joinMessage(
+        { kind: 'versionMismatch', relay: 3, app: 2, update: 'nandi' },
+        URL
+      )
+    ).toMatchObject({
+      key: 'relay.join.versionMismatchNandi',
+      params: { host: 'relay.acme.com', relay: 3, app: 2 },
+    })
+    expect(
+      joinMessage(
+        { kind: 'versionMismatch', relay: 2, app: 3, update: 'relay' },
+        URL
+      ).key
+    ).toBe('relay.join.versionMismatchRelay')
   })
 })

@@ -163,6 +163,25 @@ export function networkHealth(
   return reachable ? 'green' : 'amber'
 }
 
+/**
+ * Why the relay refused this Nandi, in words (`network.connection.*`): a
+ * protocol version says which side to update when the client knows it
+ */
+export function relayErrorKey(relay: RelayStatus): string {
+  if (relay.versionMismatch) {
+    switch (relay.updateNeeded) {
+      case 'nandi':
+        return 'network.connection.versionMismatchNandi'
+      case 'relay':
+        return 'network.connection.versionMismatchRelay'
+      default:
+        return 'network.connection.versionMismatch'
+    }
+  }
+  if (relay.keyMismatch) return 'network.connection.keyMismatch'
+  return 'network.connection.errorSummary'
+}
+
 /** The dot in words (`network.health.*`): amber says if it's still connecting */
 export function healthLabel(
   relay: RelayStatus | undefined,

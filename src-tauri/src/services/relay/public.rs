@@ -35,6 +35,7 @@ use super::client::split_token;
 use super::device_keys::DeviceKeyring;
 use super::join::{health, RelayHealthReport};
 use super::protocol::PROTOCOL_VERSION;
+use super::version::update_needed;
 use super::{
     configured_url, instances_endpoint, read_state, saved_token_for, set_relay_url, with_token,
     write_state, RELAY_TOKEN_RELAY_KEY,
@@ -294,7 +295,7 @@ fn offer_from(
     report: &RelayHealthReport,
     email: Option<String>,
 ) -> PublicRelayOffer {
-    if report.relay.protocol_version != PROTOCOL_VERSION {
+    if update_needed(&report.relay).is_some() {
         return PublicRelayOffer::VersionMismatch {
             relay,
             relay_version: report.relay.protocol_version,

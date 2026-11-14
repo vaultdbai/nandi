@@ -7,6 +7,7 @@ import {
   HEARTBEAT_FRESH_MS,
   healthLabel,
   networkHealth,
+  relayErrorKey,
   type ReachabilityInput,
   type RowKey,
 } from './reachability-model'
@@ -206,4 +207,20 @@ describe('healthLabel', () => {
     expect(healthLabel(relay(), 'amber')).toBe('amber')
     expect(healthLabel(relay(), 'green')).toBe('green')
   })
+})
+
+describe('relayErrorKey', () => {
+  it.each([
+    [{ versionMismatch: true, updateNeeded: 'nandi' }, 'versionMismatchNandi'],
+    [{ versionMismatch: true, updateNeeded: 'relay' }, 'versionMismatchRelay'],
+    [{ versionMismatch: true, updateNeeded: null }, 'versionMismatch'],
+    [{ keyMismatch: true }, 'keyMismatch'],
+    [{}, 'errorSummary'],
+  ] satisfies [Partial<RelayStatus>, string][])(
+    'says why the relay refused us: %o',
+    (overrides, key) => {
+      const status = relay({ connected: false, state: 'error', ...overrides })
+      expect(relayErrorKey(status)).toBe(`network.connection.${key}`)
+    }
+  )
 })

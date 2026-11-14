@@ -257,20 +257,40 @@ async fn health_only(body: serde_json::Value) -> String {
 }
 
 #[tokio::test]
-async fn a_relay_on_another_protocol_version_is_not_joined() {
-    let relay = health_only(serde_json::json!({
-        "status": "ok", "instances_connected": 0, "uptime_seconds": 1,
-        "version": "9.9.9", "auth": "token", "protocol_version": PROTOCOL_VERSION + 1
-    }))
-    .await;
+async fn a_relay_whose_range_leaves_this_nandi_out_is_not_joined() {
+    let ours = PROTOCOL_VERSION;
     let state = AppState::for_tests(vec![]);
-    assert_eq!(
-        join_relay(&state, &relay, Some(CODE)).await.unwrap(),
-        JoinOutcome::VersionMismatch {
-            relay: PROTOCOL_VERSION + 1,
-            app: PROTOCOL_VERSION
+    // (relay's min_supported, relay's current, the side to update or None
+    // when the range takes this Nandi)
+    let cases = [
+        (ours + 1, ours + 1, Some(UpdateNeeded::Nandi)),
+        (ours - 2, ours - 1, Some(UpdateNeeded::Relay)),
+        (ours, ours + 1, None),
+    ];
+    for (min, current, update) in cases {
+        let relay = health_only(serde_json::json!({
+            "status": "ok", "instances_connected": 0, "uptime_seconds": 1,
+            "version": "9.9.9", "auth": "token",
+            "protocol_version": current, "min_supported_protocol": min
+        }))
+        .await;
+        let outcome = join_relay(&state, &relay, Some(CODE)).await.unwrap();
+        match update {
+            Some(update) => assert_eq!(
+                outcome,
+                JoinOutcome::VersionMismatch {
+                    relay: current,
+                    app: ours,
+                    update
+                },
+                "relay {min}..={current}"
+            ),
+            None => assert!(
+                !matches!(outcome, JoinOutcome::VersionMismatch { .. }),
+                "relay {min}..={current}: {outcome:?}"
+            ),
         }
-    );
+    }
     // Something else at that address
     let other = health_only(serde_json::json!({"hello": "world"})).await;
     let outcome = join_relay(&state, &other, Some(CODE)).await.unwrap();
