@@ -597,7 +597,7 @@ pub(crate) async fn retire_agent(state: &AppState, agent_id: &str) -> Result<(),
         .db()
         .call(move |conn| {
             Ok((
-                db::active_run_of_agent(conn, &id)?,
+                db::active_agent_run(conn, &id)?,
                 db::queue_is_empty(conn, &id)?,
             ))
         })

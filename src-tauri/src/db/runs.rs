@@ -156,7 +156,8 @@ pub fn active_run(
     .optional()
 }
 
-/// The agent's current turn: its running or approval-blocked run.
+/// The agent's current turn: its running or approval-blocked run, in any
+/// of its conversations (its chat, or a delegated task's)
 pub fn active_agent_run(conn: &Connection, agent_id: &str) -> rusqlite::Result<Option<RunSummary>> {
     conn.query_row(
         &format!(
@@ -171,24 +172,6 @@ pub fn active_agent_run(conn: &Connection, agent_id: &str) -> rusqlite::Result<O
 }
 
 /// Every running or approval-blocked run.
-/// An agent's running (or approval-waiting) run in any of its
-/// conversations: its chat, or a delegated task's
-pub fn active_run_of_agent(
-    conn: &Connection,
-    agent_id: &str,
-) -> rusqlite::Result<Option<RunSummary>> {
-    conn.query_row(
-        &format!(
-            "SELECT {RUN_COLUMNS} FROM runs
-              WHERE agent_id = ?1 AND status IN ('running', 'awaiting_approval')
-              ORDER BY started_at DESC LIMIT 1"
-        ),
-        [agent_id],
-        run_row,
-    )
-    .optional()
-}
-
 pub fn active_runs(conn: &Connection) -> rusqlite::Result<Vec<RunSummary>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {RUN_COLUMNS} FROM runs WHERE status IN ('running', 'awaiting_approval')"
