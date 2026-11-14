@@ -53,7 +53,7 @@ The audit logs in `~/.nandi/local/logs/` (`llm`, `egress`, `triggers`, `pilots`,
 - **Same chain as the audit logs**: each line carries `prev_sha256`, written through `audit::append_all_blocking`.
 - **Written only by `EventBus`.** A bus transaction stages the entries in its `Outbox` and appends them right after `tx.commit()`, before it returns: one fsync per commit, nothing for a failed one. Streamed tokens record no run event, so token batches never touch the file. Writers outside the bus go through it (`EventBus::add_continuation`, `EventBus::close_approvals`).
 - **SQLite stays the queryable copy.** At start, when `run_events` and `approvals` are both empty (a new `state.db`), `RunTrail::restore` puts the rows back in one transaction, the way the gold copy rebuilds the definitions. A database that has rows is never touched.
-- **A broken trail is reported, never skipped silently.** Restore puts back every line it can read. A broken chain (`audit::verify`) and unreadable lines are in its `Restored` report and logged as errors.
+- **A broken trail is reported, never skipped silently.** Restore puts back every line it can read. A broken chain (`audit::verify`) and unreadable lines are in its `Restored` report and logged as errors. Settings › Logs also shows "Run trail degraded" on every tab for a broken chain or entries that failed to write this session (`RunTrail::health`, `get_run_trail_health`), the same alert as the audit logs.
 
 ```rust
 // ❌ BAD: a run event written beside the bus never reaches the trail

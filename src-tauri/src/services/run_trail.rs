@@ -14,6 +14,10 @@
 //! can't be read is reported (in the [`Restored`] report and the app log),
 //! never skipped silently.
 //!
+//! [`RunTrail::health`] says when the trail is degraded, the way the audit
+//! logs do (`audit::health`): entries that failed to write this session, or
+//! a broken chain. The Logs view shows it (`get_run_trail_health`).
+//!
 //! Only `EventBus` writes the trail: its transaction stages the entries
 //! ([`TrailEntry`]) and appends them right after the commit, one fsync per
 //! commit. Streamed tokens record no run event, so they never touch it.
@@ -26,7 +30,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::audit::{self, ChainCheck};
+use crate::audit::{self, AuditHealth, ChainCheck};
 use crate::db::{self, DecidedApproval, RunEventRow};
 
 /// The trail's file name, in `~/.nandi/local/`
@@ -107,6 +111,22 @@ impl RunTrail {
             })
             .collect();
         audit::append_all_blocking(path, lines);
+    }
+
+    /// Whether the trail is degraded: entries that failed to write this
+    /// session, or a line that doesn't follow the one before it. No trail,
+    /// or no file yet, is intact and empty.
+    pub async fn health(&self) -> Result<AuditHealth, String> {
+        let Some(path) = self.path.clone() else {
+            return Ok(AuditHealth {
+                lost_entries: 0,
+                last_error: None,
+                chain: ChainCheck::Intact { lines: 0 },
+            });
+        };
+        tokio::task::spawn_blocking(move || audit::health(&path))
+            .await
+            .map_err(|e| format!("Failed to check the run trail: {e}"))?
     }
 
     /// Puts the trail's rows back into a new `state.db`: only when

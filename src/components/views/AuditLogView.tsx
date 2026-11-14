@@ -35,13 +35,14 @@ import {
   isAuditDegraded,
   matchesAuditSearch,
   useAuditHealth,
+  useRunTrailHealth,
   useAuditLog,
   type AuditColumn,
   type AuditKind,
 } from '@/hooks/useAuditLog'
 import { downloadText, exportFilename } from '@/hooks/useRuns'
 import { formatDuration, formatRelativeTime } from '@/lib/format-time'
-import type { AuditEntry } from '@/lib/tauri-bindings'
+import type { AuditEntry, AuditHealth } from '@/lib/tauri-bindings'
 import { cn } from '@/lib/utils'
 import { useNavigationStore, type AuditLogTab } from '@/store/navigation-store'
 import { ViewHeader } from './ViewHeader'
@@ -114,17 +115,38 @@ export function AuditLogView({ tab = 'llm' }: AuditLogViewProps) {
   )
 }
 
-/** Says when the log can't be trusted as complete; nothing while it can */
+/** Says when the `kind` log can't be trusted as complete */
 function AuditDegradedNotice({ kind }: { kind: AuditKind }) {
   const { t } = useTranslation()
   const { data: health } = useAuditHealth(kind)
+  return <DegradedNotice health={health} title={t('audit.degraded.title')} />
+}
+
+/** Says when the run trail can't be trusted as complete, on every tab */
+function RunTrailDegradedNotice() {
+  const { t } = useTranslation()
+  const { data: health } = useRunTrailHealth()
+  return (
+    <DegradedNotice health={health} title={t('audit.degraded.runTrailTitle')} />
+  )
+}
+
+/** Lost entries and a broken chain, in words; nothing while intact */
+function DegradedNotice({
+  health,
+  title,
+}: {
+  health: AuditHealth | undefined
+  title: string
+}) {
+  const { t } = useTranslation()
   if (!health || !isAuditDegraded(health)) return null
   const { chain, lostEntries, lastError } = health
 
   return (
     <Alert variant="destructive">
       <TriangleAlert />
-      <AlertTitle>{t('audit.degraded.title')}</AlertTitle>
+      <AlertTitle>{title}</AlertTitle>
       <AlertDescription>
         {lostEntries > 0 && (
           <p>
@@ -226,6 +248,7 @@ function AuditLogPanel({ kind }: { kind: AuditKind }) {
       </div>
 
       <AuditDegradedNotice kind={kind} />
+      <RunTrailDegradedNotice />
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

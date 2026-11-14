@@ -6,7 +6,7 @@
 
 mod chain;
 
-pub use chain::{append, append_all_blocking, verify, AuditHealth, ChainCheck};
+pub use chain::{append, append_all_blocking, health, verify, AuditHealth, ChainCheck};
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};

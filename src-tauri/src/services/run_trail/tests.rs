@@ -229,3 +229,63 @@ fn nothing_is_restored_without_a_trail() {
     // Writing with no trail is a no-op
     RunTrail::off().append(vec![]);
 }
+
+#[tokio::test]
+async fn the_trail_reports_its_health_like_an_audit_log() {
+    /// What is done to the trail before its health is asked
+    enum Change {
+        Nothing,
+        EditLine2,
+        RemoveTheFile,
+    }
+    // (the change, the chain the health reports, given the trail's lines)
+    let cases: [(Change, fn(u32) -> ChainCheck); 3] = [
+        (Change::Nothing, |lines| ChainCheck::Intact { lines }),
+        (Change::EditLine2, |_| ChainCheck::Broken {
+            line: 3,
+            reason: String::new(),
+        }),
+        (Change::RemoveTheFile, |_| ChainCheck::Intact { lines: 0 }),
+    ];
+    for (change, expected) in cases {
+        let (bus, trail, _dir) = bus_with_trail();
+        let ctx = started(&bus, "r1").await;
+        approved_call(&bus, &ctx, "c1").await;
+        let path = trail.path().unwrap().to_path_buf();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let lines = text.lines().count() as u32;
+        match change {
+            Change::Nothing => {}
+            Change::EditLine2 => {
+                let mut edited: Vec<String> = text.lines().map(str::to_string).collect();
+                edited[1] = edited[1].replace("draft", "edited");
+                std::fs::write(
+                    &path,
+                    format!(
+                        "{}
+",
+                        edited.join(
+                            "
+"
+                        )
+                    ),
+                )
+                .unwrap();
+            }
+            Change::RemoveTheFile => std::fs::remove_file(&path).unwrap(),
+        }
+
+        let health = bus.trail().health().await.unwrap();
+        assert_eq!(health.lost_entries, 0);
+        match (health.chain, expected(lines)) {
+            // The reason is the chain's own words; the line is what counts
+            (ChainCheck::Broken { line, .. }, ChainCheck::Broken { line: want, .. }) => {
+                assert_eq!(line, want)
+            }
+            (chain, want) => assert_eq!(chain, want),
+        }
+    }
+    // No trail at all reads as intact and empty
+    let health = RunTrail::off().health().await.unwrap();
+    assert_eq!(health.chain, ChainCheck::Intact { lines: 0 });
+}

@@ -8,6 +8,9 @@ super::commands! {
     /// Whether the `log_kind` log is degraded: entries lost this session or
     /// a broken hash chain
     fn get_audit_health(state, log_kind: String) -> AuditHealth => state.audit_store().health(&log_kind).await;
+    /// Whether the run trail (`~/.nandi/local/run-trail.jsonl`) is
+    /// degraded, in the same terms as an audit log
+    fn get_run_trail_health(state) -> AuditHealth => state.bus().trail().health().await;
 }
 
 #[cfg(test)]

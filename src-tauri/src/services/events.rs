@@ -510,6 +510,11 @@ impl EventBus {
         self
     }
 
+    /// Where it keeps run events and approval decisions beyond `state.db`
+    pub fn trail(&self) -> &RunTrail {
+        &self.trail
+    }
+
     /// Runs `write` in a transaction, then emits what it queued.
     async fn commit<T, F>(&self, write: F) -> Result<T, String>
     where

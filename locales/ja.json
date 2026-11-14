@@ -1729,6 +1729,7 @@
   "audit.download": "生ログをダウンロード",
   "audit.downloadFailed": "ダウンロードに失敗しました: {{error}}",
   "audit.degraded.title": "監査ログが不完全です",
+  "audit.degraded.runTrailTitle": "実行記録が不完全です",
   "audit.degraded.lost_one": "このセッションで {{count}} 件のエントリを書き込めませんでした: {{error}}",
   "audit.degraded.lost_other": "このセッションで {{count}} 件のエントリを書き込めませんでした: {{error}}",
   "audit.degraded.broken": "{{line}} 行目が前の行と一致しません。ログが編集されたか、行が削除または移動されています。",

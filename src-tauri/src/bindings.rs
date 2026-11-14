@@ -168,6 +168,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             runs::get_run_stats,
             audit::list_audit_log,
             audit::get_audit_health,
+            audit::get_run_trail_health,
             decisions::list_decision_months,
             decisions::list_decisions,
             knowme::get_know_me,

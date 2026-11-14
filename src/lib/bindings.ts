@@ -1115,6 +1115,18 @@ async getAuditHealth(logKind: string) : Promise<Result<AuditHealth, string>> {
 }
 },
 /**
+ * Whether the run trail (`~/.nandi/local/run-trail.jsonl`) is
+ * degraded, in the same terms as an audit log
+ */
+async getRunTrailHealth() : Promise<Result<AuditHealth, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_run_trail_health") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * The months that have decisions (`2026-11`), newest first
  */
 async listDecisionMonths() : Promise<Result<string[], string>> {

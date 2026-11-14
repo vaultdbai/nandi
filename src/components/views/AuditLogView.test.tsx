@@ -37,6 +37,7 @@ describe('AuditLogView', () => {
   beforeEach(() => {
     useNavigationStore.setState(useNavigationStore.getInitialState())
     commands.getAuditHealth = vi.fn(async () => ok(healthy))
+    commands.getRunTrailHealth = vi.fn(async () => ok(healthy))
     commands.listAuditLog = vi.fn(async (kind: string) =>
       ok(
         kind === 'llm'
@@ -59,7 +60,43 @@ describe('AuditLogView', () => {
     expect(await screen.findByText('model-0')).toBeInTheDocument()
     expect(commands.getAuditHealth).toHaveBeenCalledWith('llm')
     expect(screen.queryByText(t('audit.degraded.title'))).toBeNull()
+    expect(commands.getRunTrailHealth).toHaveBeenCalled()
+    expect(screen.queryByText(t('audit.degraded.runTrailTitle'))).toBeNull()
   })
+
+  it.each<[string, AuditHealth, string]>([
+    [
+      'a broken chain',
+      {
+        lostEntries: 0,
+        lastError: null,
+        chain: { state: 'broken', line: 4, reason: 'edited' },
+      },
+      i18n.t('audit.degraded.broken', { line: 4 }),
+    ],
+    [
+      'lost entries',
+      {
+        lostEntries: 1,
+        lastError: 'disk full',
+        chain: { state: 'intact', lines: 9 },
+      },
+      i18n.t('audit.degraded.lost', { count: 1, error: 'disk full' }),
+    ],
+  ])(
+    'warns on every tab when the run trail has %s',
+    async (_case, health, words) => {
+      commands.getRunTrailHealth = vi.fn(async () => ok(health))
+      render(<AuditLogView tab="egress" />)
+
+      expect(
+        await screen.findByText(t('audit.degraded.runTrailTitle'))
+      ).toBeInTheDocument()
+      expect(screen.getByText(words)).toBeInTheDocument()
+      // The egress log itself is intact
+      expect(screen.queryByText(t('audit.degraded.title'))).toBeNull()
+    }
+  )
 
   it('warns when entries were lost or the chain is broken', async () => {
     commands.getAuditHealth = vi.fn(async () =>

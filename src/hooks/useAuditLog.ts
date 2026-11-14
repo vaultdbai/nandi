@@ -43,6 +43,7 @@ export const auditQueryKeys = {
   page: (kind: AuditKind, limit: number, offset: number) =>
     ['auditLog', kind, limit, offset] as const,
   health: (kind: AuditKind) => ['auditLog', kind, 'health'] as const,
+  runTrailHealth: ['auditLog', 'runTrail', 'health'] as const,
 }
 
 /** Field names whose (non-numeric) values are secrets */
@@ -126,6 +127,17 @@ export function useAuditHealth(kind: AuditKind) {
   return useQuery({
     queryKey: auditQueryKeys.health(kind),
     queryFn: async () => unwrapResult(await client.getAuditHealth(kind)),
+  })
+}
+
+/**
+ * The run trail's health (`~/.nandi/local/run-trail.jsonl`): run events and
+ * approval decisions, kept beyond `state.db`, in the audit logs' terms
+ */
+export function useRunTrailHealth() {
+  return useQuery({
+    queryKey: auditQueryKeys.runTrailHealth,
+    queryFn: async () => unwrapResult(await client.getRunTrailHealth()),
   })
 }
 

@@ -1729,6 +1729,7 @@
   "audit.download": "Download raw log",
   "audit.downloadFailed": "Download failed: {{error}}",
   "audit.degraded.title": "Audit degraded",
+  "audit.degraded.runTrailTitle": "Run trail degraded",
   "audit.degraded.lost_one": "{{count}} entry couldn't be written this session: {{error}}",
   "audit.degraded.lost_other": "{{count}} entries couldn't be written this session: {{error}}",
   "audit.degraded.broken": "Line {{line}} doesn't follow the line before it: the log was edited, or lines were removed or moved.",

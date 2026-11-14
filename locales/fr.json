@@ -1729,6 +1729,7 @@
   "audit.download": "Télécharger le journal brut",
   "audit.downloadFailed": "Échec du téléchargement : {{error}}",
   "audit.degraded.title": "Journal d’audit dégradé",
+  "audit.degraded.runTrailTitle": "Historique des exécutions dégradé",
   "audit.degraded.lost_one": "{{count}} entrée n’a pas pu être écrite pendant cette session : {{error}}",
   "audit.degraded.lost_other": "{{count}} entrées n’ont pas pu être écrites pendant cette session : {{error}}",
   "audit.degraded.broken": "La ligne {{line}} ne suit pas la précédente : le journal a été modifié, ou des lignes ont été supprimées ou déplacées.",
