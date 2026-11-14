@@ -1,8 +1,12 @@
-//! Screening what arrives before it can become work: phishing and malware
-//! signs in the sender, the links and the words. Pure and offline: no
-//! link is opened and no attachment is downloaded (Nandi never reads
-//! attachments), so a malware scanner can be added here later without
-//! changing the queue.
+//! Screening what arrives before it can become work: the mechanical
+//! phishing and malware signs in the links and the sender's address. Pure
+//! and offline: no link is opened and no attachment is downloaded (Nandi
+//! never reads attachments), so a malware scanner can be added here later
+//! without changing the queue.
+//!
+//! What the words say (pressure to hurry, a sign-in or payment lure, a
+//! borrowed brand) is the Chief of Staff's to read and explain in the
+//! item's thread (`thread::prompt_for`), not a word list's.
 //!
 //! A sign is either a warning or a block. Any block, or
 //! [`WARNINGS_TO_BLOCK`] warnings, blocks the item; the user can only
@@ -33,61 +37,6 @@ const SHORTENERS: &[&str] = &[
 const RISKY_FILES: &[&str] = &[
     ".exe", ".scr", ".js", ".vbs", ".bat", ".cmd", ".ps1", ".msi", ".iso", ".jar", ".apk", ".hta",
     ".lnk",
-];
-
-/// Asks for a sign-in or account details
-const CREDENTIAL_LURES: &[&str] = &[
-    "verify your account",
-    "confirm your password",
-    "password will expire",
-    "password expires",
-    "reset your password",
-    "unusual sign-in",
-    "unusual sign in",
-    "account has been suspended",
-    "account will be suspended",
-    "account will be closed",
-    "log in to keep",
-    "sign in to keep",
-    "update your payment details",
-    "confirm your identity",
-];
-
-/// Money moved in a way scams use
-const PAYMENT_LURES: &[&str] = &[
-    "gift card",
-    "wire transfer",
-    "bank details have changed",
-    "new bank account",
-    "updated bank details",
-    "change of bank",
-    "pay in bitcoin",
-    "crypto wallet",
-    "send bitcoin",
-];
-
-/// Pressure to act before thinking
-const URGENCY: &[&str] = &[
-    "urgent",
-    "immediately",
-    "within 24 hours",
-    "act now",
-    "final notice",
-    "today only",
-];
-
-/// Names scams often borrow; a sender using one should come from its domain
-const BRANDS: &[&str] = &[
-    "microsoft",
-    "office 365",
-    "outlook",
-    "google",
-    "apple",
-    "paypal",
-    "amazon",
-    "docusign",
-    "dropbox",
-    "netflix",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Type)]
@@ -129,28 +78,11 @@ enum Sign {
 
 pub fn screen(evidence: &Evidence) -> Screening {
     let text = evidence.texts.join("\n");
-    let lower = text.to_lowercase();
     let links = links_in(&text);
     let mut signs = Vec::new();
 
     for link in &links {
         signs.extend(link_signs(link));
-    }
-    if let Some(phrase) = first_found(&lower, CREDENTIAL_LURES) {
-        let sign = format!("Asks you to sign in or confirm account details (\"{phrase}\")");
-        signs.push(if links.is_empty() {
-            Sign::Warn(sign)
-        } else {
-            Sign::Block(format!("{sign} with a link"))
-        });
-    }
-    if let Some(phrase) = first_found(&lower, PAYMENT_LURES) {
-        signs.push(Sign::Warn(format!(
-            "Asks for money in a way scams use (\"{phrase}\")"
-        )));
-    }
-    if let Some(phrase) = first_found(&lower, URGENCY) {
-        signs.push(Sign::Warn(format!("Pushes you to hurry (\"{phrase}\")")));
     }
     signs.extend(sender_signs(evidence));
 
@@ -180,10 +112,6 @@ pub fn screen(evidence: &Evidence) -> Screening {
         reasons: blocks.into_iter().chain(warnings).collect(),
         links,
     }
-}
-
-fn first_found<'a>(lower: &str, phrases: &[&'a str]) -> Option<&'a str> {
-    phrases.iter().copied().find(|p| lower.contains(p))
 }
 
 /// `http(s)://` links and bare `www.` ones, trailing punctuation cut
@@ -282,14 +210,6 @@ fn sender_signs(evidence: &Evidence) -> Vec<Sign> {
                 )));
             }
         }
-        if let Some(brand) = BRANDS.iter().find(|b| name_lower.contains(*b)) {
-            let brand_word = brand.split_whitespace().next().unwrap_or(brand);
-            if !domain.contains(brand_word) {
-                signs.push(Sign::Warn(format!(
-                    "The sender calls itself {brand} but writes from {domain}"
-                )));
-            }
-        }
     }
     for own in evidence.own_addresses.iter().filter_map(|a| domain_of(a)) {
         if own != domain && is_lookalike(&own, &domain) {
@@ -374,11 +294,28 @@ mod tests {
     }
 
     #[test]
-    fn a_sign_in_lure_with_a_link_is_blocked() {
-        let s = screen(&texts(&[
-            "Your password will expire today. Log in at https://login-micros0ft.com/reset",
-        ]));
-        assert_eq!(s.verdict, Verdict::Blocked);
+    fn what_the_words_say_is_left_to_the_model() {
+        // Lures and pressure with nothing mechanical behind them: the
+        // Chief of Staff reads them and explains the risk in the thread
+        for text in [
+            "URGENT: your password will expire today. Log in at https://login-micros0ft.com/reset",
+            "Our bank details have changed; please pay by gift card within 24 hours",
+        ] {
+            let s = screen(&texts(&[text]));
+            assert_eq!(s.verdict, Verdict::Clean, "{text}: {:?}", s.reasons);
+        }
+        let s = screen(&Evidence {
+            sender_name: Some("Microsoft Account Team"),
+            sender_email: Some("no-reply@mail-secure.io"),
+            texts: vec!["Hello"],
+            ..Evidence::default()
+        });
+        assert_eq!(
+            s.verdict,
+            Verdict::Clean,
+            "a borrowed brand: {:?}",
+            s.reasons
+        );
     }
 
     #[test]
@@ -403,22 +340,19 @@ mod tests {
 
     #[test]
     fn warnings_add_up_to_a_block() {
-        let s = screen(&texts(&[
-            "URGENT: our bank details have changed, pay via http://pay.example.com",
+        let two = screen(&texts(&[
+            "Pay via http://pay.example.com or https://bit.ly/3xyz",
         ]));
-        assert_eq!(s.verdict, Verdict::Blocked, "{:?}", s.reasons);
+        assert_eq!(two.reasons.len(), 2, "{:?}", two.reasons);
+        assert_eq!(two.verdict, Verdict::Suspicious);
+        let three = screen(&texts(&[
+            "Pay via http://pay.example.com or https://bit.ly/3xyz or https://tinyurl.com/x",
+        ]));
+        assert_eq!(three.verdict, Verdict::Blocked, "{:?}", three.reasons);
     }
 
     #[test]
-    fn a_sender_borrowing_a_brand_or_an_address_is_a_warning() {
-        let s = screen(&Evidence {
-            sender_name: Some("Microsoft Account Team"),
-            sender_email: Some("no-reply@mail-secure.io"),
-            texts: vec!["Hello"],
-            ..Evidence::default()
-        });
-        assert_eq!(s.verdict, Verdict::Suspicious);
-
+    fn a_sender_showing_another_address_is_a_warning() {
         let s = screen(&Evidence {
             sender_name: Some("ceo@vaultdb.ai"),
             sender_email: Some("ceo@gmail.com"),

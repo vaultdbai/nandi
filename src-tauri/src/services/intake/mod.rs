@@ -514,7 +514,7 @@ pub fn queued_note(item: &QueuedWork) -> String {
     let quoted = item.text.replace('\n', "\n> ");
     let mut out = format!("{what}{from}:\n\n> {quoted}\n");
     match item.screening.verdict {
-        Verdict::Clean => out.push_str("\nScreening: no warning signs.\n"),
+        Verdict::Clean => out.push_str("\nScreening: no warning signs in its links or sender.\n"),
         Verdict::Suspicious => out.push_str(&format!(
             "\nScreening: suspicious. {}\n",
             item.screening.reasons.join("; ")
@@ -1112,6 +1112,27 @@ mod tests {
         assert_eq!(item.status, IntakeStatus::Pending);
         // Bad rules aren't saved
         assert!(set_rules(&state, vec![teammate_rule("")]).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn the_chief_of_staff_explains_a_lure_screening_cant_see() {
+        let state = AppState::for_tests(Vec::new());
+        let item = propose(
+            &state,
+            Proposal {
+                source: RequestSource::Email,
+                text: "URGENT: our bank details have changed, pay the invoice by gift card".into(),
+                ..Proposal::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(item.screening.verdict, Verdict::Clean);
+        assert!(queued_note(&item).contains("no warning signs in its links or sender"));
+        let prompt = thread::prompt_for(&[item], &[]);
+        let instructions = &prompt[..prompt.find("<task-data>").unwrap()];
+        assert!(instructions.contains("Screening checks only links and the sender's address"));
+        assert!(instructions.contains("tell the user plainly in your first answer"));
     }
 
     #[tokio::test]

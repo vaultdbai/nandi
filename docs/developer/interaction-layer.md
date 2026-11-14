@@ -261,15 +261,22 @@ the email itself when the call names its `message_id`. No link is opened
 and no attachment is read (Nandi never downloads attachments; a malware
 scanner plugs in here later).
 
-| Sign                                                                                                                    | Result  |
-| ----------------------------------------------------------------------------------------------------------------------- | ------- |
-| A link to a bare IP, a punycode host, an `@` in the link's host, or a program or script download                        | Block   |
-| A sign-in or account lure with a link; a sender domain that imitates the user's (one or two letters, or another ending) | Block   |
-| A shortened or `http://` link; a payment lure; urgency; a sender borrowing a brand or showing another address           | Warning |
+| Sign                                                                                             | Result  |
+| ------------------------------------------------------------------------------------------------ | ------- |
+| A link to a bare IP, a punycode host, an `@` in the link's host, or a program or script download | Block   |
+| A sender domain that imitates the user's (one or two letters, or another ending)                 | Block   |
+| A shortened or `http://` link; a sender name showing another address                             | Warning |
 
 Any block, or three warnings, blocks the item: it can only be dismissed.
 Warnings show with the item before the user approves it. Free-mail
-domains are never lookalikes.
+domains are never lookalikes. Only a sender whose domain passed DMARC can
+match an auto-approve rule.
+
+Screening has no word lists (owner decision 9). What the words say
+(pressure to hurry, a sign-in or payment lure, changed bank details, a
+borrowed brand) is the Chief of Staff's to read: its thread prompt
+(`thread::prompt_for`) says screening checks only links and the sender,
+and tells it to explain any risk to the user before they approve.
 
 - **One step of its own** (`requests/self_step.rs`). A plan may give the
   Chief of Staff one step it can do itself: a site in its browser, its
