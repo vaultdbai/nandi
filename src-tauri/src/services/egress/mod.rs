@@ -208,17 +208,14 @@ pub fn model_proxy_url(api: model_proxy::ModelApi) -> String {
 
 /// Proxy endpoints for a container, through the relay. `HTTPS_PROXY`
 /// carries the agent's proxy token as Basic credentials, so tunnels are
-/// attributed like other routes. The relay and the LiteLLM gateway are on
-/// the agents' network and reached directly.
+/// attributed like other routes. The relay is on the agents' network and
+/// reached directly.
 pub fn proxy_env(proxy_token: &str) -> Vec<String> {
     let host = relay::RELAY_NAME;
     let port = relay::RELAY_PORT;
     let base = format!("http://{host}:{port}");
     let https_proxy = format!("http://nandi:{proxy_token}@{host}:{port}");
-    let no_proxy = format!(
-        "{host},{},localhost,127.0.0.1",
-        crate::services::harness::gateway::CONTAINER_NAME
-    );
+    let no_proxy = format!("{host},localhost,127.0.0.1");
     vec![
         format!("NANDI_LLM_PROXY={base}/llm"),
         // Read by the runtime image
@@ -842,7 +839,7 @@ pub(crate) mod tests {
         }
         assert!(env
             .iter()
-            .any(|v| v == "NO_PROXY=nandi-egress,nandi-litellm,localhost,127.0.0.1"));
+            .any(|v| v == "NO_PROXY=nandi-egress,localhost,127.0.0.1"));
     }
 
     #[tokio::test]

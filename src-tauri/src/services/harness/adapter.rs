@@ -95,7 +95,6 @@ pub struct HarnessConfig {
     /// How the CLI reaches its model through the egress proxy, which adds
     /// the host's credential. `None`: the CLI signs in with `credentials`
     pub model_route: Option<ModelRoute>,
-    pub gateway: Option<GatewayConfig>,
     pub credentials: HarnessCredentials,
     /// The system prompt (skill body + instructions), appended to the
     /// harness's own
@@ -121,7 +120,6 @@ impl HarnessConfig {
             approvals: super::acp::Approvals::default(),
             model: None,
             model_route: None,
-            gateway: None,
             credentials: HarnessCredentials::default(),
             system_prompt: None,
             placement,
@@ -142,7 +140,6 @@ impl fmt::Debug for HarnessConfig {
             .field("approvals", &self.approvals)
             .field("model", &self.model)
             .field("model_route", &self.model_route)
-            .field("gateway", &self.gateway)
             .field("credentials", &self.credentials)
             .field("placement", &self.placement)
             .finish()
@@ -207,21 +204,6 @@ pub enum McpServerRef {
         /// e.g. `Authorization`; values are per-session tokens
         headers: Vec<(String, String)>,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct GatewayConfig {
-    pub kind: GatewayKind,
-    /// `None` with `Litellm`: the session's own sidecar in the container
-    pub endpoint: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub enum GatewayKind {
-    /// A LiteLLM proxy translating Anthropic Messages to Bedrock Converse
-    Litellm,
 }
 
 /// How a CLI reaches its model: through the egress proxy, with the

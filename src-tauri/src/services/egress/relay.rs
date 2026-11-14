@@ -119,9 +119,9 @@ fn bridge_gateway(config: Vec<bollard::models::IpamConfig>) -> Option<std::net::
         .find(std::net::IpAddr::is_ipv4)
 }
 
-/// Creates [`AGENT_NETWORK`] if it's missing (for the LiteLLM gateway,
-/// which joins it so coding agents reach it directly)
-pub async fn ensure_agent_network() -> Result<(), String> {
+/// Creates [`AGENT_NETWORK`] if it's missing (the sandbox suite)
+#[cfg(test)]
+pub(crate) async fn ensure_agent_network() -> Result<(), String> {
     ensure_network(&docker()?, AGENT_NETWORK).await
 }
 

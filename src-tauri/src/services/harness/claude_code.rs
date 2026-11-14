@@ -21,8 +21,8 @@
 //!   `CLAUDE_CODE_SKIP_BEDROCK_AUTH=1` and the token in
 //!   `ANTHROPIC_AUTH_TOKEN`: the host signs each call as the user's AWS
 //!   identity ([`ModelRoute::Bedrock`])
-//! - The LiteLLM gateway (third-party Bedrock models): `ANTHROPIC_BASE_URL`
-//!   and no provider switch
+//! - The LiteLLM gateway (third-party Bedrock models): the Anthropic route
+//!   too; the host adds the gateway's master key
 //! - The model: `ANTHROPIC_MODEL`
 //!
 //! What the host signs in with is [`host_upstream`]'s: a key or gateway
@@ -216,15 +216,6 @@ impl CliProfile for ClaudeCode {
         if let (Some(route), Some(token)) = (config.model_route, proxy_token(config)) {
             route_through_proxy(&mut env, route, token);
         }
-        if let Some(gateway) = config.gateway.as_ref().and_then(|g| g.endpoint.as_ref()) {
-            // The gateway speaks Anthropic Messages and owns the provider
-            for name in PROVIDER_SWITCHES {
-                env.remove(*name);
-            }
-            env.insert("ANTHROPIC_BASE_URL".into(), gateway.clone());
-            env.entry("ANTHROPIC_AUTH_TOKEN".into())
-                .or_insert_with(|| "nandi-gateway".into());
-        }
         if let Some(model) = &config.model {
             env.insert("ANTHROPIC_MODEL".into(), model.clone());
         }
@@ -238,9 +229,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::services::harness::adapter::{
-        GatewayConfig, GatewayKind, HarnessAdapter, Placement, TestSpawn, UserMessage,
-    };
+    use crate::services::harness::adapter::{HarnessAdapter, Placement, TestSpawn, UserMessage};
 
     const PROXY_TOKEN: &str = "proxy-token-for-this-session";
 
@@ -481,23 +470,20 @@ mod tests {
     }
 
     #[test]
-    fn a_gateway_owns_the_provider() {
+    fn the_gateway_is_reached_through_the_proxy_and_owns_the_provider() {
         let (profile, _home) = profile(Some(r#"{"env":{"CLAUDE_CODE_USE_BEDROCK":"1"}}"#), &[]);
         let config = HarnessConfig {
-            model: Some("bedrock-llama".into()),
-            gateway: Some(GatewayConfig {
-                kind: GatewayKind::Litellm,
-                endpoint: Some("http://host.docker.internal:4000".into()),
-            }),
-            ..in_container()
+            model: Some("nandi-bedrock".into()),
+            ..routed(ModelRoute::Anthropic)
         };
         let env = env_map(&profile, &config);
         assert_eq!(
             env["ANTHROPIC_BASE_URL"],
-            "http://host.docker.internal:4000"
+            "http://nandi-egress:11435/anthropic"
         );
+        assert_eq!(env["ANTHROPIC_AUTH_TOKEN"], PROXY_TOKEN);
         assert!(!env.contains_key("CLAUDE_CODE_USE_BEDROCK"));
-        assert_eq!(env["ANTHROPIC_MODEL"], "bedrock-llama");
+        assert_eq!(env["ANTHROPIC_MODEL"], "nandi-bedrock");
     }
 
     #[test]

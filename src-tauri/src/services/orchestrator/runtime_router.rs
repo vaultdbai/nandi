@@ -30,8 +30,7 @@ use crate::services::egress::model_proxy::{ModelUpstream, Secret, UpstreamAuth};
 use crate::services::events::{EventBus, RunContext};
 use crate::services::harness::acp::{AcpSessionUpdate, AcpUsage};
 use crate::services::harness::adapter::{
-    GatewayConfig, HarnessAdapter, HarnessConfig, HarnessCredentials, ModelRoute, Placement,
-    UserMessage,
+    HarnessAdapter, HarnessConfig, HarnessCredentials, ModelRoute, Placement, UserMessage,
 };
 use crate::services::harness::detection::DetectEnv;
 use crate::services::harness::event_translation::{TurnOutcome, TurnTranslator};
@@ -79,8 +78,9 @@ pub struct RouterInputs {
     /// How the CLI reaches its model through the egress proxy, and what the
     /// host signs it with ([`claude_code_access`])
     pub model_access: Option<ModelAccess>,
-    /// The running gateway (endpoint, key), when the agent wants one
-    pub gateway: Option<(GatewayConfig, String)>,
+    /// The running LiteLLM gateway as an upstream the proxy signs for
+    /// (`GatewayService::session_upstream`), when the agent wants one
+    pub gateway: Option<ModelUpstream>,
     /// `.nandi/llm.yaml`'s choices the environment left open;
     /// the agent's own `runtime_config` still wins
     pub repo: HarnessDefaults,
@@ -263,7 +263,7 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         folders: inputs.folders.clone(),
         tools,
     };
-    let mut credentials = inputs.credentials;
+    let credentials = inputs.credentials;
     let mut env: std::collections::HashMap<String, String> =
         crate::services::egress::proxy_env(&inputs.proxy_token)
             .into_iter()
@@ -278,8 +278,9 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         .clone()
         .or(repo.model.clone())
         .or(inputs.default_model);
-    let gateway = if config.gateway.is_some() {
-        let Some((gateway, key)) = inputs.gateway else {
+    let through_gateway = config.gateway.is_some();
+    let model_access = if through_gateway {
+        let Some(upstream) = inputs.gateway else {
             return fallback("The LiteLLM gateway isn't running".to_string());
         };
         // The gateway's aliases stand for the Bedrock model
@@ -292,26 +293,17 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
             "ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string(),
             gateway::SMALL_MODEL_ALIAS.to_string(),
         );
-        credentials
-            .custom_env
-            .insert("ANTHROPIC_AUTH_TOKEN".to_string(), key);
-        // The gateway holds the AWS identity; the CLI doesn't need it
-        credentials.aws_access_key_id = None;
-        credentials.aws_secret_access_key = None;
-        credentials.aws_session_token = None;
-        credentials.aws_bearer_token = None;
-        credentials.aws_profile = None;
-        Some(gateway)
+        // The proxy fronts the gateway with its key; the gateway holds
+        // the AWS identity
+        Some(ModelAccess {
+            route: ModelRoute::Anthropic,
+            upstream,
+            region: None,
+        })
     } else {
-        None
+        inputs.model_access
     };
-    // The proxy serves the model unless the LiteLLM gateway does
-    let model_access = inputs.model_access.filter(|_| gateway.is_none());
-    if inputs.host_only_sign_in
-        && gateway.is_none()
-        && model_access.is_none()
-        && !has_secret(&credentials)
-    {
+    if inputs.host_only_sign_in && model_access.is_none() && !has_secret(&credentials) {
         return fallback(
             "Claude Code has nothing to sign in with: sign in to Claude Code on this computer, \
              or add an Anthropic key in Settings › Models & runtimes."
@@ -327,7 +319,7 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
             bedrock.then(|| "bedrock".to_string())
         });
     // The model the CLI really uses: through the gateway, its Bedrock model
-    let named = if config.gateway.is_some() {
+    let named = if through_gateway {
         config.model.as_deref()
     } else {
         model.as_deref()
@@ -345,7 +337,7 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         // Its model calls go to the proxy, which is always reachable
         Vec::new()
     } else {
-        model_hosts(&harness_id, gateway.as_ref())
+        model_hosts(&harness_id)
     };
     let (model_route, upstream) = match model_access {
         Some(access) => {
@@ -374,7 +366,6 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
             },
             model: model.clone(),
             model_route,
-            gateway,
             credentials,
             system_prompt: Some(format!("{}{}", agent.system_prompt(), inputs.folder_prompt))
                 .filter(|p| !p.trim().is_empty()),
@@ -387,13 +378,9 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
     }))
 }
 
-/// Where a CLI's own model calls go, given how it's signed in: allowed
-/// through the egress proxy on top of the agent's `network.allow`. Nothing
-/// for the LiteLLM gateway, which coding agents reach on their network.
-fn model_hosts(harness_id: &str, gateway: Option<&GatewayConfig>) -> Vec<String> {
-    if gateway.is_some() {
-        return Vec::new();
-    }
+/// Where a CLI's own model calls go when the proxy doesn't serve them:
+/// allowed through the egress proxy on top of the agent's `network.allow`
+fn model_hosts(harness_id: &str) -> Vec<String> {
     let hosts: &[&str] = match harness_id {
         // Vertex from Claude Code's own settings
         "claude-code" => &["api.anthropic.com"],
@@ -602,9 +589,14 @@ async fn inputs_for(
             if gateway.model().as_deref() != Some(bedrock_model.as_str()) {
                 gateway.start(&bedrock_model, &credentials).await?;
             }
-            gateway.session_gateway(true)
+            gateway.session_upstream()
         }
         None => None,
+    };
+    // Only the gateway's container holds AWS keys, never the CLI's
+    let credentials = match gateway {
+        Some(_) => HarnessCredentials::default(),
+        None => credentials,
     };
     Ok(RouterInputs {
         sandbox: sandbox_ready(&harness_id).await,
@@ -1314,7 +1306,6 @@ cpu: 2.5
         let plan = harness_plan(plan(&agent("runtime: claude-code\n"), inputs));
         assert_eq!(plan.config.model_route, Some(ModelRoute::Anthropic));
         assert_eq!(plan.upstream, Some(access.upstream));
-        assert!(plan.config.gateway.is_none());
         assert!(plan.egress_hosts.is_empty(), "only the proxy");
         assert_eq!(plan.provider, None, "the gateway owns the provider");
     }
@@ -1368,7 +1359,7 @@ cpu: 2.5
     }
 
     #[test]
-    fn a_gateway_agent_uses_the_alias_and_the_gateway_key() {
+    fn a_gateway_agent_uses_the_alias_and_the_proxy_keeps_the_master_key() {
         let agent = agent(
             "runtime: claude-code\nruntime_config:\n  model: meta.llama3-3-70b-instruct-v1:0\n  gateway: litellm\n",
         );
@@ -1377,30 +1368,24 @@ cpu: 2.5
             RuntimeDecision::Unavailable(reason) if reason.contains("gateway")
         ));
         let mut inputs = inputs();
-        inputs.credentials.aws_access_key_id = Some("ASIA".into());
-        inputs.gateway = Some((
-            GatewayConfig {
-                kind: crate::services::harness::adapter::GatewayKind::Litellm,
-                endpoint: Some("http://nandi-litellm:4000".into()),
-            },
-            "sk-nandi-key".into(),
-        ));
+        let upstream = ModelUpstream::anthropic(
+            "http://127.0.0.1:4000",
+            UpstreamAuth::Bearer(Secret::new("sk-nandi-master")),
+        );
+        inputs.gateway = Some(upstream.clone());
         let plan = harness_plan(plan(&agent, inputs));
         assert_eq!(plan.model.as_deref(), Some(gateway::MODEL_ALIAS));
         assert_eq!(plan.provider.as_deref(), Some("bedrock"));
-        assert_eq!(
-            plan.config.credentials.custom_env["ANTHROPIC_AUTH_TOKEN"],
-            "sk-nandi-key"
-        );
-        assert_eq!(
-            plan.config.credentials.aws_access_key_id, None,
-            "the gateway holds AWS"
-        );
+        assert_eq!(plan.config.model_route, Some(ModelRoute::Anthropic));
+        assert_eq!(plan.upstream, Some(upstream), "the host signs for it");
+        assert!(plan.config.credentials.custom_env.is_empty());
+        assert!(!plan
+            .config
+            .env
+            .values()
+            .any(|v| v.contains("sk-nandi-master")));
         assert_eq!(plan.config.placement.network, "nandi-agents");
-        assert!(
-            plan.egress_hosts.is_empty(),
-            "the gateway is on its network"
-        );
+        assert!(plan.egress_hosts.is_empty(), "only the proxy");
     }
 
     #[test]

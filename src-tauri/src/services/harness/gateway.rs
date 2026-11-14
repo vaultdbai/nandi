@@ -4,12 +4,19 @@
 //! `runtimes/nandi-harness/litellm-config-template.yaml`) and runs it:
 //!
 //! - container `nandi-litellm` on the `nandi-harness` Docker network (its way
-//!   to Bedrock) and on the internal `nandi-agents` one, so coding agents
-//!   reach it directly at `http://nandi-litellm:4000`; published on
-//!   `127.0.0.1:4000` for its health check
+//!   to Bedrock), published on `127.0.0.1:4000` only. Coding agents never
+//!   reach it directly: the egress proxy fronts it on its `/anthropic`
+//!   route ([`GatewayService::session_upstream`]), checks the session's
+//!   proxy token, adds the master key on the host and forwards only model
+//!   calls, so the admin routes stay out of an agent's reach
 //! - AWS credentials and a per-start master key go in as container
 //!   environment (Docker API body, never a file or a command line); the
-//!   rendered config holds neither
+//!   rendered config holds neither. The master key never leaves the host
+//!   and this container
+//!
+//! LiteLLM's per-session virtual keys need a Postgres database
+//! (`DATABASE_URL`); the proxy's per-session token gives the same
+//! isolation without one.
 //! - one gateway, one model at a time
 
 use std::collections::HashMap;
@@ -23,10 +30,11 @@ use bollard::Docker;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use super::adapter::{GatewayConfig, GatewayKind, HarnessCredentials};
+use super::adapter::HarnessCredentials;
 use crate::db::{now_ms, ts};
 use crate::model::Timestamp;
 use crate::sandbox::{self, SandboxSpec};
+use crate::services::egress::model_proxy::{ModelUpstream, Secret, UpstreamAuth};
 use crate::services::events::{self, EventBus, NandiEvent};
 use crate::services::AppState;
 
@@ -173,22 +181,14 @@ impl GatewayService {
         }
     }
 
-    /// Where a harness reaches the gateway, with the key it must present;
-    /// `None` when it isn't running
-    pub fn session_gateway(&self, in_container: bool) -> Option<(GatewayConfig, String)> {
+    /// The gateway as the egress proxy reaches it, with the master key the
+    /// proxy adds on the host; `None` when it isn't running
+    pub fn session_upstream(&self) -> Option<ModelUpstream> {
         let running = self.running.lock().ok()?;
         let running = running.as_ref()?;
-        let endpoint = if in_container {
-            format!("http://{CONTAINER_NAME}:{PORT}")
-        } else {
-            format!("http://127.0.0.1:{PORT}")
-        };
-        Some((
-            GatewayConfig {
-                kind: GatewayKind::Litellm,
-                endpoint: Some(endpoint),
-            },
-            running.master_key.clone(),
+        Some(ModelUpstream::anthropic(
+            format!("http://127.0.0.1:{PORT}"),
+            UpstreamAuth::Bearer(Secret::new(running.master_key.clone())),
         ))
     }
 
@@ -220,7 +220,6 @@ impl GatewayService {
             ));
         }
         ensure_network().await?;
-        crate::services::egress::relay::ensure_agent_network().await?;
         remove(&docker).await;
         let master_key = format!("sk-nandi-{}", uuid::Uuid::new_v4().simple());
         let body = container_spec(model, &config_file, container_env(credentials, &master_key))
@@ -233,22 +232,6 @@ impl GatewayService {
             .create_container(Some(options), body)
             .await
             .map_err(|e| format!("Could not create the gateway container: {e}"))?;
-        // Coding agents only have the internal network; join it
-        let joined = docker
-            .connect_network(
-                crate::services::egress::relay::AGENT_NETWORK,
-                bollard::models::NetworkConnectRequest {
-                    container: created.id.clone(),
-                    ..Default::default()
-                },
-            )
-            .await;
-        if let Err(e) = joined {
-            remove(&docker).await;
-            return Err(format!(
-                "Could not attach the gateway to the agents' network: {e}"
-            ));
-        }
         if let Err(e) = docker.start_container(&created.id, None).await {
             remove(&docker).await;
             return Err(format!("Could not start the gateway: {e}"));
@@ -448,7 +431,26 @@ mod tests {
         let (bus, _) = crate::services::events::tests::bus();
         let service = GatewayService::new(bus, std::env::temp_dir());
         assert_eq!(service.status().await, LitellmGatewayStatus::default());
-        assert_eq!(service.session_gateway(true), None);
+        assert_eq!(service.session_upstream(), None);
         assert_eq!(service.model(), None);
+    }
+
+    #[test]
+    fn sessions_reach_the_gateway_only_through_the_proxy_on_the_host() {
+        let (bus, _) = crate::services::events::tests::bus();
+        let service = GatewayService::new(bus, std::env::temp_dir());
+        *service.running.lock().unwrap() = Some(Running {
+            model: "meta.llama".into(),
+            master_key: "sk-nandi-master".into(),
+            container_id: "c".into(),
+            started_at: ts(now_ms()),
+        });
+        assert_eq!(
+            service.session_upstream(),
+            Some(ModelUpstream::anthropic(
+                "http://127.0.0.1:4000",
+                UpstreamAuth::Bearer(Secret::new("sk-nandi-master")),
+            ))
+        );
     }
 }
