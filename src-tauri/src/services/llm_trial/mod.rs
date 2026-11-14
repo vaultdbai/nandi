@@ -17,9 +17,11 @@
 //! Code sign-in, Ollama, a model from `llm.yaml`) it turns `Off` for good.
 //! A sign-in that's only found, not proven, doesn't count: a stale login
 //! would leave them with nothing. The user can turn it back `On` in
-//! Settings › Models & runtimes while tokens are left; then the default
-//! model runs on it again until they're used up or the user saves another
-//! key. When the keychain can't be read, the trial counts as off.
+//! Settings › Models & runtimes while tokens are left, until they're used
+//! up or the user saves another key. On or `Auto`, it is the last resort:
+//! the user's own key or sign-in always wins, and the trial serves only
+//! the calls nothing of theirs can. When the keychain can't be read, the
+//! trial counts as off.
 //!
 //! What the gateway last said is kept in memory ([`Health`]): used up,
 //! paused until a time (its daily cap), or unreachable for a minute. While
@@ -45,9 +47,6 @@ pub use gateway::{GatewayClient, GatewayError, TrialAccount, TrialLink};
 
 /// The one model the trial runs (the cheapest DeepSeek model)
 pub const TRIAL_MODEL: &str = "deepseek:deepseek-flash";
-/// Keychain entry holding the default model from before the user turned
-/// the trial on, so turning it off gives it back
-const PREVIOUS_ENTRY: &str = "nandi.trial.deepseek.previous-model";
 /// Keychain entry holding the [`TrialMode`] (`on` / `off`; none is `Auto`)
 const MODE_ENTRY: &str = "nandi.trial.deepseek.mode";
 
@@ -255,16 +254,6 @@ fn available_with(trial: Option<&Trial>, secrets: &Secrets) -> bool {
     trial.is_some_and(|trial| trial.health().usable()) && mode(secrets) != TrialMode::Off
 }
 
-/// The user turned the trial back on and it's usable: `deepseek:` calls
-/// run on it before any key
-pub fn chosen(secrets: &Secrets) -> bool {
-    chosen_with(trial().as_deref(), secrets)
-}
-
-fn chosen_with(trial: Option<&Trial>, secrets: &Secrets) -> bool {
-    trial.is_some_and(|trial| trial.health().usable()) && mode(secrets) == TrialMode::On
-}
-
 /// Why calls can't use a trial that isn't off: used up, paused, or
 /// unreachable. `None` when it's usable, off, or there's none.
 pub fn why_unavailable(secrets: &Secrets) -> Option<&'static str> {
@@ -438,23 +427,6 @@ pub fn link_soon(state: &AppState) {
             Err(e) => log::info!("Free trial not linked to the email yet: {e}"),
         }
     });
-}
-
-/// Keeps the default model from before the trial was turned on
-pub fn remember_default(secrets: &Secrets, model: &str) {
-    if model == TRIAL_MODEL {
-        return;
-    }
-    if let Err(e) = secrets.set(PREVIOUS_ENTRY, model) {
-        log::warn!("Could not remember the default model: {e}");
-    }
-}
-
-/// The default model from before the trial was turned on, once
-pub fn take_remembered_default(secrets: &Secrets) -> Option<String> {
-    let model = secrets.read(PREVIOUS_ENTRY).ok().flatten()?;
-    let _ = secrets.delete(PREVIOUS_ENTRY);
-    Some(model)
 }
 
 #[cfg(test)]

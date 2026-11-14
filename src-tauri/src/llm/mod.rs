@@ -14,7 +14,8 @@
 //!
 //! With nothing of the user's own, `deepseek:` calls run on the free trial
 //! (`services::llm_trial`): Nandi's gateway, which holds the key and counts
-//! the tokens.
+//! the tokens. The trial is the last resort: the user's own key or sign-in
+//! always wins, even with the trial switched on.
 
 mod anthropic;
 pub mod claude_code;
@@ -285,16 +286,14 @@ async fn dispatch(
     let (provider, model) = parse_model(&request.model)?;
     let max_tokens = request.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS);
     if provider == Provider::DeepSeek {
-        // The user's own key, unless they turned the free trial back on
-        if !llm_trial::chosen(secrets) {
-            if let Ok(key) = llm_keys::require_api_key(secrets, provider) {
-                let result =
-                    deepseek::stream(streaming_client(), &key, model, request, max_tokens, text)
-                        .await;
-                return own_model(secrets, result);
-            }
+        // The user's own key always wins, even with the trial switched on
+        if let Ok(key) = llm_keys::require_api_key(secrets, provider) {
+            let result =
+                deepseek::stream(streaming_client(), &key, model, request, max_tokens, text).await;
+            return own_model(secrets, result);
         }
-        // The free trial, on its one model, through Nandi's gateway
+        // The free trial, on its one model, through Nandi's gateway: the
+        // last resort, when nothing of the user's can serve the call
         return llm_trial::chat(secrets, streaming_client(), request, max_tokens, text).await;
     }
 

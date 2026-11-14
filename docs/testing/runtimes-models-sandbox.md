@@ -500,13 +500,13 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### MD-14 — Free tokens switch and automatic turn-off
 
-- **What:** The "Use free tokens" switch turns the trial on (remembering the current default, making the trial model default) or off (giving the previous default back unless the user picked another since). The trial turns itself off for good after a call on the user's own model succeeds (key, working Claude Code sign-in, Ollama default, llm.yaml/env model); saving a key also turns it off. It can be turned back on while the gateway hasn't said the tokens are used up.
-- **Where:** `FreeTrialField` switch `#free-trial-switch`, `rpc/llm_keys.rs` (`set_free_trial`), `llm_trial/mod.rs` (`set_enabled`, `own_model_worked`, `own_model_set_up`, `remember_default`, `take_remembered_default`). HTTP `POST /api/rpc/set_free_trial`. Keychain `nandi.trial.deepseek.mode`, `nandi.trial.deepseek.previous-model`.
+- **What:** The "Use free tokens" switch turns the trial on or off. It never changes the default model. The trial is the last resort (owner decision 8, 2026-11-14): the user's own key or sign-in always wins, even with the switch on, and the trial serves only a call nothing of the user's can. The trial turns itself off for good after a call on the user's own model succeeds (key, working Claude Code sign-in, Ollama default, llm.yaml/env model); saving a key also turns it off. It can be turned back on while the gateway hasn't said the tokens are used up.
+- **Where:** `FreeTrialField` switch `#free-trial-switch`, `rpc/llm_keys.rs` (`set_free_trial`), `services/llm_keys.rs` (`resolve_model`), `llm/mod.rs` (`dispatch`), `llm_trial/mod.rs` (`set_enabled`, `own_model_worked`, `own_model_set_up`). HTTP `POST /api/rpc/set_free_trial`. Keychain `nandi.trial.deepseek.mode`.
 - **Preconditions:** Tokens left on the gateway.
-- **Steps:** 1. Turn on with default `claude:x`. 2. Turn off. 3. Turn on, change default to `gpt:y`, turn off. 4. Add a working key and make a call.
-- **Expected:** 1. Default becomes `deepseek:deepseek-flash`. 2. Back to `claude:x`. 3. Stays `gpt:y`. 4. Message "Off, because you set up your own model. You still have N free tokens."; while on, `deepseek:` calls use the trial before the user's DeepSeek key.
+- **Steps:** 1. With no key or sign-in and default `claude:x`, turn the switch on and ask. 2. Add a DeepSeek key in the keychain without saving it through Settings (so the trial stays on), keep the switch on, and ask with `deepseek:deepseek-flash`. 3. Add a working key through Settings and make a call.
+- **Expected:** 1. The default stays `claude:x`; the answer comes from the trial ("In use"). 2. The call runs on the user's DeepSeek key, not the trial; the card says "N free tokens left.", not "In use". 3. Message "Off, because you set up your own model. You still have N free tokens."
 - **Edge / negative cases:** reading status never writes the keychain; a stale Claude Code login doesn't turn it off; turning on once the gateway said used up is refused; an unreadable mode counts as off.
-- **Automation:** Covered by: `llm_trial/tests.rs`, `llm_keys.rs` tests, `LlmKeysSection.test.tsx` | Layer: api | Gap: none.
+- **Automation:** Covered by: `llm_trial/tests.rs`, `llm_keys.rs` (`the_free_trial_is_the_last_resort`: own key, own sign-in, trial on or off, and the source each call uses), `LlmKeysSection.test.tsx` | Layer: api | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 

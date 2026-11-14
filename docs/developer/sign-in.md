@@ -95,8 +95,8 @@ builds, no CI secret, no fallback.
   off even after the user turned it back on.
 - **Back on by choice:** Settings › Models › Free tokens › **Use free
   tokens** (`set_free_trial`) works unless the gateway said the tokens are
-  used up. It makes the trial model the default, and `deepseek:` calls use
-  the trial before the user's DeepSeek key.
+  used up. It leaves the default model alone and stays the last resort:
+  the user's own key or sign-in still wins (owner decision 8, 2026-11-14).
 - **Gateway URL:** `llm_trial::gateway::DEFAULT_GATEWAY_URL`;
   `NANDI_TRIAL_GATEWAY_URL` overrides it (staging, a local gateway). The
   trial is set up at start (`llm_trial::init`) with the instance ID.

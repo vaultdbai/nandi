@@ -32,7 +32,6 @@ fn api(code: &str, retry_after: Option<u64>) -> GatewayError {
 fn without_a_trial_nothing_is_offered_or_written() {
     let secrets = Secrets::in_memory();
     assert!(!available_with(None, &secrets));
-    assert!(!chosen_with(None, &secrets));
     assert_eq!(why_unavailable_with(None, &secrets), None);
     assert!(set_enabled_with(None, &secrets, true).is_err());
     // Tests run with no trial unless they set one
@@ -49,7 +48,6 @@ fn an_own_model_turns_the_trial_off_until_the_user_turns_it_on() {
     let trial = trial();
     assert_eq!(mode(&secrets), TrialMode::Auto);
     assert!(available_with(Some(&trial), &secrets));
-    assert!(!chosen_with(Some(&trial), &secrets));
 
     // A key or sign-in found: off for good, even once it's gone
     own_model_found_with(true, &secrets);
@@ -58,14 +56,15 @@ fn an_own_model_turns_the_trial_off_until_the_user_turns_it_on() {
 
     // The user turns it back on; finding their model again keeps it on
     set_enabled_with(Some(&trial), &secrets, true).unwrap();
-    assert!(chosen_with(Some(&trial), &secrets));
+    assert_eq!(mode(&secrets), TrialMode::On);
+    assert!(available_with(Some(&trial), &secrets));
     own_model_found_with(true, &secrets);
     assert_eq!(mode(&secrets), TrialMode::On);
 
     // Saving another key turns it off again
     own_model_set_up_with(true, &secrets);
     assert_eq!(mode(&secrets), TrialMode::Off);
-    assert!(!chosen_with(Some(&trial), &secrets));
+    assert!(!available_with(Some(&trial), &secrets));
 
     // And the user can turn it off themselves
     set_enabled_with(Some(&trial), &secrets, true).unwrap();
@@ -150,20 +149,6 @@ fn a_paused_answer_from_the_status_route_is_rechecked_later() {
     // A turned-off trial isn't explained: the user's choice is the reason
     set_mode(&secrets, TrialMode::Off).unwrap();
     assert_eq!(why_unavailable_with(Some(&trial), &secrets), None);
-}
-
-#[test]
-fn turning_the_trial_off_gives_back_the_old_default() {
-    let secrets = Secrets::in_memory();
-    remember_default(&secrets, "claude:claude-sonnet-5");
-    assert_eq!(
-        take_remembered_default(&secrets).as_deref(),
-        Some("claude:claude-sonnet-5")
-    );
-    // Only once, and the trial's own model is never remembered
-    assert_eq!(take_remembered_default(&secrets), None);
-    remember_default(&secrets, TRIAL_MODEL);
-    assert_eq!(take_remembered_default(&secrets), None);
 }
 
 #[tokio::test]

@@ -276,6 +276,10 @@ fn has_key(secrets: &Secrets, provider: KeyedProvider) -> bool {
 /// free trial (`llm_trial`) while the gateway offers it. A signed-in Claude
 /// Code stands in for an Anthropic key, so with nothing else set every
 /// call runs on Claude Code.
+///
+/// The trial is the last resort: the user's own key or sign-in always
+/// wins, even with the trial switched on. It serves only a call nothing of
+/// the user's can (owner decision 8, 2026-11-14).
 pub fn usable_model(secrets: &Secrets, preferred: &str) -> Result<String, String> {
     resolve_model(secrets, preferred).map(|(model, _)| model)
 }
@@ -291,10 +295,6 @@ fn resolve_model(secrets: &Secrets, preferred: &str) -> Result<(String, bool), S
         Provider::OpenAi => KeyedProvider::OpenAi,
         Provider::Ollama => return Ok((preferred.to_string(), false)),
     };
-    // The user turned the trial back on: DeepSeek runs on it first
-    if keyed == KeyedProvider::DeepSeek && llm_trial::chosen(secrets) {
-        return Ok((llm_trial::TRIAL_MODEL.to_string(), true));
-    }
     if has_access(secrets, keyed) {
         return Ok((preferred.to_string(), false));
     }
@@ -411,34 +411,17 @@ pub async fn set_default_model(
     get_default_model(state).await
 }
 
-/// Turns the free trial on (and makes its model the default, so calls use
-/// it) or off. On works only while tokens are left. Off gives back the
-/// default model from before it was turned on.
+/// Turns the free trial on or off. On works only while tokens are left.
+/// The default model stays as it is: the trial serves only the calls that
+/// nothing of the user's can ([`usable_model`]).
 pub async fn set_free_trial(state: &AppState, enabled: bool) -> Result<DefaultModelStatus, String> {
-    let current = state
-        .store()
-        .read(|repo| repo.settings().default_model().to_string());
     llm_trial::set_enabled(state.secrets(), enabled)?;
-    if enabled {
-        llm_trial::remember_default(state.secrets(), &current);
-        return set_default_model(state, llm_trial::TRIAL_MODEL.to_string()).await;
-    }
-    let remembered = llm_trial::take_remembered_default(state.secrets());
-    if let Some(previous) = default_after_trial_off(&current, remembered) {
-        return set_default_model(state, previous).await;
-    }
     get_default_model(state).await
 }
 
 /// The free trial's allowance as the gateway counts it (`GET /v1/trial`)
 pub async fn get_free_trial_account(state: &AppState) -> Result<llm_trial::TrialAccount, String> {
     llm_trial::account(state).await
-}
-
-/// The model to make the default when the trial is turned off: the one
-/// from before, unless the user has picked another since
-fn default_after_trial_off(current: &str, remembered: Option<String>) -> Option<String> {
-    remembered.filter(|previous| current == llm_trial::TRIAL_MODEL && previous != current)
 }
 
 /// Which providers have a key configured. Never returns the keys.
@@ -461,18 +444,6 @@ pub async fn get_llm_key_status(state: &AppState) -> Result<Vec<LlmKeyStatus>, S
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn turning_the_trial_off_restores_the_old_default_unless_changed() {
-        let old = Some("claude:claude-sonnet-5".to_string());
-        assert_eq!(
-            default_after_trial_off(llm_trial::TRIAL_MODEL, old.clone()).as_deref(),
-            Some("claude:claude-sonnet-5")
-        );
-        // The user picked another model while the trial was on: keep it
-        assert_eq!(default_after_trial_off("gpt:gpt-5", old), None);
-        assert_eq!(default_after_trial_off(llm_trial::TRIAL_MODEL, None), None);
-    }
 
     #[tokio::test]
     async fn keys_are_write_only_and_clearable() {
@@ -568,6 +539,93 @@ mod tests {
             "deepseek:deepseek-flash"
         );
         crate::services::harness::claude_sdk::set_usable_for_tests(false);
+    }
+
+    /// Where a model call is served from
+    #[derive(Debug, PartialEq)]
+    enum Source {
+        /// The user's own key or sign-in (or Ollama), on this model
+        Own(String),
+        /// Nandi's free trial
+        FreeTrial,
+        /// Nothing: the call fails with a message
+        Nothing,
+    }
+
+    fn own(model: &str) -> Source {
+        Source::Own(model.to_string())
+    }
+
+    /// Where [`resolve_model`] sends a call for `preferred`
+    fn source_for(secrets: &Secrets, preferred: &str) -> Source {
+        match resolve_model(secrets, preferred) {
+            Ok((model, false)) => Source::Own(model),
+            Ok((model, true)) => {
+                assert_eq!(model, llm_trial::TRIAL_MODEL, "the trial runs one model");
+                Source::FreeTrial
+            }
+            Err(_) => Source::Nothing,
+        }
+    }
+
+    const ON: bool = true;
+    const OFF: bool = false;
+    const SIGNED_IN: bool = true;
+    const NO_SIGN_IN: bool = false;
+
+    /// Owner decision 8: the user's own key or sign-in always wins, even
+    /// with the trial switched on. The trial serves only what nothing of
+    /// theirs can.
+    #[test]
+    fn the_free_trial_is_the_last_resort() {
+        use KeyedProvider::{Anthropic, DeepSeek, OpenAi};
+        use Source::{FreeTrial, Nothing};
+        let flash = llm_trial::TRIAL_MODEL;
+
+        // (model asked for, own keys, Claude Code sign-in, trial switch, expected source)
+        #[rustfmt::skip]
+        let cases: [(&str, &[KeyedProvider], bool, bool, Source); 13] = [
+            // An own key for the model asked for wins, trial on or off
+            (flash,                  &[DeepSeek],          NO_SIGN_IN, ON,  own(flash)),
+            (flash,                  &[DeepSeek],          NO_SIGN_IN, OFF, own(flash)),
+            ("gpt:gpt-4o",           &[OpenAi],            NO_SIGN_IN, ON,  own("gpt:gpt-4o")),
+            // Another provider's own key wins over the trial
+            (flash,                  &[OpenAi],            NO_SIGN_IN, ON,  own("gpt:gpt-5")),
+            (flash,                  &[Anthropic, OpenAi], NO_SIGN_IN, ON,  own("claude:claude-sonnet-5")),
+            // An own sign-in wins over the trial
+            ("claude:claude-opus-5", &[],                  SIGNED_IN,  ON,  own("claude:claude-opus-5")),
+            (flash,                  &[],                  SIGNED_IN,  ON,  own("claude:claude-sonnet-5")),
+            (flash,                  &[],                  SIGNED_IN,  OFF, own("claude:claude-sonnet-5")),
+            // A key for the model asked for wins over a sign-in too
+            (flash,                  &[DeepSeek],          SIGNED_IN,  ON,  own(flash)),
+            // A local model needs nothing, so the trial never serves it
+            ("ollama:llama3.2",      &[],                  NO_SIGN_IN, ON,  own("ollama:llama3.2")),
+            // Nothing of the user's: the trial serves the call while it's on
+            ("claude:claude-opus-5", &[],                  NO_SIGN_IN, ON,  FreeTrial),
+            (flash,                  &[],                  NO_SIGN_IN, ON,  FreeTrial),
+            (flash,                  &[],                  NO_SIGN_IN, OFF, Nothing),
+        ];
+
+        // A trial nobody calls here: resolving a model never reaches it
+        llm_trial::use_test_trial(Some(std::sync::Arc::new(llm_trial::Trial::new(
+            "http://127.0.0.1:9".into(),
+            "test-instance".into(),
+        ))));
+        for (preferred, keys, sign_in, trial_on, expected) in cases {
+            let secrets = Secrets::in_memory();
+            for provider in keys {
+                secrets.set(provider.keyring_user(), "sk-own").unwrap();
+            }
+            crate::services::harness::claude_sdk::set_usable_for_tests(sign_in);
+            llm_trial::set_enabled(&secrets, trial_on).unwrap();
+            assert_eq!(
+                source_for(&secrets, preferred),
+                expected,
+                "{preferred} with keys {keys:?}, sign-in {sign_in}, trial on {trial_on}"
+            );
+        }
+        crate::services::harness::claude_sdk::set_usable_for_tests(false);
+        llm_trial::use_test_trial(None);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
