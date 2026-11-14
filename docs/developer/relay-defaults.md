@@ -41,7 +41,8 @@ X25519 sealing key, from the `nandi-seal` crate in nandi-spec.
 | Used | Every person-to-person payload is sealed and opened with them (`services/relay/sealing.rs`)         |
 
 - A keyring entry that can't be read is an error. Nandi never makes new keys over it: the relay would refuse them.
-- The relay pins the keys for the instance ID. Other keys for the same ID are refused with `key_mismatch`. The client then counts as not connected (`RelayStatus.keyMismatch`, state Error), and Connection says to ask the relay's operator to rekey the device (`POST /relay/rekey`). Same handling as `version_mismatch`.
+- The relay pins the keys for the instance ID. Other keys for the same ID are refused with `key_mismatch`. The client then counts as not connected (`RelayStatus.keyMismatch`, state Error), and Connection says to ask the relay's operator to rekey the device (`POST /relay/rekey`). Same handling as `version_mismatch`: the socket closes and nothing is retried until a new `connect`. A bad token (`unauthorized`) is handled the same way (`REFUSES_THE_CONNECTION`, `SocketEnd::Refused`). A refusal about one task (`Error.taskId` set) never ends the connection.
+- The public relay offer (`PublicRelayOffer::VersionMismatch.update`) says which side is behind: "Update Nandi to join it", or the public relay is older and takes this Nandi once it's updated (`unavailableKey` in `public-relay-model.ts`).
 - Content never crosses the relay in the clear: see "Sealed content" in `a2a-delegation.md`.
 
 Other members' keys are pinned too: see "Their key changed" in

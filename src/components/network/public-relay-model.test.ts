@@ -1,8 +1,45 @@
 import { describe, expect, it } from 'vitest'
-import { afterJoin, onPublicRelay, refusalKey } from './public-relay-model'
+import {
+  afterJoin,
+  onPublicRelay,
+  refusalKey,
+  unavailableKey,
+} from './public-relay-model'
 import { relayStatusFixture } from './network-fixtures'
 
 describe('joining the public relay', () => {
+  it('says which side is behind when the versions differ', () => {
+    const relay = 'wss://relay'
+    const cases: [Parameters<typeof unavailableKey>[0], string][] = [
+      [
+        {
+          kind: 'versionMismatch',
+          relay,
+          relayVersion: 9,
+          app: 8,
+          update: 'nandi',
+        },
+        'publicRelay.versionMismatchNandi',
+      ],
+      [
+        {
+          kind: 'versionMismatch',
+          relay,
+          relayVersion: 7,
+          app: 8,
+          update: 'relay',
+        },
+        'publicRelay.versionMismatchRelay',
+      ],
+      [
+        { kind: 'unreachable', relay, detail: 'refused' },
+        'publicRelay.unreachable',
+      ],
+      [undefined, 'publicRelay.unreachable'],
+    ]
+    for (const [offer, key] of cases) expect(unavailableKey(offer)).toBe(key)
+  })
+
   it('ends joined with the email', () => {
     expect(
       afterJoin({

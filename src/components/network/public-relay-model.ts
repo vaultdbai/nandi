@@ -7,6 +7,7 @@
  */
 import type {
   PublicRelayJoin,
+  PublicRelayOffer,
   PublicRelayRefusal,
   RelayStatus,
 } from '@/lib/bindings'
@@ -34,6 +35,17 @@ export function refusalKey(refusal: PublicRelayRefusal): string {
 }
 
 /** What joining led to */
+/**
+ * The calm line when the public relay can't be joined now: on a version
+ * mismatch, which side is behind; else try again later
+ */
+export function unavailableKey(offer: PublicRelayOffer | undefined): string {
+  if (offer?.kind !== 'versionMismatch') return 'publicRelay.unreachable'
+  return offer.update === 'nandi'
+    ? 'publicRelay.versionMismatchNandi'
+    : 'publicRelay.versionMismatchRelay'
+}
+
 export function afterJoin(join: PublicRelayJoin): JoinState {
   switch (join.kind) {
     case 'joined':

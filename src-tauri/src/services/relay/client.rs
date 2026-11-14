@@ -32,6 +32,11 @@
 //! ([`ClientOptions::device_keys`], read on the first `connect`). A relay
 //! that has other keys pinned for this instance ID refuses it
 //! (`key_mismatch`): the status turns to `Error` with `key_mismatch` set.
+//! A bad token is refused as `unauthorized`. Either way the client closes
+//! the socket and stops retrying like after a `version_mismatch`: only a
+//! new `connect` (a new token or URL, or after the operator's rekey) can
+//! succeed. A refusal about one task (`Error.taskId`) never ends the
+//! connection.
 //!
 //! # Sealing
 //!
@@ -126,6 +131,10 @@ pub fn told(code: Option<&str>, message: &str) -> String {
         _ => message.to_string(),
     }
 }
+
+/// The codes of an `Error` (not about a task) that refuses this connection
+/// until a new `connect`: a bad token, other keys pinned, another protocol
+const REFUSES_THE_CONNECTION: [&str; 3] = ["unauthorized", KEY_MISMATCH, VERSION_MISMATCH];
 
 /// The codes whose `Error` comes before a refusal that carries no code of
 /// its own (a `ReassignResult`)
@@ -289,7 +298,8 @@ struct Shared {
     /// before it are refused with `not_registered`)
     registered: bool,
     /// The relay refused our registration on this connection (a bad token,
-    /// or another protocol version): not connected until a new one
+    /// other keys, or another protocol version): not connected, and not
+    /// retried, until a new `connect`
     refused: bool,
     /// The refusal was for the protocol version
     version_mismatch: bool,
@@ -1129,10 +1139,10 @@ impl Inner {
         self.emit_status();
     }
 
-    /// The relay of `generation` refused our protocol version and the
-    /// socket is closed: stay in `Error`, say which side must update, and
-    /// fail what waits on the connection
-    fn on_version_refused(&self, generation: u64, update: Option<UpdateNeeded>) {
+    /// The relay of `generation` refused this connection and the socket is
+    /// closed: stay in `Error`, say which side must update after a
+    /// version refusal (`update`), and fail what waits on the connection
+    fn on_refused(&self, generation: u64, update: Option<UpdateNeeded>) {
         {
             let mut shared = self.lock();
             if shared.generation != generation {
@@ -1146,9 +1156,11 @@ impl Inner {
         self.emit_status();
     }
 
-    /// Whether the relay refused this connection for its protocol version
-    fn version_refused(&self) -> bool {
-        self.lock().version_mismatch
+    /// Whether the relay refused this connection for good: `Some` with
+    /// whether it was for the protocol version
+    fn refused_for_good(&self) -> Option<bool> {
+        let shared = self.lock();
+        shared.refused.then_some(shared.version_mismatch)
     }
 
     fn handle_incoming(self: &Arc<Self>, text: &str) {
@@ -1246,6 +1258,7 @@ impl Inner {
                 task_id,
             } => {
                 log::warn!("Relay error ({code}): {message}");
+                let about_task = task_id.is_some();
                 if let Some(task_id) = task_id {
                     let refused = TaskRefused {
                         task_id,
@@ -1267,7 +1280,7 @@ impl Inner {
                     shared.announced.insert(message, announced);
                     return;
                 }
-                if code == "unauthorized" || code == VERSION_MISMATCH || code == KEY_MISMATCH {
+                if !about_task && REFUSES_THE_CONNECTION.contains(&code.as_str()) {
                     let refused = format!("The relay refused us: {message}");
                     shared.waiting_registered.fail_all(&refused);
                     shared.refused = true;
@@ -1541,10 +1554,14 @@ async fn supervise(
                         inner.on_disconnected(generation);
                         return;
                     }
-                    SocketEnd::VersionRefused => {
+                    SocketEnd::Refused { version } => {
                         // Retrying can't help: stop until a new `connect`
-                        let update = update_needed_at(&url).await;
-                        inner.on_version_refused(generation, update);
+                        let update = if version {
+                            update_needed_at(&url).await
+                        } else {
+                            None
+                        };
+                        inner.on_refused(generation, update);
                         return;
                     }
                     SocketEnd::Dropped => inner.on_disconnected(generation),
@@ -1594,12 +1611,13 @@ enum SocketEnd {
     Cancelled,
     /// The socket closed or failed: reconnect with backoff
     Dropped,
-    /// The relay refused our protocol version, and we closed the socket
-    VersionRefused,
+    /// The relay refused this connection for good (`version`: for the
+    /// protocol version), and we closed the socket
+    Refused { version: bool },
 }
 
 /// Pumps one socket until it is cancelled, drops, or the relay refuses
-/// our protocol version.
+/// the connection.
 async fn run_socket<S>(
     inner: &Arc<Inner>,
     socket: tokio_tungstenite::WebSocketStream<S>,
@@ -1619,9 +1637,9 @@ where
             frame = stream.next() => match frame {
                 Some(Ok(Message::Text(text))) => {
                     inner.handle_incoming(text.as_str());
-                    if inner.version_refused() {
+                    if let Some(version) = inner.refused_for_good() {
                         let _ = sink.close().await;
-                        return SocketEnd::VersionRefused;
+                        return SocketEnd::Refused { version };
                     }
                 }
                 Some(Ok(Message::Close(_)) | Err(_)) | None => return SocketEnd::Dropped,
@@ -2276,6 +2294,27 @@ mod tests {
 
         let error = call.await.unwrap().unwrap_err();
         assert!(super::super::RelayUnavailable::is(&error), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_refusal_about_one_task_never_ends_the_connection() {
+        let (client, _sent) = open_client(true);
+        for code in REFUSES_THE_CONNECTION {
+            let error = RelayMessage::Error {
+                code: code.into(),
+                message: "Invalid task signature".into(),
+                task_id: Some("t1".into()),
+            };
+            client.inner.handle_incoming(&error.to_json().unwrap());
+            assert_eq!(client.inner.refused_for_good(), None, "{code}");
+        }
+        let error = RelayMessage::Error {
+            code: KEY_MISMATCH.into(),
+            message: "Other keys".into(),
+            task_id: None,
+        };
+        client.inner.handle_incoming(&error.to_json().unwrap());
+        assert_eq!(client.inner.refused_for_good(), Some(false));
     }
 
     #[tokio::test]

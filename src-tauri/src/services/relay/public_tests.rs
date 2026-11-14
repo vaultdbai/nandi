@@ -361,3 +361,30 @@ async fn past_the_daily_limit_a_group_change_says_when_it_resets() {
     }
     state.shutdown();
 }
+
+#[test]
+fn a_version_mismatch_says_which_side_is_behind() {
+    use crate::services::relay::protocol::PROTOCOL_VERSION;
+    use crate::services::relay::version::UpdateNeeded;
+    let ours = PROTOCOL_VERSION;
+    // (the relay's min_supported, its current, the side behind)
+    let cases = [
+        (ours + 1, ours + 1, Some(UpdateNeeded::Nandi)),
+        (ours - 1, ours - 1, Some(UpdateNeeded::Relay)),
+        (ours, ours, None),
+    ];
+    for (min, current, behind) in cases {
+        let report: super::RelayHealthReport = serde_json::from_value(serde_json::json!({
+            "status": "ok", "instances_connected": 0, "uptime_seconds": 1,
+            "version": "9.9.9", "auth": "account", "public": true,
+            "protocol_version": current, "min_supported_protocol": min
+        }))
+        .unwrap();
+        let offer = super::offer_from("wss://relay".into(), &report, Some("me@x.com".into()));
+        let update = match offer {
+            PublicRelayOffer::VersionMismatch { update, .. } => Some(update),
+            _ => None,
+        };
+        assert_eq!(update, behind, "relay {min}..={current}");
+    }
+}

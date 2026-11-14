@@ -15,7 +15,12 @@ import { Spinner } from '@/components/ui/spinner'
 import { client } from '@/lib/client'
 import { relayQueryKeys, usePublicRelayOffer } from '@/hooks/useRelay'
 import { useNavigationStore } from '@/store/navigation-store'
-import { afterJoin, IDLE, type JoinState } from './public-relay-model'
+import {
+  afterJoin,
+  IDLE,
+  unavailableKey,
+  type JoinState,
+} from './public-relay-model'
 
 /** Settings › Email, where a mailbox is connected */
 function openEmailSettings() {
@@ -102,9 +107,7 @@ export function PublicRelayJoin({
     return (
       <div className="space-y-2" data-testid="public-relay-unreachable">
         <p className="text-sm text-muted-foreground">
-          {data?.kind === 'versionMismatch'
-            ? t('publicRelay.versionMismatch')
-            : t('publicRelay.unreachable')}
+          {t(unavailableKey(data))}
         </p>
         <Button
           size="sm"

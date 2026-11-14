@@ -35,7 +35,7 @@ use super::client::split_token;
 use super::device_keys::DeviceKeyring;
 use super::join::{health, RelayHealthReport};
 use super::protocol::PROTOCOL_VERSION;
-use super::version::update_needed;
+use super::version::{update_needed, UpdateNeeded};
 use super::{
     configured_url, instances_endpoint, read_state, saved_token_for, set_relay_url, with_token,
     write_state, RELAY_TOKEN_RELAY_KEY,
@@ -85,12 +85,14 @@ pub enum PublicRelayOffer {
     /// It didn't answer (offline, or not live yet), or not as a public
     /// relay: join later from Network › Connection
     Unreachable { relay: String, detail: String },
-    /// It speaks another protocol version: update Nandi
+    /// Its protocol range leaves this Nandi out: `update` says which side
+    /// is behind (this Nandi, or the public relay itself)
     #[serde(rename_all = "camelCase")]
     VersionMismatch {
         relay: String,
         relay_version: u32,
         app: u32,
+        update: UpdateNeeded,
     },
 }
 
@@ -295,11 +297,12 @@ fn offer_from(
     report: &RelayHealthReport,
     email: Option<String>,
 ) -> PublicRelayOffer {
-    if update_needed(&report.relay).is_some() {
+    if let Some(update) = update_needed(&report.relay) {
         return PublicRelayOffer::VersionMismatch {
             relay,
             relay_version: report.relay.protocol_version,
             app: PROTOCOL_VERSION,
+            update,
         };
     }
     if !report.public {

@@ -1141,20 +1141,30 @@ async fn version_refusing_relay(
     current: u32,
 ) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
     use super::protocol::VERSION_MISMATCH;
+    let words = "This Nandi speaks relay protocol 2 and the relay accepts 3 to 3. Update Nandi.";
+    refusing_relay(VERSION_MISMATCH, words, min_supported, current).await
+}
+
+/// A relay like [`version_refusing_relay`] that refuses every frame with
+/// `code` and `words`
+async fn refusing_relay(
+    code: &'static str,
+    words: &'static str,
+    min_supported: u32,
+    current: u32,
+) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
     use axum::extract::ws::{self, WebSocket, WebSocketUpgrade};
     use axum::routing::get;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    async fn refuse(mut socket: WebSocket) {
+    async fn refuse(mut socket: WebSocket, code: &'static str, words: &'static str) {
         while let Some(Ok(frame)) = socket.recv().await {
             if !matches!(frame, ws::Message::Text(_)) {
                 continue;
             }
             let refusal = RelayMessage::Error {
-                code: VERSION_MISMATCH.into(),
-                message:
-                    "This Nandi speaks relay protocol 2 and the relay accepts 3 to 3. Update Nandi."
-                        .into(),
+                code: code.into(),
+                message: words.into(),
                 task_id: None,
             };
             let text = refusal.to_json().unwrap();
@@ -1177,7 +1187,7 @@ async fn version_refusing_relay(
             "/relay",
             get(move |upgrade: WebSocketUpgrade| async move {
                 counted.fetch_add(1, Ordering::SeqCst);
-                upgrade.on_upgrade(refuse)
+                upgrade.on_upgrade(move |socket| refuse(socket, code, words))
             }),
         );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1228,6 +1238,40 @@ async fn a_relay_that_refuses_our_version_says_who_updates_and_is_not_retried() 
     for (client, sockets) in refused {
         assert_eq!(sockets.load(Ordering::SeqCst), 1);
         assert_eq!(client.status().state, RelayConnectionState::Error);
+    }
+}
+
+#[tokio::test]
+async fn a_relay_that_refuses_our_token_or_keys_is_not_retried() {
+    use super::protocol::PROTOCOL_VERSION;
+    use nandi_protocol::KEY_MISMATCH;
+    use std::sync::atomic::Ordering;
+    let ours = PROTOCOL_VERSION;
+    // (code, whether the status says the keys)
+    let cases = [("unauthorized", false), (KEY_MISMATCH, true)];
+    let mut refused = Vec::new();
+    for (code, key_mismatch) in cases {
+        let (url, sockets) = refusing_relay(code, "Not you", ours, ours).await;
+        let client: Arc<dyn RelayClient> = Arc::new(WsRelayClient::new(None, "me"));
+        client.connect(&url, "me").await.unwrap();
+        let error = client.register(Vec::new()).await.unwrap_err();
+        assert!(error.contains("Not you"), "{code}: {error}");
+        assert!(
+            eventually(async || !client.status().connected).await,
+            "{code}"
+        );
+        let status = client.status();
+        assert_eq!(status.state, RelayConnectionState::Error, "{code}");
+        assert_eq!(status.key_mismatch, key_mismatch, "{code}");
+        assert!(!status.version_mismatch, "{code}");
+        assert_eq!(status.update_needed, None, "{code}");
+        refused.push((code, client, sockets));
+    }
+    // The first retry would come after 1s: none comes
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    for (code, client, sockets) in refused {
+        assert_eq!(sockets.load(Ordering::SeqCst), 1, "{code}");
+        assert_eq!(client.status().state, RelayConnectionState::Error, "{code}");
     }
 }
 

@@ -7527,9 +7527,10 @@ export type PublicRelayOffer =
  */
 { kind: "unreachable"; relay: string; detail: string } | 
 /**
- * It speaks another protocol version: update Nandi
+ * Its protocol range leaves this Nandi out: `update` says which side
+ * is behind (this Nandi, or the public relay itself)
  */
-{ kind: "versionMismatch"; relay: string; relayVersion: number; app: number }
+{ kind: "versionMismatch"; relay: string; relayVersion: number; app: number; update: UpdateNeeded }
 /**
  * Why the public relay said no, from its refusal `code`
  */
