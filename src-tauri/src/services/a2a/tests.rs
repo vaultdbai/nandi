@@ -153,20 +153,18 @@ pub(super) fn from_writer(capability: &str, input: Value) -> DelegationRequest {
 
 /// The owner dismisses the first request queued on `provider` (intake)
 pub(super) async fn decline_when_queued(provider: &AppState) {
-    loop {
+    let item = eventually("a request in the intake", || async {
         let queued = provider
             .db()
             .call(|conn| crate::services::intake::pending(conn))
             .await
             .unwrap();
-        if let Some(item) = queued.first() {
-            crate::services::intake::dismiss(provider, item.id.clone())
-                .await
-                .unwrap();
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
+        queued.into_iter().next()
+    })
+    .await;
+    crate::services::intake::dismiss(provider, item.id)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -696,18 +694,15 @@ accepts_delegation: true
     state.shutdown();
 }
 
-/// The pending gateway holds once one appears (or panics after ~5 s)
+/// The pending gateway hold, once one appears
 async fn wait_for_hold(state: &AppState) -> crate::services::gateway::holds::GatewayHold {
-    for _ in 0..400 {
+    eventually("a gateway hold", || async {
         let holds = crate::services::gateway::list_gateway_holds(state)
             .await
             .unwrap();
-        if let Some(hold) = holds.into_iter().next() {
-            return hold;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("no hold appeared");
+        holds.into_iter().next()
+    })
+    .await
 }
 
 /// Task 5: "Needs my approval" holds the request instead of refusing it
@@ -856,32 +851,26 @@ async fn a_refusal_from_the_holds_chat_tells_the_requester_why() {
     state.shutdown();
 }
 
-/// The pending assignments once one appears (or panics after ~5 s)
+/// The pending assignment, once one appears
 async fn wait_for_assignment(
     state: &AppState,
 ) -> crate::services::gateway::assignments::GatewayAssignment {
-    for _ in 0..400 {
+    eventually("a gateway assignment", || async {
         let open = crate::services::gateway::list_gateway_assignments(state)
             .await
             .unwrap();
-        if let Some(assignment) = open.into_iter().next() {
-            return assignment;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("no assignment appeared");
+        open.into_iter().next()
+    })
+    .await
 }
 
 /// The delegation's history row once it has ended
 pub(super) async fn wait_for_history_end(state: &AppState, task_id: &str) -> TaskResult {
-    for _ in 0..200 {
+    eventually(&format!("the delegation {task_id} to end"), || async {
         let row = history::get(state.db(), task_id).await.unwrap();
-        if let Some(row) = row.filter(|r| r.status != TaskStatus::Running) {
-            return row;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("the delegation {task_id} didn't end");
+        row.filter(|r| r.status != TaskStatus::Running)
+    })
+    .await
 }
 
 /// Work assigned to the owner (your own gateway): the call returns once
@@ -941,7 +930,19 @@ async fn assigned_work_waits_for_the_owners_done_or_decline() {
     assert_eq!(assignment.request, "Upload the SOC 1 evidence");
     assert_eq!(assignment.status, AssignmentStatus::Open);
     assert!(assignment.due_at.is_some());
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // The owner holds it: no run of the agent started for it
+    let runs: i64 = state
+        .db()
+        .call(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM runs WHERE agent_id = 'papers'",
+                [],
+                |row| row.get(0),
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(runs, 0, "no agent did it for the owner");
     assert_eq!(
         history::get(state.db(), &asked.task_id)
             .await
@@ -1045,15 +1046,15 @@ async fn a_busy_gateway_queues_the_request_until_a_slot_frees() {
             .unwrap()
     });
     // It waits first in line, not refused
-    let mut waiting = 0;
-    for _ in 0..400 {
-        waiting = service.slots().waiting(GATEWAY_LINE);
-        if waiting > 0 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    assert_eq!(waiting, 1, "queued, alone in line (position 1)");
+    wait_until("the request in line", || async {
+        service.slots().waiting(GATEWAY_LINE) > 0
+    })
+    .await;
+    assert_eq!(
+        service.slots().waiting(GATEWAY_LINE),
+        1,
+        "queued, alone in line (position 1)"
+    );
     assert!(!queued.is_finished());
 
     drop(busy);
