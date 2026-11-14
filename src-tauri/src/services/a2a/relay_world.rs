@@ -65,13 +65,19 @@ impl TestRelay {
     /// [`Self::client`] with `options` (the answer timeout is this
     /// harness's)
     pub async fn client_with(&self, instance: &str, options: ClientOptions) -> Arc<WsRelayClient> {
+        let client = Self::unconnected_client(instance, options);
+        client.connect(&self.url(), instance).await.unwrap();
+        client
+    }
+
+    /// A client for `instance` that never connects (a Nandi whose relay is
+    /// down)
+    pub fn unconnected_client(instance: &str, options: ClientOptions) -> Arc<WsRelayClient> {
         let options = ClientOptions {
             request_timeout: ANSWER_TIMEOUT,
             ..options
         };
-        let client = Arc::new(WsRelayClient::with_options(None, instance, options));
-        client.connect(&self.url(), instance).await.unwrap();
-        client
+        Arc::new(WsRelayClient::with_options(None, instance, options))
     }
 
     /// A bare member: `instance` registered with `cards`, and no app behind

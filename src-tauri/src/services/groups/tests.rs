@@ -92,7 +92,7 @@ impl Member {
             client.register(Vec::new()).await.unwrap();
             client
         } else {
-            Arc::new(WsRelayClient::with_options(None, me, options))
+            TestRelay::unconnected_client(me, options)
         };
         let groups = Groups::new(
             Some(client.clone() as Arc<dyn RelayClient>),
