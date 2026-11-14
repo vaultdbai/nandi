@@ -415,6 +415,13 @@ CREATE TABLE IF NOT EXISTS gateway_callers (
 );
 
 -- Gateway tasks per caller per month, `YYYY-MM`
+CREATE TABLE IF NOT EXISTS gateway_usage (
+    caller_instance TEXT NOT NULL,
+    month           TEXT NOT NULL,
+    task_count      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (caller_instance, month)
+);
+
 -- Tasks the relay delivered as a member's first request through a group
 -- whose policy says `approval: first-time` (`SealedTask.first_time_groups`):
 -- each waits for my approval whatever my level (`services::groups::enforce`)
@@ -422,13 +429,6 @@ CREATE TABLE IF NOT EXISTS group_first_requests (
     task_id  TEXT NOT NULL,
     group_id TEXT NOT NULL,
     PRIMARY KEY (task_id, group_id)
-);
-
-CREATE TABLE IF NOT EXISTS gateway_usage (
-    caller_instance TEXT NOT NULL,
-    month           TEXT NOT NULL,
-    task_count      INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (caller_instance, month)
 );
 
 -- Gateway requests held for the owner's approval
