@@ -48,7 +48,11 @@ pub mod escalation;
 pub mod reassign;
 
 #[cfg(test)]
+mod lifecycle_relay_tests;
+#[cfg(test)]
 mod relay_e2e_tests;
+#[cfg(test)]
+mod relay_world;
 #[cfg(test)]
 mod tests;
 
