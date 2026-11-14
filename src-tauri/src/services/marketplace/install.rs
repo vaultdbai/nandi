@@ -32,6 +32,7 @@ use super::manifest::{
     PackManifest, NANDI_VERSION, PACK_MANIFEST_PATH,
 };
 use super::source::{FetchProgress, GitSource, RemoteRef};
+use super::trust::{ListedRelease, Origin, VouchedRelease};
 use crate::services::agents::describe_error;
 use crate::services::domain::installed::{
     local_source, InstallKind, InstalledAgent, InstalledFile, InstalledPack, LOCAL_REF,
@@ -1071,6 +1072,8 @@ impl Installer {
     /// Compares every install with its source's newest release tag (or, for
     /// a branch install, the branch's head). Never changes anything.
     /// Returns the updates, and the sources that couldn't be checked.
+    /// Installs from the default registry are left to [`registry_updates`]:
+    /// their updates come from the registry, never the publisher's tags.
     pub fn check_for_updates(
         &self,
         token_for: &dyn Fn(Option<&str>) -> Option<String>,
@@ -1080,7 +1083,7 @@ impl Installer {
         let entries = installed
             .packs
             .iter()
-            .filter(|p| !p.is_local())
+            .filter(|p| !p.is_local() && !updates_from_registry(p.registry.as_deref()))
             .map(|p| {
                 (
                     InstallKind::Pack,
@@ -1092,17 +1095,23 @@ impl Installer {
                     p.registry.as_deref(),
                 )
             })
-            .chain(installed.agents.iter().map(|a| {
-                (
-                    InstallKind::Agent,
-                    a.id.to_string(),
-                    a.source.as_str(),
-                    a.git_ref.as_str(),
-                    a.version.as_str(),
-                    a.commit.as_str(),
-                    a.registry.as_deref(),
-                )
-            }));
+            .chain(
+                installed
+                    .agents
+                    .iter()
+                    .filter(|a| !updates_from_registry(a.registry.as_deref()))
+                    .map(|a| {
+                        (
+                            InstallKind::Agent,
+                            a.id.to_string(),
+                            a.source.as_str(),
+                            a.git_ref.as_str(),
+                            a.version.as_str(),
+                            a.commit.as_str(),
+                            a.registry.as_deref(),
+                        )
+                    }),
+            );
         let mut updates = Vec::new();
         let mut failures = Vec::new();
         for (kind, id, source, git_ref, version, commit, registry) in entries {
@@ -1180,14 +1189,14 @@ impl Installer {
     }
 
     /// Updates an install to `new_ref`. Refused if its files were changed
-    /// since install (listing them), or if the new version needs a newer
-    /// Nandi. Never runs on its own: only when the user asks.
+    /// since install (listing them), or if the ref no longer resolves to the
+    /// commit `vouched` pins. Never runs on its own: only when the user asks.
     pub fn apply_update(
         &self,
         installed_id: &str,
         new_ref: &str,
         token: Option<String>,
-        verified_commit: Option<&str>,
+        vouched: &VouchedRelease,
         progress: &mut dyn FnMut(FetchProgress),
     ) -> Result<AppliedUpdate, String> {
         let mut installed = self.installed()?;
@@ -1261,6 +1270,7 @@ impl Installer {
         }
 
         let resolved = source.resolve(new_ref)?;
+        check_pinned(installed_id, new_ref, vouched.commit.as_deref(), &resolved)?;
         let checkout = source.fetch(&[&resolved.name], &self.scratch_dir, progress)?;
         let (files, new_version, agents, workflows) = match &path {
             Some(path) => {
@@ -1318,9 +1328,8 @@ impl Installer {
 
         self.repos().vendor.put(&dir, &files)?;
         let new_hash = tree_hash(&files);
-        // Signed for exactly this commit (checked by the caller against the
-        // publisher's key)
-        let verified = verified_commit.is_some_and(|c| c.eq_ignore_ascii_case(&resolved.commit));
+        // Signed for exactly this commit: `check_pinned` above
+        let verified = vouched.verified;
         match kind {
             InstallKind::Agent => {
                 let entry = installed
@@ -1370,6 +1379,51 @@ impl Installer {
             to_version: new_version,
         })
     }
+}
+
+/// Whether an install's updates come from its registry's entry rather than
+/// its source's tags: the default registry's.
+fn updates_from_registry(registry: Option<&str>) -> bool {
+    registry.is_some_and(|url| Origin::of(url) == Origin::DefaultRegistry)
+}
+
+/// The updates the default registry offers its installs: its entry for an
+/// installed ID (`listed`) when that is a newer version. A release it
+/// doesn't list is never offered.
+pub fn registry_updates(
+    installed: &InstalledFile,
+    listed: &dyn Fn(InstallKind, &str) -> Option<ListedRelease>,
+) -> Vec<UpdateAvailable> {
+    let installs = installed
+        .packs
+        .iter()
+        .filter(|p| updates_from_registry(p.registry.as_deref()))
+        .map(|p| (InstallKind::Pack, p.id.as_str(), &p.version, &p.commit))
+        .chain(
+            installed
+                .agents
+                .iter()
+                .filter(|a| updates_from_registry(a.registry.as_deref()))
+                .map(|a| (InstallKind::Agent, a.id.as_str(), &a.version, &a.commit)),
+        );
+    installs
+        .filter_map(|(kind, id, version, commit)| {
+            let entry = listed(kind, id)?;
+            let newer = matches!(
+                (parse_version(&entry.version), parse_version(version)),
+                (Ok(latest), Ok(current)) if latest > current
+            );
+            newer.then(|| UpdateAvailable {
+                kind: kind.as_str().to_string(),
+                id: id.to_string(),
+                current_version: version.clone(),
+                latest_version: entry.version,
+                latest_ref: entry.git_ref,
+                current_commit: commit.clone(),
+                latest_commit: entry.commit.unwrap_or_default(),
+            })
+        })
+        .collect()
 }
 
 /// An entry that names its release commit must still resolve to it: a tag

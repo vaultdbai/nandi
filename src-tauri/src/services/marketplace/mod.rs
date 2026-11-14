@@ -44,7 +44,7 @@ use self::local::LocalPackSource;
 use self::manifest::{AgentManifest, ManifestCapabilities, PackManifest};
 use self::registry::{Registry, RegistryClient, RegistryIndex, RegistryList, OFFICIAL_TAG};
 use self::source::{FetchProgress, GitSource};
-use self::trust::{PublisherKey, Release, SignatureCheck};
+use self::trust::{ListedRelease, Origin, PublisherKey, Release, SignatureCheck, VouchedRelease};
 use crate::services::agents::{self, AgentInfo};
 use crate::services::auth::github as github_sign_in;
 use crate::services::domain::installed::{self, InstallKind};
@@ -782,14 +782,55 @@ pub async fn get_pack_detail(state: &AppState, pack_id: &str) -> Result<PackDeta
 
 // -- Install, uninstall, fork, update ---------------------------------------------
 
-/// A publisher whose key changed since it was pinned is refused, with both
-/// fingerprints: nothing re-pins on its own.
-fn refuse_changed_key(name: &str, publisher: &str, check: &SignatureCheck) -> Result<(), String> {
-    match check {
-        SignatureCheck::KeyChanged { pinned, offered } => {
-            Err(trust::key_changed_warning(name, publisher, pinned, offered))
+/// The registry's current entry for an installed item, as an update reads
+/// it.
+struct RegistryRelease {
+    kind: InstallKind,
+    id: String,
+    publisher: String,
+    registry: String,
+    listed: ListedRelease,
+    signature: Option<String>,
+}
+
+impl RegistryRelease {
+    /// `id`'s entry in `catalog`, if it came from `registry`
+    fn find(catalog: &Catalog, kind: InstallKind, id: &str, registry: &str) -> Option<Self> {
+        let registry = normalize_registry_url(registry);
+        let found = match kind {
+            InstallKind::Agent => catalog
+                .agents
+                .iter()
+                .find(|a| a.id == id && normalize_registry_url(&a.registry) == registry)
+                .map(|a| (a.release(), &a.publisher, &a.git_ref, &a.registry)),
+            InstallKind::Pack => catalog
+                .packs
+                .iter()
+                .find(|p| p.id == id && normalize_registry_url(&p.registry) == registry)
+                .map(|p| (p.release(), &p.publisher, &p.git_ref, &p.registry)),
+        };
+        found.map(|(release, publisher, git_ref, registry)| Self {
+            kind,
+            id: id.to_string(),
+            publisher: publisher.clone(),
+            registry: registry.clone(),
+            listed: ListedRelease {
+                version: release.version.to_string(),
+                git_ref: git_ref.clone(),
+                commit: release.commit.map(str::to_string),
+            },
+            signature: release.signature.map(str::to_string),
+        })
+    }
+
+    fn release(&self) -> Release<'_> {
+        Release {
+            kind: self.kind.as_str(),
+            id: &self.id,
+            version: &self.listed.version,
+            commit: self.listed.commit.as_deref(),
+            signature: self.signature.as_deref(),
         }
-        _ => Ok(()),
     }
 }
 
@@ -803,8 +844,12 @@ pub async fn install_pack(state: &AppState, pack_id: &str) -> Result<InstalledPa
             manifest.release(),
         )
         .await;
-        refuse_changed_key(&manifest.name, &manifest.publisher, &check)?;
-        manifest.verified = check.is_verified();
+        manifest.verified = trust::admit(
+            Origin::of(&manifest.registry),
+            &manifest.name,
+            &manifest.git_ref,
+            &check,
+        )?;
         let (registry, publisher) = (manifest.registry.clone(), manifest.publisher.clone());
         let token = token_for_url(state, Some(&manifest.registry));
         let _writer = state.marketplace().writer.lock().await;
@@ -888,8 +933,12 @@ pub async fn install_agent(state: &AppState, agent_id: &str) -> Result<Installed
             manifest.release(),
         )
         .await;
-        refuse_changed_key(&manifest.name, &manifest.publisher, &check)?;
-        manifest.verified = check.is_verified();
+        manifest.verified = trust::admit(
+            Origin::of(&manifest.registry),
+            &manifest.name,
+            &manifest.git_ref,
+            &check,
+        )?;
         let (registry, publisher) = (manifest.registry.clone(), manifest.publisher.clone());
         let token = token_for_url(state, Some(&manifest.registry));
         let _writer = state.marketplace().writer.lock().await;
@@ -1009,7 +1058,7 @@ pub async fn check_for_updates(state: &AppState) -> Result<Vec<UpdateAvailable>,
         .iter()
         .map(|r| (r.url.clone(), token(state, r)))
         .collect();
-    let (updates, failures) = blocking(move || {
+    let (mut updates, failures) = blocking(move || {
         installer.check_for_updates(&|registry| {
             let registry = normalize_registry_url(registry?);
             tokens
@@ -1019,6 +1068,17 @@ pub async fn check_for_updates(state: &AppState) -> Result<Vec<UpdateAvailable>,
         })
     })
     .await?;
+    let installed = state
+        .store()
+        .repos()
+        .vendor
+        .load_installed()
+        .map_err(String::from)?;
+    // Asked again: a cached index can predate the release
+    let listed = catalog(state, true).await;
+    updates.extend(install::registry_updates(&installed, &|kind, id| {
+        RegistryRelease::find(&listed, kind, id, DEFAULT_REGISTRY).map(|entry| entry.listed)
+    }));
     for (id, error) in failures {
         let _ = report(state, "check_updates", &id, Err::<(), _>(error));
     }
@@ -1064,43 +1124,14 @@ pub async fn apply_update(
             InstallKind::Pack
         };
         let token = token_for_url(state, registry.as_deref());
-        // The registry's entry for this release, if it's signed and verifies.
-        // Updates are found from the source's tags, so a cached index can
-        // predate the release: then ask the registry again
-        let target = manifest::split_tag(new_ref).map(|(_, v)| v.to_string());
-        let signed_commit = |listed: &Catalog| match kind {
-            InstallKind::Agent => listed
-                .agents
-                .iter()
-                .find(|a| {
-                    a.id == installed_id && a.verified && Some(&a.latest_version) == target.as_ref()
-                })
-                .and_then(|a| a.commit.clone()),
-            InstallKind::Pack => listed
-                .packs
-                .iter()
-                .find(|p| {
-                    p.id == installed_id && p.verified && Some(&p.latest_version) == target.as_ref()
-                })
-                .and_then(|p| p.commit.clone()),
-        };
-        let verified_commit = match signed_commit(&catalog(state, false).await) {
-            Some(commit) => Some(commit),
-            None => signed_commit(&catalog(state, true).await),
-        };
+        let vouched =
+            vouch_for_update(state, kind, installed_id, registry.as_deref(), new_ref).await?;
         let installer = installer(state);
         let mut progress = progress_emitter(state, kind, installed_id);
         let (id, git_ref) = (installed_id.to_string(), new_ref.to_string());
-        let applied = blocking(move || {
-            installer.apply_update(
-                &id,
-                &git_ref,
-                token,
-                verified_commit.as_deref(),
-                &mut progress,
-            )
-        })
-        .await?;
+        let applied =
+            blocking(move || installer.apply_update(&id, &git_ref, token, &vouched, &mut progress))
+                .await?;
         emit(
             state.bus(),
             &MarketplaceUpdateApplied {
@@ -1114,6 +1145,43 @@ pub async fn apply_update(
     }
     .await;
     report(state, "update", installed_id, result)
+}
+
+/// What the install's registry vouches for about the update to `new_ref`
+/// (`trust::update_target`, `trust::vouch`), with a fresh look at the
+/// signature. An index cached before the release is asked again.
+async fn vouch_for_update(
+    state: &AppState,
+    kind: InstallKind,
+    installed_id: &str,
+    registry: Option<&str>,
+    new_ref: &str,
+) -> Result<VouchedRelease, String> {
+    let Some(registry) = registry else {
+        return Ok(VouchedRelease::default());
+    };
+    let origin = Origin::of(registry);
+    let find = |catalog: &Catalog| RegistryRelease::find(catalog, kind, installed_id, registry);
+    let mut entry = find(&catalog(state, false).await);
+    if entry
+        .as_ref()
+        .is_none_or(|entry| entry.listed.git_ref != new_ref)
+    {
+        entry = find(&catalog(state, true).await);
+    }
+    let listed = entry.as_ref().map(|entry| &entry.listed);
+    match (
+        trust::update_target(origin, installed_id, new_ref, listed)?,
+        &entry,
+    ) {
+        (Some(target), Some(entry)) => {
+            let check =
+                check_release(state, &entry.registry, &entry.publisher, entry.release()).await;
+            trust::vouch(origin, installed_id, target, &check)
+        }
+        // Another registry that doesn't list this release: nothing vouches
+        _ => Ok(VouchedRelease::default()),
+    }
 }
 
 // -- Consent ------------------------------------------------------------------

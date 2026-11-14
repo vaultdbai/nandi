@@ -105,10 +105,12 @@ Covers the Library page and the marketplace behind it (registries, install, cons
   - ID already taken by an existing agent or workflow: refused.
   - Signed entry whose tag no longer resolves to the signed commit: refused ("may have been tampered with").
   - A `vaultdbai` entry verifies only against the key shipped in the app, never a registry's `publishers/vaultdbai.json`.
+  - Default registry: an unsigned entry, a bad signature or a branch `ref` is refused. Another registry: it installs with the "Publisher not verified" warning.
+  - A signed entry whose publisher key can't be fetched (offline): refused with "Try again later", for every registry. Nothing is recorded as unverified.
   - Another publisher's key is pinned in `settings.yaml` (`marketplace.publisher_keys`) on their first install. If the registry later offers another key, their entries show as not verified and an install is refused, naming the trusted and the offered key's fingerprints. Removing the registry and adding it again trusts the new key.
   - Source containing a symlink: error; scripts and other non-allowlisted files are not copied (only `skill.md`, `instructions.md`, `README.md`, icon, `LICENSE*`, `workflows/*.yaml`, pack `.nandi/manifest.yaml`).
   - Offline: error toast.
-- **Automation:** Covered by: `LibraryView.test.tsx` ("installs nothing when the consent dialog is cancelled", "installs and records consent for what the dialog showed"); Rust `src-tauri/src/services/marketplace/tests.rs` (`installs_a_pack_from_a_local_fixture_into_the_projection`, `refuses_entries_and_packs_that_need_a_newer_nandi`, `refuses_ids_that_are_already_taken`, `the_latest_version_across_registries_is_the_one_installed`, `signatures_verify_and_pin_the_release_commit`, `a_publisher_key_is_pinned_on_first_install_and_a_changed_key_is_refused`; `trust.rs` tests; ignored `live_starter_packs_install`) | Layer: api | Gap: UI unverified-warning path.
+- **Automation:** Covered by: `LibraryView.test.tsx` ("installs nothing when the consent dialog is cancelled", "installs and records consent for what the dialog showed"); Rust `src-tauri/src/services/marketplace/tests.rs` (`installs_a_pack_from_a_local_fixture_into_the_projection`, `refuses_entries_and_packs_that_need_a_newer_nandi`, `refuses_ids_that_are_already_taken`, `the_latest_version_across_registries_is_the_one_installed`, `signatures_verify_and_pin_the_release_commit`, `a_publisher_key_is_pinned_on_first_install_and_a_changed_key_is_refused`, `a_failed_publisher_key_fetch_is_tried_again_and_never_installs_unverified`; `trust.rs` tests; ignored `live_starter_packs_install`) | Layer: api | Gap: UI unverified-warning path.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -150,13 +152,13 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 
 ### LB-13 — Check for updates and apply update
 
-- **What:** Updates are never automatic. Checking compares each install with its source's newest release tag (or branch head) and reports; applying refuses when the installed folder was modified locally (tree_hash mismatch).
+- **What:** Updates are never automatic. An install from the default registry is offered only the release the registry lists now, never a newer tag the publisher pushed, and applying it must resolve to the listed commit and verify. Any other install is compared with its source's newest release tag (or branch head). Checking only reports; applying refuses when the installed folder was modified locally (tree_hash mismatch).
 - **Where:** Library card **Update** (pill "Update available") → drawer; drawer ⋯ → Check for an update. Commands `check_for_updates` → `POST /api/rpc/check_for_updates`; `apply_update` → `POST /api/rpc/apply_update`. Events `marketplace://update_available`, `marketplace://update_applied`.
 - **Preconditions:** An install older than the registry's `latest_version`.
 - **Steps:** 1. Install an older version (local fixture registry). 2. Publish a newer tag. 3. Check for an update → apply. 4. Edit a vendored file by hand, check again, apply.
 - **Expected:** Step 3 updates files and `installed.yaml` version. Step 4 refused because of local changes.
 - **Edge / negative cases:** Nothing newer → toast "<name> is up to date."
-- **Automation:** Covered by: Rust `updates_are_reported_and_refused_over_local_changes` | Layer: api | Gap: UI flow.
+- **Automation:** Covered by: Rust `updates_are_reported_and_refused_over_local_changes`, `default_registry_updates_come_from_the_registry_not_the_tags`; `trust.rs` (`a_default_registry_update_is_exactly_the_listed_release`) | Layer: api | Gap: UI flow.
 - **Needs relay:** no
 - **Status:** Shipped
 

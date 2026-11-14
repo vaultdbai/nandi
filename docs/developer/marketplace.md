@@ -42,8 +42,24 @@ A registry can't vouch for its own entries: whoever can change `packs/` can chan
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Listing    | `verify_signatures` checks each entry against its trusted key (fetched files cached for 1 h, failures never cached) and sets `verified`. This drives the Verified filter and badge. Listing never pins a key.                                                                         |
 | Install    | The signature is checked again with a fresh key fetch. A changed key is refused; a first-seen key is pinned after the install. If the entry names a `commit`, the tag must still resolve to it ("may have been tampered with"). `signature_verified` is recorded in `installed.yaml`. |
-| Update     | Verified only if the registry's signed entry is for exactly the commit being applied.                                                                                                                                                                                                 |
-| Unverified | Still installable. The UI shows "Publisher not verified" and asks for confirmation first. The agent is read-only and needs first-use consent either way.                                                                                                                              |
+| Update     | From the default registry: only the release it lists now (`install::registry_updates`), signed, and resolving to its commit. From another registry: a listed release is checked like an install; a tag it doesn't list installs unverified.                                           |
+| Unverified | From another registry or a local folder: still installable. The UI shows "Publisher not verified" and asks for confirmation first. The agent is read-only and needs first-use consent either way.                                                                                     |
+
+### What installs (fail closed)
+
+`trust::admit` decides installs and `trust::update_target` with `trust::vouch` decides updates. The default registry fails closed:
+
+| Found                         | Default registry           | Other registries and folders |
+| ----------------------------- | -------------------------- | ---------------------------- |
+| Verified                      | installs, verified         | installs, verified           |
+| Unsigned, or a bad signature  | refused                    | installs, unverified         |
+| The pinned key changed        | refused, both fingerprints | refused, both fingerprints   |
+| The key couldn't be fetched   | refused: try again later   | refused: try again later     |
+| A branch `ref`, not a tag     | refused                    | allowed                      |
+| A version it doesn't list     | never offered or applied   | applied, unverified          |
+| A tag that moved off `commit` | refused                    | refused                      |
+
+"Couldn't check" is kept apart from "unsigned": a signed release is never recorded as `signature_verified: false` because the network was down.
 
 **Publishing a signed release:**
 
@@ -176,7 +192,7 @@ install_pack(manifest):                       install_agent(manifest):
 
 Files are read straight from git objects; nothing is checked out. A symlink in the source is an error and submodules are skipped. Only `skill.md`, `instructions.md`, `README.md`, `icon.{svg,png}`, `LICENSE*`, `workflows/*.yaml`, and (for packs) `.nandi/manifest.yaml` are copied. Anything else in a source repo, such as scripts, is left behind.
 
-A workflow's agent steps may drive only the agents it ships with (`validate_workflow`), so a pack never sends work to the Chief of Staff or another install, which it has no consent for. An install refuses content whose agents request a tool, host, AWS service, pilot or connector its registry entry doesn't list (`matches_entry` in `install.rs`): the Library card and the install dialog showed the entry. Updates go by tag, without an entry; first-use consent catches what they widen.
+A workflow's agent steps may drive only the agents it ships with (`validate_workflow`), so a pack never sends work to the Chief of Staff or another install, which it has no consent for. An install refuses content whose agents request a tool, host, AWS service, pilot or connector its registry entry doesn't list (`matches_entry` in `install.rs`): the Library card and the install dialog showed the entry. Updates of another registry's install can go by tag, without an entry; first-use consent catches what they widen.
 
 **Installer, watcher and projection.** The installer writes files. It never touches SQLite. A folder is staged under a hidden `.<name>.nandi-tmp-<uuid>` (which the watcher and locator ignore), then renamed into place. The watcher sees one folder appear and re-scans. The installer also calls `rescan_all` itself, so the projection is current when the command returns. Whichever runs second finds equal hashes and does nothing. A folder cloned in by hand is picked up the same way, without an install.
 
@@ -192,7 +208,7 @@ A workflow's agent steps may drive only the agents it ships with (`validate_work
 
 ## Updates
 
-Updates are never automatic. `check_for_updates` compares each install with its source's newest release tag (`vX.Y.Z`; for a branch install, the branch head) and only reports what it finds. `apply_update(id, ref)` refuses if the folder's `tree_hash` no longer matches the install. To list exactly which files changed, it re-fetches the installed commit and compares. Forking is the way to keep local changes.
+Updates are never automatic. `check_for_updates` only reports what it finds. An install from the default registry is offered the registry's current entry when it is newer (`install::registry_updates`), never a tag the publisher pushed. Any other install is compared with its source's newest release tag (`vX.Y.Z`; for a branch install, the branch head). `apply_update(id, ref)` refuses if the folder's `tree_hash` no longer matches the install. To list exactly which files changed, it re-fetches the installed commit and compares. Forking is the way to keep local changes.
 
 ## Events
 

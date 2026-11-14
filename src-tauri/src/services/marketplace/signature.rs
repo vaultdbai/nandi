@@ -22,8 +22,9 @@
 //! The chain is: publisher key → signature → commit → files. A listing can
 //! check it without downloading anything but the publisher file. An install
 //! also checks that the tag still resolves to that commit, and refuses if
-//! it doesn't (a moved tag). Unsigned entries can still be installed, with
-//! a "Publisher not verified" warning.
+//! it doesn't (a moved tag). The default registry refuses unsigned entries;
+//! other registries' still install, with a "Publisher not verified" warning
+//! (`trust::admit`).
 //!
 //! `nandi keygen` / `nandi sign` (see `cli.rs`) make keys and signatures.
 

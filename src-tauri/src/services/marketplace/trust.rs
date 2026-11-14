@@ -10,12 +10,27 @@
 //!   different key later refuses verification and names both fingerprints.
 //!   Nothing re-pins on its own: removing the registry forgets its pins.
 //!
+//! Whether an install or update may go ahead ([`admit`], [`vouch`]):
+//!
+//! | Found              | Default registry   | Other registries      |
+//! | ------------------ | ------------------ | --------------------- |
+//! | Verified           | installs, verified | installs, verified    |
+//! | Unsigned, bad      | refused            | installs, unverified  |
+//! | Key changed        | refused            | refused               |
+//! | Couldn't check     | refused: try again | refused: try again    |
+//! | A branch, not tag  | refused            | allowed               |
+//!
+//! "Couldn't check" is never recorded as unverified: a signed release
+//! would stay "unverified" for good.
+//!
 //! Everything here is pure; `mod.rs` fetches the files and saves the pins.
 //! Rotating the shipped key: `docs/developer/marketplace.md`.
 
 use sha2::{Digest, Sha256};
 
+use super::manifest::split_tag;
 use super::signature;
+use crate::services::domain::settings::{normalize_registry_url, DEFAULT_REGISTRY};
 
 /// The first-party publisher: their releases are checked against the
 /// shipped key.
@@ -135,6 +150,117 @@ pub fn check(key: &PublisherKey, release: &Release<'_>) -> SignatureCheck {
     }
 }
 
+/// Where an install or update comes from. The default registry's entries
+/// must be signed release tags; other registries' may be unverified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    DefaultRegistry,
+    OtherRegistry,
+}
+
+impl Origin {
+    pub fn of(registry_url: &str) -> Self {
+        if normalize_registry_url(registry_url) == DEFAULT_REGISTRY {
+            Self::DefaultRegistry
+        } else {
+            Self::OtherRegistry
+        }
+    }
+}
+
+/// Whether `name`'s release at `git_ref` may install, given what checking
+/// its signature found. `Ok(verified)`, or why it's refused.
+pub fn admit(
+    origin: Origin,
+    name: &str,
+    git_ref: &str,
+    check: &SignatureCheck,
+) -> Result<bool, String> {
+    match check {
+        SignatureCheck::CouldNotCheck(why) => {
+            return Err(format!(
+                "Couldn't check {name}'s signature right now ({why}). Nothing was installed. Try again later."
+            ))
+        }
+        SignatureCheck::KeyChanged { pinned, offered } => {
+            return Err(key_changed_warning(name, pinned, offered))
+        }
+        _ => {}
+    }
+    if origin == Origin::OtherRegistry {
+        return Ok(check.is_verified());
+    }
+    if split_tag(git_ref).is_none() {
+        return Err(format!(
+            "Refusing to install {name}: the default registry must name a release tag, but its entry names '{git_ref}'."
+        ));
+    }
+    match check {
+        SignatureCheck::Verified { .. } => Ok(true),
+        SignatureCheck::Unsigned => Err(format!(
+            "Refusing to install {name}: its entry in the default registry isn't signed, and everything there must be."
+        )),
+        _ => Err(format!(
+            "Refusing to install {name}: its signature doesn't match its publisher's key. The registry entry may have been tampered with."
+        )),
+    }
+}
+
+/// A registry's current entry for an installed item.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedRelease {
+    pub version: String,
+    pub git_ref: String,
+    pub commit: Option<String>,
+}
+
+/// What the registry vouches for about the release an update applies.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct VouchedRelease {
+    /// The commit the release must resolve to (`None`: nothing pins it)
+    pub commit: Option<String>,
+    /// Its signature verified: recorded as `signature_verified`
+    pub verified: bool,
+}
+
+/// The registry entry an update of `name` to `new_ref` must match:
+/// `Some(entry)` when the registry lists that release. From the default
+/// registry an update must be exactly the release it lists; from another
+/// registry a release it doesn't list is `None`, and installs unverified.
+pub fn update_target<'a>(
+    origin: Origin,
+    name: &str,
+    new_ref: &str,
+    listed: Option<&'a ListedRelease>,
+) -> Result<Option<&'a ListedRelease>, String> {
+    match (origin, listed) {
+        (_, Some(entry)) if entry.git_ref == new_ref => Ok(Some(entry)),
+        (Origin::DefaultRegistry, Some(entry)) => Err(format!(
+            "Refusing to update {name} to {new_ref}: the default registry lists {} ({}). Check for updates again.",
+            entry.version, entry.git_ref
+        )),
+        (Origin::DefaultRegistry, None) => Err(format!(
+            "Refusing to update {name}: the default registry doesn't list it any more."
+        )),
+        (Origin::OtherRegistry, _) => Ok(None),
+    }
+}
+
+/// What the registry vouches for about `target` (from [`update_target`]),
+/// given what checking its signature found: the commit it must resolve to,
+/// and whether it's verified. Refused as [`admit`] refuses an install.
+pub fn vouch(
+    origin: Origin,
+    name: &str,
+    target: &ListedRelease,
+    check: &SignatureCheck,
+) -> Result<VouchedRelease, String> {
+    Ok(VouchedRelease {
+        commit: target.commit.clone(),
+        verified: admit(origin, name, &target.git_ref, check)?,
+    })
+}
+
 /// A short, readable fingerprint of a public key: the first 16 hex digits
 /// of the SHA-256 of what it says, in groups of four
 /// (`SHA256:1a2b 3c4d 5e6f 7a8b`).
@@ -149,9 +275,9 @@ pub fn fingerprint(public_key: &str) -> String {
 }
 
 /// The warning for a publisher whose key changed since it was pinned.
-pub fn key_changed_warning(name: &str, publisher: &str, pinned: &str, offered: &str) -> String {
+pub fn key_changed_warning(name: &str, pinned: &str, offered: &str) -> String {
     format!(
-        "Refusing to install {name}: @{publisher}'s signing key changed. You trusted {}, and the registry now offers {}. Someone may have taken over the registry or the publisher's account. If @{publisher} really changed their key, check it with them, then remove the registry in Settings › Sources and add it again to trust the new key.",
+        "Refusing to install {name}: its publisher's signing key changed. You trusted {}, and the registry now offers {}. Someone may have taken over the registry or the publisher's account. If the publisher really changed their key, check it with them, then remove the registry in Settings › Sources and add it again to trust the new key.",
         fingerprint(pinned),
         fingerprint(offered)
     )
@@ -319,10 +445,151 @@ mod tests {
     }
 
     #[test]
+    fn only_the_default_registry_is_the_default_origin() {
+        for (url, origin) in [
+            (DEFAULT_REGISTRY, Origin::DefaultRegistry),
+            (
+                "https://github.com/vaultdbai/nandi-registry.git",
+                Origin::DefaultRegistry,
+            ),
+            (
+                "github.com/vaultdbai/nandi-registry-fork",
+                Origin::OtherRegistry,
+            ),
+            ("file:///tmp/registry", Origin::OtherRegistry),
+        ] {
+            assert_eq!(Origin::of(url), origin, "{url}");
+        }
+    }
+
+    fn changed() -> SignatureCheck {
+        SignatureCheck::KeyChanged {
+            pinned: "ed25519:old".into(),
+            offered: "ed25519:new".into(),
+        }
+    }
+
+    /// `Ok(verified)`, or a word the refusal must contain
+    #[test]
+    fn the_default_registry_admits_only_signed_release_tags() {
+        use Origin::{DefaultRegistry, OtherRegistry};
+        let verified = SignatureCheck::Verified { pin: None };
+        let offline = SignatureCheck::CouldNotCheck("timed out".into());
+        for (origin, git_ref, check, expected) in [
+            (DefaultRegistry, "v1.0.0", &verified, Ok(true)),
+            (
+                DefaultRegistry,
+                "v1.0.0",
+                &SignatureCheck::Unsigned,
+                Err("isn't signed"),
+            ),
+            (
+                DefaultRegistry,
+                "v1.0.0",
+                &SignatureCheck::BadSignature,
+                Err("doesn't match"),
+            ),
+            (DefaultRegistry, "main", &verified, Err("release tag")),
+            (DefaultRegistry, "v1.0.0", &offline, Err("Try again later")),
+            (DefaultRegistry, "v1.0.0", &changed(), Err("key changed")),
+            (OtherRegistry, "v1.0.0", &verified, Ok(true)),
+            (OtherRegistry, "main", &SignatureCheck::Unsigned, Ok(false)),
+            (
+                OtherRegistry,
+                "v1.0.0",
+                &SignatureCheck::BadSignature,
+                Ok(false),
+            ),
+            (OtherRegistry, "v1.0.0", &offline, Err("Try again later")),
+            (OtherRegistry, "v1.0.0", &changed(), Err("key changed")),
+        ] {
+            let admitted = admit(origin, "ArXiv", git_ref, check);
+            match expected {
+                Ok(verified) => {
+                    assert_eq!(admitted, Ok(verified), "{origin:?} {git_ref} {check:?}")
+                }
+                Err(word) => {
+                    let refused = admitted.unwrap_err();
+                    assert!(
+                        refused.contains(word),
+                        "{origin:?} {git_ref} {check:?}: {refused}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_default_registry_update_is_exactly_the_listed_release() {
+        use Origin::{DefaultRegistry, OtherRegistry};
+        let listed = ListedRelease {
+            version: "1.1.0".into(),
+            git_ref: "v1.1.0".into(),
+            commit: Some(COMMIT.into()),
+        };
+        // `Ok(true)`: the listed release is the target; `Ok(false)`: nothing
+        // vouches for it; `Err(word)`: refused
+        for (origin, new_ref, entry, expected) in [
+            (DefaultRegistry, "v1.1.0", Some(&listed), Ok(true)),
+            (DefaultRegistry, "v9.0.0", Some(&listed), Err("lists 1.1.0")),
+            (DefaultRegistry, "v1.1.0", None, Err("doesn't list it")),
+            (OtherRegistry, "v1.1.0", Some(&listed), Ok(true)),
+            (OtherRegistry, "v9.0.0", Some(&listed), Ok(false)),
+            (OtherRegistry, "v1.1.0", None, Ok(false)),
+        ] {
+            let target = update_target(origin, "ArXiv", new_ref, entry);
+            match expected {
+                Ok(listed_target) => assert_eq!(
+                    target.unwrap().is_some(),
+                    listed_target,
+                    "{origin:?} {new_ref}"
+                ),
+                Err(word) => {
+                    let refused = target.unwrap_err();
+                    assert!(refused.contains(word), "{origin:?} {new_ref}: {refused}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn an_update_is_vouched_for_by_its_signed_entry() {
+        use Origin::{DefaultRegistry, OtherRegistry};
+        let listed = ListedRelease {
+            version: "1.1.0".into(),
+            git_ref: "v1.1.0".into(),
+            commit: Some(COMMIT.into()),
+        };
+        let verified = SignatureCheck::Verified { pin: None };
+        let pinned = |verified| {
+            Ok(VouchedRelease {
+                commit: Some(COMMIT.into()),
+                verified,
+            })
+        };
+        assert_eq!(
+            vouch(DefaultRegistry, "ArXiv", &listed, &verified),
+            pinned(true)
+        );
+        assert_eq!(
+            vouch(OtherRegistry, "ArXiv", &listed, &SignatureCheck::Unsigned),
+            pinned(false)
+        );
+        assert!(
+            vouch(DefaultRegistry, "ArXiv", &listed, &SignatureCheck::Unsigned)
+                .unwrap_err()
+                .contains("isn't signed")
+        );
+        assert!(vouch(OtherRegistry, "ArXiv", &listed, &changed())
+            .unwrap_err()
+            .contains("key changed"));
+    }
+
+    #[test]
     fn a_changed_key_warning_names_both_fingerprints() {
         let (_, old) = signature::generate();
         let (_, new) = signature::generate();
-        let warning = key_changed_warning("ArXiv", "alice", &old, &new);
+        let warning = key_changed_warning("ArXiv", &old, &new);
         assert!(warning.contains(&fingerprint(&old)), "{warning}");
         assert!(warning.contains(&fingerprint(&new)), "{warning}");
         assert_ne!(fingerprint(&old), fingerprint(&new));

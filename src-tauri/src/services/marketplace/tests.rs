@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use super::install::Installer;
 use super::manifest::{parse_agent_entry, parse_pack_entry, AgentManifest, PackManifest};
 use super::source::tests::fixture_repo;
+use super::trust::VouchedRelease;
 use crate::db::Db;
 use crate::services::domain::installed::InstallKind;
 use crate::services::domain::workflow::WorkflowScope;
@@ -352,7 +353,13 @@ fn forking_a_pack_agent_keeps_the_pack_consistent() {
     commit(&origin, &pack_files("1.1.0", "Summarize better."), "v1.1.0");
     world
         .installer
-        .apply_update("research-pack", "v1.1.0", None, None, &mut no_progress())
+        .apply_update(
+            "research-pack",
+            "v1.1.0",
+            None,
+            &VouchedRelease::default(),
+            &mut no_progress(),
+        )
         .unwrap();
     assert!(!world
         .layout()
@@ -394,7 +401,13 @@ fn updates_are_reported_and_refused_over_local_changes() {
     assert!(world.installer.list_installed().unwrap()[0].modified);
     let err = world
         .installer
-        .apply_update("arxiv", "v1.1.0", None, None, &mut no_progress())
+        .apply_update(
+            "arxiv",
+            "v1.1.0",
+            None,
+            &VouchedRelease::default(),
+            &mut no_progress(),
+        )
         .unwrap_err();
     assert!(err.contains("skill.md"), "{err}");
 
@@ -402,7 +415,13 @@ fn updates_are_reported_and_refused_over_local_changes() {
     fs::write(&skill, original).unwrap();
     let applied = world
         .installer
-        .apply_update("arxiv", "v1.1.0", None, None, &mut no_progress())
+        .apply_update(
+            "arxiv",
+            "v1.1.0",
+            None,
+            &VouchedRelease::default(),
+            &mut no_progress(),
+        )
         .unwrap();
     assert_eq!(
         (applied.from_version.as_str(), applied.to_version.as_str()),
@@ -413,6 +432,91 @@ fn updates_are_reported_and_refused_over_local_changes() {
     assert_eq!(installed.agent("arxiv").unwrap().version, "1.1.0");
     let (updates, _) = world.installer.check_for_updates(&|_| None).unwrap();
     assert!(updates.is_empty());
+}
+
+/// An install from the default registry is offered only what the registry
+/// lists, never a newer tag the publisher pushed, and the update must
+/// resolve to the listed commit.
+#[test]
+fn default_registry_updates_come_from_the_registry_not_the_tags() {
+    use super::install::registry_updates;
+    use super::trust::ListedRelease;
+    use crate::services::domain::settings::DEFAULT_REGISTRY;
+    let world = World::new();
+    let origin = world.path("alice");
+    commit(&origin, &agent_files("v1"), "v1.0.0");
+    world
+        .installer
+        .install_agent(
+            &agent_manifest(&origin, "arxiv", "1.0.0", DEFAULT_REGISTRY),
+            None,
+            &mut no_progress(),
+        )
+        .unwrap();
+    let listed_commit = commit(&origin, &agent_files("v2"), "v1.1.0");
+    commit(&origin, &agent_files("v3"), "v9.0.0");
+    let installed = || world.store.repos().vendor.load_installed().unwrap();
+
+    // The publisher's tags offer nothing for a default-registry install
+    let (updates, failures) = world.installer.check_for_updates(&|_| None).unwrap();
+    assert!(updates.is_empty() && failures.is_empty(), "{updates:?}");
+
+    // The registry offers what it lists, and only when it's newer
+    let listing = |version: &str| ListedRelease {
+        version: version.to_string(),
+        git_ref: format!("v{version}"),
+        commit: Some(listed_commit.clone()),
+    };
+    for (listed, offered) in [
+        (Some(listing("1.1.0")), Some("v1.1.0")),
+        (Some(listing("1.0.0")), None),
+        (None, None),
+    ] {
+        let updates = registry_updates(&installed(), &|kind, id| {
+            assert_eq!((kind, id), (InstallKind::Agent, "arxiv"));
+            listed.clone()
+        });
+        let refs: Vec<&str> = updates.iter().map(|u| u.latest_ref.as_str()).collect();
+        assert_eq!(refs, Vec::from_iter(offered), "{listed:?}");
+    }
+    let update = &registry_updates(&installed(), &|_, _| Some(listing("1.1.0")))[0];
+    assert_eq!(update.latest_commit, listed_commit);
+
+    // The tag moved off the listed commit: refused, nothing changes
+    let vouched = |commit: &str| VouchedRelease {
+        commit: Some(commit.to_string()),
+        verified: true,
+    };
+    let moved = world
+        .installer
+        .apply_update(
+            "arxiv",
+            "v9.0.0",
+            None,
+            &vouched(&listed_commit),
+            &mut no_progress(),
+        )
+        .unwrap_err();
+    assert!(moved.contains("tampered"), "{moved}");
+    assert_eq!(installed().agent("arxiv").unwrap().version, "1.0.0");
+
+    // The listed release applies and is recorded as verified
+    world
+        .installer
+        .apply_update(
+            "arxiv",
+            "v1.1.0",
+            None,
+            &vouched(&listed_commit),
+            &mut no_progress(),
+        )
+        .unwrap();
+    let agent = installed().agent("arxiv").unwrap().clone();
+    assert_eq!(
+        (agent.version.as_str(), agent.commit.as_str()),
+        ("1.1.0", listed_commit.as_str())
+    );
+    assert!(agent.signature_verified);
 }
 
 #[test]
@@ -929,9 +1033,10 @@ async fn a_publisher_key_is_pinned_on_first_install_and_a_changed_key_is_refused
 }
 
 /// A publisher file that couldn't be fetched isn't remembered: once it's
-/// there, the entry verifies without waiting out the key cache
+/// there, the entry verifies without waiting out the key cache. Until then
+/// an install is refused ("could not check" is not "unsigned").
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_failed_publisher_key_fetch_is_tried_again() {
+async fn a_failed_publisher_key_fetch_is_tried_again_and_never_installs_unverified() {
     use super::signature;
     use crate::services::domain::settings::{RegistryConfig, RegistryKind};
     use crate::services::marketplace::{self, MarketplaceFilter};
@@ -963,8 +1068,22 @@ async fn a_failed_publisher_key_fetch_is_tried_again() {
             .verified
     };
 
-    // No publisher file yet: the fetch fails
+    // No publisher file yet: the fetch fails, and an install says to try
+    // again instead of recording a signed release as unverified for good
     assert!(!verified().await);
+    let refused = marketplace::install_agent(&state, "arxiv")
+        .await
+        .unwrap_err();
+    assert!(refused.contains("Try again later"), "{refused}");
+    assert!(state
+        .store()
+        .repos()
+        .vendor
+        .load_installed()
+        .unwrap()
+        .agent("arxiv")
+        .is_none());
+
     fs::create_dir_all(registry.join("publishers")).unwrap();
     fs::write(
         registry.join("publishers/alice.json"),
@@ -972,6 +1091,9 @@ async fn a_failed_publisher_key_fetch_is_tried_again() {
     )
     .unwrap();
     assert!(verified().await);
+    marketplace::install_agent(&state, "arxiv").await.unwrap();
+    let installed = state.store().repos().vendor.load_installed().unwrap();
+    assert!(installed.agent("arxiv").unwrap().signature_verified);
     state.shutdown();
 }
 
@@ -1047,7 +1169,13 @@ fn installs_a_pack_from_a_local_folder_as_an_unverified_local_install() {
     assert!(updates.is_empty() && failures.is_empty(), "{failures:?}");
     let err = world
         .installer
-        .apply_update("research-pack", "v2.0.0", None, None, &mut no_progress())
+        .apply_update(
+            "research-pack",
+            "v2.0.0",
+            None,
+            &VouchedRelease::default(),
+            &mut no_progress(),
+        )
         .unwrap_err();
     assert!(err.contains("folder on this computer"), "{err}");
 
