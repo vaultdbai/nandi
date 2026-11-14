@@ -238,8 +238,9 @@ async fn the_trail_reports_its_health_like_an_audit_log() {
         EditLine2,
         RemoveTheFile,
     }
-    // (the change, the chain the health reports, given the trail's lines)
-    let cases: [(Change, fn(u32) -> ChainCheck); 3] = [
+    /// The chain the health reports, given the trail's lines
+    type Expected = fn(u32) -> ChainCheck;
+    let cases: [(Change, Expected); 3] = [
         (Change::Nothing, |lines| ChainCheck::Intact { lines }),
         (Change::EditLine2, |_| ChainCheck::Broken {
             line: 3,
