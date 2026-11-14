@@ -217,7 +217,6 @@ interface NandiEventMap {
   'registry://synced': unknown
   'registry://sync_failed': unknown
   'tool://catalog_changed': unknown
-  'tool://usage_recorded': unknown
   'evidence://aggregated': unknown
   // Harness events. Payloads are
   // typed by the services that emit them
@@ -363,7 +362,6 @@ const CORE_EVENTS: Record<CoreEventName, true> = {
   'registry://synced': true,
   'registry://sync_failed': true,
   'tool://catalog_changed': true,
-  'tool://usage_recorded': true,
   'evidence://aggregated': true,
   'harness://detected': true,
   'harness://health_changed': true,

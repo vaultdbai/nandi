@@ -113,7 +113,6 @@ describe('capability definitions', () => {
     expect(isCapabilityEvent('evidence://aggregated')).toBe(true)
     expect(isCapabilityEvent('registry://synced')).toBe(true)
     expect(isCapabilityEvent('tool://catalog_changed')).toBe(true)
-    expect(isCapabilityEvent('tool://usage_recorded')).toBe(false)
     expect(isCapabilityEvent('agent://token')).toBe(false)
   })
 

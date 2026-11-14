@@ -22,10 +22,7 @@ function useToolEvents() {
   const queryClient = useQueryClient()
   useEffect(() => {
     const subscription = client.subscribe(event => {
-      if (
-        event.event === 'tool://catalog_changed' ||
-        event.event === 'tool://usage_recorded'
-      ) {
+      if (event.event === 'tool://catalog_changed') {
         void queryClient.invalidateQueries({ queryKey: toolQueryKeys.all })
       }
     })
