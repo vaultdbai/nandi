@@ -6,8 +6,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use nandi_protocol::{GroupPolicy, RelayMessage, Visibility};
-use nandi_relay::testing::Direction;
+use nandi_protocol::{GroupPolicy, Visibility};
 use nandi_relay::RelayServerConfig;
 
 use super::*;
@@ -75,19 +74,7 @@ impl World {
 
     /// The group IDs `member` asked the relay to create, in order
     fn creates(&self, member: &Member) -> Vec<String> {
-        self.relay
-            .faults
-            .frames()
-            .into_iter()
-            .filter(|frame| frame.instance == member.id && frame.direction == Direction::Received)
-            .filter_map(|frame| match frame.message {
-                RelayMessage::GroupRequest {
-                    op: GroupOp::Create { group_id, .. },
-                    ..
-                } => Some(group_id),
-                _ => None,
-            })
-            .collect()
+        self.relay.groups_created(&member.id)
     }
 }
 

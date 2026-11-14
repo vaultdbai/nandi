@@ -131,6 +131,20 @@ impl TestRelay {
             .collect()
     }
 
+    /// The group IDs `instance` asked the relay to create, in order
+    pub fn groups_created(&self, instance: &str) -> Vec<String> {
+        self.sent_by(instance)
+            .into_iter()
+            .filter_map(|message| match message {
+                RelayMessage::GroupRequest {
+                    op: nandi_protocol::GroupOp::Create { group_id, .. },
+                    ..
+                } => Some(group_id),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// The peer messages `instance` sent: (kind, task ID), in order
     pub fn peer_sent(&self, instance: &str) -> Vec<(String, String)> {
         self.sent_by(instance)
