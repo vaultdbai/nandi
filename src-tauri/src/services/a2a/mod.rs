@@ -48,6 +48,8 @@ pub mod escalation;
 pub mod reassign;
 
 #[cfg(test)]
+mod relay_e2e_tests;
+#[cfg(test)]
 mod tests;
 
 use std::sync::Arc;

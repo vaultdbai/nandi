@@ -1,6 +1,7 @@
 //! Delegation end to end: local in-process, two instances over a mock
 //! relay, the tool's approval, timeouts, and rejections; and the task
-//! lifecycle over it.
+//! lifecycle over it. The cases that need no fault from the relay run
+//! against the real one in `relay_e2e_tests.rs`.
 //!
 //! The mock relay seals and opens like the real client: every task,
 //! result and peer message between instances goes through each side's
@@ -41,7 +42,7 @@ use nandi_protocol::{Envelope, PublicKeys, SealedTask};
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn save_agent(state: &AppState, id: &str, frontmatter: &str) {
+pub(super) fn save_agent(state: &AppState, id: &str, frontmatter: &str) {
     let agent = Agent::from_skill_md(
         AgentId::parse(id).unwrap(),
         &format!("---\nname: {id}\n{frontmatter}---\nHelp.\n"),
@@ -68,7 +69,7 @@ async fn canned(state: &AppState, steps: Value) {
 }
 
 /// Each agent answers with its input in brackets
-async fn echo_agents(state: &AppState) {
+pub(super) async fn echo_agents(state: &AppState) {
     canned(state, json!([{ "text": "[{{input}}]" }])).await;
 }
 
@@ -77,11 +78,11 @@ async fn delegation(state: &AppState, task_id: &str) -> TaskResult {
     history::get(state.db(), task_id).await.unwrap().unwrap()
 }
 
-fn instance(state: &AppState) -> String {
+pub(super) fn instance(state: &AppState) -> String {
     crate::services::network::local_instance_id(state.db()).unwrap()
 }
 
-fn deps(state: &AppState, relay: Option<Arc<dyn RelayClient>>) -> A2aDeps {
+pub(super) fn deps(state: &AppState, relay: Option<Arc<dyn RelayClient>>) -> A2aDeps {
     A2aDeps {
         relay,
         ..A2aDeps::from_state(state).unwrap()
@@ -92,7 +93,7 @@ fn deps(state: &AppState, relay: Option<Arc<dyn RelayClient>>) -> A2aDeps {
 /// instance (no background loops: tests call the sweeps)
 pub(crate) async fn lifecycle(
     state: &AppState,
-    relay: Arc<MockRelay>,
+    relay: Arc<dyn RelayClient>,
     config: task::TaskConfig,
 ) -> Arc<task::TaskService> {
     let service = task::TaskService::new(
@@ -905,7 +906,7 @@ pub(crate) fn user_card(instance: &str) -> AgentCard {
     }
 }
 
-fn from_writer(capability: &str, input: Value) -> DelegationRequest {
+pub(super) fn from_writer(capability: &str, input: Value) -> DelegationRequest {
     DelegationRequest {
         requester_agent: Some("writer".into()),
         capability: capability.into(),
@@ -918,79 +919,8 @@ fn from_writer(capability: &str, input: Value) -> DelegationRequest {
 // Tests
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
-async fn one_instance_delegates_to_another_through_the_relay() {
-    let world = two_instances("serves: [{name: summarize}]\naccepts_delegation: true\n").await;
-    trust::set_policy(
-        world.provider_state.db(),
-        trust::ANY_REQUESTER,
-        "papers",
-        trust::TrustPolicy::Allow,
-    )
-    .unwrap();
-    let requester_instance = instance(&world.requester_state);
-    let provider_instance = instance(&world.provider_state);
-
-    let providers = world.requester.providers("summarize").await;
-    assert_eq!(providers.len(), 1, "the provider's card, through the relay");
-    assert_eq!(providers[0].id, format!("{provider_instance}/papers"));
-
-    let result = world
-        .requester
-        .run(from_writer(
-            "summarize",
-            json!({"text": "Attention is all you need"}),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(result.status, TaskStatus::Completed, "{:?}", result.error);
-    assert_eq!(result.direction, DelegationDirection::Outbound);
-    assert_eq!(result.provider_agent, format!("{provider_instance}/papers"));
-    assert_eq!(
-        result.requester_agent,
-        format!("{requester_instance}/writer")
-    );
-    let output = result.output.as_str().unwrap();
-    assert!(output.contains("Attention is all you need"), "{output}");
-
-    // Both sides keep history
-    let asked = history::get(world.requester_state.db(), &result.task_id)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(asked.status, TaskStatus::Completed);
-    let served = history::list(world.provider_state.db(), 10).await.unwrap();
-    assert_eq!(served.len(), 1);
-    assert_eq!(served[0].direction, DelegationDirection::Inbound);
-    assert_eq!(served[0].status, TaskStatus::Completed);
-    assert_eq!(served[0].requester_agent, result.requester_agent);
-
-    // The provider ran it as a delegated turn
-    let source: (String, Option<String>) = world
-        .provider_state
-        .db()
-        .call(|conn| {
-            conn.query_row(
-                "SELECT source_type, source_id FROM runs WHERE agent_id = 'papers'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-        })
-        .await
-        .unwrap();
-    assert_eq!(source.0, "agent");
-    assert_eq!(source.1.as_deref(), Some(result.requester_agent.as_str()));
-
-    // Audit: started + finished on each side
-    let log = std::fs::read_to_string(world._log_dir.path().join("provider.log")).unwrap();
-    assert_eq!(log.lines().count(), 2);
-    assert!(!log.contains("Attention"), "no task content in the log");
-    world.requester_state.shutdown();
-    world.provider_state.shutdown();
-}
-
 /// The owner dismisses the first request queued on `provider` (intake)
-async fn decline_when_queued(provider: &AppState) {
+pub(super) async fn decline_when_queued(provider: &AppState) {
     loop {
         let queued = provider
             .db()
@@ -1005,40 +935,6 @@ async fn decline_when_queued(provider: &AppState) {
         }
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
-}
-
-#[tokio::test]
-async fn remote_requesters_need_an_allowing_trust_policy() {
-    let world = two_instances("serves: [{name: summarize}]\naccepts_delegation: true\n").await;
-    // No rule: `ask`, which waits for the owner (`services::intake`);
-    // dismissed, it's declined
-    let (result, ()) = tokio::join!(
-        world.requester.run(from_writer("summarize", json!("hi"))),
-        decline_when_queued(&world.provider_state)
-    );
-    let result = result.unwrap();
-    assert_eq!(result.status, TaskStatus::Failed);
-    assert!(
-        result.error.as_deref().unwrap().contains("declined"),
-        "{:?}",
-        result.error
-    );
-
-    trust::set_policy(
-        world.provider_state.db(),
-        &result.requester_agent,
-        "papers",
-        trust::TrustPolicy::Deny,
-    )
-    .unwrap();
-    let denied = world
-        .requester
-        .run(from_writer("summarize", json!("hi")))
-        .await
-        .unwrap();
-    assert!(denied.error.unwrap().contains("doesn't take requests from"));
-    world.requester_state.shutdown();
-    world.provider_state.shutdown();
 }
 
 #[tokio::test]
@@ -3049,187 +2945,6 @@ async fn a_busy_gateway_queues_the_request_until_a_slot_frees() {
     assert_eq!(result.status, TaskStatus::Completed, "{:?}", result.error);
     assert_eq!(service.slots().waiting(GATEWAY_LINE), 0);
     state.shutdown();
-}
-
-#[tokio::test]
-async fn a_trusted_peer_passes_the_ask_policy() {
-    use crate::services::team::trust::{update_relationship, TrustUpdate};
-    let world = two_instances(
-        "serves: [{name: summarize}]
-accepts_delegation: true
-",
-    )
-    .await;
-    // Default policy `ask`: a stranger waits for the owner (`services::intake`);
-    // dismissed, it's declined
-    let (refused, ()) = tokio::join!(
-        world.requester.run(from_writer("summarize", json!("hi"))),
-        decline_when_queued(&world.provider_state)
-    );
-    let refused = refused.unwrap();
-    assert_eq!(refused.status, TaskStatus::Failed);
-    assert!(refused.error.unwrap_or_default().contains("declined"));
-
-    // Marked trusted in Network: let in
-    update_relationship(
-        world.provider_state.db(),
-        &instance(&world.requester_state),
-        &TrustUpdate {
-            added_as_trusted_peer: Some(true),
-            ..Default::default()
-        },
-    )
-    .unwrap();
-    let allowed = world
-        .requester
-        .run(from_writer("summarize", json!("hi")))
-        .await
-        .unwrap();
-    assert_eq!(allowed.status, TaskStatus::Completed, "{:?}", allowed.error);
-
-    // An explicit deny still wins
-    trust::set_policy(
-        world.provider_state.db(),
-        trust::ANY_REQUESTER,
-        "papers",
-        trust::TrustPolicy::Deny,
-    )
-    .unwrap();
-    let denied = world
-        .requester
-        .run(from_writer("summarize", json!("hi")))
-        .await
-        .unwrap();
-    assert_eq!(denied.status, TaskStatus::Failed);
-    world.requester_state.shutdown();
-    world.provider_state.shutdown();
-}
-
-#[tokio::test]
-async fn a_paused_requester_instance_is_rejected() {
-    use crate::services::team::trust::{update_relationship, TrustUpdate};
-    let world = two_instances("serves: [{name: summarize}]\naccepts_delegation: true\n").await;
-    trust::set_policy(
-        world.provider_state.db(),
-        trust::ANY_REQUESTER,
-        "papers",
-        trust::TrustPolicy::Allow,
-    )
-    .unwrap();
-    update_relationship(
-        world.provider_state.db(),
-        &instance(&world.requester_state),
-        &TrustUpdate {
-            delegations_paused: Some(true),
-            ..Default::default()
-        },
-    )
-    .unwrap();
-    let result = world
-        .requester
-        .run(from_writer("summarize", json!("hi")))
-        .await
-        .unwrap();
-    assert_eq!(result.status, TaskStatus::Failed);
-    assert!(
-        result
-            .error
-            .as_deref()
-            .unwrap_or_default()
-            .contains("paused"),
-        "{:?}",
-        result.error
-    );
-    world.requester_state.shutdown();
-    world.provider_state.shutdown();
-}
-
-#[tokio::test]
-async fn a_blocked_requester_instance_is_rejected_on_arrival() {
-    use crate::services::team::trust::{set_blocked, ALL_AGENTS};
-    let world = two_instances("serves: [{name: summarize}]\naccepts_delegation: true\n").await;
-    trust::set_policy(
-        world.provider_state.db(),
-        trust::ANY_REQUESTER,
-        "papers",
-        trust::TrustPolicy::Allow,
-    )
-    .unwrap();
-    let requester = instance(&world.requester_state);
-    set_blocked(world.provider_state.db(), &requester, ALL_AGENTS, true).unwrap();
-    let result = world
-        .requester
-        .run(from_writer("summarize", json!("hi")))
-        .await
-        .unwrap();
-    assert_eq!(result.status, TaskStatus::Failed);
-    assert!(
-        result
-            .error
-            .as_deref()
-            .unwrap_or_default()
-            .contains("blocked"),
-        "{:?}",
-        result.error
-    );
-
-    // Unblocked: the same request goes through
-    set_blocked(world.provider_state.db(), &requester, ALL_AGENTS, false).unwrap();
-    let result = world
-        .requester
-        .run(from_writer("summarize", json!("hi")))
-        .await
-        .unwrap();
-    assert_eq!(result.status, TaskStatus::Completed, "{:?}", result.error);
-    world.requester_state.shutdown();
-    world.provider_state.shutdown();
-}
-
-#[tokio::test]
-async fn blocked_agents_and_paused_instances_are_never_picked() {
-    use crate::services::team::trust::{set_blocked, update_relationship, TrustUpdate};
-    let world = two_instances("serves: [{name: summarize}]\naccepts_delegation: true\n").await;
-    let provider = instance(&world.provider_state);
-    let db = world.requester_state.db();
-    assert_eq!(world.requester.providers("summarize").await.len(), 1);
-
-    set_blocked(db, &provider, "papers", true).unwrap();
-    assert!(world.requester.providers("summarize").await.is_empty());
-    let result = world
-        .requester
-        .run(from_writer("summarize", json!("hi")))
-        .await
-        .unwrap();
-    assert_eq!(result.status, TaskStatus::Failed);
-    assert!(result.error.unwrap().contains("No agent that serves"));
-    // Named, it's refused before it's sent
-    let named = world
-        .requester
-        .run(DelegationRequest {
-            target: Some(format!("{provider}/papers")),
-            ..from_writer("summarize", json!("hi"))
-        })
-        .await
-        .unwrap();
-    assert!(named.error.unwrap().contains("blocked"));
-
-    set_blocked(db, &provider, "papers", false).unwrap();
-    update_relationship(
-        db,
-        &provider,
-        &TrustUpdate {
-            delegations_paused: Some(true),
-            ..Default::default()
-        },
-    )
-    .unwrap();
-    assert!(world.requester.providers("summarize").await.is_empty());
-    // Our own instance is never filtered
-    let cards = vec![user_card(&instance(&world.requester_state))];
-    let me = instance(&world.requester_state);
-    assert_eq!(failover::without_untrusted(db, &me, cards).len(), 1);
-    world.requester_state.shutdown();
-    world.provider_state.shutdown();
 }
 
 #[tokio::test]
