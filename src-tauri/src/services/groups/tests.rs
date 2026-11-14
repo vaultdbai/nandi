@@ -6,7 +6,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use nandi_protocol::{GroupPolicy, Visibility};
+use nandi_protocol::{GroupPolicy, RelayMessage, Visibility};
+use nandi_relay::testing::Direction;
 use nandi_relay::RelayServerConfig;
 
 use super::*;
@@ -70,6 +71,23 @@ impl World {
     /// How many group requests `member` has sent the relay
     fn requests(&self, member: &Member) -> usize {
         self.relay.frames_sent(&member.id, REQUEST)
+    }
+
+    /// The group IDs `member` asked the relay to create, in order
+    fn creates(&self, member: &Member) -> Vec<String> {
+        self.relay
+            .faults
+            .frames()
+            .into_iter()
+            .filter(|frame| frame.instance == member.id && frame.direction == Direction::Received)
+            .filter_map(|frame| match frame.message {
+                RelayMessage::GroupRequest {
+                    op: GroupOp::Create { group_id, .. },
+                    ..
+                } => Some(group_id),
+                _ => None,
+            })
+            .collect()
     }
 }
 
@@ -168,6 +186,7 @@ async fn without_a_relay_the_lists_are_empty_and_calls_say_so() {
 async fn creating_signs_version_one_over_the_id_it_picks() {
     let world = World::start().await;
     let me = world.member("me-1").await;
+    world.relay.faults.take_next_group_id(&me.id);
     let view = me
         .groups
         .create(" Finance ", "Month-end", POLICY_TEMPLATE)
@@ -181,6 +200,10 @@ async fn creating_signs_version_one_over_the_id_it_picks() {
     assert_eq!(view.policy.approval, Some(Approval::Always));
     assert_eq!(view.my_role, Some(GroupRole::Admin));
     assert_eq!(view.my_access, AccessLevel::AskFirst);
+    // The relay refused the first ID as taken: another was tried
+    let creates = world.creates(&me);
+    assert_eq!(creates.len(), 2);
+    assert_ne!(creates[0], creates[1]);
     // The gold copy and my level are files
     let copy = me.repos.groups.load(&id).unwrap().unwrap();
     assert_eq!(copy.text, POLICY_TEMPLATE);
