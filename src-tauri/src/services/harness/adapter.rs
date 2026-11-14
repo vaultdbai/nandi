@@ -92,6 +92,9 @@ pub struct HarnessConfig {
     /// Calls a person approves first (`requires_approval`)
     pub approvals: super::acp::Approvals,
     pub model: Option<String>,
+    /// How the CLI reaches its model through the egress proxy, which adds
+    /// the host's credential. `None`: the CLI signs in with `credentials`
+    pub model_route: Option<ModelRoute>,
     pub gateway: Option<GatewayConfig>,
     pub credentials: HarnessCredentials,
     /// The system prompt (skill body + instructions), appended to the
@@ -117,6 +120,7 @@ impl HarnessConfig {
             denied_tools: Vec::new(),
             approvals: super::acp::Approvals::default(),
             model: None,
+            model_route: None,
             gateway: None,
             credentials: HarnessCredentials::default(),
             system_prompt: None,
@@ -137,6 +141,7 @@ impl fmt::Debug for HarnessConfig {
             .field("denied_tools", &self.denied_tools)
             .field("approvals", &self.approvals)
             .field("model", &self.model)
+            .field("model_route", &self.model_route)
             .field("gateway", &self.gateway)
             .field("credentials", &self.credentials)
             .field("placement", &self.placement)
@@ -217,15 +222,36 @@ pub struct GatewayConfig {
 pub enum GatewayKind {
     /// A LiteLLM proxy translating Anthropic Messages to Bedrock Converse
     Litellm,
-    /// Any Anthropic-compatible endpoint the user runs
-    External,
+}
+
+/// How a CLI reaches its model: through the egress proxy, with the
+/// session's proxy token where the provider key would go. The host holds
+/// the real credential (`egress::model_proxy::ModelUpstream`), so this
+/// holds no secret.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelRoute {
+    /// Anthropic Messages (Anthropic, a Claude subscription, a team's
+    /// Anthropic-compatible gateway)
+    Anthropic,
+    /// Microsoft Foundry: Anthropic Messages too, in the CLI's Foundry mode
+    /// (it sends only what Foundry accepts)
+    Foundry,
+}
+
+impl ModelRoute {
+    /// The proxy API this route speaks
+    pub fn api(self) -> crate::services::egress::model_proxy::ModelApi {
+        use crate::services::egress::model_proxy::ModelApi;
+        match self {
+            Self::Anthropic | Self::Foundry => ModelApi::Anthropic,
+        }
+    }
 }
 
 /// Secrets for the CLI's environment only. Read from the keyring or the
 /// host environment; never logged, never written to disk.
 #[derive(Clone, Default, PartialEq)]
 pub struct HarnessCredentials {
-    pub anthropic_api_key: Option<String>,
     pub openai_api_key: Option<String>,
     pub google_api_key: Option<String>,
     pub aws_profile: Option<String>,
@@ -237,18 +263,13 @@ pub struct HarnessCredentials {
     pub aws_access_key_id: Option<String>,
     pub aws_secret_access_key: Option<String>,
     pub aws_session_token: Option<String>,
-    pub azure_endpoint: Option<String>,
-    pub azure_api_key: Option<String>,
-    pub azure_tenant_id: Option<String>,
-    pub azure_client_id: Option<String>,
     pub custom_env: HashMap<String, String>,
 }
 
 impl HarnessCredentials {
     /// Names (never values) of the credentials that are set
     pub fn present(&self) -> Vec<&'static str> {
-        let fields: [(&'static str, bool); 13] = [
-            ("anthropic_api_key", self.anthropic_api_key.is_some()),
+        let fields: [(&'static str, bool); 8] = [
             ("openai_api_key", self.openai_api_key.is_some()),
             ("google_api_key", self.google_api_key.is_some()),
             ("aws_profile", self.aws_profile.is_some()),
@@ -260,10 +281,6 @@ impl HarnessCredentials {
                 self.aws_secret_access_key.is_some(),
             ),
             ("aws_session_token", self.aws_session_token.is_some()),
-            ("azure_endpoint", self.azure_endpoint.is_some()),
-            ("azure_api_key", self.azure_api_key.is_some()),
-            ("azure_tenant_id", self.azure_tenant_id.is_some()),
-            ("azure_client_id", self.azure_client_id.is_some()),
         ];
         fields
             .into_iter()
@@ -327,7 +344,7 @@ pub struct HarnessAuth {
     pub plan: Option<String>,
     /// The organization the sign-in belongs to
     pub organization: Option<String>,
-    /// Bedrock: the AWS profile (SSO, assume-role, keys…) and region
+    /// Bedrock: the AWS profile (SSO, assume-role, keysâ€¦) and region
     pub aws_profile: Option<String>,
     pub aws_region: Option<String>,
 }
@@ -485,7 +502,7 @@ impl Invocation {
     }
 }
 
-/// A spawned harness process (`docker run -i …` for container placement)
+/// A spawned harness process (`docker run -i â€¦` for container placement)
 pub struct SpawnedHarness {
     pub child: tokio::process::Child,
     pub pid: u32,
@@ -968,6 +985,15 @@ pub fn common_credential_env(credentials: &HarnessCredentials) -> Vec<(String, S
     env
 }
 
+/// The session's egress proxy token (`egress::proxy_env`), which a CLI
+/// sends where its provider key would go
+pub fn proxy_token(config: &HarnessConfig) -> Option<&str> {
+    config
+        .env
+        .get(crate::services::egress::PROXY_TOKEN_ENV)
+        .map(String::as_str)
+}
+
 /// Copies the `names` that are set in `source` (the CLI's own config or
 /// Nandi's environment) into the child's environment
 pub fn forward_env(source: &HashMap<String, String>, names: &[&str]) -> Vec<(String, String)> {
@@ -1069,7 +1095,7 @@ mod tests {
     #[test]
     fn credentials_never_print() {
         let credentials = HarnessCredentials {
-            anthropic_api_key: Some("sk-ant-secret".into()),
+            openai_api_key: Some("sk-openai-secret".into()),
             aws_secret_access_key: Some("aws-secret".into()),
             custom_env: [("TOKEN".to_string(), "custom-secret".to_string())].into(),
             ..HarnessCredentials::default()
@@ -1081,14 +1107,14 @@ mod tests {
         };
         let printed = format!("{credentials:?} {config:?}");
         for secret in [
-            "sk-ant-secret",
+            "sk-openai-secret",
             "aws-secret",
             "custom-secret",
             "value-secret",
         ] {
             assert!(!printed.contains(secret), "{printed}");
         }
-        assert!(printed.contains("anthropic_api_key"), "names are fine");
+        assert!(printed.contains("openai_api_key"), "names are fine");
     }
 
     #[test]

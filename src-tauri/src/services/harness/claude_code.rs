@@ -7,52 +7,54 @@
 //! The provider is Claude Code's own: the switches it reads (from
 //! `~/.claude/settings.json` `env` and the environment) are forwarded as
 //! they are, so a machine where Claude Code already runs on Bedrock needs
-//! no Nandi setup. Nandi's credentials, when the run has any, override them:
-//! - Anthropic: `ANTHROPIC_API_KEY`
+//! no Nandi setup. Its keys and tokens never are: the container reaches
+//! its model through the egress proxy (`egress::model_proxy`) with only
+//! the session's proxy token, and the host adds the real credential:
+//! - Anthropic, a Claude subscription, a team gateway:
+//!   `ANTHROPIC_BASE_URL=http://nandi-egress:11435/anthropic` and the
+//!   token in `ANTHROPIC_AUTH_TOKEN` ([`ModelRoute::Anthropic`])
+//! - Microsoft Foundry: `CLAUDE_CODE_USE_FOUNDRY=1`, the same base in
+//!   `ANTHROPIC_FOUNDRY_BASE_URL` and the token in
+//!   `ANTHROPIC_FOUNDRY_API_KEY` ([`ModelRoute::Foundry`])
 //! - Bedrock: `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION`, and exported STS
 //!   keys or `AWS_BEARER_TOKEN_BEDROCK`
-//! - Azure AI Foundry: `CLAUDE_CODE_USE_FOUNDRY=1`,
-//!   `ANTHROPIC_FOUNDRY_BASE_URL`, `ANTHROPIC_FOUNDRY_API_KEY`
-//! - A gateway (LiteLLM for third-party Bedrock models):
-//!   `ANTHROPIC_BASE_URL` and no provider switch
+//! - The LiteLLM gateway (third-party Bedrock models): `ANTHROPIC_BASE_URL`
+//!   and no provider switch
 //! - The model: `ANTHROPIC_MODEL`
 //!
-//! A container can't use the host's `claude login` files. With none of the
-//! above, it gets a subscription token instead: `CLAUDE_CODE_OAUTH_TOKEN`
-//! (from `claude setup-token`), else the access token of the host's
-//! current sign-in (`detection::claude_code_oauth_token`).
+//! What the host signs in with is [`host_upstream`]'s: a key or gateway
+//! token in Claude Code's settings, else a subscription token
+//! (`CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, else the access
+//! token of the host's current sign-in, `detection::claude_code_oauth_token`).
+
+use std::collections::{BTreeMap, HashMap};
 
 use super::adapter::{
-    common_credential_env, forward_env, CliAdapter, CliProfile, HarnessConfig, Invocation, ModelRef,
+    common_credential_env, forward_env, proxy_token, CliAdapter, CliProfile, HarnessConfig,
+    Invocation, ModelRef, ModelRoute,
 };
 use super::detection::{self, DetectEnv};
+use crate::services::egress::model_proxy::{ModelUpstream, Secret, UpstreamAuth};
 
 /// The ACP wrapper the tools volume installs (`images::tools`, which pins
 /// its package and version)
 pub const ACP_BINARY: &str = "claude-agent-acp";
 
-/// Claude Code settings Nandi forwards: provider switches, regions,
-/// models, endpoints, and the provider keys the user put there themselves
+/// Claude Code settings Nandi forwards: provider switches, regions, models
+/// and limits. Never a key, a token or an endpoint: those stay on the host
+/// ([`host_upstream`])
 pub const FORWARDED: &[&str] = &[
     "CLAUDE_CODE_USE_BEDROCK",
     "CLAUDE_CODE_USE_VERTEX",
-    "CLAUDE_CODE_USE_FOUNDRY",
     "CLAUDE_CODE_SKIP_BEDROCK_AUTH",
     "AWS_REGION",
     "AWS_PROFILE",
     "AWS_BEARER_TOKEN_BEDROCK",
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_AUTH_TOKEN",
-    "CLAUDE_CODE_OAUTH_TOKEN",
-    "ANTHROPIC_BASE_URL",
     "ANTHROPIC_MODEL",
     "ANTHROPIC_SMALL_FAST_MODEL",
     "ANTHROPIC_DEFAULT_OPUS_MODEL",
     "ANTHROPIC_DEFAULT_SONNET_MODEL",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-    "ANTHROPIC_FOUNDRY_RESOURCE",
-    "ANTHROPIC_FOUNDRY_BASE_URL",
-    "ANTHROPIC_FOUNDRY_API_KEY",
     "ANTHROPIC_VERTEX_PROJECT_ID",
     "CLOUD_ML_REGION",
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
@@ -60,9 +62,9 @@ pub const FORWARDED: &[&str] = &[
 ];
 
 /// Whether Claude Code's own settings (`~/.claude/settings.json` `env`
-/// and the environment) carry credentials or a provider that a container
-/// receives. The host's sign-in (`claude login`) stays on the host, but its
-/// token may not (`detection::container_auth`).
+/// and the environment) carry credentials or a provider a container
+/// session can use. The host's sign-in (`claude login`) stays on the host,
+/// but its token may serve the session (`detection::container_auth`).
 pub fn forwards_credentials(env: &DetectEnv) -> bool {
     const AUTH: &[&str] = &[
         "CLAUDE_CODE_OAUTH_TOKEN",
@@ -84,6 +86,60 @@ const PROVIDER_SWITCHES: &[&str] = &[
     "CLAUDE_CODE_USE_FOUNDRY",
 ];
 
+/// Where a Claude Code session's model calls go when the host signs them
+/// in with what Claude Code itself is set up with on the host, in order:
+/// - Foundry (`CLAUDE_CODE_USE_FOUNDRY` with its endpoint and key)
+/// - a gateway token or key in its settings (`ANTHROPIC_AUTH_TOKEN`, then
+///   `ANTHROPIC_API_KEY`, at `ANTHROPIC_BASE_URL` when set)
+/// - a subscription token (`claude setup-token`, else the host's sign-in)
+///
+/// `None` for Bedrock and Vertex, which sign in their own way, and when
+/// the host has nothing to sign in with.
+pub fn host_upstream(env: &DetectEnv) -> Option<(ModelRoute, ModelUpstream)> {
+    let own = detection::claude_code_env(env);
+    let set = |name: &str| setting(&own, name);
+    if set("CLAUDE_CODE_USE_BEDROCK").is_some() || set("CLAUDE_CODE_USE_VERTEX").is_some() {
+        return None;
+    }
+    if set("CLAUDE_CODE_USE_FOUNDRY").is_some() {
+        let key = set("ANTHROPIC_FOUNDRY_API_KEY")?;
+        let upstream = ModelUpstream::anthropic(
+            foundry_endpoint(&own)?,
+            UpstreamAuth::ApiKey(Secret::new(key)),
+        );
+        return Some((ModelRoute::Foundry, upstream));
+    }
+    let base = set("ANTHROPIC_BASE_URL").unwrap_or_else(|| ModelUpstream::ANTHROPIC_URL.into());
+    if let Some(token) = set("ANTHROPIC_AUTH_TOKEN") {
+        let upstream = ModelUpstream::anthropic(base, UpstreamAuth::Bearer(Secret::new(token)));
+        return Some((ModelRoute::Anthropic, upstream));
+    }
+    if let Some(key) = set("ANTHROPIC_API_KEY") {
+        let upstream = ModelUpstream::anthropic(base, UpstreamAuth::ApiKey(Secret::new(key)));
+        return Some((ModelRoute::Anthropic, upstream));
+    }
+    let token = detection::claude_code_oauth_token(env)?;
+    let upstream = ModelUpstream::anthropic(
+        ModelUpstream::ANTHROPIC_URL,
+        UpstreamAuth::ClaudeSubscription(Secret::new(token)),
+    );
+    Some((ModelRoute::Anthropic, upstream))
+}
+
+/// Foundry's Anthropic endpoint from Claude Code's settings: its base URL,
+/// else the one its resource name stands for
+pub fn foundry_endpoint(own: &HashMap<String, String>) -> Option<String> {
+    setting(own, "ANTHROPIC_FOUNDRY_BASE_URL").or_else(|| {
+        setting(own, "ANTHROPIC_FOUNDRY_RESOURCE")
+            .map(|resource| format!("https://{resource}.services.ai.azure.com/anthropic"))
+    })
+}
+
+/// A Claude Code setting, when it's set to something
+fn setting(own: &HashMap<String, String>, name: &str) -> Option<String> {
+    own.get(name).filter(|v| !v.trim().is_empty()).cloned()
+}
+
 pub struct ClaudeCode {
     env: DetectEnv,
 }
@@ -93,6 +149,26 @@ pub type ClaudeCodeAdapter = CliAdapter<ClaudeCode>;
 impl ClaudeCodeAdapter {
     pub fn with_env(env: DetectEnv) -> Self {
         CliAdapter::new(ClaudeCode { env })
+    }
+}
+
+/// Points Claude Code at the egress proxy for `route`, with the session's
+/// proxy token as its only credential
+fn route_through_proxy(env: &mut BTreeMap<String, String>, route: ModelRoute, token: &str) {
+    for name in PROVIDER_SWITCHES {
+        env.remove(*name);
+    }
+    let url = crate::services::egress::model_proxy_url(route.api());
+    match route {
+        ModelRoute::Anthropic => {
+            env.insert("ANTHROPIC_BASE_URL".into(), url);
+            env.insert("ANTHROPIC_AUTH_TOKEN".into(), token.into());
+        }
+        ModelRoute::Foundry => {
+            env.insert("CLAUDE_CODE_USE_FOUNDRY".into(), "1".into());
+            env.insert("ANTHROPIC_FOUNDRY_BASE_URL".into(), url);
+            env.insert("ANTHROPIC_FOUNDRY_API_KEY".into(), token.into());
+        }
     }
 }
 
@@ -117,53 +193,27 @@ impl CliProfile for ClaudeCode {
 
     fn env(&self, config: &HarnessConfig) -> Vec<(String, String)> {
         let own = detection::claude_code_env(&self.env);
-        let mut env: std::collections::BTreeMap<String, String> =
-            forward_env(&own, FORWARDED).into_iter().collect();
+        let mut env: BTreeMap<String, String> = forward_env(&own, FORWARDED).into_iter().collect();
+        // The container reaches only the proxy, not Anthropic's other hosts:
+        // no update checks, telemetry or release notes
+        env.insert(
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".into(),
+            "1".into(),
+        );
         let credentials = &config.credentials;
-        let mut provider: Option<&str> = None;
         if credentials.aws_access_key_id.is_some() || credentials.aws_bearer_token.is_some() {
-            provider = Some("CLAUDE_CODE_USE_BEDROCK");
-        } else if credentials.azure_api_key.is_some() || credentials.azure_endpoint.is_some() {
-            provider = Some("CLAUDE_CODE_USE_FOUNDRY");
-        } else if credentials.anthropic_api_key.is_some() {
-            provider = Some("");
-        }
-        if let Some(switch) = provider {
             for name in PROVIDER_SWITCHES {
                 env.remove(*name);
             }
-            if !switch.is_empty() {
-                env.insert(switch.to_string(), "1".to_string());
-            }
-        }
-        if let Some(key) = &credentials.anthropic_api_key {
-            env.insert("ANTHROPIC_API_KEY".into(), key.clone());
-        }
-        if let Some(endpoint) = &credentials.azure_endpoint {
-            env.insert("ANTHROPIC_FOUNDRY_BASE_URL".into(), endpoint.clone());
-        }
-        if let Some(key) = &credentials.azure_api_key {
-            env.insert("ANTHROPIC_FOUNDRY_API_KEY".into(), key.clone());
+            env.insert("CLAUDE_CODE_USE_BEDROCK".into(), "1".into());
         }
         env.extend(common_credential_env(credentials));
         // No ~/.aws in the container: a profile name would only fail
         if credentials.aws_access_key_id.is_some() {
             env.remove("AWS_PROFILE");
         }
-        // Nothing else to sign in with: the host's subscription token
-        const SIGN_IN: &[&str] = &[
-            "ANTHROPIC_API_KEY",
-            "ANTHROPIC_AUTH_TOKEN",
-            "CLAUDE_CODE_OAUTH_TOKEN",
-            "CLAUDE_CODE_USE_BEDROCK",
-            "CLAUDE_CODE_USE_VERTEX",
-            "CLAUDE_CODE_USE_FOUNDRY",
-        ];
-        let signed_in = SIGN_IN.iter().any(|name| env.contains_key(*name));
-        if !signed_in && config.gateway.is_none() {
-            if let Some(token) = detection::claude_code_oauth_token(&self.env) {
-                env.insert("CLAUDE_CODE_OAUTH_TOKEN".into(), token);
-            }
+        if let (Some(route), Some(token)) = (config.model_route, proxy_token(config)) {
+            route_through_proxy(&mut env, route, token);
         }
         if let Some(gateway) = config.gateway.as_ref().and_then(|g| g.endpoint.as_ref()) {
             // The gateway speaks Anthropic Messages and owns the provider
@@ -192,6 +242,8 @@ mod tests {
         UserMessage,
     };
 
+    const PROXY_TOKEN: &str = "proxy-token-for-this-session";
+
     fn profile(settings: Option<&str>, vars: &[(&str, &str)]) -> (ClaudeCode, tempfile::TempDir) {
         let home = tempfile::tempdir().unwrap();
         if let Some(settings) = settings {
@@ -209,6 +261,17 @@ mod tests {
         (ClaudeCode { env }, home)
     }
 
+    fn sign_in_on_host(home: &tempfile::TempDir, access_token: &str, expires_at: i64) {
+        std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+        std::fs::write(
+            home.path().join(".claude/.credentials.json"),
+            format!(
+                r#"{{"claudeAiOauth":{{"accessToken":"{access_token}","refreshToken":"never","expiresAt":{expires_at}}}}}"#
+            ),
+        )
+        .unwrap();
+    }
+
     fn env_map(profile: &ClaudeCode, config: &HarnessConfig) -> HashMap<String, String> {
         profile.env(config).into_iter().collect()
     }
@@ -216,6 +279,30 @@ mod tests {
     /// A session config in the test container
     fn in_container() -> HarnessConfig {
         HarnessConfig::new("/w".into(), Placement::for_tests())
+    }
+
+    /// A session in the test container that reaches its model on `route`
+    fn routed(route: ModelRoute) -> HarnessConfig {
+        HarnessConfig {
+            model_route: Some(route),
+            env: crate::services::egress::proxy_env(PROXY_TOKEN)
+                .into_iter()
+                .filter_map(|pair| {
+                    let (name, value) = pair.split_once('=')?;
+                    Some((name.to_string(), value.to_string()))
+                })
+                .collect(),
+            ..in_container()
+        }
+    }
+
+    fn assert_no_value(env: &HashMap<String, String>, secrets: &[&str]) {
+        for secret in secrets {
+            assert!(
+                !env.values().any(|value| value.contains(secret)),
+                "{secret} reached the container"
+            );
+        }
     }
 
     #[test]
@@ -229,51 +316,116 @@ mod tests {
     }
 
     #[test]
-    fn a_container_gets_the_hosts_subscription_token_when_it_has_nothing_else() {
-        let expires = crate::db::now_ms() + 60 * 60 * 1000;
+    fn the_hosts_subscription_signs_in_on_the_host_only() {
         let (signed_in, home) = profile(None, &[]);
-        std::fs::create_dir_all(home.path().join(".claude")).unwrap();
-        std::fs::write(
-            home.path().join(".claude/.credentials.json"),
-            format!(
-                r#"{{"claudeAiOauth":{{"accessToken":"sk-ant-oat","refreshToken":"never","expiresAt":{expires}}}}}"#
-            ),
-        )
-        .unwrap();
+        sign_in_on_host(&home, "sk-ant-oat", crate::db::now_ms() + 60 * 60 * 1000);
         assert!(detection::container_auth("claude-code", &signed_in.env));
-        let plain = in_container();
-        let env = env_map(&signed_in, &plain);
-        assert_eq!(env["CLAUDE_CODE_OAUTH_TOKEN"], "sk-ant-oat");
-        assert!(
-            !env.values().any(|v| v == "never"),
-            "the refresh token stays"
+
+        let (route, upstream) = host_upstream(&signed_in.env).unwrap();
+        assert_eq!(route, ModelRoute::Anthropic);
+        assert_eq!(
+            upstream,
+            ModelUpstream::anthropic(
+                ModelUpstream::ANTHROPIC_URL,
+                UpstreamAuth::ClaudeSubscription(Secret::new("sk-ant-oat")),
+            )
         );
-        // A Nandi key wins
-        let keyed = HarnessConfig {
-            credentials: HarnessCredentials {
-                anthropic_api_key: Some("sk-ant".into()),
-                ..HarnessCredentials::default()
-            },
-            ..in_container()
-        };
-        assert!(!env_map(&signed_in, &keyed).contains_key("CLAUDE_CODE_OAUTH_TOKEN"));
+        let env = env_map(&signed_in, &routed(route));
+        assert_eq!(
+            env["ANTHROPIC_BASE_URL"],
+            "http://nandi-egress:11435/anthropic"
+        );
+        assert_eq!(env["ANTHROPIC_AUTH_TOKEN"], PROXY_TOKEN);
+        assert!(!env.contains_key("CLAUDE_CODE_OAUTH_TOKEN"));
+        assert_no_value(&env, &["sk-ant-oat", "never"]);
 
-        // An expired login isn't forwarded
-        std::fs::write(
-            home.path().join(".claude/.credentials.json"),
-            r#"{"claudeAiOauth":{"accessToken":"old","expiresAt":1}}"#,
-        )
-        .unwrap();
+        // An expired login signs nothing in
+        sign_in_on_host(&home, "old", 1);
         assert!(!detection::container_auth("claude-code", &signed_in.env));
-        assert!(!env_map(&signed_in, &plain).contains_key("CLAUDE_CODE_OAUTH_TOKEN"));
+        assert!(host_upstream(&signed_in.env).is_none());
 
-        // A `claude setup-token` token in the environment is forwarded as is
+        // A `claude setup-token` token serves the same way
         let (setup_token, _home) = profile(None, &[("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-long")]);
         assert!(forwards_credentials(&setup_token.env));
+        let (_, upstream) = host_upstream(&setup_token.env).unwrap();
         assert_eq!(
-            env_map(&setup_token, &plain)["CLAUDE_CODE_OAUTH_TOKEN"],
-            "sk-ant-long"
+            upstream.auth,
+            UpstreamAuth::ClaudeSubscription(Secret::new("sk-ant-long"))
         );
+        let env = env_map(&setup_token, &routed(ModelRoute::Anthropic));
+        assert_no_value(&env, &["sk-ant-long"]);
+    }
+
+    #[test]
+    fn keys_and_gateways_in_claude_codes_settings_stay_on_the_host() {
+        let (keyed, _a) = profile(None, &[("ANTHROPIC_API_KEY", "sk-ant-key")]);
+        let (_, upstream) = host_upstream(&keyed.env).unwrap();
+        assert_eq!(
+            upstream,
+            ModelUpstream::anthropic(
+                ModelUpstream::ANTHROPIC_URL,
+                UpstreamAuth::ApiKey(Secret::new("sk-ant-key")),
+            )
+        );
+        assert_no_value(
+            &env_map(&keyed, &routed(ModelRoute::Anthropic)),
+            &["sk-ant-key"],
+        );
+
+        let (gateway, _b) = profile(
+            Some(
+                r#"{"env":{"ANTHROPIC_BASE_URL":"https://llm.example.com","ANTHROPIC_AUTH_TOKEN":"sk-gw"}}"#,
+            ),
+            &[],
+        );
+        let (_, upstream) = host_upstream(&gateway.env).unwrap();
+        assert_eq!(
+            upstream,
+            ModelUpstream::anthropic(
+                "https://llm.example.com",
+                UpstreamAuth::Bearer(Secret::new("sk-gw")),
+            )
+        );
+        let env = env_map(&gateway, &routed(ModelRoute::Anthropic));
+        assert_eq!(
+            env["ANTHROPIC_BASE_URL"],
+            "http://nandi-egress:11435/anthropic"
+        );
+        assert_no_value(&env, &["sk-gw", "llm.example.com"]);
+    }
+
+    #[test]
+    fn foundry_goes_through_the_proxy_in_foundry_mode() {
+        let (foundry, _home) = profile(
+            Some(
+                r#"{"env":{"CLAUDE_CODE_USE_FOUNDRY":"1","ANTHROPIC_FOUNDRY_RESOURCE":"r","ANTHROPIC_FOUNDRY_API_KEY":"az-key"}}"#,
+            ),
+            &[],
+        );
+        let (route, upstream) = host_upstream(&foundry.env).unwrap();
+        assert_eq!(route, ModelRoute::Foundry);
+        assert_eq!(
+            upstream,
+            ModelUpstream::anthropic(
+                "https://r.services.ai.azure.com/anthropic",
+                UpstreamAuth::ApiKey(Secret::new("az-key")),
+            )
+        );
+        let env = env_map(&foundry, &routed(route));
+        assert_eq!(env["CLAUDE_CODE_USE_FOUNDRY"], "1");
+        assert_eq!(
+            env["ANTHROPIC_FOUNDRY_BASE_URL"],
+            "http://nandi-egress:11435/anthropic"
+        );
+        assert_eq!(env["ANTHROPIC_FOUNDRY_API_KEY"], PROXY_TOKEN);
+        assert_no_value(&env, &["az-key", "services.ai.azure.com"]);
+    }
+
+    #[test]
+    fn bedrock_settings_sign_in_their_own_way() {
+        let (bedrock, home) = profile(Some(r#"{"env":{"CLAUDE_CODE_USE_BEDROCK":"1"}}"#), &[]);
+        sign_in_on_host(&home, "sk-ant-oat", crate::db::now_ms() + 60 * 60 * 1000);
+        assert!(host_upstream(&bedrock.env).is_none());
     }
 
     #[test]
@@ -315,36 +467,6 @@ mod tests {
         assert_eq!(env["AWS_SESSION_TOKEN"], "token");
         assert_eq!(env["ANTHROPIC_MODEL"], "us.anthropic.claude-sonnet-5");
         assert!(!env.contains_key("AWS_PROFILE"));
-    }
-
-    #[test]
-    fn anthropic_and_azure_credentials() {
-        let (profile, _home) = profile(Some(r#"{"env":{"CLAUDE_CODE_USE_BEDROCK":"1"}}"#), &[]);
-        let anthropic = HarnessConfig {
-            credentials: HarnessCredentials {
-                anthropic_api_key: Some("sk-ant".into()),
-                ..HarnessCredentials::default()
-            },
-            ..in_container()
-        };
-        let env = env_map(&profile, &anthropic);
-        assert_eq!(env["ANTHROPIC_API_KEY"], "sk-ant");
-        assert!(
-            !env.contains_key("CLAUDE_CODE_USE_BEDROCK"),
-            "the run's provider wins"
-        );
-
-        let azure = HarnessConfig {
-            credentials: HarnessCredentials {
-                azure_endpoint: Some("https://r.services.ai.azure.com".into()),
-                azure_api_key: Some("az".into()),
-                ..HarnessCredentials::default()
-            },
-            ..in_container()
-        };
-        let env = env_map(&profile, &azure);
-        assert_eq!(env["CLAUDE_CODE_USE_FOUNDRY"], "1");
-        assert_eq!(env["ANTHROPIC_FOUNDRY_API_KEY"], "az");
     }
 
     #[test]

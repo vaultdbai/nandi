@@ -66,12 +66,6 @@ impl CliProfile for Codex {
         if let Some(key) = &credentials.openai_api_key {
             env.insert("OPENAI_API_KEY".into(), key.clone());
         }
-        if let Some(key) = &credentials.azure_api_key {
-            env.insert("AZURE_OPENAI_API_KEY".into(), key.clone());
-        }
-        if let Some(endpoint) = &credentials.azure_endpoint {
-            env.insert("AZURE_OPENAI_ENDPOINT".into(), endpoint.clone());
-        }
         env.extend(common_credential_env(credentials));
         env.extend(config.env.iter().map(|(k, v)| (k.clone(), v.clone())));
         env.into_iter().collect()
@@ -143,20 +137,5 @@ mod tests {
         let env: std::collections::HashMap<_, _> = profile.env(&config).into_iter().collect();
         assert_eq!(env["OPENAI_API_KEY"], "from-nandi");
         assert_eq!(codex(&[]).auth_method(&[]), None, "ChatGPT login");
-    }
-
-    #[test]
-    fn azure_credentials() {
-        let config = HarnessConfig {
-            credentials: HarnessCredentials {
-                azure_api_key: Some("az".into()),
-                azure_endpoint: Some("https://x.openai.azure.com".into()),
-                ..HarnessCredentials::default()
-            },
-            ..in_container()
-        };
-        let env: std::collections::HashMap<_, _> = codex(&[]).env(&config).into_iter().collect();
-        assert_eq!(env["AZURE_OPENAI_API_KEY"], "az");
-        assert_eq!(env["AZURE_OPENAI_ENDPOINT"], "https://x.openai.azure.com");
     }
 }

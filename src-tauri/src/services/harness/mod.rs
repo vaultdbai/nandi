@@ -752,7 +752,8 @@ async fn test_planned_session(
 ) -> Result<String, HarnessError> {
     let identity = test_identity(&plan.harness_id);
     crate::services::egress::allow_session_hosts(&identity, &plan.egress_hosts);
-    let _hosts = SessionHostsGuard(identity);
+    let _hosts = SessionHostsGuard(identity.clone());
+    let _model_session = runtime_router::open_model_session(&identity, &plan);
     adapter::test_session(adapter, plan.config).await
 }
 

@@ -6,6 +6,9 @@
 //! `nandi-egress` relay at `nandi-egress:11435` ([`relay`]):
 //!
 //! - `POST /llm` — LLM completions with host-held provider keys
+//! - `/anthropic/v1/messages` — a harness CLI's model calls, with the
+//!   host's credential swapped in for the session's proxy token
+//!   ([`model_proxy`])
 //! - `POST /aws/{service}/{action}` — AWS calls as the agent's AWS identity
 //! - `POST /fetch` — HTTP requests to hosts in the agent's `network.allow`
 //! - `CONNECT host:443` — HTTPS tunnels for `HTTPS_PROXY`, same allowlist
@@ -23,6 +26,7 @@ pub mod capabilities;
 pub mod credentials;
 mod http_proxy;
 mod llm_proxy;
+pub mod model_proxy;
 pub mod relay;
 mod tunnel;
 
@@ -185,6 +189,20 @@ impl EgressState {
     }
 }
 
+/// The variable that carries a container's proxy token
+pub const PROXY_TOKEN_ENV: &str = "NANDI_LLM_PROXY_TOKEN";
+
+/// Where a harness CLI in a container reaches `api` on the proxy (through
+/// the relay), e.g. `http://nandi-egress:11435/anthropic`
+pub fn model_proxy_url(api: model_proxy::ModelApi) -> String {
+    format!(
+        "http://{}:{}{}",
+        relay::RELAY_NAME,
+        relay::RELAY_PORT,
+        api.prefix()
+    )
+}
+
 /// Proxy endpoints for a container, through the relay. `HTTPS_PROXY`
 /// carries the agent's proxy token as Basic credentials, so tunnels are
 /// attributed like other routes. The relay and the LiteLLM gateway are on
@@ -202,7 +220,7 @@ pub fn proxy_env(proxy_token: &str) -> Vec<String> {
         format!("NANDI_LLM_PROXY={base}/llm"),
         // Read by the runtime image
         format!("NANDI_LLM_PROXY_URL={base}/llm"),
-        format!("NANDI_LLM_PROXY_TOKEN={proxy_token}"),
+        format!("{PROXY_TOKEN_ENV}={proxy_token}"),
         format!("NANDI_AWS_PROXY={base}/aws"),
         format!("NANDI_FETCH_PROXY={base}/fetch"),
         format!("HTTPS_PROXY={https_proxy}"),
@@ -318,6 +336,7 @@ fn connector_capabilities(
 fn routes() -> Vec<EgressRoute> {
     [
         (EgressKind::Llm, "POST", "/llm"),
+        (EgressKind::Llm, "POST", "/anthropic/v1/messages"),
         (EgressKind::Aws, "POST", "/aws/{service}/{action}"),
         (EgressKind::Fetch, "POST", "/fetch"),
         (EgressKind::Tunnel, "CONNECT", "host:443"),
@@ -571,6 +590,10 @@ pub fn start_server(state: &AppState) {
         },
     };
     let router = llm_proxy::router(llm_proxy::ProxyState::new(state))
+        .merge(model_proxy::router(model_proxy::ModelProxyState::new(
+            state.proxy_tokens().clone(),
+            model_proxy::ModelSessions::global().clone(),
+        )))
         .merge(aws_proxy::router(context.clone(), state.egress().clone()))
         .merge(http_proxy::router(context.clone()));
 

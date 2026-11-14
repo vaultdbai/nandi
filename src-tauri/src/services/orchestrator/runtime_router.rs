@@ -26,11 +26,14 @@ use crate::model::RunStatus;
 use crate::sandbox::{DEFAULT_CPU, DEFAULT_MEMORY_MB};
 use crate::services::config::repo_config::{self, HarnessDefaults};
 use crate::services::domain::{Agent, AgentId, AgentRuntimeKind};
+use crate::services::egress::model_proxy::{ModelUpstream, Secret, UpstreamAuth};
 use crate::services::events::{EventBus, RunContext};
 use crate::services::harness::acp::{AcpSessionUpdate, AcpUsage};
 use crate::services::harness::adapter::{
-    GatewayConfig, HarnessAdapter, HarnessConfig, HarnessCredentials, Placement, UserMessage,
+    GatewayConfig, HarnessAdapter, HarnessConfig, HarnessCredentials, ModelRoute, Placement,
+    UserMessage,
 };
+use crate::services::harness::detection::DetectEnv;
 use crate::services::harness::event_translation::{TurnOutcome, TurnTranslator};
 use crate::services::harness::{
     evidence, gateway, HarnessErrorEvent, HarnessService, HarnessSessionStatus,
@@ -73,6 +76,9 @@ pub struct RouterInputs {
     /// The agent's workdir on the host
     pub workdir: PathBuf,
     pub credentials: HarnessCredentials,
+    /// How the CLI reaches its model through the egress proxy, and what the
+    /// host signs it with ([`claude_code_access`])
+    pub model_access: Option<ModelAccess>,
     /// The running gateway (endpoint, key), when the agent wants one
     pub gateway: Option<(GatewayConfig, String)>,
     /// `.nandi/llm.yaml`'s choices the environment left open;
@@ -127,6 +133,14 @@ impl ToolGrant {
     }
 }
 
+/// How a session reaches its model through the egress proxy: what the CLI
+/// is told (no secret) and the upstream the host signs its calls for
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModelAccess {
+    pub route: ModelRoute,
+    pub upstream: ModelUpstream,
+}
+
 #[derive(Debug, Clone)]
 pub struct HarnessPlan {
     /// `claude-code`, `codex`, `gemini-cli`, `custom:<id>`
@@ -138,6 +152,9 @@ pub struct HarnessPlan {
     /// Hosts the CLI's own model calls go to, allowed through the egress
     /// proxy while the run lasts (`egress::allow_session_hosts`)
     pub egress_hosts: Vec<String>,
+    /// The model session the proxy serves while the run lasts
+    /// (`ModelSessions::open`); `None`: the CLI signs in another way
+    pub upstream: Option<ModelUpstream>,
 }
 
 #[derive(Debug, Clone)]
@@ -259,15 +276,6 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         .clone()
         .or(repo.model.clone())
         .or(inputs.default_model);
-    // The team's own Anthropic-compatible gateway (`kind: litellm`)
-    let repo_gateway = repo
-        .endpoint
-        .clone()
-        .filter(|_| repo.provider.as_deref() == Some(REPO_GATEWAY))
-        .map(|endpoint| GatewayConfig {
-            kind: crate::services::harness::adapter::GatewayKind::External,
-            endpoint: Some(endpoint),
-        });
     let gateway = if config.gateway.is_some() {
         let Some((gateway, key)) = inputs.gateway else {
             return fallback("The LiteLLM gateway isn't running".to_string());
@@ -293,12 +301,18 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         credentials.aws_profile = None;
         Some(gateway)
     } else {
-        repo_gateway
+        None
     };
-    if inputs.host_only_sign_in && gateway.is_none() && !has_secret(&credentials) {
+    // The proxy serves the model unless the LiteLLM gateway does
+    let model_access = inputs.model_access.filter(|_| gateway.is_none());
+    if inputs.host_only_sign_in
+        && gateway.is_none()
+        && model_access.is_none()
+        && !has_secret(&credentials)
+    {
         return fallback(
-            "Claude Code needs an API key to run in the container: your sign-in on this \
-             computer can't be passed in. Add an Anthropic key in Settings › Models & runtimes."
+            "Claude Code has nothing to sign in with: sign in to Claude Code on this computer, \
+             or add an Anthropic key in Settings › Models & runtimes."
                 .to_string(),
         );
     }
@@ -323,10 +337,20 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
             agent.id().as_str()
         ));
     }
-    let egress_hosts = model_hosts(&harness_id, &credentials, gateway.as_ref());
+    let egress_hosts = if model_access.is_some() {
+        // Its model calls go to the proxy, which is always reachable
+        Vec::new()
+    } else {
+        model_hosts(&harness_id, &credentials, gateway.as_ref())
+    };
+    let (model_route, upstream) = match model_access {
+        Some(access) => (Some(access.route), Some(access.upstream)),
+        None => (None, None),
+    };
     let grant = inputs.tools.unwrap_or_else(|| ToolGrant::of(agent));
     RuntimeDecision::Harness(Box::new(HarnessPlan {
         egress_hosts,
+        upstream,
         config: HarnessConfig {
             working_dir: inputs.workdir,
             env,
@@ -340,6 +364,7 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
                 asker: None,
             },
             model: model.clone(),
+            model_route,
             gateway,
             credentials,
             system_prompt: Some(format!("{}{}", agent.system_prompt(), inputs.folder_prompt))
@@ -361,31 +386,11 @@ fn model_hosts(
     credentials: &HarnessCredentials,
     gateway: Option<&GatewayConfig>,
 ) -> Vec<String> {
-    use crate::services::harness::adapter::GatewayKind;
-    let host_of = |url: &str| {
-        let url = reqwest::Url::parse(url).ok()?;
-        let host = url.host_str()?.to_string();
-        Some(match url.port() {
-            Some(port) if port != 443 => format!("{host}:{port}"),
-            _ => host,
-        })
-    };
-    if let Some(gateway) = gateway {
-        return match gateway.kind {
-            GatewayKind::Litellm => Vec::new(),
-            GatewayKind::External => gateway
-                .endpoint
-                .as_deref()
-                .and_then(host_of)
-                .into_iter()
-                .collect(),
-        };
+    if gateway.is_some() {
+        return Vec::new();
     }
     let hosts: &[&str] = match harness_id {
         "claude-code" => {
-            if let Some(host) = credentials.azure_endpoint.as_deref().and_then(host_of) {
-                return vec![host];
-            }
             if credentials.aws_access_key_id.is_some() || credentials.aws_bearer_token.is_some() {
                 &["*.amazonaws.com"]
             } else {
@@ -570,6 +575,18 @@ async fn inputs_for(
             }),
     );
     let credentials = credentials(app, agent, provider.as_deref(), &repo).await?;
+    let model_access = match harness_id.as_str() {
+        "claude-code" if config.gateway.is_none() => {
+            claude_code_access(provider.as_deref(), &repo, &DetectEnv::current(), || {
+                crate::services::llm_keys::require_api_key(
+                    app.secrets(),
+                    crate::llm::Provider::Anthropic,
+                )
+                .ok()
+            })
+        }
+        _ => None,
+    };
     let gateway = match &config.gateway {
         Some(_) => {
             let gateway = app.litellm_gateway();
@@ -588,6 +605,7 @@ async fn inputs_for(
         default_model,
         workdir: setup.workdir,
         credentials,
+        model_access,
         gateway,
         repo,
         host_only_sign_in: harness_id == "claude-code"
@@ -650,10 +668,8 @@ impl TurnBudget {
 /// A key or token the CLI can sign in with (a region or profile name alone
 /// isn't one)
 fn has_secret(credentials: &HarnessCredentials) -> bool {
-    credentials.anthropic_api_key.is_some()
-        || credentials.aws_access_key_id.is_some()
+    credentials.aws_access_key_id.is_some()
         || credentials.aws_bearer_token.is_some()
-        || credentials.azure_api_key.is_some()
         || !credentials.custom_env.is_empty()
 }
 
@@ -704,31 +720,80 @@ async fn credentials(
             )
             .await
         }
-        // The key stays in the environment (`ANTHROPIC_FOUNDRY_API_KEY`)
-        Some("azure") => Ok(HarnessCredentials {
-            azure_endpoint: repo.endpoint.clone(),
-            ..HarnessCredentials::default()
-        }),
-        // Keys last: Claude Code's own sign-in (its settings, or the host
-        // login's token) reaches the container first
-        Some("anthropic") if *agent.runtime() == AgentRuntimeKind::ClaudeCode => {
-            let own = crate::services::harness::detection::container_auth(
-                "claude-code",
-                &crate::services::harness::detection::DetectEnv::current(),
-            );
-            Ok(HarnessCredentials {
-                anthropic_api_key: (!own)
-                    .then(|| require_api_key(app.secrets(), Provider::Anthropic).ok())
-                    .flatten(),
-                ..HarnessCredentials::default()
-            })
-        }
         Some("openai") if *agent.runtime() == AgentRuntimeKind::Codex => Ok(HarnessCredentials {
             openai_api_key: require_api_key(app.secrets(), Provider::OpenAi).ok(),
             ..HarnessCredentials::default()
         }),
         _ => Ok(HarnessCredentials::default()),
     }
+}
+
+/// How a Claude Code session reaches its model through the egress proxy
+/// (pure but for reading the host's Claude Code setup from `env`), first
+/// match wins:
+/// - the team's Anthropic-compatible gateway (`.nandi/llm.yaml`
+///   `kind: litellm` with an `endpoint`), with Claude Code's gateway token
+/// - Foundry for `provider: azure`, at the repo's endpoint or Claude Code's
+/// - Claude Code's own setup on the host (`claude_code::host_upstream`)
+/// - Nandi's Anthropic key (`nandi_key`): keys last
+///
+/// `None` for Bedrock, which signs in its own way.
+pub fn claude_code_access(
+    provider: Option<&str>,
+    repo: &HarnessDefaults,
+    env: &DetectEnv,
+    nandi_key: impl FnOnce() -> Option<String>,
+) -> Option<ModelAccess> {
+    use crate::services::harness::{claude_code, detection};
+    let access = |route, upstream| Some(ModelAccess { route, upstream });
+    let own = detection::claude_code_env(env);
+    let setting = |name: &str| own.get(name).filter(|v| !v.trim().is_empty()).cloned();
+    if provider == Some("bedrock") {
+        return None;
+    }
+    if let Some(endpoint) = repo
+        .endpoint
+        .clone()
+        .filter(|_| repo.provider.as_deref() == Some(REPO_GATEWAY))
+    {
+        let auth = match (
+            setting("ANTHROPIC_AUTH_TOKEN"),
+            setting("ANTHROPIC_API_KEY"),
+        ) {
+            (Some(token), _) => UpstreamAuth::Bearer(Secret::new(token)),
+            (None, Some(key)) => UpstreamAuth::ApiKey(Secret::new(key)),
+            // A gateway that checks no key still wants one sent
+            (None, None) => UpstreamAuth::Bearer(Secret::new("nandi-gateway")),
+        };
+        return access(
+            ModelRoute::Anthropic,
+            ModelUpstream::anthropic(endpoint, auth),
+        );
+    }
+    if provider == Some("azure") {
+        let endpoint = repo
+            .endpoint
+            .clone()
+            .or_else(|| claude_code::foundry_endpoint(&own))?;
+        let key = setting("ANTHROPIC_FOUNDRY_API_KEY")?;
+        let upstream = ModelUpstream::anthropic(endpoint, UpstreamAuth::ApiKey(Secret::new(key)));
+        return access(ModelRoute::Foundry, upstream);
+    }
+    if let Some((route, upstream)) = claude_code::host_upstream(env) {
+        return access(route, upstream);
+    }
+    // Bedrock or Vertex in Claude Code's own settings sign in their own way
+    if setting("CLAUDE_CODE_USE_BEDROCK").is_some() || setting("CLAUDE_CODE_USE_VERTEX").is_some() {
+        return None;
+    }
+    let key = nandi_key()?;
+    access(
+        ModelRoute::Anthropic,
+        ModelUpstream::anthropic(
+            ModelUpstream::ANTHROPIC_URL,
+            UpstreamAuth::ApiKey(Secret::new(key)),
+        ),
+    )
 }
 
 /// The first prompt: the agent's system prompt, then the run's input (ACP
@@ -779,6 +844,18 @@ impl Drop for SessionHostsGuard {
     }
 }
 
+/// Opens the plan's model session on the egress proxy for `identity`,
+/// until the guard drops
+pub(crate) fn open_model_session(
+    identity: &str,
+    plan: &HarnessPlan,
+) -> Option<crate::services::egress::model_proxy::ModelSessionGuard> {
+    let sessions = crate::services::egress::model_proxy::ModelSessions::global();
+    plan.upstream
+        .clone()
+        .map(|upstream| sessions.open(identity, upstream))
+}
+
 /// Runs one run through `adapter` and ends it (completed or failed). The
 /// run's input is the prompt; updates stream into its messages.
 pub async fn execute_harness_run(
@@ -811,6 +888,8 @@ pub async fn execute_harness_run(
     // Its CLI's model hosts, through the egress proxy, for this run only
     crate::services::egress::allow_session_hosts(&ctx.agent_id, &plan.egress_hosts);
     let _hosts_guard = SessionHostsGuard(ctx.agent_id.clone());
+    // Its model calls, signed on the host, for this run only
+    let _model_session = open_model_session(&ctx.agent_id, plan);
     let mut config = plan.config.clone();
     config.approvals.asker = Some(std::sync::Arc::new(
         crate::services::harness::approvals::RunApprover::new(bus.clone(), ctx.clone(), ended),
@@ -1144,25 +1223,107 @@ cpu: 2.5
         assert_eq!(own.model.as_deref(), Some("opus"));
     }
 
+    /// A host where Claude Code has `settings` and nothing else
+    fn claude_code_host(settings: Option<&str>) -> (DetectEnv, tempfile::TempDir) {
+        let home = tempfile::tempdir().unwrap();
+        if let Some(settings) = settings {
+            std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+            std::fs::write(home.path().join(".claude/settings.json"), settings).unwrap();
+        }
+        let env = DetectEnv {
+            home: home.path().to_path_buf(),
+            path: Some(home.path().as_os_str().to_owned()),
+            vars: HashMap::new(),
+        };
+        (env, home)
+    }
+
+    fn anthropic_key(key: &str) -> ModelAccess {
+        ModelAccess {
+            route: ModelRoute::Anthropic,
+            upstream: ModelUpstream::anthropic(
+                ModelUpstream::ANTHROPIC_URL,
+                UpstreamAuth::ApiKey(Secret::new(key)),
+            ),
+        }
+    }
+
     #[test]
-    fn a_repo_litellm_gateway_is_an_external_anthropic_endpoint() {
-        let mut inputs = inputs();
-        inputs.repo = HarnessDefaults {
+    fn a_repo_litellm_gateway_is_signed_for_on_the_host() {
+        let repo = HarnessDefaults {
             provider: Some("litellm".into()),
             endpoint: Some("https://llm.acme.internal".into()),
             ..HarnessDefaults::default()
         };
+        let (host, _home) = claude_code_host(Some(r#"{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-team"}}"#));
+        let access = claude_code_access(None, &repo, &host, || None).unwrap();
+        assert_eq!(
+            access,
+            ModelAccess {
+                route: ModelRoute::Anthropic,
+                upstream: ModelUpstream::anthropic(
+                    "https://llm.acme.internal",
+                    UpstreamAuth::Bearer(Secret::new("sk-team")),
+                ),
+            }
+        );
+
+        let mut inputs = inputs();
+        inputs.repo = repo;
+        inputs.model_access = Some(access.clone());
         let plan = harness_plan(plan(&agent("runtime: claude-code\n"), inputs));
-        let gateway = plan.config.gateway.as_ref().unwrap();
-        assert_eq!(
-            gateway.kind,
-            crate::services::harness::adapter::GatewayKind::External
-        );
-        assert_eq!(
-            gateway.endpoint.as_deref(),
-            Some("https://llm.acme.internal")
-        );
+        assert_eq!(plan.config.model_route, Some(ModelRoute::Anthropic));
+        assert_eq!(plan.upstream, Some(access.upstream));
+        assert!(plan.config.gateway.is_none());
+        assert!(plan.egress_hosts.is_empty(), "only the proxy");
         assert_eq!(plan.provider, None, "the gateway owns the provider");
+    }
+
+    #[test]
+    fn claude_codes_own_setup_comes_before_nandis_key() {
+        let none = HarnessDefaults::default();
+        let (keyed, _a) = claude_code_host(Some(r#"{"env":{"ANTHROPIC_API_KEY":"sk-own"}}"#));
+        assert_eq!(
+            claude_code_access(None, &none, &keyed, || Some("sk-nandi".into())),
+            Some(anthropic_key("sk-own"))
+        );
+        let (bare, _b) = claude_code_host(None);
+        assert_eq!(
+            claude_code_access(Some("anthropic"), &none, &bare, || Some("sk-nandi".into())),
+            Some(anthropic_key("sk-nandi"))
+        );
+        assert_eq!(claude_code_access(None, &none, &bare, || None), None);
+        // Bedrock signs in its own way
+        assert_eq!(
+            claude_code_access(Some("bedrock"), &none, &keyed, || Some("sk-nandi".into())),
+            None
+        );
+        let (bedrock, _c) = claude_code_host(Some(r#"{"env":{"CLAUDE_CODE_USE_BEDROCK":"1"}}"#));
+        assert_eq!(
+            claude_code_access(None, &none, &bedrock, || Some("sk-nandi".into())),
+            None
+        );
+    }
+
+    #[test]
+    fn azure_is_foundry_at_the_repos_endpoint() {
+        let repo = HarnessDefaults {
+            provider: Some("azure".into()),
+            endpoint: Some("https://team.services.ai.azure.com/anthropic".into()),
+            ..HarnessDefaults::default()
+        };
+        let (host, _home) =
+            claude_code_host(Some(r#"{"env":{"ANTHROPIC_FOUNDRY_API_KEY":"az-key"}}"#));
+        assert_eq!(
+            claude_code_access(Some("azure"), &repo, &host, || None),
+            Some(ModelAccess {
+                route: ModelRoute::Foundry,
+                upstream: ModelUpstream::anthropic(
+                    "https://team.services.ai.azure.com/anthropic",
+                    UpstreamAuth::ApiKey(Secret::new("az-key")),
+                ),
+            })
+        );
     }
 
     #[test]
@@ -1282,14 +1443,14 @@ cpu: 2.5
     fn coding_agents_leave_only_through_the_proxy_to_their_model() {
         let mut keyed = inputs();
         keyed.proxy_token = "tok".into();
-        keyed.credentials.anthropic_api_key = Some("sk-ant".into());
+        keyed.model_access = Some(anthropic_key("sk-ant"));
         let plan = harness_plan(plan(&agent("runtime: claude-code\n"), keyed));
         assert_eq!(plan.config.placement.network, "nandi-agents");
         assert_eq!(
             plan.config.env["HTTPS_PROXY"],
             "http://nandi:tok@nandi-egress:11435"
         );
-        assert_eq!(plan.egress_hosts, ["api.anthropic.com"]);
+        assert!(plan.egress_hosts.is_empty(), "its model is the proxy's");
 
         let codex = harness_plan(plan_for("runtime: codex\n"));
         assert!(codex.egress_hosts.contains(&"api.openai.com".to_string()));
@@ -1308,7 +1469,7 @@ cpu: 2.5
         let strict = agent("runtime: claude-code\n");
         assert!(matches!(
             plan(&strict, host_login.clone()),
-            RuntimeDecision::Unavailable(reason) if reason.contains("API key")
+            RuntimeDecision::Unavailable(reason) if reason.contains("nothing to sign in with")
         ));
         let lenient = agent("runtime: claude-code\nruntime_config:\n  fallback: native\n");
         assert!(matches!(
@@ -1317,7 +1478,7 @@ cpu: 2.5
         ));
         // A Nandi key is enough
         let mut keyed = host_login;
-        keyed.credentials.anthropic_api_key = Some("sk-ant".into());
+        keyed.model_access = Some(anthropic_key("sk-ant"));
         assert!(matches!(plan(&strict, keyed), RuntimeDecision::Harness(_)));
     }
 

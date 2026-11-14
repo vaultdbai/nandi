@@ -1,7 +1,7 @@
 //! A custom harness: any executable that speaks ACP on stdio, registered
 //! as `custom:<id>` with its command and arguments (`harness_preferences`).
 //! It gets the run's credentials under the usual variable names
-//! (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `AWS_*`) and
+//! (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `AWS_*`) and
 //! nothing else of Nandi's.
 
 use super::adapter::{
@@ -37,7 +37,6 @@ impl CliProfile for Custom {
     fn env(&self, config: &HarnessConfig) -> Vec<(String, String)> {
         let credentials = &config.credentials;
         let mut env: Vec<(String, String)> = [
-            ("ANTHROPIC_API_KEY", &credentials.anthropic_api_key),
             ("OPENAI_API_KEY", &credentials.openai_api_key),
             ("GEMINI_API_KEY", &credentials.google_api_key),
         ]
@@ -70,16 +69,16 @@ mod tests {
         let config = HarnessConfig {
             model: Some("m".into()),
             credentials: HarnessCredentials {
-                anthropic_api_key: Some("a".into()),
+                openai_api_key: Some("o".into()),
                 aws_region: Some("us-east-1".into()),
                 ..HarnessCredentials::default()
             },
             ..HarnessConfig::new("/w".into(), Placement::for_tests())
         };
         let env: std::collections::HashMap<_, _> = profile.env(&config).into_iter().collect();
-        assert_eq!(env["ANTHROPIC_API_KEY"], "a");
+        assert_eq!(env["OPENAI_API_KEY"], "o");
         assert_eq!(env["AWS_REGION"], "us-east-1");
         assert_eq!(env["NANDI_MODEL"], "m");
-        assert!(!env.contains_key("OPENAI_API_KEY"));
+        assert!(!env.contains_key("GEMINI_API_KEY"));
     }
 }
