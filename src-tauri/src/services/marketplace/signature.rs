@@ -1,7 +1,8 @@
 //! Publisher signatures (Ed25519).
 //!
 //! A publisher has a key pair. The public key is in the registry's
-//! `publishers/<handle>.json` (`"public_key": "ed25519:<base64>"`). For each
+//! `publishers/<handle>.json` (`"public_key": "ed25519:<base64>"`); which
+//! key an entry is actually checked against is `trust`'s rule. For each
 //! release they sign a short statement naming exactly what they vouch for,
 //! and put it in the entry with the commit it names:
 //!

@@ -20,6 +20,10 @@
 //!     - url: github.com/acme/nandi-community-acme
 //!       kind: community
 //!       auth: nandi.marketplace.acme   # keyring entry with a GitHub token
+//!   publisher_keys:                   # pinned on first install; a changed key is refused
+//!     - registry: github.com/acme/nandi-community-acme
+//!       publisher: alice
+//!       public_key: ed25519:…
 //! consent:                            # what the user approved per marketplace agent
 //!   arxiv-researcher:
 //!     tools: [shell, read_file]
@@ -257,16 +261,57 @@ pub fn normalize_registry_url(url: &str) -> String {
     url.to_string()
 }
 
+/// A publisher's key, pinned the first time one of their releases was
+/// installed from `registry` (trust on first use). A different key from the
+/// same registry later is refused, never pinned over this one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PinnedPublisherKey {
+    pub registry: String,
+    /// GitHub handle (lowercase)
+    pub publisher: String,
+    /// `ed25519:<base64>`
+    pub public_key: String,
+}
+
+impl PinnedPublisherKey {
+    fn is_for(&self, registry: &str, publisher: &str) -> bool {
+        self.registry == normalize_registry_url(registry)
+            && self.publisher.eq_ignore_ascii_case(publisher)
+    }
+
+    fn check(&self) -> DomainResult<()> {
+        if self.public_key.starts_with("ed25519:") && !self.publisher.trim().is_empty() {
+            Ok(())
+        } else {
+            Err(DomainError::invalid(
+                "settings",
+                "marketplace.publisher_keys",
+                format!(
+                    "the key pinned for '{}' must be an 'ed25519:' key",
+                    self.publisher
+                ),
+            ))
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct MarketplaceSettings {
     /// `None`: just the default public registry
     #[serde(skip_serializing_if = "Option::is_none")]
     pub registries: Option<Vec<RegistryConfig>>,
+    /// Keys of publishers other than the first party, pinned on first use
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub publisher_keys: Vec<PinnedPublisherKey>,
 }
 
 impl MarketplaceSettings {
     fn check(&self) -> DomainResult<()> {
+        for pin in &self.publisher_keys {
+            pin.check()?;
+        }
         let Some(registries) = &self.registries else {
             return Ok(());
         };
@@ -664,10 +709,56 @@ impl Settings {
     }
 
     /// Replaces the registry list (an empty list is kept: no registries).
+    /// The keys pinned for a registry that is no longer listed are
+    /// forgotten, so removing a registry and adding it again is how a user
+    /// trusts a publisher's new key.
     pub fn set_registries(&mut self, registries: Vec<RegistryConfig>) -> DomainResult<()> {
         let previous = self.marketplace.registries.replace(registries);
         self.check()
-            .inspect_err(|_| self.marketplace.registries = previous)
+            .inspect_err(|_| self.marketplace.registries = previous)?;
+        let listed: Vec<String> = self.registries().into_iter().map(|r| r.url).collect();
+        self.marketplace
+            .publisher_keys
+            .retain(|pin| listed.contains(&pin.registry));
+        Ok(())
+    }
+
+    /// The key pinned for `publisher` in `registry`, if any.
+    pub fn pinned_publisher_key(&self, registry: &str, publisher: &str) -> Option<&str> {
+        self.marketplace
+            .publisher_keys
+            .iter()
+            .find(|pin| pin.is_for(registry, publisher))
+            .map(|pin| pin.public_key.as_str())
+    }
+
+    /// Pins `public_key` for `publisher` in `registry`. Pinning the key
+    /// already pinned changes nothing; a different one is refused: a pinned
+    /// key is never replaced.
+    pub fn pin_publisher_key(
+        &mut self,
+        registry: &str,
+        publisher: &str,
+        public_key: &str,
+    ) -> DomainResult<()> {
+        if let Some(pinned) = self.pinned_publisher_key(registry, publisher) {
+            if pinned == public_key {
+                return Ok(());
+            }
+            return Err(DomainError::invalid(
+                "settings",
+                "marketplace.publisher_keys",
+                format!("a different key is already pinned for '{publisher}' in {registry}"),
+            ));
+        }
+        let pin = PinnedPublisherKey {
+            registry: normalize_registry_url(registry),
+            publisher: publisher.to_ascii_lowercase(),
+            public_key: public_key.to_string(),
+        };
+        pin.check()?;
+        self.marketplace.publisher_keys.push(pin);
+        Ok(())
     }
 }
 
@@ -778,6 +869,69 @@ secret_refs:
             .unwrap()
             .registries()
             .is_empty());
+    }
+
+    #[test]
+    fn a_publisher_key_is_pinned_once_and_never_replaced() {
+        const COMMUNITY: &str = "github.com/acme/nandi-community-acme";
+        let mut settings = Settings::default();
+        let mut list = settings.registries();
+        list.push(RegistryConfig::new(COMMUNITY, RegistryKind::Community, None).unwrap());
+        settings.set_registries(list).unwrap();
+        assert_eq!(settings.pinned_publisher_key(COMMUNITY, "alice"), None);
+
+        settings
+            .pin_publisher_key(COMMUNITY, "Alice", "ed25519:first")
+            .unwrap();
+        let reloaded = Settings::from_yaml(&settings.to_yaml()).unwrap();
+        assert_eq!(
+            reloaded.pinned_publisher_key(&format!("https://{COMMUNITY}.git"), "alice"),
+            Some("ed25519:first"),
+            "the same registry and handle, however they're written"
+        );
+        assert_eq!(
+            reloaded.pinned_publisher_key(DEFAULT_REGISTRY, "alice"),
+            None
+        );
+
+        // Pinning the same key again is fine; another key is refused
+        settings
+            .pin_publisher_key(COMMUNITY, "alice", "ed25519:first")
+            .unwrap();
+        assert!(settings
+            .pin_publisher_key(COMMUNITY, "alice", "ed25519:second")
+            .is_err());
+        assert!(settings
+            .pin_publisher_key(COMMUNITY, "bob", "rsa:not-ed25519")
+            .is_err());
+        assert_eq!(
+            settings.pinned_publisher_key(COMMUNITY, "alice"),
+            Some("ed25519:first")
+        );
+    }
+
+    #[test]
+    fn removing_a_registry_forgets_the_keys_pinned_for_it() {
+        const COMMUNITY: &str = "github.com/acme/nandi-community-acme";
+        let mut settings = Settings::default();
+        let mut list = settings.registries();
+        list.push(RegistryConfig::new(COMMUNITY, RegistryKind::Community, None).unwrap());
+        settings.set_registries(list.clone()).unwrap();
+        settings
+            .pin_publisher_key(COMMUNITY, "alice", "ed25519:first")
+            .unwrap();
+        settings
+            .pin_publisher_key(DEFAULT_REGISTRY, "bob", "ed25519:bob")
+            .unwrap();
+
+        list.pop();
+        settings.set_registries(list).unwrap();
+        assert_eq!(settings.pinned_publisher_key(COMMUNITY, "alice"), None);
+        assert_eq!(
+            settings.pinned_publisher_key(DEFAULT_REGISTRY, "bob"),
+            Some("ed25519:bob"),
+            "the registries still listed keep their pins"
+        );
     }
 
     #[test]

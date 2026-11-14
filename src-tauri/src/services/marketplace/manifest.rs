@@ -27,6 +27,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use super::trust::Release;
 use crate::services::domain::installed::{check_repo_path, check_source};
 use crate::services::domain::settings::AgentConsent;
 use crate::services::domain::{AgentId, PackId, PublisherHandle, WorkflowId};
@@ -210,8 +211,21 @@ pub struct AgentManifest {
     pub compatible: bool,
     /// Set when listing: the installed version, if installed
     pub installed_version: Option<String>,
-    /// The publisher's signature was verified (Phase 6; always false now)
+    /// The signature verifies against the publisher's trusted key (`trust`)
     pub verified: bool,
+}
+
+impl AgentManifest {
+    /// The release this entry names, for checking its signature
+    pub fn release(&self) -> Release<'_> {
+        Release {
+            kind: "agent",
+            id: &self.id,
+            version: &self.latest_version,
+            commit: self.commit.as_deref(),
+            signature: self.signature.as_deref(),
+        }
+    }
 }
 
 /// An installable pack (several agents and workflows in one repo).
@@ -248,6 +262,19 @@ pub struct PackManifest {
     pub compatible: bool,
     pub installed_version: Option<String>,
     pub verified: bool,
+}
+
+impl PackManifest {
+    /// The release this entry names, for checking its signature
+    pub fn release(&self) -> Release<'_> {
+        Release {
+            kind: "pack",
+            id: &self.id,
+            version: &self.latest_version,
+            commit: self.commit.as_deref(),
+            signature: self.signature.as_deref(),
+        }
+    }
 }
 
 // -- Wire format --------------------------------------------------------------

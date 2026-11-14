@@ -104,9 +104,11 @@ Covers the Library page and the marketplace behind it (registries, install, cons
   - Entry needing a newer Nandi (`min_nandi_version`): refused / button disabled.
   - ID already taken by an existing agent or workflow: refused.
   - Signed entry whose tag no longer resolves to the signed commit: refused ("may have been tampered with").
+  - A `vaultdbai` entry verifies only against the key shipped in the app, never a registry's `publishers/vaultdbai.json`.
+  - Another publisher's key is pinned in `settings.yaml` (`marketplace.publisher_keys`) on their first install. If the registry later offers another key, their entries show as not verified and an install is refused, naming the trusted and the offered key's fingerprints. Removing the registry and adding it again trusts the new key.
   - Source containing a symlink: error; scripts and other non-allowlisted files are not copied (only `skill.md`, `instructions.md`, `README.md`, icon, `LICENSE*`, `workflows/*.yaml`, pack `.nandi/manifest.yaml`).
   - Offline: error toast.
-- **Automation:** Covered by: `LibraryView.test.tsx` ("installs nothing when the consent dialog is cancelled", "installs and records consent for what the dialog showed"); Rust `src-tauri/src/services/marketplace/tests.rs` (`installs_a_pack_from_a_local_fixture_into_the_projection`, `refuses_entries_and_packs_that_need_a_newer_nandi`, `refuses_ids_that_are_already_taken`, `the_latest_version_across_registries_is_the_one_installed`, `signatures_verify_and_pin_the_release_commit`; ignored `live_starter_packs_install`) | Layer: api | Gap: UI unverified-warning path.
+- **Automation:** Covered by: `LibraryView.test.tsx` ("installs nothing when the consent dialog is cancelled", "installs and records consent for what the dialog showed"); Rust `src-tauri/src/services/marketplace/tests.rs` (`installs_a_pack_from_a_local_fixture_into_the_projection`, `refuses_entries_and_packs_that_need_a_newer_nandi`, `refuses_ids_that_are_already_taken`, `the_latest_version_across_registries_is_the_one_installed`, `signatures_verify_and_pin_the_release_commit`, `a_publisher_key_is_pinned_on_first_install_and_a_changed_key_is_refused`; `trust.rs` tests; ignored `live_starter_packs_install`) | Layer: api | Gap: UI unverified-warning path.
 - **Needs relay:** no
 - **Status:** Shipped
 

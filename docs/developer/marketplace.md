@@ -23,12 +23,27 @@ nandi-signature-v1\n<agent|pack>\n<id>\n<version>\n<40-char commit SHA>\n
 
 The chain of trust runs: publisher key → signature → commit → files. `git tag -s` uses GPG/SSH keys, which is why the publisher signs this statement instead.
 
-| Where      | What happens                                                                                                                                                                               |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Listing    | `verify_signatures` fetches each publisher's key (cached for 1 h) and sets `verified`. This drives the Verified filter and badge, and needs no download beyond `publishers/<handle>.json`. |
-| Install    | If the entry names a `commit`, the tag must still resolve to it. Otherwise the install is refused ("may have been tampered with"). `signature_verified` is recorded in `installed.yaml`.   |
-| Update     | Verified only if the registry's signed entry is for exactly the commit being applied.                                                                                                      |
-| Unverified | Still installable. The UI shows "Publisher not verified" and asks for confirmation first. The agent is read-only and needs first-use consent either way.                                   |
+### Which key is trusted
+
+A registry can't vouch for its own entries: whoever can change `packs/` can change `publishers/` too. So the key comes from somewhere the registry can't rewrite (`services/marketplace/trust.rs`):
+
+| Publisher             | Key checked against                                                                                                                                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vaultdbai`           | `trust::FIRST_PARTY_PUBLIC_KEY`, shipped in the app. `publishers/vaultdbai.json` is never read, in any registry                                                                                       |
+| Anyone else, first    | The key in `publishers/<handle>.json` of the entry's registry. The first install from that publisher pins it in `settings.yaml` (`marketplace.publisher_keys`, per registry and handle)               |
+| Anyone else, after it | The pinned key. If the registry offers another one, nothing verifies and an install is refused with both fingerprints (`SHA256:1a2b 3c4d …`). Nothing re-pins: removing the registry forgets its pins |
+
+| ✅ Do                                                     | ❌ Don't                                                 |
+| --------------------------------------------------------- | -------------------------------------------------------- |
+| Check a first-party entry against the shipped constant    | Fetch `publishers/vaultdbai.json` to check it            |
+| Refuse and show both fingerprints when a pinned key moves | Re-pin the new key, or fall back to "unverified" quietly |
+
+| Where      | What happens                                                                                                                                                                                                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Listing    | `verify_signatures` checks each entry against its trusted key (fetched files cached for 1 h, failures never cached) and sets `verified`. This drives the Verified filter and badge. Listing never pins a key.                                                                         |
+| Install    | The signature is checked again with a fresh key fetch. A changed key is refused; a first-seen key is pinned after the install. If the entry names a `commit`, the tag must still resolve to it ("may have been tampered with"). `signature_verified` is recorded in `installed.yaml`. |
+| Update     | Verified only if the registry's signed entry is for exactly the commit being applied.                                                                                                                                                                                                 |
+| Unverified | Still installable. The UI shows "Publisher not verified" and asks for confirmation first. The agent is read-only and needs first-use consent either way.                                                                                                                              |
 
 **Publishing a signed release:**
 
@@ -40,6 +55,19 @@ nandi sign --kind pack --id research-pack --release 1.0.0 \
 ```
 
 The first-party key lives at `~/.nandi/keys/publisher.key` on the machine that signed v1.0.0. Losing it means publishing a new public key, and every entry has to be re-signed.
+
+### Rotating the first-party key
+
+The app trusts only the key it ships, so a new key needs an app release. Old apps keep trusting the old key until they update.
+
+1. `nandi keygen --key <new path>` on the signing machine. Keep the old key until step 5.
+2. Re-sign every current entry in `packs/` and `agents/` with the new key, and put the new public key in `publishers/vaultdbai.json`. Don't push the registry yet.
+3. Change `FIRST_PARTY_PUBLIC_KEY` in `src-tauri/src/services/marketplace/trust.rs` and the release table in `the_shipped_key_verifies_every_published_first_party_release` to the new key and signatures.
+4. Release the app.
+5. Push the registry. Apps still on the old release now see the first-party entries as unsigned and refuse them until they update, so push only once the release is out.
+6. `cargo test --lib live_starter_packs -- --ignored` checks that the registry's `publishers/vaultdbai.json` matches the shipped key.
+
+If the key leaks, do the same at once: there is no revocation list, and an old app trusts the leaked key until it updates.
 
 ## Publishing
 

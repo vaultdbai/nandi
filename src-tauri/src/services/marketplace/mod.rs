@@ -28,6 +28,7 @@ pub mod registry;
 pub mod search;
 pub mod signature;
 pub mod source;
+pub mod trust;
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -43,6 +44,7 @@ use self::local::LocalPackSource;
 use self::manifest::{AgentManifest, ManifestCapabilities, PackManifest};
 use self::registry::{Registry, RegistryClient, RegistryIndex, RegistryList, OFFICIAL_TAG};
 use self::source::{FetchProgress, GitSource};
+use self::trust::{PublisherKey, Release, SignatureCheck};
 use crate::services::agents::{self, AgentInfo};
 use crate::services::auth::github as github_sign_in;
 use crate::services::domain::installed::{self, InstallKind};
@@ -394,22 +396,28 @@ async fn catalog(state: &AppState, force: bool) -> Catalog {
 /// How long a fetched publisher key is trusted without asking again
 const PUBLISHER_TTL: Duration = Duration::from_secs(60 * 60);
 
-/// The publisher's public key from `publishers/<handle>.json` in
-/// `registry`, or `None` if they don't sign or it couldn't be fetched. Only
-/// a fetched file is cached: a fetch that failed is tried again next time,
-/// so one timeout doesn't leave signed entries unverified for an hour.
-async fn publisher_key(state: &AppState, registry: &Registry, handle: &str) -> Option<String> {
+/// The public key `publishers/<handle>.json` in `registry` names (`None`:
+/// they don't sign), or why it couldn't be fetched. Only a fetched file is
+/// cached: a fetch that failed is tried again next time, so one timeout
+/// doesn't leave signed entries unverified for an hour. `fresh` skips the
+/// cache, for an install.
+async fn publisher_key(
+    state: &AppState,
+    registry: &Registry,
+    handle: &str,
+    fresh: bool,
+) -> Result<Option<String>, String> {
     let key = (registry.url.clone(), handle.to_string());
-    if let Some((fetched, value)) = state
+    let cached = state
         .marketplace()
         .publisher_keys
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .get(&key)
-        .cloned()
-    {
+        .cloned();
+    if let Some((fetched, value)) = cached.filter(|_| !fresh) {
         if fetched.elapsed() < PUBLISHER_TTL {
-            return value;
+            return Ok(value);
         }
     }
     let token = token(state, registry);
@@ -422,16 +430,13 @@ async fn publisher_key(state: &AppState, registry: &Registry, handle: &str) -> O
             token.as_deref(),
         )
         .await;
-    let bytes = match fetched {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            log::warn!(
-                "Couldn't fetch publisher '{handle}' from {}: {e}",
-                registry.url
-            );
-            return None;
-        }
-    };
+    let bytes = fetched.map_err(|e| {
+        log::warn!(
+            "Couldn't fetch publisher '{handle}' from {}: {e}",
+            registry.url
+        );
+        format!("@{handle}'s key from {}: {e}", registry.url)
+    })?;
     let value = publisher_file_key(&bytes, handle);
     state
         .marketplace()
@@ -439,7 +444,78 @@ async fn publisher_key(state: &AppState, registry: &Registry, handle: &str) -> O
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .insert(key, (Instant::now(), value.clone()));
-    value
+    Ok(value)
+}
+
+/// The key `handle`'s releases in `registry` are checked against: the
+/// shipped key for the first party (nothing fetched), otherwise the
+/// registry's key held against the one pinned for them (`trust`).
+async fn publisher_trust(
+    state: &AppState,
+    registry: &Registry,
+    handle: &str,
+    fresh: bool,
+) -> PublisherKey {
+    if let Some(shipped) = PublisherKey::shipped(handle) {
+        return shipped;
+    }
+    let pinned = state.store().read(|repo| {
+        repo.settings()
+            .pinned_publisher_key(&registry.url, handle)
+            .map(str::to_string)
+    });
+    let fetched = publisher_key(state, registry, handle, fresh).await;
+    PublisherKey::from_registry(pinned.as_deref(), fetched)
+}
+
+/// Checks one release's signature for an install or update, with a fresh
+/// look at its publisher's key (none for an unsigned entry).
+async fn check_release(
+    state: &AppState,
+    registry_url: &str,
+    publisher: &str,
+    release: Release<'_>,
+) -> SignatureCheck {
+    if release.signature.is_none() || release.commit.is_none() {
+        return SignatureCheck::Unsigned;
+    }
+    let key = match registries(state).find(registry_url) {
+        Some(registry) => publisher_trust(state, registry, publisher, true).await,
+        None => PublisherKey::Unreachable(format!("{registry_url} isn't one of your registries")),
+    };
+    trust::check(&key, &release)
+}
+
+/// After an install: pins the key its release was verified with, when that
+/// publisher's key was seen for the first time.
+async fn pin_first_use(
+    state: &AppState,
+    registry_url: &str,
+    publisher: &str,
+    check: &SignatureCheck,
+) {
+    let SignatureCheck::Verified { pin: Some(key) } = check else {
+        return;
+    };
+    let mut settings = state.store().read(|repo| repo.settings().clone());
+    if let Err(e) = settings.pin_publisher_key(registry_url, publisher, key) {
+        log::warn!("Couldn't pin @{publisher}'s key for {registry_url}: {e}");
+        return;
+    }
+    let store = state.store().clone();
+    let saved = blocking(move || {
+        store.repos().settings.save(&settings)?;
+        store.commit(EntityKind::Settings, "settings")?;
+        Ok(())
+    })
+    .await;
+    match saved {
+        Ok(()) => log::info!(
+            "Pinned @{publisher}'s key {} for {registry_url}",
+            trust::fingerprint(key)
+        ),
+        Err(e) => log::warn!("Couldn't save @{publisher}'s pinned key: {e}"),
+    }
 }
 
 /// The public key in a fetched `publishers/<handle>.json`, if it's that
@@ -451,15 +527,15 @@ fn publisher_file_key(bytes: &[u8], handle: &str) -> Option<String> {
         .and_then(|file| file.public_key)
 }
 
-/// Marks entries whose signature verifies against their publisher's key
-/// in the registry they came from.
+/// Marks entries whose signature verifies against their publisher's
+/// trusted key (`publisher_trust`).
 async fn verify_signatures(
     state: &AppState,
     agents: &mut [AgentManifest],
     packs: &mut [PackManifest],
 ) {
     let list = registries(state);
-    let mut keys: std::collections::HashMap<(String, String), Option<String>> =
+    let mut keys: std::collections::HashMap<(String, String), PublisherKey> =
         std::collections::HashMap::new();
     let wanted = agents
         .iter()
@@ -476,48 +552,18 @@ async fn verify_signatures(
         let Some(registry) = list.find(&registry_url) else {
             continue;
         };
-        let key = publisher_key(state, registry, &handle).await;
+        let key = publisher_trust(state, registry, &handle, false).await;
         keys.insert((registry_url, handle), key);
     }
-    let check = |registry: &str,
-                 publisher: &str,
-                 signature: &Option<String>,
-                 commit: &Option<String>,
-                 kind: &str,
-                 id: &str,
-                 version: &str| {
-        match (
-            keys.get(&(registry.to_string(), publisher.to_string())),
-            signature,
-            commit,
-        ) {
-            (Some(Some(key)), Some(signature), Some(commit)) => {
-                signature::verify(key, signature, kind, id, version, commit)
-            }
-            _ => false,
-        }
+    let verified = |registry: &str, publisher: &str, release: Release<'_>| {
+        keys.get(&(registry.to_string(), publisher.to_string()))
+            .is_some_and(|key| trust::check(key, &release).is_verified())
     };
     for agent in agents.iter_mut() {
-        agent.verified = check(
-            &agent.registry,
-            &agent.publisher,
-            &agent.signature,
-            &agent.commit,
-            "agent",
-            &agent.id,
-            &agent.latest_version,
-        );
+        agent.verified = verified(&agent.registry, &agent.publisher, agent.release());
     }
     for pack in packs.iter_mut() {
-        pack.verified = check(
-            &pack.registry,
-            &pack.publisher,
-            &pack.signature,
-            &pack.commit,
-            "pack",
-            &pack.id,
-            &pack.latest_version,
-        );
+        pack.verified = verified(&pack.registry, &pack.publisher, pack.release());
     }
 }
 
@@ -736,9 +782,30 @@ pub async fn get_pack_detail(state: &AppState, pack_id: &str) -> Result<PackDeta
 
 // -- Install, uninstall, fork, update ---------------------------------------------
 
+/// A publisher whose key changed since it was pinned is refused, with both
+/// fingerprints: nothing re-pins on its own.
+fn refuse_changed_key(name: &str, publisher: &str, check: &SignatureCheck) -> Result<(), String> {
+    match check {
+        SignatureCheck::KeyChanged { pinned, offered } => {
+            Err(trust::key_changed_warning(name, publisher, pinned, offered))
+        }
+        _ => Ok(()),
+    }
+}
+
 pub async fn install_pack(state: &AppState, pack_id: &str) -> Result<InstalledPackInfo, String> {
     let result = async {
-        let manifest = find_pack(state, pack_id).await?;
+        let mut manifest = find_pack(state, pack_id).await?;
+        let check = check_release(
+            state,
+            &manifest.registry,
+            &manifest.publisher,
+            manifest.release(),
+        )
+        .await;
+        refuse_changed_key(&manifest.name, &manifest.publisher, &check)?;
+        manifest.verified = check.is_verified();
+        let (registry, publisher) = (manifest.registry.clone(), manifest.publisher.clone());
         let token = token_for_url(state, Some(&manifest.registry));
         let _writer = state.marketplace().writer.lock().await;
         let installer = installer(state);
@@ -746,6 +813,7 @@ pub async fn install_pack(state: &AppState, pack_id: &str) -> Result<InstalledPa
         let source = manifest.repo.clone();
         let info =
             blocking(move || installer.install_pack(&manifest, token, &mut progress)).await?;
+        pin_first_use(state, &registry, &publisher, &check).await;
         emit(
             state.bus(),
             &MarketplaceInstalled {
@@ -812,7 +880,17 @@ pub async fn install_local_pack(state: &AppState, path: &str) -> Result<Installe
 
 pub async fn install_agent(state: &AppState, agent_id: &str) -> Result<InstalledAgentInfo, String> {
     let result = async {
-        let manifest = find_agent(state, agent_id).await?;
+        let mut manifest = find_agent(state, agent_id).await?;
+        let check = check_release(
+            state,
+            &manifest.registry,
+            &manifest.publisher,
+            manifest.release(),
+        )
+        .await;
+        refuse_changed_key(&manifest.name, &manifest.publisher, &check)?;
+        manifest.verified = check.is_verified();
+        let (registry, publisher) = (manifest.registry.clone(), manifest.publisher.clone());
         let token = token_for_url(state, Some(&manifest.registry));
         let _writer = state.marketplace().writer.lock().await;
         let installer = installer(state);
@@ -820,6 +898,7 @@ pub async fn install_agent(state: &AppState, agent_id: &str) -> Result<Installed
         let source = manifest.repo.clone();
         let info =
             blocking(move || installer.install_agent(&manifest, token, &mut progress)).await?;
+        pin_first_use(state, &registry, &publisher, &check).await;
         emit(
             state.bus(),
             &MarketplaceInstalled {

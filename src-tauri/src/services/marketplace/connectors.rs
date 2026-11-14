@@ -20,7 +20,8 @@ use specta::Type;
 
 use super::registry::{self, Registry, RegistryEntry};
 use super::source::GitSource;
-use super::{blocking, indexes, publisher_key, registries, report, signature, token};
+use super::trust::{self, Release};
+use super::{blocking, indexes, publisher_trust, registries, report, signature, token};
 use crate::services::connectors::{self, PackageInfo};
 use crate::services::domain::connector_package::{
     ConnectorPackage, PackageRelease, PackageSource, Placement,
@@ -237,20 +238,18 @@ impl RegistryEntry for ConnectorEntry {
 }
 
 async fn verified(state: &AppState, registry: &Registry, entry: &ConnectorEntry) -> bool {
-    let (Some(signature), Some(commit)) = (&entry.signature, &entry.commit) else {
+    if entry.signature.is_none() || entry.commit.is_none() {
         return false;
-    };
-    match publisher_key(state, registry, &entry.publisher).await {
-        Some(key) => signature::verify(
-            &key,
-            signature,
-            "connector",
-            &entry.id,
-            &entry.version,
-            commit,
-        ),
-        None => false,
     }
+    let key = publisher_trust(state, registry, &entry.publisher, false).await;
+    let release = Release {
+        kind: "connector",
+        id: &entry.id,
+        version: &entry.version,
+        commit: entry.commit.as_deref(),
+        signature: entry.signature.as_deref(),
+    };
+    trust::check(&key, &release).is_verified()
 }
 
 async fn find(

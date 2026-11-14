@@ -665,10 +665,17 @@ async fn live_starter_packs_install() {
             .unwrap(),
     )
     .unwrap();
-    let key = publisher.public_key.expect("vaultdbai signs releases");
+    // The registry still publishes the key the app ships, and releases are
+    // checked against the shipped one
+    assert_eq!(
+        publisher.public_key.as_deref(),
+        Some(super::trust::FIRST_PARTY_PUBLIC_KEY),
+        "rotate the shipped key (docs/developer/marketplace.md)"
+    );
+    let key = super::trust::FIRST_PARTY_PUBLIC_KEY;
     for pack in &index.packs {
         let ok = super::signature::verify(
-            &key,
+            key,
             pack.signature.as_deref().unwrap(),
             "pack",
             &pack.id,
@@ -679,7 +686,7 @@ async fn live_starter_packs_install() {
     }
     for agent in &index.agents {
         let ok = super::signature::verify(
-            &key,
+            key,
             agent.signature.as_deref().unwrap(),
             "agent",
             &agent.id,
@@ -813,6 +820,111 @@ async fn signatures_verify_and_pin_the_release_commit() {
         .unwrap_err();
     assert!(refused.contains("tampered"), "{refused}");
     assert!(state.store().repos().agents.locate("mover").is_none());
+    state.shutdown();
+}
+
+/// Another publisher's key is pinned on their first install. When the
+/// registry later offers another key, their releases no longer verify and
+/// installing one is refused with both fingerprints; the pin stays.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_publisher_key_is_pinned_on_first_install_and_a_changed_key_is_refused() {
+    use super::{signature, trust};
+    use crate::services::domain::settings::{RegistryConfig, RegistryKind};
+    use crate::services::marketplace::{self, MarketplaceFilter};
+    let state = state_with_repo();
+    let tmp = tempfile::tempdir().unwrap();
+    let source = tmp.path().join("source");
+    let mut files = agent_files("first");
+    files.push((
+        "agents/second/skill.md".to_string(),
+        "---\nname: Second\n---\nsecond".to_string(),
+    ));
+    let sha = commit(&source, &files, "v1.0.0");
+    let registry = tmp.path().join("registry");
+    let url = file_url(&registry);
+    let publish = |key: &str, secret: &str| {
+        let entry = |id: &str| {
+            serde_json::json!({
+                "id": id, "name": id, "publisher": "alice",
+                "repo": source.display().to_string(), "path": format!("agents/{id}"),
+                "latest_version": "1.0.0", "commit": sha, "capabilities": every_tool(),
+                "signature": signature::sign(secret, "agent", id, "1.0.0", &sha).unwrap(),
+            })
+        };
+        write_index(
+            &registry,
+            serde_json::json!([entry("arxiv"), entry("second")]),
+        );
+        fs::create_dir_all(registry.join("publishers")).unwrap();
+        fs::write(
+            registry.join("publishers/alice.json"),
+            serde_json::json!({ "github_handle": "alice", "public_key": key }).to_string(),
+        )
+        .unwrap();
+    };
+    let (first_secret, first_key) = signature::generate();
+    publish(&first_key, &first_secret);
+    marketplace::save_registries(
+        &state,
+        vec![RegistryConfig::new(&url, RegistryKind::Personal, None).unwrap()],
+    )
+    .await
+    .unwrap();
+    let pinned = || {
+        state.store().read(|repo| {
+            repo.settings()
+                .pinned_publisher_key(&url, "alice")
+                .map(str::to_string)
+        })
+    };
+
+    assert_eq!(pinned(), None, "browsing pins nothing");
+    marketplace::install_agent(&state, "arxiv").await.unwrap();
+    assert_eq!(pinned().as_deref(), Some(first_key.as_str()));
+    let installed = state.store().repos().vendor.load_installed().unwrap();
+    assert!(installed.agent("arxiv").unwrap().signature_verified);
+
+    // The registry now names another key, and every entry is re-signed with it
+    let (second_secret, second_key) = signature::generate();
+    publish(&second_key, &second_secret);
+    let listed = marketplace::list_available_agents(
+        &state,
+        &MarketplaceFilter {
+            refresh: true,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(listed.iter().all(|a| !a.verified), "{listed:?}");
+    let refused = marketplace::install_agent(&state, "second")
+        .await
+        .unwrap_err();
+    assert!(
+        refused.contains(&trust::fingerprint(&first_key))
+            && refused.contains(&trust::fingerprint(&second_key)),
+        "{refused}"
+    );
+    assert!(state.store().repos().agents.locate("second").is_none());
+    assert_eq!(
+        pinned().as_deref(),
+        Some(first_key.as_str()),
+        "never re-pinned"
+    );
+
+    // Removing the registry forgets the pin; added again, the new key is trusted
+    marketplace::save_registries(&state, Vec::new())
+        .await
+        .unwrap();
+    assert_eq!(pinned(), None);
+    marketplace::save_registries(
+        &state,
+        vec![RegistryConfig::new(&url, RegistryKind::Personal, None).unwrap()],
+    )
+    .await
+    .unwrap();
+    marketplace::install_agent(&state, "second").await.unwrap();
+    assert_eq!(pinned().as_deref(), Some(second_key.as_str()));
     state.shutdown();
 }
 
