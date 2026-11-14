@@ -3,7 +3,7 @@
  * without a click. Read in Settings; "Always allow" on a queued item adds one.
  */
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { QueueRow } from '@/components/home/digest-model'
@@ -15,16 +15,14 @@ import {
 import { client } from '@/lib/client'
 import type { AutoApproveRule } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 
 export const autoApproveKeys = {
   all: ['chief-of-staff', 'auto-approve'] as const,
 }
 
 export function useAutoApproveRules() {
-  return useQuery({
-    queryKey: autoApproveKeys.all,
-    queryFn: async () => unwrapResult(await client.getAutoApproveRules()),
-  })
+  return useClientQuery(autoApproveKeys.all, () => client.getAutoApproveRules())
 }
 
 /** Replaces the whole list; the core's answer is the error when a rule is wrong */

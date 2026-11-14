@@ -29,21 +29,24 @@ export function useClientQuery<T>(
   })
 }
 
-type ClientMutationOptions<T, Vars> = Omit<
-  UseMutationOptions<T, Error, Vars>,
+type ClientMutationOptions<T, Vars, Context> = Omit<
+  UseMutationOptions<T, Error, Vars, Context>,
   'mutationFn'
 > & {
   /** Refetched when the call ends, whether it worked or not */
   invalidates?: QueryKey
 }
 
-/** A mutation over a core call, with the same error handling */
-export function useClientMutation<T, Vars = void>(
+/**
+ * A mutation over a core call, with the same error handling. `Context` is
+ * what `onMutate` returns (an optimistic update's rollback data).
+ */
+export function useClientMutation<T, Vars = void, Context = unknown>(
   call: CoreCall<[Vars], T>,
-  { invalidates, ...options }: ClientMutationOptions<T, Vars> = {}
+  { invalidates, ...options }: ClientMutationOptions<T, Vars, Context> = {}
 ) {
   const queryClient = useQueryClient()
-  return useMutation<T, Error, Vars>({
+  return useMutation<T, Error, Vars, Context>({
     ...options,
     mutationFn: async vars => unwrapResult(await call(vars)),
     // Awaited, so the mutation stays pending until the lists are fresh

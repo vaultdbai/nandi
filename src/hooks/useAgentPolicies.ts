@@ -1,6 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 
 export const agentPoliciesQueryKeys = {
   all: ['agent-policies'] as const,
@@ -12,8 +11,7 @@ export const agentPoliciesQueryKeys = {
  * changed from its skill.md, or why it can't run
  */
 export function useAgentPolicies(agentId: string) {
-  return useQuery({
-    queryKey: agentPoliciesQueryKeys.agent(agentId),
-    queryFn: async () => unwrapResult(await client.agentPolicies(agentId)),
-  })
+  return useClientQuery(agentPoliciesQueryKeys.agent(agentId), () =>
+    client.agentPolicies(agentId)
+  )
 }

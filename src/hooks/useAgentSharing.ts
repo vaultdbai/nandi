@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AgentDelegationSettings, SharedAgent } from '@/lib/bindings'
 import { client } from '@/lib/client'
 import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientMutation } from './useClientQuery'
 import { delegationQueryKeys } from './useDelegation'
 import { sharedQueryKeys, useSharedByMe } from './useSharedAgents'
 import { teamsQueryKeys, useTeams } from './useTeams'
@@ -74,16 +75,16 @@ function invalidateSharing(
 /** Adds the agent to a team's registry, or removes it */
 export function useToggleTeamShare(agentId: string) {
   const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ teamId, share }: { teamId: string; share: boolean }) =>
-      unwrapResult(
-        share
-          ? await client.shareAgent(teamId, agentId)
-          : await client.unshareAgent(teamId, agentId)
-      ),
-    onSettled: (_data, _error, { teamId }) =>
-      invalidateSharing(queryClient, agentId, teamId),
-  })
+  return useClientMutation(
+    ({ teamId, share }: { teamId: string; share: boolean }) =>
+      share
+        ? client.shareAgent(teamId, agentId)
+        : client.unshareAgent(teamId, agentId),
+    {
+      onSettled: (_data, _error, { teamId }) =>
+        invalidateSharing(queryClient, agentId, teamId),
+    }
+  )
 }
 
 /**

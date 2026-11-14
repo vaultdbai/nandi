@@ -1,10 +1,9 @@
 import { useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { localMidnight } from '@/lib/agent-sync'
 import { logger } from '@/lib/logger'
 import { client } from '@/lib/client'
-import type { AgentInfo } from '@/lib/tauri-bindings'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 
 export const agentsQueryKeys = {
   all: ['agents'] as const,
@@ -36,29 +35,28 @@ export function useAgentOverviews() {
     return () => subscription.unsubscribe()
   }, [queryClient])
 
-  return useQuery({
-    queryKey: agentsQueryKeys.overviews(todayStart),
-    queryFn: async () =>
-      unwrapResult(await client.listAgentOverviews(todayStart)),
-  })
+  return useClientQuery(agentsQueryKeys.overviews(todayStart), () =>
+    client.listAgentOverviews(todayStart)
+  )
 }
 
 /**
  * Agents discovered in `~/.nandi/agents`, with live status from Docker.
  */
 export function useAgents() {
-  return useQuery({
-    queryKey: agentsQueryKeys.all,
-    queryFn: async (): Promise<AgentInfo[]> => {
+  return useClientQuery(
+    agentsQueryKeys.all,
+    async () => {
       const result = await client.listAgents()
 
       if (result.status === 'error') {
         logger.error('Failed to list agents', { error: result.error })
-        throw new Error(result.error)
       }
 
-      return result.data
+      return result
     },
-    staleTime: 1000 * 5, // 5 seconds
-  })
+    {
+      staleTime: 1000 * 5, // 5 seconds
+    }
+  )
 }

@@ -1,6 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import { unwrapResult } from '@/lib/tauri-bindings'
+import { useClientQuery } from '@/hooks/useClientQuery'
 
 export const policiesQueryKeys = {
   all: ['policies'] as const,
@@ -11,8 +10,5 @@ export const policiesQueryKeys = {
  * whether it parses (a broken one still opens, to be fixed)
  */
 export function usePolicies() {
-  return useQuery({
-    queryKey: policiesQueryKeys.all,
-    queryFn: async () => unwrapResult(await client.listPolicies()),
-  })
+  return useClientQuery(policiesQueryKeys.all, () => client.listPolicies())
 }
