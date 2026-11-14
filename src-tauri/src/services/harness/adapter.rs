@@ -2,9 +2,9 @@
 //! live session. `start` spawns the CLI and opens an ACP session; `send`
 //! prompts it and streams `AcpSessionUpdate`s until the turn finishes.
 //!
-//! Credentials travel only in `HarnessCredentials`, which is neither
-//! `Serialize` nor `Debug`-printable: they reach the CLI's environment and
-//! nowhere else (no logs, no config files, no events).
+//! No credential reaches a session: the CLI calls its model through the
+//! egress proxy with the session's proxy token (`ModelRoute`), and the
+//! host adds the real key (`egress::model_proxy`).
 
 use std::collections::HashMap;
 use std::fmt;
@@ -73,9 +73,9 @@ impl UserMessage {
     }
 }
 
-/// Everything a session needs. Holds credentials: never serialized, and
-/// `Debug` redacts them. There is no default: every session names its
-/// container (`runtime_router::plan`).
+/// Everything a session needs. It holds no credential, only the session's
+/// proxy token in `env`; `Debug` prints env names, never values. There is
+/// no default: every session names its container (`runtime_router::plan`).
 #[derive(Clone)]
 pub struct HarnessConfig {
     /// The session's workdir on the host, recorded with the session (the
@@ -93,9 +93,9 @@ pub struct HarnessConfig {
     pub approvals: super::acp::Approvals,
     pub model: Option<String>,
     /// How the CLI reaches its model through the egress proxy, which adds
-    /// the host's credential. `None`: the CLI signs in with `credentials`
+    /// the host's credential. `None`: no model route (a custom CLI, or
+    /// Claude Code on Vertex from its own settings)
     pub model_route: Option<ModelRoute>,
-    pub credentials: HarnessCredentials,
     /// The system prompt (skill body + instructions), appended to the
     /// harness's own
     pub system_prompt: Option<String>,
@@ -120,7 +120,6 @@ impl HarnessConfig {
             approvals: super::acp::Approvals::default(),
             model: None,
             model_route: None,
-            credentials: HarnessCredentials::default(),
             system_prompt: None,
             placement,
             request_timeout: None,
@@ -140,7 +139,6 @@ impl fmt::Debug for HarnessConfig {
             .field("approvals", &self.approvals)
             .field("model", &self.model)
             .field("model_route", &self.model_route)
-            .field("credentials", &self.credentials)
             .field("placement", &self.placement)
             .finish()
     }
@@ -233,60 +231,6 @@ impl ModelRoute {
             Self::Bedrock => ModelApi::Bedrock,
             Self::OpenAi => ModelApi::OpenAi,
         }
-    }
-}
-
-/// Secrets for the CLI's environment only. Read from the keyring or the
-/// host environment; never logged, never written to disk.
-#[derive(Clone, Default, PartialEq)]
-pub struct HarnessCredentials {
-    pub openai_api_key: Option<String>,
-    pub google_api_key: Option<String>,
-    pub aws_profile: Option<String>,
-    pub aws_region: Option<String>,
-    /// Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`)
-    pub aws_bearer_token: Option<String>,
-    /// Temporary STS credentials resolved on the host (SSO or the
-    /// standard chain), so the container never sees `~/.aws`
-    pub aws_access_key_id: Option<String>,
-    pub aws_secret_access_key: Option<String>,
-    pub aws_session_token: Option<String>,
-    pub custom_env: HashMap<String, String>,
-}
-
-impl HarnessCredentials {
-    /// Names (never values) of the credentials that are set
-    pub fn present(&self) -> Vec<&'static str> {
-        let fields: [(&'static str, bool); 8] = [
-            ("openai_api_key", self.openai_api_key.is_some()),
-            ("google_api_key", self.google_api_key.is_some()),
-            ("aws_profile", self.aws_profile.is_some()),
-            ("aws_region", self.aws_region.is_some()),
-            ("aws_bearer_token", self.aws_bearer_token.is_some()),
-            ("aws_access_key_id", self.aws_access_key_id.is_some()),
-            (
-                "aws_secret_access_key",
-                self.aws_secret_access_key.is_some(),
-            ),
-            ("aws_session_token", self.aws_session_token.is_some()),
-        ];
-        fields
-            .into_iter()
-            .filter(|(_, set)| *set)
-            .map(|(name, _)| name)
-            .collect()
-    }
-}
-
-impl fmt::Debug for HarnessCredentials {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("HarnessCredentials")
-            .field("present", &self.present())
-            .field(
-                "custom_env_keys",
-                &self.custom_env.keys().collect::<Vec<_>>(),
-            )
-            .finish()
     }
 }
 
@@ -945,34 +889,6 @@ impl<P: CliProfile> HarnessAdapter for CliAdapter<P> {
     }
 }
 
-/// Environment entries for the credentials every CLI reads under the same
-/// names (`AWS_*`, `custom_env`). Provider-specific ones are the profile's.
-pub fn common_credential_env(credentials: &HarnessCredentials) -> Vec<(String, String)> {
-    let mut env = Vec::new();
-    let mut put = |name: &str, value: &Option<String>| {
-        if let Some(value) = value.as_ref().filter(|v| !v.is_empty()) {
-            env.push((name.to_string(), value.clone()));
-        }
-    };
-    put("AWS_REGION", &credentials.aws_region);
-    put("AWS_ACCESS_KEY_ID", &credentials.aws_access_key_id);
-    put("AWS_SECRET_ACCESS_KEY", &credentials.aws_secret_access_key);
-    put("AWS_SESSION_TOKEN", &credentials.aws_session_token);
-    put("AWS_BEARER_TOKEN_BEDROCK", &credentials.aws_bearer_token);
-    // Exported keys make the profile unnecessary (and the container has no
-    // ~/.aws to find it in)
-    if credentials.aws_access_key_id.is_none() {
-        put("AWS_PROFILE", &credentials.aws_profile);
-    }
-    env.extend(
-        credentials
-            .custom_env
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone())),
-    );
-    env
-}
-
 /// The session's egress proxy token (`egress::proxy_env`), which a CLI
 /// sends where its provider key would go
 pub fn proxy_token(config: &HarnessConfig) -> Option<&str> {
@@ -1078,48 +994,6 @@ mod tests {
                 || name.starts_with("USER=")),
             "{passed:?}"
         );
-    }
-
-    #[test]
-    fn credentials_never_print() {
-        let credentials = HarnessCredentials {
-            openai_api_key: Some("sk-openai-secret".into()),
-            aws_secret_access_key: Some("aws-secret".into()),
-            custom_env: [("TOKEN".to_string(), "custom-secret".to_string())].into(),
-            ..HarnessCredentials::default()
-        };
-        let config = HarnessConfig {
-            credentials: credentials.clone(),
-            env: [("PLAIN".to_string(), "value-secret".to_string())].into(),
-            ..HarnessConfig::new("/w".into(), Placement::for_tests())
-        };
-        let printed = format!("{credentials:?} {config:?}");
-        for secret in [
-            "sk-openai-secret",
-            "aws-secret",
-            "custom-secret",
-            "value-secret",
-        ] {
-            assert!(!printed.contains(secret), "{printed}");
-        }
-        assert!(printed.contains("openai_api_key"), "names are fine");
-    }
-
-    #[test]
-    fn exported_aws_keys_replace_the_profile() {
-        let env = common_credential_env(&HarnessCredentials {
-            aws_profile: Some("work".into()),
-            aws_access_key_id: Some("AKIA".into()),
-            aws_secret_access_key: Some("s".into()),
-            ..HarnessCredentials::default()
-        });
-        let names: Vec<_> = env.iter().map(|(k, _)| k.as_str()).collect();
-        assert_eq!(names, vec!["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]);
-        let env = common_credential_env(&HarnessCredentials {
-            aws_profile: Some("work".into()),
-            ..HarnessCredentials::default()
-        });
-        assert_eq!(env, vec![("AWS_PROFILE".to_string(), "work".to_string())]);
     }
 
     #[tokio::test]

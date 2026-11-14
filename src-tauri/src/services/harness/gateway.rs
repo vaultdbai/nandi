@@ -30,7 +30,6 @@ use bollard::Docker;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use super::adapter::HarnessCredentials;
 use crate::db::{now_ms, ts};
 use crate::model::Timestamp;
 use crate::sandbox::{self, SandboxSpec};
@@ -111,15 +110,56 @@ pub fn render_config(model: &str) -> Result<String, String> {
     Ok(rendered)
 }
 
+/// The AWS identity the gateway calls Bedrock as, resolved on the host
+/// (`aws_auth::gateway_keys`): temporary keys from the profile, else the
+/// Bedrock API key. Only the gateway's own container gets them, never an
+/// agent's. `Debug` prints no key.
+#[derive(Clone, Default, PartialEq)]
+pub struct GatewayAwsKeys {
+    pub region: Option<String>,
+    pub access_key_id: Option<String>,
+    pub secret_access_key: Option<String>,
+    pub session_token: Option<String>,
+    /// A Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`)
+    pub bearer_token: Option<String>,
+}
+
+impl std::fmt::Debug for GatewayAwsKeys {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GatewayAwsKeys")
+            .field("region", &self.region)
+            .field("access_key_id", &self.access_key_id.is_some())
+            .field("bearer_token", &self.bearer_token.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+impl GatewayAwsKeys {
+    /// The names the AWS SDK in LiteLLM reads
+    fn env(&self) -> Vec<String> {
+        let region = self
+            .region
+            .as_deref()
+            .unwrap_or(super::aws_auth::DEFAULT_REGION);
+        let mut env = vec![format!("AWS_REGION={region}")];
+        for (name, value) in [
+            ("AWS_ACCESS_KEY_ID", &self.access_key_id),
+            ("AWS_SECRET_ACCESS_KEY", &self.secret_access_key),
+            ("AWS_SESSION_TOKEN", &self.session_token),
+            ("AWS_BEARER_TOKEN_BEDROCK", &self.bearer_token),
+        ] {
+            if let Some(value) = value.as_ref().filter(|v| !v.is_empty()) {
+                env.push(format!("{name}={value}"));
+            }
+        }
+        env
+    }
+}
+
 /// The container's environment: AWS credentials and the master key
-fn container_env(credentials: &HarnessCredentials, master_key: &str) -> Vec<String> {
+fn container_env(keys: &GatewayAwsKeys, master_key: &str) -> Vec<String> {
     let mut env = vec![format!("LITELLM_MASTER_KEY={master_key}")];
-    for (name, value) in super::adapter::common_credential_env(credentials) {
-        env.push(format!("{name}={value}"));
-    }
-    if credentials.aws_region.is_none() {
-        env.push("AWS_REGION=us-east-1".to_string());
-    }
+    env.extend(keys.env());
     env
 }
 
@@ -202,7 +242,7 @@ impl GatewayService {
     pub async fn start(
         &self,
         model: &str,
-        credentials: &HarnessCredentials,
+        keys: &GatewayAwsKeys,
     ) -> Result<LitellmGatewayStatus, String> {
         let config = render_config(model)?;
         tokio::fs::create_dir_all(&self.config_dir)
@@ -222,8 +262,8 @@ impl GatewayService {
         ensure_network().await?;
         remove(&docker).await;
         let master_key = format!("sk-nandi-{}", uuid::Uuid::new_v4().simple());
-        let body = container_spec(model, &config_file, container_env(credentials, &master_key))
-            .to_bollard();
+        let body =
+            container_spec(model, &config_file, container_env(keys, &master_key)).to_bollard();
         let options = CreateContainerOptions {
             name: Some(CONTAINER_NAME.to_string()),
             ..Default::default()
@@ -330,7 +370,7 @@ pub async fn start_litellm_gateway(
     state: &AppState,
     model: &str,
 ) -> Result<LitellmGatewayStatus, String> {
-    let credentials = super::aws_auth::bedrock_credentials(state, None, None).await?;
+    let credentials = super::aws_auth::gateway_keys(state, None, None).await?;
     state.litellm_gateway().start(model, &credentials).await
 }
 
@@ -384,13 +424,14 @@ mod tests {
 
     #[test]
     fn credentials_are_env_not_config() {
-        let credentials = HarnessCredentials {
-            aws_access_key_id: Some("AKIA".into()),
-            aws_secret_access_key: Some("secret".into()),
-            aws_region: Some("eu-central-1".into()),
-            ..HarnessCredentials::default()
+        let keys = GatewayAwsKeys {
+            access_key_id: Some("AKIA".into()),
+            secret_access_key: Some("secret".into()),
+            region: Some("eu-central-1".into()),
+            ..GatewayAwsKeys::default()
         };
-        let env = container_env(&credentials, "sk-nandi-x");
+        let env = container_env(&keys, "sk-nandi-x");
+        assert!(!format!("{keys:?}").contains("secret"));
         assert!(env.contains(&"AWS_SECRET_ACCESS_KEY=secret".to_string()));
         assert!(env.contains(&"AWS_REGION=eu-central-1".to_string()));
         assert!(env.contains(&"LITELLM_MASTER_KEY=sk-nandi-x".to_string()));

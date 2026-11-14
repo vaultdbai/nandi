@@ -30,7 +30,7 @@ use crate::services::egress::model_proxy::{ModelUpstream, Secret, UpstreamAuth};
 use crate::services::events::{EventBus, RunContext};
 use crate::services::harness::acp::{AcpSessionUpdate, AcpUsage};
 use crate::services::harness::adapter::{
-    HarnessAdapter, HarnessConfig, HarnessCredentials, ModelRoute, Placement, UserMessage,
+    HarnessAdapter, HarnessConfig, ModelRoute, Placement, UserMessage,
 };
 use crate::services::harness::detection::DetectEnv;
 use crate::services::harness::event_translation::{TurnOutcome, TurnTranslator};
@@ -74,7 +74,6 @@ pub struct RouterInputs {
     pub default_model: Option<String>,
     /// The agent's workdir on the host
     pub workdir: PathBuf,
-    pub credentials: HarnessCredentials,
     /// How the CLI reaches its model through the egress proxy, and what the
     /// host signs it with ([`claude_code_access`])
     pub model_access: Option<ModelAccess>,
@@ -263,7 +262,6 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         folders: inputs.folders.clone(),
         tools,
     };
-    let credentials = inputs.credentials;
     let mut env: std::collections::HashMap<String, String> =
         crate::services::egress::proxy_env(&inputs.proxy_token)
             .into_iter()
@@ -307,7 +305,7 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
     } else {
         inputs.model_access
     };
-    if inputs.host_only_sign_in && model_access.is_none() && !has_secret(&credentials) {
+    if inputs.host_only_sign_in && model_access.is_none() {
         return fallback(
             "Claude Code has nothing to sign in with: sign in to Claude Code on this computer, \
              or add an Anthropic key in Settings › Models & runtimes."
@@ -377,7 +375,6 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
             },
             model: model.clone(),
             model_route,
-            credentials,
             system_prompt: Some(format!("{}{}", agent.system_prompt(), inputs.folder_prompt))
                 .filter(|p| !p.trim().is_empty()),
             placement,
@@ -584,11 +581,6 @@ async fn inputs_for(
         }),
         _ => None,
     };
-    // The LiteLLM gateway's AWS identity
-    let credentials = match model_access {
-        Some(_) => HarnessCredentials::default(),
-        None => credentials(app, agent, provider.as_deref(), &repo).await?,
-    };
     let gateway = match &config.gateway {
         Some(_) => {
             let gateway = app.litellm_gateway();
@@ -596,22 +588,20 @@ async fn inputs_for(
                 "runtime_config.model must name the Bedrock model for the gateway".to_string()
             })?;
             if gateway.model().as_deref() != Some(bedrock_model.as_str()) {
-                gateway.start(&bedrock_model, &credentials).await?;
+                // Only the gateway's own container holds AWS keys
+                let (profile, region) = aws_choice(agent, &repo);
+                let keys =
+                    crate::services::harness::aws_auth::gateway_keys(app, profile, region).await?;
+                gateway.start(&bedrock_model, &keys).await?;
             }
             gateway.session_upstream()
         }
         None => None,
     };
-    // Only the gateway's container holds AWS keys, never the CLI's
-    let credentials = match gateway {
-        Some(_) => HarnessCredentials::default(),
-        None => credentials,
-    };
     Ok(RouterInputs {
         sandbox: sandbox_ready(&harness_id).await,
         default_model,
         workdir: setup.workdir,
-        credentials,
         model_access,
         gateway,
         repo,
@@ -672,21 +662,6 @@ impl TurnBudget {
     }
 }
 
-/// A key or token the CLI can sign in with (a region or profile name alone
-/// isn't one)
-fn has_secret(credentials: &HarnessCredentials) -> bool {
-    credentials.aws_access_key_id.is_some()
-        || credentials.aws_bearer_token.is_some()
-        || !credentials.custom_env.is_empty()
-}
-
-/// Credentials for `provider` from the user's own setup: the AWS identity
-/// for Bedrock (the agent's profile and region, else the repo's), resolved
-/// on the host to temporary keys (SSO, SAML/`credential_process`,
-/// assume-role), so `~/.aws` never enters the container; Nandi's keyring
-/// keys for Anthropic (only when Claude Code has no sign-in of its own)
-/// and OpenAI; the repo's Azure endpoint.
-/// Nothing for providers the CLI signs into itself.
 /// Gets the harness sandbox ready for `harness_id`, waiting for it: the
 /// image (pulled when missing, progress on `images://pull`), then its tool
 /// volume on first use (Claude Code, progress on `images://tools`)
@@ -701,21 +676,6 @@ async fn sandbox_ready(harness_id: &str) -> Sandbox {
     match ready {
         Ok(tools) => Sandbox::Ready(tools),
         Err(reason) => Sandbox::Unavailable(reason),
-    }
-}
-
-async fn credentials(
-    app: &AppState,
-    agent: &Agent,
-    provider: Option<&str>,
-    repo: &HarnessDefaults,
-) -> Result<HarnessCredentials, String> {
-    match provider {
-        Some("bedrock") => {
-            let (profile, region) = aws_choice(agent, repo);
-            crate::services::harness::aws_auth::bedrock_credentials(app, profile, region).await
-        }
-        _ => Ok(HarnessCredentials::default()),
     }
 }
 
@@ -1399,7 +1359,6 @@ cpu: 2.5
         assert_eq!(plan.provider.as_deref(), Some("bedrock"));
         assert_eq!(plan.config.model_route, Some(ModelRoute::Anthropic));
         assert_eq!(plan.upstream, Some(upstream), "the host signs for it");
-        assert!(plan.config.credentials.custom_env.is_empty());
         assert!(!plan
             .config
             .env
@@ -1546,6 +1505,182 @@ cpu: 2.5
         ));
         let lenient = agent("runtime: gemini-cli\nruntime_config:\n  fallback: native\n");
         assert!(matches!(plan(&lenient, inputs()), RuntimeDecision::Native));
+    }
+
+    /// Every credential a machine can hold where a harness could pick it
+    /// up, each with a value that names it
+    const HOST_SECRETS: &[(&str, &str)] = &[
+        ("ANTHROPIC_API_KEY", "secret-anthropic-key"),
+        ("ANTHROPIC_AUTH_TOKEN", "secret-anthropic-token"),
+        ("CLAUDE_CODE_OAUTH_TOKEN", "secret-setup-token"),
+        ("ANTHROPIC_FOUNDRY_API_KEY", "secret-foundry-key"),
+        ("AWS_ACCESS_KEY_ID", "secret-aws-access-key"),
+        ("AWS_SECRET_ACCESS_KEY", "secret-aws-secret-key"),
+        ("AWS_SESSION_TOKEN", "secret-aws-session"),
+        ("AWS_BEARER_TOKEN_BEDROCK", "secret-bedrock-key"),
+        ("OPENAI_API_KEY", "secret-openai-key"),
+        ("CODEX_API_KEY", "secret-codex-key"),
+        ("AZURE_OPENAI_API_KEY", "secret-azure-openai-key"),
+        ("GEMINI_API_KEY", "secret-gemini-key"),
+        ("GOOGLE_API_KEY", "secret-google-key"),
+    ];
+
+    /// A host with every credential source set: the environment, Claude
+    /// Code's settings and its sign-in
+    fn host_with_every_credential() -> (DetectEnv, tempfile::TempDir) {
+        let settings = serde_json::json!({
+            "env": HOST_SECRETS.iter().cloned().collect::<HashMap<_, _>>()
+        });
+        let (mut host, home) = claude_code_host(Some(&settings.to_string()));
+        let expires = crate::db::now_ms() + 60 * 60 * 1000;
+        std::fs::write(
+            home.path().join(".claude/.credentials.json"),
+            format!(
+                r#"{{"claudeAiOauth":{{"accessToken":"secret-oauth-access","refreshToken":"secret-oauth-refresh","expiresAt":{expires}}}}}"#
+            ),
+        )
+        .unwrap();
+        host.vars = HOST_SECRETS
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        (host, home)
+    }
+
+    /// An upstream the host signs with `secret`, on `api`'s route
+    fn upstream_with(route: ModelRoute, secret: &str) -> ModelAccess {
+        let auth = UpstreamAuth::Bearer(Secret::new(secret));
+        let upstream = match route {
+            ModelRoute::Anthropic | ModelRoute::Foundry => {
+                ModelUpstream::anthropic(ModelUpstream::ANTHROPIC_URL, auth)
+            }
+            ModelRoute::Bedrock => ModelUpstream::bedrock("us-east-1", auth),
+            ModelRoute::OpenAi => ModelUpstream::openai(auth),
+        };
+        ModelAccess {
+            route,
+            upstream,
+            region: (route == ModelRoute::Bedrock).then(|| "us-east-1".to_string()),
+        }
+    }
+
+    #[test]
+    fn no_harness_container_gets_a_secret_whatever_the_host_holds() {
+        use crate::services::harness::adapter::{docker_args, CliProfile, Invocation};
+        use crate::services::harness::{claude_code, codex, custom, gemini_cli};
+
+        let (host, _home) = host_with_every_credential();
+        const PROXY_TOKEN: &str = "proxy-token-of-the-session";
+        let planned = |frontmatter: &str, access: Option<ModelAccess>, gateway| {
+            let mut inputs = inputs();
+            inputs.proxy_token = PROXY_TOKEN.to_string();
+            inputs.model_access = access;
+            inputs.gateway = gateway;
+            harness_plan(plan(&agent(frontmatter), inputs))
+        };
+        let anthropic_from_host =
+            claude_code_access(None, &HarnessDefaults::default(), &host, || {
+                Some("secret-nandi-anthropic-key".to_string())
+            });
+        let litellm = ModelUpstream::anthropic(
+            "http://127.0.0.1:4000",
+            UpstreamAuth::Bearer(Secret::new("secret-litellm-master")),
+        );
+        let gateway_agent =
+            "runtime: claude-code\nruntime_config:\n  model: meta.llama3\n  gateway: litellm\n";
+        let claude = claude_code::ClaudeCodeAdapter::with_env(host.clone());
+        let gemini = gemini_cli::GeminiCliAdapter::with_env(host.clone());
+        let codex = codex::CodexAdapter::create();
+        let custom = custom::CustomAdapter::with_command(Invocation::new("my-agent", &["--acp"]));
+        let sessions: Vec<(&str, &dyn CliProfile, HarnessPlan)> = vec![
+            (
+                "Claude Code, the host's own setup",
+                claude.profile(),
+                planned("runtime: claude-code\n", anthropic_from_host, None),
+            ),
+            (
+                "Claude Code, a subscription",
+                claude.profile(),
+                planned(
+                    "runtime: claude-code\n",
+                    Some(upstream_with(ModelRoute::Anthropic, "secret-subscription")),
+                    None,
+                ),
+            ),
+            (
+                "Claude Code, Foundry",
+                claude.profile(),
+                planned(
+                    "runtime: claude-code\n",
+                    Some(upstream_with(
+                        ModelRoute::Foundry,
+                        "secret-foundry-upstream",
+                    )),
+                    None,
+                ),
+            ),
+            (
+                "Claude Code, Bedrock",
+                claude.profile(),
+                planned(
+                    "runtime: claude-code\n",
+                    Some(upstream_with(
+                        ModelRoute::Bedrock,
+                        "secret-bedrock-upstream",
+                    )),
+                    None,
+                ),
+            ),
+            (
+                "Claude Code, the LiteLLM gateway",
+                claude.profile(),
+                planned(gateway_agent, None, Some(litellm)),
+            ),
+            (
+                "Codex",
+                codex.profile(),
+                planned(
+                    "runtime: codex\n",
+                    Some(upstream_with(ModelRoute::OpenAi, "secret-openai-upstream")),
+                    None,
+                ),
+            ),
+            (
+                "Gemini CLI (refused, but never with a key)",
+                gemini.profile(),
+                planned("runtime: custom:mine\n", None, None),
+            ),
+            (
+                "a custom CLI",
+                custom.profile(),
+                planned("runtime: custom:mine\n", None, None),
+            ),
+        ];
+
+        for (session, profile, plan) in sessions {
+            let env = profile.env(&plan.config);
+            let names: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
+            let args = docker_args(
+                &profile.invocation(plan.model.as_deref()),
+                &names,
+                &plan.config.placement,
+            );
+            let printed = format!("{:?} {:?}", plan.config, plan.upstream);
+            let everything = env
+                .iter()
+                .map(|(_, v)| v.as_str())
+                .chain(args.iter().map(String::as_str))
+                .chain(std::iter::once(printed.as_str()));
+            for text in everything {
+                assert!(!text.contains("secret-"), "{session}: {text}");
+            }
+            // A provider key variable, if any, carries the proxy token
+            for (name, value) in &env {
+                if HOST_SECRETS.iter().any(|(secret, _)| secret == name) {
+                    assert_eq!(value, PROXY_TOKEN, "{session}: {name}");
+                }
+            }
+        }
     }
 
     #[test]

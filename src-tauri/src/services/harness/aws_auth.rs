@@ -14,9 +14,9 @@
 //! - Bedrock harness sessions: the egress proxy signs their model calls on
 //!   the host (`bedrock_upstream`); only the LiteLLM gateway gets keys
 //!
-//! Credentials go into `HarnessCredentials` or `SignInKeys` (never
-//! serialized, never logged) and reach only a harness's environment or
-//! the egress layer. What the UI gets
+//! Credentials go into `GatewayAwsKeys` or `SignInKeys` (never
+//! serialized, never logged) and reach only the LiteLLM gateway's
+//! environment or the egress layer. What the UI gets
 //! (`CredentialStatus`, `AwsProfile`, …) holds no key material.
 
 use std::collections::HashMap;
@@ -37,8 +37,8 @@ mod setup;
 pub(crate) use setup::{configure_answers, valid_region};
 pub use setup::{KeyProfileInput, SsoSetup, SsoSetupFinish, SsoSetupInput};
 
-use super::adapter::HarnessCredentials;
 use super::detection::{self, DetectEnv};
+use super::gateway::GatewayAwsKeys;
 use crate::db::{now_ms, ts, Db};
 use crate::model::Timestamp;
 use crate::services::egress::credentials::{SignInFn, SignInKeys};
@@ -651,30 +651,28 @@ impl AwsAuthService {
     }
 
     /// What the LiteLLM gateway's environment gets: the profile's
-    /// credentials exported to temporary keys, else the Bedrock API key
-    pub async fn bedrock_credentials(
+    /// credentials resolved to keys, else the Bedrock API key
+    pub async fn gateway_keys(
         &self,
         profile: Option<String>,
         region: Option<String>,
-    ) -> Result<HarnessCredentials, String> {
+    ) -> Result<GatewayAwsKeys, String> {
         let profile = self.profile_name(profile);
         let bearer = self.bearer_token().map(|(token, _)| token);
         match self.resolve(profile.as_deref(), region.as_deref()).await {
-            Ok(resolved) => Ok(HarnessCredentials {
-                aws_region: Some(resolved.region),
-                aws_profile: profile,
-                aws_access_key_id: Some(resolved.credentials.access_key_id().to_string()),
-                aws_secret_access_key: Some(resolved.credentials.secret_access_key().to_string()),
-                aws_session_token: resolved.credentials.session_token().map(str::to_string),
-                aws_bearer_token: bearer,
-                ..HarnessCredentials::default()
+            Ok(resolved) => Ok(GatewayAwsKeys {
+                region: Some(resolved.region),
+                access_key_id: Some(resolved.credentials.access_key_id().to_string()),
+                secret_access_key: Some(resolved.credentials.secret_access_key().to_string()),
+                session_token: resolved.credentials.session_token().map(str::to_string),
+                bearer_token: bearer,
             }),
-            Err(_) if bearer.is_some() => Ok(HarnessCredentials {
-                aws_region: region
+            Err(_) if bearer.is_some() => Ok(GatewayAwsKeys {
+                region: region
                     .or_else(|| not_empty(self.user_env().get("AWS_REGION")))
                     .or_else(|| Some(DEFAULT_REGION.to_string())),
-                aws_bearer_token: bearer,
-                ..HarnessCredentials::default()
+                bearer_token: bearer,
+                ..GatewayAwsKeys::default()
             }),
             Err(error) => Err(self.explain(profile, error).await),
         }
@@ -939,12 +937,12 @@ pub fn agent_sign_in(service: Arc<AwsAuthService>) -> SignInFn {
 }
 
 /// The AWS credentials the LiteLLM gateway gets
-pub async fn bedrock_credentials(
+pub async fn gateway_keys(
     state: &AppState,
     profile: Option<String>,
     region: Option<String>,
-) -> Result<HarnessCredentials, String> {
-    state.aws_auth().bedrock_credentials(profile, region).await
+) -> Result<GatewayAwsKeys, String> {
+    state.aws_auth().gateway_keys(profile, region).await
 }
 
 pub async fn detect_aws_cli(state: &AppState) -> Result<AwsCliInfo, String> {
@@ -1070,21 +1068,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn static_keys_resolve_and_export_to_the_container_env() {
+    async fn static_keys_resolve_for_the_gateway() {
         let f = fixture(&[], None);
-        let credentials = f
+        let keys = f
             .service
-            .bedrock_credentials(Some("keys".into()), None)
+            .gateway_keys(Some("keys".into()), None)
             .await
             .unwrap();
-        assert_eq!(credentials.aws_region.as_deref(), Some("eu-west-1"));
-        let env: HashMap<_, _> = super::super::adapter::common_credential_env(&credentials)
-            .into_iter()
-            .collect();
-        assert_eq!(env["AWS_ACCESS_KEY_ID"], "AKIATESTKEY");
-        assert_eq!(env["AWS_SECRET_ACCESS_KEY"], "test-secret-value");
-        assert_eq!(env["AWS_REGION"], "eu-west-1");
-        assert!(!env.contains_key("AWS_PROFILE"), "exported keys replace it");
+        assert_eq!(keys.region.as_deref(), Some("eu-west-1"));
+        assert_eq!(keys.access_key_id.as_deref(), Some("AKIATESTKEY"));
+        assert_eq!(keys.secret_access_key.as_deref(), Some("test-secret-value"));
         let status = f.service.check(Some("keys".into()), None, false).await;
         assert!(status.valid, "{status:?}");
         assert_eq!(status.source, CredentialSource::SharedCredentials);
@@ -1140,7 +1133,7 @@ mod tests {
             .contains(&super::super::AWS_CREDENTIALS_EXPIRED));
         let error = f
             .service
-            .bedrock_credentials(Some("sso".into()), None)
+            .gateway_keys(Some("sso".into()), None)
             .await
             .unwrap_err();
         assert!(error.contains("aws sso login --profile sso"), "{error}");
@@ -1162,17 +1155,14 @@ mod tests {
                 source: Some("environment".into())
             }
         );
-        let credentials = f
+        let keys = f
             .service
-            .bedrock_credentials(Some("sso".into()), None)
+            .gateway_keys(Some("sso".into()), None)
             .await
             .unwrap();
-        assert_eq!(
-            credentials.aws_bearer_token.as_deref(),
-            Some("bedrock-key-value")
-        );
-        assert_eq!(credentials.aws_access_key_id, None);
-        assert_eq!(credentials.aws_region.as_deref(), Some("us-east-2"));
+        assert_eq!(keys.bearer_token.as_deref(), Some("bedrock-key-value"));
+        assert_eq!(keys.access_key_id, None);
+        assert_eq!(keys.region.as_deref(), Some("us-east-2"));
         let status = f.service.check(Some("sso".into()), None, false).await;
         assert_eq!(status.source, CredentialSource::BedrockApiKey);
         assert!(status.valid);

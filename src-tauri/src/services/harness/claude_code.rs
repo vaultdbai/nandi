@@ -208,13 +208,6 @@ impl CliProfile for ClaudeCode {
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".into(),
             "1".into(),
         );
-        env.extend(
-            config
-                .credentials
-                .custom_env
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone())),
-        );
         if let (Some(route), Some(token)) = (config.model_route, proxy_token(config)) {
             route_through_proxy(&mut env, route, token);
         }
