@@ -17,9 +17,9 @@ use crate::services::email::settings::EmailAccount;
 use crate::services::email::{EmailSettings, MailProvider};
 use crate::services::groups::Groups;
 use crate::services::identity::VerifiedIdentity;
+use crate::services::network::member_trust as trust;
 use crate::services::relay::join::{join_relay, JoinOutcome};
 use crate::services::relay::{get_relay_status, has_instance_token, limits, BuiltInRelay};
-use crate::services::team::trust;
 use crate::utils::nandi_config;
 
 const SECRET: &[u8] = b"public-secret";

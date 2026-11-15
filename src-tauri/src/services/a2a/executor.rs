@@ -9,7 +9,7 @@
 //! - it already runs `max_delegation_concurrent` delegated tasks
 //! - the requester is on another instance and the trust policy is `deny`,
 //!   or `ask` with no override allowing the capability and the requester's
-//!   instance not marked a trusted peer (`team::trust`). `ask` rejects
+//!   instance not marked a trusted peer (`network::member_trust`). `ask` rejects
 //!   instead of prompting: the owner allows the requester in the trust
 //!   graph, and the next call goes through.
 //!
@@ -30,7 +30,7 @@
 //!   registered by `gateway::start`), which applies its policy, routes it,
 //!   and sends `RejectTask` itself when it refuses.
 //! - Tasks from an instance whose delegations we paused, or from one of its
-//!   agents we blocked (`team::trust`), are rejected.
+//!   agents we blocked (`network::member_trust`), are rejected.
 //! - The turn's timeout doesn't run while the task waits for an answer to
 //!   `ask_requester` (or its row is `InputRequired`).
 
@@ -56,11 +56,11 @@ use crate::services::chat;
 use crate::services::domain::group::Decision;
 use crate::services::domain::{Agent, AgentCard};
 use crate::services::intake;
+use crate::services::network::member_trust;
 use crate::services::orchestrator::{OrchestratorCommand, RunSource};
 use crate::services::relay::protocol::{PeerMessage, TaskAssigned};
 use crate::services::relay::RelayClient;
 use crate::services::run_waiter::RunWaiter;
-use crate::services::team::trust as member_trust;
 use crate::services::trust::{self, TrustPolicy};
 
 /// While waiting for a turn, how often the DB is re-checked in case its
@@ -1098,7 +1098,7 @@ impl<'a> ProviderLife<'a> {
             if refusal.kind == ReasonKind::NotTrusted {
                 crate::services::events::emit(
                     &self.deps.bus,
-                    &crate::services::team::trust_requests::TrustRequestReceived {
+                    &crate::services::network::trust_requests::TrustRequestReceived {
                         instance_id: self.task.requester.instance_id.clone(),
                     },
                 );

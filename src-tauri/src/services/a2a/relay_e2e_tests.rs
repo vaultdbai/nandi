@@ -15,7 +15,9 @@ use super::*;
 use crate::db;
 use crate::engine::CANNED_SCRIPT_KEY;
 use crate::services::events::tests::RecordingSink;
-use crate::services::team::trust::{set_blocked, update_relationship, TrustUpdate, ALL_AGENTS};
+use crate::services::network::member_trust::{
+    set_blocked, update_relationship, TrustUpdate, ALL_AGENTS,
+};
 use crate::services::trust;
 
 /// A live wait well inside a test's patience

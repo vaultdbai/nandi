@@ -10,10 +10,8 @@
 //!   (Nandi never pushes to main or master).
 
 pub mod registry;
-// Rosters and trust toward other members
+// Rosters of the team members
 pub mod roster;
-pub mod trust;
-pub mod trust_requests;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

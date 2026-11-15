@@ -24,6 +24,7 @@ use serde_json::json;
 use super::assignment::{ASK_ME, ASSIGN_ME};
 use super::delegator::instance_of;
 use crate::db::Db;
+use crate::services::network::member_trust::{TrustFilter, ALL_AGENTS};
 use crate::services::relay::protocol::{
     NoRoute, RequestKind, RouteCandidate, RoutePlan, RouteReason, RouteTarget, RoutingHints,
     RoutingQuery,
@@ -31,7 +32,6 @@ use crate::services::relay::protocol::{
 use crate::services::relay::unavailable;
 use crate::services::relay::RelayClient;
 use crate::services::repo_store::RepoStore;
-use crate::services::team::trust::{TrustFilter, ALL_AGENTS};
 
 /// The task message that says why its provider was picked:
 /// `{"provider", "reasons", "redirectedFrom"}` (the relay's reasons,

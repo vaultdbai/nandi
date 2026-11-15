@@ -455,7 +455,7 @@ as the step's output, and the workflow goes on)"
             })
         }
         InboxItemRef::TrustRequest { instance_id } => {
-            let requests = crate::services::team::trust_requests::list_trust_requests(state)
+            let requests = crate::services::network::trust_requests::list_trust_requests(state)
                 .await
                 .unwrap_or_default();
             let Some(request) = requests.into_iter().find(|r| &r.instance_id == instance_id) else {

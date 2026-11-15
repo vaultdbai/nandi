@@ -12,7 +12,9 @@
 //! connecting happens in tasks it spawns, and only when the user
 //! configured it.
 
+pub mod member_trust;
 pub mod peer_keys;
+pub mod trust_requests;
 
 use std::sync::Arc;
 

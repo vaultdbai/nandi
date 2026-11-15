@@ -15,12 +15,12 @@ use super::Task;
 use crate::db::{now_ms, Db};
 use crate::services::capability::ProviderKind;
 use crate::services::domain::AgentCard;
+use crate::services::network::member_trust::TrustFilter;
 use crate::services::relay::unavailable;
 use crate::services::selection::{CapabilityRanking, CapabilitySelectionContext, SelectionService};
-use crate::services::team::trust::TrustFilter;
 
 /// `cards` without other instances we paused delegations with, nor agents
-/// of theirs we blocked (`team::trust`). Our own instance is never
+/// of theirs we blocked (`network::member_trust`). Our own instance is never
 /// filtered. A trust table that can't be read filters nothing (logged).
 pub fn without_untrusted(db: &Db, me: &str, cards: Vec<AgentCard>) -> Vec<AgentCard> {
     let trust = match TrustFilter::load(db) {

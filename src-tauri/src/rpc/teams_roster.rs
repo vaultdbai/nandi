@@ -1,11 +1,13 @@
 //! Roster, member profile, and trust commands (Tauri adapter for
-//! `services::team::{roster, trust}`).
+//! `services::team::roster`, `services::network::{member_trust, trust_requests}`).
 
+use crate::services::network::member_trust as trust;
+use crate::services::network::member_trust::{TrustRelationship, TrustUpdate};
 use crate::services::network::peer_keys;
 use crate::services::network::peer_keys::PeerKeyStatus;
+use crate::services::network::trust_requests;
+use crate::services::team::roster;
 use crate::services::team::roster::{MemberProfile, TeamRoster};
-use crate::services::team::trust::{TrustRelationship, TrustUpdate};
-use crate::services::team::{roster, trust, trust_requests};
 
 super::commands! {
     fn get_team_roster(state, team_id: String) -> TeamRoster => roster::get_team_roster(&state, &team_id).await;

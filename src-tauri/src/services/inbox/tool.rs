@@ -313,7 +313,7 @@ async fn decide(
             Ok("done".to_string())
         }
         (InboxItemRef::TrustRequest { instance_id }, Approve | Refuse) => {
-            use crate::services::team::trust_requests::{respond_trust_request, TrustAnswer};
+            use crate::services::network::trust_requests::{respond_trust_request, TrustAnswer};
             let answer = if approve {
                 TrustAnswer::Trust
             } else {

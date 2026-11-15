@@ -54,6 +54,7 @@ use crate::services::gateway::holds::{GatewayHoldChanged, HoldStatus};
 use crate::services::gateway::GATEWAY_AGENT_ID;
 use crate::services::groups::enforce::GroupRules;
 use crate::services::network;
+use crate::services::network::member_trust;
 use crate::services::orchestrator::Orchestrators;
 use crate::services::relay::client_api::UNANSWERED_BY_RELAY;
 use crate::services::relay::protocol::NoRoute;
@@ -61,7 +62,6 @@ use crate::services::relay::protocol::MAX_CANDIDATES;
 use crate::services::relay::unavailable::{self, RelayUnavailable};
 use crate::services::relay::RelayClient;
 use crate::services::repo_store::RepoStore;
-use crate::services::team::trust as member_trust;
 use crate::services::AppState;
 
 /// `local_settings` key overriding `DEFAULT_TIMEOUT_SECS`

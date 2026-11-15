@@ -23,8 +23,8 @@ use crate::services::network::peer_keys::{self, PeerKeyStatus};
 use crate::services::network::{self, NetworkMember, NetworkSnapshot};
 use crate::services::{relay, AppState};
 
-use super::trust::{self, TrustRelationship};
 use super::{Team, TeamManager};
+use crate::services::network::member_trust::{self as trust, TrustRelationship};
 
 /// `team://roster_changed`
 pub const TEAM_ROSTER_CHANGED: &str = "team://roster_changed";

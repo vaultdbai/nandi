@@ -121,7 +121,7 @@ pub struct PolicyInput<'a> {
     /// The caller's tasks this month so far
     pub used_this_month: u32,
     /// We paused delegations with the caller's instance
-    /// (`team::trust::is_paused`)
+    /// (`network::member_trust::is_paused`)
     pub caller_paused: bool,
     /// Who the caller is, in words (never a device ID)
     pub caller_name: &'a str,

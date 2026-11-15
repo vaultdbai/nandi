@@ -269,7 +269,7 @@ fn kept_account(db: &Db) -> Option<KeptAccount> {
 /// Whether this Nandi's relay token is from joining a public relay: anyone
 /// with an email can join there, so its members aren't trusted as a
 /// company's
-/// ([`crate::services::team::trust::on_a_secured_relay`])
+/// ([`crate::services::network::member_trust::on_a_secured_relay`])
 pub fn on_public_relay(db: &Db) -> bool {
     kept_account(db).is_some()
 }

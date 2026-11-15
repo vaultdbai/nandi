@@ -26,11 +26,11 @@ use super::a2a::{route, TaskStatus};
 use super::domain::agent_card::{card_from_agent, OwnerRef};
 use super::domain::{Agent, AgentCard, EntityKind};
 use super::network;
+use super::network::member_trust::TrustFilter;
 use super::relay;
 use super::relay::protocol::{RoutePlan, RouteReason, MAX_CANDIDATES};
 use super::repo_store::RepoStore;
 use super::repos::SingletonRepository;
-use super::team::trust::TrustFilter;
 use super::team::{TeamManager, TeamShare};
 use super::trust::{self, TrustPolicy, TrustRule};
 use super::AppState;
@@ -1173,7 +1173,7 @@ mod tests {
 
     #[test]
     fn blocked_agents_are_filtered_from_listings() {
-        use crate::services::team::trust::set_blocked;
+        use crate::services::network::member_trust::set_blocked;
         let db = Db::in_memory();
         set_blocked(&db, "remote", "papers", true).unwrap();
         let filter = TrustFilter::load(&db).unwrap();
@@ -1192,7 +1192,7 @@ mod tests {
 
     #[test]
     fn a_paused_member_is_not_offered_as_a_provider() {
-        use crate::services::team::trust::{update_relationship, TrustUpdate};
+        use crate::services::network::member_trust::{update_relationship, TrustUpdate};
         let db = Db::in_memory();
         update_relationship(
             &db,

@@ -571,11 +571,13 @@ pub async fn handle_gateway_task(state: &AppState, task: Task) -> Result<TaskRes
             used_this_month: used,
             // A blocked instance is refused like a paused one
             caller_paused: remote_caller
-                && (crate::services::team::trust::is_paused(state.db(), &caller_instance)
-                    || crate::services::team::trust::is_instance_blocked(
-                        state.db(),
-                        &caller_instance,
-                    )),
+                && (crate::services::network::member_trust::is_paused(
+                    state.db(),
+                    &caller_instance,
+                ) || crate::services::network::member_trust::is_instance_blocked(
+                    state.db(),
+                    &caller_instance,
+                )),
             caller_name: &who,
         },
         service.limiter(),

@@ -394,7 +394,7 @@ function PublicRelayCard() {
 /**
  * "Trust everyone on this relay": on a relay that needs a token, its
  * members are the company's, so they're trusted unless this is off
- * (`team::trust::is_trusted`). Where it can't apply (no relay, an open or
+ * (`network::member_trust::is_trusted`). Where it can't apply (no relay, an open or
  * a public relay) the switch shows off and disabled, with the reason.
  */
 function RelayTrustCard({ hasRelay }: { hasRelay: boolean }) {

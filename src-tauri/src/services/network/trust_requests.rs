@@ -23,7 +23,7 @@ use crate::services::events::{emit, NandiEvent};
 use crate::services::trust::{self as policies, TrustPolicy};
 use crate::services::{network, AppState};
 
-use super::trust::{self, TrustUpdate, ALL_AGENTS};
+use super::member_trust::{self as trust, TrustUpdate, ALL_AGENTS};
 
 /// `trust://request_received`: someone was refused for trust, or their
 /// request was answered; the payload names who
