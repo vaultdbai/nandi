@@ -1103,7 +1103,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### ST-32 — Account: sign in with GitHub (one token for every github.com repository)
 
-- **What:** Settings › Account › GitHub has **Sign in with GitHub**. It shows a code ("Enter this code on the GitHub page that opened:"), opens `https://github.com/login/device`, and waits ("Waiting for GitHub…", with Cancel). Once approved it shows "Signed in to GitHub as @login." with **Sign out**. The same panel (without Sign out) appears wherever a github.com repository is chosen: Library › GitHub › Setup, Settings › Backup when the credential is **GitHub sign-in** (offered only for `https://github.com/...` addresses), Add source with "Use my GitHub sign-in", the Create team dialog for a github.com registry URL, and Publish. The token is used for: the GitHub connector (after a pasted token, before the GitHub CLI), Backup push/pull/test, team registry sync and push, capability registry sync, marketplace sources with "Use my GitHub sign-in", creating a community source, and publishing. It is never sent to non-github.com addresses, and SSH addresses keep using SSH keys.
+- **What:** Settings › Account › GitHub has **Sign in with GitHub**. It shows a code ("Enter this code on the GitHub page that opened:"), opens `https://github.com/login/device`, and waits ("Waiting for GitHub…", with Cancel). Once approved it shows "Signed in to GitHub as @login." with **Sign out**. The same panel (without Sign out) appears wherever a github.com repository is chosen: Library › GitHub › Setup, Settings › Backup when the credential is **GitHub sign-in** (offered only for `https://github.com/...` addresses), Add source with "Use my GitHub sign-in", the Create team dialog for a github.com registry URL, and Publish. The token is used for: the GitHub connector (after a pasted token, before the GitHub CLI), Backup push/pull/test, team registry sync and push, marketplace sources with "Use my GitHub sign-in", creating a community source, and publishing. It is never sent to non-github.com addresses, and SSH addresses keep using SSH keys.
 - **Where:** `src-tauri/src/services/auth/github.rs`, `rpc/identity.rs` (`get_github_sign_in`, `start_github_sign_in`, `poll_github_sign_in`, `sign_out_github`), `POST /api/rpc/{command}`, `src/components/github/GithubSignInPanel.tsx`, `src/hooks/useGithubSignIn.ts`. Token: keychain entry `nandi.github.token`; login: `github_login` in `~/.nandi/config.json`.
 - **Preconditions:** The Nandi OAuth App (or one set with `NANDI_GITHUB_CLIENT_ID` at build time) has "Enable Device Flow" on.
 - **Steps:**
@@ -1166,17 +1166,17 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### ST-24 — Sources (registries)
 
-- **What:** One list of where the Library finds things, in two labelled kinds: Agents & packs (marketplace registries) and Capabilities. Each row has its URL, labels, last sync, Sync, a ⋯ menu and Remove. "Sync all" syncs them in turn. "Add source" chooses the kind first, then that kind's form. Overlaps the marketplace and capabilities areas.
-- **Where:** `src/components/settings/sections/SourcesSection.tsx`, `sources-model.ts`, `useMarketplace` (`useRegistries`), `useCapabilityRegistries`.
+- **What:** One list of the registries the Library finds agents and packs in. Each row has its URL, labels, last sync, Sync, a ⋯ menu and Remove. "Sync all" re-reads them all. "Add source" shows the registry form and the community registry card. Overlaps the marketplace area. Capability definitions are local files, not sources (CP-20).
+- **Where:** `src/components/settings/sections/SourcesSection.tsx`, `sources-model.ts`, `useMarketplace` (`useRegistries`).
 - **Preconditions:** A registry URL.
 - **Steps:**
-  1. Add a capability registry.
+  1. Add a registry.
   2. Click Sync.
   3. Click Sync all.
   4. Remove it.
 - **Expected:** The last sync updates. A warning or error marks the row and the Settings dot.
 - **Edge / negative cases:** A bad URL. An unreachable registry.
-- **Automation:** Covered by: `src/components/settings/sections/SourcesSection.agents.test.tsx`, `SourcesSection.capabilities.test.tsx` | Layer: unit | Gap: see the marketplace area.
+- **Automation:** Covered by: `src/components/settings/sections/SourcesSection.test.tsx` | Layer: unit | Gap: see the marketplace area.
 - **Needs relay:** no
 - **Status:** Shipped
 

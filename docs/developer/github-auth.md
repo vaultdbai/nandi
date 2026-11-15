@@ -22,7 +22,6 @@ Identity stays local (`NANDI.md`); this sign-in only supplies a credential.
 | GitHub connector             | `catalog.rs`: a pasted token first, then the sign-in (only when `api_url` is github.com), then `gh auth token`    |
 | Backup (`services/remote`)   | `CredentialKind::Github`: the stored credential holds no token; `credential()` fills in the sign-in's when loaded |
 | Team registries              | `TeamService::registry_token(url)` → `registry::sync` / `push_head`                                               |
-| Capability registries        | `git_sync::clone_or_pull(.., token)` from `CapabilityRegistryService::sync_registry`                              |
 | Marketplace sources          | A registry whose `auth` is `nandi.github.token` ("Use my GitHub sign-in") reads through `auth::github::token`     |
 | Community source, publishing | `auth::require_token`: the sign-in, else a Backup token credential                                                |
 

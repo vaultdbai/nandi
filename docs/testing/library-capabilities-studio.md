@@ -1,6 +1,6 @@
 # Library, marketplace, capabilities, connectors, pilots, Ask (Studio) and the companion
 
-Covers the Library page and the marketplace behind it (registries, install, consent, fork, update, publish, signing), capabilities and capability sources, connectors and shared folders, pilots (host-side OS control), Ask (internally "Studio": chat, ask box, artifact editor) and the companion window (the bison). Data home is `~/.nandi`; definitions are files in `~/.nandi/repo/.nandi/`.
+Covers the Library page and the marketplace behind it (registries, install, consent, fork, update, publish, signing), capabilities, connectors and shared folders, pilots (host-side OS control), Ask (internally "Studio": chat, ask box, artifact editor) and the companion window (the bison). Data home is `~/.nandi`; definitions are files in `~/.nandi/repo/.nandi/`.
 
 ## Library page
 
@@ -191,10 +191,10 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **What:** Add a marketplace registry by URL with kind (public / community / personal) and either a token (stored in the keychain) or **Use my GitHub sign-in (private repos)**; the index is fetched once before saving so a bad URL fails immediately. Rows show kind, counts ("Agents: n · Packs: n"), last fetch, warnings, Sync, ⋯ (Copy URL, Open in browser) and Remove (confirmation "Remove <url>?"; installed agents stay installed). **Sync all** syncs every source.
 - **Where:** Settings › Sources (also Library → Browse → Sources ›). `src/components/settings/sections/SourcesSection.tsx`, `src/components/marketplace/SourceForms.tsx` (`AddMarketplaceSourceForm`); commands `list_registries`, `add_registry`, `remove_registry`; HTTP `POST /api/rpc/list_registries|add_registry`, `POST /api/rpc/remove_registry`. Stored under `marketplace.registries` in `settings.yaml` (token only as a keyring ref).
 - **Preconditions:** A registry URL (and token for private).
-- **Steps:** 1. Settings › Sources → **Add source** → Kind of source "Agents & packs" → URL + "GitHub token (optional)" → **Add registry**. 2. Try a wrong URL. 3. Remove a source → confirm.
+- **Steps:** 1. Settings › Sources → **Add source** → URL + "GitHub token (optional)" → **Add registry**. 2. Try a wrong URL. 3. Remove a source → confirm.
 - **Expected:** Toast "Added <url>"; valid source appears and its agents show in Browse; wrong URL errors without saving; removed source's entries disappear from Browse but installs remain.
 - **Edge / negative cases:** Token never shown again; removing the default registry leaves an explicit list.
-- **Automation:** Covered by: `src/components/settings/sections/SourcesSection.agents.test.tsx` | Layer: unit | Gap: live private registry.
+- **Automation:** Covered by: `src/components/settings/sections/SourcesSection.test.tsx` | Layer: unit | Gap: live private registry.
 - **Needs relay:** no
 - **Status:** Shipped (overlaps Settings area)
 
@@ -653,7 +653,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 
 - **What:** Header with name, version badge, owner; tabs Overview (description, body, required/optional tools, tags, input/output schema, ownership history), Providers, Evidence, Ambiguities, Policy. Owner sees **Edit** and **Transfer**.
 - **Where:** Capability card → detail (`{ kind: 'capability-detail', id }`). `src/components/views/CapabilityDetailView.tsx`; `get_capability` → `POST /api/rpc/get_capability`.
-- **Preconditions:** A capability exists (`.nandi/capabilities/<id>.yaml` or from a registry).
+- **Preconditions:** A capability exists (`.nandi/capabilities/<id>.yaml`).
 - **Steps:** Open and visit each tab.
 - **Expected:** All tabs render; Back returns to the list.
 - **Edge / negative cases:** Someone else's capability is read-only (no Edit/Transfer, policy read-only note).
@@ -668,14 +668,14 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **Preconditions:** Own capability.
 - **Steps:** 1. Network → Sharing → Capabilities → an own capability → **Edit** → change Description → Save. 2. `POST /api/rpc/delete_capability`.
 - **Expected:** File updated; toast "Capability saved"; list updates live; delete removes file and projection row.
-- **Edge / negative cases:** File name must match ID in the gold copy (known inconsistency with registries); invalid YAML → error.
+- **Edge / negative cases:** File name must match ID in the gold copy; invalid YAML → error.
 - **Automation:** Covered by: Rust `capability/definition.rs` (4), `projection.rs` (2), `capability/mod.rs` (6) | Layer: api | Gap: UI edit test.
 - **Needs relay:** no
 - **Status:** Shipped
 
 ### CP-14 — Capability policy form
 
-- **What:** Owner edits visibility, max per provider, total max (0 = unlimited), SLA seconds (0 = none), approval required, auto-reassign, routing strategy and fallback; saved into the capability file.
+- **What:** Owner edits visibility, max per provider, total max (0 = unlimited), SLA seconds (0 = none), auto-reassign, routing strategy and fallback; saved into the capability file.
 - **Where:** Capability detail → Policy tab. `src/components/capability/CapabilityPolicyForm.tsx` (uses `save_capability`).
 - **Preconditions:** Own capability.
 - **Steps:** Change SLA and strategy → Save.
@@ -747,15 +747,9 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 
 ### CP-20 — Capability sources (registries)
 
-- **What:** Subscribe to git repos whose `capabilities/` (or `.nandi/capabilities/`) folder is merged read-only into the capability index. Add with URL or folder, kind (auto-detect / GitHub / GitLab / Local / Git), optional branch prefix and user slug (follows `<prefix>/<slug>`). Synced on add, on demand, every 6 h; never pushed to. Rows show count, synced time/commit and skipped files; Remove deletes the local clone.
-- **Where:** Settings › Sources (kind Capabilities). `src/components/capability/AddCapabilitySourceForm.tsx`, `SourcesSection.tsx`; commands `list_capability_registries`, `add_capability_registry`, `remove_capability_registry`, `sync_capability_registry` (`rpc/capability_registries.rs`); HTTP `POST /api/rpc/list_capability_registries|add_capability_registry|remove_capability_registry`, `POST /api/rpc/sync_capability_registry {url}`; `services/capability/registry.rs`, `git_sync.rs`. Clones in `~/.nandi/local/cache/capability-registries/<hash>/`.
-- **Preconditions:** A git repo with capability YAMLs.
-- **Steps:** 1. Add. 2. Sync now. 3. Remove.
-- **Expected:** Capabilities appear in Discover; local definitions override a registry's same ID; a second registry defining the same ID is reported, not merged.
-- **Edge / negative cases:** No sync-all HTTP route (UI loops per source); file named differently from its ID accepted from registries but not in the gold copy (known issue).
-- **Automation:** Covered by: `src/components/settings/sections/SourcesSection.capabilities.test.tsx`; Rust `capability/registry.rs` (13) | Layer: api | Gap: remote git auth.
+- **What:** Settings › Sources subscribed to git repos of capability definitions. The repos were unsigned and followed a branch, so Nandi dropped them. Capability definitions are local files only (`.nandi/capabilities/<id>.yaml`).
 - **Needs relay:** no
-- **Status:** Known issue (no sync-all route; filename/ID rule inconsistent)
+- **Status:** Removed (2026-11-14, unsigned and branch-tracked)
 
 ### CP-21 — Local capability lookups and agent cards
 
@@ -1000,7 +994,6 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - Live-model acceptance for Studio guides and chat-started Requests unchecked — `docs/tasks-todo/task-x-studio-knows-nandi.md`.
 - In-app acceptance for the bison (close main window, multi-monitor snap, poses) unchecked — `docs/tasks-todo/task-x-companion-bison.md`.
 - Shared folders acceptance (two folders, Ask "give write access") unchecked — `docs/tasks-todo/task-x-shared-folders.md`.
-- No HTTP sync-all route for capability registries; registry file-name/ID rule inconsistent with gold copy.
 - `marketplace.md` describes an Installed tab with a Modified badge, "Update all" and a Registries tab; the current Library has none of these (single-item update via drawer; registries in Settings › Sources). `list_installed` and `search_marketplace` have no UI consumer.
 - `queryCapabilityPresence` has no HTTP route (web client returns not supported); `toggle_companion_window` is desktop-only; the web client answers it itself.
 - `registry-schema/README.md` ([`nandi-spec/registry-schema`](https://github.com/vaultdbai/nandi-spec/tree/main/registry-schema)) still points to "Marketplace → Registries".

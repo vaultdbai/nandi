@@ -121,7 +121,7 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-553 features to test: all 607 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 11 removed features.
+552 features to test: all 607 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 12 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
@@ -130,7 +130,7 @@ These turned up while building the catalog. In each case the catalog follows the
 | Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 63       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
 | Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 92       |
-| Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 75       |
+| Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 74       |
 | Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 84       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
 | Data, platform and quality gates            | [data-platform-quality.md](./data-platform-quality.md)             | 60       |
@@ -139,19 +139,19 @@ These turned up while building the catalog. In each case the catalog follows the
 | ----------- | ----- |
 | Shipped     | 532   |
 | Partial     | 18    |
-| Removed     | 11    |
-| Known issue | 3     |
+| Removed     | 12    |
+| Known issue | 2     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
 | `unit`                | 302   |
-| `api`                 | 194   |
+| `api`                 | 193   |
 | `manual`              | 33    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 468   |
+| no          | 467   |
 | yes         | 85    |
 
 ## Master index
@@ -596,7 +596,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | CP-17 | Ambiguity clusters and promote to schema                                                   | Shipped                                                                        | unit               | no          |                 |
 | CP-18 | Delegate to a capability from its card                                                     | Shipped (overlaps Delegation area)                                             | unit               | no          |                 |
 | CP-19 | Provider selection and circuit breakers                                                    | Shipped (overlaps Delegation area)                                             | unit               | no          |                 |
-| CP-20 | Capability sources (registries)                                                            | Known issue (no sync-all route; filename/ID rule inconsistent)                 | api                | no          |                 |
+| CP-20 | Capability sources (registries)                                                            | Removed (2026-11-14, unsigned and branch-tracked)                              | —                  | no          |                 |
 | CP-21 | Local capability lookups and agent cards                                                   | Shipped (presence: desktop only)                                               | api                | no          |                 |
 | AI-01 | Ask page layout and conversations                                                          | Shipped                                                                        | unit               | no          |                 |
 | AI-02 | Grounded Studio chat (read-only nandi_* tools and guides)                                  | Shipped                                                                        | unit               | no          | 2026-10-30 pass |

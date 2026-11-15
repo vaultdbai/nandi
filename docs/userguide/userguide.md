@@ -615,7 +615,7 @@ To change an installed agent, **Fork** it from the **⋯** menu. The fork is a n
 
 ### Sources
 
-**Browse** shows when your sources were last updated (amber when it's over a day), **Refresh**, and **Sources ›**, which opens **Settings › Sources**. There you add marketplace sources (a URL plus a token stored in your keychain, or **Use my GitHub sign-in**) and capability sources. **Create my community registry** makes a private `nandi-community-<you>` repo you can invite collaborators to. To share your own agent publicly, use **Publish** in its header: Nandi tags the release in your agents repo and opens a pull request against the registry.
+**Browse** shows when your sources were last updated (amber when it's over a day), **Refresh**, and **Sources ›**, which opens **Settings › Sources**. There you add marketplace sources (a URL plus a token stored in your keychain, or **Use my GitHub sign-in**). **Create my community registry** makes a private `nandi-community-<you>` repo you can invite collaborators to. To share your own agent publicly, use **Publish** in its header: Nandi tags the release in your agents repo and opens a pull request against the registry.
 
 ---
 
