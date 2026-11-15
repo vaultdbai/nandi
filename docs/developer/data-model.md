@@ -127,14 +127,14 @@ Bump `PROJECTION_VERSION` (`services/projection.rs`) whenever the shape of a pro
 
 ## Schema Changes
 
-The owner set this rule on 2026-11-14 (decision 5).
+The owner set these rules on 2026-11-14 (decision 5) and on 2026-11-15: `state.db` upgrades in place.
 
-| What changes                               | What to do                                                                                                                                         |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Config and definitions (the gold copy)     | No migrations. Change the file format and the domain; bump `PROJECTION_VERSION` so the projection rebuilds from the files                          |
-| A projected table                          | No migrations. Bump `PROJECTION_VERSION`                                                                                                           |
-| A runtime table in `state.db`, from v1 on  | A real schema migration is allowed. The run trail still restores `run_events` and approval decisions into a new database ([Run Trail](#run-trail)) |
-| A serde shape, a name, an env var, a route | No serde aliases, old-name fallbacks or shims. When renaming, just change it                                                                       |
+| What changes                               | What to do                                                                                                                                                                                                |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Config and definitions (the gold copy)     | Change the file format and the domain; bump `PROJECTION_VERSION` so the projection rebuilds from the files                                                                                                |
+| A projected table                          | A migration, like any table, and bump `PROJECTION_VERSION`                                                                                                                                                |
+| Any table in `state.db`                    | Add the next numbered migration ([State Database Migrations](#state-database-migrations)). The run trail still restores `run_events` and approval decisions into a new database ([Run Trail](#run-trail)) |
+| A serde shape, a name, an env var, a route | No serde aliases, old-name fallbacks or shims. When renaming, just change it                                                                                                                              |
 
 ```rust
 // ❌ BAD: an alias that keeps an old name alive
@@ -144,6 +144,34 @@ pub display_name: String,
 // ✅ GOOD: rename it everywhere; config and definitions rebuild from the gold copy
 pub display_name: String,
 ```
+
+### State Database Migrations
+
+`state.db` is versioned by numbered, forward-only migrations in `src-tauri/src/db/migrations/`, embedded in the app (`db::migrations`). `PRAGMA user_version` holds the number of the last one applied.
+
+| When the app opens `state.db` and finds | What happens                                                                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Version 0 (a new, empty file)           | Every migration runs, from `001_baseline.sql`. No copy is kept                                                                                         |
+| An older version                        | After a WAL checkpoint, the file is copied to `state.db.bak-v<old>`. The missing migrations run in order in **one** transaction                        |
+| The latest version                      | Nothing                                                                                                                                                |
+| A newer version                         | Refused untouched: "The local database was written by a newer version of Nandi … Install the newer Nandi again to open it."                            |
+| A migration fails                       | Everything rolls back, the database stays at its old version, and the app stops with a calm error naming the copy. Agents and workflows aren't touched |
+
+A fresh database runs the same chain as an upgraded one, so their schemas are always the same (`a_fresh_database_and_an_upgraded_one_have_the_same_schema`). Foreign keys are off while the migrations run and every key is checked before the commit.
+
+**Adding a migration:**
+
+1. Add `src-tauri/src/db/migrations/NNN_<what>.sql`, the next number, three digits. Write plain SQL: `ALTER TABLE … ADD COLUMN`, or SQLite's 12-step table rebuild (create `<table>_new`, copy, drop, rename, recreate indexes) for anything `ALTER TABLE` can't do.
+2. Append `migration!(NNN, "NNN_<what>.sql")` to `MIGRATIONS` in `db/migrations.rs`. `SCHEMA_VERSION` follows.
+3. Append its SHA-256 to `SHIPPED` in `db/migrations_tests.rs`.
+4. If the migration moves or reshapes data, add rows for it to `migrations/fixtures/baseline_rows.sql` (or a fixture of its own) so `every_baseline_row_survives_the_migration_chain` covers it.
+5. If it changes a projected table, bump `PROJECTION_VERSION` too.
+
+| ✅ Do                                          | ❌ Don't                                                          |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| Add `002_runs_label.sql`                       | Edit `001_baseline.sql` (the checksum test fails)                 |
+| Copy rows forward when rebuilding a table      | Drop a table and let a rebuild fill it (runtime rows are history) |
+| Keep each migration small and about one change | Read or write the gold copy from a migration                      |
 
 ## Secrets Boundary
 

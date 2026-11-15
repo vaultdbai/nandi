@@ -131,8 +131,12 @@ fn check_db(report: &mut Report) {
         Ok(SCHEMA_VERSION) => {
             report.pass(format!("{} has schema v{SCHEMA_VERSION}", path.display()));
         }
+        Ok(version) if version < SCHEMA_VERSION => report.pass(format!(
+            "{} has schema v{version}; Nandi upgrades it to v{SCHEMA_VERSION} on its next start",
+            path.display()
+        )),
         Ok(version) => report.fail(format!(
-            "{} has schema v{version}, but this build of Nandi uses v{SCHEMA_VERSION}",
+            "{} has schema v{version}, from a newer Nandi; this build reads up to v{SCHEMA_VERSION}",
             path.display()
         )),
         Err(e) => report.fail(format!("Failed to read {}: {e}", path.display())),

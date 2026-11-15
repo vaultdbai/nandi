@@ -36,6 +36,7 @@ use crate::model::{
 mod approvals;
 mod conversations;
 mod messages;
+mod migrations;
 mod queue;
 mod runs;
 mod schema;
@@ -66,7 +67,8 @@ pub fn ts(ms: i64) -> Timestamp {
 }
 
 impl Db {
-    /// Opens (creating if needed) the database and applies the schema.
+    /// Opens (creating if needed) the database and brings it to the latest
+    /// schema, keeping a copy of it first when it upgrades.
     pub fn open(path: &Path) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -84,8 +86,15 @@ impl Db {
                 row.get::<_, String>(0)
             })
             .map_err(|e| format!("Failed to enable WAL: {e}"))?;
+            match init_db_file(&conn, path)? {
+                Upgrade::Upgraded { from, to, backup } => log::info!(
+                    "Upgraded the local database from version {from} to {to}; the copy from before is {}",
+                    backup.map(|b| b.display().to_string()).unwrap_or_default()
+                ),
+                Upgrade::Created { to } => log::info!("Created the local database at version {to}"),
+                Upgrade::UpToDate => {}
+            }
         }
-        db.init()?;
         Ok(db)
     }
 
@@ -106,6 +115,7 @@ impl Db {
             .map_err(|e| format!("Database unavailable: {e}"))
     }
 
+    #[cfg(test)]
     fn init(&self) -> Result<(), String> {
         let conn = self.conn()?;
         init_db(&conn).map_err(|e| format!("Failed to initialize database: {e}"))
@@ -349,28 +359,6 @@ pub(crate) mod tests {
             get_run(&conn, "r1"),
             Err(rusqlite::Error::FromSqlConversionFailure(3, Type::Text, _))
         ));
-    }
-
-    #[test]
-    fn a_database_from_another_schema_is_refused_with_what_to_do() {
-        // The previous version, and the newer one a later build would write
-        for version in [SCHEMA_VERSION - 1, SCHEMA_VERSION + 1] {
-            let conn = Connection::open_in_memory().unwrap();
-            conn.pragma_update(None, "user_version", version).unwrap();
-            let error = init_db(&conn).unwrap_err();
-            let versions = format!("schema {version}, this build uses {SCHEMA_VERSION}");
-            assert!(error.contains(&versions), "{error}");
-            assert!(error.contains("delete ~/.nandi/local/state.db"), "{error}");
-            // Refused before anything is created
-            let tables: i64 = conn
-                .query_row("SELECT COUNT(*) FROM sqlite_master", [], |row| row.get(0))
-                .unwrap();
-            assert_eq!(tables, 0);
-        }
-        // A fresh one (version 0) and its own version are fine
-        let fresh = Connection::open_in_memory().unwrap();
-        init_db(&fresh).unwrap();
-        init_db(&fresh).unwrap();
     }
 
     #[test]

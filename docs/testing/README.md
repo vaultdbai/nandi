@@ -10,7 +10,7 @@ Built on 2026-10-22 from the code at `15190d5`, `docs/developer/`, `docs/usergui
 
 1. `git pull` on `main`, then `pnpm install`.
 2. `pnpm run check:all` should pass. The same gates run in CI (`.github/workflows/ci.yml`) on every push to `main` and on every PR. Rust is pinned in `rust-toolchain.toml`.
-3. **Local database:** if the app stops at start-up with "The local database is from another Nandi build", quit Nandi and delete `~/.nandi/local/state.db` and its `-wal`/`-shm` files. Agents, workflows, triggers and settings are in `~/.nandi/repo` and come back. Run history and the Inbox start empty. PowerShell: `Remove-Item "$env:USERPROFILE\.nandi\local\state.db*"`.
+3. **Local database:** a `state.db` from an older build upgrades in place on start, after a copy is kept as `state.db.bak-v<old>`. One from a newer build is refused: "The local database was written by a newer version of Nandi". To start clean anyway, quit Nandi and delete `~/.nandi/local/state.db` and its `-wal`/`-shm` files. Agents, workflows, triggers and settings are in `~/.nandi/repo` and come back. Run history and the Inbox start empty. PowerShell: `Remove-Item "$env:USERPROFILE\.nandi\local\state.db*"`.
 4. `pnpm run tauri:dev` starts the app.
 
 ### 2. Get the machine ready

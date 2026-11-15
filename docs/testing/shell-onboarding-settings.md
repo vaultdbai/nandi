@@ -38,7 +38,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Edge / negative cases:**
   - Preferences fail to load: a warning ("Failed to initialize language or menu") and English is used.
   - The browser transport (`--server`): no native menu and no update checks.
-  - A `~/.nandi/local/state.db` from another schema version (not v2) is refused at startup: "The local database is from another Nandi build (schema N, this build uses 2). Quit Nandi, delete ~/.nandi/local/state.db with its -wal and -shm files, and start it again…" (data area).
+  - A `~/.nandi/local/state.db` from an older schema version upgrades in place at startup (DT-12); one from a newer version is refused: "The local database was written by a newer version of Nandi…" (data area).
 - **Automation:** Covered by: `src/App.test.tsx`, Rust `db.rs` (`a_database_from_another_schema_is_refused_with_what_to_do`) | Layer: ui-e2e | Gap: no test asserts the order of startup calls.
 - **Needs relay:** no
 - **Status:** Shipped
