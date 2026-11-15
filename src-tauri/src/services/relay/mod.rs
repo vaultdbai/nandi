@@ -45,6 +45,7 @@
 pub mod client;
 pub mod client_api;
 pub mod device_keys;
+pub mod features;
 pub mod join;
 pub mod limits;
 pub mod opened;
@@ -60,6 +61,8 @@ pub mod version;
 #[cfg(test)]
 mod keys_tests;
 #[cfg(test)]
+mod older_relay_tests;
+#[cfg(test)]
 mod sealed_tests;
 #[cfg(test)]
 mod tests;
@@ -74,6 +77,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 pub use client_api::RelayClient;
+pub use features::{RelayFeature, RELAY_NEEDS_UPDATE};
 pub use unavailable::{RelayUnavailable, RELAY_UNAVAILABLE};
 
 use super::capability_index::CapabilityIndex;
@@ -256,6 +260,14 @@ pub struct RelayStatus {
     /// (`groups`: only people we share a group with); `None` until then
     #[serde(default)]
     pub visibility: Option<RelayVisibility>,
+    /// The protocol version spoken with the relay while connected: ours,
+    /// or an older relay's (see `version::spoken_with`); `None` otherwise
+    #[serde(default)]
+    pub protocol_version: Option<u32>,
+    /// While connected: the features this relay is too old for. Their
+    /// screens say "Your relay needs an update for this" (see `features`)
+    #[serde(default)]
+    pub missing_features: Vec<RelayFeature>,
 }
 
 /// Who sees whom on a relay (`nandi_protocol::Visibility`, named apart

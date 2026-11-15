@@ -20,9 +20,9 @@ use crate::services::domain::agent_card::OwnerRef;
 use crate::services::domain::capability::ServesCapability;
 use nandi_relay::{issue_instance_token, serve, serve_open, serve_with, RelayServerConfig};
 
-const SECRET: &[u8] = b"test-secret";
+pub(super) const SECRET: &[u8] = b"test-secret";
 
-fn local() -> SocketAddr {
+pub(super) fn local() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 0))
 }
 
@@ -31,7 +31,7 @@ fn url(addr: SocketAddr, instance_id: &str) -> String {
     format!("ws://{addr}/relay?token={token}")
 }
 
-fn card(instance_id: &str, agent_id: &str, capability: &str) -> AgentCard {
+pub(super) fn card(instance_id: &str, agent_id: &str, capability: &str) -> AgentCard {
     AgentCard {
         id: AgentCard::card_id(instance_id, agent_id),
         name: agent_id.to_string(),
@@ -53,7 +53,11 @@ fn card(instance_id: &str, agent_id: &str, capability: &str) -> AgentCard {
     }
 }
 
-async fn registered(addr: SocketAddr, instance_id: &str, cards: Vec<AgentCard>) -> WsRelayClient {
+pub(super) async fn registered(
+    addr: SocketAddr,
+    instance_id: &str,
+    cards: Vec<AgentCard>,
+) -> WsRelayClient {
     let client = WsRelayClient::new(None, instance_id);
     client
         .connect(&url(addr, instance_id), instance_id)
@@ -64,7 +68,7 @@ async fn registered(addr: SocketAddr, instance_id: &str, cards: Vec<AgentCard>) 
 }
 
 /// Polls `check` every 20ms for up to 5s
-async fn eventually(mut check: impl AsyncFnMut() -> bool) -> bool {
+pub(super) async fn eventually(mut check: impl AsyncFnMut() -> bool) -> bool {
     for _ in 0..250 {
         if check().await {
             return true;

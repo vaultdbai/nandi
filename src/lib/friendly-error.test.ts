@@ -5,6 +5,7 @@ import {
   friendlyErrorKey,
   friendlyErrorParams,
   isPeerKeyChanged,
+  isRelayNeedsUpdate,
   isRelayUnavailable,
   rawError,
 } from './friendly-error'
@@ -60,6 +61,15 @@ describe('friendly errors', () => {
     expect(isRelayUnavailable({ status: 'error', error: text })).toBe(true)
     expect(isRelayUnavailable('Not connected to the network')).toBe(false)
     expect(friendlyErrorKey(text)).toBe('errors.relayUnavailable')
+  })
+
+  it('recognises a relay too old for a feature, and never as no relay', () => {
+    const text = 'relay_needs_update: your relay needs an update for this'
+    expect(isRelayNeedsUpdate(text)).toBe(true)
+    expect(isRelayNeedsUpdate(new Error(text))).toBe(true)
+    expect(isRelayUnavailable(text)).toBe(false)
+    expect(isRelayNeedsUpdate('relay_unavailable: no relay')).toBe(false)
+    expect(friendlyErrorKey(text)).toBe('errors.relayNeedsUpdate')
   })
 
   it('recognises a send refused because their key changed', () => {

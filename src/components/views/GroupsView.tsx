@@ -94,10 +94,12 @@ function GroupsList() {
     )
   }
   const data = groups.data
-  if (!data?.connected) {
+  if (!data?.connected || data.relayNeedsUpdate) {
     return (
       <div className="mx-auto w-full max-w-5xl p-6">
-        <RelayConnectNotice />
+        <RelayConnectNotice
+          reason={data?.relayNeedsUpdate ? 'update' : 'connect'}
+        />
       </div>
     )
   }

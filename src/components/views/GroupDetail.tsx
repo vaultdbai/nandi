@@ -58,7 +58,7 @@ import {
 } from '@/hooks/useGroups'
 import { useNetworkSnapshot } from '@/hooks/useNetwork'
 import type { AccessLevel, GroupView } from '@/lib/bindings'
-import { isRelayUnavailable } from '@/lib/friendly-error'
+import { isRelayNeedsUpdate, isRelayUnavailable } from '@/lib/friendly-error'
 
 export function GroupDetail({
   groupId,
@@ -82,7 +82,9 @@ export function GroupDetail({
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
           {group.isPending && <Skeleton className="h-48" />}
           {group.error &&
-            (isRelayUnavailable(group.error) ? (
+            (isRelayNeedsUpdate(group.error) ? (
+              <RelayConnectNotice reason="update" />
+            ) : isRelayUnavailable(group.error) ? (
               <RelayConnectNotice />
             ) : (
               <p className="text-sm text-destructive">

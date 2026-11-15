@@ -11,6 +11,7 @@ import {
   NO_SHARED_GROUP,
   PEER_KEY_CHANGED,
   PEER_KEY_MISSING,
+  RELAY_NEEDS_UPDATE,
   RELAY_UNAVAILABLE,
   SEAL_REFUSED,
 } from '@/lib/bindings'
@@ -18,6 +19,7 @@ import { formatResetTime } from '@/lib/format-time'
 
 export type ErrorKind =
   | 'relayUnavailable'
+  | 'relayNeedsUpdate'
   | 'peerKeyChanged'
   | 'peerKeyMissing'
   | 'sealRefused'
@@ -82,6 +84,16 @@ export function isRelayUnavailable(error: unknown): boolean {
 }
 
 /**
+ * Whether a person-to-person action needs a newer relay than the one
+ * connected (`RelayNeedsUpdate` in Rust): the place says "Your relay needs
+ * an update for this" (`RelayConnectNotice reason="update"`) instead of an
+ * error.
+ */
+export function isRelayNeedsUpdate(error: unknown): boolean {
+  return rawError(error).startsWith(RELAY_NEEDS_UPDATE)
+}
+
+/**
  * Whether a send was refused because the member's key changed and the
  * user hasn't accepted it (`network::peer_keys` in Rust)
  */
@@ -98,6 +110,7 @@ const SEALING: [ErrorKind, string][] = [
 
 export function errorKind(error: unknown): ErrorKind {
   if (isRelayUnavailable(error)) return 'relayUnavailable'
+  if (isRelayNeedsUpdate(error)) return 'relayNeedsUpdate'
   if (isPeerKeyChanged(error)) return 'peerKeyChanged'
   const raw = rawError(error)
   const sealing = SEALING.find(([, code]) => raw.startsWith(code))

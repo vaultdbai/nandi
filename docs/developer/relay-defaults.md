@@ -27,6 +27,30 @@ to fill `RelayStatus.updateNeeded` (`services/relay/version.rs`): `nandi`
 `null` when it can't tell ("Update Nandi or the relay"). Only Connection
 shows it.
 
+### One version back
+
+Each release talks to the one before it in both directions
+(`MIN_SUPPORTED_PROTOCOL` is `PROTOCOL_VERSION - 1` from protocol 8 on). Before
+each dial the client reads `/health` and registers with the version the two
+speak (`version::spoken_with`): ours when the relay accepts it, else the
+relay's own when it is one version older. A relay one version newer takes
+this Nandi as it is.
+
+With an older relay, a feature that needs a newer message is hidden, never
+an error (`services/relay/features.rs`):
+
+| Where         | What happens                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `RelayStatus` | `protocolVersion` is the version spoken; `missingFeatures` lists the `RelayFeature`s the relay lacks                           |
+| The client    | A message the relay can't read is never sent (`Shared::push`): the call answers `RelayNeedsUpdate` (`relay_needs_update: ...`) |
+| The screen    | `RelayConnectNotice reason="update"`: "Your relay needs an update for this" (Groups reads `GroupsOverview.relayNeedsUpdate`)   |
+| Toasts        | `toastPersonError` shows the same words for `isRelayNeedsUpdate`                                                               |
+
+A new feature that needs a new message adds a `RelayFeature` row. The test
+`relay/older_relay_tests.rs` runs every feature against a real relay at
+`MIN_SUPPORTED_PROTOCOL` (the relay's `with_protocol_version`, feature
+`testing`).
+
 ## Device keys
 
 Each Nandi (each device) has its own keys: an Ed25519 signing key and an

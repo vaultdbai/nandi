@@ -28,6 +28,7 @@ const summary = (
 
 const overview = (partial: Partial<GroupsOverview> = {}): GroupsOverview => ({
   connected: true,
+  relayNeedsUpdate: false,
   visibility: 'company',
   groups: [],
   invites: [],
@@ -100,6 +101,16 @@ describe('GroupsView', () => {
     })
     render(<GroupsView />)
     expect(await screen.findByTestId('relay-connect-notice')).toBeTruthy()
+  })
+
+  it('says the relay needs an update when it is too old for groups', async () => {
+    Object.assign(commands, {
+      listGroups: ok(overview({ relayNeedsUpdate: true })),
+    })
+    render(<GroupsView />)
+    expect(await screen.findByTestId('relay-update-notice')).toBeTruthy()
+    expect(screen.queryByTestId('relay-connect-notice')).toBeNull()
+    expect(screen.queryByRole('button', { name: /connection/i })).toBeNull()
   })
 
   it('lists my groups first, and invites with Accept', async () => {

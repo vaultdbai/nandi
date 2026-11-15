@@ -21,7 +21,9 @@
 //!   and the relay's holds.
 //!
 //! Without a relay every call answers `RelayUnavailable`; my access levels
-//! still apply to work that arrives later.
+//! still apply to work that arrives later. A relay one version older that
+//! has no groups yet: the overview says it needs an update
+//! (`relay_needs_update`) and every call answers `RelayNeedsUpdate`.
 
 pub mod enforce;
 
@@ -48,7 +50,7 @@ use crate::services::network::{self, peer_keys};
 use crate::services::relay::client_api::GroupSignal;
 use crate::services::relay::device_keys::DeviceKeyring;
 use crate::services::relay::limits::DAILY_LIMIT;
-use crate::services::relay::{RelayClient, RelayUnavailable, RelayVisibility};
+use crate::services::relay::{RelayClient, RelayFeature, RelayUnavailable, RelayVisibility};
 use crate::services::repos::GroupRepository;
 use crate::services::AppState;
 
@@ -70,11 +72,37 @@ impl NandiEvent for GroupsChanged {
 pub struct GroupsOverview {
     /// `false`: no relay (the screen asks to connect; the lists are empty)
     pub connected: bool,
+    /// The relay is too old for groups (the screen says it needs an
+    /// update; the lists are empty)
+    pub relay_needs_update: bool,
     pub visibility: Option<RelayVisibility>,
     pub groups: Vec<GroupSummary>,
     pub invites: Vec<GroupInvite>,
     /// What a new group's policy starts from
     pub policy_template: String,
+}
+
+impl GroupsOverview {
+    /// No relay connected: the screen asks to connect
+    fn without_relay() -> Self {
+        Self {
+            connected: false,
+            relay_needs_update: false,
+            visibility: None,
+            groups: Vec::new(),
+            invites: Vec::new(),
+            policy_template: POLICY_TEMPLATE.to_string(),
+        }
+    }
+
+    /// A relay too old for groups: the screen says it needs an update
+    fn relay_needs_update() -> Self {
+        Self {
+            connected: true,
+            relay_needs_update: true,
+            ..Self::without_relay()
+        }
+    }
 }
 
 /// Whether a group's policy is its own
@@ -208,19 +236,17 @@ impl Groups {
 
     pub async fn overview(&self) -> Result<GroupsOverview, String> {
         let Ok(relay) = self.connected() else {
-            return Ok(GroupsOverview {
-                connected: false,
-                visibility: None,
-                groups: Vec::new(),
-                invites: Vec::new(),
-                policy_template: POLICY_TEMPLATE.to_string(),
-            });
+            return Ok(GroupsOverview::without_relay());
         };
-        let visibility = relay.status().visibility;
+        let status = relay.status();
+        if status.missing_features.contains(&RelayFeature::Groups) {
+            return Ok(GroupsOverview::relay_needs_update());
+        }
         match self.call_ok(GroupOp::List).await? {
             GroupOutcome::List { groups, invites } => Ok(GroupsOverview {
                 connected: true,
-                visibility,
+                relay_needs_update: false,
+                visibility: status.visibility,
                 groups,
                 invites,
                 policy_template: POLICY_TEMPLATE.to_string(),

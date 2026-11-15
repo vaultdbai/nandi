@@ -527,6 +527,12 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             "RELAY_UNAVAILABLE",
             crate::services::relay::RELAY_UNAVAILABLE,
         )
+        // The code a person-to-person command's error starts with when the
+        // connected relay is too old for it (`services::relay::features`)
+        .constant(
+            "RELAY_NEEDS_UPDATE",
+            crate::services::relay::RELAY_NEEDS_UPDATE,
+        )
         // The code a refusal starts with when a groups relay keeps you
         // from someone you share no group with
         .constant("NO_SHARED_GROUP", nandi_protocol::NO_SHARED_GROUP)

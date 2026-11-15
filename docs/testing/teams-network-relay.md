@@ -828,8 +828,8 @@ Notes that apply to the whole section:
 - **Preconditions:** A relay built from another protocol version than the app (or the relay's tests).
 - **Steps:** 1. Point Nandi at the older relay. 2. Open Network › Connection. 3. Open People and try Ask. 4. Update the relay and restart it. 5. Restart Nandi.
 - **Expected:** Step 2 shows Error with "Your relay is older than this Nandi"; step 3 shows "Connect to your company's relay"; after step 4 Nandi stays refused and doesn't retry; after step 5 it connects.
-- **Edge / negative cases:** A bad token still shows "Can't reach the relay…" (the usual words), not the version sentence. A relay one version ahead whose range still takes this Nandi connects normally.
-- **Automation:** Covered by: relay repo `tests/directory.rs` (`a_registration_is_accepted_only_inside_the_protocol_range`), app `relay/tests.rs` (`a_relay_that_refuses_our_version_says_who_updates_and_is_not_retried`), `relay/version.rs`, `reachability-model.test.ts`, `ConnectionView.test.tsx`, spec `version.rs` | Layer: unit + api | Gap: none.
+- **Edge / negative cases:** A bad token still shows "Can't reach the relay…" (the usual words), not the version sentence. A relay one version ahead whose range still takes this Nandi connects normally. A relay one version behind (from protocol 8 on) connects too: Nandi speaks the relay's version, and a feature that relay doesn't have yet shows "Your relay needs an update for this" in its place (Groups, or a toast after an action) instead of an error.
+- **Automation:** Covered by: relay repo `tests/directory.rs` (`a_registration_is_accepted_only_inside_the_protocol_range`) and `tests/older_relay.rs`, app `relay/tests.rs` (`a_relay_that_refuses_our_version_says_who_updates_and_is_not_retried`), `relay/older_relay_tests.rs` (every feature against relay N - 1), `relay/version.rs`, `relay/features.rs`, `relay/client.rs` (`a_message_the_relay_cant_read_is_never_sent`), `reachability-model.test.ts`, `ConnectionView.test.tsx`, `GroupsView.test.tsx`, `toast-error.test.ts`, spec `version.rs` | Layer: unit + api | Gap: none.
 - **Needs relay:** yes
 - **Status:** Shipped
 

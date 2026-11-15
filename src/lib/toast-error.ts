@@ -3,6 +3,7 @@ import i18n from '@/i18n/config'
 import {
   friendlyErrorKey,
   friendlyErrorParams,
+  isRelayNeedsUpdate,
   isRelayUnavailable,
   rawError,
 } from '@/lib/friendly-error'
@@ -36,6 +37,7 @@ export function plainError(error: unknown): string {
 /**
  * A person-to-person action's failure: for `RelayUnavailable`, the calm
  * "Connect to your company's relay" with a way to Network › Connection;
+ * for `RelayNeedsUpdate`, the calm "Your relay needs an update for this";
  * anything else goes to `otherwise`. For places with no room for
  * `RelayConnectNotice`.
  */
@@ -43,6 +45,12 @@ export function toastPersonError(
   error: unknown,
   otherwise: (error: unknown) => void
 ): void {
+  if (isRelayNeedsUpdate(error)) {
+    toast(i18n.t('relayUpdate.title'), {
+      description: i18n.t('relayUpdate.description'),
+    })
+    return
+  }
   if (!isRelayUnavailable(error)) {
     otherwise(error)
     return

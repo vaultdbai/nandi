@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
-import { RELAY_UNAVAILABLE } from '@/lib/bindings'
+import { RELAY_NEEDS_UPDATE, RELAY_UNAVAILABLE } from '@/lib/bindings'
 import { toastRelayActionError } from './toast-error'
 
 vi.mock('sonner', () => {
@@ -16,7 +16,8 @@ describe('toastRelayActionError', () => {
   it.each([
     ['a string', `${RELAY_UNAVAILABLE}: no relay`],
     ['an Error', new Error(`${RELAY_UNAVAILABLE}: no relay`)],
-  ])('shows the calm connect notice, not an error, for %s', (_, error) => {
+    ['an old relay', `${RELAY_NEEDS_UPDATE}: your relay needs an update`],
+  ])('shows a calm notice, not an error, for %s', (_, error) => {
     toastRelayActionError(error)
 
     expect(toast).toHaveBeenCalledOnce()

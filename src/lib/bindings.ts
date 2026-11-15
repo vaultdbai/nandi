@@ -3990,6 +3990,7 @@ export const NEEDS_FIRST_TIME_APPROVAL = "needs_first_time_approval" as const;
 export const NO_SHARED_GROUP = "no_shared_group" as const;
 export const PEER_KEY_CHANGED = "peer_key_changed" as const;
 export const PEER_KEY_MISSING = "peer_key_missing" as const;
+export const RELAY_NEEDS_UPDATE = "relay_needs_update" as const;
 export const RELAY_UNAVAILABLE = "relay_unavailable" as const;
 export const SEAL_REFUSED = "seal_refused" as const;
 
@@ -6152,7 +6153,12 @@ export type GroupsOverview = {
 /**
  * `false`: no relay (the screen asks to connect; the lists are empty)
  */
-connected: boolean; visibility: RelayVisibility | null; groups: GroupSummary[]; invites: GroupInvite[]; 
+connected: boolean; 
+/**
+ * The relay is too old for groups (the screen says it needs an
+ * update; the lists are empty)
+ */
+relayNeedsUpdate: boolean; visibility: RelayVisibility | null; groups: GroupSummary[]; invites: GroupInvite[]; 
 /**
  * What a new group's policy starts from
  */
@@ -7746,6 +7752,38 @@ export type RelayConnectionState =
  */
 "error"
 /**
+ * A person-to-person feature the relay may be too old for
+ */
+export type RelayFeature = 
+/**
+ * The member directory
+ */
+"directory" | 
+/**
+ * Finding who is responsible for a topic
+ */
+"peopleSearch" | 
+/**
+ * The relay's plan of who gets a request
+ */
+"routing" | 
+/**
+ * Asking or assigning someone, kept for them while they're away
+ */
+"requests" | 
+/**
+ * Handing a request on to someone else
+ */
+"reassignment" | 
+/**
+ * Calendar handovers to a backup
+ */
+"handover" | 
+/**
+ * Groups and their policies
+ */
+"groups"
+/**
  * What "Copy invite message" passes on: the relay without this instance's
  * token, and the join code when the user typed one for this relay
  */
@@ -7825,7 +7863,17 @@ instancesOnline: number; lastConnectedAt: number | null; lastHeartbeatAt: number
  * Who sees whom on this relay, as it said when we last registered
  * (`groups`: only people we share a group with); `None` until then
  */
-visibility?: RelayVisibility | null }
+visibility?: RelayVisibility | null; 
+/**
+ * The protocol version spoken with the relay while connected: ours,
+ * or an older relay's (see `version::spoken_with`); `None` otherwise
+ */
+protocolVersion?: number | null; 
+/**
+ * While connected: the features this relay is too old for. Their
+ * screens say "Your relay needs an update for this" (see `features`)
+ */
+missingFeatures?: RelayFeature[] }
 /**
  * What the Connection view shows about relay trust
  */
@@ -9049,7 +9097,8 @@ export type UpdateNeeded =
  */
 "nandi" | 
 /**
- * This Nandi is newer than the relay: its operator must update it
+ * The relay is older than the oldest version this Nandi speaks: its
+ * operator must update it
  */
 "relay"
 export type Verdict = "clean" | 

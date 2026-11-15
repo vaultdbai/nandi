@@ -21,8 +21,16 @@
 //! every card (`*`), and emits `relay://agent_online` and
 //! `relay://agent_offline` for the differences.
 //!
-//! Registration carries [`PROTOCOL_VERSION`]. A relay whose protocol range
-//! leaves it out refuses it (`version_mismatch`): the status turns to
+//! Before each dial the client reads the relay's `/health` and registers
+//! with the version the two speak ([`version::spoken_with`]): ours, or the
+//! relay's when it is one version older. With an older relay, a message it
+//! can't read is never sent: the call answers [`RelayNeedsUpdate`], and the
+//! status lists the features it lacks (`missing_features`, see
+//! [`super::features`]). Without a readable `/health` the client speaks
+//! [`PROTOCOL_VERSION`].
+//!
+//! A relay whose protocol range leaves that version out refuses it
+//! (`version_mismatch`): the status turns to
 //! `Error` with `version_mismatch` set, and the client closes the socket
 //! and stops retrying, since no retry can succeed until the URL or this
 //! Nandi's version changes (a new `connect`). It reads the relay's
@@ -89,6 +97,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 use super::client_api::{GroupSignal, Handler, PeopleSearch, RelayClient, StoringHandler};
 use super::client_api::{Submitted, REFUSED_BY_RELAY, UNANSWERED_BY_RELAY};
+use super::features::{RelayFeature, RelayNeedsUpdate};
 use super::protocol::{
     CapabilityPresence, DutyDelivery, DutyState, InstancePresence, MemberRecord, PeerDelivery,
     PeerMessage, RelayMessage, ResealRequest, RoutePlan, RoutingQuery, TaskAssigned, TaskCompleted,
@@ -308,6 +317,9 @@ struct Shared {
     /// After a `version_mismatch`: the side that must update, from the
     /// relay's `/health`; `None` until known
     update_needed: Option<UpdateNeeded>,
+    /// The protocol version spoken with the relay, from its `/health`
+    /// before the last dial; `None`: unknown, so ours
+    protocol: Option<u32>,
     /// The refusal was for our keys (the relay pinned others)
     key_mismatch: bool,
     /// This device's public keys, read on the first `connect`
@@ -343,6 +355,27 @@ struct Shared {
 }
 
 impl Shared {
+    /// The protocol version spoken with the relay
+    fn protocol(&self) -> u32 {
+        self.protocol.unwrap_or(PROTOCOL_VERSION)
+    }
+
+    /// Queues `message` for the relay: every message goes out here. One
+    /// the relay's version can't read is never sent ([`RelayNeedsUpdate`]);
+    /// without a connection, [`super::RelayUnavailable`].
+    fn push(&self, message: RelayMessage) -> Result<(), String> {
+        let outbound = self
+            .outbound
+            .as_ref()
+            .ok_or_else(|| String::from(super::RelayUnavailable))?;
+        if !message.kind().known_at(self.protocol()) {
+            return Err(RelayNeedsUpdate.into());
+        }
+        outbound
+            .send(message)
+            .map_err(|_| String::from(super::RelayUnavailable))
+    }
+
     /// Fails every call waiting for an answer (not those waiting for the
     /// registration) with `error`
     fn fail_calls(&mut self, error: &str) {
@@ -487,8 +520,9 @@ impl Inner {
             .iter()
             .map(|card| card.instance_id.as_str())
             .collect();
+        let connected = shared.outbound.is_some() && !shared.refused;
         RelayStatus {
-            connected: shared.outbound.is_some() && !shared.refused,
+            connected,
             version_mismatch: shared.version_mismatch,
             update_needed: shared.update_needed,
             key_mismatch: shared.key_mismatch,
@@ -512,6 +546,12 @@ impl Inner {
             last_connected_at: shared.last_connected_at,
             last_heartbeat_at: shared.last_heartbeat_at,
             visibility: shared.visibility,
+            protocol_version: connected.then(|| shared.protocol()),
+            missing_features: if connected {
+                RelayFeature::missing_at(shared.protocol())
+            } else {
+                Vec::new()
+            },
         }
     }
 
@@ -536,14 +576,7 @@ impl Inner {
     }
 
     fn send(&self, message: RelayMessage) -> Result<(), String> {
-        let shared = self.lock();
-        let outbound = shared
-            .outbound
-            .as_ref()
-            .ok_or_else(|| String::from(super::RelayUnavailable))?;
-        outbound
-            .send(message)
-            .map_err(|_| String::from(super::RelayUnavailable))
+        self.lock().push(message)
     }
 
     fn token(&self) -> String {
@@ -1065,8 +1098,8 @@ impl Inner {
     /// Asks for what waits in our mailbox, when registered
     fn sync_inbox(&self) {
         let shared = self.lock();
-        if let (true, Some(outbound)) = (shared.registered, shared.outbound.as_ref()) {
-            let _ = outbound.send(RelayMessage::InboxSync {});
+        if shared.registered {
+            let _ = shared.push(RelayMessage::InboxSync {});
         }
     }
 
@@ -1085,18 +1118,25 @@ impl Inner {
             signature: shared.token.clone().unwrap_or_default(),
             capabilities: shared.capabilities.clone(),
             tools: shared.tools.clone(),
-            protocol_version: PROTOCOL_VERSION,
+            protocol_version: shared.protocol(),
             public_keys: shared.public_keys.clone(),
         }
     }
 
-    /// A supervisor of `generation` opened its socket
-    fn on_connected(&self, generation: u64, outbound: mpsc::UnboundedSender<RelayMessage>) -> bool {
+    /// A supervisor of `generation` opened its socket to a relay speaking
+    /// `protocol` (`None`: unknown, so ours)
+    fn on_connected(
+        &self,
+        generation: u64,
+        outbound: mpsc::UnboundedSender<RelayMessage>,
+        protocol: Option<u32>,
+    ) -> bool {
         {
             let mut shared = self.lock();
             if shared.generation != generation {
                 return false;
             }
+            shared.protocol = protocol;
             let now = now_ms();
             // Re-register the last cards, ahead of anything else, then
             // heartbeat so the relay sees this instance alive right away
@@ -1180,18 +1220,14 @@ impl Inner {
                     shared.visibility = Some(visibility.into());
                     // The relay takes a gateway card only from a registered
                     // instance: ours goes now
-                    if let (Some(card), Some(outbound)) =
-                        (shared.gateway.clone(), shared.outbound.as_ref())
-                    {
-                        let _ = outbound.send(RelayMessage::RegisterGateway {
+                    if let Some(card) = shared.gateway.clone() {
+                        let _ = shared.push(RelayMessage::RegisterGateway {
                             instance_id: shared.instance_id.clone(),
                             card,
                         });
                     }
                     // Then whatever waited for us
-                    if let Some(outbound) = shared.outbound.as_ref() {
-                        let _ = outbound.send(RelayMessage::InboxSync {});
-                    }
+                    let _ = shared.push(RelayMessage::InboxSync {});
                     shared.waiting_registered.resolve(&(), Ok(()));
                 }
                 // The visibility may have changed
@@ -1534,6 +1570,10 @@ async fn supervise(
     let mut attempt: u32 = 0;
     ensure_tls_provider();
     loop {
+        let protocol = tokio::select! {
+            protocol = protocol_at(&url) => protocol,
+            _ = cancel.changed() => return,
+        };
         let dialed = tokio::select! {
             dialed = tokio_tungstenite::connect_async_tls_with_config(
                 url.as_str(),
@@ -1547,7 +1587,7 @@ async fn supervise(
             Ok((socket, _)) => {
                 attempt = 0;
                 let (outbound, queued) = mpsc::unbounded_channel();
-                if !inner.on_connected(generation, outbound) {
+                if !inner.on_connected(generation, outbound, protocol) {
                     return;
                 }
                 if let Some(first) = first.take() {
@@ -1592,6 +1632,19 @@ async fn supervise(
         tokio::select! {
             () = tokio::time::sleep(delay) => {}
             _ = cancel.changed() => return,
+        }
+    }
+}
+
+/// The protocol version to speak with the relay at `dial`, from its
+/// `/health`; `None` when it can't be read, or the two can't talk (the
+/// registration is then refused and says which side must update)
+async fn protocol_at(dial: &str) -> Option<u32> {
+    match super::join::health(dial).await {
+        Ok(report) => version::spoken_with(&report.relay).ok(),
+        Err(outcome) => {
+            log::debug!("Relay: no /health before dialing: {outcome:?}");
+            None
         }
     }
 }
@@ -2385,6 +2438,45 @@ mod tests {
         ];
         for (code, words, want) in cases {
             assert_eq!(Shared::default().retell(code, words), want, "{code:?}");
+        }
+    }
+
+    #[test]
+    fn a_message_the_relay_cant_read_is_never_sent() {
+        use nandi_protocol::MessageKind;
+        let groups = RelayMessage::GroupRequest {
+            request_id: "r1".into(),
+            op: GroupOp::List,
+        };
+        let directory = RelayMessage::QueryDirectory { since: None };
+        let before_groups = MessageKind::GroupRequest.since() - 1;
+        // (message, the version spoken with the relay, sent)
+        let cases = [
+            (groups.clone(), None, true),
+            (groups.clone(), Some(PROTOCOL_VERSION), true),
+            (groups, Some(before_groups), false),
+            (directory.clone(), Some(before_groups), true),
+            (directory, None, true),
+        ];
+        for (message, protocol, sent) in cases {
+            let (outbound, mut queued) = mpsc::unbounded_channel();
+            let shared = Shared {
+                outbound: Some(outbound),
+                protocol,
+                ..Shared::default()
+            };
+            let kind = message.kind();
+            match shared.push(message.clone()) {
+                Ok(()) => {
+                    assert!(sent, "{kind:?} at {protocol:?} went out");
+                    assert_eq!(queued.try_recv().ok(), Some(message));
+                }
+                Err(error) => {
+                    assert!(!sent, "{kind:?} at {protocol:?}: {error}");
+                    assert!(RelayNeedsUpdate::is(&error), "{error}");
+                    assert!(queued.try_recv().is_err(), "{kind:?} went out");
+                }
+            }
         }
     }
 
