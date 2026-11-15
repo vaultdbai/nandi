@@ -192,7 +192,6 @@ struct Inner {
     clarifications: Option<Arc<a2a::clarification::ClarificationService>>,
     /// The gateway agent. `None` without an instance ID.
     gateway: Option<Arc<gateway::GatewayService>>,
-    capability_registries: Arc<capability::registry::CapabilityRegistryService>,
     harnesses: Arc<harness::HarnessService>,
     /// `None` without an instance ID
     capabilities: Option<Arc<capability::CapabilityService>>,
@@ -431,13 +430,6 @@ impl AppState {
             bus.clone(),
             config.app_data_dir.join("local").join("gateway"),
         ));
-        let capability_registries = Arc::new(capability::registry::CapabilityRegistryService::new(
-            db.clone(),
-            bus.clone(),
-            config.secrets.clone(),
-            nandi_dir.join("local").join("cache"),
-            Some(store.repos().layout().capabilities_dir()),
-        ));
         let harnesses = Arc::new(harness::HarnessService::for_app(
             db.clone(),
             bus.clone(),
@@ -531,7 +523,6 @@ impl AppState {
                     capability::CapabilityService::new(db.clone(), bus.clone(), repo)
                         .with_instance_id(id)
                         .with_store(store.clone())
-                        .with_registries(Some(capability_registries.clone()))
                         .with_tools(tools.clone()),
                 )
             });
@@ -548,7 +539,6 @@ impl AppState {
                 aws_auth,
                 bedrock_models,
                 litellm_gateway,
-                capability_registries,
                 harnesses,
                 nandi_dir,
                 db,
@@ -806,21 +796,14 @@ impl AppState {
         self.0.tools.as_ref()
     }
 
-    /// Subscribed capability registries
-    pub fn capability_registries(&self) -> &Arc<capability::registry::CapabilityRegistryService> {
-        &self.0.capability_registries
-    }
-
     /// Starts the tool and capability services, after the delegation ones,
-    /// in dependency order (tools and registries before capabilities, which
-    /// resolve required tools and merge registry definitions). Must not
-    /// block.
+    /// in dependency order (tools before capabilities, which resolve
+    /// required tools). Must not block.
     fn start_tools_and_capabilities(&self) {
         capability::ensure_capabilities_dir(self);
         if self.tools().is_some() {
             tools::start(self);
         }
-        capability::registry::start(self);
         if let Some(service) = self.capabilities() {
             capability::start(self, service);
         }

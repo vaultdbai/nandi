@@ -4,13 +4,13 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::desktop;
     use crate::rpc::{
         access, agents, analysis, ask, attachments, audit, aws_auth, bedrock, capability,
-        capability_definitions, capability_registries, chat, companion, config, connectors,
-        decisions, delegation, delegation_clarification, egress, email, gateway, groups,
-        harness_sessions, harnesses, help, identity, images, knowme, live, llm_keys, machine,
-        manual_steps, marketplace, marketplace_search, mascot, memory, network, notes, palette,
-        pilots, policies, preferences, queue, reassign, relay, relay_capabilities, remote, repo,
-        requests, runs, shared, snapshots, studio, tasks, teams, teams_roster, tools, triggers,
-        work, workflow_builder, workflows, workspace,
+        capability_definitions, chat, companion, config, connectors, decisions, delegation,
+        delegation_clarification, egress, email, gateway, groups, harness_sessions, harnesses,
+        help, identity, images, knowme, live, llm_keys, machine, manual_steps, marketplace,
+        marketplace_search, mascot, memory, network, notes, palette, pilots, policies, preferences,
+        queue, reassign, relay, relay_capabilities, remote, repo, requests, runs, shared,
+        snapshots, studio, tasks, teams, teams_roster, tools, triggers, work, workflow_builder,
+        workflows, workspace,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;
@@ -389,10 +389,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             tools::get_tool,
             tools::set_tool_enabled,
             tools::get_tool_usage_stats,
-            capability_registries::list_capability_registries,
-            capability_registries::add_capability_registry,
-            capability_registries::remove_capability_registry,
-            capability_registries::sync_capability_registry,
             relay_capabilities::query_capability_presence,
             harnesses::list_harnesses,
             images::get_image_status,

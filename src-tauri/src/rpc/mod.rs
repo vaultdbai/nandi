@@ -125,7 +125,6 @@ pub mod aws_auth;
 pub mod bedrock;
 pub mod capability;
 pub mod capability_definitions;
-pub mod capability_registries;
 pub mod chat;
 pub mod companion;
 pub mod config;
@@ -196,7 +195,6 @@ const TABLES: &[&[(&str, Handler)]] = &[
     bedrock::RPC,
     capability::RPC,
     capability_definitions::RPC,
-    capability_registries::RPC,
     chat::RPC,
     companion::RPC,
     config::RPC,

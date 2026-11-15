@@ -3279,47 +3279,6 @@ async getToolUsageStats() : Promise<Result<ToolUsageStats[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async listCapabilityRegistries() : Promise<Result<CapabilityRegistry[], string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("list_capability_registries") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Subscribes and does the first sync. `kind`: `None` detects it from the URL.
- */
-async addCapabilityRegistry(url: string, kind: RegistryKind | null, branchPrefix: string | null, userSlug: string | null) : Promise<Result<CapabilityRegistry, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("add_capability_registry", { url, kind, branchPrefix, userSlug }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Unsubscribes and drops its capabilities
- */
-async removeCapabilityRegistry(url: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("remove_capability_registry", { url }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Fetches (read-only) and re-indexes one registry
- */
-async syncCapabilityRegistry(url: string) : Promise<Result<SyncResult, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("sync_capability_registry", { url }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 /**
  * Providers of `capability_id` the relay knows (`*`: every capability)
  */
@@ -5068,7 +5027,7 @@ export type CapabilityEvidence = { capabilityId: string; capabilityVersion: stri
  * instance relates to it (the page's You own / You provide / You use /
  * Discover sections)
  */
-export type CapabilityListing = { definition: CapabilityDefinition; source: CapabilitySource; registryOrigin: string | null; 
+export type CapabilityListing = { definition: CapabilityDefinition; source: CapabilitySource; 
 /**
  * The owner is this instance's identity
  */
@@ -5137,18 +5096,6 @@ pinned: string | null;
  */
 autoChoice: string | null }
 /**
- * A `capability_registries` row
- */
-export type CapabilityRegistry = { id: string; url: string; kind: RegistryKind; branchPrefix: string | null; userSlug: string | null; lastSyncedAt: number | null; lastCommit: string | null; subscribed: boolean; 
-/**
- * The last sync's error, if it failed (not persisted across restarts)
- */
-lastError: string | null; 
-/**
- * Capabilities it currently contributes
- */
-capabilityCount: number }
-/**
  * Not `gateway::RouteStrategy`, which the gateway keeps
  */
 export type CapabilityRouteStrategy = "least_loaded" | "round_robin" | "most_trusted" | "fastest" | "highest_success_rate"
@@ -5164,10 +5111,6 @@ export type CapabilitySource =
  * `.nandi/capabilities/` in this instance's repo
  */
 "local" | 
-/**
- * A subscribed registry (`registry_origin` names it)
- */
-"registry" | 
 /**
  * Seen on the network (relay presence), no definition file here
  */
@@ -7825,11 +7768,6 @@ fetchedAt: string | null;
  * Why it couldn't be read, or a staleness warning
  */
 warning: string | null }
-export type RegistryKind = 
-/**
- * A path on disk (or `file://`)
- */
-"local" | "github" | "gitlab" | "generic"
 /**
  * `GET /relay/account`: the account, its Nandis, its limits and today's
  * usage
@@ -8719,15 +8657,6 @@ export type Suggestion = {
  * Stable while the line is unchanged
  */
 id: string; text: string }
-export type SyncResult = { url: string; commit: string | null; added: number; updated: number; removed: number; 
-/**
- * Files that didn't parse, IDs another registry already defines, ...
- */
-warnings: string[]; 
-/**
- * Set when the sync failed (the previous clone stays in use)
- */
-error: string | null }
 /**
  * Which system step a row is; the UI names it
  */

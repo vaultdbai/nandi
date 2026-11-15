@@ -10,7 +10,6 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { AddCapabilitySourceForm } from '@/components/capability/AddCapabilitySourceForm'
 import {
   AddMarketplaceSourceForm,
   CommunitySourceCard,
@@ -37,24 +36,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  useCapabilityRegistries,
-  useRemoveCapabilityRegistry,
-  useSyncCapabilityRegistry,
-} from '@/hooks/useCapabilityRegistries'
 import { marketplaceQueryKeys, useRegistries } from '@/hooks/useMarketplace'
-import type { CapabilityRegistry, RegistryInfo } from '@/lib/bindings'
+import type { RegistryInfo } from '@/lib/bindings'
 import { client } from '@/lib/client'
 import { marketplaceFilter } from '@/lib/marketplace-filter'
 import { formatRelativeTime } from '@/lib/format-time'
 import { removeRegistry } from '@/lib/marketplace-actions'
 import { cn } from '@/lib/utils'
 import { SettingsSectionFrame } from '../SettingsFrame'
-import { isStale, type SourceKind } from './sources-model'
+import { isStale } from './sources-model'
 
 /** Commands reject with the core's error string, not an `Error` */
 function errorText(error: unknown): string {
@@ -81,55 +73,18 @@ function useSyncMarketplace() {
 }
 
 /**
- * Settings › Sources: where the Library finds things, as one list with two
- * labelled kinds (Agents & packs, Capabilities). Each row has Sync and its
- * last sync; Sync all syncs them in turn.
+ * Settings › Sources: the registries the Library finds agents and packs
+ * in. Each row has Sync and its last sync; Sync all re-reads them all.
  */
 export function SourcesSection() {
   const { t } = useTranslation()
   const marketplace = useRegistries()
-  const capabilities = useCapabilityRegistries()
-  const syncCapability = useSyncCapabilityRegistry()
-  const removeCapability = useRemoveCapabilityRegistry()
-  const { sync: syncMarketplace, syncing: marketplaceSyncing } =
-    useSyncMarketplace()
-  const [syncingUrl, setSyncingUrl] = useState<string | null>(null)
-  // Files the last sync of each capability source skipped
-  const [warnings, setWarnings] = useState<Record<string, string[]>>({})
-  const [syncingAll, setSyncingAll] = useState(false)
+  const { sync, syncing } = useSyncMarketplace()
   const [adding, setAdding] = useState(false)
-  const [removing, setRemoving] = useState<{
-    kind: SourceKind
-    url: string
-  } | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
 
-  const syncOne = async (registry: CapabilityRegistry) => {
-    setSyncingUrl(registry.url)
-    try {
-      const result = await syncCapability.mutateAsync(registry.url)
-      setWarnings(all => ({
-        ...all,
-        [registry.url]: result.error ? [] : result.warnings,
-      }))
-    } catch {
-      // The row shows the registry's lastError
-    } finally {
-      setSyncingUrl(null)
-    }
-  }
-
-  const syncAll = async () => {
-    setSyncingAll(true)
-    await syncMarketplace()
-    for (const registry of capabilities.data ?? []) await syncOne(registry)
-    setSyncingAll(false)
-  }
-
-  const loading = marketplace.isPending || capabilities.isPending
-  const empty =
-    !loading &&
-    (marketplace.data ?? []).length === 0 &&
-    (capabilities.data ?? []).length === 0
+  const loading = marketplace.isPending
+  const empty = !loading && (marketplace.data ?? []).length === 0
 
   return (
     <SettingsSectionFrame
@@ -140,10 +95,10 @@ export function SourcesSection() {
           <Button
             size="sm"
             variant="outline"
-            disabled={syncingAll || loading}
-            onClick={() => void syncAll()}
+            disabled={syncing || loading}
+            onClick={() => void sync()}
           >
-            {syncingAll ? <Spinner /> : <RefreshCw />}
+            {syncing ? <Spinner /> : <RefreshCw />}
             {t('settings.sources.syncAll')}
           </Button>
           <Button size="sm" onClick={() => setAdding(value => !value)}>
@@ -155,9 +110,9 @@ export function SourcesSection() {
     >
       {adding && <AddSource />}
 
-      {(marketplace.error ?? capabilities.error) && (
+      {marketplace.error && (
         <p role="alert" className="text-sm text-destructive">
-          {errorText(marketplace.error ?? capabilities.error)}
+          {errorText(marketplace.error)}
         </p>
       )}
       {loading ? (
@@ -174,33 +129,14 @@ export function SourcesSection() {
         <ul className="divide-y rounded-lg border">
           {(marketplace.data ?? []).map(registry => (
             <MarketplaceRow
-              key={`agents:${registry.url}`}
+              key={registry.url}
               registry={registry}
-              syncing={marketplaceSyncing}
-              onSync={() => void syncMarketplace()}
-              onRemove={() =>
-                setRemoving({ kind: 'agents', url: registry.url })
-              }
-            />
-          ))}
-          {(capabilities.data ?? []).map(registry => (
-            <CapabilityRow
-              key={`capabilities:${registry.url}`}
-              registry={registry}
-              syncing={syncingUrl === registry.url}
-              warnings={warnings[registry.url] ?? []}
-              onSync={() => void syncOne(registry)}
-              onRemove={() =>
-                setRemoving({ kind: 'capabilities', url: registry.url })
-              }
+              syncing={syncing}
+              onSync={() => void sync()}
+              onRemove={() => setRemoving(registry.url)}
             />
           ))}
         </ul>
-      )}
-      {removeCapability.isError && (
-        <p role="alert" className="text-sm text-destructive">
-          {errorText(removeCapability.error)}
-        </p>
       )}
 
       <AlertDialog
@@ -212,7 +148,7 @@ export function SourcesSection() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t('settings.sources.removeTitle', { url: removing?.url })}
+              {t('settings.sources.removeTitle', { url: removing })}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {t('settings.sources.removeDescription')}
@@ -222,10 +158,7 @@ export function SourcesSection() {
             <AlertDialogCancel>{t('remote.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (!removing) return
-                if (removing.kind === 'agents')
-                  void removeRegistry(removing.url)
-                else removeCapability.mutate(removing.url)
+                if (removing) void removeRegistry(removing)
               }}
             >
               {t('settings.sources.remove')}
@@ -237,43 +170,19 @@ export function SourcesSection() {
   )
 }
 
-/** Add source: the kind first, then that kind's form */
+/** Add source: a registry's address, or a community registry of your own */
 function AddSource() {
-  const { t } = useTranslation()
-  const [kind, setKind] = useState<SourceKind>('agents')
   return (
-    <div className="flex flex-col gap-4 rounded-lg border p-4">
-      <RadioGroup
-        value={kind}
-        onValueChange={value => setKind(value as SourceKind)}
-        className="flex flex-wrap gap-4"
-        aria-label={t('settings.sources.kindLabel')}
-      >
-        {(['agents', 'capabilities'] as const).map(option => (
-          <div key={option} className="flex items-center gap-2">
-            <RadioGroupItem value={option} id={`source-kind-${option}`} />
-            <Label htmlFor={`source-kind-${option}`} className="font-normal">
-              {t(`settings.sources.kind.${option}`)}
-            </Label>
-          </div>
-        ))}
-      </RadioGroup>
-      {kind === 'agents' ? (
-        <div className="grid gap-4">
-          <AddMarketplaceSourceForm />
-          <CommunitySourceCard />
-        </div>
-      ) : (
-        <AddCapabilitySourceForm />
-      )}
+    <div className="grid gap-4 rounded-lg border p-4">
+      <AddMarketplaceSourceForm />
+      <CommunitySourceCard />
     </div>
   )
 }
 
-/** A row's frame: URL, kind and labels, detail line, Sync, ⋯ and Remove */
+/** A row's frame: URL and labels, detail line, Sync, ⋯ and Remove */
 function SourceRow({
   url,
-  kind,
   badges,
   detail,
   syncedAt,
@@ -281,10 +190,8 @@ function SourceRow({
   syncing,
   onSync,
   onRemove,
-  children,
 }: {
   url: string
-  kind: SourceKind
   badges: React.ReactNode
   detail: React.ReactNode
   syncedAt: number | null
@@ -292,7 +199,6 @@ function SourceRow({
   syncing: boolean
   onSync: () => void
   onRemove: () => void
-  children?: React.ReactNode
 }) {
   const { t, i18n } = useTranslation()
   const stale = isStale(syncedAt)
@@ -301,7 +207,7 @@ function SourceRow({
   return (
     <li
       className="flex flex-col gap-2 px-4 py-3"
-      data-testid={`source-${kind}-${url}`}
+      data-testid={`source-${url}`}
       data-settings-focus={url}
     >
       <div className="flex flex-wrap items-center gap-3">
@@ -310,9 +216,6 @@ function SourceRow({
             <span dir="ltr" className="truncate font-mono text-sm">
               {url}
             </span>
-            <Badge variant="secondary">
-              {t(`settings.sources.kind.${kind}`)}
-            </Badge>
             {badges}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -320,8 +223,8 @@ function SourceRow({
             {' · '}
             <span className={cn(stale && 'text-warning')}>
               {syncedAt === null
-                ? t('capabilityRegistries.neverSynced')
-                : t('capabilityRegistries.synced', {
+                ? t('settings.sources.neverSynced')
+                : t('settings.sources.synced', {
                     time: formatRelativeTime(syncedAt, i18n.language),
                   })}
             </span>
@@ -332,7 +235,7 @@ function SourceRow({
           variant="ghost"
           onClick={onSync}
           disabled={syncing}
-          aria-label={t('capabilityRegistries.syncLabel', { url })}
+          aria-label={t('settings.sources.syncLabel', { url })}
         >
           {syncing ? <Spinner /> : <RefreshCw />}
           {t('settings.sources.sync')}
@@ -384,7 +287,6 @@ function SourceRow({
           {error}
         </p>
       )}
-      {children}
     </li>
   )
 }
@@ -404,7 +306,6 @@ function MarketplaceRow({
   return (
     <SourceRow
       url={registry.url}
-      kind="agents"
       badges={
         <>
           <Badge variant="outline">
@@ -434,65 +335,5 @@ function MarketplaceRow({
       onSync={onSync}
       onRemove={onRemove}
     />
-  )
-}
-
-function CapabilityRow({
-  registry,
-  syncing,
-  warnings,
-  onSync,
-  onRemove,
-}: {
-  registry: CapabilityRegistry
-  syncing: boolean
-  warnings: string[]
-  onSync: () => void
-  onRemove: () => void
-}) {
-  const { t } = useTranslation()
-  return (
-    <SourceRow
-      url={registry.url}
-      kind="capabilities"
-      badges={
-        <Badge variant="outline">
-          {t(`capabilityRegistries.kind.${registry.kind}`)}
-        </Badge>
-      }
-      detail={
-        <>
-          {t('capabilityRegistries.count', {
-            count: registry.capabilityCount,
-          })}
-          {registry.lastCommit && (
-            <>
-              {' · '}
-              <span dir="ltr" className="font-mono">
-                {t('capabilityRegistries.commit', {
-                  commit: registry.lastCommit.slice(0, 7),
-                })}
-              </span>
-            </>
-          )}
-        </>
-      }
-      syncedAt={registry.lastSyncedAt}
-      error={registry.lastError}
-      syncing={syncing}
-      onSync={onSync}
-      onRemove={onRemove}
-    >
-      {warnings.length > 0 && (
-        <div className="text-xs text-muted-foreground">
-          <p>{t('capabilityRegistries.warnings')}</p>
-          <ul className="list-disc ps-5">
-            {warnings.map(warning => (
-              <li key={warning}>{warning}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </SourceRow>
   )
 }

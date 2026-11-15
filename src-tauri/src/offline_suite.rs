@@ -70,7 +70,6 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_ask_history",
     "list_capabilities",
     "list_capability_providers",
-    "list_capability_registries",
     "list_connector_grants",
     "list_connectors",
     "list_decision_months",

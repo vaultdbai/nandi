@@ -13,7 +13,6 @@ describe('SettingsView', () => {
     useNavigationStore.setState(useNavigationStore.getInitialState())
     useUIStore.setState({ settingsSection: null })
     Object.assign(commands, {
-      listCapabilityRegistries: ok([]),
       getDefaultModel: ok({
         defaultModel: 'claude:claude-sonnet-5',
         effectiveModel: null,

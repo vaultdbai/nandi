@@ -3,7 +3,6 @@
 //! - `definition`: the file format
 //! - `projection`: files into `capabilities_projection`
 //! - `evidence`: one row per finished task, aggregates
-//! - `registry`, `git_sync`: subscribed git registries
 //! - `workflow_provider`, `aggregation`: workflows as providers, the
 //!   hourly evidence job and ambiguity clusters
 //!
@@ -15,9 +14,7 @@
 pub mod aggregation;
 pub mod definition;
 pub mod evidence;
-pub mod git_sync;
 pub mod projection;
-pub mod registry;
 pub mod workflow_provider;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -43,8 +40,7 @@ use crate::services::tools::{ToolCatalog, ToolService};
 use crate::services::watcher;
 use crate::services::AppState;
 use definition::{OwnerKind, OwnershipChange};
-use projection::{Projected, ProjectedCapability};
-use registry::{CapabilityRegistryService, RegistryCapability};
+use projection::Projected;
 
 pub use aggregation::AmbiguityCluster;
 pub use definition::{
@@ -59,8 +55,6 @@ pub const CAPABILITY_DELETED: &str = "capability://deleted";
 pub const CAPABILITY_OWNERSHIP_TRANSFERRED: &str = "capability://ownership_transferred";
 pub const PROVIDER_REGISTERED: &str = "provider://registered";
 pub const PROVIDER_UNREGISTERED: &str = "provider://unregistered";
-pub const REGISTRY_SYNCED: &str = "registry://synced";
-pub const REGISTRY_SYNC_FAILED: &str = "registry://sync_failed";
 pub const EVIDENCE_AGGREGATED: &str = "evidence://aggregated";
 
 /// Where a listed capability comes from
@@ -70,8 +64,6 @@ pub enum CapabilitySource {
     /// `.nandi/capabilities/` in this instance's repo
     #[default]
     Local,
-    /// A subscribed registry (`registry_origin` names it)
-    Registry,
     /// Seen on the network (relay presence), no definition file here
     Network,
 }
@@ -84,7 +76,6 @@ pub enum CapabilitySource {
 pub struct CapabilityListing {
     pub definition: CapabilityDefinition,
     pub source: CapabilitySource,
-    pub registry_origin: Option<String>,
     /// The owner is this instance's identity
     pub owned: bool,
     /// A local agent or workflow provides it
@@ -135,7 +126,6 @@ pub struct CapabilityProviderStats {
 pub struct CapabilityChanged {
     pub id: String,
     pub definition: CapabilityDefinition,
-    pub registry_origin: Option<String>,
 }
 
 /// Payload of `capability://deleted`
@@ -209,7 +199,6 @@ pub struct CapabilityService {
     instance_id: String,
     /// Local agents, for `serves:`/`provides:` and display names
     store: Option<RepoStore>,
-    registries: Option<Arc<CapabilityRegistryService>>,
     tools: Option<Arc<ToolService>>,
     /// Owner IDs that mean "this instance's user" (the slug, the instance)
     owner_ids: RwLock<Vec<String>>,
@@ -223,7 +212,6 @@ impl CapabilityService {
             repo,
             instance_id: String::new(),
             store: None,
-            registries: None,
             tools: None,
             owner_ids: RwLock::new(Vec::new()),
         }
@@ -237,11 +225,6 @@ impl CapabilityService {
 
     pub fn with_store(mut self, store: RepoStore) -> Self {
         self.store = Some(store);
-        self
-    }
-
-    pub fn with_registries(mut self, registries: Option<Arc<CapabilityRegistryService>>) -> Self {
-        self.registries = registries;
         self
     }
 
@@ -285,61 +268,29 @@ impl CapabilityService {
         definition.owner.kind == OwnerKind::User && self.owner_ids().contains(&definition.owner.id)
     }
 
-    /// Local definitions plus the registries' (local wins on the same ID)
+    /// The local definitions, by ID
     #[cfg(test)]
     pub async fn list_all(&self) -> Result<Vec<CapabilityDefinition>, String> {
-        Ok(self
-            .merged()
+        Ok(projection::list(&self.db)
             .await?
             .into_iter()
             .map(|p| p.definition)
             .collect())
     }
 
-    /// Projected rows plus registry definitions not projected yet, by ID
-    async fn merged(&self) -> Result<Vec<ProjectedCapability>, String> {
-        let mut by_id: BTreeMap<String, ProjectedCapability> = projection::list(&self.db)
-            .await?
-            .into_iter()
-            .map(|p| (p.definition.id.clone(), p))
-            .collect();
-        if let Some(registries) = &self.registries {
-            for indexed in registries.indexed_capabilities() {
-                by_id
-                    .entry(indexed.definition.id.clone())
-                    .or_insert(ProjectedCapability {
-                        definition: indexed.definition,
-                        source_path: Some(indexed.source_path),
-                        registry_origin: Some(indexed.origin),
-                    });
-            }
-        }
-        Ok(by_id.into_values().collect())
-    }
-
     /// `list_all` with relations, for the Capabilities page. Capabilities
     /// that only have providers (an agent serving a name with no file
     /// here, or remote presence) are listed with a placeholder definition.
     pub async fn list_listings(&self) -> Result<Vec<CapabilityListing>, String> {
-        let known = self.merged().await?;
+        let known = projection::list(&self.db).await?;
         let providers = self.all_provider_rows().await?;
         let mut listings = Vec::with_capacity(known.len());
         let mut seen = HashSet::new();
         for projected in known {
             seen.insert(projected.definition.id.clone());
-            let source = if projected.registry_origin.is_some() {
-                CapabilitySource::Registry
-            } else {
-                CapabilitySource::Local
-            };
             listings.push(
-                self.listing(
-                    projected.definition,
-                    source,
-                    projected.registry_origin,
-                    &providers,
-                )
-                .await?,
+                self.listing(projected.definition, CapabilitySource::Local, &providers)
+                    .await?,
             );
         }
         let mut orphans: BTreeMap<String, Vec<&ProviderRow>> = BTreeMap::new();
@@ -367,7 +318,7 @@ impl CapabilityService {
             } else {
                 CapabilitySource::Network
             };
-            listings.push(self.listing(definition, source, None, &providers).await?);
+            listings.push(self.listing(definition, source, &providers).await?);
         }
         listings.sort_by(|a, b| a.definition.id.cmp(&b.definition.id));
         Ok(listings)
@@ -377,7 +328,6 @@ impl CapabilityService {
         &self,
         definition: CapabilityDefinition,
         source: CapabilitySource,
-        registry_origin: Option<String>,
         providers: &[ProviderRow],
     ) -> Result<CapabilityListing, String> {
         let id = definition.id.clone();
@@ -396,7 +346,6 @@ impl CapabilityService {
             missing_tools: self.missing_tools(&definition),
             definition,
             source,
-            registry_origin,
             provided: local_providers > 0,
             used,
             local_providers,
@@ -432,21 +381,10 @@ impl CapabilityService {
     }
 
     pub async fn get(&self, id: &str) -> Result<CapabilityDefinition, String> {
-        if let Some(found) = projection::get(&self.db, id).await? {
-            return Ok(found.definition);
-        }
-        self.registry_definition(id)
-            .map(|indexed| indexed.definition)
+        projection::get(&self.db, id)
+            .await?
+            .map(|found| found.definition)
             .ok_or_else(|| format!("Capability '{id}' not found"))
-    }
-
-    fn registry_definition(&self, id: &str) -> Option<RegistryCapability> {
-        self.registries.as_ref().and_then(|registries| {
-            registries
-                .indexed_capabilities()
-                .into_iter()
-                .find(|c| c.definition.id == id)
-        })
     }
 
     /// Validates, writes the file (staged), projects it, emits
@@ -500,21 +438,15 @@ impl CapabilityService {
             .map_err(|e| format!("Capability write failed: {e}"))??;
         self.warn_missing_tools(definition);
         let path = self.repo.path(&definition.id).display().to_string();
-        let projected = projection::upsert(&self.db, definition, &path, None).await?;
-        self.announce(projected, definition, None);
+        let projected = projection::upsert(&self.db, definition, &path).await?;
+        self.announce(projected, definition);
         Ok(())
     }
 
-    fn announce(
-        &self,
-        projected: Projected,
-        definition: &CapabilityDefinition,
-        registry_origin: Option<String>,
-    ) {
+    fn announce(&self, projected: Projected, definition: &CapabilityDefinition) {
         let payload = CapabilityChanged {
             id: definition.id.clone(),
             definition: definition.clone(),
-            registry_origin,
         };
         match projected {
             Projected::Created => events::emit(&self.bus, &Created(payload)),
@@ -534,8 +466,7 @@ impl CapabilityService {
         }
     }
 
-    /// Removes the file and the row, emits `capability://deleted`. A
-    /// registry's definition of the same ID takes its place.
+    /// Removes the file and the row, emits `capability://deleted`
     pub async fn delete(&self, id: &str) -> Result<(), String> {
         let repo = self.repo.clone();
         let target = id.to_string();
@@ -543,35 +474,18 @@ impl CapabilityService {
             .await
             .map_err(|e| format!("Capability delete failed: {e}"))??;
         if !removed {
-            return Err(if self.registry_definition(id).is_some() {
-                format!("Capability '{id}' comes from a registry; unsubscribe to remove it")
-            } else {
-                format!("Capability '{id}' not found")
-            });
+            return Err(format!("Capability '{id}' not found"));
         }
         self.forget_local(id).await
     }
 
-    /// The local file is gone: drop its row, fall back to a registry's
+    /// The local file is gone: drop its row
     async fn forget_local(&self, id: &str) -> Result<(), String> {
-        let was_local = projection::get(&self.db, id)
-            .await?
-            .is_some_and(|p| p.registry_origin.is_none());
-        if !was_local {
+        if projection::get(&self.db, id).await?.is_none() {
             return Ok(());
         }
         projection::remove(&self.db, id).await?;
         events::emit(&self.bus, &CapabilityDeleted { id: id.to_string() });
-        if let Some(indexed) = self.registry_definition(id) {
-            let projected = projection::upsert(
-                &self.db,
-                &indexed.definition,
-                &indexed.source_path,
-                Some(&indexed.origin),
-            )
-            .await?;
-            self.announce(projected, &indexed.definition, Some(indexed.origin));
-        }
         Ok(())
     }
 
@@ -585,11 +499,7 @@ impl CapabilityService {
         reason: Option<String>,
     ) -> Result<CapabilityDefinition, String> {
         let Some(mut definition) = self.local(id).await else {
-            return Err(if self.registry_definition(id).is_some() {
-                format!("Capability '{id}' comes from a registry; its owner transfers it there")
-            } else {
-                format!("Capability '{id}' not found")
-            });
+            return Err(format!("Capability '{id}' not found"));
         };
         if !definition.owner.transferable {
             return Err(format!(
@@ -874,9 +784,8 @@ impl CapabilityService {
             Ok(Some((definition, found))) => {
                 self.warn_missing_tools(&definition);
                 let projected =
-                    projection::upsert(&self.db, &definition, &found.display().to_string(), None)
-                        .await?;
-                self.announce(projected, &definition, None);
+                    projection::upsert(&self.db, &definition, &found.display().to_string()).await?;
+                self.announce(projected, &definition);
                 Ok(())
             }
             Ok(None) => self.forget_local(&id).await,
@@ -897,14 +806,13 @@ impl CapabilityService {
         let before: HashMap<String, CapabilityDefinition> = projection::list(&self.db)
             .await?
             .into_iter()
-            .filter(|p| p.registry_origin.is_none())
             .map(|p| (p.definition.id.clone(), p.definition))
             .collect();
         let rows: Vec<(CapabilityDefinition, String)> = definitions
             .iter()
             .map(|d| (d.clone(), self.repo.path(&d.id).display().to_string()))
             .collect();
-        projection::replace_origin(&self.db, None, &rows).await?;
+        projection::replace_all(&self.db, &rows).await?;
         let mut kept = HashSet::new();
         for definition in &definitions {
             self.warn_missing_tools(definition);
@@ -914,20 +822,10 @@ impl CapabilityService {
                 Some(old) if old == definition => Projected::Unchanged,
                 Some(_) => Projected::Updated,
             };
-            self.announce(projected, definition, None);
+            self.announce(projected, definition);
         }
         for id in before.keys().filter(|id| !kept.contains(*id)) {
             events::emit(&self.bus, &CapabilityDeleted { id: id.clone() });
-            if let Some(indexed) = self.registry_definition(id) {
-                let projected = projection::upsert(
-                    &self.db,
-                    &indexed.definition,
-                    &indexed.source_path,
-                    Some(&indexed.origin),
-                )
-                .await?;
-                self.announce(projected, &indexed.definition, Some(indexed.origin));
-            }
         }
         Ok(())
     }

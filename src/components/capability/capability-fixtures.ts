@@ -46,7 +46,6 @@ export function listing(
   return {
     definition: definition(id, definitionOverrides),
     source: 'local',
-    registryOrigin: null,
     owned: false,
     provided: false,
     used: false,

@@ -28,7 +28,7 @@ $Commands = @(
     'get_workflows', 'get_workspace_status', 'help_topics', 'list_agents',
     'list_agents_shared_by_me', 'list_agents_shared_with_me', 'list_ask_history',
     'list_available_packs', 'list_aws_profiles', 'list_bedrock_models', 'list_capabilities',
-    'list_capability_providers', 'list_capability_registries', 'list_connector_grants',
+    'list_capability_providers', 'list_connector_grants',
     'list_connectors', 'list_decision_months', 'list_declared_capabilities',
     'list_dismissed_work', 'list_gateway_callers', 'list_gateway_holds', 'list_groups',
     'list_harness_sessions', 'list_harnesses', 'list_installed', 'list_note_suggestions',

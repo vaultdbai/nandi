@@ -19,14 +19,13 @@ function registry(overrides: Partial<RegistryInfo> = {}): RegistryInfo {
   }
 }
 
-/** Opens Add source on one kind */
-async function openAdd(kind: 'Agents & packs' | 'Capabilities') {
+/** Opens Add source */
+async function openAdd() {
   const [add] = await screen.findAllByRole('button', { name: 'Add source' })
   await userEvent.click(add as HTMLElement)
-  await userEvent.click(screen.getByLabelText(kind))
 }
 
-describe('Settings › Sources: agents & packs', () => {
+describe('Settings › Sources', () => {
   beforeEach(() => {
     for (const command of [
       commands.addRegistry,
@@ -35,11 +34,6 @@ describe('Settings › Sources: agents & packs', () => {
     ]) {
       vi.mocked(command).mockClear()
     }
-    Object.assign(commands, {
-      listCapabilityRegistries: vi
-        .fn()
-        .mockResolvedValue({ status: 'ok', data: [] }),
-    })
     vi.mocked(commands.listRegistries).mockResolvedValue({
       status: 'ok',
       data: [
@@ -82,7 +76,7 @@ describe('Settings › Sources: agents & packs', () => {
       data: registry({ url: 'github.com/team/reg', isDefault: false }),
     })
     render(<SourcesSection />)
-    await openAdd('Agents & packs')
+    await openAdd()
     await userEvent.type(
       await screen.findByLabelText('URL'),
       'github.com/team/reg'
@@ -108,7 +102,7 @@ describe('Settings › Sources: agents & packs', () => {
       error: 'github.com/x/y wasn’t found',
     })
     render(<SourcesSection />)
-    await openAdd('Agents & packs')
+    await openAdd()
     await userEvent.type(await screen.findByLabelText('URL'), 'github.com/x/y')
     await userEvent.type(
       screen.getByLabelText('GitHub token (optional)'),
@@ -160,7 +154,7 @@ describe('Settings › Sources: agents & packs', () => {
       },
     })
     render(<SourcesSection />)
-    await openAdd('Agents & packs')
+    await openAdd()
     await userEvent.click(
       await screen.findByRole('button', {
         name: 'Create my community registry',

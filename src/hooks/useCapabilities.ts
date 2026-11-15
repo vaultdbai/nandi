@@ -52,15 +52,14 @@ export function useAgentCard(agentId: string | null) {
   )
 }
 
-// Capability definitions (`.nandi/capabilities/`, registries, and the
-// network), their providers, and ownership.
+// Capability definitions (`.nandi/capabilities/` and the network), their
+// providers, and ownership.
 
 /** Core events after which capability queries may be stale */
 const CAPABILITY_EVENT_PREFIXES = [
   'capability://',
   'provider://',
   'evidence://',
-  'registry://',
   'tool://catalog_changed',
 ]
 
@@ -71,8 +70,8 @@ export function isCapabilityEvent(name: string): boolean {
 
 /**
  * Refetches everything under `capabilityQueryKeys.all` on capability,
- * provider, evidence, registry, and tool-catalog events. Mount once per
- * view, not per card.
+ * provider, evidence, and tool-catalog events. Mount once per view, not
+ * per card.
  */
 export function useCapabilityEvents() {
   const queryClient = useQueryClient()

@@ -4,7 +4,7 @@ use super::*;
 
 /// Raised when a table changes. Nothing has been released, so there are no
 /// migrations: a database from another version is refused (`init_db`).
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS conversations (
@@ -515,8 +515,7 @@ CREATE TABLE IF NOT EXISTS roster_cache (
     PRIMARY KEY (team_id, member_handle)
 );
 
--- Capability files (`.nandi/capabilities/<id>.yaml`) and registry
--- definitions, projected. `registry_origin` is NULL for local ones.
+-- Capability files (`.nandi/capabilities/<id>.yaml`), projected
 CREATE TABLE IF NOT EXISTS capabilities_projection (
     id                 TEXT PRIMARY KEY,
     version            TEXT,
@@ -527,7 +526,6 @@ CREATE TABLE IF NOT EXISTS capabilities_projection (
     owner_display_name TEXT,
     definition_json    TEXT NOT NULL,
     source_path        TEXT,
-    registry_origin    TEXT,
     projection_version INTEGER,
     updated_at         INTEGER
 );
@@ -546,19 +544,6 @@ CREATE TABLE IF NOT EXISTS capability_providers (
     provided_tools     TEXT,
     registered_at      INTEGER,
     PRIMARY KEY (capability_id, instance_id, provider_id)
-);
-
--- Subscribed git registries
-CREATE TABLE IF NOT EXISTS capability_registries (
-    id             TEXT PRIMARY KEY,
-    url            TEXT NOT NULL UNIQUE,
-    -- local | github | gitlab | generic
-    kind           TEXT NOT NULL,
-    branch_prefix  TEXT,
-    user_slug      TEXT,
-    last_synced_at INTEGER,
-    last_commit    TEXT,
-    subscribed     INTEGER DEFAULT 1
 );
 
 -- One row per finished task per side

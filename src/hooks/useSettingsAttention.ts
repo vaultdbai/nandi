@@ -4,7 +4,6 @@
  * rail and the sidebar both show these as dots.
  */
 import { runtimeStatus } from '@/components/harness/runtime-options'
-import { useCapabilityRegistries } from '@/hooks/useCapabilityRegistries'
 import { useHarnesses } from '@/hooks/useHarnesses'
 import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
 import { useRegistries } from '@/hooks/useMarketplace'
@@ -17,7 +16,6 @@ export function useSettingsAttention(): Partial<
   const model = useDefaultModel()
   const harnesses = useHarnesses()
   const marketplace = useRegistries()
-  const capabilities = useCapabilityRegistries()
   const remote = useRemoteStatus()
   const defaultRuntime = harnesses.data?.find(h => h.isDefault)
   return {
@@ -26,9 +24,7 @@ export function useSettingsAttention(): Partial<
       model.data?.effectiveModel === null ||
       (defaultRuntime !== undefined &&
         runtimeStatus(defaultRuntime) !== 'ready'),
-    sources:
-      (marketplace.data ?? []).some(r => r.warning) ||
-      (capabilities.data ?? []).some(r => r.lastError),
+    sources: (marketplace.data ?? []).some(r => r.warning),
     backup:
       remote.data?.configured === true &&
       (!remote.data.reachable || remote.data.conflicts),

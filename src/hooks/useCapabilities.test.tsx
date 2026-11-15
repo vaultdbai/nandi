@@ -107,11 +107,10 @@ describe('capability definitions', () => {
     vi.clearAllMocks()
   })
 
-  it('treats capability, provider, evidence, registry, and catalog events as changes', () => {
+  it('treats capability, provider, evidence, and catalog events as changes', () => {
     expect(isCapabilityEvent('capability://updated')).toBe(true)
     expect(isCapabilityEvent('provider://registered')).toBe(true)
     expect(isCapabilityEvent('evidence://aggregated')).toBe(true)
-    expect(isCapabilityEvent('registry://synced')).toBe(true)
     expect(isCapabilityEvent('tool://catalog_changed')).toBe(true)
     expect(isCapabilityEvent('agent://token')).toBe(false)
   })

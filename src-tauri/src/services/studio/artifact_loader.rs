@@ -68,36 +68,18 @@ pub fn path_of(state: &AppState, artifact: &ArtifactRef) -> Result<PathBuf, Stud
     }
 }
 
-/// The artifact's file as it is on disk. A capability only a subscribed
-/// registry defines reads as the registry's file (saved, it overrides it).
+/// The artifact's file as it is on disk
 pub fn read_raw(state: &AppState, artifact: &ArtifactRef) -> Result<String, StudioError> {
     let path = path_of(state, artifact)?;
-    match std::fs::read_to_string(&path) {
-        Ok(content) => Ok(content),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            registry_text(state, artifact).ok_or_else(|| format!("{}: {e}", path.display()))
-        }
-        Err(e) => Err(format!("{}: {e}", path.display())),
-    }
+    std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// The subscribed registry's file for a capability with no local file
-fn registry_text(state: &AppState, artifact: &ArtifactRef) -> Option<String> {
-    let ArtifactRef::Capability(id) = artifact else {
-        return None;
-    };
-    state.capability_registries().source_text(id)
-}
-
-/// The file (or the registry's, or a starter template), its parsed view,
-/// and its path
+/// The file (or a starter template), its parsed view, and its path
 pub fn load(state: &AppState, artifact: &ArtifactRef) -> Result<ArtifactLoad, StudioError> {
     let path = path_of(state, artifact)?;
     let content = match std::fs::read_to_string(&path) {
         Ok(content) => content,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            registry_text(state, artifact).unwrap_or_else(|| template(artifact))
-        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => template(artifact),
         Err(e) => return Err(format!("{}: {e}", path.display())),
     };
     let parsed = parse(artifact, &content)?;

@@ -75,9 +75,7 @@ export function CapabilityCard({ listing }: { listing: CapabilityListing }) {
             })}
           </span>
           {listing.source !== 'local' && (
-            <span title={listing.registryOrigin ?? undefined}>
-              · {t(`capabilities.source.${listing.source}`)}
-            </span>
+            <span>· {t(`capabilities.source.${listing.source}`)}</span>
           )}
         </CardDescription>
       </CardHeader>

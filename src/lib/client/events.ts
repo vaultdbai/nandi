@@ -214,8 +214,6 @@ interface NandiEventMap {
   'capability://ownership_transferred': unknown
   'provider://registered': unknown
   'provider://unregistered': unknown
-  'registry://synced': unknown
-  'registry://sync_failed': unknown
   'tool://catalog_changed': unknown
   'evidence://aggregated': unknown
   // Harness events. Payloads are
@@ -359,8 +357,6 @@ const CORE_EVENTS: Record<CoreEventName, true> = {
   'capability://ownership_transferred': true,
   'provider://registered': true,
   'provider://unregistered': true,
-  'registry://synced': true,
-  'registry://sync_failed': true,
   'tool://catalog_changed': true,
   'evidence://aggregated': true,
   'harness://detected': true,
