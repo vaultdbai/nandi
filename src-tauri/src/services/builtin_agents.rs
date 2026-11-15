@@ -102,6 +102,30 @@ pub const DEFAULT_TRIGGERS: &[(&str, &str)] = &[
     ),
 ];
 
+impl BuiltinAgent {
+    /// Every file this build seeds into the agent's folder: `(path in the
+    /// folder with `/` separators, contents)`, playbooks under `skills/`
+    pub fn shipped_files(&self) -> Vec<(String, &'static str)> {
+        let files = self
+            .files
+            .iter()
+            .map(|(name, content)| (name.to_string(), *content));
+        let playbooks = self
+            .playbooks
+            .iter()
+            .map(|(name, content)| (format!("{PLAYBOOKS_DIR}/{name}.md"), *content));
+        files.chain(playbooks).collect()
+    }
+}
+
+/// The default agent, Nandi, as this build ships it
+pub fn default_agent() -> &'static BuiltinAgent {
+    BUILTIN_AGENTS
+        .iter()
+        .find(|agent| is_default(agent.id))
+        .expect("Nandi ships with every build")
+}
+
 /// Whether `id` is the default agent's ID
 pub fn is_default(id: &str) -> bool {
     id == DEFAULT_AGENT

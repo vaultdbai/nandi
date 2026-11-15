@@ -121,37 +121,37 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-546 features to test: all 609 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 20 removed features.
+550 features to test: all 613 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 20 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
 | App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 67       |
-| Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 77       |
+| Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 79       |
 | Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
 | Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 92       |
 | Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 74       |
 | Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 77       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
-| Data, platform and quality gates            | [data-platform-quality.md](./data-platform-quality.md)             | 61       |
+| Data, platform and quality gates            | [data-platform-quality.md](./data-platform-quality.md)             | 63       |
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 528   |
+| Shipped     | 532   |
 | Removed     | 20    |
 | Partial     | 16    |
 | Known issue | 2     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 304   |
+| `unit`                | 308   |
 | `api`                 | 186   |
 | `manual`              | 32    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 461   |
+| no          | 465   |
 | yes         | 85    |
 
 ## Master index
@@ -277,14 +277,14 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | AG-16 | Settings tab: Model and runtime                                         | Shipped            | unit + ui-e2e | no          |                                             |
 | AG-27 | Settings tab: Your rules (kept across updates)                          | Shipped            | unit + manual | no          | 2026-10-30 pass (saved, kept after restart) |
 | AG-28 | My notes: the notes Nandi keeps                                         | Shipped            | unit + ui     | no          | 2026-11-01 pass after fix                   |
-| AG-30 | Nandi, the default agent, comes with the app                            | Shipped            | unit          | no          | 2026-11-01 pass                             |
+| AG-30 | Nandi, the default agent, comes with the app                            | Shipped            | unit + ui     | no          | 2026-11-01 pass                             |
+| AG-36 | Nandi's page and Reset to defaults                                      | Shipped            | unit + ui     | no          |                                             |
+| AG-37 | Nandi's default schedule                                                | Shipped            | unit + ui     | no          |                                             |
 | AG-31 | Nandi browses websites                                                  | Shipped            | unit          | no          |                                             |
 | AG-32 | Run plans: plan first, live checklist, finish check                     | Shipped            | unit          | no          |                                             |
 | AG-33 | Playbooks: skill files an agent reads on demand                         | Shipped            | unit          | no          |                                             |
 | AG-34 | Sites and accounts: site secrets, site profiles, sign out everywhere    | Shipped            | unit          | no          |                                             |
 | AG-35 | "Remember how I do this": an agent proposes a playbook                  | Shipped            | unit          | no          |                                             |
-| AG-36 | Nandi's page and Reset to defaults                                      | Shipped            | unit + ui     | no          |                                             |
-| AG-37 | Nandi's default schedule: morning digest and mail check                 | Shipped            | unit + ui     | no          |                                             |
 | AG-29 | Settings tab: Internet access (allowed sites)                           | Shipped            | unit          | no          |                                             |
 | AG-17 | Settings tab: Permissions panel                                         | Shipped            | unit          | no          |                                             |
 | AG-18 | Settings tab: Connectors and shared folders                             | Shipped            | unit          | no          |                                             |
@@ -755,7 +755,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | DT-09 | Rebuild the projection (command and HTTP)                               | Shipped                                                                                    | api        | no          |                 |
 | DT-10 | `nandi rebuild [--force]` CLI                                           | Shipped                                                                                    | unit       | no          |                 |
 | DT-11 | Repo status (counts, problems, watching)                                | Shipped                                                                                    | api        | no          |                 |
-| DT-12 | SQLite schema                                                           | Shipped                                                                                    | unit       | no          |                 |
+| DT-12 | SQLite schema and migrations                                            | Shipped                                                                                    | unit       | no          |                 |
 | DT-13 | Hand edits apply live                                                   | Shipped                                                                                    | api        | no          |                 |
 | DT-14 | Invalid file keeps the last good version                                | Shipped                                                                                    | api        | no          |                 |
 | DT-15 | Watcher fallback and read-through reads                                 | Shipped                                                                                    | unit       | no          |                 |
@@ -792,6 +792,8 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | DT-46 | Refresh, F5 and Ctrl+R                                                  | Shipped                                                                                    | unit       | no          |                 |
 | DT-47 | Re-scan when the OS drops file events                                   | Shipped                                                                                    | unit       | no          |                 |
 | DT-48 | Run trail: run events and approval decisions survive a `state.db` reset | Shipped                                                                                    | unit       | no          |                 |
+| DT-49 | Gold copy file formats upgrade in place                                 | Shipped                                                                                    | unit       | no          |                 |
+| DT-50 | Upgrade from Nandi 0.1.0: the Chief of Staff becomes Nandi              | Shipped                                                                                    | unit       | no          |                 |
 | PL-01 | CLI usage, help and argument validation                                 | Shipped                                                                                    | unit       | no          |                 |
 | PL-02 | `--server` and `--port`                                                 | Shipped                                                                                    | unit       | no          |                 |
 | PL-03 | Headless mode                                                           | Shipped                                                                                    | api        | no          |                 |

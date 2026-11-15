@@ -14,6 +14,7 @@ pub mod capability_repo;
 pub mod connector_repo;
 pub mod decision_repo;
 pub mod formats;
+pub mod from_0_1_0;
 pub mod fs_atomic;
 pub mod git;
 pub mod group_repo;

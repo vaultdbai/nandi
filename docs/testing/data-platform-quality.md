@@ -634,6 +634,18 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **Needs relay:** no
 - **Status:** Shipped
 
+### DT-50 — Upgrade from Nandi 0.1.0: the Chief of Staff becomes Nandi
+
+- **What:** On the first start after 0.1.0, the gold copy's `.nandi/agents/chief-of-staff/` becomes `.nandi/agents/nandi/` with the person's edits, and every definition file value that is exactly `chief-of-staff` (connector grants in `settings.yaml`, trigger targets, workflow steps, other agents' frontmatter) becomes `nandi`. It is committed once as "Upgrade from Nandi 0.1.0"; the commit before keeps the old files. When both folders exist, the edited one is Nandi's, and the commit message says which was kept. Words in a sentence ("Ask chief-of-staff for…") are left alone. State.db's rows are renamed by migration 006 (DT-12).
+- **Where:** `services/repos/from_0_1_0.rs` (`upgrade`, `Kept`, `rename_agent`, `SHIPPED_IN_0_1_0`), `services/repos/formats.rs` (`FileFormat::edit`), `services/mod.rs` (`AppState::start`).
+- **Preconditions:** A home used by Nandi 0.1.0, with a grant for the Chief of Staff and an edit to its "My role".
+- **Steps:** 1. Install this build and start it. 2. Open Nandi's page. 3. In `~/.nandi/repo`, run `git log --stat -2` and `git show HEAD~1:.nandi/agents/chief-of-staff/instructions.md`. 4. Quit and start again.
+- **Expected:** 1–2: Nandi shows the person's "My role" and keeps its grant; no Chief of Staff agent is listed. 3: one "Upgrade from Nandi 0.1.0" commit moving the folder and renaming the grant; the old file is in the commit before. 4: no new commit.
+- **Edge / negative cases:** A repo without `chief-of-staff/` is untouched. A `work/` folder moves with the agent but is never committed. A file that can't be parsed is left for loading to report.
+- **Automation:** Covered by: `services/repos/from_0_1_0_tests.rs` (`the_folder_kept_as_nandis_is_the_edited_one`, `the_upgrade_commits_once_and_history_keeps_the_old_files`, `grants_and_triggers_name_nandi`, `a_repo_without_the_chief_of_staff_has_nothing_to_upgrade`, `rename_agent_changes_only_whole_ids`, `the_0_1_0_fixture_is_what_0_1_0_shipped`, `line_endings_dont_make_a_file_edited`) | Layer: unit | Gap: no end-to-end start on a real 0.1.0 home.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## Platform: CLI, headless, OS specifics
 
 ### PL-01 — CLI usage, help and argument validation

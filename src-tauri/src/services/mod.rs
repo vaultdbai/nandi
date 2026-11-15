@@ -222,6 +222,15 @@ impl AppState {
     /// orchestrator per agent (and Studio) and the file watcher.
     pub fn start(config: Config) -> Result<Self, String> {
         let layout = repo_bootstrap::install_layout()?;
+        // Before the scaffolding, so Nandi's folder is the person's Chief of
+        // Staff from 0.1.0, not a fresh copy
+        match repos::from_0_1_0::upgrade(&layout) {
+            Ok(Some(upgraded)) => {
+                log::info!("Upgraded the gold copy from Nandi 0.1.0: {upgraded:?}")
+            }
+            Ok(None) => {}
+            Err(e) => log::error!("Failed to upgrade the gold copy from Nandi 0.1.0: {e}"),
+        }
         if let Err(e) = repo_bootstrap::bootstrap(&layout) {
             log::error!("Failed to set up {}: {e}", layout.root.display());
         }

@@ -170,6 +170,32 @@ impl FileFormat {
         })
     }
 
+    /// The text with `edit` applied to its YAML, keeping the file at the
+    /// format it is in, or `None` when `edit` changed nothing (it returns
+    /// whether it did). For a change that isn't a format step, such as a
+    /// renamed ID. The body of a `skill.md` is kept as it is. A file from a
+    /// newer Nandi is refused, never rewritten.
+    pub fn edit(
+        &self,
+        text: &str,
+        edit: impl FnOnce(&mut Mapping) -> bool,
+    ) -> Result<Option<String>, FormatError> {
+        let mut document = Document::parse(text, self.syntax)?;
+        let version = if document.yaml.contains_key(VERSION_KEY) {
+            Some(document.take_version()?)
+        } else {
+            None
+        };
+        let current = self.current();
+        if let Some(found) = version.filter(|found| *found > current) {
+            return Err(FormatError::Newer { found, current });
+        }
+        if !edit(&mut document.yaml) {
+            return Ok(None);
+        }
+        Ok(Some(document.render(version)))
+    }
+
     fn upgrade_from(&self, found: u32, yaml: &mut Mapping) -> Result<(), FormatError> {
         let current = self.current();
         if found > current {

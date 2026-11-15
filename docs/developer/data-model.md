@@ -212,6 +212,20 @@ Each kind of definition file has a format version (`services::repos::formats`), 
 
 Groups (signed by their admin), decisions (append-only records) and marketplace copies are never rewritten. Playbooks, policies, `access.yaml` and `installed.yaml` have no format version yet.
 
+### Upgrade from Nandi 0.1.0
+
+0.1.0 shipped the default agent as `chief-of-staff`; it is now `nandi`. At start, before the scaffolding seeds a fresh Nandi, `repos::from_0_1_0::upgrade` runs when `.nandi/agents/chief-of-staff/` exists, and commits everything once as "Upgrade from Nandi 0.1.0", so git history keeps the old files.
+
+| Found                                                                                                          | What happens                                                              |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Only `chief-of-staff/`                                                                                         | It moves to `nandi/` with every edit                                      |
+| Both, `nandi/` exactly as this build seeds it                                                                  | `chief-of-staff/` replaces it                                             |
+| Both, `chief-of-staff/` exactly as 0.1.0 seeded it                                                             | `nandi/` stays, `chief-of-staff/` is removed                              |
+| Both, both edited                                                                                              | `nandi/` stays; the commit message says the old files are in its parent   |
+| A definition file (settings grants, triggers, workflows, agents) with a value that is exactly `chief-of-staff` | The value becomes `nandi` (`FileFormat::edit`, the file keeps its format) |
+
+"Edited" compares each file's SHA-256 with LF line endings against the shipped files: `SHIPPED_IN_0_1_0` (from the tag) or this build's. Files git ignores (`work/`) are neither compared nor committed. State.db's side of the rename is migration 006.
+
 ## Secrets Boundary
 
 `settings.yaml`, `connectors.yaml`, and trigger files hold **keyring references only** (`secret_refs: {deepseek_api_key: nandi.llm.deepseek}`, trigger `secretRef`, default `nandi.trigger.<id>`). The domain rejects a `secret` key in trigger configs and credential-looking connector config keys, and `settings.yaml` rejects unknown top-level keys, so a pasted API key fails validation instead of being committed.

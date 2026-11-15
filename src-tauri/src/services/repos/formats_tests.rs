@@ -251,3 +251,34 @@ fn blob_at(repo: &git2::Repository, commit: &git2::Commit, file: &str) -> String
     let blob = repo.find_blob(entry.id()).unwrap();
     String::from_utf8(blob.content().to_vec()).unwrap()
 }
+
+#[test]
+fn an_edit_keeps_the_file_at_its_format() {
+    let rename_a = |yaml: &mut Mapping| match yaml.get_mut("agent") {
+        Some(value) if value.as_str() == Some("a") => {
+            *value = "b".into();
+            true
+        }
+        _ => false,
+    };
+    let cases = [
+        ("agent: a\n", Some("agent: b\n")),
+        (
+            "format_version: 1\nagent: a\n",
+            Some("format_version: 1\nagent: b\n"),
+        ),
+        ("agent: c\n", None),
+    ];
+    for (text, expected) in cases {
+        let edited = SETTINGS.edit(text, rename_a).unwrap();
+        assert_eq!(edited.as_deref(), expected, "{text}");
+    }
+    let newer = SETTINGS.edit("format_version: 9\nagent: a\n", rename_a);
+    assert_eq!(
+        newer,
+        Err(FormatError::Newer {
+            found: 9,
+            current: 1
+        })
+    );
+}
