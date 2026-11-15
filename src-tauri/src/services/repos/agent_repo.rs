@@ -21,7 +21,7 @@ use super::fs_atomic::{
 };
 use super::git::GitIndex;
 use super::layout::{INSTRUCTIONS_FILE, MARKETPLACE_DIR, MEMORY_FILE, PLAYBOOKS_DIR, SKILL_FILE};
-use super::{read_text, Loaded, RepoError, RepoLayout, RepoResult, Repository};
+use super::{formats, read_text, Loaded, RepoError, RepoLayout, RepoResult, Repository};
 use crate::services::domain::playbook::{
     check_unique, is_valid_name as is_valid_playbook_name, Playbook,
 };
@@ -348,6 +348,7 @@ impl AgentRepository {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => return Err(RepoError::io(&instructions_path, e)),
         };
+        let skill = formats::AGENT.read(&skill)?;
         let agent = Agent::from_files(id.clone(), &skill, instructions.as_deref())?;
         let (created, mut updated) = file_times(&skill_path);
         if instructions.is_some() {
@@ -431,8 +432,11 @@ impl Repository for AgentRepository {
         let id = agent.id().as_str();
         self.ensure_writable(id)?;
         let skill_path = self.layout.skill_path(id);
-        if write_if_changed(&skill_path, agent.to_skill_md().as_bytes())
-            .map_err(|e| RepoError::io(&skill_path, e))?
+        if write_if_changed(
+            &skill_path,
+            formats::AGENT.stamp(&agent.to_skill_md()).as_bytes(),
+        )
+        .map_err(|e| RepoError::io(&skill_path, e))?
         {
             self.git.stage_add(&skill_path);
         }

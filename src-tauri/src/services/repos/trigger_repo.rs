@@ -7,7 +7,8 @@ use std::sync::Arc;
 use super::fs_atomic::{remove_if_exists, write_if_changed};
 use super::git::GitIndex;
 use super::{
-    file_stem, read_text, yaml_files, Loaded, RepoError, RepoLayout, RepoResult, Repository,
+    file_stem, formats, read_text, yaml_files, Loaded, RepoError, RepoLayout, RepoResult,
+    Repository,
 };
 use crate::services::domain::{EntityKind, Trigger, TriggerId};
 
@@ -28,7 +29,8 @@ impl TriggerRepository {
 
     fn read(&self, path: &std::path::Path) -> RepoResult<Trigger> {
         let stem = file_stem(path);
-        let trigger = Trigger::from_yaml(&read_text(path, EntityKind::Trigger, &stem)?)?;
+        let text = read_text(path, EntityKind::Trigger, &stem)?;
+        let trigger = Trigger::from_yaml(&formats::TRIGGER.read(&text)?)?;
         if trigger.id().as_str() != stem {
             return Err(RepoError::IdMismatch {
                 path: path.to_path_buf(),
@@ -66,7 +68,7 @@ impl Repository for TriggerRepository {
 
     fn save(&self, trigger: &Trigger) -> RepoResult<PathBuf> {
         let path = self.path(trigger.id().as_str());
-        if write_if_changed(&path, trigger.to_yaml().as_bytes())
+        if write_if_changed(&path, formats::TRIGGER.stamp(&trigger.to_yaml()).as_bytes())
             .map_err(|e| RepoError::io(&path, e))?
         {
             self.git.stage_add(&path);

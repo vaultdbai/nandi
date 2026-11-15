@@ -7,7 +7,7 @@ use std::sync::Arc;
 use super::fs_atomic::{remove_if_exists, write_if_changed};
 use super::git::GitIndex;
 use super::layout::CONNECTOR_FILE;
-use super::{RepoError, RepoLayout, RepoResult, SingletonRepository};
+use super::{formats, RepoError, RepoLayout, RepoResult, SingletonRepository};
 use crate::services::domain::connector_package::ConnectorPackage;
 use crate::services::domain::ConnectorManifest;
 
@@ -73,7 +73,9 @@ impl SingletonRepository for ConnectorRepository {
     fn load(&self) -> RepoResult<ConnectorManifest> {
         let path = self.path();
         match std::fs::read_to_string(&path) {
-            Ok(content) => Ok(ConnectorManifest::from_yaml(&content)?),
+            Ok(content) => Ok(ConnectorManifest::from_yaml(
+                &formats::CONNECTORS.read(&content)?,
+            )?),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ConnectorManifest::default()),
             Err(e) => Err(RepoError::io(&path, e)),
         }
@@ -81,8 +83,11 @@ impl SingletonRepository for ConnectorRepository {
 
     fn save(&self, manifest: &ConnectorManifest) -> RepoResult<PathBuf> {
         let path = self.path();
-        if write_if_changed(&path, manifest.to_yaml().as_bytes())
-            .map_err(|e| RepoError::io(&path, e))?
+        if write_if_changed(
+            &path,
+            formats::CONNECTORS.stamp(&manifest.to_yaml()).as_bytes(),
+        )
+        .map_err(|e| RepoError::io(&path, e))?
         {
             self.git.stage_add(&path);
         }

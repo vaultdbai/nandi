@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use super::fs_atomic::write_if_changed;
 use super::git::GitIndex;
-use super::{RepoError, RepoLayout, RepoResult, SingletonRepository};
+use super::{formats, RepoError, RepoLayout, RepoResult, SingletonRepository};
 use crate::services::domain::Settings;
 
 #[derive(Clone)]
@@ -27,7 +27,7 @@ impl SingletonRepository for SettingsRepository {
     fn load(&self) -> RepoResult<Settings> {
         let path = self.path();
         match std::fs::read_to_string(&path) {
-            Ok(content) => Ok(Settings::from_yaml(&content)?),
+            Ok(content) => Ok(Settings::from_yaml(&formats::SETTINGS.read(&content)?)?),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Settings::default()),
             Err(e) => Err(RepoError::io(&path, e)),
         }
@@ -35,8 +35,11 @@ impl SingletonRepository for SettingsRepository {
 
     fn save(&self, settings: &Settings) -> RepoResult<PathBuf> {
         let path = self.path();
-        if write_if_changed(&path, settings.to_yaml().as_bytes())
-            .map_err(|e| RepoError::io(&path, e))?
+        if write_if_changed(
+            &path,
+            formats::SETTINGS.stamp(&settings.to_yaml()).as_bytes(),
+        )
+        .map_err(|e| RepoError::io(&path, e))?
         {
             self.git.stage_add(&path);
         }

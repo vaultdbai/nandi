@@ -131,7 +131,7 @@ The owner set these rules on 2026-11-14 (decision 5) and on 2026-11-15: `state.d
 
 | What changes                               | What to do                                                                                                                                                                                                |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Config and definitions (the gold copy)     | Change the file format and the domain; bump `PROJECTION_VERSION` so the projection rebuilds from the files                                                                                                |
+| Config and definitions (the gold copy)     | Add a format upgrade step for that kind of file ([File Format Versions](#file-format-versions)), change the domain, and bump `PROJECTION_VERSION` so the projection rebuilds from the files               |
 | A projected table                          | A migration, like any table, and bump `PROJECTION_VERSION`                                                                                                                                                |
 | Any table in `state.db`                    | Add the next numbered migration ([State Database Migrations](#state-database-migrations)). The run trail still restores `run_events` and approval decisions into a new database ([Run Trail](#run-trail)) |
 | A serde shape, a name, an env var, a route | No serde aliases, old-name fallbacks or shims. When renaming, just change it                                                                                                                              |
@@ -172,6 +172,40 @@ A fresh database runs the same chain as an upgraded one, so their schemas are al
 | Add `002_runs_label.sql`                       | Edit `001_baseline.sql` (the checksum test fails)                 |
 | Copy rows forward when rebuilding a table      | Drop a table and let a rebuild fill it (runtime rows are history) |
 | Keep each migration small and about one change | Read or write the gold copy from a migration                      |
+
+### File Format Versions
+
+Each kind of definition file has a format version (`services::repos::formats`), in its top-level `format_version` key. A file without one is at format 1. Every kind is at format 1 today, so no file carries the key yet.
+
+| Kind              | `FileFormat` | Where the version sits              |
+| ----------------- | ------------ | ----------------------------------- |
+| An agent          | `AGENT`      | `skill.md` frontmatter              |
+| A workflow        | `WORKFLOW`   | the `.yaml`, global or agent-scoped |
+| A trigger         | `TRIGGER`    | the `.yaml`                         |
+| `settings.yaml`   | `SETTINGS`   | the file                            |
+| `connectors.yaml` | `CONNECTORS` | the file                            |
+
+| When                         | What happens                                                                                                                                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App start, before the load   | `repo_bootstrap::upgrade_formats` writes every older file back at the current format (key first), stages it, and commits only those files: "Upgrade 3 workflows to format 2". The old text stays in git history |
+| A repository reads a file    | `FileFormat::read` upgrades an older file in memory and takes the key off, so the domain parses the current shape and never sees `format_version`                                                               |
+| A file is from a newer Nandi | Refused like any invalid file ("written by a newer version of Nandi … It is left as it is"), never rewritten                                                                                                    |
+| A repository saves a file    | `FileFormat::stamp` adds the current version (nothing at format 1). A person's own text (a workflow's YAML) goes through `canonical`: no version means format 1                                                 |
+
+**Changing a file format:**
+
+1. Write one pure function `fn(&mut serde_yaml::Mapping) -> Result<(), String>` that turns format N into N+1 for that kind, next to its `FileFormat`.
+2. Append it to the kind's `steps` in `services/repos/formats.rs`. `current()` follows.
+3. Change the domain type to the new shape, and bump `PROJECTION_VERSION`.
+4. Add a case for it to the table test in `formats_tests.rs`: the old text in, the new text out.
+
+| ✅ Do                                                | ❌ Don't                                                |
+| ---------------------------------------------------- | ------------------------------------------------------- |
+| `steps: &[rename_title_to_name]`, a step per version | `#[serde(alias = "title")]` on the domain type          |
+| Keep a step pure: the mapping in, the mapping out    | Read other files, the database or the network in a step |
+| Leave the old file in git history                    | Keep an old copy beside the file                        |
+
+Groups (signed by their admin), decisions (append-only records) and marketplace copies are never rewritten. Playbooks, policies, `access.yaml` and `installed.yaml` have no format version yet.
 
 ## Secrets Boundary
 

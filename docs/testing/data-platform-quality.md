@@ -622,6 +622,18 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **Needs relay:** no
 - **Status:** Shipped
 
+### DT-49 — Gold copy file formats upgrade in place
+
+- **What:** Each kind of definition file (an agent's `skill.md` frontmatter, workflows, triggers, `settings.yaml`, `connectors.yaml`) has a format version in its top-level `format_version` key; a file without one is at format 1, and every kind is at format 1 today. At start, before the repo loads, a file at an older format is upgraded by its kind's steps, written back with `format_version` first, staged, and committed on its own as "Upgrade 3 workflows to format 2"; the old text stays in git history. A file from a newer Nandi is never rewritten: it fails to load like any invalid file, with "this file was written by a newer version of Nandi (format N; this version reads up to M). It is left as it is. Update Nandi to use it." A file pulled in at an older format while the app runs still loads (upgraded in memory) and is written back on the next start.
+- **Where:** `services/repos/formats.rs` (`FileFormat`, `read`, `upgrade`, `stamp`, `canonical`, `upgrade_files`), `services/repos/mod.rs` (`Repos::definition_files`, `upgrade_formats`), `services/repo_bootstrap.rs` (`upgrade_formats`), `services/mod.rs` (`AppState::start`). See `docs/developer/data-model.md#file-format-versions`.
+- **Preconditions:** App installed; a gold copy with a trigger.
+- **Steps:** 1. Start the app and check `git log` in `~/.nandi/repo`. 2. Quit, add `format_version: 9` as the first line of a trigger's `.yaml`, start again.
+- **Expected:** 1: no upgrade commit (everything is at format 1). 2: the trigger shows as invalid with the "newer version of Nandi" message; the file is unchanged and nothing is committed. Removing the line brings it back live.
+- **Edge / negative cases:** A broken `format_version` (0, a word) is reported as invalid. Marketplace copies are never rewritten. Saving a file of a kind at format 1 writes no `format_version`.
+- **Automation:** Covered by: `services/repos/formats_tests.rs` (`reading_gives_the_domain_current_text_without_the_version`, `an_old_file_upgrades_and_commits_once`, `current_and_newer_files_are_never_rewritten`, `a_definition_from_a_newer_nandi_is_refused_with_a_calm_message`, `today_every_definition_kind_is_at_format_1_and_listed`) | Layer: unit | Gap: no real upgrade step ships yet; the tests use an example step.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## Platform: CLI, headless, OS specifics
 
 ### PL-01 — CLI usage, help and argument validation

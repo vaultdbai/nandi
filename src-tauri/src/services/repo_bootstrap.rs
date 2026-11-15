@@ -12,6 +12,8 @@ use crate::services::domain::repo::RepoManifest;
 use crate::services::domain::settings::{SecretRef, Settings};
 use crate::services::egress::credentials::{ACCESS_KEY_ENTRY, SECRET_KEY_ENTRY};
 use crate::services::llm_keys::KeyedProvider;
+use crate::services::repo_service::GitService;
+use crate::services::repos::formats::FormatUpgrade;
 use crate::services::repos::fs_atomic::write_if_changed;
 use crate::services::repos::{RepoLayout, Repos, SingletonRepository};
 
@@ -54,6 +56,30 @@ pub fn bootstrap(layout: &RepoLayout) -> Result<(), String> {
         log::info!("Created the Nandi repo at {}", layout.root.display());
     }
     Ok(())
+}
+
+/// Writes every definition file at an older format back at the current
+/// one and commits them together ("Upgrade 3 workflows to format 2"), so
+/// the old text stays in git history. Returns the commit, if any.
+pub fn upgrade_formats(layout: &RepoLayout) -> Result<Option<String>, String> {
+    let repos = Repos::new(layout.clone());
+    commit_format_upgrade(layout, repos.upgrade_formats())
+}
+
+/// Commits only the files `upgrade` wrote, leaving anything else alone.
+pub(crate) fn commit_format_upgrade(
+    layout: &RepoLayout,
+    upgrade: FormatUpgrade,
+) -> Result<Option<String>, String> {
+    if upgrade.is_empty() {
+        return Ok(None);
+    }
+    let paths: Vec<String> = upgrade
+        .paths
+        .iter()
+        .filter_map(|path| layout.relative(path))
+        .collect();
+    GitService::new(&layout.root).commit_files(&paths, &upgrade.commit_message(), None)
 }
 
 /// Writes what a just-fetched repo lacks (settings, `.gitignore`, built-in

@@ -225,6 +225,12 @@ impl AppState {
         if let Err(e) = repo_bootstrap::bootstrap(&layout) {
             log::error!("Failed to set up {}: {e}", layout.root.display());
         }
+        // Before the load, so the files it reads are at the current formats
+        match repo_bootstrap::upgrade_formats(&layout) {
+            Ok(Some(commit)) => log::info!("Upgraded definition file formats in {commit}"),
+            Ok(None) => {}
+            Err(e) => log::error!("Failed to commit the definition format upgrade: {e}"),
+        }
         let db = Db::open(&nandi_config::state_db_path()?)?;
         let local = nandi_config::local_dir()?;
         // Before anything reads it: the instance ID outlives the database

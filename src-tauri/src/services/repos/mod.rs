@@ -13,6 +13,7 @@ pub mod agent_repo;
 pub mod capability_repo;
 pub mod connector_repo;
 pub mod decision_repo;
+pub mod formats;
 pub mod fs_atomic;
 pub mod git;
 pub mod group_repo;
@@ -135,6 +136,12 @@ impl std::error::Error for RepoError {}
 impl From<DomainError> for RepoError {
     fn from(error: DomainError) -> Self {
         Self::Domain(error)
+    }
+}
+
+impl From<formats::FormatError> for RepoError {
+    fn from(error: formats::FormatError) -> Self {
+        Self::Domain(DomainError::Rule(error.to_string()))
     }
 }
 
@@ -368,6 +375,55 @@ impl Repos {
     }
 
     /// The IDs of `kind` with files on disk right now (valid or not).
+    /// Every definition file the person owns, with its format. Marketplace
+    /// files are left out: they are read-only copies of a pack.
+    pub fn definition_files(&self) -> Vec<(&'static formats::FileFormat, PathBuf)> {
+        let layout = &self.layout;
+        let agents = self
+            .agents
+            .folder_names()
+            .into_iter()
+            .map(|id| (&formats::AGENT, layout.skill_path(&id)));
+        let workflows = self
+            .workflows
+            .file_ids()
+            .into_iter()
+            .filter_map(|id| self.workflows.locate(&WorkflowId::parse(id).ok()?))
+            .map(|(path, _)| (&formats::WORKFLOW, path));
+        let triggers = yaml_files(&layout.triggers_dir)
+            .into_iter()
+            .map(|path| (&formats::TRIGGER, path));
+        let singletons = [
+            (&formats::SETTINGS, layout.settings_path()),
+            (&formats::CONNECTORS, layout.connectors_path()),
+        ];
+        agents
+            .chain(workflows)
+            .chain(triggers)
+            .chain(singletons)
+            .filter(|(_, path)| path.is_file() && !layout.is_vendored(path))
+            .collect()
+    }
+
+    /// Writes every definition file at an older format back at the current
+    /// one, staged. The caller commits [`formats::FormatUpgrade::paths`].
+    pub fn upgrade_formats(&self) -> formats::FormatUpgrade {
+        self.upgrade_files(&self.definition_files())
+    }
+
+    /// [`Self::upgrade_formats`] over the given files.
+    pub fn upgrade_files(
+        &self,
+        files: &[(&formats::FileFormat, PathBuf)],
+    ) -> formats::FormatUpgrade {
+        let git = git::GitIndex::new(&self.layout.root);
+        formats::upgrade_files(files, |path, text| {
+            fs_atomic::write_if_changed(path, text.as_bytes())?;
+            git.stage_add(path);
+            Ok(())
+        })
+    }
+
     pub fn ids_on_disk(&self, kind: EntityKind) -> Vec<String> {
         match kind {
             EntityKind::Agent => self.agents.folder_names(),

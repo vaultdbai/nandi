@@ -15,7 +15,8 @@ use super::fs_atomic::{file_times, remove_if_exists, write_if_changed};
 use super::git::GitIndex;
 use super::layout::MARKETPLACE_DIR;
 use super::{
-    file_stem, read_text, yaml_files, Loaded, RepoError, RepoLayout, RepoResult, Repository,
+    file_stem, formats, read_text, yaml_files, Loaded, RepoError, RepoLayout, RepoResult,
+    Repository,
 };
 use crate::services::domain::workflow::WorkflowScope;
 use crate::services::domain::{AgentId, EntityKind, Workflow, WorkflowId};
@@ -130,7 +131,7 @@ impl WorkflowRepository {
     fn read(&self, path: &Path, scope: WorkflowScope) -> RepoResult<WorkflowSource> {
         let stem = file_stem(path);
         let source = read_text(path, EntityKind::Workflow, &stem)?;
-        let workflow = Workflow::from_yaml(&source)?;
+        let workflow = Workflow::from_yaml(&formats::WORKFLOW.read(&source)?)?;
         if workflow.id().as_str() != stem {
             return Err(RepoError::IdMismatch {
                 path: path.to_path_buf(),
@@ -173,7 +174,7 @@ impl WorkflowRepository {
     /// Writes `source` as the workflow's file after checking it parses to
     /// `workflow`.
     pub fn save_source(&self, workflow: &Workflow, source: &str) -> RepoResult<PathBuf> {
-        let parsed = Workflow::from_yaml(source)?;
+        let parsed = Workflow::from_yaml(&formats::WORKFLOW.read(source)?)?;
         if !parsed.same_definition(workflow) {
             return Err(RepoError::Domain(
                 crate::services::domain::DomainError::Rule(
@@ -181,7 +182,7 @@ impl WorkflowRepository {
                 ),
             ));
         }
-        self.write(workflow, source)
+        self.write(workflow, &formats::WORKFLOW.canonical(source)?)
     }
 
     fn write(&self, workflow: &Workflow, contents: &str) -> RepoResult<PathBuf> {
@@ -223,7 +224,7 @@ impl Repository for WorkflowRepository {
     }
 
     fn save(&self, workflow: &Workflow) -> RepoResult<PathBuf> {
-        self.write(workflow, &workflow.to_yaml())
+        self.write(workflow, &formats::WORKFLOW.stamp(&workflow.to_yaml()))
     }
 
     fn delete(&self, id: &WorkflowId) -> RepoResult<()> {
