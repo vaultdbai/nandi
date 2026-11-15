@@ -80,15 +80,6 @@ pub fn is_github_url(url: &str) -> bool {
     })
 }
 
-/// The signed-in token when `url` is a github.com address
-pub fn token_for_url(secrets: &Secrets, url: &str) -> Option<String> {
-    if is_github_url(url) {
-        token(secrets)
-    } else {
-        None
-    }
-}
-
 pub fn status(state: &AppState) -> GithubSignIn {
     let signed_in = token(state.secrets()).is_some();
     let login = signed_in
@@ -165,20 +156,6 @@ mod tests {
         ));
         assert!(!is_github_url("https://gitlab.com/acme/agents"));
         assert!(!is_github_url("/tmp/agents"));
-    }
-
-    #[test]
-    fn token_for_url_needs_a_sign_in_and_a_github_address() {
-        let secrets = Secrets::in_memory();
-        assert_eq!(token_for_url(&secrets, "https://github.com/a/b"), None);
-        secrets
-            .set(TOKEN_ENTRY, r#"{"access_token":"gho_test"}"#)
-            .unwrap();
-        assert_eq!(
-            token_for_url(&secrets, "https://github.com/a/b").as_deref(),
-            Some("gho_test")
-        );
-        assert_eq!(token_for_url(&secrets, "https://gitlab.com/a/b"), None);
     }
 
     #[test]

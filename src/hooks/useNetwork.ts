@@ -1,9 +1,8 @@
 /**
  * The network directory, kept live by `network://*`. Also home of the
  * event wiring every member-facing query shares: `network://*`,
- * `member://*`, `trust://*`, and `team://roster_changed` refetch the
- * directory, member profiles, rosters, and (on trust changes) the shared
- * lists.
+ * `member://*` and `trust://*` refetch the directory, member profiles,
+ * and (on trust changes) the shared lists.
  */
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -22,32 +21,20 @@ export const memberQueryKeys = {
     ['members', 'instance', instanceId] as const,
 }
 
-export const rosterQueryKeys = {
-  all: ['roster'] as const,
-  team: (teamId: string) => ['roster', teamId] as const,
-}
-
 const MEMBER_EVENT_PREFIXES = ['network://', 'member://', 'trust://']
 
 /** Whether a core event should refetch the member-facing queries */
 export function isMemberEvent(name: string): boolean {
-  return (
-    name === 'team://roster_changed' ||
-    MEMBER_EVENT_PREFIXES.some(prefix => name.startsWith(prefix))
-  )
+  return MEMBER_EVENT_PREFIXES.some(prefix => name.startsWith(prefix))
 }
 
-/** Refetches the directory, profiles, and rosters on member events */
+/** Refetches the directory and profiles on member events */
 export function useMemberEvents() {
   const queryClient = useQueryClient()
   useEffect(() => {
     const subscription = client.subscribe(event => {
       if (!isMemberEvent(event.event)) return
-      for (const queryKey of [
-        networkQueryKeys.all,
-        memberQueryKeys.all,
-        rosterQueryKeys.all,
-      ]) {
+      for (const queryKey of [networkQueryKeys.all, memberQueryKeys.all]) {
         void queryClient.invalidateQueries({ queryKey })
       }
       if (event.event.startsWith('trust://')) {

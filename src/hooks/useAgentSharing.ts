@@ -1,21 +1,16 @@
 /**
- * How one of my agents is shared, and the toggles that change it: which
- * teams' registries hold it, and whether relay peers may call it
- * (`accepts_delegation`). Used by the sidebar agent menu and the sharing
- * dialog. Nothing here shares outside teams and the relay.
+ * How one of my agents is shared, and the toggle that changes it: whether
+ * relay peers may call it (`accepts_delegation`). Used by the sidebar agent
+ * menu and the sharing dialog. Nothing here shares outside the relay.
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AgentDelegationSettings, SharedAgent } from '@/lib/bindings'
 import { client } from '@/lib/client'
 import { unwrapResult } from '@/lib/tauri-bindings'
-import { useClientMutation } from './useClientQuery'
 import { delegationQueryKeys } from './useDelegation'
 import { sharedQueryKeys, useSharedByMe } from './useSharedAgents'
-import { teamsQueryKeys, useTeams } from './useTeams'
 
 export interface AgentSharingState {
-  /** Teams whose registry has the agent */
-  teamIds: string[]
   /** Relay peers may send it tasks */
   relay: boolean
   /** Its entry in "shared by me", when it's shared at all */
@@ -29,7 +24,6 @@ export function sharingOf(
 ): AgentSharingState {
   const shared = byMe?.find(agent => agentIdOfCard(agent) === agentId)
   return {
-    teamIds: shared?.teamIds ?? [],
     relay: shared?.sources.includes('relay') ?? false,
     shared,
   }
@@ -40,13 +34,10 @@ function agentIdOfCard(agent: SharedAgent): string {
   return id.startsWith(`${instanceId}/`) ? id.slice(instanceId.length + 1) : id
 }
 
-/** My teams and how `agentId` is shared with them and the relay */
+/** How `agentId` is shared with the relay */
 export function useAgentSharing(agentId: string) {
-  const teams = useTeams()
   const byMe = useSharedByMe()
   return {
-    teams: teams.data ?? [],
-    teamsLoading: teams.isLoading,
     sharing: sharingOf(byMe.data, agentId),
     loading: byMe.isLoading,
   }
@@ -55,8 +46,7 @@ export function useAgentSharing(agentId: string) {
 /** Every query that shows how agents are shared */
 function invalidateSharing(
   queryClient: ReturnType<typeof useQueryClient>,
-  agentId: string,
-  teamId?: string
+  agentId: string
 ) {
   void queryClient.invalidateQueries({ queryKey: sharedQueryKeys.all })
   void queryClient.invalidateQueries({
@@ -65,26 +55,6 @@ function invalidateSharing(
   void queryClient.invalidateQueries({
     queryKey: delegationQueryKeys.providersAll,
   })
-  if (teamId) {
-    void queryClient.invalidateQueries({
-      queryKey: teamsQueryKeys.detail(teamId),
-    })
-  }
-}
-
-/** Adds the agent to a team's registry, or removes it */
-export function useToggleTeamShare(agentId: string) {
-  const queryClient = useQueryClient()
-  return useClientMutation(
-    ({ teamId, share }: { teamId: string; share: boolean }) =>
-      share
-        ? client.shareAgent(teamId, agentId)
-        : client.unshareAgent(teamId, agentId),
-    {
-      onSettled: (_data, _error, { teamId }) =>
-        invalidateSharing(queryClient, agentId, teamId),
-    }
-  )
 }
 
 /**

@@ -88,7 +88,6 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_recent_changes",
     "list_request_returns",
     "list_tasks",
-    "list_teams",
     "list_tools",
     "list_triggers",
     "list_trust_policies",

@@ -27,8 +27,6 @@ pub const GITIGNORE: &str = "# Machine-local Nandi state: never commit
 *.log
 work/
 .*.nandi-tmp-*
-# Team registry checkouts (each is its own git repo; see services::team)
-/teams/
 ";
 
 /// The layout of this install: `~/.nandi/repo`, with deleted agents moved

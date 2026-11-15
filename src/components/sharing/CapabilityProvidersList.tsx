@@ -205,19 +205,9 @@ function ProviderRow({
           {provider.mine && (
             <Badge variant="secondary">{t('shared.capabilities.mine')}</Badge>
           )}
-          {provider.teammate && (
-            <Badge variant="secondary">
-              {t('shared.capabilities.teammate')}
-            </Badge>
-          )}
           {provider.sources.map(source => (
             <Badge key={source} variant="outline">
               {t(`shared.source.${source}`)}
-            </Badge>
-          ))}
-          {provider.teamIds.map(teamId => (
-            <Badge key={teamId} variant="outline" className="font-normal">
-              {teamId}
             </Badge>
           ))}
         </span>

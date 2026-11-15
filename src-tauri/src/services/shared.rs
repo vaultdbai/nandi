@@ -1,10 +1,9 @@
-//! What's shared with me (team registries + agents online at the relay) and
-//! what I share (agents accepting delegation or shared to a team), with call
-//! counts from the `delegations` history.
+//! What's shared with me (agents online at the relay) and what I share
+//! (agents accepting delegation), with call counts from the `delegations`
+//! history.
 //!
-//! Every source is optional: the team manager and the relay are `None` (or
-//! answer errors) until configured, and a source that's unavailable is
-//! skipped rather than failing the whole list.
+//! The relay is optional: until it's configured (or while it answers
+//! errors) the lists hold only what doesn't need it, rather than failing.
 //!
 //! `list_capability_providers` turns both lists around: per capability,
 //! everyone who serves it, in the order delegation would try them (my own
@@ -31,7 +30,6 @@ use super::relay;
 use super::relay::protocol::{RoutePlan, RouteReason, MAX_CANDIDATES};
 use super::repo_store::RepoStore;
 use super::repos::SingletonRepository;
-use super::team::{TeamManager, TeamShare};
 use super::trust::{self, TrustPolicy, TrustRule};
 use super::AppState;
 use crate::db::{self, now_ms, Db};
@@ -77,17 +75,19 @@ pub enum Unavailable {
     Full,
     /// It's the requester
     IsRequester,
-    /// Not online at the relay (known only from a team registry)
+    /// Not online at the relay
     Offline,
     /// Online, but the relay doesn't pick them now (failing lately, or
     /// missing what the request needs)
     NotNow,
 }
 
+/// Where a shared agent was found (with me) or how it's exposed (by me).
+/// People share agents through the relay only; packs travel through git
+/// registries in the marketplace instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum ShareSource {
-    Team,
     Relay,
 }
 
@@ -98,7 +98,6 @@ pub struct SharedAgent {
     pub card: AgentCard,
     /// Where it was found (with me) or how it's exposed (by me)
     pub sources: Vec<ShareSource>,
-    pub team_ids: Vec<String>,
     /// Delegations in the last 30 days
     pub call_count: u32,
     pub last_called_at: Option<Timestamp>,
@@ -114,10 +113,7 @@ pub struct ProviderOption {
     pub mine: bool,
     /// Callable now: mine, or online at the relay
     pub online: bool,
-    /// Its owner is in one of my teams
-    pub teammate: bool,
     pub sources: Vec<ShareSource>,
-    pub team_ids: Vec<String>,
     /// My delegations to it in the last 30 days
     pub stats: ProviderStats,
     /// Succeeded / finished, once there's enough history
@@ -162,99 +158,44 @@ impl CallStats {
 // Pure merges (tested directly)
 // ---------------------------------------------------------------------------
 
-/// Merges team-registry cards (`(team_id, card)`) and relay cards by card
-/// ID. Cards from this instance are left out (they're mine). A relay copy
-/// (live load) replaces a registry one. Sorted by name, then ID.
+/// Relay cards as shared agents, by card ID. Cards from this instance are
+/// left out (they're mine). Sorted by name, then ID.
 pub fn merge_shared_with_me(
-    team_cards: Vec<(String, AgentCard)>,
     relay_cards: Vec<AgentCard>,
     local_instance_id: &str,
     calls: &HashMap<String, CallStats>,
 ) -> Vec<SharedAgent> {
     let mut merged: BTreeMap<String, SharedAgent> = BTreeMap::new();
-    for (team_id, card) in team_cards {
-        if card.instance_id == local_instance_id {
-            continue;
-        }
-        let entry = merged
-            .entry(card.id.clone())
-            .or_insert_with(|| SharedAgent {
-                card,
-                sources: Vec::new(),
-                team_ids: Vec::new(),
-                call_count: 0,
-                last_called_at: None,
-            });
-        push_unique(&mut entry.sources, ShareSource::Team);
-        push_unique(&mut entry.team_ids, team_id);
-    }
     for card in relay_cards {
         if card.instance_id == local_instance_id {
             continue;
         }
-        match merged.get_mut(&card.id) {
-            Some(entry) => {
-                // Keep a known owner if the relay copy lacks one
-                let owner = if card.owner.github_handle.is_empty() {
-                    entry.card.owner.clone()
-                } else {
-                    card.owner.clone()
-                };
-                entry.card = card.with_owner(owner);
-                push_unique(&mut entry.sources, ShareSource::Relay);
-            }
-            None => {
-                merged.insert(
-                    card.id.clone(),
-                    SharedAgent {
-                        card,
-                        sources: vec![ShareSource::Relay],
-                        team_ids: Vec::new(),
-                        call_count: 0,
-                        last_called_at: None,
-                    },
-                );
-            }
-        }
+        let stats = calls.get(&card.id).copied().unwrap_or_default();
+        merged.insert(
+            card.id.clone(),
+            SharedAgent {
+                card,
+                sources: vec![ShareSource::Relay],
+                call_count: stats.count,
+                last_called_at: stats.last_at,
+            },
+        );
     }
-    let mut list: Vec<SharedAgent> = merged
-        .into_values()
-        .map(|mut shared| {
-            let stats = calls.get(&shared.card.id).copied().unwrap_or_default();
-            shared.call_count = stats.count;
-            shared.last_called_at = stats.last_at;
-            shared
-        })
-        .collect();
+    let mut list: Vec<SharedAgent> = merged.into_values().collect();
     sort_by_name(&mut list);
     list
 }
 
-/// My agents that accept delegation (exposed at the relay) or are shared to
-/// a team. `calls` is keyed by card ID or agent ID (history rows may use
-/// either); both are summed.
+/// My agents that accept delegation (exposed at the relay). `calls` is
+/// keyed by card ID or agent ID (history rows may use either); both are
+/// summed.
 pub fn merge_shared_by_me(
     cards: Vec<AgentCard>,
-    shares: &[TeamShare],
     calls: &HashMap<String, CallStats>,
 ) -> Vec<SharedAgent> {
     let mut list = Vec::new();
-    for card in cards {
+    for card in cards.into_iter().filter(|card| card.accepts_delegation) {
         let agent_id = card.agent_id().to_string();
-        let mut team_ids: Vec<String> = Vec::new();
-        for share in shares.iter().filter(|s| s.agent_id == agent_id) {
-            push_unique(&mut team_ids, share.team_id.clone());
-        }
-        let mut sources = Vec::new();
-        if !team_ids.is_empty() {
-            sources.push(ShareSource::Team);
-        }
-        if card.accepts_delegation {
-            sources.push(ShareSource::Relay);
-        }
-        if sources.is_empty() {
-            continue;
-        }
         let mut stats = calls.get(&card.id).copied().unwrap_or_default();
         if agent_id != card.id {
             if let Some(by_agent) = calls.get(&agent_id) {
@@ -263,8 +204,7 @@ pub fn merge_shared_by_me(
         }
         list.push(SharedAgent {
             card,
-            sources,
-            team_ids,
+            sources: vec![ShareSource::Relay],
             call_count: stats.count,
             last_called_at: stats.last_at,
         });
@@ -278,9 +218,7 @@ fn option(card: AgentCard, mine: bool, online: bool) -> ProviderOption {
         card,
         mine,
         online,
-        teammate: false,
         sources: Vec::new(),
-        team_ids: Vec::new(),
         stats: ProviderStats::default(),
         success_rate: None,
         rank: None,
@@ -313,8 +251,6 @@ pub fn availability(
 pub struct OverviewData {
     /// Capability → pinned card ID (`settings.yaml`)
     pub pins: BTreeMap<String, String>,
-    /// Lowercase GitHub handles of my teams' members
-    pub teammates: HashSet<String>,
     /// My delegations, by card ID
     pub stats: HashMap<String, ProviderStats>,
     /// The relay's plan per capability (none without a relay)
@@ -322,37 +258,19 @@ pub struct OverviewData {
 }
 
 impl OverviewData {
-    /// Pins from the gold copy, teammates from my teams, my history of the
-    /// last 30 days. A source that fails is left empty.
-    pub async fn gather(store: &RepoStore, db: &Db, teams: &dyn TeamManager) -> Self {
+    /// Pins from the gold copy and my history of the last 30 days. A
+    /// source that fails is left empty.
+    pub fn gather(store: &RepoStore, db: &Db) -> Self {
         let pins = store.read(|repo| repo.settings().preferred_providers().clone());
-        let teammates = match teams.list_teams().await {
-            Ok(teams) => teams
-                .iter()
-                .flat_map(|team| &team.members)
-                .map(|member| member.github_handle.to_lowercase())
-                .filter(|handle| !handle.is_empty())
-                .collect(),
-            Err(e) => {
-                log::debug!("Providers without teammates: {e}");
-                HashSet::new()
-            }
-        };
         let stats = load_stats(db, window_start()).unwrap_or_else(|e| {
             log::debug!("Providers without history: {e}");
             HashMap::new()
         });
         Self {
             pins,
-            teammates,
             stats,
             plans: HashMap::new(),
         }
-    }
-
-    fn is_teammate(&self, card: &AgentCard) -> bool {
-        let handle = card.owner.github_handle.to_lowercase();
-        !handle.is_empty() && self.teammates.contains(&handle)
     }
 }
 
@@ -412,7 +330,6 @@ pub fn capability_overview(
         let online = shared.sources.contains(&ShareSource::Relay);
         let mut other = option(shared.card, false, online);
         other.sources = shared.sources;
-        other.team_ids = shared.team_ids;
         other
     }));
 
@@ -441,7 +358,6 @@ pub fn capability_overview(
                     let stats = data.stats.get(&option.card.id).copied().unwrap_or_default();
                     option.stats = stats;
                     option.success_rate = stats.success_rate();
-                    option.teammate = !option.mine && data.is_teammate(&option.card);
                     option.reasons = plan
                         .and_then(|plan| {
                             plan.candidates.iter().find(|c| c.target == option.card.id)
@@ -507,12 +423,6 @@ pub fn apply_trust(
         .collect()
 }
 
-fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) {
-    if !items.contains(&item) {
-        items.push(item);
-    }
-}
-
 fn sort_by_name(list: &mut [SharedAgent]) {
     list.sort_by(|a, b| {
         a.card
@@ -526,41 +436,6 @@ fn sort_by_name(list: &mut [SharedAgent]) {
 // ---------------------------------------------------------------------------
 // Sources
 // ---------------------------------------------------------------------------
-
-/// Every team's registry cards as `(team_id, card)`. A team whose registry
-/// can't be read is skipped; when the teams can't be listed, it's empty.
-pub async fn team_cards(manager: &dyn TeamManager) -> Vec<(String, AgentCard)> {
-    let teams = match manager.list_teams().await {
-        Ok(teams) => teams,
-        Err(error) => {
-            log::debug!("Shared views: teams unavailable: {error}");
-            return Vec::new();
-        }
-    };
-    let mut cards = Vec::new();
-    for team in teams {
-        match manager.team_agents(&team.id).await {
-            Ok(agents) => cards.extend(agents.into_iter().map(|card| (team.id.clone(), card))),
-            Err(error) => {
-                let team_id = &team.id;
-                log::debug!("Shared views: team {team_id} unavailable: {error}");
-            }
-        }
-    }
-    cards
-}
-
-/// My shares to teams; empty when they can't be read.
-async fn my_team_shares(state: &AppState) -> Vec<TeamShare> {
-    state
-        .team_manager()
-        .shares_by_me()
-        .await
-        .unwrap_or_else(|error| {
-            log::debug!("Shared views: shares unavailable: {error}");
-            Vec::new()
-        })
-}
 
 /// Delegations in `direction` since `since_ms`, grouped by `target_agent`.
 pub fn call_stats(
@@ -636,7 +511,6 @@ fn window_start() -> i64 {
 
 pub async fn list_agents_shared_with_me(state: &AppState) -> Result<Vec<SharedAgent>, String> {
     let instance_id = network::local_instance_id(state.db())?;
-    let team = team_cards(state.team_manager().as_ref()).await;
     let online = relay::list_online_agents(state, None)
         .await
         .unwrap_or_else(|error| {
@@ -646,7 +520,7 @@ pub async fn list_agents_shared_with_me(state: &AppState) -> Result<Vec<SharedAg
     let calls = call_stats(state.db(), "outbound", window_start())?;
     let trust = TrustFilter::load(state.db())?;
     Ok(apply_trust(
-        merge_shared_with_me(team, online, &instance_id, &calls),
+        merge_shared_with_me(online, &instance_id, &calls),
         &trust,
         false,
     ))
@@ -655,9 +529,8 @@ pub async fn list_agents_shared_with_me(state: &AppState) -> Result<Vec<SharedAg
 pub async fn list_agents_shared_by_me(state: &AppState) -> Result<Vec<SharedAgent>, String> {
     let instance_id = network::local_instance_id(state.db())?;
     let cards = local_cards(state, &instance_id);
-    let shares = my_team_shares(state).await;
     let calls = call_stats(state.db(), "inbound", window_start())?;
-    Ok(merge_shared_by_me(cards, &shares, &calls))
+    Ok(merge_shared_by_me(cards, &calls))
 }
 
 /// Who serves each capability (or just `capability`), in the order
@@ -670,8 +543,7 @@ pub async fn list_capability_providers(
     let mine = local_cards(state, &instance_id);
     let trust = TrustFilter::load(state.db())?;
     let others = apply_trust(list_agents_shared_with_me(state).await?, &trust, true);
-    let mut data =
-        OverviewData::gather(state.store(), state.db(), state.team_manager().as_ref()).await;
+    let mut data = OverviewData::gather(state.store(), state.db());
     // The relay plans each capability someone else serves online
     let mut remote: Vec<String> = others
         .iter()
@@ -803,11 +675,8 @@ pub async fn set_trust_policy(
 mod tests {
     use super::*;
 
-    use futures_util::future::BoxFuture;
-
     use crate::services::domain::AgentId;
     use crate::services::repos::Repository;
-    use crate::services::team::Team;
 
     fn card(instance: &str, agent: &str, name: &str) -> AgentCard {
         let skill = format!(
@@ -820,58 +689,8 @@ mod tests {
         })
     }
 
-    fn team(id: &str) -> Team {
-        Team {
-            id: id.to_string(),
-            name: id.to_string(),
-            github_org: id.to_string(),
-            registry_repo: format!("github.com/{id}/nandi-registry"),
-            members: Vec::new(),
-            created_at: 0.0,
-            source: crate::services::team::TeamSource::git(&format!(
-                "https://github.com/{id}/nandi-registry.git"
-            )),
-        }
-    }
-
-    /// Teams `acme` (sharing `remote/papers`) and `broken` (an unreadable
-    /// registry)
-    struct FakeTeams;
-
-    impl TeamManager for FakeTeams {
-        fn list_teams(&self) -> BoxFuture<'_, Result<Vec<Team>, String>> {
-            Box::pin(async { Ok(vec![team("acme"), team("broken")]) })
-        }
-        fn team_agents<'a>(
-            &'a self,
-            team_id: &'a str,
-        ) -> BoxFuture<'a, Result<Vec<AgentCard>, String>> {
-            Box::pin(async move {
-                match team_id {
-                    "acme" => Ok(vec![card("remote", "papers", "Papers")]),
-                    _ => Err("registry not synced".to_string()),
-                }
-            })
-        }
-        fn shares_by_me(&self) -> BoxFuture<'_, Result<Vec<TeamShare>, String>> {
-            Box::pin(async { Ok(Vec::new()) })
-        }
-    }
-
-    #[tokio::test]
-    async fn a_team_shared_agent_shows_up_with_its_team() {
-        let cards = team_cards(&FakeTeams).await;
-        assert_eq!(cards.len(), 1, "the broken registry is skipped");
-        let list = merge_shared_with_me(cards, Vec::new(), "me", &HashMap::new());
-        assert_eq!(list.len(), 1);
-        assert_eq!(list[0].card.id, "remote/papers");
-        assert_eq!(list[0].sources, vec![ShareSource::Team]);
-        assert_eq!(list[0].team_ids, vec!["acme".to_string()]);
-        assert_eq!(list[0].card.owner.github_handle, "remote-owner");
-    }
-
     #[test]
-    fn team_and_relay_copies_merge_by_card_id_and_mine_are_left_out() {
+    fn relay_cards_are_shared_with_me_except_mine() {
         let calls = HashMap::from([(
             "remote/papers".to_string(),
             CallStats {
@@ -883,11 +702,6 @@ mod tests {
         live.current_load = 2;
         let list = merge_shared_with_me(
             vec![
-                ("acme".to_string(), card("remote", "papers", "Papers")),
-                ("beta".to_string(), card("remote", "papers", "Papers")),
-                ("acme".to_string(), card("me", "writer", "Writer")),
-            ],
-            vec![
                 live,
                 card("other", "atlas", "Atlas"),
                 card("me", "local", "Local"),
@@ -898,9 +712,8 @@ mod tests {
         let ids: Vec<&str> = list.iter().map(|s| s.card.id.as_str()).collect();
         assert_eq!(ids, vec!["other/atlas", "remote/papers"]);
         let papers = &list[1];
-        assert_eq!(papers.sources, vec![ShareSource::Team, ShareSource::Relay]);
-        assert_eq!(papers.team_ids, vec!["acme", "beta"]);
-        assert_eq!(papers.card.current_load, 2, "the live relay copy wins");
+        assert_eq!(papers.sources, vec![ShareSource::Relay]);
+        assert_eq!(papers.card.current_load, 2, "the live relay copy");
         assert_eq!((papers.call_count, papers.last_called_at), (3, Some(42.0)));
         assert_eq!(list[0].sources, vec![ShareSource::Relay]);
         assert_eq!(list[0].call_count, 0);
@@ -910,8 +723,6 @@ mod tests {
     fn shared_by_me_sums_calls_by_card_id_and_agent_id() {
         let mut private = card("me", "private", "Private");
         private.accepts_delegation = false;
-        let mut team_only = card("me", "writer", "Writer");
-        team_only.accepts_delegation = false;
         let calls = HashMap::from([
             (
                 "me/papers".to_string(),
@@ -928,26 +739,18 @@ mod tests {
                 },
             ),
         ]);
-        let shares = vec![TeamShare {
-            team_id: "acme".to_string(),
-            agent_id: "writer".to_string(),
-            shared_at: 0.0,
-        }];
-        let list = merge_shared_by_me(
-            vec![private, team_only, card("me", "papers", "Papers")],
-            &shares,
-            &calls,
+        let list = merge_shared_by_me(vec![private, card("me", "papers", "Papers")], &calls);
+        assert_eq!(
+            list.len(),
+            1,
+            "an agent not accepting delegation isn't shared"
         );
-        assert_eq!(list.len(), 2);
         assert_eq!(list[0].card.id, "me/papers");
         assert_eq!(list[0].sources, vec![ShareSource::Relay]);
         assert_eq!(
             (list[0].call_count, list[0].last_called_at),
             (3, Some(20.0))
         );
-        assert_eq!(list[1].card.id, "me/writer");
-        assert_eq!(list[1].sources, vec![ShareSource::Team]);
-        assert_eq!(list[1].team_ids, vec!["acme"]);
     }
 
     fn insert_delegation(db: &Db, id: &str, direction: &str, target: &str, started_at: i64) {
@@ -1161,11 +964,10 @@ mod tests {
         );
     }
 
-    fn shared(card: AgentCard, source: ShareSource) -> SharedAgent {
+    fn shared(card: AgentCard) -> SharedAgent {
         SharedAgent {
             card,
-            sources: vec![source],
-            team_ids: Vec::new(),
+            sources: vec![ShareSource::Relay],
             call_count: 0,
             last_called_at: None,
         }
@@ -1179,9 +981,9 @@ mod tests {
         let filter = TrustFilter::load(&db).unwrap();
         let list = apply_trust(
             vec![
-                shared(card("remote", "papers", "Papers"), ShareSource::Relay),
-                shared(card("remote", "notes", "Notes"), ShareSource::Team),
-                shared(card("other", "papers", "Other papers"), ShareSource::Relay),
+                shared(card("remote", "papers", "Papers")),
+                shared(card("remote", "notes", "Notes")),
+                shared(card("other", "papers", "Other papers")),
             ],
             &filter,
             false,
@@ -1205,8 +1007,8 @@ mod tests {
         .unwrap();
         let filter = TrustFilter::load(&db).unwrap();
         let others = vec![
-            shared(card("far", "y", "Paused"), ShareSource::Relay),
-            shared(card("near", "z", "Open"), ShareSource::Relay),
+            shared(card("far", "y", "Paused")),
+            shared(card("near", "z", "Open")),
         ];
         // Still listed as shared with me...
         assert_eq!(apply_trust(others.clone(), &filter, false).len(), 2);
@@ -1235,25 +1037,9 @@ mod tests {
     #[test]
     fn the_overview_ranks_callable_providers_and_marks_the_rest() {
         let mine = vec![card("me", "papers", "Mine")];
-        let others = vec![
-            SharedAgent {
-                card: card("remote", "x", "Registry only"),
-                sources: vec![ShareSource::Team],
-                team_ids: vec!["acme".into()],
-                call_count: 0,
-                last_called_at: None,
-            },
-            SharedAgent {
-                card: card("far", "y", "Online"),
-                sources: vec![ShareSource::Relay],
-                team_ids: Vec::new(),
-                call_count: 0,
-                last_called_at: None,
-            },
-        ];
+        let others = vec![shared(card("far", "y", "Online"))];
         let mut data = OverviewData {
             pins: BTreeMap::from([("find-papers".to_string(), "far/y".to_string())]),
-            teammates: ["far-owner".to_string()].into_iter().collect(),
             stats: HashMap::new(),
             plans: HashMap::from([("find-papers".to_string(), plan(&["far/y"]))]),
         };
@@ -1268,9 +1054,8 @@ mod tests {
             .iter()
             .map(|p| p.card.id.as_str())
             .collect();
-        assert_eq!(ids, ["far/y", "me/papers", "remote/x"]);
+        assert_eq!(ids, ["far/y", "me/papers"]);
         assert_eq!(papers.providers[0].rank, Some(1));
-        assert!(papers.providers[0].teammate);
         // The relay's reasons, for the others' only
         assert_eq!(
             papers.providers[0].reasons,
@@ -1279,8 +1064,6 @@ mod tests {
             }]
         );
         assert!(papers.providers[1].mine && papers.providers[1].reasons.is_empty());
-        assert_eq!(papers.providers[2].unavailable, Some(Unavailable::Offline));
-        assert_eq!(papers.providers[2].rank, None);
 
         // Without the pin my own goes first; without the relay's plan the
         // online one isn't picked now

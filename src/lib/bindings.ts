@@ -1559,82 +1559,8 @@ async setAgentDelegation(agentId: string, settings: AgentDelegationSettings) : P
     else return { status: "error", error: e  as any };
 }
 },
-async listTeams() : Promise<Result<Team[], string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("list_teams") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 /**
- * A team with its registry's agents and packs
- */
-async getTeam(teamId: string) : Promise<Result<TeamDetail, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_team", { teamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * `github_org` is the registry's git URL
- */
-async createTeam(githubOrg: string) : Promise<Result<Team, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("create_team", { githubOrg }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Re-syncs a team that's already here; new teams come in through
- * `create_team`
- */
-async joinTeam(teamId: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("join_team", { teamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async leaveTeam(teamId: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("leave_team", { teamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async syncTeamRegistry(teamId: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("sync_team_registry", { teamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async shareAgent(teamId: string, agentId: string) : Promise<Result<ShareResult, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("share_agent", { teamId, agentId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async unshareAgent(teamId: string, agentId: string) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("unshare_agent", { teamId, agentId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * From my teams' registries and the relay
+ * Agents online at the relay
  */
 async listAgentsSharedWithMe() : Promise<Result<SharedAgent[], string>> {
     try {
@@ -1645,7 +1571,7 @@ async listAgentsSharedWithMe() : Promise<Result<SharedAgent[], string>> {
 }
 },
 /**
- * Mine that accept delegation or are shared to a team
+ * Mine that accept delegation
  */
 async listAgentsSharedByMe() : Promise<Result<SharedAgent[], string>> {
     try {
@@ -2915,22 +2841,6 @@ async refreshNetwork() : Promise<Result<NetworkSnapshot, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async getTeamRoster(teamId: string) : Promise<Result<TeamRoster, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_team_roster", { teamId }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async getMemberProfile(teamId: string, handle: string) : Promise<Result<MemberProfile, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_member_profile", { teamId, handle }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async getMemberByInstance(instanceId: string) : Promise<Result<MemberProfile, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_member_by_instance", { instanceId }) };
@@ -3968,7 +3878,6 @@ studioArtifactLoaded: StudioArtifactLoaded,
 studioArtifactSaved: StudioArtifactSaved,
 studioEditPreviewed: StudioEditPreviewed,
 taskReassigned: TaskReassigned,
-teamChanged: TeamChanged,
 triggerChanged: TriggersChanged,
 triggerError: TriggerError,
 triggerFired: TriggerFired,
@@ -4040,7 +3949,6 @@ studioArtifactLoaded: "studio://artifact_loaded",
 studioArtifactSaved: "studio://artifact_saved",
 studioEditPreviewed: "studio://edit_previewed",
 taskReassigned: "task://reassigned",
-teamChanged: "team://changed",
 triggerChanged: "trigger://changed",
 triggerError: "trigger://error",
 triggerFired: "trigger://fired",
@@ -5115,7 +5023,6 @@ export type CapabilitySource =
  * Seen on the network (relay presence), no definition file here
  */
 "network"
-export type CatalogWorkflow = { id: string; name: string; description: string }
 /**
  * Whether a log's lines are all there, as written.
  */
@@ -6957,23 +6864,14 @@ name: string;
  * Still the default
  */
 isDefault: boolean }
-export type MemberAgent = { card: AgentCard; source: MemberAgentSource; teamId: string | null; 
+/**
+ * One of a member's agents, online at the relay
+ */
+export type MemberAgent = { card: AgentCard; 
 /**
  * We blocked it (`blocked_members`)
  */
 blocked: boolean }
-/**
- * Where we can reach one of a member's agents from
- */
-export type MemberAgentSource = 
-/**
- * Shared to a team we're in
- */
-"team" | 
-/**
- * On their gateway card, or shared with us directly
- */
-"direct"
 /**
  * `network://member_key_changed`: the relay shows other keys for a member
  * than the ones pinned; their profile asks the user to check them
@@ -6983,7 +6881,7 @@ export type MemberKeyChanged = { instanceId: string }
  * Everything the member profile shows. `connected` false: they haven't
  * connected their Nandi yet (no gateway card).
  */
-export type MemberProfile = { instanceId: string | null; handle: string | null; displayName: string; avatarUrl: string | null; online: boolean; lastSeen: number | null; connected: boolean; gateway: GatewayCard | null; capabilities: string[]; agents: MemberAgent[]; delegationStats: DelegationStats; 
+export type MemberProfile = { instanceId: string; handle: string | null; displayName: string; avatarUrl: string | null; online: boolean; lastSeen: number | null; connected: boolean; gateway: GatewayCard | null; capabilities: string[]; agents: MemberAgent[]; delegationStats: DelegationStats; 
 /**
  * Newest first, both directions
  */
@@ -6992,7 +6890,6 @@ recentDelegations: TaskRecord[]; trust: TrustRelationship;
  * The key we pinned for them; `None` before the directory showed one
  */
 key: PeerKeyStatus | null }
-export type MemberRole = "owner" | "admin" | "member"
 export type MemoryEntry = { content: string; 
 /**
  * Epoch milliseconds (as everywhere in the bindings)
@@ -7219,11 +7116,6 @@ deadline: number | null;
  */
 readyAt: number }
 /**
- * An agent I pushed to a team's share branch, waiting for a team admin
- * to merge it
- */
-export type PendingShare = { agentId: string; branch: string; sharedAt: number }
-/**
  * What the phrase gets: a line, nothing more
  */
 export type PhraseResponse = { line: string }
@@ -7371,11 +7263,7 @@ mine: boolean;
 /**
  * Callable now: mine, or online at the relay
  */
-online: boolean; 
-/**
- * Its owner is in one of my teams
- */
-teammate: boolean; sources: ShareSource[]; teamIds: string[]; 
+online: boolean; sources: ShareSource[]; 
 /**
  * My delegations to it in the last 30 days
  */
@@ -8213,11 +8101,6 @@ export type ReturnOutcome =
  * Ended with an error
  */
 "failed"
-export type RosterMember = { handle: string; displayName: string; instanceId: string | null; online: boolean; gateway: GatewayCard | null; sharedAgents: AgentCard[]; sharedWorkflows: CatalogWorkflow[]; 
-/**
- * Teams we're both in
- */
-teamCount: number; delegationStats: DelegationStats }
 /**
  * Why a candidate is where it is in the plan: a code and its
  * parameters. `name` is the candidate's display name.
@@ -8498,11 +8381,11 @@ inputSchema?: JsonValue | null;
  */
 outputSchema?: JsonValue | null }
 /**
- * What sharing did: pushed `branch` (an admin must merge it), or nothing
- * because the team already has this version (`None`)
+ * Where a shared agent was found (with me) or how it's exposed (by me).
+ * People share agents through the relay only; packs travel through git
+ * registries in the marketplace instead.
  */
-export type ShareResult = { branch: string | null }
-export type ShareSource = "team" | "relay"
+export type ShareSource = "relay"
 /**
  * An agent card with how it's shared and how much it's used.
  */
@@ -8510,7 +8393,7 @@ export type SharedAgent = { card: AgentCard;
 /**
  * Where it was found (with me) or how it's exposed (by me)
  */
-sources: ShareSource[]; teamIds: string[]; 
+sources: ShareSource[]; 
 /**
  * Delegations in the last 30 days
  */
@@ -8844,50 +8727,6 @@ export type TaskStatusReport = { taskId: string; state: TaskState; etaSeconds: n
  * `false`: answered from the local row
  */
 live: boolean }
-export type Team = { 
-/**
- * The registry URL's last path segment, lowercased
- */
-id: string; name: string; githubOrg: string; 
-/**
- * The registry's git URL
- */
-registryRepo: string; members: TeamMember[]; createdAt: number; 
-/**
- * Where membership comes from
- */
-source: TeamSource }
-/**
- * `team://changed`
- */
-export type TeamChanged = { teamId: string }
-/**
- * A team with what its registry holds, for the team detail view.
- */
-export type TeamDetail = { team: Team; agents: AgentCard[]; 
-/**
- * Pack IDs in the registry
- */
-packs: string[]; lastSyncedAt: number | null; 
-/**
- * My shares pushed but not merged yet (not in the team's index)
- */
-pendingShares?: PendingShare[] }
-export type TeamMember = { githubHandle: string; displayName: string; role: MemberRole; joinedAt: number }
-export type TeamRoster = { teamId: string; members: RosterMember[]; fetchedAt: number }
-/**
- * Where a team's membership comes from
- */
-export type TeamSource = { kind: TeamSourceKind; 
-/**
- * The registry's git URL
- */
-identifier: string }
-export type TeamSourceKind = 
-/**
- * A git registry
- */
-"git"
 /**
  * One step of a template
  */
@@ -9159,7 +8998,7 @@ export type Unavailable =
  */
 "isRequester" | 
 /**
- * Not online at the relay (known only from a team registry)
+ * Not online at the relay
  */
 "offline" | 
 /**

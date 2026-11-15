@@ -13,7 +13,6 @@ import type {
 import {
   memberQueryKeys,
   networkQueryKeys,
-  rosterQueryKeys,
   useMemberEvents,
 } from './useNetwork'
 import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
@@ -54,7 +53,6 @@ function useTrustCallbacks() {
       for (const queryKey of [
         memberQueryKeys.all,
         networkQueryKeys.all,
-        rosterQueryKeys.all,
         ['shared'],
       ]) {
         void queryClient.invalidateQueries({ queryKey })

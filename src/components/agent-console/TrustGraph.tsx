@@ -7,7 +7,6 @@ import {
   useSetTrustPolicy,
   useSharedAgents,
   useTrustGraphHistory,
-  useTrustGraphTeams,
   useTrustPolicies,
 } from '@/hooks/useSharedAgents'
 import type { TrustPolicy } from '@/lib/bindings'
@@ -33,14 +32,12 @@ const NODE_FILL: Record<TrustNodeKind, string> = {
   mine: 'fill-success',
   callable: 'fill-info',
   caller: 'fill-warning',
-  team: 'fill-muted-foreground',
 }
 
 const LEGEND_SWATCH: Record<TrustNodeKind, string> = {
   mine: 'bg-success',
   callable: 'bg-info',
   caller: 'bg-warning',
-  team: 'bg-muted-foreground',
 }
 
 const POLICY_STROKE: Record<TrustPolicy, string> = {
@@ -52,8 +49,8 @@ const POLICY_STROKE: Record<TrustPolicy, string> = {
 type Selection = { kind: 'node'; id: string } | { kind: 'edge'; id: string }
 
 /**
- * Force-directed graph of my agents, agents I call, agents that call me,
- * and teams; edges are weighted by calls in the last 30 days. Click a node
+ * Force-directed graph of my agents, agents I call, and agents that call
+ * mine; edges are weighted by calls in the last 30 days. Click a node
  * to highlight its connections, an inbound edge to set allow / deny / ask.
  */
 export function TrustGraph() {
@@ -61,7 +58,6 @@ export function TrustGraph() {
   const { withMe, byMe } = useSharedAgents()
   const policies = useTrustPolicies()
   const history = useTrustGraphHistory()
-  const teams = useTrustGraphTeams()
   const [selection, setSelection] = useState<Selection | null>(null)
 
   // Unavailable sources (not configured yet) just contribute nothing
@@ -69,7 +65,6 @@ export function TrustGraph() {
     sharedByMe: byMe.data ?? [],
     sharedWithMe: withMe.data ?? [],
     history: history.data ?? [],
-    teams: teams.data ?? [],
     policies: policies.data ?? [],
     // The window ends when the history was read
     now: history.dataUpdatedAt,
@@ -152,15 +147,10 @@ export function TrustGraph() {
                   x2={to.x}
                   y2={to.y}
                   className={cn(
-                    edge.kind === 'team'
-                      ? 'stroke-border'
-                      : edge.policy
-                        ? POLICY_STROKE[edge.policy]
-                        : 'stroke-info/70',
+                    edge.policy ? POLICY_STROKE[edge.policy] : 'stroke-info/70',
                     selected && 'stroke-ring'
                   )}
                   strokeWidth={edgeWidth(edge.weight) + (selected ? 2 : 0)}
-                  strokeDasharray={edge.kind === 'team' ? '4 4' : undefined}
                 />
               </g>
             )
@@ -193,29 +183,14 @@ export function TrustGraph() {
                   }
                 }}
               >
-                {node.kind === 'team' ? (
-                  <rect
-                    x={-NODE_RADIUS}
-                    y={-NODE_RADIUS}
-                    width={NODE_RADIUS * 2}
-                    height={NODE_RADIUS * 2}
-                    rx={4}
-                    className={cn(
-                      NODE_FILL[node.kind],
-                      selected ? 'stroke-ring' : 'stroke-background'
-                    )}
-                    strokeWidth={selected ? 3 : 2}
-                  />
-                ) : (
-                  <circle
-                    r={NODE_RADIUS}
-                    className={cn(
-                      NODE_FILL[node.kind],
-                      selected ? 'stroke-ring' : 'stroke-background'
-                    )}
-                    strokeWidth={selected ? 3 : 2}
-                  />
-                )}
+                <circle
+                  r={NODE_RADIUS}
+                  className={cn(
+                    NODE_FILL[node.kind],
+                    selected ? 'stroke-ring' : 'stroke-background'
+                  )}
+                  strokeWidth={selected ? 3 : 2}
+                />
                 <text
                   y={NODE_RADIUS + 14}
                   textAnchor="middle"
@@ -241,7 +216,7 @@ export function TrustGraph() {
 
 function Legend() {
   const { t } = useTranslation()
-  const kinds: TrustNodeKind[] = ['mine', 'callable', 'caller', 'team']
+  const kinds: TrustNodeKind[] = ['mine', 'callable', 'caller']
   return (
     <ul className="flex flex-wrap gap-4 text-xs text-muted-foreground">
       {kinds.map(kind => (
@@ -262,14 +237,11 @@ function edgeLabel(
   model: TrustGraphModel,
   t: (key: string, options?: Record<string, unknown>) => string
 ) {
-  return t(
-    edge.kind === 'team' ? 'shared.graph.teamEdge' : 'shared.graph.callEdge',
-    {
-      from: labelOf(model, edge.source),
-      to: labelOf(model, edge.target),
-      n: edge.weight,
-    }
-  )
+  return t('shared.graph.callEdge', {
+    from: labelOf(model, edge.source),
+    to: labelOf(model, edge.target),
+    n: edge.weight,
+  })
 }
 
 function NodeDetail({
@@ -335,9 +307,7 @@ function EdgeDetail({
       <h3 className="font-semibold">{edgeLabel(edge, model, t)}</h3>
       {edge.policy === null ? (
         <p className="text-muted-foreground">
-          {edge.kind === 'team'
-            ? t('shared.graph.teamEdgeHint')
-            : t('shared.graph.outboundHint')}
+          {t('shared.graph.outboundHint')}
         </p>
       ) : (
         <>

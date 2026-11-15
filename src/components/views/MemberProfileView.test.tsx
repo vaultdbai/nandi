@@ -71,14 +71,10 @@ const profile: MemberProfile = {
   agents: [
     {
       card: agentCard('i-alice', 'papers', { name: 'Papers' }),
-      source: 'team',
-      teamId: 'acme',
       blocked: false,
     },
     {
       card: agentCard('i-alice', 'notes', { name: 'Notes' }),
-      source: 'direct',
-      teamId: null,
       blocked: false,
     },
   ],
@@ -254,7 +250,7 @@ describe('MemberProfileView', () => {
     })
   })
 
-  it('shows the gateway, then agents by source in the capabilities tab', async () => {
+  it("shows the gateway, then the member's agents in the capabilities tab", async () => {
     const user = userEvent.setup()
     render(<MemberProfileView instanceId="i-alice" />)
     expect(await screen.findByText('Research help')).toBeInTheDocument()
@@ -262,8 +258,7 @@ describe('MemberProfileView', () => {
     expect(
       screen.getByTestId('member-agent-i-alice/papers')
     ).toBeInTheDocument()
-    expect(screen.getByText('Shared to a team')).toBeInTheDocument()
-    expect(screen.getByText('Direct')).toBeInTheDocument()
+    expect(screen.getByTestId('member-agent-i-alice/notes')).toBeInTheDocument()
     expect(screen.getAllByText('find-papers').length).toBeGreaterThan(0)
   })
 

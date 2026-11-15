@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Download, PhoneOutgoing, RadioTower, Users } from 'lucide-react'
+import { PhoneOutgoing, RadioTower, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,11 +22,6 @@ import {
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { CallDialog, type CallRequest } from '@/components/sharing/CallDialog'
 import { CapabilityProvidersList } from '@/components/sharing/CapabilityProvidersList'
 import { OwnerGroup } from '@/components/network/OwnerGroup'
@@ -38,14 +33,13 @@ import {
   recentlyUsed,
   useCapabilityProviders,
   useSharedAgents,
-  type SourceFilter,
 } from '@/hooks/useSharedAgents'
 import { useRelay } from '@/hooks/useRelay'
 import type { SharedAgent } from '@/lib/bindings'
 import { useNavigationStore, type View } from '@/store/navigation-store'
 
-/** A source, or "used in the last 7 days" (any source) */
-type AgentFilter = SourceFilter | 'recent'
+/** Everyone, or "used in the last 7 days" */
+type AgentFilter = 'all' | 'recent'
 
 /**
  * Library › Shared with me: agents people on my network share, grouped by
@@ -68,10 +62,8 @@ export function SharedWithMeView({
   const [calling, setCalling] = useState<CallRequest | null>(null)
 
   const agents = withMe.data ?? []
-  const searched =
-    source === 'recent'
-      ? recentlyUsed(filterSharedAgents(agents, { source: 'all', search }))
-      : filterSharedAgents(agents, { source, search })
+  const matching = filterSharedAgents(agents, search)
+  const searched = source === 'recent' ? recentlyUsed(matching) : matching
   const visible =
     canDo === null
       ? searched
@@ -98,12 +90,6 @@ export function SharedWithMeView({
           >
             <NativeSelectOption value="all">
               {t('shared.filter.everyone')}
-            </NativeSelectOption>
-            <NativeSelectOption value="team">
-              {t('shared.filter.myTeams')}
-            </NativeSelectOption>
-            <NativeSelectOption value="relay">
-              {t('shared.source.relay')}
             </NativeSelectOption>
             <NativeSelectOption value="recent">
               {t('shared.filter.recent')}
@@ -268,11 +254,6 @@ function SharedAgentCard({
               {t(`shared.source.${source}`)}
             </Badge>
           ))}
-          {agent.teamIds.map(teamId => (
-            <Badge key={teamId} variant="outline" className="font-normal">
-              {teamId}
-            </Badge>
-          ))}
         </div>
       </CardContent>
       <CardFooter className="mt-auto gap-2">
@@ -284,18 +265,6 @@ function SharedAgentCard({
           <PhoneOutgoing />
           {t('shared.call')}
         </Button>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            {/* A disabled button gets no pointer events; the span shows the tooltip */}
-            <span tabIndex={0}>
-              <Button size="sm" variant="outline" disabled>
-                <Download />
-                {t('shared.install')}
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>{t('shared.installUnavailable')}</TooltipContent>
-        </Tooltip>
       </CardFooter>
     </Card>
   )

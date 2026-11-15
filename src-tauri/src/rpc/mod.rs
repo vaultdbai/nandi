@@ -168,8 +168,6 @@ pub mod shared;
 pub mod snapshots;
 pub mod studio;
 pub mod tasks;
-pub mod teams;
-pub mod teams_roster;
 pub mod tools;
 pub mod triggers;
 pub mod work;
@@ -238,8 +236,6 @@ const TABLES: &[&[(&str, Handler)]] = &[
     snapshots::RPC,
     studio::RPC,
     tasks::RPC,
-    teams::RPC,
-    teams_roster::RPC,
     tools::RPC,
     triggers::RPC,
     work::RPC,

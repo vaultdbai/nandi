@@ -6,7 +6,6 @@ import type {
   ProviderOption,
   SharedAgent,
   TaskResult,
-  Team,
   TrustRule,
 } from '@/lib/bindings'
 
@@ -38,8 +37,7 @@ export function sharedAgent(
 ): SharedAgent {
   return {
     card,
-    sources: ['team'],
-    teamIds: [],
+    sources: ['relay'],
     callCount: 0,
     lastCalledAt: null,
     ...overrides,
@@ -54,9 +52,7 @@ export function providerOption(
     card,
     mine: false,
     online: true,
-    teammate: false,
     sources: [],
-    teamIds: [],
     stats: { calls: 0, succeeded: 0, failed: 0, avgDurationMs: null },
     successRate: null,
     rank: null,
@@ -89,18 +85,6 @@ export function task(
     input: null,
     startedAt,
     endedAt: startedAt + 10,
-  }
-}
-
-export function team(id: string): Team {
-  return {
-    id,
-    name: id,
-    githubOrg: id,
-    registryRepo: `github.com/${id}/nandi-registry`,
-    members: [],
-    createdAt: 0,
-    source: { kind: 'git', identifier: id },
   }
 }
 

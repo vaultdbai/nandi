@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search, Share2, Users } from 'lucide-react'
+import { Search, Share2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -42,13 +42,11 @@ import {
   recentlyUsed,
   useSharedAgents,
   useStopSharing,
-  type StopSharing,
 } from '@/hooks/useSharedAgents'
 import { useRelay } from '@/hooks/useRelay'
-import { useTeams } from '@/hooks/useTeams'
 import type { SharedAgent } from '@/lib/bindings'
 import { formatRelativeTime } from '@/lib/format-time'
-import { MANAGE_TEAMS, useNavigationStore } from '@/store/navigation-store'
+import { useNavigationStore } from '@/store/navigation-store'
 
 /**
  * Sharing › Shared: my shared agents (grouped by owner, like Shared with
@@ -67,7 +65,7 @@ function MySharedAgents() {
   const [search, setSearch] = useState('')
   const [usage, setUsage] = useState<'all' | 'recent'>('all')
   const agents = byMe.data ?? []
-  const matching = filterSharedAgents(agents, { source: 'all', search })
+  const matching = filterSharedAgents(agents, search)
   const visible = usage === 'recent' ? recentlyUsed(matching) : matching
 
   return (
@@ -127,13 +125,13 @@ function MySharedAgents() {
                   onClick={() =>
                     useNavigationStore.getState().navigate({
                       kind: 'network',
-                      tab: 'people',
-                      team: MANAGE_TEAMS,
+                      tab: 'sharing',
+                      sharing: 'offer',
                     })
                   }
                 >
-                  <Users />
-                  {t('shared.goToTeams')}
+                  <Share2 />
+                  {t('network.sharing.offer')}
                 </Button>
               </EmptyContent>
             </Empty>
@@ -178,16 +176,13 @@ function MySharedAgentCard({
 }) {
   const { t, i18n } = useTranslation()
   const stop = useStopSharing()
-  const teams = useTeams()
-  const teamName = (teamId: string) =>
-    teams.data?.find(team => team.id === teamId)?.name ?? teamId
   const { card } = agent
   const agentId = card.id.startsWith(`${card.instanceId}/`)
     ? card.id.slice(card.instanceId.length + 1)
     : card.id
 
-  const stopSharing = (target: StopSharing) => {
-    stop.mutate(target, {
+  const stopSharing = () => {
+    stop.mutate(agentId, {
       onSuccess: () => toast.success(t('shared.byMe.stopped')),
       onError: error =>
         toast.error(t('shared.byMe.stopFailed', { error: error.message })),
@@ -226,18 +221,9 @@ function MySharedAgentCard({
                   : t('shared.byMe.acceptsDelegation')
               }
               disabled={stop.isPending}
-              onStop={() => stopSharing({ kind: 'relay', agentId })}
+              onStop={stopSharing}
             />
           )}
-          {agent.teamIds.map(teamId => (
-            <SharingToggle
-              key={teamId}
-              id={`share-team-${agentId}-${teamId}`}
-              label={t('shared.byMe.sharedToTeam', { team: teamName(teamId) })}
-              disabled={stop.isPending}
-              onStop={() => stopSharing({ kind: 'team', teamId, agentId })}
-            />
-          ))}
         </div>
       </CardContent>
     </Card>

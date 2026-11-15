@@ -540,16 +540,6 @@ fn adopt_remote(
 // Credentials
 // ---------------------------------------------------------------------------
 
-/// A token credential (the password of `x-access-token`)
-pub fn token_credential(token: &str) -> RemoteCredential {
-    RemoteCredential {
-        kind: CredentialKind::Token,
-        token: Some(token.to_string()),
-        username: None,
-        ssh_key_path: None,
-    }
-}
-
 /// The stored credential through libgit2's callback: a token (or the
 /// GitHub sign-in's) is the password of `x-access-token` (or the given
 /// username); a username and password; an SSH key file (the token, if any,

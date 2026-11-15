@@ -271,13 +271,9 @@ function AgentRow({
   const sharedText =
     shared.kind === 'from'
       ? t('agentPage.list.from', { publisher: shared.publisher })
-      : sharing.teamIds.length > 0 && sharing.relay
-        ? t('agentPage.list.teamAndRelay')
-        : sharing.teamIds.length > 0
-          ? t('agentPage.list.team')
-          : sharing.relay
-            ? t('agentPage.list.relay')
-            : '—'
+      : sharing.relay
+        ? t('agentPage.list.relay')
+        : '—'
   const open = (tab?: 'settings') =>
     navigate({ kind: 'agent', agentId: agent.id, ...(tab && { tab }) })
 

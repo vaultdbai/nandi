@@ -10,7 +10,6 @@ import {
   RadioTower,
   Settings2,
   Trash2,
-  Users,
 } from 'lucide-react'
 import {
   AlertDialog,
@@ -29,36 +28,20 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  useAgentSharing,
-  useSetRelaySharing,
-  useToggleTeamShare,
-} from '@/hooks/useAgentSharing'
+import { useAgentSharing, useSetRelaySharing } from '@/hooks/useAgentSharing'
 import { rawError } from '@/lib/friendly-error'
 import { openAgentInStudio } from '@/lib/ask'
 import { cn } from '@/lib/utils'
-import {
-  MANAGE_TEAMS,
-  useNavigationStore,
-  type View,
-} from '@/store/navigation-store'
-import { toastShared } from '@/components/team/share-toast'
+import { useNavigationStore, type View } from '@/store/navigation-store'
 import type { AgentInfo } from '@/types/agent'
-
-/** Sharing out is outward: it asks first (README principle 7) */
-type PendingShare =
-  { kind: 'team'; id: string; name: string } | { kind: 'relay' }
 
 /**
  * An agent's menu, from its always-visible "⋯" button (or by right-clicking
  * its row): open it, chat, runs, Edit in Studio, sharing, and delete.
- * Sharing goes only to my teams (their private registries) or the relay,
- * never to the OS share sheet.
+ * Sharing goes only to the relay, never to the OS share sheet. Sharing out
+ * is outward, so it asks first (README principle 7).
  */
 export function AgentMenu({
   agent,
@@ -77,7 +60,7 @@ export function AgentMenu({
   className?: string
 }) {
   const { t } = useTranslation()
-  const [pending, setPending] = useState<PendingShare | null>(null)
+  const [confirming, setConfirming] = useState(false)
 
   return (
     <>
@@ -100,16 +83,12 @@ export function AgentMenu({
             agent={agent}
             onOpenSharing={onOpenSharing}
             onDelete={onDelete}
-            onRequestShare={setPending}
+            onRequestShare={() => setConfirming(true)}
           />
         </DropdownMenuContent>
       </DropdownMenu>
-      {pending && (
-        <ConfirmShare
-          agent={agent}
-          share={pending}
-          onClose={() => setPending(null)}
-        />
+      {confirming && (
+        <ConfirmShare agent={agent} onClose={() => setConfirming(false)} />
       )}
     </>
   )
@@ -124,11 +103,10 @@ function AgentMenuItems({
   agent: AgentInfo
   onOpenSharing: () => void
   onDelete?: () => void
-  onRequestShare: (share: PendingShare) => void
+  onRequestShare: () => void
 }) {
   const { t } = useTranslation()
-  const { teams, teamsLoading, sharing } = useAgentSharing(agent.id)
-  const toggleTeam = useToggleTeamShare(agent.id)
+  const { sharing } = useAgentSharing(agent.id)
   const setRelay = useSetRelaySharing(agent.id)
   // Marketplace installs are someone else's agent: only they can share it
   const mine = agent.origin.kind === 'local'
@@ -170,72 +148,12 @@ function AgentMenuItems({
           {t('agentMenu.notYours')}
         </DropdownMenuLabel>
       )}
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger disabled={!mine} className="gap-2">
-          <Users className="size-4 text-muted-foreground" />
-          {t('agentMenu.shareWithTeam')}
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent className="w-52">
-          {teamsLoading ? (
-            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-              {t('agentMenu.loadingTeams')}
-            </DropdownMenuLabel>
-          ) : teams.length === 0 ? (
-            <DropdownMenuItem
-              onSelect={() =>
-                navigate({ kind: 'network', tab: 'people', team: MANAGE_TEAMS })
-              }
-            >
-              {t('agentMenu.noTeams')}
-            </DropdownMenuItem>
-          ) : (
-            teams.map(team => {
-              const shared = sharing.teamIds.includes(team.id)
-              return (
-                <DropdownMenuCheckboxItem
-                  key={team.id}
-                  checked={shared}
-                  disabled={toggleTeam.isPending}
-                  onCheckedChange={next => {
-                    if (next === true) {
-                      onRequestShare({
-                        kind: 'team',
-                        id: team.id,
-                        name: team.name,
-                      })
-                      return
-                    }
-                    toggleTeam.mutate(
-                      { teamId: team.id, share: false },
-                      {
-                        onSuccess: () =>
-                          toast.success(
-                            t('agentMenu.unsharedFromTeam', {
-                              name: agent.name,
-                              team: team.name,
-                            })
-                          ),
-                        onError: error =>
-                          toast.error(t('teams.error.unshare'), {
-                            description: rawError(error),
-                          }),
-                      }
-                    )
-                  }}
-                >
-                  {team.name}
-                </DropdownMenuCheckboxItem>
-              )
-            })
-          )}
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
       <DropdownMenuCheckboxItem
         checked={sharing.relay}
         disabled={!mine || setRelay.isPending}
         onCheckedChange={next => {
           if (next === true) {
-            onRequestShare({ kind: 'relay' })
+            onRequestShare()
             return
           }
           setRelay.mutate(false, {
@@ -268,42 +186,26 @@ function AgentMenuItems({
   )
 }
 
-/** "Share Writer with Research?" / "with everyone on your relay?" */
+/** "Share Writer with everyone on your relay?" */
 function ConfirmShare({
   agent,
-  share,
   onClose,
 }: {
   agent: AgentInfo
-  share: PendingShare
   onClose: () => void
 }) {
   const { t } = useTranslation()
-  const toggleTeam = useToggleTeamShare(agent.id)
   const setRelay = useSetRelaySharing(agent.id)
 
   const confirm = () => {
-    if (share.kind === 'team') {
-      toggleTeam.mutate(
-        { teamId: share.id, share: true },
-        {
-          onSuccess: result => toastShared(result, agent.name, share.name),
-          onError: error =>
-            toast.error(t('teams.error.share'), {
-              description: rawError(error),
-            }),
-        }
-      )
-    } else {
-      setRelay.mutate(true, {
-        onSuccess: () =>
-          toast.success(t('agentMenu.relayOn', { name: agent.name })),
-        onError: error =>
-          toast.error(t('agentMenu.relayError'), {
-            description: rawError(error),
-          }),
-      })
-    }
+    setRelay.mutate(true, {
+      onSuccess: () =>
+        toast.success(t('agentMenu.relayOn', { name: agent.name })),
+      onError: error =>
+        toast.error(t('agentMenu.relayError'), {
+          description: rawError(error),
+        }),
+    })
     onClose()
   }
 
@@ -312,19 +214,10 @@ function ConfirmShare({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {share.kind === 'team'
-              ? t('agentMenu.confirmShare.teamTitle', {
-                  name: agent.name,
-                  team: share.name,
-                })
-              : t('agentMenu.confirmShare.relayTitle', { name: agent.name })}
+            {t('agentMenu.confirmShare.relayTitle', { name: agent.name })}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {share.kind === 'team'
-              ? t('agentMenu.confirmShare.teamDescription', {
-                  team: share.name,
-                })
-              : t('agentMenu.confirmShare.relayDescription')}
+            {t('agentMenu.confirmShare.relayDescription')}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

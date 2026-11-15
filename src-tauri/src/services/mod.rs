@@ -77,7 +77,6 @@ pub mod selection;
 pub mod shared;
 pub mod snapshots;
 pub mod studio;
-pub mod team;
 pub mod tools;
 pub mod triggers;
 pub mod trust;
@@ -112,7 +111,6 @@ use repos::{RepoLayout, Repos};
 use run_analysis::RunAnalyzer;
 use runtimes::AgentRuntimes;
 use secrets::Secrets;
-use team::TeamManager;
 use triggers::TriggerEngine;
 use workflows::WorkflowEngine;
 
@@ -174,7 +172,6 @@ struct Inner {
     relay_client: Option<Arc<dyn RelayClient>>,
     /// Cross-user delegation. `None` without an instance ID.
     a2a_delegator: Option<Arc<Delegator>>,
-    team_manager: Arc<dyn TeamManager>,
     analysis: Arc<dyn RunAnalyzer>,
     palette: Arc<PaletteService>,
     remote: Arc<dyn remote::RemoteService>,
@@ -459,13 +456,6 @@ impl AppState {
                 id.clone(),
             )
         });
-        let team_manager: Arc<dyn TeamManager> = Arc::new(team::TeamService::new(
-            db.clone(),
-            bus.clone(),
-            store.clone(),
-            config.secrets.clone(),
-            team::TeamConfig::in_repo(&store),
-        ));
         let a2a_deps = instance_id.as_ref().map(|id| {
             A2aDeps::new(
                 db.clone(),
@@ -569,7 +559,6 @@ impl AppState {
                 capability_index,
                 relay_client,
                 a2a_delegator,
-                team_manager,
                 tasks,
                 clarifications,
                 gateway,
@@ -719,11 +708,6 @@ impl AppState {
         self.0.a2a_delegator.as_ref()
     }
 
-    /// Teams and their private registries
-    pub fn team_manager(&self) -> &Arc<dyn TeamManager> {
-        &self.0.team_manager
-    }
-
     /// "Ask about this run"
     pub fn analysis(&self) -> &Arc<dyn RunAnalyzer> {
         &self.0.analysis
@@ -783,7 +767,6 @@ impl AppState {
         }
         network::watch_directory(self);
         triggers::handover::init(self);
-        team::roster::watch(self);
     }
 
     /// The capability service

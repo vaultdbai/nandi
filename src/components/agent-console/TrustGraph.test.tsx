@@ -8,14 +8,12 @@ import {
   ok,
   sharedAgent,
   task,
-  team,
   trustRule,
 } from '@/hooks/useSharedAgents.fixtures'
 import { TrustGraph } from './TrustGraph'
 
 const mine = sharedAgent(agentCard('me', 'papers', { name: 'Papers' }), {
-  sources: ['relay', 'team'],
-  teamIds: ['acme'],
+  sources: ['relay'],
 })
 const remote = sharedAgent(agentCard('bob', 'atlas', { name: 'Atlas' }), {
   sources: ['relay'],
@@ -31,17 +29,15 @@ describe('TrustGraph', () => {
         task('inbound', 'carol/scribe', 'papers', Date.now() - 1000),
         task('outbound', 'me/papers', 'bob/atlas', Date.now() - 1000),
       ]),
-      listTeams: ok([team('acme')]),
       setTrustPolicy: ok(null),
     })
   })
 
-  it('draws my agents, agents I call, callers, and teams', async () => {
+  it('draws my agents, agents I call, and callers', async () => {
     render(<TrustGraph />)
     expect(await screen.findByTestId('trust-node-me/papers')).toBeVisible()
     expect(await screen.findByTestId('trust-node-carol/scribe')).toBeVisible()
     expect(screen.getByTestId('trust-node-bob/atlas')).toBeVisible()
-    expect(screen.getByTestId('trust-node-team:acme')).toBeVisible()
   })
 
   it('highlights a node’s connections and shows its details', async () => {
@@ -89,10 +85,9 @@ describe('TrustGraph', () => {
     ).toBeNull()
   })
 
-  it('still draws what it has when delegation and teams are unavailable', async () => {
+  it('still draws what it has when delegation is unavailable', async () => {
     Object.assign(commands, {
       listDelegationHistory: notImplemented(),
-      listTeams: notImplemented(),
       listTrustPolicies: ok([]),
     })
     render(<TrustGraph />)

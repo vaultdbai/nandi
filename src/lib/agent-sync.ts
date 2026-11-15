@@ -450,10 +450,6 @@ export function handleNandiEvent(event: NandiEvent) {
       })
       void queryClient.invalidateQueries({ queryKey: memberQueryKeys.all })
       return
-    case 'team://changed':
-      void queryClient.invalidateQueries({ queryKey: ['teams'] })
-      void queryClient.invalidateQueries({ queryKey: sharedQueryKeys.all })
-      return
     case 'delegation://task_started':
     case 'delegation://task_completed':
     case 'delegation://task_failed':

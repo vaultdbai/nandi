@@ -14,25 +14,23 @@ import { useNavigationStore } from '@/store/navigation-store'
 import { groupByOwner } from '@/hooks/useSharedAgents'
 import { SharedWithMeView } from './SharedWithMe'
 
-const teamPapers = sharedAgent(
+const papersAgent = sharedAgent(
   agentCard('alice', 'papers', {
     name: 'Papers',
     capabilities: [{ name: 'find-papers' }, { name: 'summarize' }],
-  }),
-  { sources: ['team'], teamIds: ['acme'] }
+  })
 )
 const relayAtlas = sharedAgent(agentCard('bob', 'atlas', { name: 'Atlas' }), {
   sources: ['relay'],
 })
 
-/** `find-papers`: Atlas (auto, online) and Papers (registry only) */
+/** `find-papers`: Atlas (auto, online) and Papers (offline) */
 const findPapers: CapabilityProviders = {
   capability: 'find-papers',
   providers: [
     providerOption(relayAtlas.card, {
       rank: 1,
       sources: ['relay'],
-      teammate: true,
       stats: { calls: 4, succeeded: 3, failed: 1, avgDurationMs: 2500 },
       successRate: 0.75,
       reasons: [
@@ -40,10 +38,8 @@ const findPapers: CapabilityProviders = {
         { code: 'usually_quick', name: 'Bob' },
       ],
     }),
-    providerOption(teamPapers.card, {
+    providerOption(papersAgent.card, {
       online: false,
-      sources: ['team'],
-      teamIds: ['acme'],
       unavailable: 'offline',
     }),
   ],
@@ -52,7 +48,7 @@ const findPapers: CapabilityProviders = {
 }
 const summarize: CapabilityProviders = {
   capability: 'summarize',
-  providers: [providerOption(teamPapers.card, { rank: 1, sources: ['team'] })],
+  providers: [providerOption(papersAgent.card, { rank: 1 })],
   pinned: null,
   autoChoice: 'alice/papers',
 }
@@ -60,7 +56,7 @@ const summarize: CapabilityProviders = {
 describe('SharedWithMeView', () => {
   beforeEach(() => {
     Object.assign(commands, {
-      listAgentsSharedWithMe: ok([teamPapers, relayAtlas]),
+      listAgentsSharedWithMe: ok([papersAgent, relayAtlas]),
       listAgentsSharedByMe: ok([]),
       delegateTask: ok('task-1'),
       listCapabilityProviders: ok([findPapers, summarize]),
@@ -68,7 +64,7 @@ describe('SharedWithMeView', () => {
     })
   })
 
-  it('shows an agent a team shares, with owner, capabilities, and team', async () => {
+  it('shows an agent shared at the relay, with owner and capabilities', async () => {
     render(<SharedWithMeView />)
     const card = within(await screen.findByTestId('shared-agent-alice/papers'))
     expect(card.getByText('Papers')).toBeInTheDocument()
@@ -76,11 +72,6 @@ describe('SharedWithMeView', () => {
     expect(card.getByTitle('@alice-owner')).toHaveTextContent('alice')
     expect(card.getByText('find-papers')).toBeInTheDocument()
     expect(card.getByText('summarize')).toBeInTheDocument()
-    expect(card.getByText('acme')).toBeInTheDocument()
-    // No backend installs team agents yet
-    expect(
-      card.getByRole('button', { name: /shared\.install|install locally/i })
-    ).toBeDisabled()
   })
 
   it('points to the network connection when not connected and nothing is shared', async () => {
@@ -93,8 +84,6 @@ describe('SharedWithMeView', () => {
     expect(
       await screen.findByText('No one is sharing with you yet')
     ).toBeInTheDocument()
-    // No Teams page to send anyone to
-    expect(screen.queryByRole('button', { name: /go to teams/i })).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Go to Network' }))
     expect(useNavigationStore.getState().current).toEqual({
       kind: 'network',
@@ -116,16 +105,11 @@ describe('SharedWithMeView', () => {
     })
   })
 
-  it('filters by where it comes from, and by the page search', async () => {
-    const user = userEvent.setup()
+  it('filters by the page search', async () => {
     const { rerender } = render(<SharedWithMeView />)
     await screen.findByTestId('shared-agent-alice/papers')
-
-    await user.selectOptions(screen.getByRole('combobox'), 'relay')
-    expect(screen.queryByTestId('shared-agent-alice/papers')).toBeNull()
     expect(screen.getByTestId('shared-agent-bob/atlas')).toBeInTheDocument()
 
-    await user.selectOptions(screen.getByRole('combobox'), 'all')
     rerender(<SharedWithMeView search="alice" />)
     expect(screen.getByTestId('shared-agent-alice/papers')).toBeInTheDocument()
     expect(screen.queryByTestId('shared-agent-bob/atlas')).toBeNull()
@@ -169,7 +153,7 @@ describe('SharedWithMeView', () => {
       sources: ['relay'],
     })
     Object.assign(commands, {
-      listAgentsSharedWithMe: ok([teamPapers, relayAtlas, late]),
+      listAgentsSharedWithMe: ok([papersAgent, relayAtlas, late]),
     })
     emitMockEvent('relay://agent_online', { card: late.card })
     expect(await screen.findByTestId('shared-agent-dave/late')).toBeVisible()
@@ -241,7 +225,7 @@ describe('SharedWithMeView grouping', () => {
   beforeEach(() => {
     Object.assign(commands, {
       listAgentsSharedWithMe: ok([
-        teamPapers,
+        papersAgent,
         relayAtlas,
         sharedAgent(agentCard('alice', 'notes', { name: 'Notes' }), {
           sources: ['relay'],
@@ -303,7 +287,7 @@ describe('groupByOwner', () => {
         owner: { githubHandle: 'BOB-OWNER', displayName: 'bob' },
       })
     )
-    const groups = groupByOwner([relayAtlas, teamPapers, upper, anon])
+    const groups = groupByOwner([relayAtlas, papersAgent, upper, anon])
     expect(groups.map(g => [g.key, g.agents.length])).toEqual([
       ['alice-owner', 1],
       ['bob-owner', 2],

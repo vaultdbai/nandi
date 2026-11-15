@@ -1,8 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { RadioTower, Users } from 'lucide-react'
+import { RadioTower } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -11,22 +10,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import {
-  useAgentSharing,
-  useSetRelaySharing,
-  useToggleTeamShare,
-} from '@/hooks/useAgentSharing'
+import { useAgentSharing, useSetRelaySharing } from '@/hooks/useAgentSharing'
 import { ownCard, useAvailableProviders } from '@/hooks/useDelegation'
 import { rawError } from '@/lib/friendly-error'
 import { formatRelativeTime } from '@/lib/format-time'
-import { MANAGE_TEAMS, useNavigationStore } from '@/store/navigation-store'
 import type { AgentInfo } from '@/types/agent'
 
 /**
- * Who can see and call one of my agents: my teams (each team's private
- * registry) and the relay. Shows what others see of it: owner,
+ * Who can see and call one of my agents: people on the relay. Shows what others see of it: owner,
  * description, capabilities, and how much it's been called.
  */
 export function AgentSharingDialog({
@@ -49,40 +41,22 @@ export function AgentSharingDialog({
           </DialogTitle>
           <DialogDescription>{t('agentSharing.description')}</DialogDescription>
         </DialogHeader>
-        {open && (
-          <SharingBody agent={agent} onClose={() => onOpenChange(false)} />
-        )}
+        {open && <SharingBody agent={agent} />}
       </DialogContent>
     </Dialog>
   )
 }
 
-function SharingBody({
-  agent,
-  onClose,
-}: {
-  agent: AgentInfo
-  onClose: () => void
-}) {
+function SharingBody({ agent }: { agent: AgentInfo }) {
   const { t, i18n } = useTranslation()
-  const { teams, teamsLoading, sharing, loading } = useAgentSharing(agent.id)
+  const { sharing, loading } = useAgentSharing(agent.id)
   const providers = useAvailableProviders()
-  const toggleTeam = useToggleTeamShare(agent.id)
   const setRelay = useSetRelaySharing(agent.id)
   const mine = agent.origin.kind === 'local'
 
   const card = sharing.shared?.card ?? ownCard(providers.data ?? [], agent.id)
   const capabilities = card?.capabilities ?? []
   const owner = card?.owner.githubHandle
-
-  const goToTeams = () => {
-    onClose()
-    useNavigationStore.getState().navigate({
-      kind: 'network',
-      tab: 'people',
-      team: MANAGE_TEAMS,
-    })
-  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -136,63 +110,6 @@ function SharingBody({
           {t('agentSharing.notYours')}
         </p>
       )}
-
-      <section className="flex flex-col gap-2">
-        <h3 className="flex items-center gap-2 text-sm font-medium">
-          <Users aria-hidden className="size-4 text-muted-foreground" />
-          {t('agentSharing.teams')}
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          {t('teams.shareDialog.description')}
-        </p>
-        {teamsLoading || loading ? (
-          <Skeleton className="h-8 w-full" />
-        ) : teams.length === 0 ? (
-          <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
-            {t('agentSharing.noTeams')}
-            <Button size="sm" variant="outline" onClick={goToTeams}>
-              {t('shared.goToTeams')}
-            </Button>
-          </div>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {teams.map(team => {
-              const id = `share-team-${team.id}`
-              return (
-                <li
-                  key={team.id}
-                  className="flex items-center justify-between gap-2 rounded-md px-1 py-1"
-                >
-                  <Label htmlFor={id} className="font-normal">
-                    {team.name}
-                  </Label>
-                  <Switch
-                    id={id}
-                    checked={sharing.teamIds.includes(team.id)}
-                    disabled={!mine || toggleTeam.isPending}
-                    onCheckedChange={share =>
-                      toggleTeam.mutate(
-                        { teamId: team.id, share },
-                        {
-                          onError: error =>
-                            toast.error(
-                              t(
-                                share
-                                  ? 'teams.error.share'
-                                  : 'teams.error.unshare'
-                              ),
-                              { description: rawError(error) }
-                            ),
-                        }
-                      )
-                    }
-                  />
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
 
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">

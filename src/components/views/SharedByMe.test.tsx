@@ -8,12 +8,10 @@ import {
   ok,
   sharedAgent,
 } from '@/hooks/useSharedAgents.fixtures'
-import { MANAGE_TEAMS, useNavigationStore } from '@/store/navigation-store'
+import { useNavigationStore } from '@/store/navigation-store'
 import { SharedByMeView } from './SharedByMe'
 
 const papers = sharedAgent(agentCard('me', 'papers', { name: 'Papers' }), {
-  sources: ['team', 'relay'],
-  teamIds: ['acme'],
   callCount: 7,
   lastCalledAt: Date.now() - 60 * 60 * 1000,
 })
@@ -30,12 +28,10 @@ describe('SharedByMeView', () => {
     Object.assign(commands, {
       listAgentsSharedByMe: ok([papers]),
       listAgentsSharedWithMe: ok([]),
-      unshareAgent: ok(null),
       getAgentDelegation: ok(delegation),
       setAgentDelegation: ok(null),
       listTrustPolicies: ok([]),
       listDelegationHistory: notImplemented(),
-      listTeams: notImplemented(),
       getRelayStatus: ok({
         connected: false,
         instanceId: 'me',
@@ -46,56 +42,42 @@ describe('SharedByMeView', () => {
     })
   })
 
-  it('shows my shared agents with teams and call counts', async () => {
+  it('shows my shared agents with call counts', async () => {
     render(<SharedByMeView />)
     const card = within(await screen.findByTestId('my-shared-agent-papers'))
     expect(card.getByText('Papers')).toBeInTheDocument()
     expect(card.getByText(/7/)).toBeInTheDocument()
-    expect(card.getAllByRole('switch')).toHaveLength(2)
+    expect(card.getAllByRole('switch')).toHaveLength(1)
   })
 
-  it('stops sharing to a team', async () => {
-    const user = userEvent.setup()
-    render(<SharedByMeView />)
-    await screen.findByTestId('my-shared-agent-papers')
-    await user.click(screen.getByRole('switch', { name: /acme/ }))
-    // Asks first, naming what happens
-    const dialog = await screen.findByRole('alertdialog')
-    expect(dialog).toHaveTextContent('People who use it will lose access')
-    await user.click(
-      within(dialog).getByRole('button', { name: 'Stop sharing' })
-    )
-    await waitFor(() =>
-      expect(commands.unshareAgent).toHaveBeenCalledWith('acme', 'papers')
-    )
-  })
+  const acceptsDelegation = () =>
+    screen.getByRole('switch', {
+      name: /shared\.byMe\.acceptsDelegation|accepts delegation/i,
+    })
 
   it('keeps sharing when the question is cancelled', async () => {
     const user = userEvent.setup()
     render(<SharedByMeView />)
     await screen.findByTestId('my-shared-agent-papers')
-    await user.click(screen.getByRole('switch', { name: /acme/ }))
+    await user.click(acceptsDelegation())
     await user.click(
       within(await screen.findByRole('alertdialog')).getByRole('button', {
         name: 'Cancel',
       })
     )
-    expect(commands.unshareAgent).not.toHaveBeenCalled()
+    expect(commands.setAgentDelegation).not.toHaveBeenCalled()
   })
 
   it('stops accepting delegation, keeping the other settings', async () => {
     const user = userEvent.setup()
     render(<SharedByMeView />)
     await screen.findByTestId('my-shared-agent-papers')
+    await user.click(acceptsDelegation())
+    // Asks first, naming what happens
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog).toHaveTextContent('People who use it will lose access')
     await user.click(
-      screen.getByRole('switch', {
-        name: /shared\.byMe\.acceptsDelegation|accepts delegation/i,
-      })
-    )
-    await user.click(
-      within(await screen.findByRole('alertdialog')).getByRole('button', {
-        name: 'Stop sharing',
-      })
+      within(dialog).getByRole('button', { name: 'Stop sharing' })
     )
     await waitFor(() =>
       expect(commands.setAgentDelegation).toHaveBeenCalledWith('papers', {
@@ -133,7 +115,7 @@ describe('SharedByMeView', () => {
     ).toBeInTheDocument()
   })
 
-  it('points to Teams when nothing is shared', async () => {
+  it('points to What you offer when nothing is shared', async () => {
     Object.assign(commands, { listAgentsSharedByMe: ok([]) })
     const user = userEvent.setup()
     render(<SharedByMeView />)
@@ -143,12 +125,14 @@ describe('SharedByMeView', () => {
       )
     ).toBeInTheDocument()
     await user.click(
-      screen.getByRole('button', { name: /shared\.goToTeams|go to teams/i })
+      screen.getByRole('button', {
+        name: /network\.sharing\.offer|what you offer/i,
+      })
     )
     expect(useNavigationStore.getState().current).toEqual({
       kind: 'network',
-      tab: 'people',
-      team: MANAGE_TEAMS,
+      tab: 'sharing',
+      sharing: 'offer',
     })
   })
 

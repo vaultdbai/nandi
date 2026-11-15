@@ -10,7 +10,7 @@ import type {
   NetworkSnapshot,
   RelayStatus,
 } from '@/lib/bindings'
-import { MANAGE_TEAMS, useNavigationStore } from '@/store/navigation-store'
+import { useNavigationStore } from '@/store/navigation-store'
 import { NetworkView } from './NetworkView'
 
 const HOUR = 60 * 60 * 1000
@@ -99,7 +99,6 @@ describe('NetworkView', () => {
       getGatewayStatus: ok(gatewayStatus(true)),
       getRelayStatus: ok(relayStatus(true)),
       listOnlineAgents: ok([]),
-      listTeams: ok([]),
     })
   })
 
@@ -367,21 +366,6 @@ describe('NetworkView', () => {
     expect(
       within(card).getByRole('button', { name: 'Copy ID' })
     ).toBeInTheDocument()
-  })
-
-  it('opens Manage teams from the team filter', async () => {
-    const user = userEvent.setup()
-    render(<NetworkView />)
-    await screen.findByTestId('member-i-alice')
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Team' }),
-      'Manage teams…'
-    )
-    expect(useNavigationStore.getState().current).toEqual({
-      kind: 'network',
-      tab: 'people',
-      team: MANAGE_TEAMS,
-    })
   })
 })
 

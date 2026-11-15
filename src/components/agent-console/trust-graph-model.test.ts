@@ -3,7 +3,6 @@ import {
   agentCard,
   sharedAgent,
   task,
-  team,
   trustRule,
 } from '@/hooks/useSharedAgents.fixtures'
 import {
@@ -13,7 +12,6 @@ import {
   layoutTrustGraph,
   neighborhood,
   policyFor,
-  teamNodeId,
   type TrustGraphInput,
   type TrustGraphModel,
 } from './trust-graph-model'
@@ -22,8 +20,7 @@ const NOW = Date.UTC(2026, 9, 9)
 const DAY = 24 * 60 * 60 * 1000
 
 const mine = sharedAgent(agentCard('me', 'papers', { name: 'Papers' }), {
-  sources: ['team', 'relay'],
-  teamIds: ['acme'],
+  sources: ['relay'],
 })
 const remote = sharedAgent(agentCard('bob', 'atlas', { name: 'Atlas' }), {
   sources: ['relay'],
@@ -34,7 +31,6 @@ function graph(overrides: Partial<TrustGraphInput> = {}) {
     sharedByMe: [mine],
     sharedWithMe: [remote],
     history: [],
-    teams: [team('acme')],
     policies: [],
     now: NOW,
     ...overrides,
@@ -47,19 +43,11 @@ const edgeOf = (model: TrustGraphModel, id: string) =>
   model.edges.find(e => e.id === id)
 
 describe('buildTrustGraph', () => {
-  it('has my agents, agents I can call, and teams linked to their agents', () => {
+  it('has my agents and agents I can call, with no edges before any call', () => {
     const model = graph()
     expect(kindOf(model, 'me/papers')).toBe('mine')
     expect(kindOf(model, 'bob/atlas')).toBe('callable')
-    expect(kindOf(model, teamNodeId('acme'))).toBe('team')
-    expect(model.edges).toEqual([
-      expect.objectContaining({
-        kind: 'team',
-        source: 'team:acme',
-        target: 'me/papers',
-        policy: null,
-      }),
-    ])
+    expect(model.edges).toEqual([])
   })
 
   it('weights call edges by calls in the last 30 days, in both directions', () => {
@@ -75,7 +63,6 @@ describe('buildTrustGraph', () => {
     })
     expect(kindOf(model, 'carol/scribe')).toBe('caller')
     expect(edgeOf(model, 'carol/scribe->me/papers')).toMatchObject({
-      kind: 'call',
       weight: 2,
       policy: 'ask',
     })
@@ -123,7 +110,6 @@ describe('buildTrustGraph', () => {
     expect([...neighborhood(model, 'me/papers')].sort()).toEqual([
       'carol/scribe',
       'me/papers',
-      'team:acme',
     ])
     expect(edgeWidth(0)).toBe(1)
     expect(edgeWidth(8)).toBeGreaterThan(edgeWidth(1))

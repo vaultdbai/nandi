@@ -17,8 +17,7 @@ const papers = sharedAgent(
   agentCard('alice', 'papers', {
     name: 'Papers',
     description: 'Finds research papers',
-  }),
-  { sources: ['team'], teamIds: ['acme'] }
+  })
 )
 const atlas = sharedAgent(
   agentCard('bob', 'atlas', {
@@ -27,44 +26,27 @@ const atlas = sharedAgent(
   }),
   { sources: ['relay'] }
 )
-const both = sharedAgent(agentCard('carol', 'scribe', { name: 'Scribe' }), {
-  sources: ['team', 'relay'],
-  teamIds: ['beta'],
-})
-const all = [papers, atlas, both]
+const scribe = sharedAgent(agentCard('carol', 'scribe', { name: 'Scribe' }))
+const all = [papers, atlas, scribe]
 const names = (list: typeof all) => list.map(a => a.card.name)
 
 describe('filterSharedAgents', () => {
-  it('keeps everything with no filter', () => {
-    expect(
-      names(filterSharedAgents(all, { source: 'all', search: '' }))
-    ).toEqual(['Papers', 'Atlas', 'Scribe'])
+  it('keeps everything with no search', () => {
+    expect(names(filterSharedAgents(all, '  '))).toEqual([
+      'Papers',
+      'Atlas',
+      'Scribe',
+    ])
   })
 
-  it('filters by source, keeping agents found in both', () => {
-    expect(
-      names(filterSharedAgents(all, { source: 'team', search: '' }))
-    ).toEqual(['Papers', 'Scribe'])
-    expect(
-      names(filterSharedAgents(all, { source: 'relay', search: '' }))
-    ).toEqual(['Atlas', 'Scribe'])
-  })
-
-  it('searches name, description, owner, capability, and team, ignoring case', () => {
-    const search = (text: string) =>
-      names(filterSharedAgents(all, { source: 'all', search: text }))
+  it('searches name, description, owner, and capability, ignoring case', () => {
+    const search = (text: string) => names(filterSharedAgents(all, text))
     expect(search('  ATLAS ')).toEqual(['Atlas'])
     expect(search('research')).toEqual(['Papers'])
     expect(search('bob-owner')).toEqual(['Atlas'])
     expect(search('geocode')).toEqual(['Atlas'])
-    expect(search('beta')).toEqual(['Scribe'])
+    expect(search('find-papers')).toEqual(['Papers', 'Scribe'])
     expect(search('nothing-like-it')).toEqual([])
-  })
-
-  it('combines source and search', () => {
-    expect(
-      names(filterSharedAgents(all, { source: 'relay', search: 'find-papers' }))
-    ).toEqual(['Scribe'])
   })
 })
 
@@ -81,7 +63,7 @@ describe('capability helpers', () => {
     capability: 'find-papers',
     providers: [
       providerOption(atlas.card, { rank: 1 }),
-      providerOption(papers.card, { teamIds: ['acme'] }),
+      providerOption(papers.card),
     ],
     pinned: null,
     autoChoice: 'bob/atlas',
@@ -98,10 +80,10 @@ describe('capability helpers', () => {
     expect(autoProvider(undefined)).toBeUndefined()
   })
 
-  it('filters by capability, provider, owner, or team', () => {
+  it('filters by capability, provider, or owner', () => {
     expect(filterCapabilities([entry], 'PAPERS')).toHaveLength(1)
     expect(filterCapabilities([entry], 'bob-owner')).toHaveLength(1)
-    expect(filterCapabilities([entry], 'acme')).toHaveLength(1)
+    expect(filterCapabilities([entry], 'atlas')).toHaveLength(1)
     expect(filterCapabilities([entry], 'nothing')).toHaveLength(0)
     expect(filterCapabilities([entry], '  ')).toHaveLength(1)
   })

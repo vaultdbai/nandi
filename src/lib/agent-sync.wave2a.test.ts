@@ -82,13 +82,6 @@ describe('agent-sync: wave-2A network events', () => {
     expect(keys).toContainEqual(['shared', 'withMe'])
   })
 
-  it('team://changed invalidates teams and the shared views', () => {
-    handleNandiEvent({ event: 'team://changed', payload: { teamId: 'org' } })
-    const keys = invalidated(invalidate)
-    expect(keys).toContainEqual(['teams'])
-    expect(keys).toContainEqual(['shared'])
-  })
-
   it('delegation://task_completed invalidates delegation and the shared views', () => {
     handleNandiEvent({
       event: 'delegation://task_completed',

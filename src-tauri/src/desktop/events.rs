@@ -29,7 +29,6 @@ use crate::services::repo_service::{RepoRebuildCompleted, RepoRebuildStarted};
 use crate::services::requests::local::RequestUpdated;
 use crate::services::run_plan::RunPlanUpdated;
 use crate::services::studio::{StudioArtifactLoaded, StudioArtifactSaved, StudioEditPreviewed};
-use crate::services::team::TeamChanged;
 use crate::services::triggers::{TriggerError, TriggerFired, TriggerRateLimited, TriggersChanged};
 use crate::services::work::{WorkItemAdded, WorkItemRemoved, WorkItemUpdated};
 use crate::services::workflows::manual_steps::{ManualStepCompleted, PendingManualStep};
@@ -110,7 +109,6 @@ tauri_events!(
     MemberKeyChanged,
     GroupsChanged,
     KnowMeChanged,
-    TeamChanged,
     DelegationTaskStarted,
     DelegationTaskCompleted,
     DelegationTaskFailed,

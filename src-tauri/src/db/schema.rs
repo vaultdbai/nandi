@@ -250,26 +250,6 @@ CREATE TABLE IF NOT EXISTS capability_index (
 CREATE INDEX IF NOT EXISTS idx_capability_index_capability
     ON capability_index(capability);
 
--- Teams and their private registries
-CREATE TABLE IF NOT EXISTS teams (
-    id            TEXT PRIMARY KEY,
-    name          TEXT NOT NULL,
-    github_org    TEXT NOT NULL,
-    registry_repo TEXT NOT NULL,
-    created_at    INTEGER NOT NULL,
-    -- 'github' (the org) or 'entra' (the group ID)
-    source_kind       TEXT NOT NULL DEFAULT 'github',
-    source_identifier TEXT
-);
-CREATE TABLE IF NOT EXISTS team_members (
-    team_id       TEXT NOT NULL,
-    github_handle TEXT NOT NULL,
-    display_name  TEXT NOT NULL,
-    role          TEXT NOT NULL,
-    joined_at     INTEGER NOT NULL,
-    PRIMARY KEY (team_id, github_handle)
-);
-
 -- Cross-user tasks, both directions
 CREATE TABLE IF NOT EXISTS delegations (
     id              TEXT PRIMARY KEY,
@@ -504,15 +484,6 @@ CREATE TABLE IF NOT EXISTS blocked_members (
     agent_id    TEXT NOT NULL,
     blocked_at  INTEGER NOT NULL,
     PRIMARY KEY (instance_id, agent_id)
-);
-
--- Member profiles per team, cached for 60s
-CREATE TABLE IF NOT EXISTS roster_cache (
-    team_id      TEXT NOT NULL,
-    member_handle TEXT NOT NULL,
-    profile_json TEXT NOT NULL,
-    cached_at    INTEGER NOT NULL,
-    PRIMARY KEY (team_id, member_handle)
 );
 
 -- Capability files (`.nandi/capabilities/<id>.yaml`), projected

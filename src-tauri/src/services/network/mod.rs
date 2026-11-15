@@ -1,8 +1,7 @@
-//! Wiring for teams, cross-user agent sharing, and delegation.
+//! Wiring for cross-user agent sharing and delegation.
 //!
-//! `AppState`'s constructor builds the capability index, the relay client,
-//! the team manager and the delegator. [`start`] then starts them, in
-//! dependency order:
+//! `AppState`'s constructor builds the capability index, the relay client
+//! and the delegator. [`start`] then starts them, in dependency order:
 //!
 //! 1. the capability index, from the loaded agents
 //! 2. the relay client, which registers the index's cards
@@ -14,6 +13,7 @@
 
 pub mod member_trust;
 pub mod peer_keys;
+pub mod profile;
 pub mod trust_requests;
 
 use std::sync::Arc;
@@ -278,8 +278,8 @@ use super::events::{emit, NandiEvent};
 use super::gateway::GatewayCard;
 use super::relay::protocol::MemberRecord;
 use super::relay::RelayUnavailable;
-use super::team::roster::MEMBER_STATUS_CHANGED;
 use crate::model::Timestamp;
+use profile::MEMBER_STATUS_CHANGED;
 
 /// `network://member_online`
 pub const NETWORK_MEMBER_ONLINE: &str = "network://member_online";

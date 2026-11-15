@@ -18,7 +18,6 @@ import {
 import type {
   SharedAgent,
   TaskResult,
-  Team,
   TrustPolicy,
   TrustRule,
 } from '@/lib/bindings'
@@ -30,30 +29,26 @@ export const CALL_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
  * - `mine`: my agents (green)
  * - `callable`: agents I can call (blue); wins over `caller` when both
  * - `caller`: agents that call mine (amber)
- * - `team`: a team (grey)
  */
-export type TrustNodeKind = 'mine' | 'callable' | 'caller' | 'team'
+export type TrustNodeKind = 'mine' | 'callable' | 'caller'
 
 export interface TrustNode {
-  /** A card ID, or `team:<teamId>` */
+  /** A card ID */
   id: string
   kind: TrustNodeKind
   label: string
-  /** Owner handle or team org */
+  /** Owner handle */
   detail: string
   /** Delegations in the window, either direction */
   calls: number
 }
 
-/** `call`: `source` (requester) delegated to `target` (provider) */
-export type TrustEdgeKind = 'call' | 'team'
-
+/** `source` (requester) delegated to `target` (provider) */
 export interface TrustEdge {
   id: string
-  kind: TrustEdgeKind
   source: string
   target: string
-  /** Calls in the window (0 for team edges and rule-only edges) */
+  /** Calls in the window (0 for rule-only edges) */
   weight: number
   /**
    * Inbound call edges (someone calling one of my agents) carry my policy
@@ -71,12 +66,9 @@ export interface TrustGraphInput {
   sharedByMe: SharedAgent[]
   sharedWithMe: SharedAgent[]
   history: TaskResult[]
-  teams: Team[]
   policies: TrustRule[]
   now: number
 }
-
-export const teamNodeId = (teamId: string) => `team:${teamId}`
 
 /** The agent ID part of a card ID (`<instance>/<agent>`) */
 export function agentIdOf(cardId: string): string {
@@ -103,7 +95,7 @@ export function policyFor(
 }
 
 export function buildTrustGraph(input: TrustGraphInput): TrustGraphModel {
-  const { sharedByMe, sharedWithMe, history, teams, policies, now } = input
+  const { sharedByMe, sharedWithMe, history, policies, now } = input
   const nodes = new Map<string, TrustNode>()
   const edges = new Map<string, TrustEdge>()
 
@@ -156,41 +148,6 @@ export function buildTrustGraph(input: TrustGraphInput): TrustGraphModel {
     ensureRemote(card.id, 'callable', card.name, card.owner.githubHandle)
   }
 
-  // Teams, linked to the agents shared through them
-  const teamNames = new Map(teams.map(team => [team.id, team]))
-  const ensureTeam = (teamId: string) => {
-    const nodeId = teamNodeId(teamId)
-    if (!nodes.has(nodeId)) {
-      const team = teamNames.get(teamId)
-      nodes.set(nodeId, {
-        id: nodeId,
-        kind: 'team',
-        label: team?.name ?? teamId,
-        detail: team?.githubOrg ?? teamId,
-        calls: 0,
-      })
-    }
-    return nodeId
-  }
-  const linkTeam = (teamId: string, cardId: string) => {
-    const nodeId = ensureTeam(teamId)
-    const id = `${nodeId}--${cardId}`
-    edges.set(id, {
-      id,
-      kind: 'team',
-      source: nodeId,
-      target: cardId,
-      weight: 0,
-      policy: null,
-    })
-  }
-  // A team with no agents still shows
-  for (const team of teams) ensureTeam(team.id)
-  for (const shared of [...sharedByMe, ...sharedWithMe]) {
-    const cardId = resolveMine(shared.card.id) ?? shared.card.id
-    for (const teamId of shared.teamIds) linkTeam(teamId, cardId)
-  }
-
   // Delegations in the window
   const since = now - CALL_WINDOW_MS
   const callEdge = (source: string, target: string, inbound: boolean) => {
@@ -199,7 +156,6 @@ export function buildTrustGraph(input: TrustGraphInput): TrustGraphModel {
     if (!edge) {
       edge = {
         id,
-        kind: 'call',
         source,
         target,
         weight: 0,

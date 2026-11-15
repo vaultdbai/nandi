@@ -48,7 +48,6 @@ import type {
   MemberKeyChanged,
   RepoFileChanged,
   RepoValidationFailed,
-  TeamChanged,
   TriggerError,
   TriggerFired,
   TriggerRateLimited,
@@ -166,7 +165,6 @@ interface NandiEventMap {
   'network://member_key_changed': MemberKeyChanged
   /** A group I'm in (or was invited to) changed; `groupId: null` after a reconnect */
   'network://group_changed': GroupsChanged
-  'team://changed': TeamChanged
   'delegation://task_started': DelegationTaskStarted
   'delegation://task_completed': DelegationTaskCompleted
   /** Failed, cancelled, or timed out */
@@ -201,7 +199,6 @@ interface NandiEventMap {
   'network://member_offline': unknown
   'network://membership_changed': unknown
   'identity://changed': unknown
-  'team://roster_changed': unknown
   'member://status_changed': unknown
   'trust://relationship_updated': unknown
   /** Someone was refused for trust, or their request was answered (task 12) */
@@ -320,7 +317,6 @@ const CORE_EVENTS: Record<CoreEventName, true> = {
   'relay://seal_refused': true,
   'network://member_key_changed': true,
   'network://group_changed': true,
-  'team://changed': true,
   'delegation://task_started': true,
   'delegation://task_completed': true,
   'delegation://task_failed': true,
@@ -347,7 +343,6 @@ const CORE_EVENTS: Record<CoreEventName, true> = {
   'network://member_offline': true,
   'network://membership_changed': true,
   'identity://changed': true,
-  'team://roster_changed': true,
   'member://status_changed': true,
   'trust://relationship_updated': true,
   'trust://request_received': true,

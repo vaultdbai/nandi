@@ -238,7 +238,7 @@ pub(crate) fn write_slug_at(repo_root: &Path, slug: &str) -> Result<(), String> 
 }
 
 /// The user slug in `<repo root>/NANDI.md`, if one is set (for services
-/// that only hold a layout, like teams)
+/// that only hold a layout)
 pub(crate) fn user_slug_at(repo_root: &Path) -> Option<String> {
     read_identity(&manifest::manifest_path(repo_root))
         .ok()

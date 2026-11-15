@@ -35,15 +35,13 @@ export type View =
       item?: string
     }
   /**
-   * People (directory), Teams, Groups (`group` opens one), Sharing
-   * (`sharing` picks its view), Connection
+   * People (directory), Groups (`group` opens one), Sharing (`sharing`
+   * picks its view), Connection
    */
   | {
       kind: 'network'
       tab?: NetworkTab
       sharing?: SharingTab
-      /** People filtered to one team's roster (or `MANAGE_TEAMS`) */
-      team?: string
       /** Groups: the group open (its ID) */
       group?: string
       callers?: CallersView
@@ -130,8 +128,6 @@ export type SharingTab =
   'offer' | 'callers' | 'incoming' | 'shared' | 'capabilities'
 /** Who may call you, as a list or the trust graph */
 export type CallersView = 'list' | 'graph'
-/** People's team filter: a team's roster, or managing teams */
-export const MANAGE_TEAMS = '__manage'
 
 /** The eight sidebar items, in order */
 export const NAV_SECTIONS = [

@@ -133,7 +133,7 @@ export function NetworkPage({
         </div>
       }
     >
-      {tab === 'people' && <NetworkView team={view.team} />}
+      {tab === 'people' && <NetworkView />}
       {tab === 'groups' && <GroupsView groupId={view.group} />}
       {tab === 'sharing' && (
         <SharingView

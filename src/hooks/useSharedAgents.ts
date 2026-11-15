@@ -1,7 +1,7 @@
 /**
  * Agents shared with me and by me, trust policies, and the data the trust
  * graph draws from. Kept live by relay presence events here, and by the
- * `relay://`, `team://`, and `delegation://` invalidations in agent-sync.
+ * `relay://` and `delegation://` invalidations in agent-sync.
  */
 
 import { useEffect } from 'react'
@@ -11,7 +11,6 @@ import type {
   CapabilityProviders,
   JsonValue,
   ProviderOption,
-  ShareSource,
   SharedAgent,
   TrustPolicy,
 } from '@/lib/bindings'
@@ -26,8 +25,6 @@ export const sharedQueryKeys = {
   policies: ['shared', 'trustPolicies'] as const,
   /** The trust graph's copy of the delegation history */
   history: ['shared', 'delegationHistory'] as const,
-  /** The trust graph's copy of my teams */
-  teams: ['shared', 'teams'] as const,
   capabilitiesAll: ['shared', 'capabilities'] as const,
   /** Who serves each capability (`null`: every capability) */
   capabilities: (capability: string | null) =>
@@ -37,26 +34,13 @@ export const sharedQueryKeys = {
 /** How many history rows the trust graph reads (newest first) */
 export const TRUST_GRAPH_HISTORY_LIMIT = 500
 
-export type SourceFilter = 'all' | ShareSource
-
-export interface SharedAgentFilter {
-  source: SourceFilter
-  search: string
-}
-
-/**
- * Agents matching `filter`: from the chosen source, and whose name,
- * description, owner, team, or a capability contains the search text.
- */
+/** Agents whose name, description, owner, or a capability contains `search` */
 export function filterSharedAgents(
   agents: SharedAgent[],
-  filter: SharedAgentFilter
+  search: string
 ): SharedAgent[] {
-  const needle = filter.search.trim().toLowerCase()
+  const needle = search.trim().toLowerCase()
   return agents.filter(agent => {
-    if (filter.source !== 'all' && !agent.sources.includes(filter.source)) {
-      return false
-    }
     if (!needle) return true
     const { card } = agent
     const haystack = [
@@ -65,7 +49,6 @@ export function filterSharedAgents(
       card.owner.githubHandle,
       card.owner.displayName,
       ...card.capabilities.map(c => c.name),
-      ...agent.teamIds,
     ]
     return haystack.some(text => text.toLowerCase().includes(needle))
   })
@@ -166,8 +149,8 @@ export function providerLabel(provider: ProviderOption): string {
 }
 
 /**
- * Capabilities whose name, or one of whose providers' name, owner, or
- * team, contains the search text.
+ * Capabilities whose name, or one of whose providers' name or owner,
+ * contains the search text.
  */
 export function filterCapabilities(
   overview: CapabilityProviders[],
@@ -177,13 +160,10 @@ export function filterCapabilities(
   if (!needle) return overview
   return overview.filter(entry => {
     if (entry.capability.toLowerCase().includes(needle)) return true
-    return entry.providers.some(({ card, teamIds }) =>
-      [
-        card.name,
-        card.owner.githubHandle,
-        card.owner.displayName,
-        ...teamIds,
-      ].some(text => text.toLowerCase().includes(needle))
+    return entry.providers.some(({ card }) =>
+      [card.name, card.owner.githubHandle, card.owner.displayName].some(text =>
+        text.toLowerCase().includes(needle)
+      )
     )
   })
 }
@@ -239,13 +219,6 @@ export function useTrustGraphHistory() {
   )
 }
 
-/** My teams for the trust graph */
-export function useTrustGraphTeams() {
-  return useClientQuery(sharedQueryKeys.teams, () => client.listTeams(), {
-    retry: false,
-  })
-}
-
 /** Both shared lists, refetched as agents come and go at the relay. */
 export function useSharedAgents() {
   const queryClient = useQueryClient()
@@ -297,27 +270,17 @@ export function useCallSharedAgent() {
   )
 }
 
-export type StopSharing =
-  | { kind: 'team'; teamId: string; agentId: string }
-  | { kind: 'relay'; agentId: string }
-
 /**
- * Stops one way an agent is shared: removes it from a team, or turns off
- * `accepts_delegation` (keeping the agent's other delegation settings).
+ * Stops sharing an agent with the relay: turns off `accepts_delegation`,
+ * keeping the agent's other delegation settings.
  */
 export function useStopSharing() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (stop: StopSharing) => {
-      if (stop.kind === 'team') {
-        unwrapResult(await client.unshareAgent(stop.teamId, stop.agentId))
-        return
-      }
-      const settings = unwrapResult(
-        await client.getAgentDelegation(stop.agentId)
-      )
+    mutationFn: async (agentId: string) => {
+      const settings = unwrapResult(await client.getAgentDelegation(agentId))
       unwrapResult(
-        await client.setAgentDelegation(stop.agentId, {
+        await client.setAgentDelegation(agentId, {
           ...settings,
           acceptInbound: false,
         })

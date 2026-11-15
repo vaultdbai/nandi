@@ -9,8 +9,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         help, identity, images, knowme, live, llm_keys, machine, manual_steps, marketplace,
         marketplace_search, mascot, memory, network, notes, palette, pilots, policies, preferences,
         queue, reassign, relay, relay_capabilities, remote, repo, requests, runs, shared,
-        snapshots, studio, tasks, teams, teams_roster, tools, triggers, work, workflow_builder,
-        workflows, workspace,
+        snapshots, studio, tasks, tools, triggers, work, workflow_builder, workflows, workspace,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;
@@ -38,7 +37,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::services::requests::local::RequestUpdated;
     use crate::services::run_plan::RunPlanUpdated;
     use crate::services::studio::{StudioArtifactLoaded, StudioArtifactSaved, StudioEditPreviewed};
-    use crate::services::team::TeamChanged;
     use crate::services::triggers::{
         TriggerError, TriggerFired, TriggerRateLimited, TriggersChanged,
     };
@@ -210,14 +208,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             delegation::list_delegation_history,
             delegation::get_agent_delegation,
             delegation::set_agent_delegation,
-            teams::list_teams,
-            teams::get_team,
-            teams::create_team,
-            teams::join_team,
-            teams::leave_team,
-            teams::sync_team_registry,
-            teams::share_agent,
-            teams::unshare_agent,
             shared::list_agents_shared_with_me,
             shared::list_agents_shared_by_me,
             shared::list_capability_providers,
@@ -350,10 +340,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             // Network, rosters, trust
             network::get_network_snapshot,
             network::refresh_network,
-            teams_roster::get_team_roster,
-            teams_roster::get_member_profile,
-            teams_roster::get_member_by_instance,
-            teams_roster::accept_peer_key,
+            network::get_member_by_instance,
+            network::accept_peer_key,
             groups::list_groups,
             groups::get_group,
             groups::create_group,
@@ -367,14 +355,14 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             groups::set_group_role,
             groups::get_group_access,
             groups::set_group_access,
-            teams_roster::set_trust_relationship,
-            teams_roster::get_relay_trust,
-            teams_roster::set_relay_trust,
-            teams_roster::block_agent_from_member,
-            teams_roster::unblock_agent_from_member,
-            teams_roster::pause_delegations_from_member,
-            teams_roster::list_trust_requests,
-            teams_roster::respond_trust_request,
+            network::set_trust_relationship,
+            network::get_relay_trust,
+            network::set_relay_trust,
+            network::block_agent_from_member,
+            network::unblock_agent_from_member,
+            network::pause_delegations_from_member,
+            network::list_trust_requests,
+            network::respond_trust_request,
             capability_definitions::list_capabilities,
             capability_definitions::get_capability,
             capability_definitions::save_capability,
@@ -500,7 +488,6 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             MemberKeyChanged,
             GroupsChanged,
             KnowMeChanged,
-            TeamChanged,
             DelegationTaskStarted,
             DelegationTaskCompleted,
             DelegationTaskFailed,

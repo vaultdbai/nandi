@@ -18,7 +18,6 @@ describe('CORE_EVENT_NAMES', () => {
       'relay://agent_offline',
       'relay://seal_refused',
       'network://member_key_changed',
-      'team://changed',
       'delegation://task_started',
       'delegation://task_completed',
       'delegation://task_failed',
@@ -45,7 +44,6 @@ describe('CORE_EVENT_NAMES', () => {
       'gateway://config_changed',
       'network://member_online',
       'identity://changed',
-      'team://roster_changed',
       'trust://relationship_updated',
     ]) {
       expect(CORE_EVENT_NAMES).toContain(name)
