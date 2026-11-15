@@ -42,6 +42,8 @@ export type View =
       kind: 'network'
       tab?: NetworkTab
       sharing?: SharingTab
+      /** People: only the members of this group (its ID) */
+      memberOf?: string
       /** Groups: the group open (its ID) */
       group?: string
       callers?: CallersView

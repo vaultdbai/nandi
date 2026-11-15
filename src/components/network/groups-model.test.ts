@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import type { GroupSummary, GroupView } from '@/lib/bindings'
+import type { GroupSummary, GroupView, NetworkMember } from '@/lib/bindings'
 import {
   ACCESS_LEVELS,
   accessKey,
   expiresAt,
   isAdmin,
   isLastAdmin,
+  myGroups,
+  peopleInGroup,
   policyIsStricter,
   sortGroups,
   sortMembers,
@@ -67,6 +69,30 @@ describe('groups model', () => {
       summary('Finance', 'admin'),
     ])
     expect(sorted.map(g => g.name)).toEqual(['Finance', 'Ops', 'Alpha', 'Zeta'])
+  })
+
+  it('offers only the groups I am in, by name, to filter People', () => {
+    const mine = myGroups([
+      summary('Zeta', 'member'),
+      summary('Visible only'),
+      summary('Alpha', 'admin'),
+    ])
+    expect(mine.map(g => g.name)).toEqual(['Alpha', 'Zeta'])
+  })
+
+  it("keeps the directory's people who are in the group", () => {
+    const person = (instanceId: string) =>
+      ({ instanceId }) as unknown as NetworkMember
+    const members = groupView([
+      ['a', 'admin'],
+      ['b', 'member'],
+    ]).group.members
+    const people = [person('a'), person('c'), person('b')]
+    expect(peopleInGroup(people, members).map(p => p.instanceId)).toEqual([
+      'a',
+      'b',
+    ])
+    expect(peopleInGroup(people, [])).toEqual([])
   })
 
   it('names access levels for i18n keys', () => {

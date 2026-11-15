@@ -7,6 +7,7 @@ import type {
   GroupApproval,
   GroupSummary,
   GroupView,
+  NetworkMember,
 } from '@/lib/bindings'
 
 /** The five access levels, loosest first */
@@ -35,7 +36,23 @@ export function isAdmin(view: GroupView): boolean {
   return view.myRole === 'admin'
 }
 
+/** The groups I'm in, by name: what People can be filtered by */
+export function myGroups(groups: GroupSummary[]): GroupSummary[] {
+  return groups
+    .filter(group => group.role != null)
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
 type Member = GroupView['group']['members'][number]
+
+/** The directory's people who are in the group */
+export function peopleInGroup(
+  people: NetworkMember[],
+  members: Member[]
+): NetworkMember[] {
+  const inGroup = new Set(members.map(member => member.instanceId))
+  return people.filter(person => inGroup.has(person.instanceId))
+}
 
 /** Admins on top, then by name (the instance ID when they have none) */
 export function sortMembers(members: Member[]): Member[] {

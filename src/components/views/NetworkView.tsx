@@ -12,14 +12,17 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { MemberCardCompact } from '@/components/network/MemberCardCompact'
+import { myGroups, peopleInGroup } from '@/components/network/groups-model'
 import { withoutToken } from '@/components/onboarding/identity-model'
 import { RelayConnectNotice } from '@/components/network/RelayConnectNotice'
 import { useGatewayStatus, useMakeGatewayReachable } from '@/hooks/useGateway'
+import { useGroup, useGroups } from '@/hooks/useGroups'
 import {
   filterMembers,
   searchMembers,
@@ -35,11 +38,19 @@ import { useNavigationStore, type View } from '@/store/navigation-store'
 
 const navigate = (view: View) => useNavigationStore.getState().navigate(view)
 
-/** Network › People: everyone on the relay by their card, filtered by presence or a search. */
-export function NetworkView() {
+/** The group filter's "Manage groups…" choice: opens Network › Groups */
+const MANAGE_GROUPS = '__manage'
+
+/**
+ * Network › People: everyone on the relay by their card, filtered by one of
+ * my groups, presence or a search. "Manage groups…" opens Groups.
+ */
+export function NetworkView({ memberOf }: { memberOf?: string }) {
   const { t } = useTranslation()
   const snapshot = useNetworkSnapshot()
   const refresh = useRefreshNetwork()
+  const groups = myGroups(useGroups().data?.groups ?? [])
+  const chosenGroup = groups.find(group => group.id === memberOf)
   const relay = useRelay().status
   const [filter, setFilter] = useState<MemberFilter>('all')
   const [query, setQuery] = useState('')
@@ -52,6 +63,13 @@ export function NetworkView() {
     !(gateway.data.enabled && gateway.data.discoverable)
 
   const members = snapshot.data?.members ?? []
+
+  const setGroup = (next: string) =>
+    navigate(
+      next === MANAGE_GROUPS
+        ? { kind: 'network', tab: 'groups' }
+        : { kind: 'network', tab: 'people', memberOf: next || undefined }
+    )
 
   const onRefresh = () =>
     refresh.mutate(undefined, {
@@ -88,6 +106,23 @@ export function NetworkView() {
             className="ps-8"
           />
         </div>
+        <NativeSelect
+          aria-label={t('network.people.group')}
+          value={chosenGroup?.id ?? ''}
+          onChange={event => setGroup(event.target.value)}
+        >
+          <NativeSelectOption value="">
+            {t('network.people.allGroups')}
+          </NativeSelectOption>
+          {groups.map(group => (
+            <NativeSelectOption key={group.id} value={group.id}>
+              {group.name}
+            </NativeSelectOption>
+          ))}
+          <NativeSelectOption value={MANAGE_GROUPS}>
+            {t('network.people.manageGroups')}
+          </NativeSelectOption>
+        </NativeSelect>
         <ToggleGroup
           type="single"
           variant="outline"
@@ -147,15 +182,24 @@ export function NetworkView() {
         </div>
       )}
       <ScrollArea className="min-h-0 flex-1">
-        <MemberGrid
-          loading={snapshot.isPending}
-          error={snapshot.error}
-          members={members}
-          visible={searchMembers(filterMembers(members, filter), query)}
-          connected={connected}
-          // Invites carry the address, never this Nandi's token
-          relayUrl={relay?.relayUrl ? withoutToken(relay.relayUrl) : null}
-        />
+        {chosenGroup ? (
+          <GroupPeople
+            groupId={chosenGroup.id}
+            people={members}
+            filter={filter}
+            query={query}
+          />
+        ) : (
+          <MemberGrid
+            loading={snapshot.isPending}
+            error={snapshot.error}
+            members={members}
+            visible={searchMembers(filterMembers(members, filter), query)}
+            connected={connected}
+            // Invites carry the address, never this Nandi's token
+            relayUrl={relay?.relayUrl ? withoutToken(relay.relayUrl) : null}
+          />
+        )}
       </ScrollArea>
     </div>
   )
@@ -220,6 +264,61 @@ function MemberGrid({
       {members.length > 0 && visible.length === 0 && (
         <p className={`text-sm text-muted-foreground ${span}`}>
           {t('network.noMatches')}
+        </p>
+      )}
+      {visible.map(member => (
+        <MemberCardCompact
+          key={member.instanceId}
+          member={member}
+          onOpen={openProfile}
+        />
+      ))}
+    </div>
+  )
+}
+
+/** The directory's people in one of my groups, with a way to open the group */
+function GroupPeople({
+  groupId,
+  people,
+  filter,
+  query,
+}: {
+  groupId: string
+  people: NetworkMember[]
+  filter: MemberFilter
+  query: string
+}) {
+  const { t } = useTranslation()
+  const group = useGroup(groupId)
+  const span = 'md:col-span-2 xl:col-span-3'
+  if (group.isPending) {
+    return (
+      <div className="mx-auto w-full max-w-5xl p-6">
+        <Skeleton className="h-44" />
+      </div>
+    )
+  }
+  const inGroup = peopleInGroup(people, group.data?.group.members ?? [])
+  const visible = searchMembers(filterMembers(inGroup, filter), query)
+  return (
+    <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-4 p-6 md:grid-cols-2 xl:grid-cols-3">
+      <div className={`flex justify-end ${span}`}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() =>
+            navigate({ kind: 'network', tab: 'groups', group: groupId })
+          }
+        >
+          {t('network.people.openGroup')}
+        </Button>
+      </div>
+      {visible.length === 0 && (
+        <p className={`text-sm text-muted-foreground ${span}`}>
+          {inGroup.length === 0
+            ? t('network.people.groupNobodyOnline')
+            : t('network.noMatches')}
         </p>
       )}
       {visible.map(member => (

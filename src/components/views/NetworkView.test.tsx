@@ -6,6 +6,8 @@ import { ok } from '@/hooks/useSharedAgents.fixtures'
 import { filterMembers, initialsOf, searchMembers } from '@/hooks/useNetwork'
 import type {
   GatewayStatus,
+  GroupSummary,
+  GroupView,
   NetworkMember,
   NetworkSnapshot,
   RelayStatus,
@@ -89,6 +91,30 @@ const carol = member('i-carol', 'Carol', {
   lastSeen: Date.now() - 72 * HOUR,
 })
 
+const finance: GroupSummary = {
+  id: 'g_finance',
+  name: 'Finance',
+  description: '',
+  memberCount: 2,
+  createdAt: 0,
+  policyVersion: 1,
+  role: 'member',
+}
+
+/** Finance as its member sees it: Alice and this Nandi */
+const financeView = {
+  group: {
+    summary: finance,
+    members: [
+      { instanceId: 'i-alice', role: 'admin', joinedAt: 0 },
+      { instanceId: 'i-me', role: 'member', joinedAt: 0 },
+    ],
+    invites: [],
+  },
+  myRole: 'member',
+  me: 'i-me',
+} as unknown as GroupView
+
 describe('NetworkView', () => {
   beforeEach(() => {
     useNavigationStore.setState({ current: { kind: 'network' }, history: [] })
@@ -99,6 +125,15 @@ describe('NetworkView', () => {
       getGatewayStatus: ok(gatewayStatus(true)),
       getRelayStatus: ok(relayStatus(true)),
       listOnlineAgents: ok([]),
+      listGroups: ok({
+        connected: true,
+        visibility: 'company',
+        // A group I'm not in is never a filter
+        groups: [finance, { ...finance, id: 'g_ops', name: 'Ops', role: null }],
+        invites: [],
+        policyTemplate: '',
+      }),
+      getGroup: ok(financeView),
     })
   })
 
@@ -366,6 +401,45 @@ describe('NetworkView', () => {
     expect(
       within(card).getByRole('button', { name: 'Copy ID' })
     ).toBeInTheDocument()
+  })
+
+  it('shows only the members of the chosen group, with a way to open it', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<NetworkView />)
+    await screen.findByTestId('member-i-carol')
+    const filter = screen.getByRole('combobox', { name: 'Group' })
+    expect(within(filter).queryByRole('option', { name: 'Ops' })).toBeNull()
+    await user.selectOptions(filter, 'Finance')
+    expect(useNavigationStore.getState().current).toEqual({
+      kind: 'network',
+      tab: 'people',
+      memberOf: 'g_finance',
+    })
+
+    rerender(<NetworkView memberOf="g_finance" />)
+    expect(await screen.findByTestId('member-i-alice')).toBeInTheDocument()
+    expect(screen.queryByTestId('member-i-bob')).toBeNull()
+    expect(screen.queryByTestId('member-i-carol')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Open group' }))
+    expect(useNavigationStore.getState().current).toEqual({
+      kind: 'network',
+      tab: 'groups',
+      group: 'g_finance',
+    })
+  })
+
+  it('opens Groups from the group filter', async () => {
+    const user = userEvent.setup()
+    render(<NetworkView />)
+    await screen.findByTestId('member-i-alice')
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Group' }),
+      'Manage groups…'
+    )
+    expect(useNavigationStore.getState().current).toEqual({
+      kind: 'network',
+      tab: 'groups',
+    })
   })
 })
 
