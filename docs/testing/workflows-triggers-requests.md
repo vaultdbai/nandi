@@ -1066,7 +1066,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **Preconditions:** Two Nandis on a relay. The receiver doesn't answer within the live wait (for example, offline).
 - **Steps:**
   1. Ask the other person a question; their Nandi is off.
-  2. Hide the companion. Start their Nandi and let their Chief of Staff answer.
+  2. Hide the companion. Start their Nandi and let their Nandi answer.
   3. Turn the setting off and repeat.
 - **Expected:**
   - Step 2: a notification "<name> answered" with the answer; the Inbox lists it; **Dismiss** removes it.
@@ -1086,10 +1086,10 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **Duplicate:** tested under AI-15. This ID is kept so old references stay valid; don't test it separately.
 - **Needs relay:** no
 
-### RQ-29 — Chief of Staff acts on what arrives and shows Since you were away
+### RQ-29 — Nandi acts on what arrives and shows Since you were away
 
-- **What:** Work that arrives from outside (email, calendar) is screened for phishing and malware signs in its links and sender (no word lists: the Chief of Staff explains a lure in the item's thread) and waits in a queue for your approval. **Approve** starts a Request, or adds the news to work already running instead of starting a second Request. Chats start work directly. Home shows a "Waiting for your OK" section at the top of the card (screening verdict, reasons, sender, **Approve** and **Dismiss**), and the card shows a "Since you were away" card (titled "What your Chief of Staff did" before the first "Got it") with a summary line and one row per item the Chief of Staff acted on: needs you, started, updated (with the news) or finished (done, failed, cancelled), the source (email, calendar, chat) and the time. A row opens its Request. **Got it** marks the digest seen and clears every row except the needs-you ones.
-- **Where:** Home (`ChiefOfStaffDigest.tsx`, `digest-model.ts`, `useChiefOfStaffDigest.ts`), commands `get_chief_of_staff_digest`, `mark_chief_of_staff_digest_seen`, `approve_queued_work`, `dismiss_queued_work`, event `request://updated`; HTTP `POST /api/rpc/{command}`.
+- **What:** Work that arrives from outside (email, calendar) is screened for phishing and malware signs in its links and sender (no word lists: Nandi explains a lure in the item's thread) and waits in a queue for your approval. **Approve** starts a Request, or adds the news to work already running instead of starting a second Request. Chats start work directly. Home shows a "Waiting for your OK" section at the top of the card (screening verdict, reasons, sender, **Approve** and **Dismiss**), and the card shows a "Since you were away" card (titled "What Nandi did" before the first "Got it") with a summary line and one row per item Nandi acted on: needs you, started, updated (with the news) or finished (done, failed, cancelled), the source (email, calendar, chat) and the time. A row opens its Request. **Got it** marks the digest seen and clears every row except the needs-you ones.
+- **Where:** Home (`NandiDigest.tsx`, `digest-model.ts`, `useNandiDigest.ts`), commands `get_nandi_digest`, `mark_chief_of_staff_digest_seen`, `approve_queued_work`, `dismiss_queued_work`, event `request://updated`; HTTP `POST /api/rpc/{command}`.
 - **Preconditions:** A mailbox connected (Settings › Email), a model that works, a second account to send mail from.
 - **Steps:**
   1. Send yourself a mail from another account: "Your power bill of $84 is due on Friday".
@@ -1108,14 +1108,14 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
   - Step 7: all rows go except the needs-you ones; the "Waiting for your OK" section stays.
   - Step 8: the item shows **Blocked** with the reasons and "Blocked by screening"; there is no **Approve**, only **Dismiss**. A suspicious (not blocked) item asks for confirmation before **Approve** goes through.
 - **Edge / negative cases:** no items and no queue means no card; no mailbox connected means no email-started items (the card still shows chat items); asking a teammate from inside such a Request needs the relay, the rest does not.
-- **Automation:** Covered by: `digest-model.test.ts`, `ChiefOfStaffDigest.test.tsx`, `intake::tests` (`the_chief_of_staff_explains_a_lure_screening_cant_see`), `screen::tests` (`what_the_words_say_is_left_to_the_model`) | Layer: unit + manual | Gap: the backend's start-or-update decision is model-driven and is tested by hand, as is how the Chief of Staff explains a lure.
+- **Automation:** Covered by: `digest-model.test.ts`, `NandiDigest.test.tsx`, `intake::tests` (`the_chief_of_staff_explains_a_lure_screening_cant_see`), `screen::tests` (`what_the_words_say_is_left_to_the_model`) | Layer: unit + manual | Gap: the backend's start-or-update decision is model-driven and is tested by hand, as is how Nandi explains a lure.
 - **Needs relay:** no
 - **Status:** Shipped
 
 ### RQ-30 — Teammates' requests take the same intake
 
 - **What:** Every request from another Nandi is screened for phishing and malware signs. Blocked ones are refused with the reasons. A clean one from a teammate you trust for that capability runs at once. Anything else (not trusted, or suspicious) waits in Home's "Waiting for your OK" (label "Run: <agent> · <capability>", from a teammate); the requester sees "Waiting for the owner to approve". **Approve** runs it; **Dismiss** declines it. Requests to your gateway are only screened: the gateway's own holds in the Inbox decide them, as before.
-- **Where:** `services/a2a/executor.rs` (`Executor::intake`, `trusted`), `services/intake/mod.rs` (`gate_task`, `is_approved_task`, `drop_task`), Home's `ChiefOfStaffDigest.tsx`.
+- **Where:** `services/a2a/executor.rs` (`Executor::intake`, `trusted`), `services/intake/mod.rs` (`gate_task`, `is_approved_task`, `drop_task`), Home's `NandiDigest.tsx`.
 - **Preconditions:** Two members on one relay; on the provider, an agent that serves a capability and accepts delegation; "trust everyone on the relay" off in Network › Sharing, and the requester not a trusted peer.
 - **Steps:**
   1. From member A, ask B's agent for its capability: "Review PR 42 by Friday".
@@ -1134,10 +1134,10 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **Needs relay:** yes
 - **Status:** Shipped
 
-### RQ-31 — Each intake item has a Chief of Staff thread
+### RQ-31 — Each intake item has a Nandi thread
 
-- **What:** Every item the Chief of Staff screens (email, calendar, a teammate's request) has its own conversation with it, a thread (`intake:<id>`). News for the same work joins the same thread. The backend writes the Chief of Staff's notes into it (queued, approved, dismissed). Home's rows open the thread. The thread page shows the item with its screening verdict and plan, **Approve** and **Dismiss**, the Requests it became (with their steps and **Mark done**), and the conversation. Asking for a draft gets a draft; asking to give the work to an agent queues an item in the same thread for approval instead of running it. **Mark done** on Home's "Needs you" row finishes a "For you" step.
-- **Where:** `IntakeThreadView.tsx`, `intake-thread-model.ts`, Home's `ChiefOfStaffDigest.tsx`, `services/intake/thread.rs`, `get_intake_thread`, `send_intake_message`.
+- **What:** Every item Nandi screens (email, calendar, a teammate's request) has its own conversation with it, a thread (`intake:<id>`). News for the same work joins the same thread. The backend writes Nandi's notes into it (queued, approved, dismissed). Home's rows open the thread. The thread page shows the item with its screening verdict and plan, **Approve** and **Dismiss**, the Requests it became (with their steps and **Mark done**), and the conversation. Asking for a draft gets a draft; asking to give the work to an agent queues an item in the same thread for approval instead of running it. **Mark done** on Home's "Needs you" row finishes a "For you" step.
+- **Where:** `IntakeThreadView.tsx`, `intake-thread-model.ts`, Home's `NandiDigest.tsx`, `services/intake/thread.rs`, `get_intake_thread`, `send_intake_message`.
 - **Preconditions:** Email connected (or a calendar event) so an item reaches the queue; an agent that can do the work.
 - **Steps:**
   1. Let an email arrive that asks for something. Open Home and click the item.
@@ -1148,12 +1148,12 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
   6. For a plan with a "For you" step, go back to Home and click **Mark done** on its "Needs you" row.
 - **Expected:**
   - Step 1: the thread opens with the item's title and source.
-  - Step 2: the Chief of Staff's note says it queued the item; the header shows the screening verdict and the plan steps.
-  - Step 3: the Chief of Staff answers with a draft.
+  - Step 2: Nandi's note says it queued the item; the header shows the screening verdict and the plan steps.
+  - Step 3: Nandi answers with a draft.
   - Step 4: a new item waits in the same thread; nothing runs yet.
   - Step 5: it starts, the thread gets an "approved" note, and the Request appears below with its steps.
   - Step 6: the step finishes and the row leaves "Needs you".
-- **Edge / negative cases:** A blocked item shows "Blocked by screening" and only Dismiss. A suspicious item asks before it starts. Dismissing adds a "dismissed" note and the item moves to the history line. A teammate's request opens its thread too, and its Request has no Mark done. Without a relay everything works except teammates' items, which need the relay. The queue is an Inbox kind too: its line opens this thread. Saying "approve it" (or "dismiss it") in the thread makes the Chief of Staff propose `inbox_approve` / `inbox_refuse`, confirmed on its card like any Inbox chat decision (RQ-35).
+- **Edge / negative cases:** A blocked item shows "Blocked by screening" and only Dismiss. A suspicious item asks before it starts. Dismissing adds a "dismissed" note and the item moves to the history line. A teammate's request opens its thread too, and its Request has no Mark done. Without a relay everything works except teammates' items, which need the relay. The queue is an Inbox kind too: its line opens this thread. Saying "approve it" (or "dismiss it") in the thread makes Nandi propose `inbox_approve` / `inbox_refuse`, confirmed on its card like any Inbox chat decision (RQ-35).
 - **Automation:** Covered by: `digest-model.test.ts`, `intake-thread-model.test.ts`, `inbox-model.test.ts` (the intake queue), `services::intake::thread` tests | Layer: unit + manual | Gap: the page against live email is manual.
 - **Needs relay:** no
 - **Status:** Shipped
@@ -1185,36 +1185,36 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 - **Needs relay:** no
 - **Status:** Shipped
 
-### RQ-33 — Chief of Staff does a step of its own plans, and offers Save as workflow
+### RQ-33 — Nandi does a step of its own plans, and offers Save as workflow
 
-- **What:** A work plan can give Chief of Staff one step it does itself (a site in its browser, its notes, mail triage). The step runs in the item's thread when the work came through intake, else in the Request's own conversation, never in Chief of Staff's main chat; the step finishes when that turn ends and the plan goes on. Work Chief of Staff starts from that turn waits in **Waiting for your OK**. A plan never holds two Chief of Staff steps. When work finishes well and the same work (same title, ignoring dates and numbers) or the same multi-step plan finished well before, Chief of Staff notes a proposal in the thread, and **Save as workflow** shows on the Request card in the thread and on Home's finished row. It opens the workflow draft, where the run plan's hand-overs (sign in, pay) are manual steps; nothing is saved until **Save workflow**.
-- **Where:** `services/requests/self_step.rs`, `services/requests/recurrence.rs`, `local::workflow_yaml`, `IntakeThreadView.tsx`, `ChiefOfStaffDigest.tsx`, `SaveAsWorkflowDialog.tsx`, the playbooks `delegate-work` and `build-a-workflow`.
-- **Preconditions:** Email connected and a site Chief of Staff may browse (Browser pilot running). For the proposal: the same work done once before (for example last month's bill).
+- **What:** A work plan can give Nandi one step it does itself (a site in its browser, its notes, mail triage). The step runs in the item's thread when the work came through intake, else in the Request's own conversation, never in Nandi's main chat; the step finishes when that turn ends and the plan goes on. Work Nandi starts from that turn waits in **Waiting for your OK**. A plan never holds two Nandi steps. When work finishes well and the same work (same title, ignoring dates and numbers) or the same multi-step plan finished well before, Nandi notes a proposal in the thread, and **Save as workflow** shows on the Request card in the thread and on Home's finished row. It opens the workflow draft, where the run plan's hand-overs (sign in, pay) are manual steps; nothing is saved until **Save workflow**.
+- **Where:** `services/requests/self_step.rs`, `services/requests/recurrence.rs`, `local::workflow_yaml`, `IntakeThreadView.tsx`, `NandiDigest.tsx`, `SaveAsWorkflowDialog.tsx`, the playbooks `delegate-work` and `build-a-workflow`.
+- **Preconditions:** Email connected and a site Nandi may browse (Browser pilot running). For the proposal: the same work done once before (for example last month's bill).
 - **Steps:**
-  1. Let an email ask for something Chief of Staff can do on a website (pay a bill on a test site). Open its thread from Home and read the plan.
+  1. Let an email ask for something Nandi can do on a website (pay a bill on a test site). Open its thread from Home and read the plan.
   2. Click **Approve**.
-  3. Watch the thread while the step runs; open Chief of Staff's main chat.
-  4. In the thread, ask Chief of Staff to start more work for itself.
+  3. Watch the thread while the step runs; open Nandi's main chat.
+  4. In the thread, ask Nandi to start more work for itself.
   5. Repeat steps 1 and 2 with the same kind of email (next month's bill) and let it finish.
   6. Click **Save as workflow** on the Request card in the thread.
   7. Open Home's **Since you were away**.
 - **Expected:**
-  - Step 1: the plan names Chief of Staff for the website step.
+  - Step 1: the plan names Nandi for the website step.
   - Step 2: the step starts in this thread: its run plan card shows, sign-in and payment are handed over to you.
   - Step 3: the main chat has nothing new; when the turn ends, the step shows done and the Request moves on or finishes.
   - Step 4: a new item waits in **Waiting for your OK**; nothing starts.
   - Step 5: the thread gets a note offering to save it as a workflow, naming the earlier work.
-  - Step 6: the draft opens; the sign-in and payment are manual steps, the rest are Chief of Staff steps. Cancel saves nothing; **Save workflow** saves and opens it.
+  - Step 6: the draft opens; the sign-in and payment are manual steps, the rest are Nandi steps. Cancel saves nothing; **Save workflow** saves and opens it.
   - Step 7: the finished row has **Save as workflow** too.
-- **Edge / negative cases:** Work the user asks for in the ask box with a Chief of Staff step runs in the Request's own conversation. A plan with two Chief of Staff steps keeps the first and warns. Failed work, work that is only manual steps, and work that already ran a workflow are never proposed. Without a relay everything works.
-- **Automation:** Covered by: `services::requests::self_step`, `services::requests::recurrence` and `services::requests::local` tests (the step runs in the thread and settles, the loop guard queues, the draft cuts at hand-overs, the proposal shows), `ask::tests::the_planner_may_give_the_chief_of_staff_one_step`, `digest-model.test.ts`, `intake-thread-model.test.ts`, `ChiefOfStaffDigest.test.tsx` | Layer: unit + integration + manual | Gap: a live browser step is manual.
+- **Edge / negative cases:** Work the user asks for in the ask box with a Nandi step runs in the Request's own conversation. A plan with two Nandi steps keeps the first and warns. Failed work, work that is only manual steps, and work that already ran a workflow are never proposed. Without a relay everything works.
+- **Automation:** Covered by: `services::requests::self_step`, `services::requests::recurrence` and `services::requests::local` tests (the step runs in the thread and settles, the loop guard queues, the draft cuts at hand-overs, the proposal shows), `ask::tests::the_planner_may_give_the_chief_of_staff_one_step`, `digest-model.test.ts`, `intake-thread-model.test.ts`, `NandiDigest.test.tsx` | Layer: unit + integration + manual | Gap: a live browser step is manual.
 - **Needs relay:** no
 - **Status:** Shipped
 
 ### RQ-34 — Every Inbox item opens as an Ask chat
 
-- **What:** Opening an Inbox line (Home, the Inbox page or the work tray) opens that item's chat with the Chief of Staff: a conversation `inbox:<kind>:<id>` made the first time it's opened (an intake item keeps its `intake:<id>` thread, RQ-31). The item's card sits on top with its buttons as shortcuts, the conversation below, and the ask box in chat mode at the bottom. The Chief of Staff gets the item and what's being decided as untrusted `<task-data>`, so the user can ask "why?", "what did they send?", "what happens if I refuse?", or answer in their own words. Once the item no longer waits, the top says "Nothing is left to decide here" and the chat stays.
-- **Where:** `src/components/views/InboxItemThreadView.tsx`, `ChiefOfStaffThread.tsx`, `src/hooks/useInboxThread.ts`, `inbox-model.ts` (`inboxThreadId`, `inboxItemView`), `tray-model.ts` (`inboxTrayRow`); view `inbox-thread`; commands `open_inbox_thread`, `send_inbox_message`; HTTP `POST /api/rpc/open_inbox_thread|send_inbox_message`; `src-tauri/src/services/inbox/thread.rs`, `item.rs`.
+- **What:** Opening an Inbox line (Home, the Inbox page or the work tray) opens that item's chat with Nandi: a conversation `inbox:<kind>:<id>` made the first time it's opened (an intake item keeps its `intake:<id>` thread, RQ-31). The item's card sits on top with its buttons as shortcuts, the conversation below, and the ask box in chat mode at the bottom. Nandi gets the item and what's being decided as untrusted `<task-data>`, so the user can ask "why?", "what did they send?", "what happens if I refuse?", or answer in their own words. Once the item no longer waits, the top says "Nothing is left to decide here" and the chat stays.
+- **Where:** `src/components/views/InboxItemThreadView.tsx`, `NandiThread.tsx`, `src/hooks/useInboxThread.ts`, `inbox-model.ts` (`inboxThreadId`, `inboxItemView`), `tray-model.ts` (`inboxTrayRow`); view `inbox-thread`; commands `open_inbox_thread`, `send_inbox_message`; HTTP `POST /api/rpc/open_inbox_thread|send_inbox_message`; `src-tauri/src/services/inbox/thread.rs`, `item.rs`.
 - **Preconditions:** A model; an item waiting (for example an agent with `requires_approval: [shell]` asking to run a command, or someone's `ask-me` held for approval).
 - **Steps:**
   1. Open Home and click the item's line.
@@ -1223,17 +1223,17 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
   4. Open the same item from the work tray's Needs you.
 - **Expected:**
   - Step 1: the chat opens titled like the line, with the item's card on top and an empty conversation.
-  - Step 2: the Chief of Staff answers from the item's details; nothing is decided.
+  - Step 2: Nandi answers from the item's details; nothing is decided.
   - Step 3: the item is decided as from Home before; the top says "Nothing is left to decide here".
   - Step 4: the same conversation opens (one chat per item).
 - **Edge / negative cases:** A missing model opens Settings › Models; a workflow approval that doesn't name its step opens its run. Text in the item that tries to instruct the model is treated as data. The companion keeps the cards inline. Works with no relay; a person's request needs the relay only to send the answer back (it waits in the outbox).
-- **Automation:** Covered by: `services::inbox::item` tests (every kind's ID round-trips), `services::inbox::thread` tests (the thread is the Chief of Staff's, made once; the prompt holds the item as untrusted data with its tools), `InboxItemThreadView.test.tsx`, `inbox-model.test.ts`, `tray-model.test.ts` | Layer: unit + manual | Gap: the Chief of Staff's answers with a real model are manual.
+- **Automation:** Covered by: `services::inbox::item` tests (every kind's ID round-trips), `services::inbox::thread` tests (the thread is Nandi's, made once; the prompt holds the item as untrusted data with its tools), `InboxItemThreadView.test.tsx`, `inbox-model.test.ts`, `tray-model.test.ts` | Layer: unit + manual | Gap: Nandi's answers with a real model are manual.
 - **Needs relay:** no
 - **Status:** Shipped
 
 ### RQ-35 — Decide an Inbox item in its chat, confirmed on its card
 
-- **What:** In an item's chat the user can decide in words, with conditions: "approve it, but only up to $200", "decline, Bea owns this", "tell them Friday works", "mark it done, sent to the auditors", "give this to Bob". The Chief of Staff proposes the matching decision tool (`inbox_approve` with `note`, `inbox_refuse` with `reason`, `inbox_answer` with `text`, `inbox_done` with `note`, `inbox_reassign` with `to`), offered only in that chat and only those that fit the item. Every call waits on an approval card in the chat, whatever the model or the agent's settings say: a sentence never decides anything. On confirm, the same service function as the item's button runs (`approve_action`, `access::answer` allow once, `approve_workflow_step`, `decide_gateway_hold`, `close_gateway_assignment`, `respond_to_clarification`, `complete_manual_step`, `respond_trust_request`, `dismiss_request_return`, `retry_task`, `dismiss_work`, `intake::approve` / `dismiss`, `reassign_task`), so group policies, typed reasons and the audit are the same. Conditions travel as the note or reason; policies and grants never change. The confirm card isn't an Inbox line of its own.
+- **What:** In an item's chat the user can decide in words, with conditions: "approve it, but only up to $200", "decline, Bea owns this", "tell them Friday works", "mark it done, sent to the auditors", "give this to Bob". Nandi proposes the matching decision tool (`inbox_approve` with `note`, `inbox_refuse` with `reason`, `inbox_answer` with `text`, `inbox_done` with `note`, `inbox_reassign` with `to`), offered only in that chat and only those that fit the item. Every call waits on an approval card in the chat, whatever the model or the agent's settings say: a sentence never decides anything. On confirm, the same service function as the item's button runs (`approve_action`, `access::answer` allow once, `approve_workflow_step`, `decide_gateway_hold`, `close_gateway_assignment`, `respond_to_clarification`, `complete_manual_step`, `respond_trust_request`, `dismiss_request_return`, `retry_task`, `dismiss_work`, `intake::approve` / `dismiss`, `reassign_task`), so group policies, typed reasons and the audit are the same. Conditions travel as the note or reason; policies and grants never change. The confirm card isn't an Inbox line of its own.
 - **Where:** `src-tauri/src/services/inbox/tool.rs` (`gate`, `offered`, `call`), `services/orchestrator/llm_step.rs` (prompt, tools offered after deferral), `services/orchestrator/executor.rs` (`inbox::tool::gate`), `services/orchestrator/tool_calls.rs` (the dispatcher arm), `services/chat.rs` (`list_pending_approvals` leaves the confirms out); `approval-model.ts` (`inboxDecision` summaries).
 - **Preconditions:** A model; a held `ask-me` from another Nandi (relay), or an assignment, or a failed delegation.
 - **Steps:**
@@ -1244,7 +1244,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
   5. In a hold's chat, say "give this to <a teammate who serves it>" and confirm.
 - **Expected:**
   - Step 1: a card "Refuse this item, because: ask Bea instead" waits; the hold is still pending.
-  - Step 2: nothing is decided; the Chief of Staff is told it was refused.
+  - Step 2: nothing is decided; Nandi is told it was refused.
   - Step 3: the hold is declined and the requester sees "The owner declined this request: ask Bea instead".
   - Step 4: the assignment closes Done and the requester gets the note as the result.
   - Step 5: the task moves to the teammate (NW-12) with the reason.
@@ -1287,7 +1287,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 
 ### RQ-38 — Getting to know you: know-me to-dos and proposals
 
-- **What:** After onboarding, the Inbox shows one quiet to-do (kind `knowMe`, not counted in the badge): "Tell me about your work, and anything at home you'd like help with". It opens the one know-me chat with the Chief of Staff (`inbox:knowMe:you`), which also opens any time from Network › Sharing › What you offer › **Tell Nandi about you** (with the latest confirmed changes listed). The Chief of Staff asks a few follow-ups (its `know-me` playbook) and proposes changes with `knowme_propose`, offered only there and always waiting on a card in the chat. On the card the person edits each change (text; **On my card** for work; Private or one of their groups for personal; remove notes, offers, suggestions) and confirms or refuses. On confirm: work items on the card join NANDI.md `responsibilities:`, off-card work and notes go to My notes `about-me.md`, personal items to `private/about-me.md` only (never NANDI.md), a personal item shared with a group also to `private/groups/<group>.md`; description and "What I can / can't help with" edit NANDI.md; offered capabilities leave `hide`; suggestions are shown only. The decision is recorded (`knowMe`, "Getting to know you", personal answers only counted) and the to-do closes. **Later** brings it back in a week, **Skip** in a month; a new to-do comes at most once a month, and three months after an answer it asks "Is what Nandi knows about you still right?". A member of the chosen group who asks this Nandi gets that group's shared items in the Chief of Staff's answer; nobody else does.
+- **What:** After onboarding, the Inbox shows one quiet to-do (kind `knowMe`, not counted in the badge): "Tell me about your work, and anything at home you'd like help with". It opens the one know-me chat with Nandi (`inbox:knowMe:you`), which also opens any time from Network › Sharing › What you offer › **Tell Nandi about you** (with the latest confirmed changes listed). Nandi asks a few follow-ups (its `know-me` playbook) and proposes changes with `knowme_propose`, offered only there and always waiting on a card in the chat. On the card the person edits each change (text; **On my card** for work; Private or one of their groups for personal; remove notes, offers, suggestions) and confirms or refuses. On confirm: work items on the card join NANDI.md `responsibilities:`, off-card work and notes go to My notes `about-me.md`, personal items to `private/about-me.md` only (never NANDI.md), a personal item shared with a group also to `private/groups/<group>.md`; description and "What I can / can't help with" edit NANDI.md; offered capabilities leave `hide`; suggestions are shown only. The decision is recorded (`knowMe`, "Getting to know you", personal answers only counted) and the to-do closes. **Later** brings it back in a week, **Skip** in a month; a new to-do comes at most once a month, and three months after an answer it asks "Is what Nandi knows about you still right?". A member of the chosen group who asks this Nandi gets that group's shared items in Nandi's answer; nobody else does.
 - **Where:** Inbox (Home), the work tray, Network › Sharing › What you offer; `src/components/knowme/` (`KnowMeTodoCard`, `KnowMeProposalCard`, `TellNandiAboutYou`, `knowme-model.ts`), `src/hooks/useKnowMe.ts`, `inbox-model.ts` (`knowMe`), `ApprovalRequestCard.tsx`; commands `get_know_me`, `know_me_todo`, `confirm_know_me_proposal`; HTTP `POST /api/rpc/{command}`; event `knowme://changed`; `src-tauri/src/services/knowme/` (`cadence.rs`, `proposal.rs`, `sharing.rs`), `services/inbox/item.rs` (`KnowMe`), `tool.rs` (`knowme_propose`, `confirmed_args`), `thread.rs`; playbook `resources/builtin-agents/nandi/skills/know-me.md`; `docs/developer/know-me.md`.
 - **Preconditions:** A model; onboarding finished (or Settings › Run setup again to Done). For group sharing, a relay and a group with a second Nandi.
 - **Steps:**
@@ -1300,7 +1300,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
   7. From the second Nandi (a member of the group), ask the first: "What does Sam look after at home?"; from a Nandi outside the group, ask the same.
 - **Expected:**
   - Step 1: the to-do is in the Inbox list, quiet, and the badge count doesn't change.
-  - Step 2: the Chief of Staff asks at most two or three follow-ups, then a card "Getting to know you · changes to confirm" waits; nothing is written yet.
+  - Step 2: Nandi asks at most two or three follow-ups, then a card "Getting to know you · changes to confirm" waits; nothing is written yet.
   - Step 3-4: NANDI.md lists only the work items left on the card; the personal ones are only in `private/about-me.md` (and the group's note); What you offer shows the new responsibilities; Decisions has "Getting to know you" with "on the card: …" and counts; the to-do is gone; Tell Nandi about you lists the change.
   - Step 5: the same chat opens; nothing is written.
   - Step 6: Skip and Later each close the to-do with a toast; it doesn't come back on reload.

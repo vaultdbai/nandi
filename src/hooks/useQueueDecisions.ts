@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import {
   useApproveQueuedWork,
   useDismissQueuedWork,
-} from '@/hooks/useChiefOfStaffDigest'
+} from '@/hooks/useNandiDigest'
 import { useViewOpener } from '@/hooks/useViewOpener'
 import { rowView, type QueueRow } from '@/components/home/digest-model'
 
@@ -27,13 +27,13 @@ export function useQueueDecisions(opens: 'thread' | 'request') {
       const requestId = await approve.mutateAsync(row.id)
       const message =
         row.action === 'update' && row.requestTitle
-          ? t('home.chiefOfStaffDigest.queue.toast.addedTo', {
+          ? t('home.nandiDigest.queue.toast.addedTo', {
               title: row.requestTitle,
             })
-          : t('home.chiefOfStaffDigest.queue.toast.started')
+          : t('home.nandiDigest.queue.toast.started')
       toast.success(message, {
         action: {
-          label: t('home.chiefOfStaffDigest.queue.toast.open'),
+          label: t('home.nandiDigest.queue.toast.open'),
           onClick: () =>
             open(
               rowView({
@@ -44,7 +44,7 @@ export function useQueueDecisions(opens: 'thread' | 'request') {
         },
       })
     } catch (e) {
-      toast.error(t('home.chiefOfStaffDigest.queue.toast.approveFailed'), {
+      toast.error(t('home.nandiDigest.queue.toast.approveFailed'), {
         description: e instanceof Error ? e.message : String(e),
       })
     }
@@ -54,7 +54,7 @@ export function useQueueDecisions(opens: 'thread' | 'request') {
     try {
       await dismiss.mutateAsync(row.id)
     } catch (e) {
-      toast.error(t('home.chiefOfStaffDigest.queue.toast.dismissFailed'), {
+      toast.error(t('home.nandiDigest.queue.toast.dismissFailed'), {
         description: e instanceof Error ? e.message : String(e),
       })
     }

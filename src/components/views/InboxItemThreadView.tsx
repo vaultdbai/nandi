@@ -13,14 +13,14 @@ import { rawError } from '@/lib/friendly-error'
 import { useInbox } from '@/hooks/useInbox'
 import { useInboxThread } from '@/hooks/useInboxThread'
 import { sendInboxMessage } from '@/lib/agent-actions'
-import { ThreadComposer, ThreadConversation } from './ChiefOfStaffThread'
+import { ThreadComposer, ThreadConversation } from './NandiThread'
 import { ViewHeader } from './ViewHeader'
 
 /**
- * One Inbox item's Ask chat with the Chief of Staff (`services::inbox`).
+ * One Inbox item's Ask chat with Nandi (`services::inbox`).
  * Above: the item's card, its buttons the shortcuts. Below: the chat, where
  * the user asks about it, answers in their own words, or decides with
- * conditions; a decision the Chief of Staff proposes waits for the user's
+ * conditions; a decision Nandi proposes waits for the user's
  * confirm on its card in the chat.
  */
 export function InboxItemThreadView({

@@ -36,6 +36,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { GatewayChat } from '@/components/gateway/GatewayChat'
 import { TellNandiAboutYou } from '@/components/knowme/TellNandiAboutYou'
 import { useAgents } from '@/hooks/useAgents'
+import { isDefaultAgent } from '@/lib/agent-identity'
 import { capabilityQueryKeys } from '@/hooks/useCapabilities'
 import { rawError } from '@/lib/friendly-error'
 import { useGatewayManifest, useSetGatewayManifest } from '@/hooks/useGateway'
@@ -72,6 +73,7 @@ function useServedBy(): ServedBy[] | undefined {
   if (!agents.data || cards.some(card => card.isPending)) return undefined
   return list.map((agent, index) => ({
     agent: agent.name,
+    isDefault: isDefaultAgent(agent),
     capabilities: (cards[index]?.data?.capabilities ?? []).map(c => c.name),
   }))
 }
@@ -269,9 +271,7 @@ function OfferSummary({
                         <span dir="ltr" className="font-mono text-xs">
                           {item.name}
                         </span>
-                        <span className="block text-xs text-muted-foreground">
-                          {item.agents.join(', ')}
-                        </span>
+                        <OfferedBy item={item} />
                       </li>
                     ))}
                   </ul>
@@ -293,6 +293,23 @@ function OfferSummary({
         })}
       </p>
     </section>
+  )
+}
+
+/**
+ * Who serves a capability: Nandi, taking requests for the person (its
+ * `ask-me` and `assign-me`), then the person's own agents
+ */
+function OfferedBy({ item }: { item: OfferedCapability }) {
+  const { t } = useTranslation()
+  const parts = [
+    item.nandi && t('network.offer.byNandi', { name: item.nandi }),
+    item.agents.join(', '),
+  ].filter(Boolean)
+  return (
+    <span className="block text-xs text-muted-foreground">
+      {parts.join(' · ')}
+    </span>
   )
 }
 
@@ -428,9 +445,7 @@ function OfferEditor({
                 <span dir="ltr" className="font-mono text-xs">
                   {item.name}
                 </span>
-                <span className="block text-xs text-muted-foreground">
-                  {item.agents.join(', ')}
-                </span>
+                <OfferedBy item={item} />
               </div>
               <NativeSelect
                 aria-label={t('network.offer.choiceFor', { name: item.name })}

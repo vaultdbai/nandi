@@ -55,7 +55,7 @@ import { inboxItemView, inboxRowLabel, type InboxItem } from './inbox-model'
 
 /**
  * Everything waiting on the user, one calm line each; opening one opens its
- * Ask chat with the Chief of Staff, with the item's card (approve or
+ * Ask chat with Nandi, with the item's card (approve or
  * reject, answer, finish a manual step) on top as shortcuts. Recent
  * failures follow; they aren't counted in the badge.
  */

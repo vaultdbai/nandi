@@ -1,6 +1,6 @@
 /**
- * Live UI view model: how a file change reads ("Updated just now by Chief
- * of Staff") and where it leads. Pure, so the wording is tested once.
+ * Live UI view model: how a file change reads ("Updated just now by Nandi")
+ * and where it leads. Pure, so the wording is tested once.
  */
 import type { TFunction } from 'i18next'
 import type { ChangeAuthor, LiveChange } from '@/lib/bindings'
@@ -10,7 +10,7 @@ import type { View } from '@/store/navigation-store'
 /** Under this, a change reads "just now" */
 const JUST_NOW_MS = 60_000
 
-/** "by you", "by Chief of Staff", "by the Weekly report workflow", "outside Nandi" */
+/** "by you", "by Nandi", "by the Weekly report workflow", "outside Nandi" */
 export function authorText(author: ChangeAuthor, t: TFunction): string {
   switch (author.kind) {
     case 'you':

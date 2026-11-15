@@ -50,10 +50,10 @@ const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error)
 
 /**
- * My notes: the Markdown notes Chief of Staff keeps for the user (role,
+ * My notes: the Markdown notes Nandi keeps for the user (role,
  * what they own, deadlines, who to ask…), and answers from. The list on
  * the left, the open note on the right, read or edited in place. The
- * switch lets Chief of Staff update them without asking each time.
+ * switch lets Nandi update them without asking each time.
  */
 export function MyNotesView({ note }: { note?: string }) {
   const { t } = useTranslation()
@@ -242,7 +242,7 @@ export function MyNotesView({ note }: { note?: string }) {
   )
 }
 
-/** "Let Chief of Staff keep my notes up to date" */
+/** "Let Nandi keep my notes up to date" */
 function KeepSwitch({ allowed }: { allowed: boolean }) {
   const { t } = useTranslation()
   const set = useSetNotesAgentsCanWrite()
@@ -448,7 +448,7 @@ function EmptyNotes({ onNew }: { onNew: () => void }) {
       <FileText aria-hidden className="size-8 text-muted-foreground" />
       <p className="text-sm font-medium">{t('notes.empty.title')}</p>
       <p className="max-w-md text-sm text-muted-foreground">
-        {t('notes.empty.withChief')}
+        {t('notes.empty.withNandi')}
       </p>
       <div className="flex gap-2">
         {nandi && (
@@ -461,7 +461,7 @@ function EmptyNotes({ onNew }: { onNew: () => void }) {
               })
             }
           >
-            {t('notes.empty.openChief')}
+            {t('notes.empty.openNandi')}
           </Button>
         )}
         <Button variant="outline" onClick={onNew}>

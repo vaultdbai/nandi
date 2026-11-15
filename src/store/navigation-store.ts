@@ -90,7 +90,7 @@ export type View =
   | { kind: 'onboarding'; again?: boolean }
   /** First launch: pick curated packs to install */
   | { kind: 'starter-packs' }
-  /** The user's notes, which Chief of Staff keeps; `note` is the one open */
+  /** The user's notes, which Nandi keeps; `note` is the one open */
   | { kind: 'notes'; note?: string }
   /** `tab` opens one tab (default: Timeline while active, else Overview) */
   | { kind: 'run-detail'; runId: string; tab?: RunDetailTab }
@@ -102,9 +102,9 @@ export type View =
   | { kind: 'work-item'; id: string }
   /** One Request with its Steps (any of its task IDs); `stepId` opens a step */
   | { kind: 'request'; requestId: string; stepId?: string }
-  /** One intake item's Chief of Staff conversation (`intake:<id>`) */
+  /** One intake item's Nandi conversation (`intake:<id>`) */
   | { kind: 'intake-thread'; conversationId: string }
-  /** One Inbox item's Ask chat with the Chief of Staff (`inbox:<kind>:<id>`) */
+  /** One Inbox item's Ask chat with Nandi (`inbox:<kind>:<id>`) */
   | { kind: 'inbox-thread'; conversationId: string }
 
 export const RUN_DETAIL_TABS = [

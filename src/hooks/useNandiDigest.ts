@@ -1,5 +1,5 @@
 /**
- * The Chief of Staff's digest: what it did since the user last looked.
+ * Nandi's digest: what it did since the user last looked.
  * Refetches on `request://updated` (any Request change, and after mark-seen).
  */
 import { useQueryClient } from '@tanstack/react-query'
@@ -14,7 +14,7 @@ export const digestKeys = {
 
 const DIGEST_EVENTS: readonly NandiEventName[] = ['request://updated']
 
-export function useChiefOfStaffDigest() {
+export function useNandiDigest() {
   useInvalidateOn(DIGEST_EVENTS, digestKeys.all)
   return useClientQuery(digestKeys.all, () => client.getNandiDigest())
 }

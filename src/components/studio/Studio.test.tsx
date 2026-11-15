@@ -3,7 +3,11 @@ import { streamAsksThroughAsk } from '@/test/ask-stream'
 import userEvent from '@testing-library/user-event'
 import { fireEvent, render, screen, waitFor, within } from '@/test/test-utils'
 import { StudioView } from '@/components/views/StudioView'
-import type { ArtifactLoad, EditPreview } from '@/lib/bindings'
+import {
+  DEFAULT_AGENT,
+  type ArtifactLoad,
+  type EditPreview,
+} from '@/lib/bindings'
 import { useAgentStore } from '@/store/agent-store'
 import { useStudioStore } from '@/store/studio-store'
 
@@ -84,7 +88,10 @@ describe('Studio split view', () => {
       ])
     )
     mockClient.listAgents.mockResolvedValue(
-      ok([{ id: 'writer', name: 'Writer', description: '' }])
+      ok([
+        { id: DEFAULT_AGENT, name: 'Nandi', description: '', kind: 'default' },
+        { id: 'writer', name: 'Writer', description: '', kind: 'local' },
+      ])
     )
     mockClient.getWorkflows.mockResolvedValue(ok([]))
     mockClient.listPolicies.mockResolvedValue(
@@ -185,6 +192,12 @@ describe('Studio split view', () => {
         within(picker).getByRole('option', { name: 'Writer (writer)' })
       ).toBeInTheDocument()
     )
+    // Nandi is a fixed choice above the person's agents
+    const options = within(picker).getAllByRole('option')
+    expect(options[1]).toHaveValue(DEFAULT_AGENT)
+    expect(options[1]).toHaveTextContent('Nandi (nandi)')
+    const group = within(picker).getByRole('group', { name: 'Agents' })
+    expect(within(group).getAllByRole('option')).toHaveLength(1)
 
     await user.click(screen.getByRole('tab', { name: 'Tool' }))
     expect(await screen.findByText('Shell')).toBeInTheDocument()

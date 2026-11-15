@@ -10,7 +10,7 @@ import type { BackfillRange } from '@/lib/tauri-bindings'
 
 /**
  * "Also read older mail in the background": how far back, with an
- * estimate of the emails and Chief of Staff runs once a mailbox is
+ * estimate of the emails and Nandi runs once a mailbox is
  * connected
  */
 export function BackfillChoice({

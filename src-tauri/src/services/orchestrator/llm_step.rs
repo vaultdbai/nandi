@@ -101,8 +101,8 @@ pub(super) async fn llm_step(
                 crate::runtime::FOLDERS_MOUNT,
             ));
             system.push_str(&today_prompt(&chrono::Local::now()));
-            // An Inbox item's thread (an intake one too): the Chief of
-            // Staff gets the item it's about and what's being decided
+            // An Inbox item's thread (an intake one too): Nandi gets
+            // the item it's about and what's being decided
             if ctx.agent_id == DEFAULT_AGENT && inbox::thread::is_thread(&ctx.conversation_id) {
                 if let Some(state) = app_state(deps) {
                     if let Some(item) = inbox::thread::prompt(&state, &ctx.conversation_id).await {

@@ -359,15 +359,15 @@ Notes that apply to the whole section:
   - Code: `services/a2a/assignment.rs` (`ASSIGN_ME`, `due_at`, `ACCEPT_WINDOW`), `delegator.rs` (`Waited::Accepted`, `assign_locally`), `task.rs` (`on_event`, results kept at the relay), `queue.rs` (the outbox), `history.rs` (`close`), `people.rs` (`requests_from`), `gateway/assignments.rs` (`links_of`, `gateway_assignment_links`), `gateway/router.rs` (`assign`), `gateway/mod.rs` (`list_gateway_assignments`, `close_gateway_assignment`).
   - Commands: `list_gateway_assignments`, `close_gateway_assignment`. HTTP: `POST /api/rpc/list_gateway_assignments`, `POST /api/rpc/close_gateway_assignment {"taskId","done":true|false,"note"?}`.
   - UI: `src/components/inbox/Inbox.tsx` (`AssignmentRow`), `src/hooks/useInbox.ts` (`useGatewayAssignments`, `useCloseGatewayAssignment`), `inbox-model.ts` (kind `assignment`).
-- **Preconditions:** Two instances on one relay (the relay on this build: older relays drop the result from status answers). B's NANDI.md has `require_approval: [assign-me]`. A has Chief of Staff.
+- **Preconditions:** Two instances on one relay (the relay on this build: older relays drop the result from status answers). B's NANDI.md has `require_approval: [assign-me]`. A has Nandi.
 - **Steps:**
-  1. On A, ask Chief of Staff "Assign Lena: send me the list of SOC 1 evidence owners, due 2026-10-30, with this link: https://example.com/soc1" and approve the call.
+  1. On A, ask Nandi "Assign Lena: send me the list of SOC 1 evidence owners, due 2026-10-30, with this link: https://example.com/soc1" and approve the call.
   2. On B, approve the hold in the Inbox.
   3. Restart B.
   4. On B, type a note and click **Done**.
   5. Assign another task, approve it on B, stop A, click **Done** on B, then start A.
   6. Assign a third and **Decline** it with a note.
-  7. On A, ask Chief of Staff to assign yourself "Book the auditor" and approve the call.
+  7. On A, ask Nandi to assign yourself "Book the auditor" and approve the call.
 - **Expected:**
   - Step 1: A's chat replies that it's assigned (within about 30 s, before B decides). A's task is Delivered, then Working once approved, with the deadline at the end of 2026-10-30.
   - Step 2: the assignment card appears with the due date and the link under "Attached"; clicking it opens the page in the browser.
@@ -436,6 +436,7 @@ Notes that apply to the whole section:
 
 - **What:** This extends NW-09.
   - **Summary:** "About this Nandi" (the description and the body, rendered as markdown), "What you're responsible for" (the `responsibilities:` as tags, or "None listed yet…"), the three columns (Offered, Needs your approval, Hidden), with each capability and the agents that serve it.
+    - Nandi's `ask-me` and `assign-me` stay listed like any capability, read as "Nandi takes these requests for you" (`network.offer.byNandi`), then any of the person's agents that serve them too. The editor's rows read the same.
     - When `expose` is empty, the note reads "Everything your agents can do is offered, except what you hide."
     - When the approval column has items, it reads "Requests for these wait for you in the Inbox."
     - The limits line reads "Limits: {max} at a time · {rate} per caller per hour".

@@ -68,11 +68,11 @@ describe('My notes', () => {
     )
   })
 
-  it('turns Chief of Staff keeping the notes off', async () => {
+  it('turns Nandi keeping the notes off', async () => {
     const user = userEvent.setup()
     render(<MyNotesView />)
     const keep = await screen.findByRole('switch', {
-      name: 'Let Chief of Staff keep them up to date',
+      name: 'Let Nandi keep them up to date',
     })
     expect(keep).toBeChecked()
     await user.click(keep)
@@ -108,7 +108,7 @@ describe('My notes', () => {
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument()
   })
 
-  it('offers Chief of Staff when there are no notes', async () => {
+  it('offers Nandi when there are no notes', async () => {
     Object.assign(commands, {
       getMyNotes: ok({ ...mine(), notes: [] }),
       listAgents: ok([{ id: DEFAULT_AGENT, name: 'Nandi', kind: 'default' }]),
@@ -116,7 +116,7 @@ describe('My notes', () => {
     render(<MyNotesView />)
     expect(await screen.findByText('No notes yet')).toBeInTheDocument()
     expect(
-      await screen.findByRole('button', { name: 'Open Chief of Staff' })
+      await screen.findByRole('button', { name: 'Open Nandi' })
     ).toBeInTheDocument()
   })
 })

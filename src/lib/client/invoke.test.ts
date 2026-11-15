@@ -34,7 +34,7 @@ describe('rpcInvoke', () => {
     vi.stubGlobal('fetch', fetchMock)
     respond(200, null)
 
-    await rpcInvoke('get_chief_of_staff_digest')
+    await rpcInvoke('get_nandi_digest')
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(init.body).toBe('{}')
   })

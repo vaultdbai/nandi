@@ -1,5 +1,5 @@
 /**
- * My notes: the folder Chief of Staff keeps for the user (`services::notes`).
+ * My notes: the folder Nandi keeps for the user (`services::notes`).
  * The core watches the folder, so a note saved here, written by an agent or
  * edited in another editor arrives as `live://changed`, which refetches
  * exactly that note and the list (`lib/live-changes.ts`).
@@ -39,7 +39,7 @@ export function useSaveNote() {
   )
 }
 
-/** The Chief of Staff's open suggestions (suggestions.md `- [ ]` lines) */
+/** Nandi's open suggestions (suggestions.md `- [ ]` lines) */
 export function useNoteSuggestions() {
   return useClientQuery(notesKeys.suggestions, () =>
     client.listNoteSuggestions()
@@ -66,7 +66,7 @@ export function useDeleteNote() {
   })
 }
 
-/** Lets Chief of Staff keep the notes (no asking per write), or not */
+/** Lets Nandi keep the notes (no asking per write), or not */
 export function useSetNotesAgentsCanWrite() {
   const queryClient = useQueryClient()
   return useClientMutation(

@@ -13,12 +13,19 @@ export const OFFER_COLUMNS: OfferColumn[] = ['offered', 'approval', 'hidden']
 export interface ServedBy {
   /** The agent's display name */
   agent: string
+  /** Nandi, the default agent: it takes requests for the person */
+  isDefault: boolean
   capabilities: string[]
 }
 
 export interface OfferedCapability {
   name: string
-  /** Who serves it, sorted */
+  /**
+   * Nandi's name when Nandi takes these requests for the person (`ask-me`,
+   * `assign-me`), else `null`
+   */
+  nandi: string | null
+  /** The person's own agents that serve it, sorted */
   agents: string[]
   column: OfferColumn
 }
@@ -35,28 +42,33 @@ export function capabilityColumn(
   return policy.requireApproval.includes(name) ? 'approval' : 'offered'
 }
 
+const unique = (names: string[]) => [...new Set(names)]
+
+/**
+ * Each capability the local agents serve, with who serves it: Nandi apart
+ * (it takes requests for the person), then the person's agents
+ */
 export function buildOffer(
   served: ServedBy[],
   policy: GatewayPolicy
 ): OfferedCapability[] {
-  const agents = new Map<string, Set<string>>()
-  for (const { agent, capabilities } of served) {
-    for (const name of capabilities) {
-      const set = agents.get(name) ?? new Set<string>()
-      set.add(agent)
-      agents.set(name, set)
+  const byName = new Map<string, ServedBy[]>()
+  for (const servedBy of served) {
+    for (const name of servedBy.capabilities) {
+      byName.set(name, [...(byName.get(name) ?? []), servedBy])
     }
   }
-  return [...agents.entries()]
+  return [...byName.entries()]
     .map(([name, by]) => ({
       name,
-      agents: [...by].sort((a, b) => a.localeCompare(b)),
+      nandi: by.find(s => s.isDefault)?.agent ?? null,
+      agents: unique(by.filter(s => !s.isDefault).map(s => s.agent)).sort(
+        (a, b) => a.localeCompare(b)
+      ),
       column: capabilityColumn(name, policy),
     }))
     .sort((a, b) => a.name.localeCompare(b.name))
 }
-
-const unique = (names: string[]) => [...new Set(names)]
 
 /**
  * The policy for `choices` (capability → column). An empty `expose`

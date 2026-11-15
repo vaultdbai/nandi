@@ -1,5 +1,5 @@
 /**
- * One Inbox item's Ask chat with the Chief of Staff (`open_inbox_thread`):
+ * One Inbox item's Ask chat with Nandi (`open_inbox_thread`):
  * made the first time it's opened, with whether the item still waits and
  * which decisions the chat can propose. Refetched when the item may have
  * been decided (an approval, a hold, an assignment, a manual step or a

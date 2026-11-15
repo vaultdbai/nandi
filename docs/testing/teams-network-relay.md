@@ -799,7 +799,7 @@ Notes that apply to the whole section:
 
 ### RL-27 — Find who is responsible for a topic (`find_people`)
 
-- **What:** A read-only built-in tool for agents whose skill.md lists `find_people` in `allowed-tools` (the first-party Chief of Staff agent does).
+- **What:** A read-only built-in tool for agents whose skill.md lists `find_people` in `allowed-tools` (the first-party Nandi agent does).
   - The relay searches and ranks (`FindPeople` → `PeopleMatches`), over its member directory (online or not) and its members' online agents: `responsibilities` from NANDI.md (GW-01), description, the capabilities their agents serve, their agents' cards, and the NANDI.md body when they share it.
   - Weights: responsibilities ×5, capabilities ×3, profile and agent cards ×2, body ×1. "SOC 1", "soc1" and "SOC-1" match alike, and an empty topic lists everyone.
   - Someone busy or away carries `availability: {status, until, covered_by}` (NW-14). `covered_by` is the person's name (from the directory or the people found), or "you" when the user asking covers; never a bare instance ID, which a model reads as one of the person's agents.
@@ -807,8 +807,8 @@ Notes that apply to the whole section:
   - When the relay isn't connected, it answers `RelayUnavailable` ("not connected"): nothing is matched from a cached copy.
   - It never needs approval and is never offered to an agent that doesn't list it.
 - **Where:** `src-tauri/src/services/a2a/people.rs` (`find_people`, `person_json`, `offered`), `relay/client.rs` (`find_people`), relay repo `src/directory.rs` (`find_people`, the ranking), `services/orchestrator/llm_step.rs` (offered after `delegate_to_agent`), `services/orchestrator/tool_calls.rs` (answered on the host in `run_call`), `services/tools/builtin.rs` (catalog entry, tags `people`, `network`). Docs `docs/developer/a2a-delegation.md` › Finding People and Tracking Requests.
-- **Preconditions:** Two or three Nandis on one relay, each with the gateway on and `responsibilities:` in NANDI.md (e.g. `[SOX audit, Risk]` on one and `[SOC 1 evidence]` on another); Chief of Staff installed on the asking one.
-- **Steps:** 1. Ask Chief of Staff "Who is responsible for the SOX audit?". 2. "Who handles SOC1?". 3. "Who's on my network?". 4. With PR Reviewer (dev-pack 0.3.0, serves `review-pr`) installed on two of the others and `vaultdb` in one's responsibilities: "Who can review my pull request on vaultdb?", then "Ask whoever is online". 5. Stop the relay and ask again. 6. Remove `find_people` from Chief of Staff's `allowed-tools` and ask again.
+- **Preconditions:** Two or three Nandis on one relay, each with the gateway on and `responsibilities:` in NANDI.md (e.g. `[SOX audit, Risk]` on one and `[SOC 1 evidence]` on another); Nandi installed on the asking one.
+- **Steps:** 1. Ask Nandi "Who is responsible for the SOX audit?". 2. "Who handles SOC1?". 3. "Who's on my network?". 4. With PR Reviewer (dev-pack 0.3.0, serves `review-pr`) installed on two of the others and `vaultdb` in one's responsibilities: "Who can review my pull request on vaultdb?", then "Ask whoever is online". 5. Stop the relay and ask again. 6. Remove `find_people` from Nandi's `allowed-tools` and ask again.
 - **Expected:**
   - Step 1 lists the person with `SOX audit` first and says why they matched and whether they're online.
   - Step 2 finds the `SOC 1 evidence` owner.
@@ -839,8 +839,8 @@ Notes that apply to the whole section:
   - Arguments: `direction` (`asked_by_me`, `asked_of_me` or `all`), `open_only` (default true, which hides finished tasks) and `limit`.
   - Each entry has the request text, status, created and updated times, the due date, and the answer or error when there is one.
 - **Where:** `src-tauri/src/services/a2a/people.rs` (`my_requests`, `requests_from`, `pending_holds`).
-- **Preconditions:** RL-27's setup; one request sent from Chief of Staff (approved) and one received; NANDI.md `policy.require_approval: [assign-me]` (the default, GW-01) on the receiving side.
-- **Steps:** 1. Ask Chief of Staff "Ask <person> for the SOC 1 evidence" and approve. 2. From the other Nandi, have Chief of Staff assign you work ("Assign <you>: rotate the keys by Friday") and approve there. 3. On yours, ask "What am I waiting on?" and "What did people ask me?". 4. "Show finished ones too."
+- **Preconditions:** RL-27's setup; one request sent from Nandi (approved) and one received; NANDI.md `policy.require_approval: [assign-me]` (the default, GW-01) on the receiving side.
+- **Steps:** 1. Ask Nandi "Ask <person> for the SOC 1 evidence" and approve. 2. From the other Nandi, have Nandi assign you work ("Assign <you>: rotate the keys by Friday") and approve there. 3. On yours, ask "What am I waiting on?" and "What did people ask me?". 4. "Show finished ones too."
 - **Expected:**
   - Step 3 lists the first request under asked-by-me with its status, and the held assignment first under asked-of-me as "waiting for your approval".
   - Step 4 includes completed requests with their answers.

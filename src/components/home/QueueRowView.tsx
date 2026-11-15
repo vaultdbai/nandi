@@ -42,11 +42,11 @@ export function QueueRowView({
     row.action !== 'start' && row.requestTitle
       ? t(
           row.action === 'run'
-            ? 'home.chiefOfStaffDigest.queue.run'
-            : 'home.chiefOfStaffDigest.queue.addTo',
+            ? 'home.nandiDigest.queue.run'
+            : 'home.nandiDigest.queue.addTo',
           { title: row.requestTitle }
         )
-      : t('home.chiefOfStaffDigest.queue.start')
+      : t('home.nandiDigest.queue.start')
   const origin = [row.sender, `${t(row.sourceKey)} · ${row.when}`]
     .filter(Boolean)
     .join(' · ')
@@ -55,7 +55,7 @@ export function QueueRowView({
   )
   return (
     <div
-      data-testid="home-cos-queue-row"
+      data-testid="home-nandi-queue-row"
       data-verdict={row.verdict}
       className="flex min-w-0 flex-col gap-1 rounded-md border px-3 py-2 text-sm"
     >
@@ -68,12 +68,12 @@ export function QueueRowView({
             variant="outline"
             className="shrink-0 border-warning/40 bg-warning/10 text-warning"
           >
-            {t('home.chiefOfStaffDigest.queue.verdict.suspicious')}
+            {t('home.nandiDigest.queue.verdict.suspicious')}
           </Badge>
         )}
         {row.verdict === 'blocked' && (
           <Badge variant="destructive" className="shrink-0">
-            {t('home.chiefOfStaffDigest.queue.verdict.blocked')}
+            {t('home.nandiDigest.queue.verdict.blocked')}
           </Badge>
         )}
       </span>
@@ -103,7 +103,7 @@ export function QueueRowView({
       )}
       {row.planSteps.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          {t('home.chiefOfStaffDigest.queue.plan', {
+          {t('home.nandiDigest.queue.plan', {
             steps: row.planSteps.join(' → '),
           })}
         </p>
@@ -124,15 +124,15 @@ export function QueueRowView({
         )}
         {row.canApprove ? (
           <Button size="sm" disabled={busy} onClick={onApprove}>
-            {t('home.chiefOfStaffDigest.queue.approve')}
+            {t('home.nandiDigest.queue.approve')}
           </Button>
         ) : (
           <span className="me-auto text-xs text-muted-foreground">
-            {t('home.chiefOfStaffDigest.queue.blocked')}
+            {t('home.nandiDigest.queue.blocked')}
           </span>
         )}
         <Button size="sm" variant="outline" disabled={busy} onClick={onDismiss}>
-          {t('home.chiefOfStaffDigest.queue.dismiss')}
+          {t('home.nandiDigest.queue.dismiss')}
         </Button>
       </div>
     </div>
@@ -160,18 +160,18 @@ export function ApproveSuspiciousDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {t('home.chiefOfStaffDigest.queue.confirm.title')}
+            {t('home.nandiDigest.queue.confirm.title')}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {t('home.chiefOfStaffDigest.queue.confirm.description')}
+            {t('home.nandiDigest.queue.confirm.description')}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>
-            {t('home.chiefOfStaffDigest.queue.confirm.cancel')}
+            {t('home.nandiDigest.queue.confirm.cancel')}
           </AlertDialogCancel>
           <AlertDialogAction onClick={onApprove}>
-            {t('home.chiefOfStaffDigest.queue.confirm.action')}
+            {t('home.nandiDigest.queue.confirm.action')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

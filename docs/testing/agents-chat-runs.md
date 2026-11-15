@@ -312,34 +312,34 @@ Shared preconditions used below:
 - **Needs relay:** no
 - **Status:** Shipped
 
-### AG-28 — My notes: the notes Chief of Staff keeps
+### AG-28 — My notes: the notes Nandi keeps
 
-- **What:** A **My notes** page (left menu, after Ask) for the user's Markdown notes: role, what they own, deadlines, who to ask, runbooks. Chief of Staff reads them to answer, and writes them as it learns things.
-  - **The folder** is the one already shared as `my-notes` (Library › Tools › Filesystem), else `~/.nandi/notes`, created empty and shared read-and-write at the first launch (in the background), so Chief of Staff can keep notes before anyone opens My notes. The header shows its path.
+- **What:** A **My notes** page (left menu, after Ask) for the user's Markdown notes: role, what they own, deadlines, who to ask, runbooks. Nandi reads them to answer, and writes them as it learns things.
+  - **The folder** is the one already shared as `my-notes` (Library › Tools › Filesystem), else `~/.nandi/notes`, created empty and shared read-and-write at the first launch (in the background), so Nandi can keep notes before anyone opens My notes. The header shows its path.
   - **The list** shows each `.md` note by its first heading (else its file name), top-level first, then each folder (`runbooks/`). Hidden files and non-Markdown files are left out.
   - **A note** opens in **Read** (rendered Markdown) or **Edit** (a CodeMirror Markdown editor; Ctrl/Cmd+S saves). **Save** shows only with changes. Switching notes or leaving the page with unsaved changes asks first. **Delete** asks first.
   - **New note** takes a name (`deadlines`, `runbooks/etl`), adds `.md` and starts it with a heading.
-  - **"Let Chief of Staff keep them up to date"** makes the share read-and-write. Then `filesystem__write_file` into `my-notes/…` doesn't ask for approval (`notes::is_notes_write`), even when the agent's skill.md lists `write_file` under `requires_approval` (the registry requires that); writes anywhere else still ask. Turning it off makes the share read-only, and the connector refuses writes.
-  - **Empty:** "No notes yet", with **Open Chief of Staff**.
-  - Chief of Staff's own instructions (its `skill.md`, shipped with Nandi) decide what to note and how to arrange it, and to raise what's coming up. The app doesn't impose a structure.
+  - **"Let Nandi keep them up to date"** makes the share read-and-write. Then `filesystem__write_file` into `my-notes/…` doesn't ask for approval (`notes::is_notes_write`), even when the agent's skill.md lists `write_file` under `requires_approval` (the registry requires that); writes anywhere else still ask. Turning it off makes the share read-only, and the connector refuses writes.
+  - **Empty:** "No notes yet", with **Open Nandi**.
+  - Nandi's own instructions (its `skill.md`, shipped with Nandi) decide what to note and how to arrange it, and to raise what's coming up. The app doesn't impose a structure.
 - **Where:**
   - `src/components/notes/` (`MyNotesView.tsx`, `MarkdownEditor.tsx`, `notes-model.ts`), `src/hooks/useNotes.ts`, navigation kind `notes`.
   - `services/notes.rs` (`NotesFolder`, `check_name`, `folder`, `my_notes`, `set_agents_can_write`, `is_notes_write`), `services/connectors.rs` (`shared_folder`, `share_folder`), `orchestrator.rs` (approval exemption).
   - Commands `get_my_notes`, `read_note`, `save_note`, `delete_note`, `set_notes_agents_can_write`. HTTP `POST /api/rpc/{command}`. The folder is watched: every change arrives as `live://changed` (DT-43).
-- **Preconditions:** None: Chief of Staff comes with Nandi (AG-30).
+- **Preconditions:** None: Nandi, the default agent, comes with the app (AG-30).
 - **Steps:**
   1. Open My notes.
   2. Open a note, switch to Edit, change a line, Ctrl+S.
-  3. Turn on "Let Chief of Staff keep them up to date".
-  4. Tell Chief of Staff "the SOC 1 walkthrough moved to Nov 19, and Lena is now backup for billing".
+  3. Turn on "Let Nandi keep them up to date".
+  4. Tell Nandi "the SOC 1 walkthrough moved to Nov 19, and Lena is now backup for billing".
 - **Expected:**
   - Step 1: the folder path and the notes, the first one open.
   - Step 2: "Saved {name}", and the file on disk has the change.
-  - Step 4: no approval card. It writes `deadlines.md` and `owners.md` (with "Last updated" bumped), says "Noted…", and the open note shows the change within about a second, with "Updated just now by Chief of Staff" (DT-44).
+  - Step 4: no approval card. It writes `deadlines.md` and `owners.md` (with "Last updated" bumped), says "Noted…", and the open note shows the change within about a second, with "Updated just now by Nandi" (DT-44).
 - **Edge / negative cases:**
   - A name like `../x`, `.hidden`, `a/b/c/d` or `what?` is refused.
   - Notes over 256 KB are refused.
-  - With the switch off, Chief of Staff's write fails, and it tells the user how to allow it.
+  - With the switch off, Nandi's write fails, and it tells the user how to allow it.
   - Writes outside `my-notes/` still ask.
 - **Automation:** Covered by: `notes.rs` (5 tests, including `writes_inside_the_notes_folder_dont_ask` and `names_stay_inside_the_folder`), `notes-model.test.ts`, `MyNotesView.test.tsx`, `nav-tree.test.ts`, `Sidebar.test.tsx` | Layer: unit + ui | Live: 2026-10-25 on instance A, as in step 4 | Gap: no test of the leave guard on this page.
 - **Needs relay:** no
@@ -352,7 +352,7 @@ Shared preconditions used below:
   - It's an ordinary local agent: no install, consent or fork. The user edits its skill and **Your rules** like any agent of their own; Backup commits and pushes its history with the rest of the repo. An existing folder is never overwritten.
   - It can't be deleted: Delete is hidden in its menu, page and Settings, and `delete_agent` refuses it; **Reset to defaults** takes its place (AG-36). If its `skill.md` is removed by hand, the next start puts the shipped one back and keeps the user's `instructions.md`.
   - It is not one more agent. It has its own **Nandi** item at the top of the sidebar (AG-36); the list under Agents, the All agents count and the Agents page hold only the person's own and installed agents.
-  - Pickers show it as a fixed **Nandi** choice above the person's agents: a trigger's target, a workflow step's agent, a template's steps, a pilot's grant, Settings › Internet access, and Network's "takes requests by name".
+  - Pickers show it as a fixed **Nandi** choice above the person's agents: a trigger's target, a workflow step's agent, a template's steps, a pilot's grant, Studio's Agent tab, Settings › Internet access, and Network's "takes requests by name".
   - Home's Get started, the welcome strip and the companion's first-run text mean "none of the person's own agents", so they still suggest a starter pack and never name Nandi as one of the user's agents.
 - **Where:** `src-tauri/src/services/builtin_agents.rs` (`DEFAULT_AGENT`, `seed`), `src-tauri/resources/builtin-agents/nandi/`, `repo_bootstrap.rs` (`ensure_scaffolding`), `services/agents.rs` (`AgentInfo.kind`, `AgentKind`, `delete_agent`), `lib/agent-identity.ts` (`isDefaultAgent`), `nav-tree.ts` (`agentNodes`, the `nandi` item), `AgentsListView.tsx`, `agents/AgentOptions.tsx` (the pickers), `dashboard-model.ts`, `CompanionWindow.tsx`, `ReachabilityChecklist.tsx` (`ChooseAgents`), `AgentMenu.tsx`, `AgentView.tsx`, `AgentSettingsTab.tsx`.
 - **Preconditions:** A new Nandi home (empty `~/.nandi`).
@@ -365,12 +365,12 @@ Shared preconditions used below:
   - Step 1: Nandi is the sidebar's top item, not under Agents and not on the Agents page; a new trigger's **Run** picker shows Nandi above "Agents"; `git log` in `~/.nandi/repo` shows its files in the first commit.
   - Step 2: no Delete anywhere, Reset to defaults instead; no "installed from the marketplace" banner.
   - Step 3: the line is still there after the restart.
-  - Step 4: "No notes yet" with **Open Chief of Staff**.
+  - Step 4: "No notes yet" with **Open Nandi**.
 - **Edge / negative cases:**
   - Installing a pack that contains an agent `nandi` is refused ("you already have nandi").
   - Deleting `.nandi/agents/nandi/skill.md` by hand: the next start restores it.
   - An old `.nandi/agents/chief-of-staff/` folder from a dev build stays as an ordinary agent; nothing reads it. Reset `~/.nandi` to drop it.
-- **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `keeps_the_users_edits`, `restores_a_removed_skill_but_keeps_the_role`, `the_shipped_skills_parse_and_stay_short`, `no_file_outside_this_one_spells_the_default_agent_id`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_the_default_agent_first`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`), `agent-identity.test.ts`, `AgentOptions.test.tsx`, `nav-tree.test.ts` ('gives Nandi its own item…'), `AgentsListView.test.tsx`, `TriggerForm.test.tsx`, `StepDetailsPanel.test.tsx`, `NewWorkflowMenu.test.tsx`, `LibraryDrawer.test.tsx` (the step, template and pilot grant pickers), `InternetAccessSection.test.tsx`, `ChooseAgents.test.tsx`, `dashboard-model.test.ts`, `CompanionWindow.test.tsx` ('greets a first run…') | Layer: unit + ui | Gap: no test of the hidden Delete.
+- **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `keeps_the_users_edits`, `restores_a_removed_skill_but_keeps_the_role`, `the_shipped_skills_parse_and_stay_short`, `no_file_outside_this_one_spells_the_default_agent_id`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_the_default_agent_first`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`), `agent-identity.test.ts`, `AgentOptions.test.tsx`, `nav-tree.test.ts` ('gives Nandi its own item…'), `AgentsListView.test.tsx`, `TriggerForm.test.tsx`, `StepDetailsPanel.test.tsx`, `NewWorkflowMenu.test.tsx`, `LibraryDrawer.test.tsx` (the step, template and pilot grant pickers), `Studio.test.tsx` ('switches artifact types'), `InternetAccessSection.test.tsx`, `ChooseAgents.test.tsx`, `dashboard-model.test.ts`, `CompanionWindow.test.tsx` ('greets a first run…') | Layer: unit + ui | Gap: no test of the hidden Delete.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -403,9 +403,9 @@ Shared preconditions used below:
 - **Needs relay:** no
 - **Status:** Shipped
 
-### AG-31 — Chief of Staff browses websites
+### AG-31 — Nandi browses websites
 
-- **What:** The Chief of Staff browses websites itself, in a browser the user watches. There is no separate Browser agent.
+- **What:** Nandi browses websites itself, in a browser the user watches. There is no separate Browser agent.
   - Its `skill.md` declares the visible **Browser** pilot (never headless) with `allow: [interact]`: clicking and typing run, submitting, secrets, uploads and paying wait for approval. Sign-ins, CAPTCHAs, payments and passwords go to the user with the pilot's hand-over.
   - It ships with no allowed sites. A new site shows the "allow this site?" card with its reason, and it waits.
   - Only the user's chats and intake threads get the browser. The email and calendar check runs never do.
@@ -413,11 +413,11 @@ Shared preconditions used below:
 - **Where:** `resources/builtin-agents/nandi/skill.md` ("Website work", `pilots`), `services/orchestrator/llm_step.rs` (`data_run_allows`, `agent_pilot_tools`).
 - **Preconditions:** A new Nandi home. The Browser pilot installed and started in Library › Tools, with Chrome or Edge on the computer.
 - **Steps:**
-  1. Ask Chief of Staff: "Check what example.com says on its home page."
+  1. Ask Nandi: "Check what example.com says on its home page."
   2. Allow the site when the card asks, and allow the pilot when asked.
   3. Ask it to fill in a sign-in form on a site.
 - **Expected:**
-  - Step 1–2: a Chrome or Edge window opens on example.com; Chief of Staff reports what it found with the link.
+  - Step 1–2: a Chrome or Edge window opens on example.com; Nandi reports what it found with the link.
   - Step 3: it hands over to you and never types a password.
 - **Edge / negative cases:**
   - A form submit waits for approval.
@@ -440,9 +440,9 @@ Shared preconditions used below:
   - **Live checklist:** a card with each step, its status, its result and screenshot thumbnails (click opens the file on the desktop), in the chat, the intake thread and Run Detail › Overview, updated by `run://plan_updated`. `plan_update` calls are hidden; a refused plan call shows as a tool card.
   - skill.md `middlewares:` without `plan_first` / `finish_check` turns them off (they are on by default).
 - **Where:** `src-tauri/src/services/run_plan/` (`mod.rs` model, `classify.rs` what changes something, `store.rs`, `tool.rs`, `screenshots.rs`), `services/orchestrator/run_plan.rs` (the two middlewares), `services/orchestrator/tool_calls.rs` (`run_call`, `screenshot_call`), `services/orchestrator/call_gate.rs` (`plan_check`), `services/pilots/browser.rs` (`close_pages`, `has_open_pages`), `services/events.rs` (`turn_done`), `src/components/agent-console/RunPlanCard.tsx`, `run-plan-model.ts`, `src/hooks/useRunPlan.ts`.
-- **Preconditions:** An agent with tools (Chief of Staff with the Browser pilot started for the browser cases).
+- **Preconditions:** An agent with tools (Nandi with the Browser pilot started for the browser cases).
 - **Steps:**
-  1. Ask Chief of Staff to open example.com and take a screenshot of the home page.
+  1. Ask Nandi to open example.com and take a screenshot of the home page.
   2. Watch the chat while it works.
   3. Open the run in Run Detail.
   4. Ask an agent to write a file without planning (a custom agent whose instructions say "never plan").
@@ -467,14 +467,14 @@ Shared preconditions used below:
   - Every run with tools (not the email or calendar checks) gets a "Your playbooks" index (name, description, when) and two host tools: `skill_list` and `skill_get` (one body by name). Neither needs a run plan. Broken files are left out of runs.
   - **Playbooks tab** on the agent page: the list (name, description, when), the open playbook in a Markdown editor with a word count, **New playbook**, **Save playbook** (checks the same rules: taken name, kebab-case, required fields, word limit), **Delete** (asks first). Leaving with unsaved changes asks first. Broken files show with their error.
   - An installed agent's playbooks are read-only (no New, Save or Delete). Installs bring `skills/*.md`.
-  - Chief of Staff ships eight, added once when it has no `skills/` folder: `web-task`, `pay-a-bill`, `sign-in-and-accounts`, `delegate-work`, `build-a-workflow`, `email-triage`, `meeting-prep`, `occasions`. Edits and deletions stay.
+  - Nandi ships eight, added once when it has no `skills/` folder: `web-task`, `pay-a-bill`, `sign-in-and-accounts`, `delegate-work`, `build-a-workflow`, `email-triage`, `meeting-prep`, `occasions`. Edits and deletions stay.
 - **Where:** `src-tauri/src/services/domain/playbook.rs`, `services/repos/agent_repo.rs` (`load_playbooks`, `save_playbook`, `delete_playbook`), `services/repo_service.rs`, `rpc/repo.rs`, `rpc/repo.rs`, `services/playbooks.rs`, `services/orchestrator/llm_step.rs` (offer), `services/orchestrator/tool_calls.rs` (`run_call`), `services/builtin_agents.rs`, `src-tauri/resources/builtin-agents/nandi/skills/`, `src/components/agents/AgentPlaybooksTab.tsx`, `playbooks-model.ts`, `src/hooks/usePlaybooks.ts`.
-- **Preconditions:** None (Chief of Staff is built in).
+- **Preconditions:** None (Nandi is built in).
 - **Steps:**
-  1. Open Agents › Chief of Staff › Playbooks.
+  1. Open Agents › Nandi › Playbooks.
   2. Open `pay-a-bill`, add a line, **Save playbook**.
   3. **New playbook**: name `weekly-report`, when "Friday afternoon", what it covers, a few steps; save.
-  4. In Chief of Staff's chat: "Pay my Acme Energy bill".
+  4. In Nandi's chat: "Pay my Acme Energy bill".
   5. Delete `weekly-report`.
   6. Open an installed pack agent's Playbooks tab.
 - **Expected:**
@@ -496,17 +496,17 @@ Shared preconditions used below:
 
 - **What:** What an agent's browser knows about the user's sites, managed on the agent's **Permissions** tab, under each browser pilot.
   - Each secret the browser types, with **Secret saved** or **Not set** (never the value). Type a value and **Save** to set or replace it, **Clear** to remove it.
-  - **Add secret** (agents made on this computer, Chief of Staff too): a name (typed in capitals, `ACME_PASSWORD`) and a value. The name goes into skill.md (`secrets: {ACME_PASSWORD: nandi.pilot.<agent>.acme-password}`), the value into the keychain. A taken or badly formed name keeps Add disabled with the reason. Pack agents show no Add; their values can still be set.
+  - **Add secret** (agents made on this computer, Nandi too): a name (typed in capitals, `ACME_PASSWORD`) and a value. The name goes into skill.md (`secrets: {ACME_PASSWORD: nandi.pilot.<agent>.acme-password}`), the value into the keychain. A taken or badly formed name keeps Add disabled with the reason. Pack agents show no Add; their values can still be set.
   - **Sign out everywhere** asks first, then stops that agent's browser and deletes its profile (cookies, sign-ins). Disabled with "No sign-ins saved" when there is none. Secrets stay.
   - Browser profiles are never backed up (S3 Backup leaves out `local/browser/*/*/profile`) and live under `~/.nandi/local`, not the repo.
-  - Site profiles: Chief of Staff keeps non-secret details in `my-notes/private/sites/<site>.md` (its `sign-in-and-accounts` and `web-task` playbooks). A note with a card number (a Luhn-valid 13 to 19 digit run) or a `password:` line is refused with a message saying what to keep instead.
+  - Site profiles: Nandi keeps non-secret details in `my-notes/private/sites/<site>.md` (its `sign-in-and-accounts` and `web-task` playbooks). A note with a card number (a Luhn-valid 13 to 19 digit run) or a `password:` line is refused with a message saying what to keep instead.
 - **Where:** `src/components/agent-console/PermissionsPanel.tsx`, `site-secrets-model.ts`, `src/hooks/usePilots.ts`; `src-tauri/src/services/pilots.rs` (`add_pilot_secret`, `set_pilot_secret`, `clear_browser_profile`), `services/pilots/browser.rs` (`sign_out`, `mask_secrets`, `profile_backup_exclude`), `services/domain/capability.rs` (`pilot_secret_ref`), `services/domain/note_guard.rs`, `services/connectors/filesystem.rs`, `services/connectors/s3_backup.rs`.
-- **Preconditions:** The Browser pilot installed; Chief of Staff allowed to use it.
+- **Preconditions:** The Browser pilot installed; Nandi allowed to use it.
 - **Steps:**
-  1. Open Agents › Chief of Staff › Permissions. Under Browser, add `ACME_PASSWORD` with a value.
+  1. Open Agents › Nandi › Permissions. Under Browser, add `ACME_PASSWORD` with a value.
   2. Open the agent's skill.md (Settings or Studio).
-  3. Ask Chief of Staff to open a site that remembers a sign-in, then press **Sign out everywhere** and confirm.
-  4. Ask Chief of Staff: "Note my Acme card 4242 4242 4242 4242 in the acme.com profile".
+  3. Ask Nandi to open a site that remembers a sign-in, then press **Sign out everywhere** and confirm.
+  4. Ask Nandi: "Note my Acme card 4242 4242 4242 4242 in the acme.com profile".
   5. Open an installed pack agent with a browser pilot.
 - **Expected:**
   - Step 1: "Secret ACME_PASSWORD added"; the row shows **Secret saved**; the form is empty again.
@@ -525,20 +525,20 @@ Shared preconditions used below:
 ### AG-35 — "Remember how I do this": an agent proposes a playbook
 
 - **What:** An agent drafts a playbook from what the user tells it, or from work it repeats, and saves it only after the user approves.
-  - Agents made on this computer (Chief of Staff too) get the host tool `skill_propose` (name, description, when, body, reason) in every run with tools except the email and calendar checks, even with no playbooks yet. Installed pack agents don't, and a call from one is refused.
+  - Agents made on this computer (Nandi too) get the host tool `skill_propose` (name, description, when, body, reason) in every run with tools except the email and calendar checks, even with no playbooks yet. Installed pack agents don't, and a call from one is refused.
   - The proposal is checked first (kebab-case name, one-line description and when, 900 words, a reason). A broken one never reaches the user: the agent reads why.
   - The approval card: "Save a new playbook: <name>", why, what it covers, when, and **Show the steps**. For a name it already has: "Change the playbook <name> (replaces the current one)", the old description or when struck through ("Was: …"), and **Show the changes** (a line diff). **Approve** writes `skills/<name>.md` and commits; **Reject** writes nothing.
   - It needs no run plan (not a change for the classifier).
-  - From repeated work: when Chief of Staff does a step itself and did the same work itself before, it adds `- [ ] Add a playbook "<name>" (from <n> similar tasks)` to `my-notes/suggestions.md` once (never a dismissed one) and proposes the playbook when the user ticks it or says yes.
+  - From repeated work: when Nandi does a step itself and did the same work itself before, it adds `- [ ] Add a playbook "<name>" (from <n> similar tasks)` to `my-notes/suggestions.md` once (never a dismissed one) and proposes the playbook when the user ticks it or says yes.
 - **Where:** `src-tauri/src/services/playbooks.rs` (`propose_spec`, `gate`, `check`, `apply`, `prompt_section`), `services/orchestrator/llm_step.rs` (offer), `services/orchestrator/executor.rs` (gate), `services/orchestrator/tool_calls.rs` (`run_call`), `services/run_plan/classify.rs`, `services/requests/recurrence.rs` (`playbook_hint`), `services/requests/self_step.rs` (`prompt`), `resources/builtin-agents/nandi/skill.md`, `skills/build-a-workflow.md`, `src/components/agent-console/ApprovalRequestCard.tsx`, `PlaybookProposalPreview.tsx`, `playbook-proposal-model.ts`, `src/components/inbox/approval-model.ts`.
-- **Preconditions:** None (Chief of Staff is built in).
+- **Preconditions:** None (Nandi is built in).
 - **Steps:**
-  1. In Chief of Staff's chat: "Remember: I pay bills from Chase, never the card."
+  1. In Nandi's chat: "Remember: I pay bills from Chase, never the card."
   2. Press **Show the steps**, then **Approve**.
   3. Say: "Also remember to save the receipt in my notes." Open **Show the changes**, then **Reject**.
-  4. Open Agents › Chief of Staff › Playbooks.
-  5. Finish the same kind of work twice with a step Chief of Staff does itself (for example "Pay the Acme bill" two months running), then open My notes › `suggestions.md`.
-  6. Tick the line, and tell Chief of Staff.
+  4. Open Agents › Nandi › Playbooks.
+  5. Finish the same kind of work twice with a step Nandi does itself (for example "Pay the Acme bill" two months running), then open My notes › `suggestions.md`.
+  6. Tick the line, and tell Nandi.
   7. Open an installed pack agent's chat and ask it to remember something.
 - **Expected:**
   - Step 1: an approval card "Save a new playbook: pay-bills" (or similar) with why, what it covers and when; no file yet; no run plan asked for.
@@ -1062,7 +1062,7 @@ Shared preconditions used below:
 - **Where:** `src/components/agent-console/WorkingDots.tsx` (`WorkingDots`, `WorkingRow`), `working.ts` (`isWorking`, `showsWorking`, `turnStartedAt`), `MessageList.tsx` (`working`); agent chat (`AgentView.tsx`), Studio (`StudioView.tsx`), the companion (`CompanionExpanded.tsx`); `.working-dots` in `src/App.css`.
 - **Preconditions:** Model key.
 - **Steps:**
-  1. In Chief of Staff's chat, send "What do I own?".
+  1. In Nandi's chat, send "What do I own?".
   2. Wait without doing anything.
   3. Ask for something that needs approval (a request to a teammate).
 - **Expected:** The row appears at once, dots cycle, a seconds count appears after 5 s, tool cards appear above it, and it disappears when the answer's text starts. While the approval card waits, there's no row; after Approve it comes back until the answer streams.

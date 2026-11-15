@@ -11,7 +11,7 @@ import { openSettings } from '@/lib/settings-nav'
 
 /**
  * Home's email to-do: with no mailbox connected (skipped at setup, or
- * disconnected later), a card to connect one so the Chief of Staff can
+ * disconnected later), a card to connect one so Nandi can
  * keep the notes. Gone once one is connected; then the other provider is
  * offered on one quiet line.
  */

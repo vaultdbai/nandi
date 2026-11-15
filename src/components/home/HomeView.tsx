@@ -21,13 +21,13 @@ import { sendToStudio } from '@/lib/agent-actions'
 import { useDashboard } from '@/store/agent-store'
 import { useNavigationStore, type View } from '@/store/navigation-store'
 import { ViewHeader } from '@/components/views/ViewHeader'
-import { ChiefOfStaffDigest } from './ChiefOfStaffDigest'
+import { NandiDigest } from './NandiDigest'
 import { EmailTodo } from './EmailTodo'
 
 const navigate = (view: View) => useNavigationStore.getState().navigate(view)
 
 /**
- * Home: does anything need me? Ask Nandi, the Chief of Staff's digest and
+ * Home: does anything need me? Ask Nandi, Nandi's digest and
  * email to-do, then the Inbox (fix it here). Until Docker answers, a calm
  * line says agents can talk but not act, with Set up. Running and finished
  * work live in the work tray on every page, and All activity in the
@@ -68,7 +68,7 @@ export function HomeView({
           )}
           {dashboard && <BackupNudge snapshot={dashboard} />}
           <EmailTodo />
-          <ChiefOfStaffDigest />
+          <NandiDigest />
           {dashboard === null || home.isPending ? (
             <HomeSkeleton />
           ) : fresh ? (

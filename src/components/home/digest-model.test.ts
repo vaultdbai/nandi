@@ -59,22 +59,20 @@ function queued(overrides: Partial<QueuedWork> = {}): QueuedWork {
 
 describe('digest-model', () => {
   it('titles by whether there is a last look', () => {
-    expect(digestTitleKey(digest([], 5))).toBe('home.chiefOfStaffDigest.title')
+    expect(digestTitleKey(digest([], 5))).toBe('home.nandiDigest.title')
     expect(digestTitleKey(digest([], null))).toBe(
-      'home.chiefOfStaffDigest.titleAlways'
+      'home.nandiDigest.titleAlways'
     )
   })
 
   it('labels finished items by their end status', () => {
     const finished = (status: DigestItem['status']) =>
       digestLabelKey(item({ kind: 'finished', status }))
-    expect(finished('done')).toBe('home.chiefOfStaffDigest.finished.done')
-    expect(finished('failed')).toBe('home.chiefOfStaffDigest.finished.failed')
-    expect(finished('cancelled')).toBe(
-      'home.chiefOfStaffDigest.finished.cancelled'
-    )
+    expect(finished('done')).toBe('home.nandiDigest.finished.done')
+    expect(finished('failed')).toBe('home.nandiDigest.finished.failed')
+    expect(finished('cancelled')).toBe('home.nandiDigest.finished.cancelled')
     expect(digestLabelKey(item({ kind: 'needsYou' }))).toBe(
-      'home.chiefOfStaffDigest.kind.needsYou'
+      'home.nandiDigest.kind.needsYou'
     )
   })
 
@@ -90,11 +88,11 @@ describe('digest-model', () => {
     expect(rows[0]).toMatchObject({
       requestId: 'r1',
       text: 'Due Monday',
-      sourceKey: 'home.chiefOfStaffDigest.source.calendar',
+      sourceKey: 'home.nandiDigest.source.calendar',
       when: '2 hr. ago',
     })
     expect(rows[1]?.text).toBeNull()
-    expect(rows[1]?.sourceKey).toBe('home.chiefOfStaffDigest.source.email')
+    expect(rows[1]?.sourceKey).toBe('home.nandiDigest.source.email')
   })
 
   it('counts kinds in header order and skips empty ones', () => {
@@ -158,7 +156,7 @@ describe('digest-model', () => {
       reasons: [],
       canApprove: true,
       needsConfirm: false,
-      sourceKey: 'home.chiefOfStaffDigest.source.email',
+      sourceKey: 'home.nandiDigest.source.email',
       when: '2 hr. ago',
     })
     expect(rows[1]).toMatchObject({
@@ -172,7 +170,7 @@ describe('digest-model', () => {
       verdict: 'blocked',
       canApprove: false,
       needsConfirm: false,
-      sourceKey: 'home.chiefOfStaffDigest.source.calendar',
+      sourceKey: 'home.nandiDigest.source.calendar',
     })
   })
 

@@ -10,7 +10,7 @@ import { updatedText } from './live-model'
 const TICK_MS = 30_000
 
 /**
- * "Updated just now by Chief of Staff": who last changed a note or an
+ * "Updated just now by Nandi": who last changed a note or an
  * agent, when the app saw the change. Without one, the file's own time
  * (`updatedAt`) if known, else nothing.
  */

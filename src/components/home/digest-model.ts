@@ -27,7 +27,7 @@ export interface DigestRow {
   /** The news, for `updated` rows only */
   text: string | null
   when: string
-  /** Its Chief of Staff thread, when it came through intake */
+  /** Its Nandi thread, when it came through intake */
   threadId: string | null
   /** The step waiting on the user: it gets "Mark done" */
   waitingStep: WaitingStep | null
@@ -61,7 +61,7 @@ export interface QueueRow {
   canApprove: boolean
   /** Suspicious items ask before they start */
   needsConfirm: boolean
-  /** Its Chief of Staff conversation (`intake:<id>`) */
+  /** Its Nandi conversation (`intake:<id>`) */
   threadId: string
   /** What the plan has someone do, in order (`start` items) */
   planSteps: string[]
@@ -76,25 +76,24 @@ export interface QueueRow {
 /** "Since you were away", or the plain title when there is no last look */
 export function digestTitleKey(digest: NandiDigest): string {
   return digest.since === null
-    ? 'home.chiefOfStaffDigest.titleAlways'
-    : 'home.chiefOfStaffDigest.title'
+    ? 'home.nandiDigest.titleAlways'
+    : 'home.nandiDigest.title'
 }
 
 export const SOURCE_KEYS: Record<RequestSource, string> = {
-  me: 'home.chiefOfStaffDigest.source.me',
-  email: 'home.chiefOfStaffDigest.source.email',
-  calendar: 'home.chiefOfStaffDigest.source.calendar',
-  nandi: 'home.chiefOfStaffDigest.source.chiefOfStaff',
-  teammate: 'home.chiefOfStaffDigest.source.teammate',
+  me: 'home.nandiDigest.source.me',
+  email: 'home.nandiDigest.source.email',
+  calendar: 'home.nandiDigest.source.calendar',
+  nandi: 'home.nandiDigest.source.nandi',
+  teammate: 'home.nandiDigest.source.teammate',
 }
 
 export function digestLabelKey(item: DigestItem): string {
-  if (item.kind !== 'finished')
-    return `home.chiefOfStaffDigest.kind.${item.kind}`
+  if (item.kind !== 'finished') return `home.nandiDigest.kind.${item.kind}`
   if (item.status === 'failed' || item.status === 'cancelled') {
-    return `home.chiefOfStaffDigest.finished.${item.status}`
+    return `home.nandiDigest.finished.${item.status}`
   }
-  return 'home.chiefOfStaffDigest.finished.done'
+  return 'home.nandiDigest.finished.done'
 }
 
 export function digestRows(

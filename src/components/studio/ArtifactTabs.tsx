@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
+import { AgentOptions } from '@/components/agents/AgentOptions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -120,6 +121,7 @@ function ArtifactPane({ tab }: { tab: ArtifactTab }) {
   const { t } = useTranslation()
   const selected = useStudioStore(state => state.selected[tab])
   const { options, creatable } = useOptions(tab)
+  const { data: agents = [] } = useAgents()
   const [newId, setNewId] = useState('')
   const artifact = selected ? artifactOf(tab, selected) : null
   const known = options.some(option => option.id === selected)
@@ -135,11 +137,22 @@ function ArtifactPane({ tab }: { tab: ArtifactTab }) {
           }
         >
           <NativeSelectOption value="">{t('studio.choose')}</NativeSelectOption>
-          {options.map(option => (
-            <NativeSelectOption key={option.id} value={option.id}>
-              {optionText(option, t)}
-            </NativeSelectOption>
-          ))}
+          {tab === 'agent' ? (
+            // Nandi as a fixed choice above the person's agents, as in
+            // every agent picker
+            <AgentOptions
+              agents={agents}
+              label={agent =>
+                optionText({ id: agent.id, label: agent.name }, t)
+              }
+            />
+          ) : (
+            options.map(option => (
+              <NativeSelectOption key={option.id} value={option.id}>
+                {optionText(option, t)}
+              </NativeSelectOption>
+            ))
+          )}
         </NativeSelect>
         {creatable && (
           <form

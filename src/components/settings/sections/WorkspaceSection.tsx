@@ -40,7 +40,7 @@ const TONE: Record<CardTone, string> = {
 /**
  * Settings › Calendar & files: Outlook calendar, Google Calendar, OneDrive
  * and Google Drive, read-only, each signing in for its own access only;
- * then how often the Chief of Staff checks the calendars.
+ * then how often Nandi checks the calendars.
  */
 export function WorkspaceSection() {
   const { t } = useTranslation()

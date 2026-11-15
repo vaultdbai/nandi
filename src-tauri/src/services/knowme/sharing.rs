@@ -3,8 +3,8 @@
 //! The person picks one group they're in; the item is kept in My notes,
 //! `private/groups/<group>.md` (`proposal::group_note`), and nowhere else:
 //! not on the card, not on the relay. When a member of that group asks
-//! this Nandi (`ask-me`, directly or through the gateway), the Chief of
-//! Staff's turn on their request gets those items ([`prompt_for_task`]),
+//! this Nandi (`ask-me`, directly or through the gateway), Nandi's
+//! turn on their request gets those items ([`prompt_for_task`]),
 //! so it may answer that member with them. Anyone else's request doesn't.
 //! The answer travels like any answer (sealed, through the relay); the
 //! membership is this Nandi's own group copy (`.nandi/groups/`).

@@ -46,7 +46,7 @@ const TONE: Record<CardTone, string> = {
 }
 
 /**
- * Settings › Email: connect Outlook or Gmail so the Chief of Staff keeps
+ * Settings › Email: connect Outlook or Gmail so Nandi keeps
  * My notes from it. Says what's read and what never happens, then each
  * mailbox's status and actions, then how often and whom to watch.
  */

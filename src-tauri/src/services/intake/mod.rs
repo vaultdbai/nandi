@@ -2,8 +2,8 @@
 //! only once the user approves it. Everything is screened first
 //! ([`screen`]); blocked items can only be dismissed.
 //!
-//! - **Mail and calendar** (and any source added later): what the Chief of
-//!   Staff wants to start, or to add as news to work in progress
+//! - **Mail and calendar** (and any source added later): what Nandi wants
+//!   to start, or to add as news to work in progress
 //!   ([`propose`]).
 //! - **Teammates' requests** to the user's agents ([`gate_task`], called by
 //!   the A2A executor for every task from another Nandi): blocked ones are

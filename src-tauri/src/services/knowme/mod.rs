@@ -1,6 +1,6 @@
 //! Getting to know you: Nandi learns what the person does and what they'd
-//! like help with, a little at a time, in an Ask chat with the Chief of
-//! Staff. The questions are never "done"; nothing blocks and nothing nags.
+//! like help with, a little at a time, in an Ask chat with Nandi.
+//! The questions are never "done"; nothing blocks and nothing nags.
 //!
 //! - **The to-do** (Inbox kind `knowMe`): the first one comes after
 //!   onboarding, then at most one a month ([`cadence`], `local_settings`).

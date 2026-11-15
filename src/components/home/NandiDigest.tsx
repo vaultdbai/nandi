@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SaveAsWorkflowDialog } from '@/components/requests/SaveAsWorkflowDialog'
 import {
-  useChiefOfStaffDigest,
+  useNandiDigest,
   useCompleteWaitingStep,
   useMarkDigestSeen,
-} from '@/hooks/useChiefOfStaffDigest'
+} from '@/hooks/useNandiDigest'
 import { useAlwaysAllow } from '@/hooks/useAutoApproveRules'
 import { rawError } from '@/lib/friendly-error'
 import { useQueueDecisions } from '@/hooks/useQueueDecisions'
@@ -31,16 +31,16 @@ import {
 } from './QueueRowView'
 
 /**
- * Home's "Since you were away": what the Chief of Staff started, updated
+ * Home's "Since you were away": what Nandi started, updated
  * or finished on its own, and what waits on the user. "Got it" marks it
  * seen; needs-you rows stay until they are done. Rows open the item's
- * Chief of Staff thread, or the Request when there is none. Finished work
+ * Nandi thread, or the Request when there is none. Finished work
  * that recurs offers "Save as workflow": the user checks the draft first.
  */
-export function ChiefOfStaffDigest() {
+export function NandiDigest() {
   const { t, i18n } = useTranslation()
   const { open } = useViewOpener()
-  const digest = useChiefOfStaffDigest()
+  const digest = useNandiDigest()
   const markSeen = useMarkDigestSeen()
   const completeStep = useCompleteWaitingStep()
   const decisions = useQueueDecisions('thread')
@@ -56,7 +56,7 @@ export function ChiefOfStaffDigest() {
   const queue = queueRows(digest.data, i18n.language)
   const summary = digestSummary(digest.data)
     .map(part =>
-      t(`home.chiefOfStaffDigest.summary.${part.kind}`, { count: part.count })
+      t(`home.nandiDigest.summary.${part.kind}`, { count: part.count })
     )
     .join(' · ')
 
@@ -74,14 +74,14 @@ export function ChiefOfStaffDigest() {
       { requestId: row.requestId, position: row.waitingStep.position },
       {
         onSuccess: () =>
-          toast.success(t('home.chiefOfStaffDigest.markDone.done'), {
+          toast.success(t('home.nandiDigest.markDone.done'), {
             action: {
-              label: t('home.chiefOfStaffDigest.queue.toast.open'),
+              label: t('home.nandiDigest.queue.toast.open'),
               onClick: () => open(rowView(row)),
             },
           }),
         onError: error =>
-          toast.error(t('home.chiefOfStaffDigest.markDone.failed'), {
+          toast.error(t('home.nandiDigest.markDone.failed'), {
             description: rawError(error),
           }),
       }
@@ -89,7 +89,7 @@ export function ChiefOfStaffDigest() {
   }
 
   return (
-    <Card data-testid="home-cos-digest">
+    <Card data-testid="home-nandi-digest">
       <CardHeader className="flex flex-row items-start gap-3">
         <Sparkles
           aria-hidden
@@ -108,19 +108,19 @@ export function ChiefOfStaffDigest() {
             disabled={markSeen.isPending}
             onClick={() => void gotIt()}
           >
-            {t('home.chiefOfStaffDigest.gotIt')}
+            {t('home.nandiDigest.gotIt')}
           </Button>
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-1">
         {queue.length > 0 && (
           <section
-            data-testid="home-cos-queue"
-            aria-label={t('home.chiefOfStaffDigest.queue.title')}
+            data-testid="home-nandi-queue"
+            aria-label={t('home.nandiDigest.queue.title')}
             className="mb-2 flex flex-col gap-2"
           >
             <h3 className="px-2 text-sm font-medium">
-              {t('home.chiefOfStaffDigest.queue.title')}
+              {t('home.nandiDigest.queue.title')}
             </h3>
             {queue.map(row => (
               <QueueRowView
@@ -225,7 +225,7 @@ function DigestRowButton({
           size="sm"
           variant="outline"
           className="me-2 shrink-0"
-          data-testid="home-cos-save-workflow"
+          data-testid="home-nandi-save-workflow"
           onClick={onSaveWorkflow}
         >
           {t('request.saveWorkflow.button')}
@@ -238,12 +238,12 @@ function DigestRowButton({
           className="me-2 shrink-0"
           disabled={busy}
           title={row.waitingStep.label}
-          aria-label={t('home.chiefOfStaffDigest.markDone.aria', {
+          aria-label={t('home.nandiDigest.markDone.aria', {
             step: row.waitingStep.label,
           })}
           onClick={onMarkDone}
         >
-          {t('home.chiefOfStaffDigest.markDone.label')}
+          {t('home.nandiDigest.markDone.label')}
         </Button>
       )}
     </div>

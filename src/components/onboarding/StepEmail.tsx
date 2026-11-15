@@ -27,7 +27,7 @@ export interface StepEmailProps {
 
 /**
  * Onboarding step 1 (skippable): connect the work mailbox. One sign-in
- * covers which mailboxes the Chief of Staff reads (Outlook, Gmail or both,
+ * covers which mailboxes Nandi reads (Outlook, Gmail or both,
  * each connected in turn), how often it checks (30 minutes unless the user
  * picks another) and who the user is: the name step that follows starts
  * from the mailbox. Skipping leaves a to-do on Home and the name step

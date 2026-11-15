@@ -51,14 +51,46 @@ describe('buildOffer', () => {
   it('names every agent serving a capability, sorted', () => {
     const offer = buildOffer(
       [
-        { agent: 'Writer', capabilities: ['summarize', 'email'] },
-        { agent: 'Reader', capabilities: ['summarize'] },
+        {
+          agent: 'Writer',
+          isDefault: false,
+          capabilities: ['summarize', 'email'],
+        },
+        { agent: 'Reader', isDefault: false, capabilities: ['summarize'] },
       ],
       policy({ requireApproval: ['email'] })
     )
     expect(offer).toEqual([
-      { name: 'email', agents: ['Writer'], column: 'approval' },
-      { name: 'summarize', agents: ['Reader', 'Writer'], column: 'offered' },
+      { name: 'email', nandi: null, agents: ['Writer'], column: 'approval' },
+      {
+        name: 'summarize',
+        nandi: null,
+        agents: ['Reader', 'Writer'],
+        column: 'offered',
+      },
+    ])
+  })
+
+  it('keeps Nandi’s ask-me and assign-me, as Nandi taking requests for you', () => {
+    const offer = buildOffer(
+      [
+        {
+          agent: 'Nandi',
+          isDefault: true,
+          capabilities: ['ask-me', 'assign-me'],
+        },
+        { agent: 'Writer', isDefault: false, capabilities: ['assign-me'] },
+      ],
+      policy()
+    )
+    expect(offer).toEqual([
+      { name: 'ask-me', nandi: 'Nandi', agents: [], column: 'offered' },
+      {
+        name: 'assign-me',
+        nandi: 'Nandi',
+        agents: ['Writer'],
+        column: 'offered',
+      },
     ])
   })
 })
@@ -88,7 +120,7 @@ describe('applyOffer', () => {
 describe('offerChanges', () => {
   it('lists only what moved', () => {
     const before = buildOffer(
-      [{ agent: 'Writer', capabilities: ['a', 'b'] }],
+      [{ agent: 'Writer', isDefault: false, capabilities: ['a', 'b'] }],
       policy()
     )
     expect(offerChanges(before, { a: 'offered', b: 'hidden' })).toEqual([

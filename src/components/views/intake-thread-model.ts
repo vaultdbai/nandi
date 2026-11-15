@@ -61,7 +61,7 @@ export function canMarkStepsDone(request: Request): boolean {
   return request.direction === 'local' && request.capability === ''
 }
 
-/** The Chief of Staff's offer to save this Request as a workflow, if any */
+/** Nandi's offer to save this Request as a workflow, if any */
 export function workflowProposalFor(
   thread: IntakeThread,
   requestId: string

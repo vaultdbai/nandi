@@ -1,5 +1,5 @@
 /**
- * Email (`services::email`): the mailboxes the Chief of Staff reads to keep
+ * Email (`services::email`): the mailboxes Nandi reads to keep
  * My notes. The status refreshes on `email://changed` (connect, disconnect,
  * every check) and after a resync.
  */

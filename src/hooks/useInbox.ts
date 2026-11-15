@@ -7,7 +7,7 @@
  */
 import { useNow } from '@/components/agents/task-utils'
 import { buildInbox, inboxBadgeCount } from '@/components/inbox/inbox-model'
-import { useChiefOfStaffDigest } from '@/hooks/useChiefOfStaffDigest'
+import { useNandiDigest } from '@/hooks/useNandiDigest'
 import { usePendingClarifications } from '@/hooks/useClarifications'
 import { useKnowMe } from '@/hooks/useKnowMe'
 import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
@@ -141,7 +141,7 @@ export function useInbox() {
   const work = useWork(null)
   const dismissed = useDismissedWork()
   const returns = useRequestReturns()
-  const digest = useChiefOfStaffDigest()
+  const digest = useNandiDigest()
   const model = useDefaultModel()
   const knowMe = useKnowMe()
   // A query, not the agent store: the companion's webview has no store sync

@@ -554,18 +554,18 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 
 ### DT-44 — Who changed it: "Updated just now by …"
 
-- **What:** Each change names who made it: **by you** (the app, on your command), **by** an agent (its run was going when the file changed), **by the** … **workflow** (that run was a workflow step), or **outside Nandi** (an editor, a script, a `git pull`). An open note and an agent's page show "Updated just now by Chief of Staff"; with no change this session, a note shows its file time.
+- **What:** Each change names who made it: **by you** (the app, on your command), **by** an agent (its run was going when the file changed), **by the** … **workflow** (that run was a workflow step), or **outside Nandi** (an editor, a script, a `git pull`). An open note and an agent's page show "Updated just now by Nandi"; with no change this session, a note shows its file time.
 - **Where:** `services/live/author.rs` (`writer`, `active_runs`, `author_of`), `services/live/own_writes.rs` (the app's own writes, noted by `fs_atomic` and `NotesFolder`), `src/components/live/UpdatedBy.tsx`, `live-model.ts` (`authorText`, `updatedText`), `MyNotesView.tsx`, `AgentView.tsx`.
-- **Preconditions:** App running; Chief of Staff may keep notes (AG-28).
+- **Preconditions:** App running; Nandi may keep notes (AG-28).
 - **Steps:**
   1. Save a note on the My notes page.
   2. Edit it in Notepad.
-  3. Ask Chief of Staff to note something.
+  3. Ask Nandi to note something.
   4. Run a workflow whose agent writes a file in its work folder.
-- **Expected:** 1: "Updated just now by you". 2: "… outside Nandi". 3: "… by Chief of Staff". 4: Recent changes says "by the <workflow> workflow".
+- **Expected:** 1: "Updated just now by you". 2: "… outside Nandi". 3: "… by Nandi". 4: Recent changes says "by the <workflow> workflow".
 - **Edge / negative cases:**
   - With the notes share read-only, a change during a run is still "outside Nandi" (agents can't write there).
-  - Two agents running at once: a note goes to Chief of Staff first, else the latest run.
+  - Two agents running at once: a note goes to Nandi first, else the latest run.
   - Changes made while the app was closed have no author.
 - **Automation:** Covered by: `live/tests.rs` `notes_say_who_changed_them`, `files_in_a_work_folder_name_the_agent_or_workflow_running`, `the_apps_own_definition_writes_are_by_you`, `active_runs_are_running_or_just_ended`; `live/author.rs` tests; `live/own_writes.rs` tests; `live-model.test.ts`; `MyNotesView.test.tsx` `says who changed the open note` | Layer: unit | Gap: the author is the run going at the time, not the exact writer (see `docs/developer/live-ui.md`).
 - **Needs relay:** no

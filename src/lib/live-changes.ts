@@ -62,7 +62,7 @@ export function queryKeysFor(change: LiveChange): QueryKey[] {
       ]
     case 'notes':
       if (!id) return [notesKeys.all]
-      // The Chief of Staff's suggestions are a note with their own list
+      // Nandi's suggestions are a note with their own list
       return id === SUGGESTIONS_NOTE
         ? [notesKeys.list, notesKeys.note(id), notesKeys.suggestions]
         : [notesKeys.list, notesKeys.note(id)]

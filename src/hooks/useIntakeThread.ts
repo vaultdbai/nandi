@@ -1,8 +1,8 @@
 /**
- * One intake item's Chief of Staff thread: its queued items and Requests.
+ * One intake item's Nandi thread: its queued items and Requests.
  * Refetches on `request://updated` (the queue or a Request changed), and the
- * conversation is reloaded then too: the backend writes the Chief of
- * Staff's notes into it (queued, approved, dismissed).
+ * conversation is reloaded then too: the backend writes Nandi's notes into
+ * it (queued, approved, dismissed).
  */
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'

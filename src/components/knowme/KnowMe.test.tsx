@@ -58,7 +58,7 @@ beforeEach(() => {
 })
 
 describe('the know-me to-do', () => {
-  it('opens as the Chief of Staff chat, with Later and Skip on top', async () => {
+  it('opens as Nandi chat, with Later and Skip on top', async () => {
     const user = userEvent.setup()
     render(<InboxItemThreadView conversationId="inbox:knowMe:you" />)
     const todo = await screen.findByTestId('know-me-todo')

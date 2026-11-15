@@ -6,9 +6,9 @@ import { useAnswerSuggestion, useNoteSuggestions } from '@/hooks/useNotes'
 import { sendToStudio } from '@/lib/agent-actions'
 
 /**
- * My notes › Suggestions from Chief of Staff: Accept ticks one (and offers
+ * My notes › Suggestions from Nandi: Accept ticks one (and offers
  * to work on it in Studio), Dismiss removes it. Both are remembered, so
- * the Chief of Staff doesn't suggest it again.
+ * Nandi doesn't suggest it again.
  */
 export function NoteSuggestions() {
   const { t } = useTranslation()

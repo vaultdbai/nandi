@@ -102,7 +102,7 @@ export async function sendStudioMessage(
   }
 }
 
-/** A message to the Chief of Staff in an intake item's thread */
+/** A message to Nandi in an intake item's thread */
 export async function sendIntakeMessage(
   conversationId: string,
   text: string
@@ -115,7 +115,7 @@ export async function sendIntakeMessage(
   )
 }
 
-/** The user's message in an Inbox item's Ask chat: a Chief of Staff turn */
+/** The user's message in an Inbox item's Ask chat: a Nandi turn */
 export async function sendInboxMessage(
   conversationId: string,
   text: string

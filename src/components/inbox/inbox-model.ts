@@ -4,7 +4,7 @@
  * the badge count are tested without rendering. Home will read the same
  * model once it exists (task 7); a backend `list_inbox` can replace it later.
  *
- * Every item is an Ask chat with the Chief of Staff (`services::inbox`):
+ * Every item is an Ask chat with Nandi (`services::inbox`):
  * `inboxThreadId` names it and `inboxItemView` opens it.
  */
 import type {
@@ -285,7 +285,7 @@ function part(id: string): string {
 }
 
 /**
- * The item's Ask chat with the Chief of Staff (`inbox:<kind>:<id>`, an
+ * The item's Ask chat with Nandi (`inbox:<kind>:<id>`, an
  * intake item's own `intake:<id>`), or `null` when it has none: a missing
  * model is fixed in Settings, and a workflow approval that doesn't name its
  * step is reviewed on its run

@@ -52,7 +52,7 @@ describe('intake-thread-model', () => {
       ['a', 'intakeThread.status.dismissed'],
       ['b', 'intakeThread.status.approved'],
     ])
-    expect(model.sourceKey).toBe('home.chiefOfStaffDigest.source.email')
+    expect(model.sourceKey).toBe('home.nandiDigest.source.email')
   })
 
   it('blocks approval of a blocked pending item', () => {

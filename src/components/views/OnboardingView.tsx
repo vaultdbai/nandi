@@ -59,7 +59,7 @@ export interface OnboardingViewProps {
  * (4, recommended, skippable), network (5, optional), starter packs (6),
  * then the Dashboard. A connected mailbox fills in the name step
  * ("You're Dev Chechi · Change"); skipping it leaves the name step to ask. Finishing starts the first email check at
- * once, so the Chief of Staff has notes to work from before the first
+ * once, so Nandi has notes to work from before the first
  * interval passes. Each step saves its own setting as it's left, and the
  * step reached is remembered on this Nandi home, so quitting midway
  * resumes there. The name is saved on step 2 because installing packs
@@ -198,7 +198,7 @@ export function OnboardingView({
       })
     }
     void queryClient.invalidateQueries({ queryKey: identityQueryKeys.all })
-    // The Chief of Staff starts on the mail now, not one interval later
+    // Nandi starts on the mail now, not one interval later
     void client.checkEmailNow().then(result => {
       if (result.status === 'error') {
         logger.warn('Onboarding: the first email check failed', {

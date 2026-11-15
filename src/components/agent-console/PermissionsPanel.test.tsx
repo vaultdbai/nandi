@@ -154,7 +154,7 @@ describe('PermissionsPanel sites and accounts', () => {
     mocked.repoLoadEntity = vi.fn().mockResolvedValue(
       ok({
         ...definition,
-        id: 'cos',
+        id: 'nandi',
         readOnly,
         capabilities: { tools: [], network: [], pilots: ['browser'] },
       })
@@ -212,7 +212,7 @@ describe('PermissionsPanel sites and accounts', () => {
   it('adds a site secret by name and clears the value from the form', async () => {
     setUp(false)
     const user = userEvent.setup()
-    render(<PermissionsPanel agentId="cos" />)
+    render(<PermissionsPanel agentId="nandi" />)
     const name = await screen.findByRole('textbox', {
       name: 'New secret name',
     })
@@ -228,7 +228,7 @@ describe('PermissionsPanel sites and accounts', () => {
     await user.type(value, 'hunter2')
     await user.click(add)
     expect(mocked.addPilotSecret).toHaveBeenCalledWith(
-      'cos',
+      'nandi',
       'browser',
       'ACME_PASSWORD',
       'hunter2'
@@ -240,7 +240,7 @@ describe('PermissionsPanel sites and accounts', () => {
 
   it('lets a pack agent set values but not add names', async () => {
     setUp(true)
-    render(<PermissionsPanel agentId="cos" />)
+    render(<PermissionsPanel agentId="nandi" />)
     expect(await screen.findByText('SITE_PASSWORD')).toBeInTheDocument()
     expect(screen.getByLabelText('Value of SITE_PASSWORD')).toBeInTheDocument()
     expect(
@@ -251,7 +251,7 @@ describe('PermissionsPanel sites and accounts', () => {
   it('signs out everywhere after a confirm', async () => {
     setUp(false)
     const user = userEvent.setup()
-    render(<PermissionsPanel agentId="cos" />)
+    render(<PermissionsPanel agentId="nandi" />)
     await user.click(
       await screen.findByRole('button', { name: 'Sign out everywhere' })
     )
@@ -260,7 +260,7 @@ describe('PermissionsPanel sites and accounts', () => {
     await user.click(
       within(dialog).getByRole('button', { name: 'Sign out everywhere' })
     )
-    expect(mocked.clearBrowserProfile).toHaveBeenCalledWith('cos', 'browser')
+    expect(mocked.clearBrowserProfile).toHaveBeenCalledWith('nandi', 'browser')
     await waitFor(() =>
       expect(
         screen.getByRole('button', { name: 'Sign out everywhere' })

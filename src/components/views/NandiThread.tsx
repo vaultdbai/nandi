@@ -13,7 +13,7 @@ import { useConversation } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
 
 /**
- * A Chief of Staff thread's conversation (an intake item's, an Inbox
+ * A Nandi thread's conversation (an intake item's, an Inbox
  * item's): its messages, with the approval cards of what it proposes
  * decided in place
  */
@@ -49,7 +49,7 @@ export function ThreadConversation({
   )
 }
 
-/** The ask box of a Chief of Staff thread, in chat mode */
+/** The ask box of a Nandi thread, in chat mode */
 export function ThreadComposer({
   placeholder,
   onSend,

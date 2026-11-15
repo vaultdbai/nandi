@@ -38,7 +38,7 @@ pub struct BuiltinAgent {
 }
 
 /// A Nandi playbook: `(name, contents)`
-macro_rules! chief_playbook {
+macro_rules! nandi_playbook {
     ($name:literal) => {
         (
             $name,
@@ -65,15 +65,15 @@ pub const BUILTIN_AGENTS: &[BuiltinAgent] = &[BuiltinAgent {
         ),
     ],
     playbooks: &[
-        chief_playbook!("web-task"),
-        chief_playbook!("pay-a-bill"),
-        chief_playbook!("sign-in-and-accounts"),
-        chief_playbook!("delegate-work"),
-        chief_playbook!("build-a-workflow"),
-        chief_playbook!("email-triage"),
-        chief_playbook!("meeting-prep"),
-        chief_playbook!("occasions"),
-        chief_playbook!("know-me"),
+        nandi_playbook!("web-task"),
+        nandi_playbook!("pay-a-bill"),
+        nandi_playbook!("sign-in-and-accounts"),
+        nandi_playbook!("delegate-work"),
+        nandi_playbook!("build-a-workflow"),
+        nandi_playbook!("email-triage"),
+        nandi_playbook!("meeting-prep"),
+        nandi_playbook!("occasions"),
+        nandi_playbook!("know-me"),
     ],
 }];
 

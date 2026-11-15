@@ -53,7 +53,7 @@ describe('EmailTodo', () => {
     render(<EmailTodo />)
     expect(
       await screen.findByText(
-        'Connect your email so Chief of Staff can keep your notes.'
+        'Connect your email so Nandi can keep your notes.'
       )
     ).toBeInTheDocument()
     expect(

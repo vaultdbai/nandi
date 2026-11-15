@@ -100,7 +100,7 @@ const PILOT_NAMES: Record<string, string> = {
 }
 
 /**
- * A decision the Chief of Staff proposes in an Inbox item's chat
+ * A decision Nandi proposes in an Inbox item's chat
  * (`inbox::tool`): the person confirms it here, with the note it carries
  */
 function inboxDecision(tool: string, args: Args): ApprovalSummary | null {

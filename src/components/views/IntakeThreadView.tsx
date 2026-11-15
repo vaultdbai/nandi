@@ -33,11 +33,11 @@ import {
   threadModel,
   workflowProposalFor,
 } from './intake-thread-model'
-import { ThreadComposer, ThreadConversation } from './ChiefOfStaffThread'
+import { ThreadComposer, ThreadConversation } from './NandiThread'
 import { ViewHeader } from './ViewHeader'
 
 /**
- * One intake item's conversation with the Chief of Staff. Above: what waits
+ * One intake item's conversation with Nandi. Above: what waits
  * for the user's OK (Approve or Dismiss), what was decided, and the Requests
  * it became with their steps. Below: the conversation, where the user can
  * ask for a draft or hand the work to an agent (which queues it here for
@@ -154,7 +154,7 @@ export function IntakeThreadView({
 
 /**
  * A Request the thread became: its status and steps, "Mark done" included,
- * and "Save as workflow" when the Chief of Staff proposes it
+ * and "Save as workflow" when Nandi proposes it
  */
 function ThreadRequest({
   requestId,

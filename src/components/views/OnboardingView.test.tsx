@@ -919,7 +919,7 @@ describe('OnboardingView', () => {
       await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1))
       expect(mocks().installPack).toHaveBeenCalledWith('research-pack')
       expect(mocks().setOnboardingStep).toHaveBeenLastCalledWith('done')
-      // The Chief of Staff starts on the mail now, not one interval later
+      // Nandi starts on the mail now, not one interval later
       expect(mocks().checkEmailNow).toHaveBeenCalled()
       expect(useNavigationStore.getState().current).toEqual({
         kind: 'home',

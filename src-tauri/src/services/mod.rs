@@ -282,8 +282,8 @@ impl AppState {
             // the app was closed, then every few seconds
             workflows.watch_asks();
         });
-        // My notes exists and is shared from the first launch, so Chief of
-        // Staff can keep notes before anyone opens the My notes page
+        // My notes exists and is shared from the first launch, so Nandi can
+        // keep notes before anyone opens the My notes page
         let weak = state.downgrade();
         state.runtime().spawn(async move {
             let Some(state) = weak.upgrade() else {

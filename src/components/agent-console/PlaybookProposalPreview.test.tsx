@@ -33,7 +33,7 @@ describe('PlaybookProposalPreview on the approval card', () => {
     render(
       <ApprovalRequestCard
         message={proposal()}
-        agentName="Chief of Staff"
+        agentName="Nandi"
         onDecide={vi.fn()}
       />
     )

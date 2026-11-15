@@ -122,7 +122,7 @@ describe('an Inbox item’s Ask chat', () => {
     )
   })
 
-  it('sends the user’s words to the Chief of Staff in this thread', async () => {
+  it('sends the user’s words to Nandi in this thread', async () => {
     const user = userEvent.setup()
     Object.assign(commands, {
       openInboxThread: ok(thread({})),

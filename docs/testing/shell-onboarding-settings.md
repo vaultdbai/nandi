@@ -298,11 +298,11 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### ON-15 — Step 1: connect your email (skippable)
 
-- **What:** Setup opens on step 1 (**Email** → Name → Model → Network → Agents), titled "Connect your email". One sign-in covers which mailboxes Chief of Staff reads: a checkbox each for **Outlook** and **Gmail**, both allowed. Ticking one shows **Connect <name>**, which opens the browser sign-in; each mailbox shows its own progress and then "Connected as …". The step repeats what Nandi reads and never does. **How often should Chief of Staff check?** offers 5, 15, 30 minutes, 1 hour and 2 hours, with **30 minutes** chosen. A provider without a client ID in this build shows "Not available in this build" and can't be ticked. The button reads **Skip for now** until a mailbox is connected, then **Continue**; both save the interval.
+- **What:** Setup opens on step 1 (**Email** → Name → Model → Network → Agents), titled "Connect your email". One sign-in covers which mailboxes Nandi reads: a checkbox each for **Outlook** and **Gmail**, both allowed. Ticking one shows **Connect <name>**, which opens the browser sign-in; each mailbox shows its own progress and then "Connected as …". The step repeats what Nandi reads and never does. **How often should Nandi check?** offers 5, 15, 30 minutes, 1 hour and 2 hours, with **30 minutes** chosen. A provider without a client ID in this build shows "Not available in this build" and can't be ticked. The button reads **Skip for now** until a mailbox is connected, then **Continue**; both save the interval.
 - **Where:** `src/components/onboarding/StepEmail.tsx`, `components/email/ConnectMailbox.tsx`, `EmailReads.tsx`, `EmailSignInStatus.tsx`, `components/views/OnboardingView.tsx`, `onboarding/identity-model.ts` (`ONBOARDING_STEPS`); `OnboardingStep::Email` (`services/auth/mod.rs`); `set_email_settings`.
 - **Preconditions:** A fresh `NANDI_HOME`; a build with `NANDI_MICROSOFT_CLIENT_ID` (and the Google ID and secret for Gmail).
 - **Steps:** 1. Start setup on a fresh home. 2. Tick Outlook and Gmail. 3. **Connect Outlook**, sign in; **Connect Gmail**, sign in. 4. Pick 15 minutes. 5. **Continue**: the Name step reads "You're <name> (<address>) · Change" (ON-03). Finish setup. 6. Repeat on another fresh home and choose **Skip for now**: the Name step asks.
-- **Expected:** Both cards say "Connected as …"; Settings › Email shows both, checking every 15 minutes. Right after setup, one "Email: N new emails" run starts for the Chief of Staff (not one interval later), and its My role holds who the user is: the "Name and title" line gets the name, the Outlook job title and the address, and the "Team and manager" line the department and manager (only the template placeholders are replaced; a line the user wrote is kept). Quitting on this step resumes on it. Skipping goes on with the interval saved and leaves the Home to-do (SH-35).
+- **Expected:** Both cards say "Connected as …"; Settings › Email shows both, checking every 15 minutes. Right after setup, one "Email: N new emails" run starts for Nandi (not one interval later), and its My role holds who the user is: the "Name and title" line gets the name, the Outlook job title and the address, and the "Team and manager" line the department and manager (only the template placeholders are replaced; a line the user wrote is kept). Quitting on this step resumes on it. Skipping goes on with the interval saved and leaves the Home to-do (SH-35).
 - **Edge / negative cases:** Sign-in problems explain themselves as in CP-03 (admin approval link, declined, network). There is no Back (it is the first step). The title, department and manager come from Graph `/me` and `/me/manager` (`User.Read`); if either call fails they stay empty and sign-in still succeeds. Gmail gives name and address only. A mailbox connected earlier shows as connected and its box can't be unticked.
 - **Automation:** Covered by: `StepEmail.test.tsx` (both mailboxes, default 30 and skip, unavailable provider), `email-model.test.ts`, `OnboardingView.test.tsx`, `builtin_agents.rs` (`the_mailbox_owner_goes_into_my_role`), `email/profile.rs` tests, `email/tests.rs` (`outlook_pages_to_the_delta_link_and_resumes_from_it`: profile read at connect) | Layer: unit | Gap: a live sign-in during setup (manual); time zone and working hours need `MailboxSettings.Read` and are not read yet.
 - **Needs relay:** no
@@ -468,7 +468,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 - **What:** Three items have children:
   - Ask: "New Chat" (with a + icon), the 5 newest chats, then "All chats (n)".
-  - Agents: Chief of Staff first (built in, always shown), then up to 8 other agents, busiest first (waiting, running, error, idle, then by name), each with a status dot (amber waiting, pulsing blue running, red error, green idle). Then "All agents (n)" when there are more than 8 others.
+  - Agents: Nandi first (built in, always shown), then up to 8 other agents, busiest first (waiting, running, error, idle, then by name), each with a status dot (amber waiting, pulsing blue running, red error, green idle). Then "All agents (n)" when there are more than 8 others.
   - Automations: Workflows and Triggers.
 
   Clicking a name opens it and expands its branch. The chevron only expands or collapses.
@@ -577,7 +577,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **What:** Home is one scrolling page with:
   - "Ask Nandi…": typed text is sent to Ask, and empty text opens Ask.
   - A network line: "Connected · n people online", or "Not connected." with "Join a network".
-  - The email to-do and the Chief of Staff's digest.
+  - The email to-do and Nandi's digest.
   - The Inbox.
   - Recent changes.
 
@@ -1355,7 +1355,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### SH-35 — Home: connect your email to-do
 
-- **What:** With no mailbox connected (skipped at setup, or disconnected later), Home shows a card "Connect your email so Chief of Staff can keep your notes." with **Connect Outlook** and **Connect Gmail** (each provider this build can connect) and **Email settings**. Connecting signs in from the card. The card goes away once a mailbox is connected; while the other provider is still free, one quiet line says "You can also connect <name>." with **Email settings**. Nothing shows when both are connected or the build can connect neither.
+- **What:** With no mailbox connected (skipped at setup, or disconnected later), Home shows a card "Connect your email so Nandi can keep your notes." with **Connect Outlook** and **Connect Gmail** (each provider this build can connect) and **Email settings**. Connecting signs in from the card. The card goes away once a mailbox is connected; while the other provider is still free, one quiet line says "You can also connect <name>." with **Email settings**. Nothing shows when both are connected or the build can connect neither.
 - **Where:** `src/components/home/EmailTodo.tsx`, `HomeView.tsx`, `settings/email/email-model.ts` (`emailTodo`), `useEmailStatus` (refreshes on `email://changed`).
 - **Preconditions:** A build with at least one email client ID.
 - **Steps:** 1. Skip the email step at setup; open Home. 2. **Connect Outlook** from the card and sign in. 3. Settings › Email › **Stop reading my email**; back to Home.
@@ -1379,7 +1379,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### SH-40 — A chat sent with no model also gets the help guide
 
-- **What:** In any chat box (an agent's page, Ask conversations, Chief of Staff threads) a message sent while no model can be called is sent as usual, and the help guide's answer to it appears above the box, dismissable.
+- **What:** In any chat box (an agent's page, Ask conversations, Nandi threads) a message sent while no model can be called is sent as usual, and the help guide's answer to it appears above the box, dismissable.
 - **Where:** `components/ask/AskBox.tsx` (chat mode, `useDefaultModel().effectiveModel === null`), command `help_answer` (HTTP `POST /api/rpc/help_answer`, body `{ text }`).
 - **Preconditions:** No model.
 - **Steps:** 1. Open an agent, type "install docker" in Chat and send.

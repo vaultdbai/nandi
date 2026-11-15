@@ -36,7 +36,7 @@ interface KnowMeProposalCardProps {
 }
 
 /**
- * A know-me proposal from the Chief of Staff (`knowme_propose`): each change
+ * A know-me proposal from Nandi (`knowme_propose`): each change
  * it would make to the card (NANDI.md) and My notes, editable before the
  * person confirms. Work items carry "On my card"; personal ones stay private
  * or go to one group I'm in. Confirm sends the edited proposal

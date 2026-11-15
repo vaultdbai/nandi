@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { commands } from '@/lib/tauri-bindings'
 import type { NandiDigest, DigestItem, QueuedWork } from '@/lib/bindings'
 import { useNavigationStore } from '@/store/navigation-store'
-import { ChiefOfStaffDigest as DigestCard } from './ChiefOfStaffDigest'
+import { NandiDigest as DigestCard } from './NandiDigest'
 
 type Commands = Record<string, unknown>
 const mocked = commands as unknown as Commands
@@ -51,7 +51,7 @@ function queued(overrides: Partial<QueuedWork> = {}): QueuedWork {
   }
 }
 
-describe('ChiefOfStaffDigest', () => {
+describe('NandiDigest', () => {
   let originalGet: unknown
   let originalSeen: unknown
   let originalApprove: unknown
@@ -77,7 +77,7 @@ describe('ChiefOfStaffDigest', () => {
     mocked.getNandiDigest = get
     render(<DigestCard />)
     await vi.waitFor(() => expect(get).toHaveBeenCalled())
-    expect(screen.queryByTestId('home-cos-digest')).toBeNull()
+    expect(screen.queryByTestId('home-nandi-digest')).toBeNull()
   })
 
   it('shows the summary and rows, and opens the Request', async () => {
@@ -132,7 +132,7 @@ describe('ChiefOfStaffDigest', () => {
         'Done before as “Pay the power bill for October”. Save it as a workflow?'
       )
     ).toBeInTheDocument()
-    await userEvent.click(screen.getByTestId('home-cos-save-workflow'))
+    await userEvent.click(screen.getByTestId('home-nandi-save-workflow'))
     await vi.waitFor(() => expect(draft).toHaveBeenCalledWith('r1'))
     expect(await screen.findByText('Save as a workflow')).toBeInTheDocument()
     mocked.draftWorkflowFromRequest = originalDraft
@@ -143,9 +143,7 @@ describe('ChiefOfStaffDigest', () => {
     const seen = vi.fn(async () => ok(null))
     mocked.markNandiDigestSeen = seen
     render(<DigestCard />)
-    expect(
-      await screen.findByText('What your Chief of Staff did')
-    ).toBeInTheDocument()
+    expect(await screen.findByText('What Nandi did')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Got it' }))
     expect(seen).toHaveBeenCalled()
   })

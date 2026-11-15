@@ -1,5 +1,5 @@
 /**
- * The Chief of Staff's auto-approve rules: what lets a screened item through
+ * Nandi's auto-approve rules: what lets a screened item through
  * without a click. Read in Settings; "Always allow" on a queued item adds one.
  */
 import { useState } from 'react'
