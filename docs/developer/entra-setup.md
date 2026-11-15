@@ -60,7 +60,7 @@ Environment variables override the file, and make the form read-only:
 
 ## Groups
 
-`list_entra_groups` reads `GET /v1.0/me/memberOf` (following `@odata.nextLink`, at most 20 pages, and only back to the Graph host), keeps `#microsoft.graph.group` entries (directory roles and administrative units are dropped), and caches them in `entra_teams_cache`.
+`list_entra_groups` reads `GET /v1.0/me/memberOf` (following `@odata.nextLink`, at most 20 pages, and only back to the Graph host), keeps `#microsoft.graph.group` entries (directory roles and administrative units are dropped). Nothing is cached: the `entra_teams_cache` table went with the git-registry teams.
 
 Mapping an Entra group to a Nandi team is gone: git-registry teams were removed on 2026-11-14 (owner decision 11). How Entra groups relate to [relay groups](./groups.md) is not decided.
 

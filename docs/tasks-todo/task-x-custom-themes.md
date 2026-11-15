@@ -9,7 +9,7 @@ Built-in palettes, the token set, the contrast checks and the no-raw-colour rule
 - [ ] **Injection**: a validated custom theme becomes a `<style id="nandi-theme">` element; `checkContrast` (reuse `src/themes/contrast.ts`) refuses unreadable ones, listing the failing pairs.
 - [ ] **Editor** in Settings › Appearance: built-ins are read-only ("Duplicate"); tokens grouped by meaning (Surfaces, Text, Status, Kinds, Charts); a live preview; contrast warnings inline; Save writes the file.
 - [ ] **Import / export** of theme JSON.
-- [ ] **Sharing**: `kind: theme` in the registry schema, so packs and team registries can carry themes.
+- [ ] **Sharing**: `kind: theme` in the registry schema, so packs can carry themes.
 - [ ] **Density and font scale** preferences (`--density`), with bundled fonts only.
 
 ## Acceptance

@@ -109,7 +109,7 @@ ID prefixes:
 
 These turned up while building the catalog. In each case the catalog follows the code. Fix the doc, or fix the code if the doc describes what was intended.
 
-- **Sign-in and teams (moved to v2, see `docs/tasks-todo/task-x-v2-sign-in.md`):** the app has no sign-in as identity. The first-run gate reads the local identity in `NANDI.md`, and teams can be any git URL (auth was removed in `91c8fad`). The optional GitHub sign-in (`github-auth.md`, ST-32) only supplies a token for github.com repositories. `entra-setup.md` and user guide §3 and §9 ("Sync now", "Log out", Entra ID, GitHub-org teams) are out of date; the user guide cleanup is listed in that task.
+- **Sign-in (moved to v2, see `docs/tasks-todo/task-x-v2-sign-in.md`):** the app has no sign-in as identity. The first-run gate reads the local identity in `NANDI.md`, and packs travel through marketplace registries, any git URL (auth was removed in `91c8fad`). The optional GitHub sign-in (`github-auth.md`, ST-32) only supplies a token for github.com repositories. `entra-setup.md` and user guide §3 and §9 ("Sync now", "Log out", Entra ID) are out of date; the user guide cleanup is listed in that task.
 - **Share branches:** the code names them `nandi/share-<slug>-<agent>`. The docs say `nandi/`.
 - **Library:** `marketplace.md` describes an Installed tab, a Modified badge, "Update all" and a Registries tab. None of these exist. `registry-schema/README.md` ([`nandi-spec/registry-schema`](https://github.com/vaultdbai/nandi-spec/tree/main/registry-schema)) still says "Marketplace → Registries", and Publish is in the agent's ⋯ menu, not its header.
 - **Triggers:** `triggers.md` describes Definition/Fires/Payload tabs. The code has Settings and Firings tabs.
