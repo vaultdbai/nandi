@@ -87,7 +87,6 @@ pub struct CapabilityBrief {
     pub online_providers: u32,
     pub cost_per_call_usd: Option<f64>,
     pub sla_seconds: u32,
-    pub approval_required: bool,
     pub tags: Vec<String>,
 }
 
@@ -299,7 +298,6 @@ async fn read_sources(state: &AppState) -> ContextSources {
                     .as_ref()
                     .and_then(|c| c.per_call_usd),
                 sla_seconds: listing.definition.policy.sla_seconds,
-                approval_required: listing.definition.policy.approval_required,
                 tags: listing.definition.tags.clone(),
             })
             .collect(),

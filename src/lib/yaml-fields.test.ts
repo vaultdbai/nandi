@@ -6,9 +6,10 @@ id: code-review.python
 name: Python review   # shown in lists
 version: 1.2.3
 tags: [python, review]
+owner:
+  transferable: false
 policy:
   sla_seconds: 300
-  approval_required: false
 ---
 
 Review it.
@@ -27,7 +28,7 @@ describe('yaml-fields', () => {
     expect(getField(CAP, 'version')).toBe('1.2.3')
     expect(getField(CAP, 'tags')).toEqual(['python', 'review'])
     expect(getField(CAP, 'policy.sla_seconds')).toBe(300)
-    expect(getField(CAP, 'policy.approval_required')).toBe(false)
+    expect(getField(CAP, 'owner.transferable')).toBe(false)
     expect(getField(CAP, 'missing')).toBeUndefined()
     expect(getField(WORKFLOW, 'name')).toBe('Daily')
   })

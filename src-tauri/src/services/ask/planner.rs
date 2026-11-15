@@ -213,9 +213,6 @@ pub fn estimate(steps: Vec<PlanStep>, context: &GatewayContext) -> ActionPlan {
                 if c.online_providers == 0 && !c.provided {
                     warnings.push(format!("No provider of {} is online right now", c.name));
                 }
-                if c.approval_required {
-                    warnings.push(format!("{} needs approval before it runs", c.name));
-                }
             }
             PlanStepKind::Workflow => {
                 let steps = context

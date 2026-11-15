@@ -64,7 +64,6 @@ describe('filterListings', () => {
           maxConcurrentPerProvider: 1,
           totalMaxConcurrent: 0,
           slaSeconds: 0,
-          approvalRequired: false,
           cost: null,
           autoReassign: 'never',
         },

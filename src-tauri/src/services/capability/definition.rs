@@ -102,7 +102,6 @@ pub struct CapabilityPolicy {
     pub max_concurrent_per_provider: u32,
     pub total_max_concurrent: u32,
     pub sla_seconds: u32,
-    pub approval_required: bool,
     pub cost: Option<CostSpec>,
     pub auto_reassign: ReassignPolicy,
 }
@@ -114,7 +113,6 @@ impl Default for CapabilityPolicy {
             max_concurrent_per_provider: 1,
             total_max_concurrent: 0,
             sla_seconds: 0,
-            approval_required: false,
             cost: None,
             auto_reassign: ReassignPolicy::Never,
         }
@@ -425,7 +423,7 @@ owner:
   display_name: Acme
   history:
     - { from: bob, to: acme, at: 1760000000000, reason: Reorg }
-policy: { visibility: team, approval_required: true, cost: { per_call_usd: 0.5 } }
+policy: { visibility: team, cost: { per_call_usd: 0.5 } }
 ---
 ";
 
@@ -459,7 +457,7 @@ policy: { visibility: team, approval_required: true, cost: { per_call_usd: 0.5 }
         let org = parse(ORG).unwrap();
         assert_eq!(org.owner.history.len(), 1);
         assert_eq!(org.owner.history[0].reason.as_deref(), Some("Reorg"));
-        assert!(org.policy.approval_required);
+        assert_eq!(org.policy.visibility, Visibility::Team);
         assert_eq!(org.policy.cost.unwrap().per_call_usd, Some(0.5));
     }
 

@@ -209,14 +209,12 @@ describe('CapabilityDetailView', () => {
     render(<CapabilityDetailView capabilityId={ID} />)
     await user.click(await screen.findByRole('tab', { name: 'Policy' }))
     await user.selectOptions(await screen.findByLabelText('Visibility'), 'team')
-    await user.click(screen.getByLabelText('Requests need approval'))
     await user.click(screen.getByRole('button', { name: 'Save policy' }))
     expect(commands.saveCapability).toHaveBeenCalledWith(
       expect.objectContaining({
         id: ID,
         policy: expect.objectContaining({
           visibility: 'team',
-          approvalRequired: true,
         }),
       })
     )

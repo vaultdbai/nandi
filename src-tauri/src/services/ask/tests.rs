@@ -136,7 +136,6 @@ fn capability(id: &str, owned: bool, provided: bool, used: bool) -> CapabilityBr
         online_providers: 1,
         cost_per_call_usd: None,
         sla_seconds: 300,
-        approval_required: false,
         tags: Vec::new(),
     }
 }
@@ -736,10 +735,9 @@ async fn the_planner_may_give_the_chief_of_staff_one_step() {
 }
 
 #[test]
-fn plans_warn_about_offline_providers_and_approval() {
+fn plans_warn_about_offline_providers_and_add_up_cost() {
     let mut context = context_for("home");
     context.capabilities[1].online_providers = 0;
-    context.capabilities[1].approval_required = true;
     context.capabilities[1].cost_per_call_usd = Some(0.25);
     let plan = planner::estimate(
         vec![PlanStep {
@@ -754,7 +752,6 @@ fn plans_warn_about_offline_providers_and_approval() {
         .warnings
         .iter()
         .any(|w| w.contains("No provider of summarize is online")));
-    assert!(plan.warnings.iter().any(|w| w.contains("needs approval")));
 }
 
 // --- Edit previews -----------------------------------------------------------

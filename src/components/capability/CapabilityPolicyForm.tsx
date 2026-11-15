@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Spinner } from '@/components/ui/spinner'
-import { Switch } from '@/components/ui/switch'
 import { useSaveCapability } from '@/hooks/useCapabilities'
 import { rawError } from '@/lib/friendly-error'
 import type {
@@ -25,7 +24,6 @@ const DEFAULT_POLICY: CapabilityPolicy = {
   maxConcurrentPerProvider: 1,
   totalMaxConcurrent: 0,
   slaSeconds: 0,
-  approvalRequired: false,
   cost: null,
   autoReassign: 'never',
 }
@@ -174,19 +172,6 @@ export function CapabilityPolicyForm({
           }
         />
       </Row>
-      <div className="flex items-center justify-between gap-4">
-        <Label htmlFor="policy-approval">
-          {t('capabilities.policy.approvalRequired')}
-        </Label>
-        <Switch
-          id="policy-approval"
-          checked={policy.approvalRequired}
-          disabled={disabled}
-          onCheckedChange={approvalRequired =>
-            patchPolicy({ approvalRequired })
-          }
-        />
-      </div>
       <Row id="policy-reassign" label={t('capabilities.policy.autoReassign')}>
         <NativeSelect
           id="policy-reassign"

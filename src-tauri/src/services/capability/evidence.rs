@@ -167,8 +167,8 @@ pub async fn record_from_task(db: &Db, task: &TaskRecord) -> Result<(), String> 
                 "INSERT OR REPLACE INTO capability_evidence (id, capability_id,
                     capability_version, task_id, provider_instance, provider_kind, provider_id,
                     role, status, duration_ms, clarification_rounds, escalation_required,
-                    approval_required, observed_at, metadata)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14)",
+                    observed_at, metadata)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     format!("{}:{}", task.id, role.as_str()),
                     task.capability,

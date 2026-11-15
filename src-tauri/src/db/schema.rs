@@ -564,7 +564,6 @@ CREATE TABLE IF NOT EXISTS capability_evidence (
     cost_usd             REAL,
     clarification_rounds INTEGER DEFAULT 0,
     escalation_required  INTEGER DEFAULT 0,
-    approval_required    INTEGER DEFAULT 0,
     user_rating          INTEGER,
     -- JSON, for workflow providers
     step_breakdown       TEXT,

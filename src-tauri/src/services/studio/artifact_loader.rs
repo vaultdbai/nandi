@@ -126,7 +126,7 @@ fn template(artifact: &ArtifactRef) -> String {
         ArtifactRef::Capability(id) => format!(
             "---\nid: {id}\nname: {id}\ndescription: What this capability does\nversion: 0.1.0\n\
              owner:\n  kind: user\n  id: ''\n  display_name: ''\npolicy:\n  visibility: private\n  \
-             sla_seconds: 300\n  approval_required: false\ntags: []\n---\n\n\
+             sla_seconds: 300\ntags: []\n---\n\n\
              How a provider should handle a request.\n"
         ),
         ArtifactRef::Policy(id) => format!(

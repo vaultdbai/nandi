@@ -5061,7 +5061,7 @@ id: string; displayName: string; transferable?: boolean;
  * Transfers, oldest first
  */
 history?: OwnershipChange[] }
-export type CapabilityPolicy = { visibility: Visibility; maxConcurrentPerProvider: number; totalMaxConcurrent: number; slaSeconds: number; approvalRequired: boolean; cost: CostSpec | null; autoReassign: ReassignPolicy }
+export type CapabilityPolicy = { visibility: Visibility; maxConcurrentPerProvider: number; totalMaxConcurrent: number; slaSeconds: number; cost: CostSpec | null; autoReassign: ReassignPolicy }
 export type CapabilityPreference = { 
 /**
  * Instance IDs, boosted

@@ -4,7 +4,6 @@ import {
   ListField,
   NumberField,
   SelectField,
-  SwitchField,
   TextField,
   type FormProps,
 } from './form-fields'
@@ -37,11 +36,6 @@ export function CapabilityForm(props: FormProps) {
         {...props}
         path="required_tools"
         label={t('studio.field.requiredTools')}
-      />
-      <SwitchField
-        {...props}
-        path="policy.approval_required"
-        label={t('studio.field.approvalRequired')}
       />
     </FormGrid>
   )
