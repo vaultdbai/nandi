@@ -23,6 +23,12 @@ use crate::services::trust;
 /// A live wait well inside a test's patience
 const LIVE_WAIT: Duration = Duration::from_millis(150);
 
+/// Waits until `recorder` has heard `event`: the history row ends before
+/// its event is emitted
+async fn emitted(recorder: &RecordingSink, event: &str) {
+    wait_until(event, || async { recorder.names().contains(&event) }).await;
+}
+
 #[tokio::test]
 async fn one_instance_delegates_to_another_through_the_relay() {
     let world = RelayWorld::allowing().await;
@@ -288,7 +294,8 @@ async fn a_request_with_no_answer_in_the_live_wait_stays_open_until_the_relay_en
     let closed = wait_for_history_end(&world.requester.state, &result.task_id).await;
     assert_eq!(closed.status, TaskStatus::TimedOut);
     assert!(closed.error.unwrap().contains("due date"));
-    assert!(recorder.names().contains(&"delegation://task_failed"));
+    // Emitted after the row is closed
+    emitted(&recorder, "delegation://task_failed").await;
     world.shutdown();
 }
 
@@ -313,7 +320,8 @@ async fn an_answer_that_comes_after_the_live_wait_is_kept() {
     let ended = wait_for_history_end(&world.requester.state, &result.task_id).await;
     assert_eq!(ended.status, TaskStatus::Completed, "{:?}", ended.error);
     assert!(ended.output.to_string().contains("done later"));
-    assert!(recorder.names().contains(&"delegation://task_completed"));
+    // Emitted last, after the row is closed and the return kept
+    emitted(&recorder, "delegation://task_completed").await;
     // It's an Inbox item, and the companion hears about it
     let returns = returns::list(world.requester.state.db()).await.unwrap();
     assert_eq!(returns.len(), 1);

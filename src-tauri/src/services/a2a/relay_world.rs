@@ -276,7 +276,24 @@ impl Nandi {
             availability: Default::default(),
         };
         self.relay.register_gateway(card).await.unwrap();
+        self.until_listed().await;
         AgentCard::card_id(&me, crate::services::gateway::GATEWAY_AGENT_ID)
+    }
+
+    /// Waits until the relay lists this Nandi online with its gateway open.
+    /// The gateway card and the route card it adds go out unanswered: a
+    /// request sent before the relay has them is refused ("No online agent
+    /// .../gateway serves ..."). Asked on this Nandi's own connection, the
+    /// answer comes after the relay handled both.
+    async fn until_listed(&self) {
+        let me = self.instance();
+        wait_until(&format!("{me}'s gateway listed by the relay"), || async {
+            let members = self.relay.query_directory().await.unwrap_or_default();
+            members.iter().any(|member| {
+                member.online && member.card.instance_id == me && member.card.accepts_delegation
+            })
+        })
+        .await;
     }
 
     /// Anyone may ask `agent`
