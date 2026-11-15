@@ -180,7 +180,9 @@ describe('SharedWithMeView', () => {
       'Bob is free · Bob is usually quick'
     )
     const papers = within(capability.getByTestId('provider-alice/papers'))
-    expect(papers.getByText(/unavailable\.notNow|Online, but not picked/)).toBeInTheDocument()
+    expect(
+      papers.getByText(/unavailable\.notNow|Online, but not picked/)
+    ).toBeInTheDocument()
 
     await user.click(
       papers.getByRole('button', { name: /capabilities\.pin$|^pin$/i })
