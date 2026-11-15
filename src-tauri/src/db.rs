@@ -353,11 +353,20 @@ pub(crate) mod tests {
 
     #[test]
     fn a_database_from_another_schema_is_refused_with_what_to_do() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.pragma_update(None, "user_version", SCHEMA_VERSION - 1)
-            .unwrap();
-        let error = init_db(&conn).unwrap_err();
-        assert!(error.contains("delete ~/.nandi/local/state.db"), "{error}");
+        // The previous version, and the newer one a later build would write
+        for version in [SCHEMA_VERSION - 1, SCHEMA_VERSION + 1] {
+            let conn = Connection::open_in_memory().unwrap();
+            conn.pragma_update(None, "user_version", version).unwrap();
+            let error = init_db(&conn).unwrap_err();
+            let versions = format!("schema {version}, this build uses {SCHEMA_VERSION}");
+            assert!(error.contains(&versions), "{error}");
+            assert!(error.contains("delete ~/.nandi/local/state.db"), "{error}");
+            // Refused before anything is created
+            let tables: i64 = conn
+                .query_row("SELECT COUNT(*) FROM sqlite_master", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(tables, 0);
+        }
         // A fresh one (version 0) and its own version are fine
         let fresh = Connection::open_in_memory().unwrap();
         init_db(&fresh).unwrap();
