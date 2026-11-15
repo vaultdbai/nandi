@@ -36,7 +36,8 @@
 //! ([`RELAY_TOKEN_ENTRY`]), with the relay it is for in `relay_state`
 //! (`relay_token_relay`, not a secret). Disconnecting keeps it, so joining
 //! the same relay again reuses this instance's seat. A token missing from
-//! the keyring just means joining again.
+//! the keyring just means joining again. One Nandi 0.1.0 kept in
+//! `relay_state` is moved to the keyring at startup ([`token_from_0_1_0`]).
 //!
 //! `relay_state` also keeps `online_agents` (every card at the relay as of
 //! the last presence refresh, the fallback while disconnected). See
@@ -55,6 +56,7 @@ pub mod sealing;
 // Capability and tool presence
 pub mod presence;
 pub mod tls;
+pub mod token_from_0_1_0;
 pub mod unavailable;
 pub mod version;
 

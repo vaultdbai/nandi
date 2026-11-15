@@ -84,7 +84,7 @@ Resolved by `services::relay::resolve_url` at launch and on every status read:
 
 A saved URL that is the build's relay reports `relayUrlSource = "builtIn"` (the Connection details say "This build of Nandi").
 
-There is no command-line flag for the relay URL; `NANDI_RELAY_URL` covers that case and is listed under "Environment" in `nandi --help`. An instance token (`?token=…`) is split off the URL and kept in SQLite `relay_state` (`relay_token`, with the relay it is for in `relay_token_relay`), never in `config.json`. Disconnect keeps it, so joining that relay again reuses the seat; saving another relay drops it.
+There is no command-line flag for the relay URL; `NANDI_RELAY_URL` covers that case and is listed under "Environment" in `nandi --help`. An instance token (`?token=…`) is split off the URL and kept in the OS keyring (`nandi.relay.instance_token`), with the relay it is for in SQLite `relay_state` (`relay_token_relay`), never in `config.json` or `state.db`. Nandi 0.1.0 kept the token itself in `relay_state` (`relay_token`): at the first start of a newer build, before `state.db` is opened and copied for its upgrade, `relay::token_from_0_1_0` moves it to the keyring and deletes the row (`secure_delete`, then a WAL checkpoint), so the person stays joined. Disconnect keeps it, so joining that relay again reuses the seat; saving another relay drops it.
 
 ## Joining a relay
 

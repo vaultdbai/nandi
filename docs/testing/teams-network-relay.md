@@ -491,7 +491,7 @@ Notes that apply to the whole section:
   - `config.json` has `relay_url` (no token), and after the restart the app connects automatically.
 - **Edge / negative cases:**
   - An invalid URL (not ws:// or wss://) disables Join and marks the field `aria-invalid`.
-  - A `?token=…` in the URL (operator-issued) joins as it is; the token goes to the OS keyring (`nandi.relay.instance_token`), never `config.json` or SQLite. A token missing from the keyring means joining again.
+  - A `?token=…` in the URL (operator-issued) joins as it is; the token goes to the OS keyring (`nandi.relay.instance_token`), never `config.json` or SQLite. A token missing from the keyring means joining again. A token Nandi 0.1.0 kept in `state.db` (`relay_state.relay_token`) moves to the keyring on the first start of a newer build, and the row is deleted: the app reconnects without joining again, and neither `state.db` nor `state.db.bak-v2` holds the token (`relay/token_from_0_1_0.rs`: `a_0_1_0_token_moves_to_the_keyring_and_leaves_no_trace`, `nothing_to_move`).
   - `wss://` URLs reach the TLS handshake.
   - Wrong code, code needed, relay full (the relay's words verbatim), version mismatch, unreachable: one calm line each, nothing saved.
 - **Automation:** Covered by: `ConnectionView.test.tsx` (join with code, full relay's words and no code on screen, paste invite), `src/hooks/useRelay.test.ts`; Rust `relay/join_tests.rs`, `relay/tests.rs` (`setting_the_url_connects_and_lists_online_agents`), `relay/client.rs` (`tokens_are_split_out_of_the_url`, `wss_reaches_the_tls_handshake_without_panicking`) | Layer: api + ui | Gap: none.

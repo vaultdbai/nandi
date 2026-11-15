@@ -240,7 +240,13 @@ impl AppState {
             Ok(None) => {}
             Err(e) => log::error!("Failed to commit the definition format upgrade: {e}"),
         }
-        let db = Db::open(&nandi_config::state_db_path()?)?;
+        let db_file = nandi_config::state_db_path()?;
+        // Before the database is opened (and copied for an upgrade), so the
+        // token Nandi 0.1.0 kept there never lands in the copy
+        if let Err(e) = relay::token_from_0_1_0::move_to_keyring(&db_file, &config.secrets) {
+            log::error!("{e}");
+        }
+        let db = Db::open(&db_file)?;
         let local = nandi_config::local_dir()?;
         // Before anything reads it: the instance ID outlives the database
         network::keep_instance_id(&db, &local);
