@@ -4,7 +4,7 @@ enabled: true
 source:
   type: cron
   config:
-    schedule: "0 8 * * *"
+    schedule: '0 8 * * *'
 target:
   type: agent
   id: nandi
