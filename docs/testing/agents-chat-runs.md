@@ -456,7 +456,7 @@ Shared preconditions used below:
   - Don't allow: it says what it needed the site for and what is left undone.
   - A mail or calendar check run has no `pilot_browser__*` tools.
   - A dev home that seeded the old Browser agent still has its folder; delete `.nandi/agents/browser` by hand.
-- **Automation:** Covered by: `builtin_agents.rs` (`the_chief_of_staff_browses_with_the_visible_browser`, `the_shipped_skills_parse_and_stay_short`), `orchestrator.rs` (`a_check_started_run_never_gets_pilot_tools`) | Layer: unit | Gap: no automated run with the real browser pilot.
+- **Automation:** Covered by: `builtin_agents.rs` (`nandi_browses_with_the_visible_browser`, `the_shipped_skills_parse_and_stay_short`), `orchestrator.rs` (`a_check_started_run_never_gets_pilot_tools`) | Layer: unit | Gap: no automated run with the real browser pilot.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -585,7 +585,7 @@ Shared preconditions used below:
   - A broken `skills/<name>.md` is never overwritten by a proposal.
   - An email or calendar check never proposes a playbook.
   - Dismissing the suggestion line: it's never added again.
-- **Automation:** Covered by: Rust `playbooks.rs` (`a_proposal_is_checked_by_the_domain_rules`, `the_card_sees_what_a_proposal_replaces_from_the_files`, `the_prompt_says_how_to_propose_when_the_agent_can`, `every_proposal_waits_for_the_user`, `an_approved_proposal_is_written_and_committed`, `a_broken_file_of_that_name_is_never_overwritten`, `an_installed_agent_cant_propose`), `orchestrator/middleware_tests.rs` (`a_proposed_playbook_is_written_once_approved`, `a_rejected_proposal_writes_nothing`, `a_proposal_for_an_existing_name_shows_what_it_replaces`, `a_proposal_that_breaks_the_rules_never_reaches_the_user`), `run_plan/classify.rs` (`effects_table`), `requests/recurrence.rs` (`work_the_chief_of_staff_repeats_itself_hints_a_playbook`), `builtin_agents.rs` (shipped playbooks name only real tools), Vitest `playbook-proposal-model.test.ts`, `PlaybookProposalPreview.test.tsx`, `approval-model.test.ts` | Layer: unit, integration | Gap: no check that a model writes the suggestion line only once, or proposes when asked.
+- **Automation:** Covered by: Rust `playbooks.rs` (`a_proposal_is_checked_by_the_domain_rules`, `the_card_sees_what_a_proposal_replaces_from_the_files`, `the_prompt_says_how_to_propose_when_the_agent_can`, `every_proposal_waits_for_the_user`, `an_approved_proposal_is_written_and_committed`, `a_broken_file_of_that_name_is_never_overwritten`, `an_installed_agent_cant_propose`), `orchestrator/middleware_tests.rs` (`a_proposed_playbook_is_written_once_approved`, `a_rejected_proposal_writes_nothing`, `a_proposal_for_an_existing_name_shows_what_it_replaces`, `a_proposal_that_breaks_the_rules_never_reaches_the_user`), `run_plan/classify.rs` (`effects_table`), `requests/recurrence.rs` (`work_nandi_repeats_itself_hints_a_playbook`), `builtin_agents.rs` (shipped playbooks name only real tools), Vitest `playbook-proposal-model.test.ts`, `PlaybookProposalPreview.test.tsx`, `approval-model.test.ts` | Layer: unit, integration | Gap: no check that a model writes the suggestion line only once, or proposes when asked.
 - **Needs relay:** no
 - **Status:** Shipped
 

@@ -1089,7 +1089,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 ### RQ-29 — Nandi acts on what arrives and shows Since you were away
 
 - **What:** Work that arrives from outside (email, calendar) is screened for phishing and malware signs in its links and sender (no word lists: Nandi explains a lure in the item's thread) and waits in a queue for your approval. **Approve** starts a Request, or adds the news to work already running instead of starting a second Request. Chats start work directly. Home shows a "Waiting for your OK" section at the top of the card (screening verdict, reasons, sender, **Approve** and **Dismiss**), and the card shows a "Since you were away" card (titled "What Nandi did" before the first "Got it") with a summary line and one row per item Nandi acted on: needs you, started, updated (with the news) or finished (done, failed, cancelled), the source (email, calendar, chat) and the time. A row opens its Request. **Got it** marks the digest seen and clears every row except the needs-you ones.
-- **Where:** Home (`NandiDigest.tsx`, `digest-model.ts`, `useNandiDigest.ts`), commands `get_nandi_digest`, `mark_chief_of_staff_digest_seen`, `approve_queued_work`, `dismiss_queued_work`, event `request://updated`; HTTP `POST /api/rpc/{command}`.
+- **Where:** Home (`NandiDigest.tsx`, `digest-model.ts`, `useNandiDigest.ts`), commands `get_nandi_digest`, `mark_nandi_digest_seen`, `approve_queued_work`, `dismiss_queued_work`, event `request://updated`; HTTP `POST /api/rpc/{command}`.
 - **Preconditions:** A mailbox connected (Settings › Email), a model that works, a second account to send mail from.
 - **Steps:**
   1. Send yourself a mail from another account: "Your power bill of $84 is due on Friday".
@@ -1108,7 +1108,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
   - Step 7: all rows go except the needs-you ones; the "Waiting for your OK" section stays.
   - Step 8: the item shows **Blocked** with the reasons and "Blocked by screening"; there is no **Approve**, only **Dismiss**. A suspicious (not blocked) item asks for confirmation before **Approve** goes through.
 - **Edge / negative cases:** no items and no queue means no card; no mailbox connected means no email-started items (the card still shows chat items); asking a teammate from inside such a Request needs the relay, the rest does not.
-- **Automation:** Covered by: `digest-model.test.ts`, `NandiDigest.test.tsx`, `intake::tests` (`the_chief_of_staff_explains_a_lure_screening_cant_see`), `screen::tests` (`what_the_words_say_is_left_to_the_model`) | Layer: unit + manual | Gap: the backend's start-or-update decision is model-driven and is tested by hand, as is how Nandi explains a lure.
+- **Automation:** Covered by: `digest-model.test.ts`, `NandiDigest.test.tsx`, `intake::tests` (`nandi_explains_a_lure_screening_cant_see`), `screen::tests` (`what_the_words_say_is_left_to_the_model`) | Layer: unit + manual | Gap: the backend's start-or-update decision is model-driven and is tested by hand, as is how Nandi explains a lure.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -1207,7 +1207,7 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
   - Step 6: the draft opens; the sign-in and payment are manual steps, the rest are Nandi steps. Cancel saves nothing; **Save workflow** saves and opens it.
   - Step 7: the finished row has **Save as workflow** too.
 - **Edge / negative cases:** Work the user asks for in the ask box with a Nandi step runs in the Request's own conversation. A plan with two Nandi steps keeps the first and warns. Failed work, work that is only manual steps, and work that already ran a workflow are never proposed. Without a relay everything works.
-- **Automation:** Covered by: `services::requests::self_step`, `services::requests::recurrence` and `services::requests::local` tests (the step runs in the thread and settles, the loop guard queues, the draft cuts at hand-overs, the proposal shows), `ask::tests::the_planner_may_give_the_chief_of_staff_one_step`, `digest-model.test.ts`, `intake-thread-model.test.ts`, `NandiDigest.test.tsx` | Layer: unit + integration + manual | Gap: a live browser step is manual.
+- **Automation:** Covered by: `services::requests::self_step`, `services::requests::recurrence` and `services::requests::local` tests (the step runs in the thread and settles, the loop guard queues, the draft cuts at hand-overs, the proposal shows), `ask::tests::the_planner_may_give_nandi_one_step`, `digest-model.test.ts`, `intake-thread-model.test.ts`, `NandiDigest.test.tsx` | Layer: unit + integration + manual | Gap: a live browser step is manual.
 - **Needs relay:** no
 - **Status:** Shipped
 

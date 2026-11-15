@@ -1,28 +1,28 @@
-# Email: the Chief of Staff Keeps My Notes from Mail
+# Email: Nandi Keeps My Notes from Mail
 
-The Chief of Staff reads the user's Outlook or Gmail and keeps My notes up to date. The code is in `src-tauri/src/services/email/`. It has no Tauri imports. The sign-in and token refresh are in `services/auth/oauth.rs` (the shared OAuth engine, also used by the GitHub sign-in).
+Nandi reads the user's Outlook or Gmail and keeps My notes up to date. The code is in `src-tauri/src/services/email/`. It has no Tauri imports. The sign-in and token refresh are in `services/auth/oauth.rs` (the shared OAuth engine, also used by the GitHub sign-in).
 
 **Read-only.** Nandi reads mail and writes notes. Nothing is sent, moved, deleted or marked read: the scopes are `Mail.Read` and `gmail.readonly`, and the only HTTP method the mail client has is `GET` (`email/api.rs`).
 
 ```text
 Settings › Email › Connect ─ PKCE sign-in ─▶ keyring nandi.email.<provider>.oauth
-                                            + config.json email.accounts + a saved grant (chief-of-staff, read)
+                                            + config.json email.accounts + a saved grant (nandi, read)
 scheduler (every N minutes) or Check now:
   each connected, unpaused mailbox ─ changes since cursor ─▶ filter ─┐
-  all new mail, newest 60 ─▶ ONE Chief of Staff run (source "email") ┘─▶ cursors saved
+  all new mail, newest 60 ─▶ ONE Nandi run (source "email") ┘─▶ cursors saved
 the run: mail_* tools (host) + filesystem__* notes tools, no container, nothing else
 ```
 
 ## Decisions
 
-| Decision                       | What it means in the code                                                                                                                                              |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Our own connector, not MCP     | `email/tool.rs` runs on the host. Tokens never go into a container                                                                                                     |
-| Notes, not copies              | Only the change cursor (`local_settings`) and the notes are kept. Headers live for one check or one tool call                                                          |
-| One run per check              | `check_all` hands every mailbox's new mail over in one `chat::submit`, only when there is some                                                                         |
-| Email is untrusted             | Mail sits inside `<email-data>`; `text::neutralize` stops it closing the block; email runs get only mail and notes tools                                               |
-| Grants per agent and connector | The one grant model ([connector-hub.md](./connector-hub.md)): connecting gives the Chief of Staff a saved read grant; disconnecting removes every grant on the mailbox |
-| Not in the Library             | Mailboxes are in Settings › Email, not `connectors.yaml`: the connection belongs to this computer's keyring, not the gold copy                                         |
+| Decision                       | What it means in the code                                                                                                                                 |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Our own connector, not MCP     | `email/tool.rs` runs on the host. Tokens never go into a container                                                                                        |
+| Notes, not copies              | Only the change cursor (`local_settings`) and the notes are kept. Headers live for one check or one tool call                                             |
+| One run per check              | `check_all` hands every mailbox's new mail over in one `chat::submit`, only when there is some                                                            |
+| Email is untrusted             | Mail sits inside `<email-data>`; `text::neutralize` stops it closing the block; email runs get only mail and notes tools                                  |
+| Grants per agent and connector | The one grant model ([connector-hub.md](./connector-hub.md)): connecting gives Nandi a saved read grant; disconnecting removes every grant on the mailbox |
+| Not in the Library             | Mailboxes are in Settings › Email, not `connectors.yaml`: the connection belongs to this computer's keyring, not the gold copy                            |
 
 ## At first-run setup and on Home
 
@@ -31,7 +31,7 @@ the run: mail_* tools (host) + filesystem__* notes tools, no container, nothing 
 - **Skipped:** the name step asks, as before. Home's email to-do stays until a mailbox is connected.
 - Not read yet: time zone and working hours need `MailboxSettings.Read`, a new scope that waits for its own change.
 - Finishing setup calls `check_email_now`, so the first read starts at once.
-- Connecting writes the mailbox owner into the Chief of Staff's My role (`builtin_agents::note_identity`, through the agent repository): the template's "Name and title" placeholder becomes "<name>, <email>", a line the user wrote gets the address added, and a role without that line is left alone. Every Chief of Staff run then knows who "me" is. With a profile, the name line also carries the job title ("<name>, <title>, <email>") and `profile::note_profile` fills the "Team and manager" placeholder ("<department>, reports to <manager> (<title>)"). A line the user wrote is never replaced.
+- Connecting writes the mailbox owner into Nandi's My role (`builtin_agents::note_identity`, through the agent repository): the template's "Name and title" placeholder becomes "<name>, <email>", a line the user wrote gets the address added, and a role without that line is left alone. Every Nandi run then knows who "me" is. With a profile, the name line also carries the job title ("<name>, <title>, <email>") and `profile::note_profile` fills the "Team and manager" placeholder ("<department>, reports to <manager> (<title>)"). A line the user wrote is never replaced.
 - Home's `EmailTodo` shows "Connect your email" while nothing is connected, then a one-line offer of the other provider (`email-model.ts` `emailTodo`).
 
 ## Older mail (backfill)
@@ -39,7 +39,7 @@ the run: mail_* tools (host) + filesystem__* notes tools, no container, nothing 
 `email/backfill.rs`. After the first read (14 days), a background pass walks older Inbox and Sent mail, newest first, with the same filters, one batch of at most 60 emails per pass every 10 minutes (`BACKFILL_EVERY`).
 
 - **Its own position:** `local_settings` `email.<provider>.backfill` (`before`: the oldest time reached, `read`, `paused`, `done`). It never touches the change cursor. Outlook asks `GET /me/mailFolders/{inbox,sentitems}/messages?$filter=receivedDateTime lt <before> [and ge <floor>]&$orderby=receivedDateTime desc&$top=60`; Gmail `messages.list` with `q=before:<before> (in:inbox OR in:sent) -category:… [after:<floor>]`. A time cursor instead of page tokens: it survives restarts and needs nothing else.
-- **Never competes:** a pass is skipped while an email check runs or the Chief of Staff has a run going or queued. A 429 or an outage skips the pass.
+- **Never competes:** a pass is skipped while an email check runs or Nandi has a run going or queued. A 429 or an outage skips the pass.
 - **Range:** `EmailSettings.backfill` (`threeMonths`, `year`, `everything` by default, `off`), a floor in the queries. It's done when a batch comes back empty or the floor is reached.
 - **Estimate:** `estimate_email_backfill(range)`: Graph `$count=true` with `ConsistencyLevel: eventual` per folder, Gmail `resultSizeEstimate`. Bulk isn't left out of the count, so it says "about".
 - The batch says "older mail (backfill)": record owners, responsibilities and decisions; a passed deadline is history, not a to-do.
@@ -85,7 +85,7 @@ Headers come from `$select` (Outlook) and `format=metadata` with named headers (
 - Notes to self: from the user, to only the user.
 - **Always include** (`email.watch`): senders (`lena@contoso.com`) or domains (`contoso.com`, subdomains too) that pass even when they look like bulk.
 
-Everything else reaches the Chief of Staff with the facts it needs to judge it. Machine senders, mail the user never opened and phishing are the model's call, not a word list's (owner decision 9):
+Everything else reaches Nandi with the facts it needs to judge it. Machine senders, mail the user never opened and phishing are the model's call, not a word list's (owner decision 9):
 
 | Fact             | From                                      | On the batch line       |
 | ---------------- | ----------------------------------------- | ----------------------- |
@@ -106,17 +106,17 @@ The check message says what each fact means and what phishing looks like (`batch
 | Sign-in server unreachable                                                           | `TokenError::Unavailable`: the next check tries again; the sign-in stays    |
 | 429 / 503                                                                            | Wait for `Retry-After` (10 s at most), twice; else try next check           |
 | A URL outside the provider's API                                                     | Refused: the token only goes to Graph, or Gmail and Google's userinfo       |
-| The Chief of Staff can't take the run                                                | The cursor isn't saved, so the next check hands the same mail over          |
+| Nandi can't take the run                                                             | The cursor isn't saved, so the next check hands the same mail over          |
 
 Sign-in failures are sorted by `classify_sign_in_error` into `adminApproval` (AADSTS65001, 90094, 90095: shows the admin-consent link `https://login.microsoftonline.com/organizations/adminconsent?client_id=…`), `declined`, `network`, `expired` and `other`. The UI explains each in plain words and shows the provider's text below.
 
 ## The run
 
-`email::check_all` builds the message with `batch::Batch::prompt`: who the user is (each connected account's name and address, the Chief of Staff's "me"), whether it's the first read, then one line per email (id, folder, the facts above, date, from, to, cc, subject, a 240-character preview) inside `<email-data>`. Each check has its own conversation (`email:<uuid>`), so mail never enters the user's chat history.
+`email::check_all` builds the message with `batch::Batch::prompt`: who the user is (each connected account's name and address, Nandi's "me"), whether it's the first read, then one line per email (id, folder, the facts above, date, from, to, cc, subject, a 240-character preview) inside `<email-data>`. Each check has its own conversation (`email:<uuid>`), so mail never enters the user's chat history.
 
-`orchestrator::llm_step` sees `source_type = email` (`is_email_run`) and offers only the notes tools (`filesystem__read_file`, `list_dir`, `write_file`), the mail tools and the Chief of Staff's work tools (`work_open`, `work_start`, `work_update`: it acts on what the mail calls for, see [the interaction layer](./interaction-layer.md#the-chief-of-staff-acts-on-what-arrives)), without starting the container. Tool dispatch refuses anything else in that run.
+`orchestrator::llm_step` sees `source_type = email` (`is_email_run`) and offers only the notes tools (`filesystem__read_file`, `list_dir`, `write_file`), the mail tools and Nandi's work tools (`work_open`, `work_start`, `work_update`: it acts on what the mail calls for, see [the interaction layer](./interaction-layer.md#nandi-acts-on-what-arrives)), without starting the container. Tool dispatch refuses anything else in that run.
 
-The Chief of Staff's behaviour is in its `skill.md` › Email: note asks, promises, deadlines, decisions and owners; cite "(from <sender>, <date>, "<subject>")"; never copy more than a short phrase; don't re-add what the user deleted.
+Nandi's behaviour is in its `skill.md` › Email: note asks, promises, deadlines, decisions and owners; cite "(from <sender>, <date>, "<subject>")"; never copy more than a short phrase; don't re-add what the user deleted.
 
 ### Tools
 

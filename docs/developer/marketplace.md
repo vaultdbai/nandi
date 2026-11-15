@@ -98,7 +98,7 @@ If the key leaks, do the same at once: there is no revocation list, and an old a
 
 ## Content
 
-First-party content lives in its own public repos, not in this one. The exception is the built-in agent Chief of Staff, which ships inside the app (`services/builtin_agents.rs`) as ordinary local agents; see `docs/developer/a2a-delegation.md`. The app only knows the registry URL (`DEFAULT_REGISTRY`) and reads its `index.json` from `HEAD`, so new releases reach users without an app update.
+First-party content lives in its own public repos, not in this one. The exception is the default agent Nandi, which ships inside the app (`services/builtin_agents.rs`) as an ordinary local agent; see `docs/developer/a2a-delegation.md`. The app only knows the registry URL (`DEFAULT_REGISTRY`) and reads its `index.json` from `HEAD`, so new releases reach users without an app update.
 
 | Repo                                                                                  | Contents                                                                 |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -192,7 +192,7 @@ install_pack(manifest):                       install_agent(manifest):
 
 Files are read straight from git objects; nothing is checked out. A symlink in the source is an error and submodules are skipped. Only `skill.md`, `instructions.md`, `README.md`, `icon.{svg,png}`, `LICENSE*`, `workflows/*.yaml`, and (for packs) `.nandi/manifest.yaml` are copied. Anything else in a source repo, such as scripts, is left behind.
 
-A workflow's agent steps may drive only the agents it ships with (`validate_workflow`), so a pack never sends work to the Chief of Staff or another install, which it has no consent for. An install refuses content whose agents request a tool, host, AWS service, pilot or connector its registry entry doesn't list (`matches_entry` in `install.rs`): the Library card and the install dialog showed the entry. Updates of another registry's install can go by tag, without an entry; first-use consent catches what they widen.
+A workflow's agent steps may drive only the agents it ships with (`validate_workflow`), so a pack never sends work to Nandi or another install, which it has no consent for. An install refuses content whose agents request a tool, host, AWS service, pilot or connector its registry entry doesn't list (`matches_entry` in `install.rs`): the Library card and the install dialog showed the entry. Updates of another registry's install can go by tag, without an entry; first-use consent catches what they widen.
 
 **Installer, watcher and projection.** The installer writes files. It never touches SQLite. A folder is staged under a hidden `.<name>.nandi-tmp-<uuid>` (which the watcher and locator ignore), then renamed into place. The watcher sees one folder appear and re-scans. The installer also calls `rescan_all` itself, so the projection is current when the command returns. Whichever runs second finds equal hashes and does nothing. A folder cloned in by hand is picked up the same way, without an install.
 

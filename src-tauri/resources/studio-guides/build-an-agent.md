@@ -9,8 +9,7 @@ An agent is a folder in the user's repo: a `skill.md` (frontmatter, then the pro
 ## Steps
 
 1. **Ask what it's for, if it isn't clear.** One job per agent. "Summarise my inbox" is an agent; "summarise, then post to Slack, then file a ticket" may be a workflow (read the agent-or-workflow guide).
-2. **Check what exists.** Call `nandi_list_agents` first. If an agent already does most of it, propose a change to that one, or a fork, instead of a new one. The official pack (Library › Browse › Nandi Dev Pack) has three:
-   - **Chief of Staff** finds who is responsible, asks and assigns work, tracks it, and answers for the user.
+2. **Check what exists.** Call `nandi_list_agents` first. If an agent already does most of it, propose a change to that one, or a fork, instead of a new one. Nandi, the default agent, already finds who is responsible, asks and assigns work, tracks it, and answers for the user. The official pack (Library › Browse › Nandi Dev Pack) has two:
    - **PR Reviewer** reviews a GitHub pull request against the user's rules and posts the review after approval.
    - **AWS Ops Analyst** investigates failed AWS Batch jobs and CloudWatch alarms and proposes fixes.
 3. **Pick the tools.** Give only the tools the job needs, by ID, from the tool list in your prompt. Fewer tools is safer and gives better results. Call `nandi_list_tools` to see which are switched on, including connectors and pilots. For an outside service or a folder on the user's computer, the agent lists a connector under `connectors`: check `nandi_list_connectors`, and install a missing one with `nandi_save_artifact` (kind `connector`) before saving the agent.

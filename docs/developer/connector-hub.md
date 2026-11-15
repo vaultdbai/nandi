@@ -1,6 +1,6 @@
 # Connector Hub: Packages, Grants, Calendars and Files
 
-Connectors anyone can build, publish and install; grants given while an agent works; read-only calendars and files beside mail; the Chief of Staff keeping My notes from the calendar. Mail itself is in [email.md](./email.md).
+Connectors anyone can build, publish and install; grants given while an agent works; read-only calendars and files beside mail; Nandi keeping My notes from the calendar. Mail itself is in [email.md](./email.md).
 
 ## Connector packages
 
@@ -63,12 +63,12 @@ One model for every connector that reaches the person's data: installed MCP conn
 
 ```yaml
 connector_grants:
-  - { agent: chief-of-staff, connector: outlook, access: read }
+  - { agent: nandi, connector: outlook, access: read }
 ```
 
 - Per agent and connector, `read` and `write` kept apart. Nothing expires (`domain/grant.rs`, `services/grants.rs`).
 - Read on **every call** (`services/access.rs` `decide`), so removing one stops the next call mid-run.
-- Connecting a mailbox, calendar or drive gives the Chief of Staff a saved read grant; disconnecting removes every grant on it.
+- Connecting a mailbox, calendar or drive gives Nandi a saved read grant; disconnecting removes every grant on it.
 
 ### A call without a grant
 
@@ -134,9 +134,9 @@ Cursors (`local_settings` `workspace.<id>.cursor`) restart on 410 and weekly (th
 
 Offered to an agent with a grant on a connected account, or that names the account in skill.md `connectors:` (then the first call asks). IDs carry the account: `outlook-calendar:<id>`.
 
-## The Chief of Staff and the calendar
+## Nandi and the calendar
 
-Every hour by default (`set_calendar_interval`, 15 minutes to 24 hours), `workspace::check_calendars` reads each granted calendar's feed and hands every change to the Chief of Staff in **one** run (source `calendar_check`, conversation `calendar:<uuid>`), only when there is something. The run gets only the notes tools, `calendar_*` and the Chief of Staff's work tools (`orchestrator::data_run_allows`), and events sit in `<calendar-data>` (untrusted). Its skill.md › Calendar keeps `meetings.md`, `time-off.md` and `suggestions.md`.
+Every hour by default (`set_calendar_interval`, 15 minutes to 24 hours), `workspace::check_calendars` reads each granted calendar's feed and hands every change to Nandi in **one** run (source `calendar_check`, conversation `calendar:<uuid>`), only when there is something. The run gets only the notes tools, `calendar_*` and Nandi's work tools (`orchestrator::data_run_allows`), and events sit in `<calendar-data>` (untrusted). Its skill.md › Calendar keeps `meetings.md`, `time-off.md` and `suggestions.md`.
 
 **Suggestions and corrections** (`notes/corrections.rs`): `- [ ] …` lines in `suggestions.md` are accepted (ticked) or dismissed (removed) on My notes; both are remembered in `corrections.md`. Saving a note from My notes that drops or changes a cited line (`(from …)`, `(calendar…)`) adds "Removed from <note>: …" there. The skill.md reads `corrections.md` first and never adds those back.
 

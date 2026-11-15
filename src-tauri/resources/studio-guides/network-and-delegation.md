@@ -12,12 +12,12 @@ Each person lists what they're responsible for in Network › Sharing › What y
 
 An agent finds people with `find_people` (a topic such as "SOX audit", or empty for everyone). It searches live what each person published: responsibilities, profile, and their agents and what each serves. Results say what matched, online or last seen, and how to ask: the person's gateway target, or a matching agent's target and capability. `my_requests` lists requests both ways (asked by the user, asked of the user), with what waits on the user first. Both tools are offered only to agents that list them in `allowed-tools`.
 
-The official **Chief of Staff** agent does all of this for the user: it finds owners, asks people and their agents, assigns work, tracks it, and answers for the user. Suggest it before building something similar.
+Nandi, the default agent, does all of this for the user: it finds owners, asks people and their agents, assigns work, tracks it, and answers for the user. Suggest it before building something similar.
 
 ## Asking someone
 
 - To ask one person or one agent directly, use `delegate_to_agent`. The user approves each call first.
-- A question for a person goes to their gateway with capability ask-me, which their Chief of Staff answers. Work for a person uses assign-me, which waits for their approval by default. It lasts until they mark it done or decline it in their Inbox (due in 7 days unless the input has due as YYYY-MM-DD); delegate_to_agent returns status assigned at once, and my_requests shows it until it's done. A task for a specific agent (a teammate's PR Reviewer serving review-pr) goes to that agent's target with a capability it serves.
+- A question for a person goes to their gateway with capability ask-me, which their Nandi answers. Work for a person uses assign-me, which waits for their approval by default. It lasts until they mark it done or decline it in their Inbox (due in 7 days unless the input has due as YYYY-MM-DD); delegate_to_agent returns status assigned at once, and my_requests shows it until it's done. A task for a specific agent (a teammate's PR Reviewer serving review-pr) goes to that agent's target with a capability it serves.
 - A request waits up to 10 minutes for an answer. Work that takes days isn't tracked through to done yet: say so.
 - Call `nandi_network_snapshot` first: who is online and who takes requests. Don't send work to someone offline without saying it will wait.
 - The owner's trust policy decides whether the task runs on their side. A request straight to one of their agents needs them to mark the user as a **trusted peer**, or it becomes a trust request in their Inbox. Questions through their gateway don't need that.

@@ -59,13 +59,27 @@ So one trigger file can sit in everyone's repo, and whoever is on duty runs it.
 
 Fires are processed one at a time (the dispatcher task and manual test fires share a lock):
 
-1. **Storm guard.** More than 5 fires in 10 seconds disables the trigger and emits `trigger://error`. Cron, calendar and test fires are exempt, so an every-second schedule is allowed.
-2. **Rate limit.** If `rate_limit_seconds` hasn't passed since the last dispatched fire, the fire is recorded as `rate_limited` and `trigger://rate_limited {nextAllowedAt}` is emitted.
-3. **Template.** `input_template` is rendered: `{{payload.a.b}}` (array indices allowed), `{{trigger.name}}`, `{{trigger.id}}`, `{{fired_at}}` (ISO 8601), `{{last_run.output}}` (the latest completed run's reply). Missing keys become empty strings and are logged. With no template, the agent gets the event as JSON.
-4. **DB first.** The `trigger_fires` row is written (`queued`, no run yet), then the run is submitted with `source_type` = the trigger's type, `source_id` = the trigger ID, `source_label` = its name, and its priority. The row is then updated with the run ID, or set to `error`.
-5. `trigger://fired` (or `trigger://error`) is emitted, and the fire is appended to `~/.nandi/local/logs/triggers.log` (metadata only, never the payload).
+1. **Fire guard.** A `FireGuard` set at startup may hold a fire back for a reason outside the engine. The fire is recorded as `skipped` with the reason and starts nothing. Test fires are never held. Today the one guard is `email::MailCheckGuard`: Nandi's mail check waits for a connected mailbox.
+2. **Storm guard.** More than 5 fires in 10 seconds disables the trigger and emits `trigger://error`. Cron, calendar and test fires are exempt, so an every-second schedule is allowed.
+3. **Rate limit.** If `rate_limit_seconds` hasn't passed since the last dispatched fire, the fire is recorded as `rate_limited` and `trigger://rate_limited {nextAllowedAt}` is emitted.
+4. **Template.** `input_template` is rendered: `{{payload.a.b}}` (array indices allowed), `{{trigger.name}}`, `{{trigger.id}}`, `{{fired_at}}` (ISO 8601), `{{last_run.output}}` (the latest completed run's reply). Missing keys become empty strings and are logged. With no template, the agent gets the event as JSON.
+5. **DB first.** The `trigger_fires` row is written (`queued`, no run yet), then the run is submitted with `source_type` = the trigger's type, `source_id` = the trigger ID, `source_label` = its name, and its priority. The row is then updated with the run ID, or set to `error`.
+6. `trigger://fired` (or `trigger://error`) is emitted, and the fire is appended to `~/.nandi/local/logs/triggers.log` (metadata only, never the payload).
 
 Workflow targets start `run_workflow` and record the workflow run's ID. Workflows don't take input yet, so the template is ignored for them.
+
+## Nandi's Default Triggers
+
+Nandi, the default agent, ships with two ordinary cron triggers that target it (owner decision N-4). The files are in `src-tauri/resources/builtin-agents/nandi/triggers/`; `builtin_agents::DEFAULT_TRIGGERS` lists them.
+
+| ID               | Schedule                           | What it asks Nandi                                             |
+| ---------------- | ---------------------------------- | -------------------------------------------------------------- |
+| `morning-digest` | `0 8 * * *` (08:00 daily)          | A short brief for the day                                      |
+| `mail-check`     | `0 16 * * 1-5` (16:00, Mon to Fri) | A look over the day's mail. Held while no mailbox is connected |
+
+- `repo_bootstrap::bootstrap` writes them into a **fresh** gold copy only (`seed_triggers`), in its first commit. A trigger the person removes is never added again.
+- `builtin_agents::reset_default` writes both back as they ship, through the trigger repository, and commits them with Nandi's other files.
+- They are not the email check. That one hands new mail to Nandi every few minutes ([email.md](./email.md)).
 
 ## Storage
 

@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 # Commands without arguments, each sent as `POST /api/rpc/{name}` with `{}`
 $Commands = @(
     'check_for_updates', 'detect_aws_cli', 'detect_ollama', 'get_auto_approve_rules',
-    'get_chief_of_staff_digest', 'get_default_model', 'get_egress_status',
+    'get_nandi_digest', 'get_default_model', 'get_egress_status',
     'get_email_status', 'get_gateway_config', 'get_gateway_manifest', 'get_gateway_status',
     'get_identity_status', 'get_know_me', 'get_litellm_gateway_status',
     'get_llm_key_status', 'get_my_notes', 'get_network_snapshot',

@@ -42,7 +42,7 @@ Nandi is the desktop agent runner (Apache-2.0): Tauri v2, React 19, Rust, pnpm. 
 - **Company sign-in first** (Claude Team or Enterprise login, AWS SSO through Bedrock), API keys last. The free trial never goes ahead of the user's own keys or sign-ins.
 - **Packs set no `model:`.** Pack agents use the user's default model.
 - **Web search stays keyless**, limited to the agent's `network.allow` sites. Don't add key-based search providers without asking.
-- **Chief of Staff** ships with the app as an editable local agent. Its behaviour lives in its `skill.md` (900 words or fewer), not in code.
+- **Nandi, the default agent**, ships with the app as an editable local agent. Its behaviour lives in its `skill.md` (900 words or fewer), not in code.
 - **Never ship `NANDI_RELAY_SECRET` in a client.** Builds carry `NANDI_DEFAULT_RELAY_URL` and a join code (`NANDI_RELAY_JOIN_CODE`).
 
 ## Architecture Patterns (CRITICAL)
@@ -92,7 +92,7 @@ store.commit(EntityKind::Agent, agent.id().as_str())?;
 
 Nandi must be fully usable with no relay configured or reachable. This repo is the Apache-2.0 agent runner; the relay (`vaultdbai/nandi-relay`, BUSL-1.1) is an optional team layer.
 
-- **Only person-to-person features need the relay**: asking or assigning someone else, the team inbox (requests from other people), reassignment and handover, finding owners and presence. Everything else works alone: agents (including the Chief of Staff), chat, runs, workflows, triggers, tools, pilots, models, Studio, backups, the personal inbox (your own agents' approvals) and **installing starter packs** (from the GitHub registry or a local folder, never through the relay).
+- **Only person-to-person features need the relay**: asking or assigning someone else, the team inbox (requests from other people), reassignment and handover, finding owners and presence. Everything else works alone: agents (including Nandi), chat, runs, workflows, triggers, tools, pilots, models, Studio, backups, the personal inbox (your own agents' approvals) and **installing starter packs** (from the GitHub registry or a local folder, never through the relay).
 - Talk to the relay only through `services/relay/client.rs`. No other module opens a connection to it or speaks its wire protocol; the client is built once, in `services/relay/mod.rs`. Enforced by the ast-grep rules in `.ast-grep/rules/relay/` (`pnpm run ast:lint`).
 - Never block startup, a screen, a command or a run on the relay. Connect in the background; a build's default relay (`relay::BuiltInRelay`, `NANDI_DEFAULT_RELAY_URL` + `NANDI_RELAY_JOIN_CODE`) enrolls and connects in the background with backoff too.
 - A connected feature without a relay returns the typed `RelayUnavailable` (`services/relay/unavailable.rs`; get the client with `unavailable::connected` / `configured`), never an ad-hoc string. It crosses the bridge as an error starting with `RELAY_UNAVAILABLE` (exported to `bindings.ts`; HTTP answers 503). The frontend recognises it with `isRelayUnavailable` (`lib/friendly-error.ts`) and shows `RelayConnectNotice` (`components/network/RelayConnectNotice.tsx`, or `toastPersonError` where there's no room) there and nowhere else, with no nags. Local-only actions never return it.

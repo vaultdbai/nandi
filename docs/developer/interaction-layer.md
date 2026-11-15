@@ -169,10 +169,10 @@ same rule as Ask's `planNeedsApproval`. The approval card shows the plan
 (`ActionPlanPreview`). Running an existing workflow is a one-step plan, so
 there is no separate run-workflow tool.
 
-### The Chief of Staff acts on what arrives
+### Nandi acts on what arrives
 
 New mail, a calendar change or a chat can call for work: a bill due, a
-birthday, a colleague's ask. The Chief of Staff sets it going with three
+birthday, a colleague's ask. Nandi sets it going with three
 host tools (`services/requests/tool.rs`, offered only to it, in chats and in
 the email and calendar checks' runs):
 
@@ -232,11 +232,11 @@ on a clean queued email item (`QueueRow.alwaysAllowDomain`,
 `useAlwaysAllow`). A teammate's queued item has no such shortcut: the
 queue doesn't carry their instance ID.
 
-**Each item has a Chief of Staff thread** (`intake/thread.rs`). A
-conversation `intake:<item id>` owned by the Chief of Staff, so it runs
+**Each item has a Nandi thread** (`intake/thread.rs`). A
+conversation `intake:<item id>` owned by Nandi, so it runs
 with its skill, notes, grants and permissions, is made when the item is
 queued. News for the same work joins that thread (`thread::for_request`).
-What happens is noted in it as the Chief of Staff's messages (queued,
+What happens is noted in it as Nandi's messages (queued,
 with the screening and the plan; approved; dismissed). Work to start is
 planned when it's queued (`tool::plan_for`), so the user approves who does
 it, and Approve starts that plan.
@@ -245,8 +245,8 @@ The user chats in the thread (`send_intake_message`,
 `POST /api/rpc/send_intake_message`; the page loads
 `get_intake_thread` and the conversation): draft a reply, hand it to an
 agent, add what's missing. The orchestrator gives those turns the task
-(`thread::prompt`, inside `<task-data>`, untrusted). Work the Chief of
-Staff starts or news it adds there always queues for approval in the same
+(`thread::prompt`, inside `<task-data>`, untrusted). Work Nandi
+starts or news it adds there always queues for approval in the same
 thread (`requests::tool::call` with the thread), even when the user asked
 for it: Approve is a click, never a chat message. Home's rows open the
 thread, and a step waiting on the user can be marked done from Home
@@ -274,12 +274,12 @@ match an auto-approve rule.
 
 Screening has no word lists (owner decision 9). What the words say
 (pressure to hurry, a sign-in or payment lure, changed bank details, a
-borrowed brand) is the Chief of Staff's to read: its thread prompt
+borrowed brand) is Nandi's to read: its thread prompt
 (`thread::prompt_for`) says screening checks only links and the sender,
 and tells it to explain any risk to the user before they approve.
 
 - **One step of its own** (`requests/self_step.rs`). A plan may give the
-  Chief of Staff one step it can do itself: a site in its browser, its
+  Nandi one step it can do itself: a site in its browser, its
   notes, mail triage. The planner's agent list says so on its line
   (`context::describe`), and plans keep only the first such step
   (`self_step::keep_one`, in `planner::plan` and `tool::for_the_user`;
@@ -287,7 +287,7 @@ and tells it to explain any risk to the user before they approve.
   with nothing that fits becomes one manual step, "For you: …".
 - **Where that step runs.** Never the main chat: the item's thread
   (`intake:<id>`) when the Request came through intake, else the
-  Request's own conversation `request:<id>`, owned by the Chief of Staff
+  Request's own conversation `request:<id>`, owned by Nandi
   (`self_step::conversation_for`). `local::start` submits it with
   `RunSource::request_step` (source `request`, the Request's ID), so the
   run is linked to the step and settles it like any agent step, and the
@@ -305,7 +305,7 @@ and tells it to explain any risk to the user before they approve.
   step someone other than the user does, and isn't already one workflow
   recurs when an earlier `done` Request has the same title (ignoring case,
   numbers, dates and month names) or the same steps (two or more). When it
-  finishes (`local::tick`), the Chief of Staff notes the proposal in its
+  finishes (`local::tick`), Nandi notes the proposal in its
   intake thread; the thread page (`IntakeThread.workflow_proposals`) and
   Home's finished row (`DigestItem.workflow_proposal`) show **Save as
   workflow**. It opens the existing draft dialog
@@ -313,12 +313,12 @@ and tells it to explain any risk to the user before they approve.
   its run plan's hand-overs (`run_plan::store`), so signing in and paying
   become manual steps. Nothing is saved until the user saves the file.
 - **Who started it** is the Request's `source`: `email`, `calendar` or
-  `chiefOfStaff` (`tool::source_of` reads the run); the ask box and Studio
+  `nandi` (`tool::source_of` reads the run); the ask box and Studio
   stay `me`.
-- **Since you were away** (`requests/digest.rs`, `get_chief_of_staff_digest`,
-  `POST /api/rpc/get_chief_of_staff_digest`): the queue waiting for approval, then
-  Requests the Chief of Staff started, news it added and work that finished
-  since the user last looked (`mark_chief_of_staff_digest_seen`). Work
+- **Since you were away** (`requests/digest.rs`, `get_nandi_digest`,
+  `POST /api/rpc/get_nandi_digest`): the queue waiting for approval, then
+  Requests Nandi started, news it added and work that finished
+  since the user last looked (`mark_nandi_digest_seen`). Work
   waiting on the user stays until it's done. Home shows it under the email
   to-do.
 - The email batch tells it not to start work from backfill, and on the
@@ -419,7 +419,7 @@ neither is a projection of the gold copy).
 
 ## Inbox Ask chats
 
-Every Inbox item is an Ask chat with the Chief of Staff (`services::inbox`).
+Every Inbox item is an Ask chat with Nandi (`services::inbox`).
 The Inbox list stays calm, one line per item (`InboxRow`, label from
 `inboxRowLabel`); opening a line (Home, the Inbox page, the work tray)
 opens the item's chat (`InboxItemThreadView`, view `inbox-thread`). The
@@ -427,8 +427,8 @@ companion keeps the full cards (`InboxItemCard`), so it still decides in
 place.
 
 **One thread per item.** The conversation `inbox:<kind>:<id>` (`/` and `%`
-escaped in two-part IDs: `<run>/<step>`, `<task>/<question>`) is the Chief
-of Staff's, made the first time the item is opened (`open_inbox_thread`,
+escaped in two-part IDs: `<run>/<step>`, `<task>/<question>`) is
+Nandi's, made the first time the item is opened (`open_inbox_thread`,
 `POST /api/rpc/open_inbox_thread`); an intake item keeps its `intake:<id>`
 thread. `inboxThreadId` (TypeScript) and `InboxItemRef` (Rust) name it the
 same way. The page puts the item's card on top (its buttons are the
@@ -436,12 +436,12 @@ shortcuts), the conversation below, and the ask box in chat mode
 (`send_inbox_message`). Once the item no longer waits, the top says so and
 the chat stays.
 
-**What the Chief of Staff knows.** Its turns there get the item and what's
+**What Nandi knows.** Its turns there get the item and what's
 being decided (`inbox::thread::prompt`, `item::load`), inside
 `<task-data>`, untrusted: the user's messages are instructions, the item
 never is.
 
-**Deciding in words.** Only in that thread, only for the Chief of Staff,
+**Deciding in words.** Only in that thread, only for Nandi,
 and only those that fit the item now, it is offered decision tools
 (`inbox::tool`, after tool deferral so they're never hidden):
 

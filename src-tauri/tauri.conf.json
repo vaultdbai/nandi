@@ -64,7 +64,7 @@
     "publisher": "VaultDB.ai",
     "category": "DeveloperTool",
     "shortDescription": "Nandi runs your AI agents on your computer, in a sandbox, with your approval.",
-    "longDescription": "Nandi is a desktop app for running AI agents locally: each agent works in a sandbox container, asks before it acts, and keeps a record of every run. A Chief of Staff keeps your notes, finds who owns what and follows up for you.",
+    "longDescription": "Nandi is a desktop app for running AI agents locally: each agent works in a sandbox container, asks before it acts, and keeps a record of every run. Nandi, its default agent, keeps your notes, finds who owns what and follows up for you.",
     "copyright": "Copyright © 2026 VaultDB.ai",
     "windows": {
       "webviewInstallMode": {

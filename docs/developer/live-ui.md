@@ -34,7 +34,7 @@ Runs, history, the Inbox and the dashboard live in SQLite. Their own events (`ag
 | The watcher reloaded a definition    | `outside` (`ChangedBy::Watcher` or `Git`)                                               |
 | The app wrote any other watched file | `you`: `fs_atomic` and `NotesFolder` note each write in `live::own_writes` (5 s window) |
 | A file in `work/<agent>/`            | that agent's run going at the time, else `outside` (`live::author`)                     |
-| A note, agents may write             | Chief of Staff's run going at the time, else the latest run, else `outside`             |
+| A note, agents may write             | Nandi's run going at the time, else the latest run, else `outside`                      |
 | A note, read-only share              | `outside`                                                                               |
 
 A run started by a workflow shows as the workflow. "Going at the time" is running, waiting for approval, or ended in the last 10 s (`author::RECENT_RUN_MS`). Agents write from the container or through the `filesystem` connector, and neither says which run wrote what, so this is the best the app knows.
@@ -71,7 +71,7 @@ refetchInterval: 15_000
 
 - The core keeps the last 200 changes in memory (`ChangeFeed`, `list_recent_changes`, `POST /api/rpc/list_recent_changes`). The list starts empty with the app.
 - **Home** shows the latest 8 in **Recent changes** (`RecentChanges.tsx`), each linking to its page (`live-model.ts` `viewOf`). Hidden until something changes.
-- **`UpdatedBy`** shows "Updated just now by Chief of Staff" on a note (My notes) and on an agent's page (its definition or work folder). Without a change this session, it falls back to the file's own time.
+- **`UpdatedBy`** shows "Updated just now by Nandi" on a note (My notes) and on an agent's page (its definition or work folder). Without a change this session, it falls back to the file's own time.
 
 ## Refresh
 

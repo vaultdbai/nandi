@@ -112,14 +112,14 @@ Two read-only built-ins let an agent work for its owner on a team (`services/a2a
   - The result also counts people without stated responsibilities, so the agent can say a list may be incomplete.
 - **`my_requests {direction?, open_only?, limit?}`**: requests between the user and other people, from the `tasks` table (`requester_instance` or `provider_instance` is this instance), plus pending `gateway_holds` shown as "waiting for your approval". Names come from known members.
 
-The built-in **Chief of Staff** agent (`services/builtin_agents.rs`, files in `src-tauri/resources/builtin-agents/chief-of-staff/`) uses both and lists `delegate_to_agent` with approval. It serves two capabilities:
+Nandi, the default agent (`services/builtin_agents.rs`, files in `src-tauri/resources/builtin-agents/nandi/`), uses both and lists `delegate_to_agent` with approval. It serves two capabilities:
 
 - **`ask-me`**: questions about its owner. The gateway routes these straight to it.
 - **`assign-me`**: work for its owner. The default NANDI.md has `policy.require_approval: [assign-me]`, so the gateway holds these for the owner.
 
-A person's Chief of Staff therefore answers questions for them, and work assigned to them waits for their approval.
+A person's Nandi therefore answers questions for them, and work assigned to them waits for their approval.
 
-The Chief of Staff also browses websites itself (no separate Browser agent). Its `skill.md` declares the visible `browser` pilot with `allow: [interact]`: submitting, secrets, uploads and paying wait for approval, and sign-ins, CAPTCHAs and payments go through `browser_hand_over`. It ships with no allowed sites; a new site asks the user. Only its chats and intake threads get the pilot tools: `agent_pilot_tools` is merged on the chat branch only, and `data_run_allows` drops them for the email and calendar checks (test `a_check_started_run_never_gets_pilot_tools`). Its `skill.md` body stays at 900 words or fewer. `BUILTIN_AGENTS` is the table of built-ins and their files: `seed` writes each one whose `skill.md` is missing, `is_builtin` makes it undeletable, and `position` lists the built-ins first, in table order.
+Nandi also browses websites itself (no separate Browser agent). Its `skill.md` declares the visible `browser` pilot with `allow: [interact]`: submitting, secrets, uploads and paying wait for approval, and sign-ins, CAPTCHAs and payments go through `browser_hand_over`. It ships with no allowed sites; a new site asks the user. Only its chats and intake threads get the pilot tools: `agent_pilot_tools` is merged on the chat branch only, and `data_run_allows` drops them for the email and calendar checks (test `a_check_started_run_never_gets_pilot_tools`). Its `skill.md` body stays at 900 words or fewer. `BUILTIN_AGENTS` is the table of built-ins and their files: `seed` writes each one whose `skill.md` is missing, and `delete_agent` refuses the default agent (`is_default`). Its default triggers are in [triggers.md](./triggers.md#nandis-default-triggers).
 
 ### Assignments last (`a2a/assignment.rs`, `gateway/assignments.rs`)
 
