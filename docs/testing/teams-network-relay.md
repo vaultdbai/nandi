@@ -19,37 +19,37 @@ Notes that apply to the whole section:
 
 ### TM-02 — Create a team from a registry git URL
 
-- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
+- **Status:** Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
 
 ### TM-03 — Team detail: members, shared agents, packs, last sync
 
-- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
+- **Status:** Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
 
 ### TM-04 — Sync team registry
 
-- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
+- **Status:** Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
 
 ### TM-05 — Join (re-sync) a known team
 
-- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
+- **Status:** Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
 
 ### TM-06 — Leave team
 
-- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
+- **Status:** Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
 
 ### TM-07 — Share an agent with a team (push a share branch, pending merge)
 
-- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
+- **Status:** Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
 
 ### TM-08 — Stop sharing an agent with a team
 
-- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
+- **Status:** Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
 
 ### TM-09 — People: Group filter

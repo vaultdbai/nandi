@@ -121,37 +121,37 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-552 features to test: all 607 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 12 removed features.
+546 features to test: all 609 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 20 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
-| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 66       |
+| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 67       |
 | Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 77       |
-| Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 63       |
+| Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
 | Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 92       |
 | Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 74       |
-| Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 84       |
+| Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 77       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
-| Data, platform and quality gates            | [data-platform-quality.md](./data-platform-quality.md)             | 60       |
+| Data, platform and quality gates            | [data-platform-quality.md](./data-platform-quality.md)             | 61       |
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 532   |
-| Partial     | 18    |
-| Removed     | 12    |
+| Shipped     | 528   |
+| Removed     | 20    |
+| Partial     | 16    |
 | Known issue | 2     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 302   |
-| `api`                 | 193   |
-| `manual`              | 33    |
+| `unit`                | 304   |
+| `api`                 | 186   |
+| `manual`              | 32    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 467   |
+| no          | 461   |
 | yes         | 85    |
 
 ## Master index
@@ -231,7 +231,6 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-13 | Account: edit name and handle                                            | Shipped                                              | unit       | no          |                                        |
 | ST-14 | Account › Details: device ID                                             | Shipped                                              | unit       | no          |                                        |
 | ST-32 | Account: sign in with GitHub (one token for every github.com repository) | Shipped                                              | unit       | no          | 2026-10-30 pass (sign-out not checked) |
-| ST-34 | Account: your email (the locked identity), read-only                     | Shipped                                              | unit       | no          |                                        |
 | ST-15 | Cloud credentials: AWS sign-in (profiles and SSO)                        | Duplicate of MD-19                                   | —          | no          |                                        |
 | ST-16 | Cloud credentials: AWS access key for agents                             | Duplicate of SB-08                                   | —          | no          |                                        |
 | ST-17 | Internet access                                                          | Duplicate of SB-10                                   | —          | no          |                                        |
@@ -250,6 +249,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-29 | Rename the mascot                                                        | Shipped                                              | api        | no          |                                        |
 | ST-30 | Appearance › Companion settings                                          | Duplicate of AI-17                                   | —          | no          |                                        |
 | ST-31 | Preferences persistence                                                  | Shipped                                              | api        | no          |                                        |
+| ST-34 | Account: your email (the locked identity), read-only                     | Shipped                                              | unit       | no          |                                        |
 | SH-35 | Home: connect your email to-do                                           | Shipped                                              | unit       | no          |                                        |
 | SH-39 | Ask box answers from the built-in help guide with no model               | Shipped                                              | unit       | no          |                                        |
 | SH-40 | A chat sent with no model also gets the help guide                       | Shipped                                              | unit       | no          |                                        |
@@ -341,77 +341,77 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 
 ### Runtimes, models and sandbox
 
-| ID    | Feature                                                                         | Status                                                                                     | Layer         | Needs relay | Last verified |
-| ----- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | ----------- | ------------- |
-| RT-01 | Sandbox image status panels                                                     | Shipped                                                                                    | api           | no          |               |
-| RT-02 | Build the sandbox images here (advanced, optional)                              | Shipped                                                                                    | manual        | no          |               |
-| RT-03 | Missing or outdated image pulled at container start                             | Shipped                                                                                    | unit + manual | no          |               |
-| RT-18 | Download the pinned sandbox image from GitHub's container registry              | Shipped (needs the `images.yml` run that publishes `nandi-harness:sandbox-6` and `nandi... | unit          | no          |               |
-| RT-29 | Claude Code fetched on first use into a tools volume                            | Shipped                                                                                    | unit + live   | no          |               |
-| RT-04 | Agent tool container lifecycle (start, stop, restart, reconcile)                | Shipped                                                                                    | api           | no          |               |
-| RT-05 | Native container configuration (mounts, resources, no published ports)          | Shipped                                                                                    | api           | no          |               |
-| RT-06 | Tool server in the container (shell, read_file, write_file, list_dir)           | Shipped                                                                                    | api           | no          |               |
-| RT-07 | Built-in tool catalog and On/Off switch                                         | Shipped                                                                                    | api           | no          |               |
-| RT-08 | Runtime cards and detection (Nandi, Claude Code, Codex, Gemini CLI)             | Shipped                                                                                    | api + unit    | no          |               |
-| RT-09 | Sign-in status per runtime card ("Ready")                                       | Shipped                                                                                    | unit + manual | no          |               |
-| RT-10 | Test connection for a runtime                                                   | Shipped                                                                                    | manual        | no          |               |
-| RT-11 | Runtime Details dialog                                                          | Shipped                                                                                    | unit          | no          |               |
-| RT-12 | Make a runtime the default                                                      | Partial (badge only; per-runtime model picker not built: `task-x-models-and-runtimes.md... | api           | no          |               |
-| RT-13 | Choose an agent's runtime                                                       | Shipped                                                                                    | ui-e2e        | no          |               |
-| RT-14 | Runtime routing for a run (native vs harness, opt-in fallback)                  | Shipped                                                                                    | unit + manual | no          |               |
-| RT-15 | Harness session in the container                                                | Known issue (container turn on subscription token unverified)                              | manual        | no          |               |
-| RT-16 | Host placement retired                                                          | Removed (2026-10-22, no legacy support)                                                    | —             | no          |               |
-| RT-17 | Credentials stay on the host; the container gets only a proxy token             | Shipped                                                                                    | unit + live   | no          |               |
-| RT-30 | ACP permission answers from `allowed-tools`                                     | Shipped                                                                                    | unit          | no          |               |
-| RT-19 | Turn limit for harness runs (`max_turns`)                                       | Shipped                                                                                    | unit + manual | no          |               |
-| RT-20 | Harness run steps, usage and evidence                                           | Shipped                                                                                    | api           | no          |               |
-| RT-21 | Recent harness sessions list and Stop                                           | Shipped                                                                                    | api           | no          |               |
-| RT-22 | Harness health monitor                                                          | Shipped                                                                                    | unit          | no          |               |
-| RT-23 | Custom ACP harness (`runtime: custom:<id>`)                                     | Partial (no way to register a command)                                                     | unit          | no          |               |
-| RT-24 | `verify --agent <id>` CLI check                                                 | Partial (ignores Claude Code sign-in, trial and CLI runtimes)                              | unit          | no          |               |
-| RT-25 | Headless and server modes                                                       | Duplicate of PL-02, PL-03                                                                  | —             | no          |               |
-| RT-26 | E2E smoke prerequisites script                                                  | Duplicate of QA-05                                                                         | —             | no          |               |
-| RT-27 | Canned turn engine (test fixture)                                               | Shipped                                                                                    | unit          | no          |               |
-| RT-28 | List Docker containers command                                                  | Partial (backend only)                                                                     | unit          | no          |               |
-| MD-01 | Add a provider key (tested before saving)                                       | Shipped                                                                                    | api           | no          |               |
-| MD-02 | Key test result classification                                                  | Shipped                                                                                    | unit          | no          |               |
-| MD-03 | Remove a provider key                                                           | Shipped                                                                                    | unit          | no          |               |
-| MD-04 | Default model: pick provider, type any model                                    | Shipped                                                                                    | api           | no          |               |
-| MD-05 | Suggested models from the provider's own list                                   | Shipped                                                                                    | api           | no          |               |
-| MD-06 | "Which model calls use, and why" line                                           | Shipped                                                                                    | unit          | no          |               |
-| MD-07 | Model resolution and fallback order for every call                              | Shipped                                                                                    | unit          | no          |               |
-| MD-08 | Provider clients (Anthropic, OpenAI, DeepSeek, Ollama)                          | Shipped                                                                                    | unit + manual | no          |               |
-| MD-09 | LLM usage and cost log (`llm.log`)                                              | Shipped                                                                                    | unit          | no          |               |
-| MD-10 | Claude models through Claude Code's sign-in (Agent SDK bridge)                  | Shipped                                                                                    | manual        | no          |               |
-| MD-11 | Claude sign-in shown on the Anthropic key row                                   | Shipped                                                                                    | unit          | no          |               |
-| MD-12 | Ollama (local models)                                                           | Shipped                                                                                    | manual        | no          |               |
-| MD-13 | Free tokens (trial gateway)                                                     | Shipped                                                                                    | unit          | no          |               |
-| MD-14 | Free tokens switch and automatic turn-off                                       | Shipped                                                                                    | api           | no          |               |
-| MD-15 | Trial errors, Retry-After and the gateway's state                               | Shipped                                                                                    | unit          | no          |               |
-| MD-16 | No-model notice banner                                                          | Duplicate of SH-20                                                                         | —             | no          |               |
-| MD-17 | Onboarding model step                                                           | Duplicate of ON-05, ON-06, ON-07, ON-08                                                    | —             | no          |               |
-| MD-18 | Team LLM config (`.nandi/llm.yaml`) and Enterprise config panel                 | Shipped                                                                                    | api           | no          |               |
-| MD-19 | AWS sign-in for Bedrock (profiles, SSO login, check)                            | Shipped                                                                                    | manual        | no          |               |
-| MD-20 | Bedrock model picker                                                            | Partial (chosen model is not saved as a runtime default)                                   | api           | no          |               |
-| MD-21 | LiteLLM gateway for third-party Bedrock models                                  | Shipped                                                                                    | manual        | no          |               |
-| MD-22 | Free tokens linked to the connected email (no sign-in)                          | Shipped                                                                                    | unit          | no          |               |
-| SB-01 | Container hardening (tool and coding-agent containers)                          | Shipped                                                                                    | api           | no          |               |
-| SB-02 | Ask before CLI tools act (harness approvals)                                    | Shipped                                                                                    | manual        | no          |               |
-| SB-03 | Egress proxy server and per-container tokens                                    | Shipped                                                                                    | api           | no          |               |
-| SB-04 | LLM proxy for containers (`POST /llm`)                                          | Shipped                                                                                    | api           | no          |               |
-| SB-05 | Allow-listed HTTP fetch (`POST /fetch`)                                         | Shipped                                                                                    | api           | no          |               |
-| SB-06 | HTTPS tunnel (`CONNECT` via `HTTPS_PROXY`)                                      | Shipped (was Partial until #9 `d9af777`: containers were on the default bridge network)    | api           | no          |               |
-| SB-07 | AWS proxy and scoped STS sessions                                               | Shipped                                                                                    | api           | no          |               |
-| SB-08 | AWS access key and region for agents' AWS calls                                 | Shipped                                                                                    | api           | no          |               |
-| SB-16 | Each agent's AWS identity: its own profile, the access key, or the sign-in      | Shipped                                                                                    | unit          | no          |               |
-| SB-17 | Log in and set up AWS profiles in Cloud credentials                             | Shipped                                                                                    | unit          | no          |               |
-| SB-09 | Egress audit log (`egress.log`)                                                 | Shipped                                                                                    | unit          | no          |               |
-| SB-10 | Internet access settings page                                                   | Shipped                                                                                    | unit + ui-e2e | no          |               |
-| SB-11 | Egress environment injected into agent containers                               | Shipped                                                                                    | unit          | no          |               |
-| SB-12 | Secrets in the OS keyring                                                       | Duplicate of DT-04                                                                         | —             | no          |               |
-| SB-13 | Agents' internal network (`nandi-agents`)                                       | Shipped                                                                                    | api           | no          |               |
-| SB-14 | Egress relay container (`nandi-egress`)                                         | Shipped                                                                                    | api           | no          |               |
-| SB-15 | Coding agents through the egress proxy, with their model hosts for the run only | Shipped                                                                                    | api           | no          |               |
+| ID    | Feature                                                                                    | Status                                                                                     | Layer         | Needs relay | Last verified |
+| ----- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------- | ----------- | ------------- |
+| RT-01 | Sandbox image status panels                                                                | Shipped                                                                                    | api           | no          |               |
+| RT-02 | Build the sandbox images here (advanced, optional)                                         | Shipped                                                                                    | manual        | no          |               |
+| RT-03 | Missing or outdated image pulled at container start                                        | Shipped                                                                                    | unit + manual | no          |               |
+| RT-18 | Download the pinned sandbox image from GitHub's container registry                         | Shipped (needs the `images.yml` run that publishes `nandi-harness:sandbox-6` and `nandi... | unit          | no          |               |
+| RT-29 | Claude Code fetched on first use into a tools volume                                       | Shipped                                                                                    | unit + live   | no          |               |
+| RT-04 | Agent tool container lifecycle (start, stop, restart, reconcile)                           | Shipped                                                                                    | api           | no          |               |
+| RT-05 | Native container configuration (mounts, resources, no published ports)                     | Shipped                                                                                    | api           | no          |               |
+| RT-06 | Tool server in the container (shell, read_file, write_file, list_dir)                      | Shipped                                                                                    | api           | no          |               |
+| RT-07 | Built-in tool catalog and On/Off switch                                                    | Shipped                                                                                    | api           | no          |               |
+| RT-08 | Runtime cards and detection (Nandi, Claude Code, Codex, Gemini CLI)                        | Shipped                                                                                    | api + unit    | no          |               |
+| RT-09 | Sign-in status per runtime card ("Ready")                                                  | Shipped                                                                                    | unit + manual | no          |               |
+| RT-10 | Test connection for a runtime                                                              | Shipped                                                                                    | unit + live   | no          |               |
+| RT-11 | Runtime Details dialog                                                                     | Shipped                                                                                    | unit          | no          |               |
+| RT-12 | Make a runtime the default                                                                 | Partial (badge only; per-runtime model picker not built: `task-x-models-and-runtimes.md... | api           | no          |               |
+| RT-13 | Choose an agent's runtime                                                                  | Shipped                                                                                    | ui-e2e        | no          |               |
+| RT-14 | Runtime routing for a run (native vs harness, opt-in fallback)                             | Shipped                                                                                    | unit + manual | no          |               |
+| RT-15 | Harness session in the container                                                           | Known issue (container turn on subscription token unverified)                              | manual        | no          |               |
+| RT-16 | Host placement retired                                                                     | Removed (2026-10-22, no legacy support)                                                    | —             | no          |               |
+| RT-17 | Credentials stay on the host; the harness container gets only a proxy token (company id... | Shipped                                                                                    | unit + live   | no          |               |
+| RT-30 | ACP permission answers from `allowed-tools`                                                | Shipped                                                                                    | unit          | no          |               |
+| RT-19 | Turn limit for harness runs (`max_turns`)                                                  | Shipped                                                                                    | unit + manual | no          |               |
+| RT-20 | Harness run steps, usage and evidence                                                      | Shipped                                                                                    | api           | no          |               |
+| RT-21 | Recent harness sessions list and Stop                                                      | Shipped                                                                                    | api           | no          |               |
+| RT-22 | Harness health monitor                                                                     | Shipped                                                                                    | unit          | no          |               |
+| RT-23 | Custom ACP harness (`runtime: custom:<id>`)                                                | Partial (no way to register a command)                                                     | unit          | no          |               |
+| RT-24 | `verify --agent <id>` CLI check                                                            | Partial (ignores Claude Code sign-in, trial and CLI runtimes)                              | unit          | no          |               |
+| RT-25 | Headless and server modes                                                                  | Duplicate of PL-02, PL-03                                                                  | —             | no          |               |
+| RT-26 | E2E smoke prerequisites script                                                             | Duplicate of QA-05                                                                         | —             | no          |               |
+| RT-27 | Canned turn engine (test fixture)                                                          | Shipped                                                                                    | unit          | no          |               |
+| RT-28 | List Docker containers command                                                             | Removed (2026-11-13, `list_containers` had no caller). The ID is kept so other IDs don'... | —             | no          |               |
+| MD-01 | Add a provider key (tested before saving)                                                  | Shipped                                                                                    | api           | no          |               |
+| MD-02 | Key test result classification                                                             | Shipped                                                                                    | unit          | no          |               |
+| MD-03 | Remove a provider key                                                                      | Shipped                                                                                    | unit          | no          |               |
+| MD-04 | Default model: pick provider, type any model                                               | Shipped                                                                                    | api           | no          |               |
+| MD-05 | Suggested models from the provider's own list                                              | Shipped                                                                                    | api           | no          |               |
+| MD-06 | "Which model calls use, and why" line                                                      | Shipped                                                                                    | unit          | no          |               |
+| MD-07 | Model resolution and fallback order for every call                                         | Shipped                                                                                    | unit          | no          |               |
+| MD-08 | Provider clients (Anthropic, OpenAI, DeepSeek, Ollama)                                     | Shipped                                                                                    | unit + manual | no          |               |
+| MD-09 | LLM usage and cost log (`llm.log`)                                                         | Shipped                                                                                    | unit          | no          |               |
+| MD-10 | Claude models through Claude Code's sign-in (Agent SDK bridge)                             | Shipped                                                                                    | manual        | no          |               |
+| MD-11 | Claude sign-in shown on the Anthropic key row                                              | Shipped                                                                                    | unit          | no          |               |
+| MD-12 | Ollama (local models)                                                                      | Shipped                                                                                    | manual        | no          |               |
+| MD-13 | Free tokens (trial gateway)                                                                | Shipped                                                                                    | unit          | no          |               |
+| MD-14 | Free tokens switch and automatic turn-off                                                  | Shipped                                                                                    | api           | no          |               |
+| MD-15 | Trial errors, Retry-After and the gateway's state                                          | Shipped                                                                                    | unit          | no          |               |
+| MD-16 | No-model notice banner                                                                     | Duplicate of SH-20                                                                         | —             | no          |               |
+| MD-17 | Onboarding model step                                                                      | Duplicate of ON-05, ON-06, ON-07, ON-08                                                    | —             | no          |               |
+| MD-18 | Team LLM config (`.nandi/llm.yaml`) and Enterprise config panel                            | Shipped                                                                                    | api           | no          |               |
+| MD-19 | AWS sign-in for Bedrock (profiles, SSO login, check)                                       | Shipped                                                                                    | manual        | no          |               |
+| MD-20 | Bedrock model picker                                                                       | Partial (chosen model is not saved as a runtime default)                                   | api           | no          |               |
+| MD-21 | LiteLLM gateway for third-party Bedrock models                                             | Shipped                                                                                    | manual        | no          |               |
+| MD-22 | Free tokens linked to the connected email (no sign-in)                                     | Shipped                                                                                    | unit          | no          |               |
+| SB-01 | Container hardening (tool and coding-agent containers)                                     | Shipped                                                                                    | api           | no          |               |
+| SB-02 | Ask before CLI tools act (harness approvals)                                               | Shipped                                                                                    | manual        | no          |               |
+| SB-03 | Egress proxy server and per-container tokens                                               | Shipped                                                                                    | api           | no          |               |
+| SB-04 | LLM proxy for containers (`POST /llm`)                                                     | Shipped                                                                                    | api           | no          |               |
+| SB-05 | Allow-listed HTTP fetch (`POST /fetch`)                                                    | Shipped                                                                                    | api           | no          |               |
+| SB-06 | HTTPS tunnel (`CONNECT` via `HTTPS_PROXY`)                                                 | Shipped (was Partial until #9 `d9af777`: containers were on the default bridge network)    | api           | no          |               |
+| SB-07 | AWS proxy and scoped STS sessions                                                          | Shipped                                                                                    | api           | no          |               |
+| SB-08 | AWS access key and region for agents' AWS calls                                            | Shipped                                                                                    | api           | no          |               |
+| SB-16 | Each agent's AWS identity: its own profile, the access key, or the sign-in                 | Shipped                                                                                    | unit          | no          |               |
+| SB-17 | Log in and set up AWS profiles in Cloud credentials                                        | Shipped                                                                                    | unit          | no          |               |
+| SB-09 | Egress audit log (`egress.log`)                                                            | Shipped                                                                                    | unit          | no          |               |
+| SB-10 | Internet access settings page                                                              | Shipped                                                                                    | unit + ui-e2e | no          |               |
+| SB-11 | Egress environment injected into agent containers                                          | Shipped                                                                                    | unit          | no          |               |
+| SB-12 | Secrets in the OS keyring                                                                  | Duplicate of DT-04                                                                         | —             | no          |               |
+| SB-13 | Agents' internal network (`nandi-agents`)                                                  | Shipped                                                                                    | api           | no          |               |
+| SB-14 | Egress relay container (`nandi-egress`)                                                    | Shipped                                                                                    | api           | no          |               |
+| SB-15 | Coding agents through the egress proxy, with their model hosts for the run only            | Shipped                                                                                    | api           | no          |               |
 
 ### Policies
 
@@ -544,7 +544,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | LB-03 | Library detail drawer                                                                      | Shipped                                                                        | unit               | no          |                 |
 | LB-04 | Drawer ⋯ menu: Check for update, Fork, Uninstall, Copy ID                                  | Shipped                                                                        | ui-e2e             | no          |                 |
 | LB-05 | Built-in tools On/Off                                                                      | Duplicate of RT-07                                                             | —                  | no          |                 |
-| LB-06 | Shared with me tab                                                                         | Shipped (content owned by the Teams/Network area)                              | manual             | yes         |                 |
+| LB-06 | Shared with me tab                                                                         | Shipped (content owned by the Network area)                                    | manual             | yes         |                 |
 | LB-07 | Sources freshness, Refresh and Sources link (Browse)                                       | Shipped                                                                        | unit               | no          |                 |
 | LB-08 | Legacy route redirects into Library                                                        | Removed (2026-10-22, no legacy support)                                        | —                  | no          |                 |
 | LB-09 | Install and allow (consent before install)                                                 | Shipped                                                                        | api                | no          |                 |
@@ -622,17 +622,17 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ID    | Feature                                                                   | Status                                                                                     | Layer           | Needs relay | Last verified   |
 | ----- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------- | ----------- | --------------- |
 | TM-01 | Local identity: display name and user slug                                | Duplicate of ST-13                                                                         | —               | no          |                 |
-| TM-02 | Create a team from a registry git URL                                     | Shipped                                                                                    | api             | no          |                 |
-| TM-03 | Team detail: members, shared agents, packs, last sync                     | Shipped                                                                                    | api             | no          |                 |
-| TM-04 | Sync team registry                                                        | Shipped                                                                                    | api             | no          |                 |
-| TM-05 | Join (re-sync) a known team                                               | Partial (no UI entry point; new teams come in through TM-02)                               | api             | no          |                 |
-| TM-06 | Leave team                                                                | Shipped                                                                                    | api             | no          |                 |
-| TM-07 | Share an agent with a team (push a share branch, pending merge)           | Shipped                                                                                    | api             | no          |                 |
-| TM-08 | Stop sharing an agent with a team                                         | Shipped                                                                                    | api             | no          |                 |
-| TM-09 | Teams as a filter on People, with the team strip                          | Shipped                                                                                    | ui-e2e          | yes         |                 |
-| TM-10 | Agent menu: Share with team, Callable over the relay                      | Shipped                                                                                    | ui-e2e          | yes         |                 |
+| TM-02 | Create a team from a registry git URL                                     | Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs ... | —               | no          |                 |
+| TM-03 | Team detail: members, shared agents, packs, last sync                     | Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs ... | —               | no          |                 |
+| TM-04 | Sync team registry                                                        | Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs ... | —               | no          |                 |
+| TM-05 | Join (re-sync) a known team                                               | Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs ... | —               | no          |                 |
+| TM-06 | Leave team                                                                | Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs ... | —               | no          |                 |
+| TM-07 | Share an agent with a team (push a share branch, pending merge)           | Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs ... | —               | no          |                 |
+| TM-08 | Stop sharing an agent with a team                                         | Removed (2026-11-14, owner decision 11: relay groups replace git-registry teams; packs ... | —               | no          |                 |
+| TM-09 | People: Group filter                                                      | Shipped                                                                                    | ui-e2e          | yes         |                 |
+| TM-10 | Agent menu: Callable over the relay                                       | Shipped                                                                                    | ui-e2e          | yes         |                 |
 | TM-11 | Agent sharing dialog ("Share {name}")                                     | Shipped                                                                                    | ui-e2e          | yes         |                 |
-| TM-12 | Shared with me (agents from teams and the relay)                          | Shipped                                                                                    | api             | yes         |                 |
+| TM-12 | Shared with me (agents online at the relay)                               | Shipped                                                                                    | api             | yes         |                 |
 | TM-13 | By capability: provider ranking, Auto and pins                            | Shipped                                                                                    | api + unit      | no          |                 |
 | TM-14 | Call dialog (send one task to a shared agent)                             | Shipped                                                                                    | api             | yes         |                 |
 | TM-15 | Shared by me                                                              | Shipped                                                                                    | api             | no          |                 |
@@ -740,74 +740,74 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 
 ### Data, platform and quality gates
 
-| ID    | Feature                                                      | Status                                                                                     | Layer      | Needs relay | Last verified   |
-| ----- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ---------- | ----------- | --------------- |
-| DT-01 | Gold-copy repo layout and first-run initialization           | Shipped                                                                                    | unit       | no          |                 |
-| DT-02 | Atomic, staged writes for every definition change            | Shipped                                                                                    | unit       | no          |                 |
-| DT-03 | Portable settings in `.nandi/settings.yaml`                  | Shipped                                                                                    | unit       | no          |                 |
-| DT-04 | Secrets only in the OS keyring                               | Shipped                                                                                    | unit       | no          |                 |
-| DT-05 | Repo format version guard                                    | Shipped                                                                                    | unit       | no          |                 |
-| DT-06 | Load an entity as stored in its file                         | Shipped                                                                                    | api        | no          |                 |
-| DT-07 | Save an agent definition through the repo (cross-ref Agents) | Shipped                                                                                    | unit       | no          |                 |
-| DT-08 | Startup load with drift detection                            | Shipped                                                                                    | unit       | no          |                 |
-| DT-09 | Rebuild the projection (command and HTTP)                    | Shipped                                                                                    | api        | no          |                 |
-| DT-10 | `nandi rebuild [--force]` CLI                                | Shipped                                                                                    | unit       | no          |                 |
-| DT-11 | Repo status (counts, problems, watching)                     | Shipped                                                                                    | api        | no          |                 |
-| DT-12 | SQLite schema                                                | Shipped                                                                                    | unit       | no          |                 |
-| DT-13 | Hand edits apply live                                        | Shipped                                                                                    | api        | no          |                 |
-| DT-14 | Invalid file keeps the last good version                     | Shipped                                                                                    | api        | no          |                 |
-| DT-15 | Watcher fallback and read-through reads                      | Shipped                                                                                    | unit       | no          |                 |
-| DT-16 | Local git status, diff and commit                            | Partial (diff and commit exposed via command/HTTP only, no UI)                             | api        | no          |                 |
-| DT-17 | Backup page and empty state                                  | Shipped                                                                                    | unit       | no          |                 |
-| DT-18 | Configure the remote (URL, credential, branch prefix)        | Shipped                                                                                    | api        | no          | 2026-10-30 pass |
-| DT-19 | Remote credential stored in the keychain                     | Shipped                                                                                    | unit       | no          |                 |
-| DT-20 | Remote status card                                           | Shipped                                                                                    | api        | no          |                 |
-| DT-21 | Test connection                                              | Shipped                                                                                    | api        | no          |                 |
-| DT-22 | Back up now (push)                                           | Shipped                                                                                    | api        | no          |                 |
-| DT-23 | Branch protection (never main/master)                        | Shipped                                                                                    | unit       | no          |                 |
-| DT-24 | Push conflict and Overwrite                                  | Shipped                                                                                    | api        | no          |                 |
-| DT-25 | Restore from remote (pull)                                   | Shipped                                                                                    | api        | no          |                 |
-| DT-26 | Pull merge conflicts banner                                  | Shipped                                                                                    | api + unit | no          |                 |
-| DT-27 | Remote branch browser                                        | Shipped                                                                                    | unit       | no          |                 |
-| DT-28 | Change or remove the remote                                  | Shipped                                                                                    | api        | no          |                 |
-| DT-29 | Legacy `nandi/` branch notice and switch                     | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
-| DT-30 | Remote events                                                | Shipped                                                                                    | api        | no          |                 |
-| DT-31 | This computer's copy panel                                   | Shipped                                                                                    | unit       | no          |                 |
-| DT-32 | Dashboard backup nudge (cross-ref Dashboard)                 | Shipped                                                                                    | unit       | no          |                 |
-| DT-33 | `~/.nandi` copied to `~/.nandi`                              | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
-| DT-34 | `NANDI_HOME`                                                 | Shipped                                                                                    | unit       | no          |                 |
-| DT-35 | `NANDI_*` environment variables                              | Shipped                                                                                    | unit       | no          |                 |
-| DT-36 | Pre-v6 install migrated to the gold-copy layout              | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
-| DT-37 | Legacy trigger rows: secrets to keyring, rules to files      | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
-| DT-38 | `NANDI.md` renamed to `NANDI.md`                             | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
-| DT-39 | Enterprise LLM config (`.nandi/llm.yaml`)                    | Duplicate of MD-18                                                                         | —          | no          |                 |
-| DT-40 | Local config file `~/.nandi/config.json`                     | Shipped                                                                                    | unit       | no          |                 |
-| DT-41 | Data locations and reset procedure (user guide section 12)   | Shipped                                                                                    | manual     | no          |                 |
-| DT-42 | Snapshot read APIs (cross-ref Agents/Runs/Dashboard)         | Shipped                                                                                    | api        | no          |                 |
-| DT-43 | Live UI: notes and work folders are watched                  | Shipped                                                                                    | unit       | no          |                 |
-| DT-44 | Who changed it: "Updated just now by …"                      | Shipped                                                                                    | unit       | no          |                 |
-| DT-45 | Recent changes on Home                                       | Shipped                                                                                    | unit       | no          |                 |
-| DT-46 | Refresh, F5 and Ctrl+R                                       | Shipped                                                                                    | unit       | no          |                 |
-| DT-47 | Re-scan when the OS drops file events                        | Shipped                                                                                    | unit       | no          |                 |
-| DT-48 | Run trail: run events and approval decisions survive a reset | Shipped                                                                                    | unit       | no          |                 |
-| PL-01 | CLI usage, help and argument validation                      | Shipped                                                                                    | unit       | no          |                 |
-| PL-02 | `--server` and `--port`                                      | Shipped                                                                                    | unit       | no          |                 |
-| PL-03 | Headless mode                                                | Shipped                                                                                    | api        | no          |                 |
-| PL-04 | Windows console attach and `server.log`                      | Shipped                                                                                    | manual     | no          |                 |
-| PL-05 | Other CLI commands (cross-references)                        | Shipped                                                                                    | unit       | no          |                 |
-| PL-06 | Single instance and window state                             | Duplicate of SH-02, SH-03                                                                  | —          | no          |                 |
-| PL-07 | Per-OS window and title bar                                  | Shipped                                                                                    | manual     | no          |                 |
-| PL-08 | In-app auto-updater                                          | Shipped (2026-11-03: the endpoint is the `latest.json` the release workflow attaches to... | unit       | no          |                 |
-| PL-09 | Release workflow (GitHub Actions)                            | Partial (template metadata and old download names remain)                                  | manual     | no          |                 |
-| PL-10 | Release preparation script                                   | Shipped                                                                                    | manual     | no          |                 |
-| PL-11 | Product and binary naming (Nandi rename)                     | Shipped                                                                                    | manual     | no          |                 |
-| PL-12 | Website rebrand (external repo)                              | Shipped (external)                                                                         | manual     | no          |                 |
-| QA-01 | `pnpm run check:all`                                         | Shipped                                                                                    | unit       | no          |                 |
-| QA-02 | ast-grep architecture rules                                  | Shipped                                                                                    | unit       | no          |                 |
-| QA-03 | knip and jscpd (periodic cleanup)                            | Shipped                                                                                    | unit       | no          |                 |
-| QA-04 | TypeScript bindings generation (tauri-specta)                | Shipped                                                                                    | unit       | no          |                 |
-| QA-05 | E2E smoke prerequisite script (Windows)                      | Known issue (`scripts/e2e-smoke.ps1` still expects schema v18+; with schema v2 its data... | manual     | no          |                 |
-| QA-06 | Test fixtures (`test-fixtures/echo-agent`)                   | Shipped                                                                                    | unit       | no          |                 |
-| QA-07 | Real-install upgrade check                                   | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
-| QA-08 | Task and helper scripts                                      | Shipped                                                                                    | manual     | no          |                 |
-| QA-09 | Offline suite (`pnpm run test:offline`)                      | Shipped                                                                                    | api        | no          |                 |
+| ID    | Feature                                                                 | Status                                                                                     | Layer      | Needs relay | Last verified   |
+| ----- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------- | ----------- | --------------- |
+| DT-01 | Gold-copy repo layout and first-run initialization                      | Shipped                                                                                    | unit       | no          |                 |
+| DT-02 | Atomic, staged writes for every definition change                       | Shipped                                                                                    | unit       | no          |                 |
+| DT-03 | Portable settings in `.nandi/settings.yaml`                             | Shipped                                                                                    | unit       | no          |                 |
+| DT-04 | Secrets only in the OS keyring                                          | Shipped                                                                                    | unit       | no          |                 |
+| DT-05 | Repo format version guard                                               | Shipped                                                                                    | unit       | no          |                 |
+| DT-06 | Load an entity as stored in its file                                    | Shipped                                                                                    | api        | no          |                 |
+| DT-07 | Save an agent definition through the repo (cross-ref Agents)            | Shipped                                                                                    | unit       | no          |                 |
+| DT-08 | Startup load with drift detection                                       | Shipped                                                                                    | unit       | no          |                 |
+| DT-09 | Rebuild the projection (command and HTTP)                               | Shipped                                                                                    | api        | no          |                 |
+| DT-10 | `nandi rebuild [--force]` CLI                                           | Shipped                                                                                    | unit       | no          |                 |
+| DT-11 | Repo status (counts, problems, watching)                                | Shipped                                                                                    | api        | no          |                 |
+| DT-12 | SQLite schema                                                           | Shipped                                                                                    | unit       | no          |                 |
+| DT-13 | Hand edits apply live                                                   | Shipped                                                                                    | api        | no          |                 |
+| DT-14 | Invalid file keeps the last good version                                | Shipped                                                                                    | api        | no          |                 |
+| DT-15 | Watcher fallback and read-through reads                                 | Shipped                                                                                    | unit       | no          |                 |
+| DT-16 | Local git status, diff and commit                                       | Partial (diff and commit exposed via command/HTTP only, no UI)                             | api        | no          |                 |
+| DT-17 | Backup page and empty state                                             | Shipped                                                                                    | unit       | no          |                 |
+| DT-18 | Configure the remote (URL, credential, branch prefix)                   | Shipped                                                                                    | api        | no          | 2026-10-30 pass |
+| DT-19 | Remote credential stored in the keychain                                | Shipped                                                                                    | unit       | no          |                 |
+| DT-20 | Remote status card                                                      | Shipped                                                                                    | api        | no          |                 |
+| DT-21 | Test connection                                                         | Shipped                                                                                    | api        | no          |                 |
+| DT-22 | Back up now (push)                                                      | Shipped                                                                                    | api        | no          |                 |
+| DT-23 | Branch protection (never main/master)                                   | Shipped                                                                                    | unit       | no          |                 |
+| DT-24 | Push conflict and Overwrite                                             | Shipped                                                                                    | api        | no          |                 |
+| DT-25 | Restore from remote (pull)                                              | Shipped                                                                                    | api        | no          |                 |
+| DT-26 | Pull merge conflicts banner                                             | Shipped                                                                                    | api + unit | no          |                 |
+| DT-27 | Remote branch browser                                                   | Shipped                                                                                    | unit       | no          |                 |
+| DT-28 | Change or remove the remote                                             | Shipped                                                                                    | api        | no          |                 |
+| DT-29 | Legacy `nandi/` branch notice and switch                                | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
+| DT-30 | Remote events                                                           | Shipped                                                                                    | api        | no          |                 |
+| DT-31 | This computer's copy panel                                              | Shipped                                                                                    | unit       | no          |                 |
+| DT-32 | Dashboard backup nudge (cross-ref Dashboard)                            | Shipped                                                                                    | unit       | no          |                 |
+| DT-33 | `~/.nandi` copied to `~/.nandi`                                         | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
+| DT-34 | `NANDI_HOME`                                                            | Shipped                                                                                    | unit       | no          |                 |
+| DT-35 | `NANDI_*` environment variables                                         | Shipped                                                                                    | unit       | no          |                 |
+| DT-36 | Pre-v6 install migrated to the gold-copy layout                         | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
+| DT-37 | Legacy trigger rows: secrets to keyring, rules to files                 | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
+| DT-38 | `NANDI.md` renamed to `NANDI.md`                                        | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
+| DT-39 | Enterprise LLM config (`.nandi/llm.yaml`)                               | Duplicate of MD-18                                                                         | —          | no          |                 |
+| DT-40 | Local config file `~/.nandi/config.json`                                | Shipped                                                                                    | unit       | no          |                 |
+| DT-41 | Data locations and reset procedure (user guide section 12)              | Shipped                                                                                    | manual     | no          |                 |
+| DT-42 | Snapshot read APIs (cross-ref Agents/Runs/Dashboard)                    | Shipped                                                                                    | api        | no          |                 |
+| DT-43 | Live UI: notes and work folders are watched                             | Shipped                                                                                    | unit       | no          |                 |
+| DT-44 | Who changed it: "Updated just now by …"                                 | Shipped                                                                                    | unit       | no          |                 |
+| DT-45 | Recent changes on Home                                                  | Shipped                                                                                    | unit       | no          |                 |
+| DT-46 | Refresh, F5 and Ctrl+R                                                  | Shipped                                                                                    | unit       | no          |                 |
+| DT-47 | Re-scan when the OS drops file events                                   | Shipped                                                                                    | unit       | no          |                 |
+| DT-48 | Run trail: run events and approval decisions survive a `state.db` reset | Shipped                                                                                    | unit       | no          |                 |
+| PL-01 | CLI usage, help and argument validation                                 | Shipped                                                                                    | unit       | no          |                 |
+| PL-02 | `--server` and `--port`                                                 | Shipped                                                                                    | unit       | no          |                 |
+| PL-03 | Headless mode                                                           | Shipped                                                                                    | api        | no          |                 |
+| PL-04 | Windows console attach and `server.log`                                 | Shipped                                                                                    | manual     | no          |                 |
+| PL-05 | Other CLI commands (cross-references)                                   | Shipped                                                                                    | unit       | no          |                 |
+| PL-06 | Single instance and window state                                        | Duplicate of SH-02, SH-03                                                                  | —          | no          |                 |
+| PL-07 | Per-OS window and title bar                                             | Shipped                                                                                    | manual     | no          |                 |
+| PL-08 | In-app auto-updater                                                     | Shipped (2026-11-03: the endpoint is the `latest.json` the release workflow attaches to... | unit       | no          |                 |
+| PL-09 | Release workflow (GitHub Actions)                                       | Partial (template metadata and old download names remain)                                  | manual     | no          |                 |
+| PL-10 | Release preparation script                                              | Shipped                                                                                    | manual     | no          |                 |
+| PL-11 | Product and binary naming (Nandi rename)                                | Shipped                                                                                    | manual     | no          |                 |
+| PL-12 | Website rebrand (external repo)                                         | Shipped (external)                                                                         | manual     | no          |                 |
+| QA-01 | `pnpm run check:all`                                                    | Shipped                                                                                    | unit       | no          |                 |
+| QA-02 | ast-grep architecture rules                                             | Shipped                                                                                    | unit       | no          |                 |
+| QA-03 | knip and jscpd (periodic cleanup)                                       | Shipped                                                                                    | unit       | no          |                 |
+| QA-04 | TypeScript bindings generation (tauri-specta)                           | Shipped                                                                                    | unit       | no          |                 |
+| QA-05 | E2E smoke prerequisite script (Windows)                                 | Known issue (`scripts/e2e-smoke.ps1` still expects schema v18+; with schema v2 its data... | manual     | no          |                 |
+| QA-06 | Test fixtures (`test-fixtures/echo-agent`)                              | Shipped                                                                                    | unit       | no          |                 |
+| QA-07 | Real-install upgrade check                                              | Removed (2026-10-22, no legacy support)                                                    | —          | no          |                 |
+| QA-08 | Task and helper scripts                                                 | Shipped                                                                                    | manual     | no          |                 |
+| QA-09 | Offline suite (`pnpm run test:offline`)                                 | Shipped                                                                                    | api        | no          |                 |

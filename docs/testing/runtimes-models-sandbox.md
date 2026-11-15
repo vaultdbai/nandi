@@ -338,7 +338,8 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### RT-28 — List Docker containers command
 
-- **Status:** Removed 2026-11-13 (`list_containers` had no caller). The ID is kept so other IDs don't shift.
+- **Needs relay:** no
+- **Status:** Removed (2026-11-13, `list_containers` had no caller). The ID is kept so other IDs don't shift.
 
 ## Models, providers and keys
 
