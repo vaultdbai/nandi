@@ -38,8 +38,8 @@ import { sharingOf } from '@/hooks/useAgentSharing'
 import { useHarnesses } from '@/hooks/useHarnesses'
 import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
 import { useSharedByMe } from '@/hooks/useSharedAgents'
+import { ownAgents } from '@/lib/agent-identity'
 import { formatRelativeTime } from '@/lib/format-time'
-import { isDefaultAgent } from '@/lib/agent-identity'
 import type { AgentOverview } from '@/lib/bindings'
 import { cn } from '@/lib/utils'
 import { useAgentStore, useCurrentRun } from '@/store/agent-store'
@@ -58,7 +58,7 @@ interface Row {
 }
 
 /**
- * Every agent on this Nandi: what it does, where it runs, how its week went
+ * The person's own and installed agents (never Nandi): what it does, where it runs, how its week went
  * and whether others can use it. Agents waiting on me come first, then
  * ones with a problem. A row opens the agent; its "⋯" is always visible.
  */
@@ -75,12 +75,11 @@ export function AgentsListView() {
   const [creating, setCreating] = useState(false)
 
   const noModel = defaultModel?.effectiveModel === null
-  const rows: Row[] = (agents.data ?? []).map(agent => {
+  const rows: Row[] = ownAgents(agents.data ?? []).map(agent => {
     const overview = overviews.data?.find(o => o.agentId === agent.id)
     return {
       agent,
       name: agent.name,
-      isDefault: isDefaultAgent(agent),
       overview,
       problem: agentProblem({
         agent,

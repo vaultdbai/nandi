@@ -17,6 +17,8 @@ import {
 import { useMakeGatewayReachable } from '@/hooks/useGateway'
 import { useReachability } from '@/hooks/useReachability'
 import { useTestRelayConnection } from '@/hooks/useRelay'
+import { defaultAgentName, ownAgents } from '@/lib/agent-identity'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import { cn } from '@/lib/utils'
 import { useNavigationStore } from '@/store/navigation-store'
 import { Term } from './NetworkHelp'
@@ -299,10 +301,14 @@ function rowTitle(
   }
 }
 
-/** Row 4's picker: a switch per local agent for "takes requests by name" */
-function ChooseAgents({ onNone }: { onNone: () => void }) {
+/**
+ * Row 4's picker: a switch for "takes requests by name", Nandi's fixed on
+ * top, then one per agent of the person's own
+ */
+export function ChooseAgents({ onNone }: { onNone: () => void }) {
   const { t } = useTranslation()
   const { data: agents = [] } = useAgents()
+  const own = ownAgents(agents)
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -314,13 +320,19 @@ function ChooseAgents({ onNone }: { onNone: () => void }) {
         <p className="text-sm font-medium">
           {t('network.checklist.chooseAgentsTitle')}
         </p>
-        {agents.length === 0 ? (
+        <ul>
+          <AgentSwitch
+            agentId={DEFAULT_AGENT}
+            name={defaultAgentName(agents)}
+          />
+        </ul>
+        {own.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {t('network.checklist.noAgents')}
           </p>
         ) : (
-          <ul className="space-y-2">
-            {agents.map(agent => (
+          <ul className="space-y-2 border-t pt-3">
+            {own.map(agent => (
               <AgentSwitch
                 key={agent.id}
                 agentId={agent.id}

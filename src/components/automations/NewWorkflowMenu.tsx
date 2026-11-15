@@ -8,6 +8,7 @@ import {
   Plus,
   Sparkles,
 } from 'lucide-react'
+import { AgentOptions } from '@/components/agents/AgentOptions'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -271,11 +272,7 @@ function TemplateForm({
               <NativeSelectOption value="">
                 {t('automations.chooseAgent')}
               </NativeSelectOption>
-              {agents.map(agent => (
-                <NativeSelectOption key={agent.id} value={agent.id}>
-                  {agent.name}
-                </NativeSelectOption>
-              ))}
+              <AgentOptions agents={agents} />
             </NativeSelect>
           </div>
         ))

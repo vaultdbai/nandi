@@ -1185,8 +1185,6 @@
   "library.drawer.openPack": "Open {{pack}}",
   "library.drawer.details": "Details",
   "library.drawer.more": "More for {{name}}",
-  "library.drawer.noAgents": "You have no agents to allow yet.",
-  "library.drawer.goToAgents": "Go to Agents",
   "library.details.id": "ID",
   "library.details.source": "Source",
   "library.details.commit": "Commit",

@@ -1185,8 +1185,6 @@
   "library.drawer.openPack": "فتح {{pack}}",
   "library.drawer.details": "التفاصيل",
   "library.drawer.more": "المزيد لـ {{name}}",
-  "library.drawer.noAgents": "ليس لديك وكلاء للسماح لهم بعد.",
-  "library.drawer.goToAgents": "الانتقال إلى الوكلاء",
   "library.details.id": "المعرّف",
   "library.details.source": "المصدر",
   "library.details.commit": "الالتزام",

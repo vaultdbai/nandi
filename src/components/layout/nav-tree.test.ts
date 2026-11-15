@@ -115,7 +115,7 @@ describe('buildNavTree', () => {
     expect(list.at(-1)?.id).toBe('agents:all')
   })
 
-  it('keeps the built-in agents on top, idle or not, past the limit', () => {
+  it('keeps Nandi on top, idle or not, past the limit, and never counts it', () => {
     const nandi: AgentInfo = { ...agent(DEFAULT_AGENT), kind: 'default' }
     const agents = [
       nandi,
@@ -130,6 +130,11 @@ describe('buildNavTree', () => {
     ])
     expect(list).toHaveLength(LIST_LIMIT + 2)
     expect(list.at(-1)?.id).toBe('agents:all')
+    // All agents counts the person's own: amy and the x's
+    expect(list.at(-1)?.label).toEqual({
+      key: 'nav.tree.allAgents',
+      values: { count: LIST_LIMIT + 1 },
+    })
   })
 
   it('has Workflows and Triggers under Automations; Library, Network and Settings stand alone', () => {

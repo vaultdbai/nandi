@@ -19,7 +19,7 @@ import {
 } from '@/lib/companion-events'
 import { logger } from '@/lib/logger'
 import { queryClient } from '@/lib/query-client'
-import { isDefaultAgent } from '@/lib/agent-identity'
+import { ownAgents } from '@/lib/agent-identity'
 import { openSettings } from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
 import { useCompanionStore } from '@/store/companion-store'
@@ -312,7 +312,7 @@ export function CompanionApp({ docked = false }: { docked?: boolean }) {
     recent: home.recent,
     counts,
     firstRun:
-      agents.every(isDefaultAgent) &&
+      ownAgents(agents).length === 0 &&
       home.running.length === 0 &&
       home.recent.length === 0,
     loading: home.isPending,

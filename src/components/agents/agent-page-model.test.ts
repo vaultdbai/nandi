@@ -145,27 +145,6 @@ describe('sortAgents', () => {
       'b',
     ])
   })
-
-  it('puts a built-in agent first, ahead of one waiting', () => {
-    const rows = [
-      {
-        name: 'waits',
-        problem: { kind: 'waiting' as const, count: 1 },
-        lastRunAt: null,
-      },
-      { name: 'Nandi', isDefault: true, problem: null, lastRunAt: null },
-    ]
-    expect(sortAgents(rows).map(r => r.name)).toEqual(['Nandi', 'waits'])
-  })
-
-  it('keeps the built-in agents in the order they come', () => {
-    const rows = [
-      { name: 'Nandi', isDefault: true, problem: null, lastRunAt: 1 },
-      { name: 'Guide', isDefault: true, problem: null, lastRunAt: 9 },
-      { name: 'Amy', problem: null, lastRunAt: 5 },
-    ]
-    expect(sortAgents(rows).map(r => r.name)).toEqual(['Nandi', 'Guide', 'Amy'])
-  })
 })
 
 describe('sharedLabel', () => {

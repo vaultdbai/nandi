@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Check, ExternalLink, TriangleAlert, X } from 'lucide-react'
 import { MarkdownContent } from '@/components/agent-console/MarkdownContent'
+import { AgentOptions } from '@/components/agents/AgentOptions'
 import { stepLabel } from '@/components/automations/automations-model'
 import {
   StepApprovalButtons,
@@ -22,11 +23,12 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { useAgents } from '@/hooks/useAgents'
 import { useWorkflow } from '@/hooks/useSnapshots'
-import type {
-  GraphNode,
-  Workflow,
-  WorkflowRun,
-  WorkflowStep,
+import {
+  DEFAULT_AGENT,
+  type GraphNode,
+  type Workflow,
+  type WorkflowRun,
+  type WorkflowStep,
 } from '@/lib/bindings'
 import { client } from '@/lib/client'
 import { formatDuration } from '@/lib/format-time'
@@ -316,7 +318,7 @@ function EditStep({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-  const known = agents.some(a => a.id === agent)
+  const known = agent === DEFAULT_AGENT || agents.some(a => a.id === agent)
   const changed =
     agent !== step.agent ||
     input !== step.input ||
@@ -360,11 +362,7 @@ function EditStep({
               {t('automations.step.missingOption', { id: agent })}
             </NativeSelectOption>
           )}
-          {agents.map(a => (
-            <NativeSelectOption key={a.id} value={a.id}>
-              {a.name}
-            </NativeSelectOption>
-          ))}
+          <AgentOptions agents={agents} />
         </NativeSelect>
       </div>
       <div className="flex flex-col gap-1.5">

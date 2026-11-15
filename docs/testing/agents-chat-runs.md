@@ -351,9 +351,10 @@ Shared preconditions used below:
   - On every start (and when a repo is fetched from a remote), the app writes `.nandi/agents/nandi/skill.md` and `instructions.md` if `skill.md` is missing, and stages them. A new repo's first commit includes it.
   - It's an ordinary local agent: no install, consent or fork. The user edits its skill and **Your rules** like any agent of their own; Backup commits and pushes its history with the rest of the repo. An existing folder is never overwritten.
   - It can't be deleted: Delete is hidden in its menu, page and Settings, and `delete_agent` refuses it. If its `skill.md` is removed by hand, the next start puts the shipped one back and keeps the user's `instructions.md`.
-  - It's listed first in the sidebar under Agents and on the All agents page, whatever its status.
-  - Home's Get started and the companion's first-run text don't count it as "an agent", so they still suggest a starter pack.
-- **Where:** `src-tauri/src/services/builtin_agents.rs` (`DEFAULT_AGENT`, `seed`), `src-tauri/resources/builtin-agents/nandi/`, `repo_bootstrap.rs` (`ensure_scaffolding`), `services/agents.rs` (`AgentInfo.kind`, `AgentKind`, `delete_agent`), `lib/agent-identity.ts` (`isDefaultAgent`), `nav-tree.ts` (`agentNodes`), `agent-page-model.ts` (`sortAgents`), `dashboard-model.ts`, `AgentMenu.tsx`, `AgentView.tsx`, `AgentSettingsTab.tsx`.
+  - It is not one more agent. The sidebar shows it on top under Agents, whatever its status, but the All agents count and the Agents page list only the person's own and installed agents.
+  - Pickers show it as a fixed **Nandi** choice above the person's agents: a trigger's target, a workflow step's agent, a template's steps, a pilot's grant, Settings › Internet access, and Network's "takes requests by name".
+  - Home's Get started, the welcome strip and the companion's first-run text mean "none of the person's own agents", so they still suggest a starter pack and never name Nandi as one of the user's agents.
+- **Where:** `src-tauri/src/services/builtin_agents.rs` (`DEFAULT_AGENT`, `seed`), `src-tauri/resources/builtin-agents/nandi/`, `repo_bootstrap.rs` (`ensure_scaffolding`), `services/agents.rs` (`AgentInfo.kind`, `AgentKind`, `delete_agent`), `lib/agent-identity.ts` (`isDefaultAgent`), `nav-tree.ts` (`agentNodes`), `AgentsListView.tsx`, `agents/AgentOptions.tsx` (the pickers), `dashboard-model.ts`, `CompanionWindow.tsx`, `ReachabilityChecklist.tsx` (`ChooseAgents`), `AgentMenu.tsx`, `AgentView.tsx`, `AgentSettingsTab.tsx`.
 - **Preconditions:** A new Nandi home (empty `~/.nandi`).
 - **Steps:**
   1. Start Nandi and finish setup without picking a starter pack.
@@ -361,7 +362,7 @@ Shared preconditions used below:
   3. In Settings › Your rules, add a line and save. Restart Nandi.
   4. Open My notes with no notes.
 - **Expected:**
-  - Step 1: Nandi is first under Agents; `git log` in `~/.nandi/repo` shows its files in the first commit.
+  - Step 1: Nandi is first under Agents and not on the Agents page; a new trigger's **Run** picker shows Nandi above "Agents"; `git log` in `~/.nandi/repo` shows its files in the first commit.
   - Step 2: no Delete anywhere; no "installed from the marketplace" banner.
   - Step 3: the line is still there after the restart.
   - Step 4: "No notes yet" with **Open Chief of Staff**.
@@ -369,7 +370,7 @@ Shared preconditions used below:
   - Installing a pack that contains an agent `nandi` is refused ("you already have nandi").
   - Deleting `.nandi/agents/nandi/skill.md` by hand: the next start restores it.
   - An old `.nandi/agents/chief-of-staff/` folder from a dev build stays as an ordinary agent; nothing reads it. Reset `~/.nandi` to drop it.
-- **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `keeps_the_users_edits`, `restores_a_removed_skill_but_keeps_the_role`, `the_shipped_skills_parse_and_stay_short`, `no_file_outside_this_one_spells_the_default_agent_id`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_the_default_agent_first`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`), `nav-tree.test.ts` ('keeps the built-in agents on top…'), `agent-page-model.test.ts` ('puts a built-in agent first…') | Layer: unit | Gap: no test of the hidden Delete.
+- **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `keeps_the_users_edits`, `restores_a_removed_skill_but_keeps_the_role`, `the_shipped_skills_parse_and_stay_short`, `no_file_outside_this_one_spells_the_default_agent_id`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_the_default_agent_first`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`), `agent-identity.test.ts`, `AgentOptions.test.tsx`, `nav-tree.test.ts` ('keeps Nandi on top…'), `AgentsListView.test.tsx`, `TriggerForm.test.tsx`, `InternetAccessSection.test.tsx`, `ChooseAgents.test.tsx`, `dashboard-model.test.ts`, `CompanionWindow.test.tsx` ('greets a first run…') | Layer: unit + ui | Gap: no test of the hidden Delete; the workflow step, template and pilot grant pickers are covered through `AgentOptions.test.tsx` only.
 - **Needs relay:** no
 - **Status:** Shipped
 

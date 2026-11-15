@@ -14,7 +14,7 @@ import type {
   AgentStatus,
   StudioConversationSummary,
 } from '@/lib/bindings'
-import { isDefaultAgent } from '@/lib/agent-identity'
+import { isDefaultAgent, ownAgents } from '@/lib/agent-identity'
 import type { SettingsSection } from '@/lib/settings-nav'
 import {
   NAV_SECTIONS,
@@ -105,19 +105,17 @@ function chatNodes(chats: readonly StudioConversationSummary[]): NavNode[] {
 }
 
 /**
- * The built-in agents (Chief of Staff) on top, always shown; then every
- * other agent, busiest first; past the limit, All agents
+ * Nandi on top, always shown and never counted; then the person's own
+ * agents, busiest first; past the limit, All agents with their count
  */
 function agentNodes(agents: readonly AgentInfo[]): NavNode[] {
-  const builtin = agents.filter(isDefaultAgent)
-  const sorted = agents
-    .filter(agent => !isDefaultAgent(agent))
-    .sort(
-      (a, b) =>
-        STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
-        a.name.localeCompare(b.name)
-    )
-  const nodes: NavNode[] = [...builtin, ...sorted.slice(0, LIST_LIMIT)].map(
+  const nandi = agents.filter(isDefaultAgent)
+  const own = ownAgents(agents).sort(
+    (a, b) =>
+      STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
+      a.name.localeCompare(b.name)
+  )
+  const nodes: NavNode[] = [...nandi, ...own.slice(0, LIST_LIMIT)].map(
     agent => ({
       id: `agent:${agent.id}`,
       label: { text: agent.name || agent.id },
@@ -125,10 +123,10 @@ function agentNodes(agents: readonly AgentInfo[]): NavNode[] {
       dot: STATUS_DOTS[agent.status],
     })
   )
-  if (sorted.length > LIST_LIMIT) {
+  if (own.length > LIST_LIMIT) {
     nodes.push({
       id: 'agents:all',
-      label: key('nav.tree.allAgents', { count: agents.length }),
+      label: key('nav.tree.allAgents', { count: own.length }),
       view: { kind: 'agents' },
       subtle: true,
     })

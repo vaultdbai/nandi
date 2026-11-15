@@ -2,7 +2,7 @@
  * Pure rules for the Dashboard's first-run hints: when the page is still
  * empty, which Get started cards apply, and when to nudge about backup.
  */
-import { isDefaultAgent } from '@/lib/agent-identity'
+import { ownAgents } from '@/lib/agent-identity'
 import type { DashboardSnapshot, PackManifest } from '@/lib/bindings'
 
 export const GET_STARTED_KEY = 'getStarted'
@@ -12,12 +12,12 @@ export const BACKUP_SNOOZE_MS = 30 * 24 * 60 * 60 * 1000
 /** Suggestions shown in the welcome strip */
 const MAX_SUGGESTIONS = 2
 
-/** Whether there's an agent besides the built-in ones (Chief of Staff) */
+/** Whether the person has an agent of their own (Nandi doesn't count) */
 const hasOwnAgents = (snapshot: DashboardSnapshot) =>
-  snapshot.agentHealth.some(health => !isDefaultAgent(health.agent))
+  ownAgents(snapshot.agentHealth.map(health => health.agent)).length > 0
 
 /**
- * No agents but the built-in ones, and nothing has happened: show Get
+ * None of the person's own agents, and nothing has happened: show Get
  * started, not zero tiles
  */
 export function isFreshDashboard(snapshot: DashboardSnapshot): boolean {
@@ -76,19 +76,13 @@ export interface Welcome {
   packNames: string[]
   /** The agents the packs just installed */
   agentNames: string[]
-  /** Every agent the user now has: the built-in ones first, then those */
-  allAgentNames: string[]
   suggestions: string[]
 }
 
-/**
- * What the welcome strip says about the packs just installed, and the
- * built-in agents (Chief of Staff) the user has whatever they installed
- */
+/** What the welcome strip says about the packs just installed */
 export function welcomeFor(
   packIds: string[],
-  packs: PackManifest[] | undefined,
-  builtinNames: string[] = []
+  packs: PackManifest[] | undefined
 ): Welcome {
   const installed = (packs ?? []).filter(pack => packIds.includes(pack.id))
   const agentNames = [
@@ -97,7 +91,6 @@ export function welcomeFor(
   return {
     packNames: installed.map(pack => pack.name),
     agentNames,
-    allAgentNames: [...new Set([...builtinNames, ...agentNames])],
     suggestions: installed
       .flatMap(pack => pack.suggestedAsks)
       .slice(0, MAX_SUGGESTIONS),

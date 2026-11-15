@@ -95,6 +95,20 @@ describe('InternetAccessSection', () => {
     Object.assign(mocked, original)
   })
 
+  it('picks Nandi as a fixed choice above the person’s agents', async () => {
+    render(<InternetAccessSection />)
+    const picker = screen.getByRole('combobox', { name: 'Agent' })
+    await waitFor(() =>
+      expect(within(picker).getAllByRole('option')).toHaveLength(5)
+    )
+    expect(
+      within(picker)
+        .getAllByRole('option')
+        .map(option => option.textContent)
+    ).toEqual(['All agents', 'Nandi', 'Writer', 'Scout', 'Packed'])
+    expect(within(picker).getByRole('group', { name: 'Agents' })).toBeVisible()
+  })
+
   it('says when an agent may reach any site', async () => {
     render(<InternetAccessSection />)
     expect(await screen.findByText('Any site')).toBeInTheDocument()

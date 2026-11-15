@@ -17,13 +17,11 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { useAgents } from '@/hooks/useAgents'
 import { useMarketplacePacks } from '@/hooks/useMarketplace'
 import { useRelay } from '@/hooks/useRelay'
 import { useRemoteStatus } from '@/hooks/useRemote'
 import { sendToStudio } from '@/lib/agent-actions'
 import { dismiss, isDismissed } from '@/lib/dismissals'
-import { isDefaultAgent } from '@/lib/agent-identity'
 import { openSettings } from '@/lib/settings-nav'
 import type { DashboardSnapshot } from '@/lib/tauri-bindings'
 import { useNavigationStore, type View } from '@/store/navigation-store'
@@ -124,15 +122,10 @@ export function GetStarted({ snapshot }: { snapshot: DashboardSnapshot }) {
 export function WelcomeStrip({ packIds }: { packIds: string[] }) {
   const { t } = useTranslation()
   const packs = useMarketplacePacks()
-  const { data: agents = [] } = useAgents()
   const [hidden, setHidden] = useState(false)
   if (hidden) return null
 
-  const welcome = welcomeFor(
-    packIds,
-    packs.data,
-    agents.filter(isDefaultAgent).map(agent => agent.name)
-  )
+  const welcome = welcomeFor(packIds, packs.data)
   const suggestions =
     welcome.suggestions.length > 0
       ? welcome.suggestions
@@ -178,10 +171,10 @@ export function WelcomeStrip({ packIds }: { packIds: string[] }) {
           </Button>
         ))}
       </div>
-      {welcome.allAgentNames.length > 0 && (
+      {welcome.agentNames.length > 0 && (
         <p className="text-sm text-muted-foreground">
           {t('dashboard.welcome.agents', {
-            names: welcome.allAgentNames.join(' · '),
+            names: welcome.agentNames.join(' · '),
           })}
         </p>
       )}

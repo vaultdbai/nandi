@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ArrowRight } from 'lucide-react'
+import { AgentOptions } from '@/components/agents/AgentOptions'
 import {
   accessMode,
   blockedSite,
@@ -58,11 +59,7 @@ export function InternetAccessSection({ agentId }: { agentId?: string }) {
             <NativeSelectOption value="">
               {t('settings.internet.allAgents')}
             </NativeSelectOption>
-            {all.map(agent => (
-              <NativeSelectOption key={agent.id} value={agent.id}>
-                {agent.name}
-              </NativeSelectOption>
-            ))}
+            <AgentOptions agents={all} />
           </NativeSelect>
         </div>
         {agents.isPending ? (

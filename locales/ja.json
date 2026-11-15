@@ -1185,8 +1185,6 @@
   "library.drawer.openPack": "{{pack}} を開く",
   "library.drawer.details": "詳細",
   "library.drawer.more": "{{name}} のその他の操作",
-  "library.drawer.noAgents": "許可できるエージェントがまだありません。",
-  "library.drawer.goToAgents": "エージェントへ移動",
   "library.details.id": "ID",
   "library.details.source": "ソース",
   "library.details.commit": "コミット",

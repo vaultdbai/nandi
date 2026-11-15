@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, Copy, Ellipsis, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
+import { AgentOptions } from '@/components/agents/AgentOptions'
 import { PilotConsentDialog } from '@/components/agent-console/PilotConsentDialog'
 import { ForkDialog } from '@/components/marketplace/ForkDialog'
 import { MarketplaceIcon } from '@/components/marketplace/MarketplaceIcon'
@@ -38,7 +39,6 @@ import {
 import { useAgents } from '@/hooks/useAgents'
 import type { PilotDefinition } from '@/lib/bindings'
 import { uninstallInstalled } from '@/lib/marketplace-actions'
-import { useNavigationStore } from '@/store/navigation-store'
 import { ConnectorSetup } from './ConnectorSetup'
 import { PackConnectorsNotice } from '@/components/connectors/PackConnectorsNotice'
 import { AccessList } from './InstallConsentDialog'
@@ -396,7 +396,10 @@ function ItemMenu({ entry }: { entry: LibraryEntry }) {
   )
 }
 
-/** Pick an agent and allow it this pilot; the consent dialog asks first */
+/**
+ * Pick Nandi or one of the person's agents and allow it this pilot; the
+ * consent dialog asks first
+ */
 function PilotGrant({ pilot }: { pilot: PilotDefinition }) {
   const { t } = useTranslation()
   const { data: agents = [] } = useAgents()
@@ -406,22 +409,6 @@ function PilotGrant({ pilot }: { pilot: PilotDefinition }) {
   )
   const agent = agents.find(a => a.id === agentId)
 
-  if (agents.length === 0) {
-    return (
-      <div className="flex items-center justify-between gap-2 text-sm">
-        <p className="text-muted-foreground">{t('library.drawer.noAgents')}</p>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() =>
-            useNavigationStore.getState().navigate({ kind: 'agents' })
-          }
-        >
-          {t('library.drawer.goToAgents')}
-        </Button>
-      </div>
-    )
-  }
   return (
     <div className="flex items-center gap-2">
       <NativeSelect
@@ -433,11 +420,7 @@ function PilotGrant({ pilot }: { pilot: PilotDefinition }) {
         <NativeSelectOption value="">
           {t('pilots.grant.pickAgent')}
         </NativeSelectOption>
-        {agents.map(a => (
-          <NativeSelectOption key={a.id} value={a.id}>
-            {a.name}
-          </NativeSelectOption>
-        ))}
+        <AgentOptions agents={agents} />
       </NativeSelect>
       <Button
         size="sm"

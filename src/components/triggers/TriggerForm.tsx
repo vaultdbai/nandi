@@ -6,6 +6,7 @@ import {
   priorityLevel,
   PRIORITY_VALUES,
 } from '@/components/automations/automations-model'
+import { AgentOptions } from '@/components/agents/AgentOptions'
 import { CalendarFields } from '@/components/triggers/CalendarFields'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -22,6 +23,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAgents } from '@/hooks/useAgents'
 import { useWorkflows } from '@/hooks/useSnapshots'
 import { useCronPreview } from '@/hooks/useTriggers'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import { isDesktop } from '@/lib/client'
 import { logger } from '@/lib/logger'
 import {
@@ -527,14 +529,14 @@ function EventFields({ form, onChange }: TriggerFormProps) {
 function TargetFields({ form, onChange }: TriggerFormProps) {
   const { t } = useTranslation()
   const id = useId()
-  const { data: agents } = useAgents()
-  const { data: workflows } = useWorkflows()
-  const options =
+  const { data: agents = [] } = useAgents()
+  const { data: workflows = [] } = useWorkflows()
+  const ids =
     form.targetType === 'agent'
-      ? (agents ?? []).map(a => ({ id: a.id, name: a.name }))
-      : (workflows ?? []).map(w => ({ id: w.id, name: w.name }))
+      ? [DEFAULT_AGENT, ...agents.map(a => a.id)]
+      : workflows.map(w => w.id)
   // Keep a saved target selectable even if it's gone from the list
-  const known = !form.targetId || options.some(o => o.id === form.targetId)
+  const known = !form.targetId || ids.includes(form.targetId)
 
   return (
     <div className="flex flex-col gap-2">
@@ -569,11 +571,15 @@ function TargetFields({ form, onChange }: TriggerFormProps) {
             {form.targetId}
           </NativeSelectOption>
         )}
-        {options.map(option => (
-          <NativeSelectOption key={option.id} value={option.id}>
-            {option.name}
-          </NativeSelectOption>
-        ))}
+        {form.targetType === 'agent' ? (
+          <AgentOptions agents={agents} />
+        ) : (
+          workflows.map(workflow => (
+            <NativeSelectOption key={workflow.id} value={workflow.id}>
+              {workflow.name}
+            </NativeSelectOption>
+          ))
+        )}
       </NativeSelect>
       {form.targetType === 'workflow' && (
         <p className="text-xs text-muted-foreground">

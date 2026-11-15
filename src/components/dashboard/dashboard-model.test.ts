@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentHealth } from '@/lib/bindings'
+import { DEFAULT_AGENT, type AgentHealth } from '@/lib/bindings'
 import {
   agentInfo,
   dashboardSnapshot,
@@ -32,6 +32,16 @@ describe('isFreshDashboard', () => {
   it('is fresh only with no agents and nothing that happened', () => {
     expect(isFreshDashboard(dashboardSnapshot())).toBe(true)
     expect(isFreshDashboard(withAgent)).toBe(false)
+  })
+
+  it('is fresh with only Nandi: none of the person’s own agents', () => {
+    const nandi = {
+      ...health(DEFAULT_AGENT),
+      agent: agentInfo(DEFAULT_AGENT, 'Nandi', { kind: 'default' }),
+    }
+    expect(isFreshDashboard(dashboardSnapshot({ agentHealth: [nandi] }))).toBe(
+      true
+    )
   })
 })
 
@@ -93,19 +103,8 @@ describe('welcomeFor', () => {
     expect(welcomeFor(['a', 'b'], packs)).toEqual({
       packNames: ['Alpha', 'Beta'],
       agentNames: ['Alpha Agent', 'Beta Agent'],
-      allAgentNames: ['Alpha Agent', 'Beta Agent'],
       suggestions: ['First', 'Second'],
     })
     expect(welcomeFor(['a'], undefined).packNames).toEqual([])
-  })
-
-  it('lists the built-in agents first, without counting them as installed', () => {
-    const welcome = welcomeFor(
-      ['a'],
-      [packManifest('a', 'Alpha')],
-      ['Chief of Staff']
-    )
-    expect(welcome.agentNames).toEqual(['Alpha Agent'])
-    expect(welcome.allAgentNames).toEqual(['Chief of Staff', 'Alpha Agent'])
   })
 })

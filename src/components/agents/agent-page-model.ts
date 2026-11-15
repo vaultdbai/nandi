@@ -110,33 +110,21 @@ export function agentProblem(input: {
   return null
 }
 
-/**
- * Built-in agents first, in the order they come (Chief of Staff, then
- * Browser), then waiting for me, then problems, then the latest run, then
- * by name
- */
+/** Waiting for me first, then problems, then the latest run, then by name */
 export function sortAgents<
   T extends {
     name: string
-    isDefault?: boolean
     problem: AgentProblem | null
     lastRunAt: number | null
   },
 >(rows: T[]): T[] {
   const rank = (row: T) =>
-    row.isDefault
-      ? 0
-      : row.problem?.kind === 'waiting'
-        ? 1
-        : row.problem
-          ? 2
-          : 3
-  return [...rows].sort((a, b) =>
-    a.isDefault && b.isDefault
-      ? 0
-      : rank(a) - rank(b) ||
-        (b.lastRunAt ?? 0) - (a.lastRunAt ?? 0) ||
-        a.name.localeCompare(b.name)
+    row.problem?.kind === 'waiting' ? 0 : row.problem ? 1 : 2
+  return [...rows].sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      (b.lastRunAt ?? 0) - (a.lastRunAt ?? 0) ||
+      a.name.localeCompare(b.name)
   )
 }
 

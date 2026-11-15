@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor, within } from '@/test/test-utils'
 import { commands } from '@/lib/tauri-bindings'
-import type {
-  CompanionSnapshot,
-  ConversationSnapshot,
-  WorkItem,
+import { displayAgent } from '@/lib/agent-identity'
+import {
+  DEFAULT_AGENT,
+  type CompanionSnapshot,
+  type ConversationSnapshot,
+  type WorkItem,
 } from '@/lib/bindings'
 import { request as requestFixture } from '@/components/requests/request-fixtures'
 import { localDayStart } from '@/hooks/useCompanion'
@@ -140,6 +142,22 @@ async function expand(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('the orb', () => {
+  it('greets a first run while Nandi is the only agent', async () => {
+    const user = userEvent.setup()
+    Object.assign(commands, {
+      listAgents: ok([
+        { ...displayAgent(DEFAULT_AGENT, 'Nandi'), kind: 'default' },
+      ]),
+    })
+    render(<CompanionApp docked />)
+    await expand(user)
+    expect(
+      await screen.findByText(
+        "You're set up. Ask me for something, or install a starter pack."
+      )
+    ).toBeInTheDocument()
+  })
+
   it('counts what needs you, like the Home badge', async () => {
     Object.assign(commands, { listPendingApprovals: ok([approval]) })
     render(<CompanionApp docked />)
