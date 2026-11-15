@@ -4,7 +4,7 @@ use super::*;
 
 /// Raised when a table changes. Nothing has been released, so there are no
 /// migrations: a database from another version is refused (`init_db`).
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS conversations (
