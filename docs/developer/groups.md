@@ -72,7 +72,7 @@ Every rule in `requests:` involves the other person, so the relay enforces them 
 
 `GroupPolicy::signed_bytes(group_id, version, text)` signed with this device's key (`DeviceKeys::sign`). The creating Nandi picks the group ID (`g_` + 16 lowercase hex, `nandi_protocol::is_group_id`), so version 1 is signed over the real ID like every later one; a taken ID (`group_invalid`) is retried once with a new one. `set_policy` signs `max(policy_version, policy.version) + 1` and, on `group_policy_stale`, re-reads and signs once more.
 
-Verification (`domain::group::verify`) uses my own public key for my policies, else the author's pinned key (`peer_keys::pinned`). No key, a changed key (`PEER_KEY_CHANGED`), or a signature that doesn't match: the group's detail shows the policy unverified, with the warning. The relay enforces the policy, so verification no longer gates incoming work.
+Verification (`domain::group::verify`) uses my own public key for my policies, else the author's pinned key (`peer_keys::pinned`). No key, a changed key (`PEER_KEY_CHANGED`), or a signature that doesn't match: the group's detail shows the policy unverified, with the warning. The relay checks the signature against the author's pinned key before it keeps, enforces or serves a policy, and refuses one that doesn't check out (`group_invalid`); Nandi checks again, and verification doesn't gate incoming work.
 
 ## Enforcement on incoming work
 

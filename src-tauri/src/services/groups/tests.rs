@@ -6,6 +6,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use nandi_protocol::group::GROUP_INVALID;
 use nandi_protocol::{
     GroupHold, GroupPolicy, OwnerRef, ServesCapability, Visibility, GROUP_CAPABILITY_NOT_ALLOWED,
     HOLD_ALWAYS_ASK, HOLD_APPROVAL_ALWAYS, NEEDS_FIRST_TIME_APPROVAL,
@@ -295,23 +296,35 @@ async fn joining_keeps_a_verified_copy_and_leaving_drops_it() {
 }
 
 #[tokio::test]
-async fn a_forged_policy_shows_unverified() {
+async fn the_relay_refuses_a_forged_policy_and_a_forged_copy_shows_unverified() {
     let world = World::start().await;
     let alice = world.member("alice-1").await;
     let id = alice.create_finance().await;
-    // The relay is handed text that Alice's signature doesn't cover
+    // Text that Alice's signature doesn't cover
+    let kept = alice.detail_at_relay(&id).await;
     let forged = GroupPolicy {
         version: 2,
         text: "---\nrequests:\n  approval: per-member\n---\n".into(),
-        ..alice.detail_at_relay(&id).await.policy
+        ..kept.policy.clone()
     };
     let set = GroupOp::SetPolicy {
         group_id: id.clone(),
-        policy: forged,
+        policy: forged.clone(),
     };
     let outcome = alice.client.group_request(set).await.unwrap();
-    assert_eq!(outcome, GroupOutcome::Done);
+    assert!(
+        matches!(&outcome, GroupOutcome::Refused { code, .. } if code == GROUP_INVALID),
+        "{outcome:?}"
+    );
     let view = alice.groups.get(&id).await.unwrap();
+    assert!(view.policy.verified, "{:?}", view.policy.problem);
+    assert_eq!(view.policy.version, 1);
+    // Should a forged copy reach Nandi anyway, the screen says so
+    let forged_copy = GroupDetail {
+        policy: forged,
+        ..kept
+    };
+    let view = alice.groups.view(forged_copy).await;
     assert!(!view.policy.verified);
     assert!(view.policy.problem.unwrap().contains("signature"));
 }

@@ -1422,7 +1422,7 @@ Notes that apply to the whole section:
 - **Steps:** 1. Edit the policy to `approval: per-member` and save. 2. Edit `.nandi/groups/<id>.md` by hand (change the text).
 - **Expected:** 1: version 2, verified, on every member's Nandi. 2: requests from that group's members are refused with "this group's policy couldn't be verified" until the next refresh rewrites the copy.
 - **Edge / negative cases:** Another admin saving at the same time (`group_policy_stale`): signed again over the next version once. A member whose key changed (RL-40) can't verify their policies until accepted.
-- **Automation:** Covered by: `groups::tests::a_policy_change_is_the_next_version_signed_by_me`, `groups::tests::a_forged_policy_shows_unverified`, `groups::enforce::tests::an_unverifiable_policy_fails_closed`, `domain::group::tests::a_signature_checks_out_only_for_its_group_version_and_text` | Layer: unit | Gap: none.
+- **Automation:** Covered by: `groups::tests::a_policy_change_is_the_next_version_signed_by_me`, `groups::tests::the_relay_refuses_a_forged_policy_and_a_forged_copy_shows_unverified`, `groups::enforce::tests::an_unverifiable_policy_fails_closed`, `domain::group::tests::a_signature_checks_out_only_for_its_group_version_and_text` | Layer: unit | Gap: none.
 - **Needs relay:** yes
 - **Status:** Shipped
 
