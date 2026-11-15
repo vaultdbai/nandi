@@ -1,6 +1,6 @@
 //! What the work mailbox says about its owner beyond name and address:
 //! job title, department and manager (Outlook, Graph `/me` and
-//! `/me/manager`, both inside `User.Read`). It seeds the Chief of Staff's
+//! `/me/manager`, both inside `User.Read`). It seeds Nandi's
 //! "My role" when a mailbox is connected, and shows in setup and
 //! Settings. Gmail gives none of it. Reading it is best effort: a miss
 //! leaves the fields empty and never fails the sign-in.
@@ -10,7 +10,7 @@ use serde_json::Value;
 use specta::Type;
 
 use super::mail::str_of;
-use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::repo_store::RepoStore;
 
 /// The "My role" line for team and manager
@@ -97,7 +97,7 @@ impl Profile {
     }
 }
 
-/// The Chief of Staff's "My role" with the "Team and manager" line filled
+/// Nandi's "My role" with the "Team and manager" line filled
 /// in from `profile`. Only the template's placeholder is replaced: a line
 /// the user wrote stays theirs. `None`: nothing to change.
 pub fn with_team_and_manager(instructions: &str, profile: &Profile) -> Option<String> {
@@ -123,20 +123,20 @@ pub fn with_team_and_manager(instructions: &str, profile: &Profile) -> Option<St
     Some(out)
 }
 
-/// Writes the profile into the Chief of Staff's "My role" through the agent
+/// Writes the profile into Nandi's "My role" through the agent
 /// repository (the name line is
 /// [`crate::services::builtin_agents::note_identity`])
 pub fn note_profile(store: &RepoStore, profile: &Profile) -> Result<bool, String> {
-    let current = store.skill(CHIEF_OF_STAFF)?.instructions;
+    let current = store.skill(DEFAULT_AGENT)?.instructions;
     let Some(updated) = with_team_and_manager(&current, profile) else {
         return Ok(false);
     };
     store
         .repos()
         .agents
-        .save_instructions(CHIEF_OF_STAFF, &updated)
+        .save_instructions(DEFAULT_AGENT, &updated)
         .map_err(|e| e.to_string())?;
-    store.commit(crate::services::domain::EntityKind::Agent, CHIEF_OF_STAFF)?;
+    store.commit(crate::services::domain::EntityKind::Agent, DEFAULT_AGENT)?;
     Ok(true)
 }
 

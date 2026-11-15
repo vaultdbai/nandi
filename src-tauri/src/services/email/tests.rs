@@ -298,7 +298,7 @@ async fn outlook_pages_to_the_delta_link_and_resumes_from_it() {
     let (state, recorder) = state_with(&mock).await;
     connected(&state, MailProvider::Outlook).await;
 
-    // Connecting set up the account and the Chief of Staff's read grant
+    // Connecting set up the account and Nandi's read grant
     let status = status(&state).await;
     let outlook = &status.providers[0];
     assert!(outlook.connected && outlook.available);
@@ -308,7 +308,7 @@ async fn outlook_pages_to_the_delta_link_and_resumes_from_it() {
     assert_eq!(profile.title.as_deref(), Some("Platform lead"));
     assert_eq!(profile.manager.as_ref().unwrap().name, "Priya Rao");
     assert_eq!(outlook.state, EmailAccountState::Ready);
-    assert_eq!(granted(&state, CHIEF_OF_STAFF).len(), 1);
+    assert_eq!(granted(&state, DEFAULT_AGENT).len(), 1);
 
     let first = check_all(&state).await;
     // Lena, and the user's own sent mail; not the "other" promo, the
@@ -416,7 +416,7 @@ async fn only_gets_ever_reach_the_mail_apis() {
     for name in [tool::LIST_NEW, tool::SEARCH] {
         tool::call(
             &state,
-            &allowed(&state, CHIEF_OF_STAFF),
+            &allowed(&state, DEFAULT_AGENT),
             name,
             &json!({"query": "audit"}),
         )
@@ -424,14 +424,14 @@ async fn only_gets_ever_reach_the_mail_apis() {
     }
     tool::call(
         &state,
-        &allowed(&state, CHIEF_OF_STAFF),
+        &allowed(&state, DEFAULT_AGENT),
         tool::GET_MESSAGE,
         &json!({"id": "outlook:m1"}),
     )
     .await;
     tool::call(
         &state,
-        &allowed(&state, CHIEF_OF_STAFF),
+        &allowed(&state, DEFAULT_AGENT),
         tool::GET_THREAD,
         &json!({"thread_id": "outlook:conv-m1"}),
     )
@@ -570,7 +570,7 @@ async fn disconnecting_wipes_the_sign_in_the_cursor_and_the_grant() {
     let cursor: Value = load_setting(&state, cursor_key).await;
     assert!(cursor.is_null());
     assert!(state.grants().list().is_empty());
-    assert!(tool::offered(&state, CHIEF_OF_STAFF, &[]).is_empty());
+    assert!(tool::offered(&state, DEFAULT_AGENT, &[]).is_empty());
     // Nothing to check any more
     mock.clear();
     assert_eq!(check_all(&state).await, CheckOutcome::default());
@@ -769,7 +769,7 @@ async fn a_gmail_history_too_long_for_one_read_moves_the_cursor_only_as_far_as_r
 }
 
 #[tokio::test]
-async fn both_mailboxes_go_to_the_chief_of_staff_in_one_run() {
+async fn both_mailboxes_go_to_nandi_in_one_run() {
     let mock = mock(|req| {
         if req.path.starts_with("/graph") {
             outlook_api(req)
@@ -830,9 +830,9 @@ async fn a_failed_hand_over_keeps_the_cursor_so_no_mail_is_skipped() {
 async fn tools_are_only_for_an_agent_with_a_grant() {
     let mock = mock(outlook_api).await;
     let (state, _recorder) = state_with(&mock).await;
-    assert!(tool::offered(&state, CHIEF_OF_STAFF, &[]).is_empty());
+    assert!(tool::offered(&state, DEFAULT_AGENT, &[]).is_empty());
     connected(&state, MailProvider::Outlook).await;
-    let names: Vec<String> = tool::offered(&state, CHIEF_OF_STAFF, &[])
+    let names: Vec<String> = tool::offered(&state, DEFAULT_AGENT, &[])
         .into_iter()
         .map(|t| t.name)
         .collect();
@@ -864,7 +864,7 @@ async fn reading_a_message_keeps_its_quote_and_marks_it_untrusted() {
     connected(&state, MailProvider::Outlook).await;
     let outcome = tool::call(
         &state,
-        &allowed(&state, CHIEF_OF_STAFF),
+        &allowed(&state, DEFAULT_AGENT),
         tool::GET_MESSAGE,
         &json!({"id": "outlook:m1"}),
     )
@@ -878,7 +878,7 @@ async fn reading_a_message_keeps_its_quote_and_marks_it_untrusted() {
     // Wrong prefixes and missing mailboxes are refused calmly
     let bad = tool::call(
         &state,
-        &allowed(&state, CHIEF_OF_STAFF),
+        &allowed(&state, DEFAULT_AGENT),
         tool::GET_MESSAGE,
         &json!({"id": "m1"}),
     )
@@ -886,7 +886,7 @@ async fn reading_a_message_keeps_its_quote_and_marks_it_untrusted() {
     assert!(bad.is_error);
     let gmail = tool::call(
         &state,
-        &allowed(&state, CHIEF_OF_STAFF),
+        &allowed(&state, DEFAULT_AGENT),
         tool::GET_MESSAGE,
         &json!({"id": "gmail:g1"}),
     )
@@ -894,7 +894,7 @@ async fn reading_a_message_keeps_its_quote_and_marks_it_untrusted() {
     assert!(gmail.is_error && gmail.result.contains("isn't connected"));
     let list = tool::call(
         &state,
-        &allowed(&state, CHIEF_OF_STAFF),
+        &allowed(&state, DEFAULT_AGENT),
         tool::LIST_NEW,
         &json!({}),
     )
@@ -1213,7 +1213,7 @@ async fn older_mail_stops_at_the_chosen_range() {
 }
 
 #[tokio::test]
-async fn older_mail_waits_while_the_chief_of_staff_is_busy() {
+async fn older_mail_waits_while_nandi_is_busy() {
     let mock = mock(outlook_with_old_mail).await;
     let (state, recorder) = state_with(&mock).await;
     connected(&state, MailProvider::Outlook).await;
@@ -1222,11 +1222,11 @@ async fn older_mail_waits_while_the_chief_of_staff_is_busy() {
     state
         .db()
         .call(|conn| {
-            let conversation = db::ensure_agent_conversation(conn, CHIEF_OF_STAFF)?;
+            let conversation = db::ensure_agent_conversation(conn, DEFAULT_AGENT)?;
             conn.execute(
                 "INSERT INTO runs (id, agent_id, conversation_id, started_at, status, input, source_type, priority)
                  VALUES ('busy', ?1, ?2, 0, 'running', 'hi', 'user', 10)",
-                rusqlite::params![CHIEF_OF_STAFF, conversation],
+                rusqlite::params![DEFAULT_AGENT, conversation],
             )?;
             Ok(())
         })

@@ -65,7 +65,7 @@ pub struct IdentityStatus {
 pub enum OnboardingStep {
     Name,
     Model,
-    /// Connect the mailboxes the Chief of Staff reads (optional)
+    /// Connect the mailboxes Nandi reads (optional)
     Email,
     /// Get your computer ready (Docker; recommended, skippable)
     Computer,

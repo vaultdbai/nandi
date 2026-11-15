@@ -22,7 +22,7 @@ super::commands! {
 
     fn set_email_paused(state, provider: MailProvider, paused: bool) -> EmailStatus => email::set_paused(&state, provider, paused).await;
 
-    /// Signs out: deletes the sign-in, the cursor and the Chief of Staff's access
+    /// Signs out: deletes the sign-in, the cursor and Nandi's access
     fn disconnect_email(state, provider: MailProvider) -> EmailStatus => email::disconnect(&state, provider).await;
 
     fn set_email_settings(state, settings: EmailSettingsInput) -> EmailStatus => email::set_settings(&state, settings).await;

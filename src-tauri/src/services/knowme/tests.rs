@@ -81,7 +81,7 @@ fn manifest(state: &AppState) -> crate::services::gateway::GatewayManifest {
     state.gateway().unwrap().manifest().unwrap()
 }
 
-/// The proposal the Chief of Staff makes in the chat
+/// The proposal Nandi makes in the chat
 fn proposed() -> serde_json::Value {
     json!({
         "summary": "Scrum master for two teams; a parent",
@@ -114,17 +114,17 @@ where
     panic!("timed out waiting for {what}");
 }
 
-async fn chief_approvals(state: &AppState) -> Vec<crate::model::PendingApproval> {
+async fn nandi_approvals(state: &AppState) -> Vec<crate::model::PendingApproval> {
     state
         .db()
-        .call(|conn| db::pending_approvals(conn, Some(CHIEF_OF_STAFF)))
+        .call(|conn| db::pending_approvals(conn, Some(DEFAULT_AGENT)))
         .await
         .unwrap()
 }
 
-/// The Chief of Staff proposes in the know-me chat (never marked as
+/// Nandi proposes in the know-me chat (never marked as
 /// needing approval: the gate makes it wait anyway); returns its card
-async fn chief_proposes(
+async fn nandi_proposes(
     state: &AppState,
     args: serde_json::Value,
 ) -> crate::model::PendingApproval {
@@ -158,10 +158,10 @@ async fn chief_proposes(
     .await
     .unwrap();
     wait_for("the proposal card", || async {
-        !chief_approvals(state).await.is_empty()
+        !nandi_approvals(state).await.is_empty()
     })
     .await;
-    chief_approvals(state).await.remove(0)
+    nandi_approvals(state).await.remove(0)
 }
 
 #[tokio::test]
@@ -200,7 +200,7 @@ async fn a_proposal_writes_nothing_until_confirmed_then_writes_where_each_part_b
     let (state, tmp) = with_notes().await;
     in_family(&state, &["desktop-mum"]);
     start(&state).await.unwrap();
-    let card = chief_proposes(&state, proposed()).await;
+    let card = nandi_proposes(&state, proposed()).await;
     assert_eq!(card.tool, PROPOSE);
 
     // Nothing written before the confirm, and the card isn't an Inbox line
@@ -281,13 +281,13 @@ async fn a_personal_item_is_shared_only_with_a_group_i_am_in() {
     let (state, tmp) = with_notes().await;
     let mut args = proposed();
     args["responsibilities"][3]["shareWithGroup"] = json!("g_somebody_elses");
-    let card = chief_proposes(&state, args).await;
+    let card = nandi_proposes(&state, args).await;
     let mut edited: KnowMeProposal = serde_json::from_value(proposed()).unwrap();
     edited.responsibilities[3].share_with_group = Some("g_somebody_elses".into());
     let refused = confirm(&state, card.id.clone(), edited).await.unwrap_err();
     assert!(refused.contains("isn't a group you're in"), "{refused}");
     // Still waiting, nothing written
-    assert_eq!(chief_approvals(&state).await.len(), 1);
+    assert_eq!(nandi_approvals(&state).await.len(), 1);
     assert!(read(&tmp, "private/about-me.md").is_none());
     assert!(manifest(&state).responsibilities.is_empty());
     // The model's own arguments are checked the same way on approve

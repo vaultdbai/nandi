@@ -1,6 +1,6 @@
-//! The Chief of Staff's work tools: it gets things done from what arrives
+//! Nandi's work tools: it gets things done from what arrives
 //! (new mail, calendar changes, a chat) without the user asking. Run on
-//! the host, offered only to the Chief of Staff, in chats and in the email
+//! the host, offered only to Nandi, in chats and in the email
 //! and calendar checks' runs.
 //!
 //! | Tool          | Arguments                                  | Does                                             |
@@ -10,10 +10,10 @@
 //! | `work_update` | `{request_id, news, source?, message_id?}` | adds news to work in progress                    |
 //!
 //! From mail, the calendar or any other outside source ([`from_outside`]),
-//! in an intake thread, or from a run doing a Chief of Staff step of a plan
+//! in an intake thread, or from a run doing a Nandi step of a plan
 //! (`self_step`), `work_start` and `work_update` don't act: the item is
 //! screened and queued for the user's approval (`services::intake`). In the
-//! user's own chat they act now. A plan may give the Chief of Staff one
+//! user's own chat they act now. A plan may give Nandi one
 //! step of its own (`self_step`). Work is a local Request (`requests::local`): it shows
 //! on Requests and in "Since you were away" (`requests::digest`). Each
 //! step's agent keeps its own approvals.
@@ -27,7 +27,7 @@ use crate::engine::ToolOutcome;
 use crate::llm::ToolSpec;
 use crate::model::SourceType;
 use crate::services::ask::{self, ActionPlan, AskContext, PlanStep, PlanStepKind};
-use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::intake;
 use crate::services::AppState;
 
@@ -43,9 +43,9 @@ pub fn is_work_tool(name: &str) -> bool {
     TOOLS.contains(&name)
 }
 
-/// The work tools, for the Chief of Staff only
+/// The work tools, for Nandi only
 pub fn offered(agent_id: &str) -> Vec<ToolSpec> {
-    if agent_id != CHIEF_OF_STAFF {
+    if agent_id != DEFAULT_AGENT {
         return Vec::new();
     }
     TOOLS.iter().filter_map(|name| spec(name)).collect()
@@ -56,7 +56,7 @@ pub fn source_of(run: Option<SourceType>) -> RequestSource {
     match run {
         Some(SourceType::Email) => RequestSource::Email,
         Some(SourceType::CalendarCheck) => RequestSource::Calendar,
-        _ => RequestSource::ChiefOfStaff,
+        _ => RequestSource::Nandi,
     }
 }
 
@@ -134,7 +134,7 @@ pub fn work_text(what: &str, source: &str) -> String {
     }
 }
 
-/// The plan with at most one Chief of Staff step (`self_step::keep_one`);
+/// The plan with at most one Nandi step (`self_step::keep_one`);
 /// nothing fitting becomes one step for the user, so it still shows up as
 /// theirs to do. Pure, for tests.
 pub fn for_the_user(plan: ActionPlan, title: &str) -> ActionPlan {
@@ -155,7 +155,7 @@ pub fn for_the_user(plan: ActionPlan, title: &str) -> ActionPlan {
 }
 
 /// Runs a work tool. `thread`: the call came from an intake thread;
-/// `in_self_step`: from a run doing a Chief of Staff step of a plan.
+/// `in_self_step`: from a run doing a Nandi step of a plan.
 /// Either way, whatever it starts or adds is queued for approval too.
 pub async fn call(
     state: &AppState,
@@ -204,7 +204,7 @@ pub async fn call(
 /// Mail, calendar and any source other than the user's own chat: screened
 /// and queued for the user's approval (`services::intake`). Pure.
 pub fn from_outside(source: RequestSource) -> bool {
-    !matches!(source, RequestSource::Me | RequestSource::ChiefOfStaff)
+    !matches!(source, RequestSource::Me | RequestSource::Nandi)
 }
 
 async fn queue(
@@ -284,7 +284,7 @@ pub async fn start_now(
 }
 
 /// Who would do `text`: the user's agents, workflows or teammates, the
-/// Chief of Staff itself for one step at most, else a step for the user
+/// Nandi itself for one step at most, else a step for the user
 pub async fn plan_for(state: &AppState, text: &str) -> Result<ActionPlan, String> {
     let service = state.ask();
     let context = ask::context::load(
@@ -329,8 +329,8 @@ mod tests {
     }
 
     #[test]
-    fn only_the_chief_of_staff_gets_the_tools() {
-        assert_eq!(offered(CHIEF_OF_STAFF).len(), 3);
+    fn only_nandi_gets_the_tools() {
+        assert_eq!(offered(DEFAULT_AGENT).len(), 3);
         assert!(offered("writer").is_empty());
         assert!(TOOLS.iter().all(|t| is_work_tool(t)));
         assert!(!is_work_tool("mail_list_new"));
@@ -340,7 +340,7 @@ mod tests {
     fn work_from_outside_waits_for_the_user() {
         assert!(from_outside(RequestSource::Email));
         assert!(from_outside(RequestSource::Calendar));
-        assert!(!from_outside(RequestSource::ChiefOfStaff));
+        assert!(!from_outside(RequestSource::Nandi));
         assert!(!from_outside(RequestSource::Me));
     }
 
@@ -351,7 +351,7 @@ mod tests {
             source_of(Some(SourceType::CalendarCheck)),
             RequestSource::Calendar
         );
-        assert_eq!(source_of(None), RequestSource::ChiefOfStaff);
+        assert_eq!(source_of(None), RequestSource::Nandi);
     }
 
     #[test]
@@ -364,18 +364,18 @@ mod tests {
     }
 
     #[test]
-    fn a_plan_keeps_one_chief_of_staff_step() {
+    fn a_plan_keeps_one_nandi_step() {
         let plan = ActionPlan {
             steps: vec![
-                step(PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
+                step(PlanStepKind::LocalAgent, DEFAULT_AGENT),
                 step(PlanStepKind::LocalAgent, "social-manager"),
-                step(PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
+                step(PlanStepKind::LocalAgent, DEFAULT_AGENT),
             ],
             ..ActionPlan::default()
         };
         let plan = for_the_user(plan, "Post for Sam's birthday");
         let targets: Vec<&str> = plan.steps.iter().map(|s| s.target.as_str()).collect();
-        assert_eq!(targets, vec![CHIEF_OF_STAFF, "social-manager"]);
+        assert_eq!(targets, vec![DEFAULT_AGENT, "social-manager"]);
     }
 
     #[test]

@@ -23,6 +23,7 @@ import { useRelay } from '@/hooks/useRelay'
 import { useRemoteStatus } from '@/hooks/useRemote'
 import { sendToStudio } from '@/lib/agent-actions'
 import { dismiss, isDismissed } from '@/lib/dismissals'
+import { isDefaultAgent } from '@/lib/agent-identity'
 import { openSettings } from '@/lib/settings-nav'
 import type { DashboardSnapshot } from '@/lib/tauri-bindings'
 import { useNavigationStore, type View } from '@/store/navigation-store'
@@ -130,7 +131,7 @@ export function WelcomeStrip({ packIds }: { packIds: string[] }) {
   const welcome = welcomeFor(
     packIds,
     packs.data,
-    agents.filter(agent => agent.builtin).map(agent => agent.name)
+    agents.filter(isDefaultAgent).map(agent => agent.name)
   )
   const suggestions =
     welcome.suggestions.length > 0

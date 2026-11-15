@@ -41,7 +41,7 @@ pub fn is_propose(name: &str) -> bool {
 }
 
 /// Whether agent `agent_id` may propose playbooks: one made on this
-/// computer (the Chief of Staff too), not one installed from a pack
+/// computer (Nandi too), not one installed from a pack
 pub fn can_propose(store: &RepoStore, agent_id: &str) -> bool {
     store
         .repos()
@@ -368,10 +368,10 @@ mod tests {
     fn reads_an_agents_files() {
         let store = RepoStore::for_tests(crate::db::Db::in_memory());
         crate::services::builtin_agents::seed(store.layout()).unwrap();
-        let chief = crate::services::builtin_agents::CHIEF_OF_STAFF;
-        let loaded = load(&store, chief);
+        let nandi = crate::services::builtin_agents::DEFAULT_AGENT;
+        let loaded = load(&store, nandi);
         assert!(loaded.iter().any(|p| p.name() == "pay-a-bill"));
-        let got = call(&store, chief, GET, &json!({ "name": "pay-a-bill" }));
+        let got = call(&store, nandi, GET, &json!({ "name": "pay-a-bill" }));
         assert!(!got.is_error, "{}", got.result);
         assert!(prompt_section(&loaded, false).contains("`pay-a-bill`"));
         assert!(load(&store, "nobody").is_empty());
@@ -447,7 +447,7 @@ mod tests {
     #[test]
     fn every_proposal_waits_for_the_user() {
         let store = seeded();
-        let chief = crate::services::builtin_agents::CHIEF_OF_STAFF;
+        let nandi = crate::services::builtin_agents::DEFAULT_AGENT;
         let mut calls = vec![
             PlannedCall {
                 id: "c1".into(),
@@ -462,7 +462,7 @@ mod tests {
                 requires_approval: false,
             },
         ];
-        gate(&store, chief, &mut calls);
+        gate(&store, nandi, &mut calls);
         assert!(calls[0].requires_approval);
         assert!(calls[0].args[CURRENT]["body"]
             .as_str()
@@ -474,12 +474,12 @@ mod tests {
     #[test]
     fn an_approved_proposal_is_written_and_committed() {
         let store = seeded();
-        let chief = crate::services::builtin_agents::CHIEF_OF_STAFF;
-        let saved = apply(&store, chief, &proposal("pay-bills", "1. Pay from Chase."));
+        let nandi = crate::services::builtin_agents::DEFAULT_AGENT;
+        let saved = apply(&store, nandi, &proposal("pay-bills", "1. Pay from Chase."));
         assert!(!saved.is_error, "{}", saved.result);
         assert!(saved.result.contains("'pay-bills' saved"));
         let body = |name: &str| {
-            load(&store, chief)
+            load(&store, nandi)
                 .into_iter()
                 .find(|p| p.name() == name)
                 .map(|p| p.body().to_string())
@@ -488,7 +488,7 @@ mod tests {
         // The same name replaces it
         let updated = apply(
             &store,
-            chief,
+            nandi,
             &proposal("pay-bills", "1. Pay from Chase, never the card."),
         );
         assert!(updated.result.contains("updated"), "{}", updated.result);
@@ -497,24 +497,24 @@ mod tests {
             Some("1. Pay from Chase, never the card.")
         );
         assert_eq!(
-            load(&store, chief)
+            load(&store, nandi)
                 .iter()
                 .filter(|p| p.name() == "pay-bills")
                 .count(),
             1
         );
         // Invalid: nothing written
-        assert!(apply(&store, chief, &proposal("Bad Name", "x")).is_error);
+        assert!(apply(&store, nandi, &proposal("Bad Name", "x")).is_error);
         assert!(body("bad-name").is_none());
     }
 
     #[test]
     fn a_broken_file_of_that_name_is_never_overwritten() {
         let store = seeded();
-        let chief = crate::services::builtin_agents::CHIEF_OF_STAFF;
-        let dir = store.repos().agents.playbooks_dir(chief).unwrap();
+        let nandi = crate::services::builtin_agents::DEFAULT_AGENT;
+        let dir = store.repos().agents.playbooks_dir(nandi).unwrap();
         std::fs::write(dir.join("pay-bills.md"), "no frontmatter").unwrap();
-        let refused = check(&store, chief, &proposal("pay-bills", "1. Pay."));
+        let refused = check(&store, nandi, &proposal("pay-bills", "1. Pay."));
         assert!(refused.unwrap_err().contains("can't be read"));
         assert_eq!(
             std::fs::read_to_string(dir.join("pay-bills.md")).unwrap(),
@@ -532,7 +532,7 @@ mod tests {
         assert!(!can_propose(&store, "nobody"));
         assert!(can_propose(
             &store,
-            crate::services::builtin_agents::CHIEF_OF_STAFF
+            crate::services::builtin_agents::DEFAULT_AGENT
         ));
         let refused = apply(&store, "arxiv", &proposal("search", "1. Search."));
         assert!(refused.is_error);

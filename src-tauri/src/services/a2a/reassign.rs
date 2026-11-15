@@ -467,8 +467,8 @@ mod tests {
     #[test]
     fn a_request_to_a_person_goes_to_the_teammate_as_a_person() {
         let card = AgentCard {
-            id: "cy/chief-of-staff".into(),
-            name: "Chief of Staff".into(),
+            id: "cy/helper".into(),
+            name: "Nandi".into(),
             description: String::new(),
             instance_id: "cy".into(),
             endpoint: String::new(),
@@ -481,6 +481,6 @@ mod tests {
             issued_at: 0.0,
         };
         assert_eq!(handed_to("gateway", &card), "cy/gateway");
-        assert_eq!(handed_to("papers", &card), "cy/chief-of-staff");
+        assert_eq!(handed_to("papers", &card), "cy/helper");
     }
 }

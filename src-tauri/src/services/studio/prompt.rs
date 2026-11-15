@@ -148,7 +148,7 @@ suggest a next step.\n\
 \n\
 The user's own notes (their role, what they own, deadlines, contacts) are readable with `{LIST_NOTES}` \
 and `{READ_NOTE}`: look there before saying you don't know something about the user. You can't change \
-notes; Chief of Staff keeps them.\n\
+notes; Nandi keeps them.\n\
 \n\
 To get something done (\"run X\", \"do Y for me\", \"every Monday…\"), read the matching guide, then use \
 `{START_REQUEST}`: the user approves its plan before anything starts. Use `delegate_to_agent` only to ask \

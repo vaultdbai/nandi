@@ -1,4 +1,4 @@
-//! The one shape both providers' mail comes in, so the Chief of Staff
+//! The one shape both providers' mail comes in, so Nandi
 //! doesn't care which mailbox is behind it. Nothing here is stored: a
 //! header lives for one check or one tool call.
 
@@ -43,7 +43,7 @@ pub struct Header {
     pub preview: String,
     /// Newsletters and marketing, by the provider's category or the
     /// message's list headers ([`ListHeaders::bulk`]). Only watched senders'
-    /// bulk mail reaches the Chief of Staff (`filter`).
+    /// bulk mail reaches Nandi (`filter`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub bulk: bool,
     /// Never opened by the user (never true for sent mail)
@@ -81,7 +81,7 @@ impl Header {
 }
 
 /// What a message's list headers say about how it was sent. Facts read as
-/// sent: Nandi leaves out declared bulk mail, and the Chief of Staff weighs
+/// sent: Nandi leaves out declared bulk mail, and Nandi weighs
 /// the rest itself (`batch`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ListHeaders {
@@ -124,7 +124,7 @@ impl ListHeaders {
 }
 
 /// A message with its text, size capped. Quoted replies stay in: the
-/// Chief of Staff tells the new part from the old itself.
+/// Nandi tells the new part from the old itself.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Message {
     #[serde(flatten)]

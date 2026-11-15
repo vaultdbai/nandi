@@ -1,6 +1,6 @@
 # My role
 
-> Edit me. This is what Chief of Staff knows about you before it opens your notes. Keep it short and factual. Put details in your notes folder.
+> Edit me. This is what Nandi knows about you before it opens your notes. Keep it short and factual. Put details in your notes folder.
 
 - **Name and title:** (e.g. "Dev, platform engineering lead")
 - **Team and manager:** (e.g. "Platform team, reports to Priya (VP Engineering)")

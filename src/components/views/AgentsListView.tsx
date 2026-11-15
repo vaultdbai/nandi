@@ -39,6 +39,7 @@ import { useHarnesses } from '@/hooks/useHarnesses'
 import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
 import { useSharedByMe } from '@/hooks/useSharedAgents'
 import { formatRelativeTime } from '@/lib/format-time'
+import { isDefaultAgent } from '@/lib/agent-identity'
 import type { AgentOverview } from '@/lib/bindings'
 import { cn } from '@/lib/utils'
 import { useAgentStore, useCurrentRun } from '@/store/agent-store'
@@ -79,7 +80,7 @@ export function AgentsListView() {
     return {
       agent,
       name: agent.name,
-      builtin: agent.builtin,
+      isDefault: isDefaultAgent(agent),
       overview,
       problem: agentProblem({
         agent,

@@ -3,14 +3,14 @@ import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor } from '@/test/test-utils'
 import { commands } from '@/lib/tauri-bindings'
 import { ApprovalRequestCard } from '@/components/agent-console/ApprovalRequestCard'
-import type { JsonValue } from '@/lib/bindings'
+import { DEFAULT_AGENT, type JsonValue } from '@/lib/bindings'
 
 type Commands = Record<string, unknown>
 const mocked = commands as unknown as Commands
 const original = mocked.answerAccessRequest
 
 const ARGS = {
-  agent: 'chief-of-staff',
+  agent: DEFAULT_AGENT,
   family: 'email',
   connectors: [{ id: 'outlook', name: 'Outlook' }],
   access: 'read',
@@ -34,7 +34,7 @@ function card(
         createdAt: Date.now(),
         expiresAt: null,
       }}
-      agentName="Chief of Staff"
+      agentName="Nandi"
       onDecide={interactive ? () => Promise.resolve(true) : undefined}
     />
   )
@@ -66,7 +66,7 @@ describe('AccessRequestCard for a site', () => {
   it('names the agent, the site decoded and raw, and why', () => {
     render(card(SITE_ARGS))
     expect(
-      screen.getByText('Chief of Staff wants to open bücher.example')
+      screen.getByText('Nandi wants to open bücher.example')
     ).toBeInTheDocument()
     expect(screen.getByTestId('access-site-raw')).toHaveTextContent(
       'Address: xn--bcher-kva.example'
@@ -96,7 +96,7 @@ describe('AccessRequestCard for a site', () => {
       screen.getByLabelText('Include its subdomains (like www.bücher.example)')
     )
     await userEvent.click(
-      screen.getByRole('button', { name: 'Always allow for Chief of Staff' })
+      screen.getByRole('button', { name: 'Always allow for Nandi' })
     )
     await waitFor(() =>
       expect(answer).toHaveBeenCalledWith('call-1#access', 'allowSaved', true)
@@ -125,7 +125,7 @@ describe('AccessRequestCard', () => {
   it('says who wants what, with the details', () => {
     render(card())
     expect(
-      screen.getByText('Chief of Staff wants to read your email (Outlook)')
+      screen.getByText('Nandi wants to read your email (Outlook)')
     ).toBeInTheDocument()
     expect(screen.getByText('Mail in your inbox')).toBeInTheDocument()
   })

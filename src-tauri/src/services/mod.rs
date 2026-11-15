@@ -160,7 +160,7 @@ struct Inner {
     connectors: Arc<ConnectorRegistry>,
     /// The GitHub sign-in in progress (`auth::github`)
     github_sign_in_flows: auth::oauth::OAuthFlows,
-    /// Reading the user's mail for the Chief of Staff
+    /// Reading the user's mail for Nandi
     email: Arc<email::EmailService>,
     workspace: Arc<workspace::WorkspaceService>,
     audit_store: Arc<AuditStore>,

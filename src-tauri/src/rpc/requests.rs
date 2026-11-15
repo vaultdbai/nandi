@@ -1,11 +1,11 @@
-//! Requests, the Chief of Staff's queue and digest, and Inbox threads.
+//! Requests, Nandi's queue and digest, and Inbox threads.
 
 use crate::services::ask::ActionPlan;
 use crate::services::chat::SendMessageResult;
 use crate::services::inbox::thread::{self as inbox_thread, InboxThread};
 use crate::services::intake::rules::AutoApproveRule;
 use crate::services::intake::{self, thread::IntakeThread};
-use crate::services::requests::digest::{self, ChiefOfStaffDigest};
+use crate::services::requests::digest::{self, NandiDigest};
 use crate::services::requests::{self, local, Request};
 
 super::commands! {
@@ -22,12 +22,12 @@ super::commands! {
     /// Saves an ask's approved plan as a Request and starts it; returns its ID
     fn start_request(state, plan: ActionPlan, text: String) -> String => local::start_request(&state, plan, text).await;
 
-    /// What the Chief of Staff did since the user last looked, and the work
+    /// What Nandi did since the user last looked, and the work
     /// waiting on them
-    fn get_chief_of_staff_digest(state) -> ChiefOfStaffDigest => digest::get(&state).await;
+    fn get_nandi_digest(state) -> NandiDigest => digest::get(&state).await;
 
     /// The user has seen the digest: only what waits on them stays
-    fn mark_chief_of_staff_digest_seen(state) -> () => digest::mark_seen(&state).await;
+    fn mark_nandi_digest_seen(state) -> () => digest::mark_seen(&state).await;
 
     /// Approves work that arrived from outside: it starts, or its news reaches
     /// its Request. Returns the Request's ID. Blocked items can't be approved.
@@ -40,7 +40,7 @@ super::commands! {
     /// Requests it became. Its messages come from `get_conversation`.
     fn get_intake_thread(state, conversation_id: String) -> IntakeThread => intake::thread::get(&state, conversation_id).await;
 
-    /// The user's message in an intake thread: a Chief of Staff turn there
+    /// The user's message in an intake thread: a Nandi turn there
     fn send_intake_message(state, conversation_id: String, text: String, client_message_id: Option<String>) -> SendMessageResult => inbox_thread::send(&state, conversation_id, text, client_message_id).await;
 
     /// An Inbox item's Ask chat (`inbox:<kind>:<id>`, or an intake item's
@@ -48,7 +48,7 @@ super::commands! {
     /// `get_conversation`.
     fn open_inbox_thread(state, conversation_id: String) -> InboxThread => inbox_thread::open(&state, conversation_id).await;
 
-    /// The user's message in an Inbox item's chat: a Chief of Staff turn there
+    /// The user's message in an Inbox item's chat: a Nandi turn there
     fn send_inbox_message(state, conversation_id: String, text: String, client_message_id: Option<String>) -> SendMessageResult => inbox_thread::send(&state, conversation_id, text, client_message_id).await;
 
     /// What may skip the approval queue (`intake::rules`)

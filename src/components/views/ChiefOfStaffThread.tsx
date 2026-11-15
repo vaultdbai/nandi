@@ -5,9 +5,10 @@ import { isWorking } from '@/components/agent-console/working'
 import { AskBox } from '@/components/ask/AskBox'
 import { Spinner } from '@/components/ui/spinner'
 import { decideApproval } from '@/lib/agent-actions'
-import { CHIEF_OF_STAFF_AGENT_ID, displayAgent } from '@/lib/agent-identity'
+import { displayAgent } from '@/lib/agent-identity'
 import { loadConversation } from '@/lib/agent-sync'
 import { askContextForView, openEditInStudio } from '@/lib/ask'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import { useConversation } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
 
@@ -23,10 +24,7 @@ export function ThreadConversation({
 }) {
   const { t } = useTranslation()
   const conversation = useConversation(conversationId)
-  const assistant = displayAgent(
-    CHIEF_OF_STAFF_AGENT_ID,
-    t('intakeThread.assistant')
-  )
+  const assistant = displayAgent(DEFAULT_AGENT, t('intakeThread.assistant'))
 
   useEffect(() => {
     if (!conversation) void loadConversation(conversationId)
@@ -45,7 +43,7 @@ export function ThreadConversation({
       assistant={assistant}
       working={isWorking(conversation.currentRun, conversation.messages)}
       onDecide={(approvalId, decision) =>
-        decideApproval(CHIEF_OF_STAFF_AGENT_ID, approvalId, decision)
+        decideApproval(DEFAULT_AGENT, approvalId, decision)
       }
     />
   )

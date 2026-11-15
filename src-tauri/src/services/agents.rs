@@ -60,9 +60,34 @@ pub struct AgentInfo {
     pub current_task: Option<String>,
     /// Whose folder it is: the user's own, or a read-only marketplace one
     pub origin: AgentOrigin,
-    /// Ships with Nandi (`services::builtin_agents`): listed first, and
-    /// can't be deleted
-    pub builtin: bool,
+    /// The default agent, one the user made, or one they installed
+    pub kind: AgentKind,
+}
+
+/// What an agent is to the user. The default agent (Nandi) is listed
+/// first here, can't be deleted, and the app shows it apart from the
+/// user's own agents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum AgentKind {
+    /// Nandi, `builtin_agents::DEFAULT_AGENT`, in its own local folder
+    Default,
+    /// One the user made or forked
+    Local,
+    /// Installed from a publisher or with a pack
+    Pack,
+}
+
+impl AgentKind {
+    /// A pack copy that happens to use the default agent's ID is still a
+    /// pack agent: only the local folder is the default agent
+    pub fn of(id: &str, origin: &AgentOrigin) -> Self {
+        match origin {
+            AgentOrigin::Local if builtin_agents::is_default(id) => Self::Default,
+            AgentOrigin::Local => Self::Local,
+            AgentOrigin::Publisher { .. } | AgentOrigin::Pack { .. } => Self::Pack,
+        }
+    }
 }
 
 /// Where an agent came from. Marketplace agents are read-only until forked.
@@ -88,11 +113,6 @@ impl From<Origin> for AgentOrigin {
             Origin::Pack { pack } => Self::Pack { pack },
         }
     }
-}
-
-/// A built-in agent's own folder (not a pack copy with the same ID)
-fn is_builtin(id: &str, origin: &AgentOrigin) -> bool {
-    *origin == AgentOrigin::Local && builtin_agents::is_builtin(id)
 }
 
 /// What the orchestrator needs from an agent's files.
@@ -308,7 +328,7 @@ impl RepoStore {
                             AgentStatus::Idle
                         },
                         current_task: None,
-                        builtin: is_builtin(&id, &origin(&id)),
+                        kind: AgentKind::of(&id, &origin(&id)),
                         id,
                     }
                 })
@@ -323,18 +343,13 @@ impl RepoStore {
                         origin: origin(&id),
                         status: AgentStatus::Error,
                         current_task: None,
-                        builtin: is_builtin(&id, &origin(&id)),
+                        kind: AgentKind::of(&id, &origin(&id)),
                         id,
                     });
                 }
             }
-            agents.sort_by_key(|agent| {
-                let builtin = agent
-                    .builtin
-                    .then(|| builtin_agents::position(&agent.id))
-                    .flatten();
-                (builtin.unwrap_or(usize::MAX), agent.name.to_lowercase())
-            });
+            agents
+                .sort_by_key(|agent| (agent.kind != AgentKind::Default, agent.name.to_lowercase()));
             agents
         })
     }
@@ -555,7 +570,7 @@ pub async fn restart_agent(state: &AppState, agent_id: &str) -> Result<String, S
 /// trigger still uses it.
 pub async fn delete_agent(state: &AppState, agent_id: &str) -> Result<(), String> {
     state.store().require_agent(agent_id)?;
-    if builtin_agents::is_builtin(agent_id) {
+    if builtin_agents::is_default(agent_id) {
         return Err(format!(
             "'{agent_id}' comes with Nandi and can't be deleted. Edit it instead; Backup keeps its history in git."
         ));
@@ -679,7 +694,7 @@ mod tests {
     }
 
     #[test]
-    fn lists_builtin_agents_first_in_their_own_order() {
+    fn lists_the_default_agent_first() {
         let tmp = tempfile::tempdir().unwrap();
         let store = store(tmp.path());
         write_skill(&store, "alpha", "---\nname: Alpha\n---\n");
@@ -688,8 +703,9 @@ mod tests {
         let agents = store.list_agents();
 
         let ids: Vec<_> = agents.iter().map(|a| a.id.as_str()).collect();
-        assert_eq!(ids, [builtin_agents::CHIEF_OF_STAFF, "alpha"]);
-        assert!(agents[0].builtin && !agents[1].builtin);
+        assert_eq!(ids, [builtin_agents::DEFAULT_AGENT, "alpha"]);
+        let kinds: Vec<_> = agents.iter().map(|a| a.kind).collect();
+        assert_eq!(kinds, [AgentKind::Default, AgentKind::Local]);
     }
 
     #[test]
@@ -971,12 +987,13 @@ Body"#;
             status: AgentStatus::WaitingApproval,
             current_task: None,
             origin: crate::services::agents::AgentOrigin::Local,
-            builtin: false,
+            kind: AgentKind::Local,
         };
         let json = serde_json::to_value(agent).unwrap();
 
         assert_eq!(json["status"], "waitingApproval");
         assert_eq!(json["skillPath"], "/a/skill.md");
+        assert_eq!(json["kind"], "local");
         assert!(json["currentTask"].is_null());
     }
 }

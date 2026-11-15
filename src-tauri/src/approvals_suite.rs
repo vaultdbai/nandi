@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use crate::offline_suite::{boot, call, canned, rpc, until};
-use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::intake::{self, Gate, GroupSay, TeamTask};
 use crate::services::relay::BuiltInRelay;
 use crate::services::AppState;
@@ -435,7 +435,7 @@ No shell.
     state.shutdown();
 }
 
-/// An Inbox item decided in its Ask chat: the Chief of Staff proposes,
+/// An Inbox item decided in its Ask chat: Nandi proposes,
 /// nothing happens until the person confirms, then the approval is
 /// decided and recorded with the chat
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -454,7 +454,7 @@ async fn a_decision_in_an_inbox_chat_is_recorded_with_the_chat() {
     let approval = pending(&router, "approver", "shell").await;
     let id = approval["id"].as_str().unwrap().to_string();
 
-    // The Chief of Staff's turn in the item's chat proposes the approval,
+    // Nandi's turn in the item's chat proposes the approval,
     // never marked as needing a confirm: the gate makes it wait anyway
     canned(
         &state,
@@ -490,7 +490,7 @@ async fn a_decision_in_an_inbox_chat_is_recorded_with_the_chat() {
     let confirm = loop {
         let mine = state
             .db()
-            .call(|conn| crate::db::pending_approvals(conn, Some(CHIEF_OF_STAFF)))
+            .call(|conn| crate::db::pending_approvals(conn, Some(DEFAULT_AGENT)))
             .await
             .unwrap();
         if let Some(confirm) = mine.into_iter().next() {
@@ -510,7 +510,7 @@ async fn a_decision_in_an_inbox_chat_is_recorded_with_the_chat() {
     rpc(
         &router,
         "approve_action",
-        json!({ "agentId": CHIEF_OF_STAFF, "approvalId": confirm.id, "decision": "approved" }),
+        json!({ "agentId": DEFAULT_AGENT, "approvalId": confirm.id, "decision": "approved" }),
     )
     .await;
     let detail = finished(&router, &run_id).await;

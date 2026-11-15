@@ -4,11 +4,11 @@
 //! - It starts where the first read stopped and walks older, newest
 //!   first: Inbox and Sent, one batch of at most [`BATCH`] emails per pass,
 //!   every [`BACKFILL_EVERY`]. It only builds the profile: the same filter
-//!   as new mail ([`MailFilter::keep`]), and the Chief of Staff passes over
+//!   as new mail ([`MailFilter::keep`]), and Nandi passes over
 //!   what the user never opened and machines' updates itself.
 //! - Its position is its own (`local_settings` `email.<provider>.backfill`:
 //!   the oldest time reached); it never touches the change cursor.
-//! - A pass runs only when no email check and no other Chief of Staff run
+//! - A pass runs only when no email check and no other Nandi run
 //!   is going, so it never competes with new mail.
 //! - It stops at the start of the mailbox or the chosen range
 //!   ([`BackfillRange`]); a 429 or an outage just waits for the next pass.
@@ -30,10 +30,10 @@ use super::{
 };
 use crate::db;
 use crate::model::Timestamp;
-use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::AppState;
 
-/// How often a batch of older mail goes to the Chief of Staff
+/// How often a batch of older mail goes to Nandi
 pub const BACKFILL_EVERY: Duration = Duration::from_secs(10 * 60);
 /// Emails asked for per batch
 const BATCH: u32 = MAX_BATCH as u32;
@@ -57,7 +57,7 @@ pub struct BackfillStatus {
     pub phase: BackfillPhase,
     /// Everything newer than this has been read
     pub back_to: Option<Timestamp>,
-    /// Emails handed to the Chief of Staff so far
+    /// Emails handed to Nandi so far
     pub read: u32,
 }
 
@@ -78,7 +78,7 @@ pub struct BackfillEstimate {
     pub provider: MailProvider,
     /// About how many emails the range holds (bulk not left out yet)
     pub emails: u32,
-    /// About how many Chief of Staff runs that is
+    /// About how many Nandi runs that is
     pub runs: u32,
 }
 
@@ -196,27 +196,27 @@ pub async fn estimate(state: &AppState, range: BackfillRange) -> Vec<BackfillEst
     out
 }
 
-/// Whether the Chief of Staff is busy (a run going or waiting)
-async fn chief_of_staff_busy(state: &AppState) -> bool {
+/// Whether Nandi is busy (a run going or waiting)
+async fn nandi_busy(state: &AppState) -> bool {
     state
         .db()
         .call(|conn| {
-            Ok(db::active_agent_run(conn, CHIEF_OF_STAFF)?.is_some()
-                || !db::list_queue(conn, CHIEF_OF_STAFF)?.is_empty())
+            Ok(db::active_agent_run(conn, DEFAULT_AGENT)?.is_some()
+                || !db::list_queue(conn, DEFAULT_AGENT)?.is_empty())
         })
         .await
         .unwrap_or(true)
 }
 
 /// One pass: the next batch of older mail from the first mailbox that has
-/// some, as one Chief of Staff run. Returns its run ID.
+/// some, as one Nandi run. Returns its run ID.
 pub async fn pass(state: &AppState) -> Option<String> {
     let settings = email_settings(state);
     if settings.backfill == BackfillRange::Off || state.email().is_checking() {
         return None;
     }
-    if chief_of_staff_busy(state).await {
-        log::debug!("Older mail waits: the Chief of Staff is busy");
+    if nandi_busy(state).await {
+        log::debug!("Older mail waits: Nandi is busy");
         return None;
     }
     let setup = state.email().setup();
@@ -232,7 +232,7 @@ pub async fn pass(state: &AppState) -> Option<String> {
         .collect();
     let addresses: Vec<String> = me.iter().map(|i| i.email.clone()).collect();
     let filter = MailFilter::new(&addresses, &settings.watch);
-    for account in granted(state, CHIEF_OF_STAFF).iter().filter(|a| !a.paused) {
+    for account in granted(state, DEFAULT_AGENT).iter().filter(|a| !a.paused) {
         let provider = account.provider;
         let mut backfill = load(state, provider).await;
         let cursor: Value = load_setting(state, provider.cursor_key()).await;
@@ -304,7 +304,7 @@ pub async fn pass(state: &AppState) -> Option<String> {
                 Some(run_id)
             }
             Err(e) => {
-                log::warn!("The Chief of Staff couldn't take older mail: {e}");
+                log::warn!("Nandi couldn't take older mail: {e}");
                 None
             }
         };

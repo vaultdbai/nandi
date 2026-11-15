@@ -43,7 +43,7 @@ const READ_BUDGET: Duration = Duration::from_secs(5);
 /// of those is the relay.
 const SCREEN_COMMANDS: &[&str] = &[
     "get_auto_approve_rules",
-    "get_chief_of_staff_digest",
+    "get_nandi_digest",
     "get_default_model",
     "get_egress_status",
     "get_email_status",

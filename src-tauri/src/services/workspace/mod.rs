@@ -7,16 +7,16 @@
 //! ```text
 //! Settings › Calendar & files › Connect ─ sign-in (only that account's scopes)
 //!     ─▶ keyring nandi.<id>.oauth + config.json workspace.accounts + a saved
-//!        read grant for the Chief of Staff
+//!        read grant for Nandi
 //! every hour (or Check now), batched:
-//!   each granted calendar ─ change feed since cursor ─▶ ONE Chief of Staff
+//!   each granted calendar ─ change feed since cursor ─▶ ONE Nandi
 //!   run (source calendar_check, untrusted <calendar-data>) ─▶ cursors saved
 //! tools: calendar_* and files_* for agents with a grant (or that name the
 //! connector in skill.md, asking first)
 //! ```
 //!
 //! Nothing is kept but the cursors, fingerprints of the events already sent
-//! (`seen`) and the notes the Chief of Staff writes.
+//! (`seen`) and the notes Nandi writes.
 
 pub mod accounts;
 pub mod batch;
@@ -42,7 +42,7 @@ pub use accounts::{AccountFamily, AccountKind};
 use crate::db;
 use crate::model::{SourceType, Timestamp};
 use crate::services::auth::oauth::{self, DeviceFlowState, OAuthFlows};
-use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::domain::grant::{ConnectorGrant, GrantAccess, GrantScope};
 use crate::services::email::api::{MailApi, MailError};
 use crate::services::email::{classify_sign_in_error, EmailSignInPoll, ProviderSetup, SignInPhase};
@@ -137,7 +137,7 @@ pub struct WorkspaceAccountStatus {
     pub needs_sign_in: bool,
     pub error: Option<String>,
     pub last_checked_at: Option<Timestamp>,
-    /// Calendar: events the last check handed to the Chief of Staff
+    /// Calendar: events the last check handed to Nandi
     pub last_found: u32,
     pub last_run_id: Option<String>,
 }
@@ -197,9 +197,9 @@ pub trait CalendarSink: Send + Sync {
     ) -> BoxFuture<'a, Result<String, String>>;
 }
 
-struct ChiefOfStaff;
+struct Nandi;
 
-impl CalendarSink for ChiefOfStaff {
+impl CalendarSink for Nandi {
     fn submit<'a>(
         &'a self,
         state: &'a AppState,
@@ -207,13 +207,13 @@ impl CalendarSink for ChiefOfStaff {
         text: String,
     ) -> BoxFuture<'a, Result<String, String>> {
         Box::pin(async move {
-            state.store().require_agent(CHIEF_OF_STAFF)?;
+            state.store().require_agent(DEFAULT_AGENT)?;
             let check_id = uuid::Uuid::new_v4().to_string();
             let label = title.clone();
             let conversation = state
                 .db()
                 .call(move |conn| {
-                    db::ensure_calendar_conversation(conn, CHIEF_OF_STAFF, &check_id, &title)
+                    db::ensure_calendar_conversation(conn, DEFAULT_AGENT, &check_id, &title)
                 })
                 .await?;
             let source = RunSource {
@@ -224,7 +224,7 @@ impl CalendarSink for ChiefOfStaff {
             };
             crate::services::chat::submit(
                 state.orchestrators(),
-                CHIEF_OF_STAFF,
+                DEFAULT_AGENT,
                 conversation,
                 text,
                 Vec::new(),
@@ -266,7 +266,7 @@ impl WorkspaceService {
     pub fn new(setup: ProviderSetup) -> Self {
         Self {
             setup: RwLock::new(setup),
-            sink: RwLock::new(Arc::new(ChiefOfStaff)),
+            sink: RwLock::new(Arc::new(Nandi)),
             flows: OAuthFlows::default(),
             check_lock: tokio::sync::Mutex::new(()),
             checking: AtomicBool::new(false),
@@ -505,13 +505,13 @@ async fn connect(state: &AppState, kind: AccountKind) -> Result<(), String> {
         save_setting(state, seen_key(kind), Value::Null).await?;
     }
     save_setting(state, state_key(kind), Value::Null).await?;
-    // Connecting is the person's say-so for the Chief of Staff (saved, like
+    // Connecting is the person's say-so for Nandi (saved, like
     // mail; removable in Settings › Connectors › Access)
-    let grant = ConnectorGrant::new(CHIEF_OF_STAFF, kind.id(), GrantAccess::Read)
+    let grant = ConnectorGrant::new(DEFAULT_AGENT, kind.id(), GrantAccess::Read)
         .map_err(|e| e.to_string())?;
     if state.grants().grant(grant, GrantScope::Saved)? {
         let info = GrantInfo {
-            agent: CHIEF_OF_STAFF.into(),
+            agent: DEFAULT_AGENT.into(),
             connector: kind.id().into(),
             access: GrantAccess::Read,
             scope: GrantScope::Saved,
@@ -586,7 +586,7 @@ pub struct CheckOutcome {
     pub run_id: Option<String>,
 }
 
-/// Reads the change feed of every calendar the Chief of Staff may read and
+/// Reads the change feed of every calendar Nandi may read and
 /// hands what changed to it in ONE run. Cursors move only once the run is
 /// queued, so nothing is skipped.
 pub async fn check_calendars(state: &AppState) -> CheckOutcome {
@@ -601,7 +601,7 @@ pub async fn check_calendars(state: &AppState) -> CheckOutcome {
         .accounts
         .iter()
         .filter(|a| a.kind.family() == AccountFamily::Calendar)
-        .filter(|a| grants.allows(CHIEF_OF_STAFF, a.kind.id(), GrantAccess::Read))
+        .filter(|a| grants.allows(DEFAULT_AGENT, a.kind.id(), GrantAccess::Read))
         .cloned()
         .collect();
     if accounts.is_empty() {
@@ -683,9 +683,9 @@ pub async fn check_calendars(state: &AppState) -> CheckOutcome {
                 true
             }
             Err(e) => {
-                log::warn!("The Chief of Staff couldn't take the calendar check: {e}");
+                log::warn!("Nandi couldn't take the calendar check: {e}");
                 for (_, check) in checked.iter_mut().filter(|(_, c)| c.error.is_none()) {
-                    check.error = Some(format!("The Chief of Staff couldn't start: {e}"));
+                    check.error = Some(format!("Nandi couldn't start: {e}"));
                 }
                 outcome.found = 0;
                 false

@@ -96,7 +96,7 @@ pub(super) async fn run_call(
         // An Inbox chat's decision, confirmed by the user: the same service
         // call as the item's button (`inbox::tool`)
         _ if inbox::tool::is_decision_tool(&call.tool) => match app_state(deps) {
-            Some(state) if ctx.agent_id == CHIEF_OF_STAFF => {
+            Some(state) if ctx.agent_id == DEFAULT_AGENT => {
                 // A know-me card may have edited the proposal before the
                 // confirm: the approval's arguments are the confirmed ones
                 let args =
@@ -105,14 +105,14 @@ pub(super) async fn run_call(
             }
             _ => ToolOutcome {
                 result: format!(
-                    "Tool '{}' only works in an Inbox item's chat with the Chief of Staff",
+                    "Tool '{}' only works in an Inbox item's chat with Nandi",
                     call.tool
                 ),
                 is_error: true,
             },
         },
-        // The Chief of Staff's work tools: on the host
-        _ if ctx.agent_id == CHIEF_OF_STAFF && requests::tool::is_work_tool(&call.tool) => {
+        // Nandi's work tools: on the host
+        _ if ctx.agent_id == DEFAULT_AGENT && requests::tool::is_work_tool(&call.tool) => {
             match app_state(deps) {
                 Some(state) => {
                     // In an intake thread: its source, and everything queues

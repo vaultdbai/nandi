@@ -1,5 +1,5 @@
-//! The decision tools of an Inbox item's thread. Offered only to the Chief
-//! of Staff, only in that thread, and only those that fit the item now
+//! The decision tools of an Inbox item's thread. Offered only to Nandi,
+//! only in that thread, and only those that fit the item now
 //! (`item::load`). Every call waits for the user to confirm it on its
 //! approval card ([`gate`]): a sentence in the chat never decides anything
 //! by itself. On confirm, [`call`] calls the same service function as the

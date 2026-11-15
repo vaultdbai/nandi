@@ -337,7 +337,7 @@ function SettingsForm({
           </CollapsibleContent>
         </Collapsible>
 
-        {agent.origin.kind === 'local' && !agent.builtin && (
+        {agent.kind === 'local' && (
           <Section title={t('agentPage.settings.danger')}>
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 p-3 text-sm">
               <p>{t('agentPage.settings.deleteHint')}</p>

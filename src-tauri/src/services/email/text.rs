@@ -1,4 +1,4 @@
-//! Turning mail into the little text the Chief of Staff needs: one-line
+//! Turning mail into the little text Nandi needs: one-line
 //! previews, size caps, addresses, HTML as plain text, and nothing that
 //! could close the untrusted-data block it's put in.
 
@@ -124,7 +124,7 @@ const HTML_TEXT_WIDTH: usize = 100;
 /// Plain text from an HTML body, links kept as numbered footnotes so
 /// screening still sees them (`intake::screen`). Read by `html2text`, a
 /// real HTML parser; HTML it can't read comes back as it is, for the
-/// Chief of Staff to read.
+/// Nandi to read.
 pub fn html_to_text(html: &str) -> String {
     html2text::config::plain_no_decorate()
         .link_footnotes(true)

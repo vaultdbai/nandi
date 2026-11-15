@@ -73,7 +73,7 @@ beforeEach(() => {
     listGatewayAssignments: ok([]),
     listTrustRequests: ok([]),
     listRequestReturns: ok([]),
-    getChiefOfStaffDigest: ok({ since: null, items: [], queue: [] }),
+    getNandiDigest: ok({ since: null, items: [], queue: [] }),
     approveAction: ok(null),
     dismissWork: ok(null),
     sendInboxMessage: ok({

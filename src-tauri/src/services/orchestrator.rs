@@ -75,7 +75,7 @@ use crate::model::{
 };
 use crate::services::a2a::{self, A2ADelegator};
 use crate::services::agents::SkillConfig;
-use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::connectors::{self, ConnectorRegistry};
 use crate::services::email;
 use crate::services::events::{self, AgentWarning, EventBus, RunContext};
@@ -152,7 +152,7 @@ impl RunSource {
         }
     }
 
-    /// A step of a local Request the Chief of Staff does itself
+    /// A step of a local Request Nandi does itself
     /// (`requests::self_step`): `request_id` is the Request's. Like a
     /// normal workflow step, it waits behind the user's own messages.
     pub fn request_step(request_id: &str, label: String) -> Self {
@@ -333,7 +333,7 @@ mod data_run_tests {
     use super::*;
 
     /// The email and calendar checks are fed untrusted text: they never
-    /// get the Chief of Staff's browser, which only its chats may use
+    /// get Nandi's browser, which only its chats may use
     /// (`agent_pilot_tools` is merged on the chat branch alone).
     #[test]
     fn a_check_started_run_never_gets_pilot_tools() {

@@ -5,7 +5,7 @@
 //! without changing the queue.
 //!
 //! What the words say (pressure to hurry, a sign-in or payment lure, a
-//! borrowed brand) is the Chief of Staff's to read and explain in the
+//! borrowed brand) is Nandi's to read and explain in the
 //! item's thread (`thread::prompt_for`), not a word list's.
 //!
 //! A sign is either a warning or a block. Any block, or
@@ -65,7 +65,7 @@ pub struct Evidence<'a> {
     /// The sender's display name and address, when there is one
     pub sender_name: Option<&'a str>,
     pub sender_email: Option<&'a str>,
-    /// Subject, body, and the request the Chief of Staff wrote from them
+    /// Subject, body, and the request Nandi wrote from them
     pub texts: Vec<&'a str>,
     /// The user's own addresses (lookalikes of their domains are blocked)
     pub own_addresses: Vec<&'a str>,
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn what_the_words_say_is_left_to_the_model() {
         // Lures and pressure with nothing mechanical behind them: the
-        // Chief of Staff reads them and explains the risk in the thread
+        // Nandi reads them and explains the risk in the thread
         for text in [
             "URGENT: your password will expire today. Log in at https://login-micros0ft.com/reset",
             "Our bank details have changed; please pay by gift card within 24 hours",

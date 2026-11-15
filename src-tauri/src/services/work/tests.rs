@@ -274,7 +274,7 @@ fn task_record(input: serde_json::Value) -> crate::services::a2a::task::TaskReco
     TaskRecord {
         id: "t1".into(),
         requester_instance: "me".into(),
-        requester_agent: "chief-of-staff".into(),
+        requester_agent: "writer".into(),
         provider_instance: "i-sam".into(),
         provider_agent: "i-sam/gateway".into(),
         capability: "assign-me".into(),

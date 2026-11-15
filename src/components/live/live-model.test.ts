@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import i18n from '@/i18n/config'
-import type { LiveChange } from '@/lib/bindings'
+import { DEFAULT_AGENT, type LiveChange } from '@/lib/bindings'
 import {
   authorText,
   changeFiles,
@@ -31,12 +31,12 @@ describe('live model', () => {
       authorText(
         {
           kind: 'agent',
-          agentId: 'chief-of-staff',
-          agentName: 'Chief of Staff',
+          agentId: DEFAULT_AGENT,
+          agentName: 'Nandi',
         },
         t
       )
-    ).toBe('by Chief of Staff')
+    ).toBe('by Nandi')
     expect(
       authorText(
         {

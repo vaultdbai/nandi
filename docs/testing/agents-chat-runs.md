@@ -345,30 +345,31 @@ Shared preconditions used below:
 - **Needs relay:** no
 - **Status:** Shipped
 
-### AG-30 — Chief of Staff comes with Nandi
+### AG-30 — Nandi, the default agent, comes with the app
 
-- **What:** Chief of Staff is built into the app, not installed from a pack.
-  - On every start (and when a repo is fetched from a remote), Nandi writes `.nandi/agents/chief-of-staff/skill.md` and `instructions.md` if `skill.md` is missing, and stages them. A new repo's first commit includes it.
+- **What:** Nandi, the default agent (ID `nandi`), is built into the app, not installed from a pack.
+  - On every start (and when a repo is fetched from a remote), the app writes `.nandi/agents/nandi/skill.md` and `instructions.md` if `skill.md` is missing, and stages them. A new repo's first commit includes it.
   - It's an ordinary local agent: no install, consent or fork. The user edits its skill and **Your rules** like any agent of their own; Backup commits and pushes its history with the rest of the repo. An existing folder is never overwritten.
   - It can't be deleted: Delete is hidden in its menu, page and Settings, and `delete_agent` refuses it. If its `skill.md` is removed by hand, the next start puts the shipped one back and keeps the user's `instructions.md`.
   - It's listed first in the sidebar under Agents and on the All agents page, whatever its status.
   - Home's Get started and the companion's first-run text don't count it as "an agent", so they still suggest a starter pack.
-- **Where:** `src-tauri/src/services/builtin_agents.rs` (`CHIEF_OF_STAFF`, `seed`), `src-tauri/resources/builtin-agents/chief-of-staff/`, `repo_bootstrap.rs` (`ensure_scaffolding`), `services/agents.rs` (`AgentInfo.builtin`, `delete_agent`), `nav-tree.ts` (`agentNodes`), `agent-page-model.ts` (`sortAgents`), `dashboard-model.ts`, `AgentMenu.tsx`, `AgentView.tsx`, `AgentSettingsTab.tsx`.
+- **Where:** `src-tauri/src/services/builtin_agents.rs` (`DEFAULT_AGENT`, `seed`), `src-tauri/resources/builtin-agents/nandi/`, `repo_bootstrap.rs` (`ensure_scaffolding`), `services/agents.rs` (`AgentInfo.kind`, `AgentKind`, `delete_agent`), `lib/agent-identity.ts` (`isDefaultAgent`), `nav-tree.ts` (`agentNodes`), `agent-page-model.ts` (`sortAgents`), `dashboard-model.ts`, `AgentMenu.tsx`, `AgentView.tsx`, `AgentSettingsTab.tsx`.
 - **Preconditions:** A new Nandi home (empty `~/.nandi`).
 - **Steps:**
   1. Start Nandi and finish setup without picking a starter pack.
-  2. Open Agents › Chief of Staff, open its menu and Settings.
+  2. Open Agents › Nandi, open its menu and Settings.
   3. In Settings › Your rules, add a line and save. Restart Nandi.
   4. Open My notes with no notes.
 - **Expected:**
-  - Step 1: Chief of Staff is first under Agents; `git log` in `~/.nandi/repo` shows its files in the first commit.
+  - Step 1: Nandi is first under Agents; `git log` in `~/.nandi/repo` shows its files in the first commit.
   - Step 2: no Delete anywhere; no "installed from the marketplace" banner.
   - Step 3: the line is still there after the restart.
   - Step 4: "No notes yet" with **Open Chief of Staff**.
 - **Edge / negative cases:**
-  - Installing a pack that still contains `chief-of-staff` is refused ("you already have chief-of-staff"); dev-pack must drop it (0.5.0).
-  - Deleting `.nandi/agents/chief-of-staff/skill.md` by hand: the next start restores it.
-- **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `keeps_the_users_edits`, `restores_a_removed_skill_but_keeps_the_role`, `the_shipped_skills_parse_and_stay_short`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_builtin_agents_first_in_their_own_order`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`), `nav-tree.test.ts` ('keeps the built-in agents on top…'), `agent-page-model.test.ts` ('puts a built-in agent first…') | Layer: unit | Gap: no test of the hidden Delete.
+  - Installing a pack that contains an agent `nandi` is refused ("you already have nandi").
+  - Deleting `.nandi/agents/nandi/skill.md` by hand: the next start restores it.
+  - An old `.nandi/agents/chief-of-staff/` folder from a dev build stays as an ordinary agent; nothing reads it. Reset `~/.nandi` to drop it.
+- **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `keeps_the_users_edits`, `restores_a_removed_skill_but_keeps_the_role`, `the_shipped_skills_parse_and_stay_short`, `no_file_outside_this_one_spells_the_default_agent_id`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_the_default_agent_first`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`), `nav-tree.test.ts` ('keeps the built-in agents on top…'), `agent-page-model.test.ts` ('puts a built-in agent first…') | Layer: unit | Gap: no test of the hidden Delete.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -379,7 +380,7 @@ Shared preconditions used below:
   - It ships with no allowed sites. A new site shows the "allow this site?" card with its reason, and it waits.
   - Only the user's chats and intake threads get the browser. The email and calendar check runs never do.
   - Its behaviour is in its `skill.md` ("Website work", body 900 words or fewer).
-- **Where:** `resources/builtin-agents/chief-of-staff/skill.md` ("Website work", `pilots`), `services/orchestrator/llm_step.rs` (`data_run_allows`, `agent_pilot_tools`).
+- **Where:** `resources/builtin-agents/nandi/skill.md` ("Website work", `pilots`), `services/orchestrator/llm_step.rs` (`data_run_allows`, `agent_pilot_tools`).
 - **Preconditions:** A new Nandi home. The Browser pilot installed and started in Library › Tools, with Chrome or Edge on the computer.
 - **Steps:**
   1. Ask Chief of Staff: "Check what example.com says on its home page."
@@ -437,7 +438,7 @@ Shared preconditions used below:
   - **Playbooks tab** on the agent page: the list (name, description, when), the open playbook in a Markdown editor with a word count, **New playbook**, **Save playbook** (checks the same rules: taken name, kebab-case, required fields, word limit), **Delete** (asks first). Leaving with unsaved changes asks first. Broken files show with their error.
   - An installed agent's playbooks are read-only (no New, Save or Delete). Installs bring `skills/*.md`.
   - Chief of Staff ships eight, added once when it has no `skills/` folder: `web-task`, `pay-a-bill`, `sign-in-and-accounts`, `delegate-work`, `build-a-workflow`, `email-triage`, `meeting-prep`, `occasions`. Edits and deletions stay.
-- **Where:** `src-tauri/src/services/domain/playbook.rs`, `services/repos/agent_repo.rs` (`load_playbooks`, `save_playbook`, `delete_playbook`), `services/repo_service.rs`, `rpc/repo.rs`, `rpc/repo.rs`, `services/playbooks.rs`, `services/orchestrator/llm_step.rs` (offer), `services/orchestrator/tool_calls.rs` (`run_call`), `services/builtin_agents.rs`, `src-tauri/resources/builtin-agents/chief-of-staff/skills/`, `src/components/agents/AgentPlaybooksTab.tsx`, `playbooks-model.ts`, `src/hooks/usePlaybooks.ts`.
+- **Where:** `src-tauri/src/services/domain/playbook.rs`, `services/repos/agent_repo.rs` (`load_playbooks`, `save_playbook`, `delete_playbook`), `services/repo_service.rs`, `rpc/repo.rs`, `rpc/repo.rs`, `services/playbooks.rs`, `services/orchestrator/llm_step.rs` (offer), `services/orchestrator/tool_calls.rs` (`run_call`), `services/builtin_agents.rs`, `src-tauri/resources/builtin-agents/nandi/skills/`, `src/components/agents/AgentPlaybooksTab.tsx`, `playbooks-model.ts`, `src/hooks/usePlaybooks.ts`.
 - **Preconditions:** None (Chief of Staff is built in).
 - **Steps:**
   1. Open Agents › Chief of Staff › Playbooks.
@@ -479,7 +480,7 @@ Shared preconditions used below:
   5. Open an installed pack agent with a browser pilot.
 - **Expected:**
   - Step 1: "Secret ACME_PASSWORD added"; the row shows **Secret saved**; the form is empty again.
-  - Step 2: `secrets: { ACME_PASSWORD: nandi.pilot.chief-of-staff.acme-password }` under the browser; no value anywhere.
+  - Step 2: `secrets: { ACME_PASSWORD: nandi.pilot.nandi.acme-password }` under the browser; no value anywhere.
   - Step 3: "Signed out everywhere"; the next run's browser starts signed out; the button is disabled.
   - Step 4: the write is refused ("looks like a card number"); the agent says it won't keep it.
   - Step 5: secret values can be set; no **Add secret**.
@@ -499,7 +500,7 @@ Shared preconditions used below:
   - The approval card: "Save a new playbook: <name>", why, what it covers, when, and **Show the steps**. For a name it already has: "Change the playbook <name> (replaces the current one)", the old description or when struck through ("Was: …"), and **Show the changes** (a line diff). **Approve** writes `skills/<name>.md` and commits; **Reject** writes nothing.
   - It needs no run plan (not a change for the classifier).
   - From repeated work: when Chief of Staff does a step itself and did the same work itself before, it adds `- [ ] Add a playbook "<name>" (from <n> similar tasks)` to `my-notes/suggestions.md` once (never a dismissed one) and proposes the playbook when the user ticks it or says yes.
-- **Where:** `src-tauri/src/services/playbooks.rs` (`propose_spec`, `gate`, `check`, `apply`, `prompt_section`), `services/orchestrator/llm_step.rs` (offer), `services/orchestrator/executor.rs` (gate), `services/orchestrator/tool_calls.rs` (`run_call`), `services/run_plan/classify.rs`, `services/requests/recurrence.rs` (`playbook_hint`), `services/requests/self_step.rs` (`prompt`), `resources/builtin-agents/chief-of-staff/skill.md`, `skills/build-a-workflow.md`, `src/components/agent-console/ApprovalRequestCard.tsx`, `PlaybookProposalPreview.tsx`, `playbook-proposal-model.ts`, `src/components/inbox/approval-model.ts`.
+- **Where:** `src-tauri/src/services/playbooks.rs` (`propose_spec`, `gate`, `check`, `apply`, `prompt_section`), `services/orchestrator/llm_step.rs` (offer), `services/orchestrator/executor.rs` (gate), `services/orchestrator/tool_calls.rs` (`run_call`), `services/run_plan/classify.rs`, `services/requests/recurrence.rs` (`playbook_hint`), `services/requests/self_step.rs` (`prompt`), `resources/builtin-agents/nandi/skill.md`, `skills/build-a-workflow.md`, `src/components/agent-console/ApprovalRequestCard.tsx`, `PlaybookProposalPreview.tsx`, `playbook-proposal-model.ts`, `src/components/inbox/approval-model.ts`.
 - **Preconditions:** None (Chief of Staff is built in).
 - **Steps:**
   1. In Chief of Staff's chat: "Remember: I pay bills from Chase, never the card."

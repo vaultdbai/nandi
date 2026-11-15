@@ -1927,7 +1927,7 @@ async deleteNote(name: string) : Promise<Result<null, string>> {
 }
 },
 /**
- * The Chief of Staff's open capability suggestions
+ * Nandi's open capability suggestions
  */
 async listNoteSuggestions() : Promise<Result<Suggestion[], string>> {
     try {
@@ -2035,7 +2035,7 @@ async setEmailPaused(provider: MailProvider, paused: boolean) : Promise<Result<E
 }
 },
 /**
- * Signs out: deletes the sign-in, the cursor and the Chief of Staff's access
+ * Signs out: deletes the sign-in, the cursor and Nandi's access
  */
 async disconnectEmail(provider: MailProvider) : Promise<Result<EmailStatus, string>> {
     try {
@@ -2448,12 +2448,12 @@ async startRequest(plan: ActionPlan, text: string) : Promise<Result<string, stri
 }
 },
 /**
- * What the Chief of Staff did since the user last looked, and the work
+ * What Nandi did since the user last looked, and the work
  * waiting on them
  */
-async getChiefOfStaffDigest() : Promise<Result<ChiefOfStaffDigest, string>> {
+async getNandiDigest() : Promise<Result<NandiDigest, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_chief_of_staff_digest") };
+    return { status: "ok", data: await TAURI_INVOKE("get_nandi_digest") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2462,9 +2462,9 @@ async getChiefOfStaffDigest() : Promise<Result<ChiefOfStaffDigest, string>> {
 /**
  * The user has seen the digest: only what waits on them stays
  */
-async markChiefOfStaffDigestSeen() : Promise<Result<null, string>> {
+async markNandiDigestSeen() : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("mark_chief_of_staff_digest_seen") };
+    return { status: "ok", data: await TAURI_INVOKE("mark_nandi_digest_seen") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2506,7 +2506,7 @@ async getIntakeThread(conversationId: string) : Promise<Result<IntakeThread, str
 }
 },
 /**
- * The user's message in an intake thread: a Chief of Staff turn there
+ * The user's message in an intake thread: a Nandi turn there
  */
 async sendIntakeMessage(conversationId: string, text: string, clientMessageId: string | null) : Promise<Result<SendMessageResult, string>> {
     try {
@@ -2530,7 +2530,7 @@ async openInboxThread(conversationId: string) : Promise<Result<InboxThread, stri
 }
 },
 /**
- * The user's message in an Inbox item's chat: a Chief of Staff turn there
+ * The user's message in an Inbox item's chat: a Nandi turn there
  */
 async sendInboxMessage(conversationId: string, text: string, clientMessageId: string | null) : Promise<Result<SendMessageResult, string>> {
     try {
@@ -3970,6 +3970,7 @@ workspaceChanged: "workspace://changed"
 /** user-defined constants **/
 
 export const DAILY_LIMIT = "daily_limit" as const;
+export const DEFAULT_AGENT = "nandi" as const;
 export const ENVELOPE_TOO_LARGE = "envelope_too_large" as const;
 export const GROUP_CAPABILITY_NOT_ALLOWED = "group_capability_not_allowed" as const;
 export const GROUP_DAILY_LIMIT = "group_daily_limit" as const;
@@ -4183,10 +4184,27 @@ skillPath: string; status: AgentStatus; currentTask: string | null;
  */
 origin: AgentOrigin; 
 /**
- * Ships with Nandi (`services::builtin_agents`): listed first, and
- * can't be deleted
+ * The default agent, one the user made, or one they installed
  */
-builtin: boolean }
+kind: AgentKind }
+/**
+ * What an agent is to the user. The default agent (Nandi) is listed
+ * first here, can't be deleted, and the app shows it apart from the
+ * user's own agents.
+ */
+export type AgentKind = 
+/**
+ * Nandi, `builtin_agents::DEFAULT_AGENT`, in its own local folder
+ */
+"default" | 
+/**
+ * One the user made or forked
+ */
+"local" | 
+/**
+ * Installed from a publisher or with a pack
+ */
+"pack"
 /**
  * An installable agent, from a registry.
  */
@@ -4774,7 +4792,7 @@ export type BackfillEstimate = { provider: MailProvider;
  */
 emails: number; 
 /**
- * About how many Chief of Staff runs that is
+ * About how many Nandi runs that is
  */
 runs: number }
 export type BackfillPhase = 
@@ -4800,7 +4818,7 @@ export type BackfillStatus = { phase: BackfillPhase;
  */
 backTo: number | null; 
 /**
- * Emails handed to the Chief of Staff so far
+ * Emails handed to Nandi so far
  */
 read: number }
 /**
@@ -5155,20 +5173,6 @@ export type CheckState = "ok" | "missing" | "stopped" | "needsUpdate" |
  * By policy, permissions, a proxy, the firmware or a failed engine
  */
 "blocked" | "unknown"
-export type ChiefOfStaffDigest = { 
-/**
- * When the user last marked it seen, epoch ms (`None`: never)
- */
-since: number | null; 
-/**
- * Waiting on the user first, then newest first
- */
-items: DigestItem[]; 
-/**
- * From outside, screened, waiting for the user's approval before it
- * starts or reaches its Request (`services::intake`), oldest first
- */
-queue: QueuedWork[] }
 /**
  * How a requester agent answers a provider's questions, kept in its
  * skill.md (`clarification:`)
@@ -5623,7 +5627,7 @@ text: string | null;
  */
 at: number; 
 /**
- * Its Chief of Staff thread, when it came through intake
+ * Its Nandi thread, when it came through intake
  */
 threadId: string | null; 
 /**
@@ -5632,7 +5636,7 @@ threadId: string | null;
  */
 waitingStep: WaitingStep | null; 
 /**
- * Finished work that recurs: the Chief of Staff offers **Save as
+ * Finished work that recurs: Nandi offers **Save as
  * workflow** (`recurrence`)
  */
 workflowProposal: WorkflowProposal | null }
@@ -5744,7 +5748,7 @@ available: boolean; connected: boolean; accountName: string | null; accountEmail
  */
 accountProfile: Profile | null; state: EmailAccountState; error: string | null; lastCheckedAt: number | null; 
 /**
- * Emails the last check handed to the Chief of Staff
+ * Emails the last check handed to Nandi
  */
 lastFound: number; lastRunId: string | null; 
 /**
@@ -6927,6 +6931,20 @@ agentsCanWrite: boolean;
  * Sorted by name
  */
 notes: NoteFile[] }
+export type NandiDigest = { 
+/**
+ * When the user last marked it seen, epoch ms (`None`: never)
+ */
+since: number | null; 
+/**
+ * Waiting on the user first, then newest first
+ */
+items: DigestItem[]; 
+/**
+ * From outside, screened, waiting for the user's approval before it
+ * starts or reaches its Request (`services::intake`), oldest first
+ */
+queue: QueuedWork[] }
 export type NetworkCapabilities = { allow?: HostRule[] }
 /**
  * One instance on the relay. Duplicate names are allowed: `instance_id`
@@ -6990,7 +7008,7 @@ export type OllamaStatus = { running: boolean; models: string[] }
  */
 export type OnboardingStep = "name" | "model" | 
 /**
- * Connect the mailboxes the Chief of Staff reads (optional)
+ * Connect the mailboxes Nandi reads (optional)
  */
 "email" | 
 /**
@@ -7556,7 +7574,7 @@ at: number; source: RequestSource; action: IntakeAction;
  */
 requestId: string | null; requestTitle: string | null; 
 /**
- * The request or news, in the Chief of Staff's words, with its source
+ * The request or news, in Nandi's words, with its source
  */
 text: string; 
 /**
@@ -7568,7 +7586,7 @@ sender: string | null; screening: Screening; status: IntakeStatus;
  */
 resultRequestId: string | null; 
 /**
- * Its Chief of Staff thread (`intake:<id>`)
+ * Its Nandi thread (`intake:<id>`)
  */
 threadId: string; 
 /**
@@ -8031,17 +8049,17 @@ export type RequestSource =
  */
 "me" | 
 /**
- * The Chief of Staff, from new mail
+ * Nandi, from new mail
  */
 "email" | 
 /**
- * The Chief of Staff, from a calendar change
+ * Nandi, from a calendar change
  */
 "calendar" | 
 /**
- * The Chief of Staff, in a chat
+ * Nandi, in a chat
  */
-"chiefOfStaff" | 
+"nandi" | 
 /**
  * A teammate's request to one of the user's agents (intake only)
  */
@@ -8456,7 +8474,7 @@ export type SourceType = "user" | "workflow" |
  */
 "calendarCheck" | 
 /**
- * A step of a local Request the Chief of Staff does itself
+ * A step of a local Request Nandi does itself
  * (`services::requests::self_step`); the source ID is the Request's
  */
 "request"
@@ -9139,7 +9157,7 @@ runId: string | null;
  */
 runStatus: WorkflowRunStatus | null }
 /**
- * The Chief of Staff's offer to save a finished Request as a workflow
+ * Nandi's offer to save a finished Request as a workflow
  */
 export type WorkflowProposal = { requestId: string; reason: RecurrenceReason; 
 /**
@@ -9305,7 +9323,7 @@ export type WorkspaceAccountStatus = { kind: AccountKind; id: string; family: Ac
  */
 available: boolean; connected: boolean; accountEmail: string | null; needsSignIn: boolean; error: string | null; lastCheckedAt: number | null; 
 /**
- * Calendar: events the last check handed to the Chief of Staff
+ * Calendar: events the last check handed to Nandi
  */
 lastFound: number; lastRunId: string | null }
 /**

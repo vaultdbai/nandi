@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ArtifactRef, AskContext};
 use crate::model::{RunStatus, RunSummary};
-use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::AppState;
 
 /// Runs listed as recent outputs
@@ -464,11 +464,12 @@ pub fn describe_guides(question: &str) -> String {
     out
 }
 
-/// The context as the system prompt section the model reads
-/// What the Chief of Staff does itself, on its line in the planner's list
-const CHIEF_OF_STAFF_STEP: &str = " Can do one step of a plan itself: a task on a website in its \
+/// What Nandi does itself, on its line in the planner's list
+const DEFAULT_AGENT_STEP: &str =
+    " The default agent. Can do one step of a plan itself: a task on a website in its \
 browser (pay a bill, book, download), its notes, triage of the user's mail and calendar.";
 
+/// The context as the system prompt section the model reads
 pub fn describe(context: &GatewayContext) -> String {
     let mut out = String::new();
     out.push_str(&format!(
@@ -548,8 +549,8 @@ pub fn describe(context: &GatewayContext) -> String {
             .agents
             .iter()
             .map(|a| {
-                let own = if a.id == CHIEF_OF_STAFF {
-                    CHIEF_OF_STAFF_STEP
+                let own = if a.id == DEFAULT_AGENT {
+                    DEFAULT_AGENT_STEP
                 } else {
                     ""
                 };

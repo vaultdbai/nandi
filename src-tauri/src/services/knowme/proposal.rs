@@ -1,4 +1,4 @@
-//! A know-me proposal: what the Chief of Staff drafts from the person's
+//! A know-me proposal: what Nandi drafts from the person's
 //! answers, and what each part changes once the person confirms it. Pure:
 //! [`KnowMeProposal::checked`] holds the rules, and the edits are made on
 //! values ([`apply_to_manifest`], [`add_lines`]); `knowme::apply` reads
@@ -414,7 +414,7 @@ pub fn spec() -> crate::llm::ToolSpec {
 
 /// My notes' file for what the person told Nandi
 pub const ABOUT_ME: &str = "about-me.md";
-/// The same, for them only (the Chief of Staff never shares `private/`)
+/// The same, for them only (Nandi never shares `private/`)
 pub const PRIVATE_ABOUT_ME: &str = "private/about-me.md";
 /// The section of a group's note
 pub const SHARED_SECTION: &str = "Personal";

@@ -32,7 +32,7 @@
 //!   preferred_providers:              # my pins: capability → provider card ID
 //!     find-papers: inst-7f3a/papers
 //! connector_grants:                   # saved grants (`grant.rs`); local ones are in settings.local.yaml
-//!   - { agent: chief-of-staff, connector: outlook, access: read }
+//!   - { agent: writer, connector: outlook, access: read }
 //! ```
 //!
 //! Machine-specific preferences (the quick pane shortcut) stay in the local

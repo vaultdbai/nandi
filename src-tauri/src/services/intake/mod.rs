@@ -11,7 +11,7 @@
 //!   at once; anything else waits here. Approving lets that one task past
 //!   the trust check ([`is_approved_task`]).
 //!
-//! Each item gets a Chief of Staff thread ([`thread`]) to talk it over.
+//! Each item gets a Nandi thread ([`thread`]) to talk it over.
 //! Work to start is planned when it's queued, so the user approves who
 //! does it, not just what.
 //!
@@ -66,7 +66,7 @@ pub struct QueuedWork {
     /// (a Request page too)
     pub request_id: Option<String>,
     pub request_title: Option<String>,
-    /// The request or news, in the Chief of Staff's words, with its source
+    /// The request or news, in Nandi's words, with its source
     pub text: String,
     /// Who it came from ("Name <address>"), when known
     pub sender: Option<String>,
@@ -74,13 +74,13 @@ pub struct QueuedWork {
     pub status: IntakeStatus,
     /// The Request it started or updated, once approved
     pub result_request_id: Option<String>,
-    /// Its Chief of Staff thread (`intake:<id>`)
+    /// Its Nandi thread (`intake:<id>`)
     pub thread_id: String,
     /// For `start`: who does it, planned when it was queued
     pub plan: Option<ActionPlan>,
 }
 
-/// What the Chief of Staff wants done, before screening
+/// What Nandi wants done, before screening
 #[derive(Debug, Clone, Default)]
 pub struct Proposal {
     pub source: RequestSource,
@@ -572,7 +572,7 @@ async fn approve_as(state: &AppState, id: String, rule: Option<String>) -> Resul
         return Err("This item was blocked by screening; it can only be dismissed".to_string());
     }
     // New work is saved first and started once it's linked to this item,
-    // so a Chief of Staff step finds the thread it runs in
+    // so a Nandi step finds the thread it runs in
     let mut created = None;
     let request_id = match (item.action, item.request_id.clone()) {
         // The waiting task sees the approval and runs (`gate_task`)
@@ -942,7 +942,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn each_item_gets_a_chief_of_staff_thread_that_its_news_joins() {
+    async fn each_item_gets_a_nandi_thread_that_its_news_joins() {
         let state = AppState::for_tests(Vec::new());
         let item = propose(
             &state,
@@ -965,7 +965,7 @@ mod tests {
         };
         assert_eq!(
             owner.as_deref(),
-            Some(crate::services::builtin_agents::CHIEF_OF_STAFF)
+            Some(crate::services::builtin_agents::DEFAULT_AGENT)
         );
         let notes = thread_notes(&state, &item.thread_id).await;
         assert_eq!(notes.len(), 1);
@@ -1010,11 +1010,14 @@ mod tests {
         assert!(prompt.contains("The due date moved to Monday"));
 
         // Only a thread takes thread messages
-        assert!(
-            inbox::thread::send(&state, "agent:chief-of-staff".into(), "hi".into(), None)
-                .await
-                .is_err()
-        );
+        assert!(inbox::thread::send(
+            &state,
+            db::agent_conversation_id(crate::services::builtin_agents::DEFAULT_AGENT),
+            "hi".into(),
+            None
+        )
+        .await
+        .is_err());
     }
 
     fn teammate_rule(instance_id: &str) -> rules::AutoApproveRule {
@@ -1115,7 +1118,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_chief_of_staff_explains_a_lure_screening_cant_see() {
+    async fn nandi_explains_a_lure_screening_cant_see() {
         let state = AppState::for_tests(Vec::new());
         let item = propose(
             &state,

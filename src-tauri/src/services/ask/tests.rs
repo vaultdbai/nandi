@@ -703,31 +703,34 @@ async fn the_model_plan_is_kept_to_what_exists() {
 }
 
 #[tokio::test]
-async fn the_planner_may_give_the_chief_of_staff_one_step() {
-    use crate::services::builtin_agents::CHIEF_OF_STAFF;
+async fn the_planner_may_give_nandi_one_step() {
+    use crate::services::builtin_agents::DEFAULT_AGENT;
 
     let mut context = context_for("home");
     context.agents.push(AgentBrief {
-        id: CHIEF_OF_STAFF.into(),
-        name: "Chief of Staff".into(),
+        id: DEFAULT_AGENT.into(),
+        name: "Nandi".into(),
         description: "Your representative.".into(),
     });
     // Its line says what it can do itself
     let described = context::describe(&context);
     assert!(
-        described.contains("Can do one step of a plan itself: a task on a website"),
+        described
+            .contains("The default agent. Can do one step of a plan itself: a task on a website"),
         "{described}"
     );
-    let llm = FakeAskLlm::replying(&[r#"{"steps": [
-        {"kind": "localAgent", "target": "chief-of-staff", "description": "Pay the bill on acme-energy.com"},
-        {"kind": "localAgent", "target": "writer", "description": "Write the note"},
-        {"kind": "localAgent", "target": "chief-of-staff", "description": "File the receipt"}
-    ]}"#]);
+    let reply = serde_json::json!({ "steps": [
+        { "kind": "localAgent", "target": DEFAULT_AGENT, "description": "Pay the bill on acme-energy.com" },
+        { "kind": "localAgent", "target": "writer", "description": "Write the note" },
+        { "kind": "localAgent", "target": DEFAULT_AGENT, "description": "File the receipt" }
+    ]})
+    .to_string();
+    let llm = FakeAskLlm::replying(&[reply.as_str()]);
     let plan = planner::plan(llm.as_ref(), "Pay the Acme bill", &context).await;
     assert_eq!(
         plan_targets(&plan),
         [
-            (PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
+            (PlanStepKind::LocalAgent, DEFAULT_AGENT),
             (PlanStepKind::LocalAgent, "writer"),
         ]
     );

@@ -1,4 +1,4 @@
-//! My notes and the Chief of Staff's suggestions.
+//! My notes and Nandi's suggestions.
 
 use crate::services::notes::corrections::Suggestion;
 use crate::services::notes::{self, MyNotes, NoteFile};
@@ -19,7 +19,7 @@ super::commands! {
     /// Lets agents update the notes (without asking each time), or not
     fn set_notes_agents_can_write(state, allow: bool) -> MyNotes => notes::set_agents_can_write(&state, allow).await;
 
-    /// The Chief of Staff's open capability suggestions
+    /// Nandi's open capability suggestions
     fn list_note_suggestions(state) -> Vec<Suggestion> => notes::suggestions(&state).await;
 
     /// Accepts or dismisses a suggestion (remembered in corrections.md)

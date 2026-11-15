@@ -141,10 +141,10 @@ async fn notes_say_who_changed_them() {
         ChangeAuthor::You
     );
 
-    // Chief of Staff, during its run
+    // Nandi, during its run
     {
         let conn = state.db().conn().unwrap();
-        crate::db::tests::start_run(&conn, crate::services::builtin_agents::CHIEF_OF_STAFF, "r1");
+        crate::db::tests::start_run(&conn, crate::services::builtin_agents::DEFAULT_AGENT, "r1");
     }
     fs::write(tmp.path().join("by-agent.md"), "# Kept").unwrap();
     wait_until("the agent's write", || {
@@ -153,7 +153,7 @@ async fn notes_say_who_changed_them() {
     .await;
     assert!(matches!(
         note_change(&state, "by-agent.md").unwrap().author,
-        ChangeAuthor::Agent { agent_id, .. } if agent_id == "chief-of-staff"
+        ChangeAuthor::Agent { agent_id, .. } if agent_id == crate::services::builtin_agents::DEFAULT_AGENT
     ));
     state.shutdown();
 }

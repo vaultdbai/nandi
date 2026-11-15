@@ -234,7 +234,7 @@ fn validate_agent(
 
 /// Parses a workflow. Its agent steps may drive only the agents in
 /// `drives`: a pack's workflow never sends work to the user's own agents
-/// (the Chief of Staff) or another install's, which it has no consent for.
+/// (Nandi) or another install's, which it has no consent for.
 fn validate_workflow(
     path: &str,
     files: &FileSet,

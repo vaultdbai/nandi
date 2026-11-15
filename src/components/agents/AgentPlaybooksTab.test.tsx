@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen } from '@/test/test-utils'
 import { commands } from '@/lib/tauri-bindings'
-import type { AgentPlaybooks } from '@/lib/bindings'
+import { DEFAULT_AGENT, type AgentPlaybooks } from '@/lib/bindings'
 import type { AgentInfo } from '@/types/agent'
 import { AgentPlaybooksTab } from './AgentPlaybooksTab'
 
@@ -10,7 +10,7 @@ type Commands = Record<string, unknown>
 const mocked = commands as unknown as Commands
 const ok = <T,>(data: T) => ({ status: 'ok' as const, data })
 
-const agent = { id: 'chief-of-staff' } as AgentInfo
+const agent = { id: DEFAULT_AGENT } as AgentInfo
 const pay = {
   name: 'pay-a-bill',
   description: 'Pay a bill online',
@@ -53,7 +53,7 @@ describe('AgentPlaybooksTab', () => {
     await userEvent.type(body, ' Then pay.')
     await userEvent.click(screen.getByRole('button', { name: 'Save playbook' }))
     expect(mocked.repoSaveAgentPlaybook).toHaveBeenCalledWith(
-      'chief-of-staff',
+      DEFAULT_AGENT,
       { ...pay, body: '1. Plan first. Then pay.' },
       'pay-a-bill'
     )
@@ -80,7 +80,7 @@ describe('AgentPlaybooksTab', () => {
     await userEvent.type(screen.getByLabelText('Steps (Markdown)'), 'Draft.')
     await userEvent.click(save)
     expect(mocked.repoSaveAgentPlaybook).toHaveBeenCalledWith(
-      'chief-of-staff',
+      DEFAULT_AGENT,
       {
         name: 'occasions',
         description: 'Birthday messages',
@@ -98,7 +98,7 @@ describe('AgentPlaybooksTab', () => {
     const buttons = screen.getAllByRole('button', { name: 'Delete' })
     await userEvent.click(buttons[buttons.length - 1] as HTMLElement)
     expect(mocked.repoDeleteAgentPlaybook).toHaveBeenCalledWith(
-      'chief-of-staff',
+      DEFAULT_AGENT,
       'pay-a-bill'
     )
   })

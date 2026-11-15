@@ -18,7 +18,7 @@ import { unwrapResult } from '@/lib/tauri-bindings'
 import { useClientQuery } from '@/hooks/useClientQuery'
 
 export const autoApproveKeys = {
-  all: ['chief-of-staff', 'auto-approve'] as const,
+  all: ['nandi', 'auto-approve'] as const,
 }
 
 export function useAutoApproveRules() {

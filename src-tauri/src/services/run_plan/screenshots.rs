@@ -233,7 +233,7 @@ mod tests {
         );
         assert_eq!(backup_exclude(work, work).as_deref(), Some("*/browser/*"));
         assert_eq!(
-            backup_exclude(&work.join("chief-of-staff"), work).as_deref(),
+            backup_exclude(&work.join("writer"), work).as_deref(),
             Some("browser/*")
         );
         assert_eq!(backup_exclude(Path::new("/home/u/Pictures"), work), None);

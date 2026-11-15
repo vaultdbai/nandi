@@ -103,7 +103,7 @@ pub(super) async fn llm_step(
             system.push_str(&today_prompt(&chrono::Local::now()));
             // An Inbox item's thread (an intake one too): the Chief of
             // Staff gets the item it's about and what's being decided
-            if ctx.agent_id == CHIEF_OF_STAFF && inbox::thread::is_thread(&ctx.conversation_id) {
+            if ctx.agent_id == DEFAULT_AGENT && inbox::thread::is_thread(&ctx.conversation_id) {
                 if let Some(state) = app_state(deps) {
                     if let Some(item) = inbox::thread::prompt(&state, &ctx.conversation_id).await {
                         system.push_str(&item);
@@ -112,7 +112,7 @@ pub(super) async fn llm_step(
             }
             // Someone's request: what the user shares with a group they're
             // both in (`knowme::sharing`)
-            if ctx.agent_id == CHIEF_OF_STAFF {
+            if ctx.agent_id == DEFAULT_AGENT {
                 if let (Some(task_id), Some(state)) =
                     (ctx.conversation_id.strip_prefix("task:"), app_state(deps))
                 {
@@ -123,8 +123,8 @@ pub(super) async fn llm_step(
                     }
                 }
             }
-            // A step of a work plan the Chief of Staff does itself: the plan
-            if ctx.agent_id == CHIEF_OF_STAFF {
+            // A step of a work plan Nandi does itself: the plan
+            if ctx.agent_id == DEFAULT_AGENT {
                 if let Some(request_id) = request_step(deps, &ctx.run_id).await {
                     let plan = deps
                         .bus
@@ -197,7 +197,7 @@ pub(super) async fn llm_step(
                 }
                 tools
             };
-            // The Chief of Staff's work tools (on the host)
+            // Nandi's work tools (on the host)
             for spec in requests::tool::offered(&skill.id) {
                 if !tools.iter().any(|t| t.name == spec.name) {
                     tools.push(spec);
@@ -262,7 +262,7 @@ pub(super) async fn llm_step(
             }
             // An Inbox item's thread: the decisions that fit the item now
             // (after deferral, so never hidden behind `tool_search`)
-            if ctx.agent_id == CHIEF_OF_STAFF {
+            if ctx.agent_id == DEFAULT_AGENT {
                 if let Some(state) = app_state(deps) {
                     for spec in inbox::tool::offered(&state, &ctx.conversation_id).await {
                         if !tools.iter().any(|t| t.name == spec.name) {
@@ -545,7 +545,7 @@ pub(super) async fn data_run(deps: &RunDeps, run_id: &str) -> Option<SourceType>
         .filter(|source| matches!(source, SourceType::Email | SourceType::CalendarCheck))
 }
 
-/// The Request whose Chief of Staff step `run_id` does, if it does one
+/// The Request whose Nandi step `run_id` does, if it does one
 /// (`RunSource::request_step`; a compacted run's child keeps its source)
 pub(super) async fn request_step(deps: &RunDeps, run_id: &str) -> Option<String> {
     let id = run_id.to_string();
@@ -560,7 +560,7 @@ pub(super) async fn request_step(deps: &RunDeps, run_id: &str) -> Option<String>
 }
 
 /// The tools a check-started run may call: that check's, the notes, and
-/// the Chief of Staff's work tools (it acts on what arrived)
+/// Nandi's work tools (it acts on what arrived)
 pub(super) fn data_run_allows(source: SourceType, name: &str) -> bool {
     if requests::tool::is_work_tool(name) {
         return true;

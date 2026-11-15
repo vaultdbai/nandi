@@ -1289,12 +1289,12 @@ steps:
         (
             "a pack workflow",
             "workflows/review.yaml",
-            outside("chief-of-staff"),
+            outside("coordinator"),
         ),
         (
             "an agent's own workflow",
             scoped,
-            outside("chief-of-staff").replace("review", "citer-daily"),
+            outside("coordinator").replace("review", "citer-daily"),
         ),
     ];
     for (what, path, workflow) in cases {
@@ -1306,7 +1306,7 @@ steps:
             .install_local_pack(&local(&dir))
             .unwrap_err();
         assert!(
-            err.contains("drives the agent 'chief-of-staff'"),
+            err.contains("drives the agent 'coordinator'"),
             "{what}: {err}"
         );
         assert!(world.projected("agents").is_empty(), "{what}");

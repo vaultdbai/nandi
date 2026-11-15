@@ -1,5 +1,5 @@
 //! The read-only mail tools, run on the host for an agent with a read
-//! grant on a connected mailbox (the Chief of Staff, once the user
+//! grant on a connected mailbox (Nandi, once the user
 //! connects one). Results are marked as untrusted data.
 //!
 //! | Tool               | Arguments                    | Returns                                  |

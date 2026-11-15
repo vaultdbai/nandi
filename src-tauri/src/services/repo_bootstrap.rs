@@ -205,7 +205,7 @@ mod tests {
         );
         assert!(layout.settings_path().is_file());
         assert!(layout.manifest_path().is_file());
-        assert!(layout.skill_path(builtin_agents::CHIEF_OF_STAFF).is_file());
+        assert!(layout.skill_path(builtin_agents::DEFAULT_AGENT).is_file());
         assert!(
             repo.statuses(None).unwrap().is_empty(),
             "nothing left uncommitted"

@@ -2,6 +2,7 @@
  * Pure rules for the Dashboard's first-run hints: when the page is still
  * empty, which Get started cards apply, and when to nudge about backup.
  */
+import { isDefaultAgent } from '@/lib/agent-identity'
 import type { DashboardSnapshot, PackManifest } from '@/lib/bindings'
 
 export const GET_STARTED_KEY = 'getStarted'
@@ -13,7 +14,7 @@ const MAX_SUGGESTIONS = 2
 
 /** Whether there's an agent besides the built-in ones (Chief of Staff) */
 const hasOwnAgents = (snapshot: DashboardSnapshot) =>
-  snapshot.agentHealth.some(health => !health.agent.builtin)
+  snapshot.agentHealth.some(health => !isDefaultAgent(health.agent))
 
 /**
  * No agents but the built-in ones, and nothing has happened: show Get

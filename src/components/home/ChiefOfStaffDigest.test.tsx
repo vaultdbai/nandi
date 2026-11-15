@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import { commands } from '@/lib/tauri-bindings'
-import type { ChiefOfStaffDigest, DigestItem, QueuedWork } from '@/lib/bindings'
+import type { NandiDigest, DigestItem, QueuedWork } from '@/lib/bindings'
 import { useNavigationStore } from '@/store/navigation-store'
 import { ChiefOfStaffDigest as DigestCard } from './ChiefOfStaffDigest'
 
@@ -30,7 +30,7 @@ const digest = (
   items: DigestItem[],
   since: number | null = 1,
   queue: QueuedWork[] = []
-): ChiefOfStaffDigest => ({ since, items, queue })
+): NandiDigest => ({ since, items, queue })
 
 function queued(overrides: Partial<QueuedWork> = {}): QueuedWork {
   return {
@@ -58,15 +58,15 @@ describe('ChiefOfStaffDigest', () => {
   let originalDismiss: unknown
   let originalComplete: unknown
   beforeEach(() => {
-    originalGet = mocked.getChiefOfStaffDigest
-    originalSeen = mocked.markChiefOfStaffDigestSeen
+    originalGet = mocked.getNandiDigest
+    originalSeen = mocked.markNandiDigestSeen
     originalApprove = mocked.approveQueuedWork
     originalDismiss = mocked.dismissQueuedWork
     originalComplete = mocked.completeRequestStep
   })
   afterEach(() => {
-    mocked.getChiefOfStaffDigest = originalGet
-    mocked.markChiefOfStaffDigestSeen = originalSeen
+    mocked.getNandiDigest = originalGet
+    mocked.markNandiDigestSeen = originalSeen
     mocked.approveQueuedWork = originalApprove
     mocked.dismissQueuedWork = originalDismiss
     mocked.completeRequestStep = originalComplete
@@ -74,14 +74,14 @@ describe('ChiefOfStaffDigest', () => {
 
   it('renders nothing without items', async () => {
     const get = vi.fn(async () => ok(digest([])))
-    mocked.getChiefOfStaffDigest = get
+    mocked.getNandiDigest = get
     render(<DigestCard />)
     await vi.waitFor(() => expect(get).toHaveBeenCalled())
     expect(screen.queryByTestId('home-cos-digest')).toBeNull()
   })
 
   it('shows the summary and rows, and opens the Request', async () => {
-    mocked.getChiefOfStaffDigest = vi.fn(async () =>
+    mocked.getNandiDigest = vi.fn(async () =>
       ok(
         digest([
           item({ kind: 'needsYou', status: 'waiting' }),
@@ -106,7 +106,7 @@ describe('ChiefOfStaffDigest', () => {
   })
 
   it('offers to save recurring finished work as a workflow, with the draft to check', async () => {
-    mocked.getChiefOfStaffDigest = vi.fn(async () =>
+    mocked.getNandiDigest = vi.fn(async () =>
       ok(
         digest([
           item({
@@ -139,9 +139,9 @@ describe('ChiefOfStaffDigest', () => {
   })
 
   it('uses the plain title when nothing was seen yet, and Got it marks seen', async () => {
-    mocked.getChiefOfStaffDigest = vi.fn(async () => ok(digest([item()], null)))
+    mocked.getNandiDigest = vi.fn(async () => ok(digest([item()], null)))
     const seen = vi.fn(async () => ok(null))
-    mocked.markChiefOfStaffDigestSeen = seen
+    mocked.markNandiDigestSeen = seen
     render(<DigestCard />)
     expect(
       await screen.findByText('What your Chief of Staff did')
@@ -151,9 +151,7 @@ describe('ChiefOfStaffDigest', () => {
   })
 
   it('shows a clean queued item and approves it with one click', async () => {
-    mocked.getChiefOfStaffDigest = vi.fn(async () =>
-      ok(digest([], 1, [queued()]))
-    )
+    mocked.getNandiDigest = vi.fn(async () => ok(digest([], 1, [queued()])))
     const approve = vi.fn(async () => ok('r7'))
     mocked.approveQueuedWork = approve
     render(<DigestCard />)
@@ -165,7 +163,7 @@ describe('ChiefOfStaffDigest', () => {
   })
 
   it('labels news as Add to the Request', async () => {
-    mocked.getChiefOfStaffDigest = vi.fn(async () =>
+    mocked.getNandiDigest = vi.fn(async () =>
       ok(
         digest([], 1, [
           queued({
@@ -181,7 +179,7 @@ describe('ChiefOfStaffDigest', () => {
   })
 
   it('cannot approve a blocked item, only dismiss it', async () => {
-    mocked.getChiefOfStaffDigest = vi.fn(async () =>
+    mocked.getNandiDigest = vi.fn(async () =>
       ok(
         digest([], 1, [
           queued({
@@ -205,7 +203,7 @@ describe('ChiefOfStaffDigest', () => {
   })
 
   it('asks before approving a suspicious item', async () => {
-    mocked.getChiefOfStaffDigest = vi.fn(async () =>
+    mocked.getNandiDigest = vi.fn(async () =>
       ok(
         digest([], 1, [
           queued({
@@ -232,7 +230,7 @@ describe('ChiefOfStaffDigest', () => {
   })
 
   it('opens the thread of a row and of a queued item', async () => {
-    mocked.getChiefOfStaffDigest = vi.fn(async () =>
+    mocked.getNandiDigest = vi.fn(async () =>
       ok(
         digest(
           [item({ title: 'Dentist', requestId: 'r2', threadId: 'intake:d' })],
@@ -255,7 +253,7 @@ describe('ChiefOfStaffDigest', () => {
   })
 
   it('marks the waiting step done from a needs-you row', async () => {
-    mocked.getChiefOfStaffDigest = vi.fn(async () =>
+    mocked.getNandiDigest = vi.fn(async () =>
       ok(
         digest([
           item({

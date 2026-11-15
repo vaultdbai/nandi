@@ -1,9 +1,9 @@
-//! What the Chief of Staff never sees: bulk mail (newsletters and
+//! What Nandi never sees: bulk mail (newsletters and
 //! marketing, by the provider's category or the message's list headers) and
 //! mail the user sent only to themselves. Senders and domains on the watch
 //! list always come through.
 //!
-//! Everything else reaches the Chief of Staff, with the facts it needs to
+//! Everything else reaches Nandi, with the facts it needs to
 //! judge it (unread, `List-Id`, `Auto-Submitted`: see `batch`). Whether a
 //! sender is a machine or looks like phishing is the model's call, not a
 //! word list's.
@@ -48,7 +48,7 @@ impl MailFilter {
         })
     }
 
-    /// Whether the Chief of Staff should see `header`
+    /// Whether Nandi should see `header`
     pub fn keep(&self, header: &Header) -> bool {
         let sender_watched = header.from.as_ref().is_some_and(|f| self.watched(f));
         if sender_watched {

@@ -81,7 +81,7 @@ const FILE_CHANGE_TOOLS: &[&str] = &[
     "apply_patch",
 ];
 const PATH_KEYS: &[&str] = &["path", "file_path", "source", "destination", "from", "to"];
-/// Notes folders: the Chief of Staff's `my-notes`, an agent's own notes and
+/// Notes folders: Nandi's `my-notes`, an agent's own notes and
 /// memory
 const NOTES_PREFIXES: &[&str] = &["my-notes/", "notes/", "memory/"];
 

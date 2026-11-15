@@ -1,6 +1,6 @@
-//! The one message the Chief of Staff gets per check: who the user is, and
+//! The one message Nandi gets per check: who the user is, and
 //! each new email's headers and short preview inside a block marked as
-//! untrusted data. Never a full body: the Chief of Staff reads one with
+//! untrusted data. Never a full body: Nandi reads one with
 //! `mail_get_message` when it's worth it.
 
 use super::mail::{Folder, Header, Identity};

@@ -9,14 +9,14 @@ import { requestQueryKeys } from '@/hooks/useRequests'
 import { useClientQuery, useClientMutation } from '@/hooks/useClientQuery'
 
 export const digestKeys = {
-  all: ['chief-of-staff', 'digest'] as const,
+  all: ['nandi', 'digest'] as const,
 }
 
 const DIGEST_EVENTS: readonly NandiEventName[] = ['request://updated']
 
 export function useChiefOfStaffDigest() {
   useInvalidateOn(DIGEST_EVENTS, digestKeys.all)
-  return useClientQuery(digestKeys.all, () => client.getChiefOfStaffDigest())
+  return useClientQuery(digestKeys.all, () => client.getNandiDigest())
 }
 
 export function useApproveQueuedWork() {
@@ -55,7 +55,7 @@ export function useCompleteWaitingStep() {
 
 export function useMarkDigestSeen() {
   const queryClient = useQueryClient()
-  return useClientMutation(() => client.markChiefOfStaffDigestSeen(), {
+  return useClientMutation(() => client.markNandiDigestSeen(), {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: digestKeys.all }),
   })

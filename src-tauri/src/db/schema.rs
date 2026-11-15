@@ -738,8 +738,8 @@ CREATE TABLE IF NOT EXISTS repo_config_cache (
 CREATE TABLE IF NOT EXISTS requests (
     id         TEXT PRIMARY KEY,
     title      TEXT NOT NULL,
-    -- me (the ask box, Studio) | email | calendar | chiefOfStaff (work the
-    -- Chief of Staff started itself)
+    -- me (the ask box, Studio) | email | calendar | nandi (work the
+    -- Nandi started itself)
     source     TEXT NOT NULL,
     -- What was asked, word for word
     ask_text   TEXT NOT NULL DEFAULT '',
@@ -777,11 +777,11 @@ CREATE TABLE IF NOT EXISTS request_steps (
 CREATE INDEX IF NOT EXISTS idx_request_steps_run ON request_steps(run_id);
 CREATE INDEX IF NOT EXISTS idx_request_steps_workflow_run ON request_steps(workflow_run_id);
 
--- News the Chief of Staff added to a Request while it ran
+-- News Nandi added to a Request while it ran
 CREATE TABLE IF NOT EXISTS request_updates (
     request_id TEXT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
     at         INTEGER NOT NULL,
-    -- email | calendar | chiefOfStaff
+    -- email | calendar | nandi
     source     TEXT NOT NULL,
     text       TEXT NOT NULL
 );
@@ -805,7 +805,7 @@ CREATE TABLE IF NOT EXISTS intake_queue (
     -- pending | approved | dismissed
     status            TEXT NOT NULL,
     result_request_id TEXT,
-    -- Its Chief of Staff thread (`intake:<id>`, a conversation)
+    -- Its Nandi thread (`intake:<id>`, a conversation)
     thread_id         TEXT NOT NULL,
     -- `ActionPlan` JSON, for `start`: planned when it was queued
     plan              TEXT

@@ -1,12 +1,12 @@
 //! My notes: the user's own Markdown notes (role, what they own, deadlines,
-//! contacts), which Chief of Staff answers from. They are one folder,
+//! contacts), which Nandi answers from. They are one folder,
 //! shared with agents as [`NOTES_FOLDER_ID`] (read-only) through the
 //! `filesystem` connector, so the My notes page, the share and the agents
 //! all use the same files.
 //!
 //! The folder is the one already shared as `my-notes`, or, when there is
 //! none, `~/.nandi/notes` (machine-local, never a gold-copy definition),
-//! created empty on first use and shared read and write. Chief of Staff
+//! created empty on first use and shared read and write. Nandi
 //! decides what to keep there and how to arrange it (its skill.md says
 //! how), and keeps it current as it learns things. Writes
 //! there don't ask ([`is_notes_write`]): letting agents update the notes
@@ -16,7 +16,7 @@
 //!
 //! What others may see about the user (what they own) is published from
 //! NANDI.md's `responsibilities`, not from here: the notes stay private
-//! unless Chief of Staff quotes them in an answer.
+//! unless Nandi quotes them in an answer.
 
 pub mod corrections;
 
@@ -30,7 +30,7 @@ use super::AppState;
 use crate::model::Timestamp;
 use crate::utils::nandi_config;
 
-/// The ID agents know the notes folder by (Chief of Staff's skill.md)
+/// The ID agents know the notes folder by (Nandi's skill.md)
 pub const NOTES_FOLDER_ID: &str = "my-notes";
 
 /// The managed folder, under the Nandi home
@@ -393,7 +393,7 @@ pub async fn save_note(
         let name = name.clone();
         blocking(move || {
             // The person removing or changing a cited line is a correction
-            // the Chief of Staff remembers
+            // Nandi remembers
             let tracked = name != corrections::CORRECTIONS && name != corrections::SUGGESTIONS;
             let before = if tracked {
                 folder.read(&name).ok()
@@ -422,7 +422,7 @@ pub async fn save_note(
     Ok(saved)
 }
 
-/// The Chief of Staff's open capability suggestions (`suggestions.md`)
+/// Nandi's open capability suggestions (`suggestions.md`)
 pub async fn suggestions(state: &AppState) -> Result<Vec<corrections::Suggestion>, String> {
     let (folder, _) = self::folder(state).await?;
     blocking(move || {
@@ -602,7 +602,7 @@ mod tests {
         let shared = connectors::shared_folder(&state, NOTES_FOLDER_ID).unwrap();
         assert_eq!(shared.access, folders::Access::Read);
         assert!(!mine.agents_can_write);
-        // The user lets Chief of Staff keep them current
+        // The user lets Nandi keep them current
         let mine = set_agents_can_write(&state, true).await.unwrap();
         assert!(mine.agents_can_write);
         let shared = connectors::shared_folder(&state, NOTES_FOLDER_ID).unwrap();

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentInfo, StudioConversationSummary } from '@/lib/bindings'
+import {
+  DEFAULT_AGENT,
+  type AgentInfo,
+  type StudioConversationSummary,
+} from '@/lib/bindings'
 import {
   activePath,
   buildNavTree,
@@ -24,7 +28,7 @@ const agent = (
   status,
   currentTask: null,
   origin: { kind: 'local' },
-  builtin: false,
+  kind: 'local',
 })
 
 const chat = (id: string, updatedAt: number): StudioConversationSummary => ({
@@ -112,15 +116,18 @@ describe('buildNavTree', () => {
   })
 
   it('keeps the built-in agents on top, idle or not, past the limit', () => {
-    const chief = { ...agent('chief-of-staff'), builtin: true }
+    const nandi: AgentInfo = { ...agent(DEFAULT_AGENT), kind: 'default' }
     const agents = [
-      chief,
+      nandi,
       agent('amy', 'running'),
       ...Array.from({ length: LIST_LIMIT }, (_, i) => agent(`x${i}`)),
     ]
     const list =
       findNode(buildNavTree(input({ agents })), 'agents')?.children ?? []
-    expect(ids(list.slice(0, 2))).toEqual(['agent:chief-of-staff', 'agent:amy'])
+    expect(ids(list.slice(0, 2))).toEqual([
+      `agent:${DEFAULT_AGENT}`,
+      'agent:amy',
+    ])
     expect(list).toHaveLength(LIST_LIMIT + 2)
     expect(list.at(-1)?.id).toBe('agents:all')
   })

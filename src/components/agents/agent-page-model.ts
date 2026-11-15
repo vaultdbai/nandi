@@ -118,15 +118,21 @@ export function agentProblem(input: {
 export function sortAgents<
   T extends {
     name: string
-    builtin?: boolean
+    isDefault?: boolean
     problem: AgentProblem | null
     lastRunAt: number | null
   },
 >(rows: T[]): T[] {
   const rank = (row: T) =>
-    row.builtin ? 0 : row.problem?.kind === 'waiting' ? 1 : row.problem ? 2 : 3
+    row.isDefault
+      ? 0
+      : row.problem?.kind === 'waiting'
+        ? 1
+        : row.problem
+          ? 2
+          : 3
   return [...rows].sort((a, b) =>
-    a.builtin && b.builtin
+    a.isDefault && b.isDefault
       ? 0
       : rank(a) - rank(b) ||
         (b.lastRunAt ?? 0) - (a.lastRunAt ?? 0) ||

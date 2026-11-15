@@ -179,7 +179,7 @@ pub async fn get_agent_snapshot(
     })
 }
 
-/// A Studio conversation's messages and active run, or a Chief of Staff
+/// A Studio conversation's messages and active run, or a Nandi
 /// thread's (an Inbox item's or a queued item's Ask chat).
 pub async fn get_conversation(
     state: &AppState,
@@ -198,11 +198,11 @@ pub async fn get_conversation(
 }
 
 /// Whether `get_conversation` serves this conversation: Studio's, or a
-/// Chief of Staff thread
+/// Nandi thread
 fn readable(owner: Option<&str>, conversation_id: &str) -> bool {
     match owner {
         Some(STUDIO_AGENT_ID) => true,
-        Some(crate::services::builtin_agents::CHIEF_OF_STAFF) => {
+        Some(crate::services::builtin_agents::DEFAULT_AGENT) => {
             crate::services::inbox::thread::is_thread(conversation_id)
         }
         _ => false,
@@ -569,16 +569,13 @@ fn build_dashboard(
 mod tests {
 
     #[test]
-    fn studio_and_chief_of_staff_threads_are_readable_other_chats_are_not() {
-        use crate::services::builtin_agents::CHIEF_OF_STAFF;
+    fn studio_and_nandi_threads_are_readable_other_chats_are_not() {
+        use crate::services::builtin_agents::DEFAULT_AGENT;
         assert!(super::readable(Some(STUDIO_AGENT_ID), "c1"));
-        assert!(super::readable(
-            Some(CHIEF_OF_STAFF),
-            "inbox:gatewayHold:t1"
-        ));
-        assert!(super::readable(Some(CHIEF_OF_STAFF), "intake:q1"));
+        assert!(super::readable(Some(DEFAULT_AGENT), "inbox:gatewayHold:t1"));
+        assert!(super::readable(Some(DEFAULT_AGENT), "intake:q1"));
         assert!(
-            !super::readable(Some(CHIEF_OF_STAFF), "c1"),
+            !super::readable(Some(DEFAULT_AGENT), "c1"),
             "its own chats stay its own"
         );
         assert!(!super::readable(Some("papers"), "inbox:gatewayHold:t1"));
@@ -587,7 +584,7 @@ mod tests {
 
     use super::*;
     use crate::db::tests::start_run;
-    use crate::services::agents::AgentStatus;
+    use crate::services::agents::{AgentKind, AgentOrigin, AgentStatus};
 
     #[test]
     fn run_files_resolve_inside_the_workdir_only() {
@@ -629,8 +626,8 @@ mod tests {
             skill_path: String::new(),
             status: AgentStatus::Idle,
             current_task: None,
-            origin: crate::services::agents::AgentOrigin::Local,
-            builtin: false,
+            origin: AgentOrigin::Local,
+            kind: AgentKind::of(id, &AgentOrigin::Local),
         }
     }
 

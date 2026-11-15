@@ -25,7 +25,7 @@ describe('useAgents', () => {
         status: 'idle' as const,
         currentTask: null,
         origin: { kind: 'local' as const },
-        builtin: false,
+        kind: 'local' as const,
       },
     ]
     mockListAgents.mockResolvedValueOnce({ status: 'ok', data: agents })

@@ -70,7 +70,7 @@ pub enum SourceType {
     Email,
     /// The calendar check (`services::workspace`)
     CalendarCheck,
-    /// A step of a local Request the Chief of Staff does itself
+    /// A step of a local Request Nandi does itself
     /// (`services::requests::self_step`); the source ID is the Request's
     Request,
 }

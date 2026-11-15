@@ -1,4 +1,4 @@
-//! Calendar events already handed to the Chief of Staff, so a change feed
+//! Calendar events already handed to Nandi, so a change feed
 //! that starts over (the weekly window move, an expired cursor, a feed that
 //! ended without a token) sends only what is new or changed.
 //!

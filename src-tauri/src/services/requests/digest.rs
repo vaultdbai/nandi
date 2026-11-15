@@ -1,4 +1,4 @@
-//! "Since you were away": what the Chief of Staff did with what arrived
+//! "Since you were away": what Nandi did with what arrived
 //! (work it started, news it added, work that finished) since the user last
 //! looked, and the work waiting on them, which stays until it's done.
 //! What arrived from outside and awaits the user's approval comes with
@@ -21,7 +21,7 @@ use crate::services::intake::{self, QueuedWork};
 use crate::services::AppState;
 
 /// When the user last marked it seen, epoch ms (setting)
-const SEEN_KEY: &str = "chief_of_staff.digest_seen_at";
+const SEEN_KEY: &str = "nandi.digest_seen_at";
 /// Longest list
 const MAX_ITEMS: usize = 50;
 
@@ -49,12 +49,12 @@ pub struct DigestItem {
     pub text: Option<String>,
     /// Epoch ms
     pub at: f64,
-    /// Its Chief of Staff thread, when it came through intake
+    /// Its Nandi thread, when it came through intake
     pub thread_id: Option<String>,
     /// The step waiting on the user (a manual step or a person), for
     /// "Mark done" (`complete_request_step`)
     pub waiting_step: Option<WaitingStep>,
-    /// Finished work that recurs: the Chief of Staff offers **Save as
+    /// Finished work that recurs: Nandi offers **Save as
     /// workflow** (`recurrence`)
     pub workflow_proposal: Option<WorkflowProposal>,
 }
@@ -83,7 +83,7 @@ pub fn waiting_step(request: &LocalRequest) -> Option<WaitingStep> {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
-pub struct ChiefOfStaffDigest {
+pub struct NandiDigest {
     /// When the user last marked it seen, epoch ms (`None`: never)
     pub since: Option<f64>,
     /// Waiting on the user first, then newest first
@@ -143,7 +143,7 @@ pub fn build(requests: &[LocalRequest], updates: &[RequestUpdate], seen: i64) ->
     items
 }
 
-pub async fn get(state: &AppState) -> Result<ChiefOfStaffDigest, String> {
+pub async fn get(state: &AppState) -> Result<NandiDigest, String> {
     state
         .db()
         .call(|conn| {
@@ -160,7 +160,7 @@ pub async fn get(state: &AppState) -> Result<ChiefOfStaffDigest, String> {
                     }
                 }
             }
-            Ok(ChiefOfStaffDigest {
+            Ok(NandiDigest {
                 since: seen.map(|at| at as f64),
                 items,
                 queue: intake::pending(conn)?,
@@ -244,12 +244,7 @@ mod tests {
     fn work_waiting_on_the_user_stays_on_top_after_it_is_seen() {
         let requests = [
             request("bill", RequestSource::Email, RequestStatus::Waiting, 10),
-            request(
-                "post",
-                RequestSource::ChiefOfStaff,
-                RequestStatus::Running,
-                500,
-            ),
+            request("post", RequestSource::Nandi, RequestStatus::Running, 500),
         ];
         let items = build(&requests, &[], 100);
         assert_eq!(items[0].request_id, "bill");

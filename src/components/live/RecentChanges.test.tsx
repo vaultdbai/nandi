@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen } from '@/test/test-utils'
-import type { LiveChange } from '@/lib/bindings'
+import { DEFAULT_AGENT, type LiveChange } from '@/lib/bindings'
 import { commands } from '@/lib/tauri-bindings'
 import { useNavigationStore } from '@/store/navigation-store'
 import { RecentChanges } from './RecentChanges'
@@ -19,8 +19,8 @@ const changes: LiveChange[] = [
     action: 'updated',
     author: {
       kind: 'agent',
-      agentId: 'chief-of-staff',
-      agentName: 'Chief of Staff',
+      agentId: DEFAULT_AGENT,
+      agentName: 'Nandi',
     },
     at: Date.now(),
   },
@@ -49,7 +49,7 @@ describe('Recent changes', () => {
   it('says what changed and who changed it', async () => {
     render(<RecentChanges />)
     expect(await screen.findByText('Changed deadlines.md')).toBeInTheDocument()
-    expect(screen.getByText('by Chief of Staff · just now')).toBeInTheDocument()
+    expect(screen.getByText('by Nandi · just now')).toBeInTheDocument()
     expect(screen.getByText('Added Analyst')).toBeInTheDocument()
     expect(screen.getByText('report.csv')).toBeInTheDocument()
     expect(

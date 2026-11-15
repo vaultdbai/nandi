@@ -1,5 +1,5 @@
 //! Which Inbox item a thread is about ([`InboxItemRef`], in its
-//! conversation ID), and what the Chief of Staff is told about it
+//! conversation ID), and what Nandi is told about it
 //! ([`ItemFacts`]): what it is, what is being decided, and which decision
 //! tools fit it right now.
 //!
@@ -181,7 +181,7 @@ impl InboxItemRef {
     }
 }
 
-/// A decision the Chief of Staff may propose in a thread
+/// A decision Nandi may propose in a thread
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DecisionTool {
     Approve,

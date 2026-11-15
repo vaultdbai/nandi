@@ -1,15 +1,15 @@
-//! One Chief of Staff thread per task from intake: a conversation
-//! (`intake:<id>`) owned by the Chief of Staff, so it runs with its skill,
+//! One Nandi thread per task from intake: a conversation
+//! (`intake:<id>`) owned by Nandi, so it runs with its skill,
 //! notes, grants and permissions, about one item and the work it becomes.
 //!
 //! - The thread is made when the item is queued, and news for the same
 //!   work joins it ([`for_request`]).
 //! - What happens (queued, approved, dismissed) is noted in it as the
-//!   Chief of Staff's messages (`inbox::thread::note`), so the user reads
+//!   Nandi's messages (`inbox::thread::note`), so the user reads
 //!   the history.
 //! - It is one of the Inbox's Ask chats (`services::inbox`): the user chats
 //!   in it (`inbox::thread::send`): draft a reply, hand it to an agent, add
-//!   what the Chief of Staff needs, approve or dismiss. Its turns get the
+//!   what Nandi needs, approve or dismiss. Its turns get the
 //!   task as context ([`prompt`], untrusted), work it starts or news it
 //!   adds there is queued for approval (`requests::tool`), and approving or
 //!   dismissing from the chat waits for the user's confirm
@@ -118,7 +118,7 @@ fn cut(text: &str, max: usize) -> String {
     }
 }
 
-/// The task, for the Chief of Staff's turns in its thread. Pure.
+/// The task, for Nandi's turns in its thread. Pure.
 pub fn prompt_for(items: &[QueuedWork], requests: &[local::LocalRequest]) -> String {
     let mut out = String::from(
         "\n\nThis chat is a task thread: the user talks to you about one piece of work. Their \

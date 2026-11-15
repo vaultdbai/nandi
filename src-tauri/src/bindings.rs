@@ -297,8 +297,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             requests::request_for_run,
             requests::retry_task,
             requests::start_request,
-            requests::get_chief_of_staff_digest,
-            requests::mark_chief_of_staff_digest_seen,
+            requests::get_nandi_digest,
+            requests::mark_nandi_digest_seen,
             requests::approve_queued_work,
             requests::dismiss_queued_work,
             requests::get_intake_thread,
@@ -514,6 +514,12 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             // Run plans
             RunPlanUpdated,
         ])
+        // The default agent's ID (`services::builtin_agents`), so the app
+        // never spells it
+        .constant(
+            "DEFAULT_AGENT",
+            crate::services::builtin_agents::DEFAULT_AGENT,
+        )
         // The code a person-to-person command's error starts with when no
         // relay is connected (`services::relay::unavailable`)
         .constant(

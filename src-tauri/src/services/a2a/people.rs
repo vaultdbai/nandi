@@ -1,5 +1,5 @@
 //! People tools for an agent that works for its owner on a team (the
-//! first-party "Chief of Staff" agent), read on the host and never gated:
+//! first-party "Nandi" agent), read on the host and never gated:
 //!
 //! - `find_people` `{topic?, limit?}`: who on the user's network is
 //!   responsible for a topic. The relay searches and ranks (`FindPeople`),
@@ -472,8 +472,8 @@ mod tests {
             matched_on: vec!["agents".into()],
             excerpt: None,
             agents: vec![MatchedAgent {
-                target: format!("{instance}/chief-of-staff"),
-                name: "Chief of Staff".into(),
+                target: format!("{instance}/helper"),
+                name: "Nandi".into(),
                 description: String::new(),
                 serves: vec![ServedCapability {
                     capability: ASK_ME.into(),
@@ -491,7 +491,7 @@ mod tests {
         assert_eq!(json["you"], false);
         assert_eq!(json["ask"]["target"], "i-sam/gateway");
         assert_eq!(json["ask"]["capability"], ASK_ME);
-        assert_eq!(json["agents"][0]["target"], "i-sam/chief-of-staff");
+        assert_eq!(json["agents"][0]["target"], "i-sam/helper");
         assert_eq!(json["agents"][0]["serves"][0]["capability"], ASK_ME);
         assert_eq!(json["agents_online"], 1);
         assert!(json.get("availability").is_none());
@@ -549,7 +549,7 @@ Help the user.
         let state = AppState::for_tests(vec![]);
         save_agent(
             &state,
-            "chief-of-staff",
+            "coordinator",
             "allowed-tools: [read_file, find_people, my_requests]
 ",
         );
@@ -561,7 +561,7 @@ Help the user.
 ",
         );
         assert_eq!(
-            offered(state.store(), "chief-of-staff"),
+            offered(state.store(), "coordinator"),
             [FIND_PEOPLE, MY_REQUESTS]
         );
         // Omitting allowed-tools grants the runtime tools, never the network
@@ -574,7 +574,7 @@ Help the user.
         let offline = call(
             &state,
             state.store(),
-            "chief-of-staff",
+            "coordinator",
             FIND_PEOPLE,
             &json!({"topic": "SOX"}),
         )
@@ -588,7 +588,7 @@ Help the user.
         let requests = call(
             &state,
             state.store(),
-            "chief-of-staff",
+            "coordinator",
             MY_REQUESTS,
             &json!({"direction": "sideways"}),
         )
@@ -597,7 +597,7 @@ Help the user.
         let requests = call(
             &state,
             state.store(),
-            "chief-of-staff",
+            "coordinator",
             MY_REQUESTS,
             &json!({}),
         )
@@ -616,7 +616,7 @@ Help the user.
         let mut record = TaskRecord::requester(
             id,
             requester,
-            "chief-of-staff",
+            "coordinator",
             &format!("{provider}/gateway"),
             ASK_ME,
             &input,

@@ -1,6 +1,6 @@
 //! Recurring work becomes a workflow proposal (task-x step 4): when a
-//! Request finishes well and the same work finished well before, the Chief
-//! of Staff offers to save it as a workflow. It is never saved silently:
+//! Request finishes well and the same work finished well before, Nandi
+//! offers to save it as a workflow. It is never saved silently:
 //! **Save as workflow** drafts it (`local::draft_workflow_from_request`)
 //! and the user checks and saves the file.
 //!
@@ -74,7 +74,7 @@ pub enum RecurrenceReason {
     SamePlan,
 }
 
-/// The Chief of Staff's offer to save a finished Request as a workflow
+/// Nandi's offer to save a finished Request as a workflow
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowProposal {
@@ -146,7 +146,7 @@ pub fn proposal(request: &LocalRequest, earlier: &[LocalRequest]) -> Option<Work
         })
 }
 
-/// The Chief of Staff's note for the proposal. Pure.
+/// Nandi's note for the proposal. Pure.
 pub fn note(proposal: &WorkflowProposal, title: &str) -> String {
     let why = match proposal.reason {
         RecurrenceReason::SameWork => "the same work",
@@ -176,7 +176,7 @@ fn has_self_step(request: &LocalRequest) -> bool {
 }
 
 /// The self-step prompt's hint to propose a playbook, when `request` has a
-/// step the Chief of Staff does itself and earlier `done` Requests (newest
+/// step Nandi does itself and earlier `done` Requests (newest
 /// first) were the same work, done by it too. Pure.
 pub fn playbook_hint(request: &LocalRequest, earlier: &[LocalRequest]) -> Option<String> {
     if !has_self_step(request) {
@@ -250,7 +250,7 @@ pub fn for_ids(conn: &Connection, ids: &[String]) -> Vec<WorkflowProposal> {
 }
 
 /// A Request just finished well: when it recurs and came through intake,
-/// the Chief of Staff proposes saving it in its thread. Best effort.
+/// Nandi proposes saving it in its thread. Best effort.
 pub async fn on_done(state: &AppState, request: &LocalRequest) {
     let id = request.id.clone();
     let request = request.clone();
@@ -278,6 +278,7 @@ pub async fn on_done(state: &AppState, request: &LocalRequest) {
 mod tests {
     use super::*;
     use crate::services::ask::{ActionPlan, PlanStep};
+    use crate::services::builtin_agents::DEFAULT_AGENT;
     use crate::services::requests::local::RequestSource;
 
     fn plan(steps: &[(PlanStepKind, &str)]) -> ActionPlan {
@@ -300,7 +301,7 @@ mod tests {
         r
     }
 
-    const BILL: &[(PlanStepKind, &str)] = &[(PlanStepKind::LocalAgent, "chief-of-staff")];
+    const BILL: &[(PlanStepKind, &str)] = &[(PlanStepKind::LocalAgent, DEFAULT_AGENT)];
 
     #[test]
     fn the_work_key_ignores_numbers_dates_and_months() {
@@ -353,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn work_the_chief_of_staff_repeats_itself_hints_a_playbook() {
+    fn work_nandi_repeats_itself_hints_a_playbook() {
         let a = done("r1", "Pay the Acme bill for October", BILL, 10);
         let b = done("r2", "Pay the Acme bill for November", BILL, 20);
         let mut now = done("r3", "Pay the Acme bill for December", BILL, 30);

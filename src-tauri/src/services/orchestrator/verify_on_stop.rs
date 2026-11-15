@@ -18,7 +18,7 @@
 //! - Without evidence, `continue_with` asks the agent to verify, and the
 //!   firing is appended to `verify.log` as one JSON line.
 //!
-//! Writes into the user's notes (`my-notes/`, Chief of Staff's) aren't
+//! Writes into the user's notes (`my-notes/`, Nandi's) aren't
 //! code and never need a check.
 //!
 //! It can't tell whether the right checks ran, only that some did; skill.md

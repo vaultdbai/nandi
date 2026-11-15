@@ -29,6 +29,7 @@ import {
   useSaveNote,
   useSetNotesAgentsCanWrite,
 } from '@/hooks/useNotes'
+import { isDefaultAgent } from '@/lib/agent-identity'
 import { cn } from '@/lib/utils'
 import { useNavigationStore } from '@/store/navigation-store'
 import { MarkdownEditor } from './MarkdownEditor'
@@ -44,7 +45,6 @@ import { NoteSuggestions } from './NoteSuggestions'
 const NOTE_CHANGES = ['notes'] as const
 
 /** The agent that keeps the notes (built into Nandi) */
-const CHIEF_OF_STAFF = 'chief-of-staff'
 
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error)
@@ -438,11 +438,11 @@ function NotePanel({
   )
 }
 
-/** No notes yet: Chief of Staff can write them by getting to know you */
+/** No notes yet: Nandi can write them by getting to know you */
 function EmptyNotes({ onNew }: { onNew: () => void }) {
   const { t } = useTranslation()
   const { data: agents = [] } = useAgents()
-  const chief = agents.find(agent => agent.id === CHIEF_OF_STAFF)
+  const nandi = agents.find(isDefaultAgent)
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
       <FileText aria-hidden className="size-8 text-muted-foreground" />
@@ -451,12 +451,12 @@ function EmptyNotes({ onNew }: { onNew: () => void }) {
         {t('notes.empty.withChief')}
       </p>
       <div className="flex gap-2">
-        {chief && (
+        {nandi && (
           <Button
             onClick={() =>
               useNavigationStore.getState().navigate({
                 kind: 'agent',
-                agentId: chief.id,
+                agentId: nandi.id,
                 tab: 'chat',
               })
             }

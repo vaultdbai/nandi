@@ -22,7 +22,7 @@ pub const WINDOW_AHEAD_DAYS: i64 = 14;
 const CURSOR_MAX_AGE_SECS: i64 = 6 * 24 * 3600;
 const MAX_PAGES: usize = 20;
 
-/// One event as the Chief of Staff and the tools see it
+/// One event as Nandi and the tools see it
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct Event {

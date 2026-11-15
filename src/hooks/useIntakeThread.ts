@@ -12,7 +12,7 @@ import { useClientQuery } from '@/hooks/useClientQuery'
 
 export const intakeThreadKeys = {
   detail: (conversationId: string) =>
-    ['chief-of-staff', 'thread', conversationId] as const,
+    ['nandi', 'thread', conversationId] as const,
 }
 
 const THREAD_EVENTS = new Set(['request://updated', 'nandi://resync'])

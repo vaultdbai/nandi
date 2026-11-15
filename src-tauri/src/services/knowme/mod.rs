@@ -7,7 +7,7 @@
 //!   Later and Skip close it.
 //! - **The chat** is one standing Inbox thread, [`THREAD_ID`], opened from
 //!   the to-do or any time from Network › Sharing › What you offer ("Tell
-//!   Nandi about you"). The Chief of Staff asks (its `know-me` playbook)
+//!   Nandi about you"). Nandi asks (its `know-me` playbook)
 //!   and proposes changes with `knowme_propose` (`inbox::tool`), offered
 //!   only there and always confirmed on its card, where the person can edit
 //!   it first ([`confirm`]).
@@ -31,7 +31,7 @@ use specta::Type;
 use self::cadence::Cadence;
 use self::proposal::{add_lines, apply_to_manifest, GroupRef, KnowMeProposal};
 use crate::model::{ApprovalDecision, ApprovalStatus};
-use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::domain::decision::{select, DecisionFilter, DecisionRecord};
 use crate::services::events::{self, NandiEvent};
 use crate::services::inbox::audit::{self, Decided};
@@ -235,7 +235,7 @@ pub async fn confirm(
         .call(move |conn| crate::db::get_approval(conn, &id))
         .await?
         .ok_or("That proposal wasn't found")?;
-    if approval.tool != crate::services::inbox::tool::PROPOSE || approval.agent_id != CHIEF_OF_STAFF
+    if approval.tool != crate::services::inbox::tool::PROPOSE || approval.agent_id != DEFAULT_AGENT
     {
         return Err("That isn't a know-me proposal".to_string());
     }

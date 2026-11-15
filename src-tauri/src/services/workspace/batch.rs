@@ -1,4 +1,4 @@
-//! The one message the Chief of Staff gets per calendar check: whose
+//! The one message Nandi gets per calendar check: whose
 //! calendars, then each changed event in one line inside a block marked as
 //! untrusted data (titles and locations are written by other people).
 //! Never a description: `calendar_get_event` reads one when it's worth it.

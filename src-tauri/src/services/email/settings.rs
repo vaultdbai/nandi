@@ -74,7 +74,7 @@ pub struct BackfillState {
     /// older than this. `None` until the first batch
     #[serde(default)]
     pub before: Option<i64>,
-    /// Emails handed to the Chief of Staff so far
+    /// Emails handed to Nandi so far
     #[serde(default)]
     pub read: u32,
     #[serde(default)]
@@ -160,7 +160,7 @@ pub struct CheckState {
     /// Unix seconds: mail up to here has been handed over
     #[serde(default)]
     pub caught_up_to: Option<i64>,
-    /// Emails handed to the Chief of Staff by the last check
+    /// Emails handed to Nandi by the last check
     #[serde(default)]
     pub last_found: u32,
     #[serde(default)]

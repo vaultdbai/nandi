@@ -1,19 +1,19 @@
-//! Email: the Chief of Staff reads the user's mail (Outlook or Gmail) and
+//! Email: Nandi reads the user's mail (Outlook or Gmail) and
 //! keeps My notes up to date. Read-only: Nandi reads mail and writes notes;
 //! nothing is ever sent, moved, deleted or marked read.
 //!
 //! ```text
-//! Connect (Settings › Email) ─ sign-in ─▶ keyring + account + grant (chief-of-staff, read)
+//! Connect (Settings › Email) ─ sign-in ─▶ keyring + account + grant (the default agent, read)
 //! every N minutes (or Check now):
 //!   each mailbox ─ changes since cursor ─▶ filter (bulk, notes to self, watch list)
-//!   all new mail ─▶ ONE Chief of Staff run (headers + previews, untrusted) ─▶ cursors saved
+//!   all new mail ─▶ ONE Nandi run (headers + previews, untrusted) ─▶ cursors saved
 //! the run: mail_* tools (read-only, on the host) + notes tools, nothing else
 //! ```
 //!
 //! - **Our own connector, not an MCP server.** Tokens stay in the host's
 //!   keyring; the agent's tool calls run here, never in a container.
-//! - **Notes, not copies.** Only the change cursor and the notes the Chief
-//!   of Staff writes are kept. See [`settings`] for what lives where.
+//! - **Notes, not copies.** Only the change cursor and the notes Nandi
+//!   writes are kept. See [`settings`] for what lives where.
 //! - **One run per check**, and only when there's new mail (model cost).
 //!   The first check after connecting reads the last [`READ_WINDOW_DAYS`]
 //!   days, capped at [`batch::MAX_BATCH`] emails.
@@ -53,7 +53,7 @@ pub use settings::{BackfillRange, EmailSettings};
 use crate::db;
 use crate::model::{SourceType, Timestamp};
 use crate::services::auth::oauth::{self, DeviceFlowState, OAuthFlows};
-use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::domain::grant::{ConnectorGrant, GrantAccess, GrantScope};
 use crate::services::events::{self, NandiEvent};
 use crate::services::orchestrator::{RunSource, PRIORITY_SCHEDULED};
@@ -105,7 +105,7 @@ pub struct EmailProviderStatus {
     pub state: EmailAccountState,
     pub error: Option<String>,
     pub last_checked_at: Option<Timestamp>,
-    /// Emails the last check handed to the Chief of Staff
+    /// Emails the last check handed to Nandi
     pub last_found: u32,
     pub last_run_id: Option<String>,
     /// The background read of older mail
@@ -249,10 +249,10 @@ pub trait BatchSink: Send + Sync {
     ) -> BoxFuture<'a, Result<String, String>>;
 }
 
-/// The Chief of Staff, in a conversation of the check's own
-struct ChiefOfStaff;
+/// Nandi, in a conversation of the check's own
+struct Nandi;
 
-impl BatchSink for ChiefOfStaff {
+impl BatchSink for Nandi {
     fn submit<'a>(
         &'a self,
         state: &'a AppState,
@@ -260,13 +260,13 @@ impl BatchSink for ChiefOfStaff {
         text: String,
     ) -> BoxFuture<'a, Result<String, String>> {
         Box::pin(async move {
-            state.store().require_agent(CHIEF_OF_STAFF)?;
+            state.store().require_agent(DEFAULT_AGENT)?;
             let check_id = uuid::Uuid::new_v4().to_string();
             let label = title.clone();
             let conversation = state
                 .db()
                 .call(move |conn| {
-                    db::ensure_email_conversation(conn, CHIEF_OF_STAFF, &check_id, &title)
+                    db::ensure_email_conversation(conn, DEFAULT_AGENT, &check_id, &title)
                 })
                 .await?;
             let source = RunSource {
@@ -277,7 +277,7 @@ impl BatchSink for ChiefOfStaff {
             };
             crate::services::chat::submit(
                 state.orchestrators(),
-                CHIEF_OF_STAFF,
+                DEFAULT_AGENT,
                 conversation,
                 text,
                 Vec::new(),
@@ -326,7 +326,7 @@ impl EmailService {
     pub fn new(setup: ProviderSetup) -> Self {
         Self {
             setup: RwLock::new(setup),
-            sink: RwLock::new(Arc::new(ChiefOfStaff)),
+            sink: RwLock::new(Arc::new(Nandi)),
             flows: OAuthFlows::default(),
             check_lock: tokio::sync::Mutex::new(()),
             checking: AtomicBool::new(false),
@@ -425,7 +425,7 @@ fn emit_changed(state: &AppState) {
     events::emit(state.bus(), &EmailChanged {});
 }
 
-/// The mailboxes the Chief of Staff may read
+/// The mailboxes Nandi may read
 fn granted(state: &AppState, agent: &str) -> Vec<EmailAccount> {
     let grants = state.grants();
     email_settings(state)
@@ -528,7 +528,7 @@ pub async fn start_sign_in(
 }
 
 /// Checks the sign-in once. On success: who the mailbox belongs to, the
-/// account, the Chief of Staff's read grant, and the first check.
+/// account, Nandi's read grant, and the first check.
 pub async fn poll_sign_in(state: &AppState, provider: MailProvider) -> EmailSignInPoll {
     let setup = state.email().setup();
     let failed = |error: String| EmailSignInPoll {
@@ -591,13 +591,13 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
             paused: false,
         });
     })?;
-    // Connecting is the person's say-so for the Chief of Staff: a saved
+    // Connecting is the person's say-so for Nandi: a saved
     // read grant, removable in Settings › Connectors › Access
-    let grant = ConnectorGrant::new(CHIEF_OF_STAFF, provider.id(), GrantAccess::Read)
+    let grant = ConnectorGrant::new(DEFAULT_AGENT, provider.id(), GrantAccess::Read)
         .map_err(|e| e.to_string())?;
     if state.grants().grant(grant, GrantScope::Saved)? {
         let info = crate::services::grants::GrantInfo {
-            agent: CHIEF_OF_STAFF.into(),
+            agent: DEFAULT_AGENT.into(),
             connector: provider.id().into(),
             access: GrantAccess::Read,
             scope: GrantScope::Saved,
@@ -613,7 +613,7 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
     } else {
         forget_progress(state, provider).await?;
     }
-    // Who "me" is, in every Chief of Staff run (editable in My role)
+    // Who "me" is, in every Nandi run (editable in My role)
     let store = state.store().clone();
     let address = identity.email.clone();
     let name = profile.name_and_title(identity.name.as_deref());
@@ -633,7 +633,7 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
         Ok(None) => {}
         Err(e) => log::warn!("Couldn't lock this Nandi's identity: {e}"),
     }
-    log::info!("Connected {} for the Chief of Staff", provider.name());
+    log::info!("Connected {} for Nandi", provider.name());
     emit_changed(state);
     check_soon(state);
     Ok(())
@@ -746,7 +746,7 @@ pub struct CheckOutcome {
     pub run_id: Option<String>,
 }
 
-/// Reads every connected, unpaused mailbox the Chief of Staff may read
+/// Reads every connected, unpaused mailbox Nandi may read
 /// and hands all new mail over in one run. Cursors move only once the run
 /// is queued, so mail is never skipped.
 pub async fn check_all(state: &AppState) -> CheckOutcome {
@@ -755,7 +755,7 @@ pub async fn check_all(state: &AppState) -> CheckOutcome {
         return CheckOutcome::default();
     };
     let settings = email_settings(state);
-    let accounts: Vec<EmailAccount> = granted(state, CHIEF_OF_STAFF)
+    let accounts: Vec<EmailAccount> = granted(state, DEFAULT_AGENT)
         .into_iter()
         .filter(|a| !a.paused)
         .collect();
@@ -868,14 +868,14 @@ async fn run_check(
         );
         match state.email().sink().submit(state, title, text).await {
             Ok(run_id) => {
-                log::info!("Handed {} emails to the Chief of Staff", headers.len());
+                log::info!("Handed {} emails to Nandi", headers.len());
                 outcome.run_id = Some(run_id);
                 true
             }
             Err(e) => {
-                log::warn!("The Chief of Staff couldn't take the email check: {e}");
+                log::warn!("Nandi couldn't take the email check: {e}");
                 for (_, check) in checked.iter_mut().filter(|(_, c)| c.error.is_none()) {
-                    check.error = Some(format!("The Chief of Staff couldn't start: {e}"));
+                    check.error = Some(format!("Nandi couldn't start: {e}"));
                 }
                 outcome.found = 0;
                 false
@@ -917,7 +917,7 @@ async fn run_check(
     outcome
 }
 
-/// Whether mail from `at` went to the Chief of Staff by the hand-over at
+/// Whether mail from `at` went to Nandi by the hand-over at
 /// `caught_up_to` (with slack for mail that arrived during that check)
 fn handed_over_before(at: i64, caught_up_to: Option<i64>) -> bool {
     caught_up_to.is_some_and(|up_to| at < up_to - CATCH_UP_SLACK_SECS)

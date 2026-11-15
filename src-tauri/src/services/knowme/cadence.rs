@@ -13,7 +13,7 @@
 //! Why `local_settings` and not the gold copy: this is when a reminder
 //! last showed on this computer, runtime state like the onboarding step.
 //! It defines nothing, and losing it costs at most one early to-do. The
-//! questions themselves are content (the Chief of Staff's `know-me`
+//! questions themselves are content (Nandi's `know-me`
 //! playbook), and the answers are the person's files (NANDI.md, My notes).
 
 use serde::{Deserialize, Serialize};

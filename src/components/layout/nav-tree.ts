@@ -14,6 +14,7 @@ import type {
   AgentStatus,
   StudioConversationSummary,
 } from '@/lib/bindings'
+import { isDefaultAgent } from '@/lib/agent-identity'
 import type { SettingsSection } from '@/lib/settings-nav'
 import {
   NAV_SECTIONS,
@@ -108,9 +109,9 @@ function chatNodes(chats: readonly StudioConversationSummary[]): NavNode[] {
  * other agent, busiest first; past the limit, All agents
  */
 function agentNodes(agents: readonly AgentInfo[]): NavNode[] {
-  const builtin = agents.filter(agent => agent.builtin)
+  const builtin = agents.filter(isDefaultAgent)
   const sorted = agents
-    .filter(agent => !agent.builtin)
+    .filter(agent => !isDefaultAgent(agent))
     .sort(
       (a, b) =>
         STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||

@@ -236,7 +236,7 @@ mod tests {
             error: error.map(str::to_string),
             direction: DelegationDirection::Outbound,
             capability: capability.into(),
-            requester_agent: "me/chief-of-staff".into(),
+            requester_agent: "me/writer".into(),
             provider_owner: None,
             requester_owner: None,
             input: json!({"text": "When is the SOC 1 walkthrough?"}),

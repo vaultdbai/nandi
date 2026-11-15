@@ -1,7 +1,7 @@
-//! What the person told the Chief of Staff about its notes, so it never
+//! What the person told Nandi about its notes, so it never
 //! does it again: capability suggestions they accepted or dismissed
 //! (`suggestions.md`), and cited lines they removed or changed on the My
-//! notes page. Both land in `corrections.md`, which the Chief of Staff reads
+//! notes page. Both land in `corrections.md`, which Nandi reads
 //! before it adds anything (its skill.md says so).
 //!
 //! ```markdown
@@ -80,7 +80,7 @@ pub fn answer(
     Some((format!("{}\n", out.join("\n").trim_end()), correction, text))
 }
 
-/// A line the Chief of Staff wrote: it names its source
+/// A line Nandi wrote: it names its source
 fn is_cited(line: &str) -> bool {
     let line = line.trim();
     line.starts_with(['-', '|', '*']) && (line.contains("(from ") || line.contains("(calendar"))
@@ -100,7 +100,8 @@ pub fn removed_lines(before: &str, after: &str) -> Vec<String> {
 /// `corrections.md` with `lines` added (it starts with a heading)
 pub fn append(corrections: &str, lines: &[String]) -> String {
     let mut out = if corrections.trim().is_empty() {
-        "# Corrections\n\nWhat I told the Chief of Staff about its notes. It doesn't add these back.\n".to_string()
+        "# Corrections\n\nWhat I told Nandi about its notes. It doesn't add these back.\n"
+            .to_string()
     } else {
         format!("{}\n", corrections.trim_end())
     };

@@ -266,13 +266,13 @@ mod tests {
         let (tmp, grants) = grant_store();
         assert!(grants
             .grant(
-                grant("chief-of-staff", "outlook", GrantAccess::Read),
+                grant("coordinator", "outlook", GrantAccess::Read),
                 GrantScope::Saved
             )
             .unwrap());
         assert!(grants
             .grant(
-                grant("chief-of-staff", "tracker", GrantAccess::Write),
+                grant("coordinator", "tracker", GrantAccess::Write),
                 GrantScope::Local
             )
             .unwrap());
@@ -284,29 +284,29 @@ mod tests {
         assert!(local.contains("connector: tracker"), "{local}");
 
         assert_eq!(
-            grants.scope_of("chief-of-staff", "outlook", GrantAccess::Read),
+            grants.scope_of("coordinator", "outlook", GrantAccess::Read),
             Some(GrantScope::Saved)
         );
         assert_eq!(
-            grants.scope_of("chief-of-staff", "tracker", GrantAccess::Write),
+            grants.scope_of("coordinator", "tracker", GrantAccess::Write),
             Some(GrantScope::Local)
         );
         // Read and write are kept apart
-        assert!(!grants.allows("chief-of-staff", "tracker", GrantAccess::Read));
+        assert!(!grants.allows("coordinator", "tracker", GrantAccess::Read));
         assert_eq!(grants.list().len(), 2);
 
         assert!(grants
             .revoke(
-                "chief-of-staff",
+                "coordinator",
                 "tracker",
                 GrantAccess::Write,
                 GrantScope::Local
             )
             .unwrap());
-        assert!(!grants.allows("chief-of-staff", "tracker", GrantAccess::Write));
+        assert!(!grants.allows("coordinator", "tracker", GrantAccess::Write));
         assert!(!grants
             .revoke(
-                "chief-of-staff",
+                "coordinator",
                 "tracker",
                 GrantAccess::Write,
                 GrantScope::Local

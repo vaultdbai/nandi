@@ -1,6 +1,6 @@
 //! Calendars and files against a mock Graph and Google on `127.0.0.1` (no
 //! network): sign-in identity and grant, the calendar change feed and one
-//! Chief of Staff run per check, the tools, the file change feed, and that
+//! Nandi run per check, the tools, the file change feed, and that
 //! every request is a `GET` to the account's own API.
 
 use std::sync::{Arc, Mutex};
@@ -160,7 +160,7 @@ async fn connected(state: &AppState, kind: AccountKind) {
 }
 
 #[tokio::test]
-async fn connecting_asks_only_for_that_accounts_scopes_and_grants_the_chief_of_staff() {
+async fn connecting_asks_only_for_that_accounts_scopes_and_grants_nandi() {
     let oauth = setup("http://x").account_oauth(
         Cloud::Microsoft,
         "outlook-calendar",
@@ -185,14 +185,14 @@ async fn connecting_asks_only_for_that_accounts_scopes_and_grants_the_chief_of_s
     assert_eq!(calendar.account_email.as_deref(), Some("dev@contoso.com"));
     assert!(state
         .grants()
-        .allows(CHIEF_OF_STAFF, "outlook-calendar", GrantAccess::Read));
+        .allows(DEFAULT_AGENT, "outlook-calendar", GrantAccess::Read));
 
     disconnect(&state, AccountKind::OutlookCalendar)
         .await
         .unwrap();
     assert!(!state
         .grants()
-        .allows(CHIEF_OF_STAFF, "outlook-calendar", GrantAccess::Read));
+        .allows(DEFAULT_AGENT, "outlook-calendar", GrantAccess::Read));
     assert_eq!(
         state
             .secrets()
@@ -204,7 +204,7 @@ async fn connecting_asks_only_for_that_accounts_scopes_and_grants_the_chief_of_s
 }
 
 #[tokio::test]
-async fn one_chief_of_staff_run_per_calendar_check_then_only_changes() {
+async fn one_nandi_run_per_calendar_check_then_only_changes() {
     let mock = mock().await;
     let (state, recorder) = state_with(&mock).await;
     connected(&state, AccountKind::OutlookCalendar).await;
@@ -274,7 +274,7 @@ async fn the_tools_read_events_free_busy_and_file_text() {
         .map(String::from)
         .to_vec();
 
-    let names: Vec<String> = tool::offered(&state, CHIEF_OF_STAFF, &[])
+    let names: Vec<String> = tool::offered(&state, DEFAULT_AGENT, &[])
         .into_iter()
         .map(|t| t.name)
         .collect();

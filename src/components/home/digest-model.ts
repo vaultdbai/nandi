@@ -1,6 +1,6 @@
 import { formatRelativeTime } from '@/lib/format-time'
 import type {
-  ChiefOfStaffDigest,
+  NandiDigest,
   DigestItem,
   DigestKind,
   IntakeAction,
@@ -74,7 +74,7 @@ export interface QueueRow {
 }
 
 /** "Since you were away", or the plain title when there is no last look */
-export function digestTitleKey(digest: ChiefOfStaffDigest): string {
+export function digestTitleKey(digest: NandiDigest): string {
   return digest.since === null
     ? 'home.chiefOfStaffDigest.titleAlways'
     : 'home.chiefOfStaffDigest.title'
@@ -84,7 +84,7 @@ export const SOURCE_KEYS: Record<RequestSource, string> = {
   me: 'home.chiefOfStaffDigest.source.me',
   email: 'home.chiefOfStaffDigest.source.email',
   calendar: 'home.chiefOfStaffDigest.source.calendar',
-  chiefOfStaff: 'home.chiefOfStaffDigest.source.chiefOfStaff',
+  nandi: 'home.chiefOfStaffDigest.source.chiefOfStaff',
   teammate: 'home.chiefOfStaffDigest.source.teammate',
 }
 
@@ -98,7 +98,7 @@ export function digestLabelKey(item: DigestItem): string {
 }
 
 export function digestRows(
-  digest: ChiefOfStaffDigest,
+  digest: NandiDigest,
   locale: string,
   now: Date = new Date()
 ): DigestRow[] {
@@ -158,7 +158,7 @@ export function queueRow(
 
 /** The screened items waiting for the user, oldest first */
 export function queueRows(
-  digest: ChiefOfStaffDigest,
+  digest: NandiDigest,
   locale: string,
   now: Date = new Date()
 ): QueueRow[] {
@@ -166,7 +166,7 @@ export function queueRows(
 }
 
 /** "Waiting for your OK" first, then counts per kind in header order, without the empty ones */
-export function digestSummary(digest: ChiefOfStaffDigest): DigestSummaryPart[] {
+export function digestSummary(digest: NandiDigest): DigestSummaryPart[] {
   const kinds: DigestSummaryPart[] = KINDS.map(kind => ({
     kind,
     count: digest.items.filter(item => item.kind === kind).length,

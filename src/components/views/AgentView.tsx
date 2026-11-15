@@ -72,6 +72,7 @@ import { AgentSharingDialog } from '@/components/sharing/AgentSharingDialog'
 import { useAgentOverviews } from '@/hooks/useAgents'
 import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
 import { decideApproval } from '@/lib/agent-actions'
+import { isDefaultAgent } from '@/lib/agent-identity'
 import { loadAgent } from '@/lib/agent-sync'
 import { openAgentInStudio } from '@/lib/ask'
 import type { ContainerState } from '@/lib/tauri-bindings'
@@ -519,7 +520,7 @@ function AgentPageMenu({
               {t('agentPage.container.start')}
             </DropdownMenuItem>
           )}
-          {mine && !agent.builtin && (
+          {mine && !isDefaultAgent(agent) && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem

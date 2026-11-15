@@ -16,9 +16,11 @@ export function displayAgent(id: string, name: string): AgentInfo {
     status: 'idle',
     currentTask: null,
     origin: { kind: 'local' },
-    builtin: false,
+    kind: 'local',
   }
 }
 
-/** The built-in Chief of Staff's agent ID */
-export const CHIEF_OF_STAFF_AGENT_ID = 'chief-of-staff'
+/** Whether this is Nandi, the default agent (`AgentKind::Default` in Rust) */
+export function isDefaultAgent(agent: Pick<AgentInfo, 'kind'>): boolean {
+  return agent.kind === 'default'
+}

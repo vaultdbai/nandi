@@ -9,7 +9,7 @@
 //! | Folder                  | Written by                                                      |
 //! | ----------------------- | --------------------------------------------------------------- |
 //! | `work/<agent>/`         | that agent's run, else outside Nandi                            |
-//! | My notes, agents write  | Chief of Staff's run, else the latest run, else outside Nandi   |
+//! | My notes, agents write  | Nandi's run, else the latest run, else outside Nandi            |
 //! | My notes, read-only     | outside Nandi (agents can't write there)                        |
 //!
 //! A run started by a workflow is shown as that workflow.
@@ -17,7 +17,7 @@
 use rusqlite::Connection;
 
 use super::ChangeAuthor;
-use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::repo_store::RepoStore;
 
 /// A run that ended this recently still counts: the watcher reports a
@@ -53,7 +53,7 @@ pub fn writer<'a>(place: Place<'_>, runs: &'a [ActiveRun]) -> Option<&'a ActiveR
             agents_can_write: true,
         } => runs
             .iter()
-            .find(|run| run.agent_id == CHIEF_OF_STAFF)
+            .find(|run| run.agent_id == DEFAULT_AGENT)
             .or_else(|| runs.first()),
     }
 }
@@ -121,11 +121,11 @@ mod tests {
     }
 
     #[test]
-    fn notes_are_written_by_chief_of_staff_first_then_the_latest_run() {
+    fn notes_are_written_by_nandi_first_then_the_latest_run() {
         let notes = Place::Notes {
             agents_can_write: true,
         };
-        let runs = [run("writer", None), run(CHIEF_OF_STAFF, None)];
+        let runs = [run("writer", None), run(DEFAULT_AGENT, None)];
         assert_eq!(writer(notes, &runs), Some(&runs[1]));
         let runs = [run("writer", Some("weekly")), run("analyst", None)];
         assert_eq!(writer(notes, &runs), Some(&runs[0]));
@@ -134,6 +134,6 @@ mod tests {
         let read_only = Place::Notes {
             agents_can_write: false,
         };
-        assert_eq!(writer(read_only, &[run(CHIEF_OF_STAFF, None)]), None);
+        assert_eq!(writer(read_only, &[run(DEFAULT_AGENT, None)]), None);
     }
 }

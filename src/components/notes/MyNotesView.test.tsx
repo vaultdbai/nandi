@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor } from '@/test/test-utils'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import { commands } from '@/lib/tauri-bindings'
 import { MyNotesView } from './MyNotesView'
 
@@ -93,8 +94,8 @@ describe('My notes', () => {
           action: 'updated',
           author: {
             kind: 'agent',
-            agentId: 'chief-of-staff',
-            agentName: 'Chief of Staff',
+            agentId: DEFAULT_AGENT,
+            agentName: 'Nandi',
           },
           at: Date.now(),
         },
@@ -102,7 +103,7 @@ describe('My notes', () => {
     })
     render(<MyNotesView />)
     expect(
-      await screen.findByText('Updated just now by Chief of Staff')
+      await screen.findByText('Updated just now by Nandi')
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument()
   })
@@ -110,7 +111,7 @@ describe('My notes', () => {
   it('offers Chief of Staff when there are no notes', async () => {
     Object.assign(commands, {
       getMyNotes: ok({ ...mine(), notes: [] }),
-      listAgents: ok([{ id: 'chief-of-staff', name: 'Chief of Staff' }]),
+      listAgents: ok([{ id: DEFAULT_AGENT, name: 'Nandi', kind: 'default' }]),
     })
     render(<MyNotesView />)
     expect(await screen.findByText('No notes yet')).toBeInTheDocument()

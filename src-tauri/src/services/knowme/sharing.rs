@@ -19,11 +19,11 @@ use rusqlite::OptionalExtension;
 use super::proposal::group_note;
 use crate::services::AppState;
 
-/// The items shared with the groups the requester of `task_id` (the Chief
-/// of Staff's task conversation `task:<id>`) is in with this Nandi, for
+/// The items shared with the groups the requester of `task_id` (Nandi's
+/// task conversation `task:<id>`) is in with this Nandi, for
 /// its system prompt; `None` for a local request or nothing shared
 pub async fn prompt_for_task(state: &AppState, task_id: &str) -> Option<String> {
-    // A gateway's hand-off to the Chief of Staff answers the gateway task
+    // A gateway's hand-off to Nandi answers the gateway task
     let root = crate::services::a2a::executor::gateway_parent(task_id).to_string();
     let requester: String = state
         .db()

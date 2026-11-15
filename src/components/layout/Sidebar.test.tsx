@@ -94,7 +94,7 @@ describe('Sidebar', () => {
           status: 'running',
           currentTask: null,
           origin: { kind: 'local' },
-          builtin: false,
+          kind: 'local',
         },
       ],
     })

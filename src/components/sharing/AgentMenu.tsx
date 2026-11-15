@@ -33,6 +33,7 @@ import {
 import { useAgentSharing, useSetRelaySharing } from '@/hooks/useAgentSharing'
 import { rawError } from '@/lib/friendly-error'
 import { openAgentInStudio } from '@/lib/ask'
+import { isDefaultAgent } from '@/lib/agent-identity'
 import { cn } from '@/lib/utils'
 import { useNavigationStore, type View } from '@/store/navigation-store'
 import type { AgentInfo } from '@/types/agent'
@@ -173,7 +174,7 @@ function AgentMenuItems({
         <Settings2 />
         {t('agentMenu.sharingSettings')}
       </DropdownMenuItem>
-      {onDelete && mine && !agent.builtin && (
+      {onDelete && mine && !isDefaultAgent(agent) && (
         <>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onSelect={onDelete}>

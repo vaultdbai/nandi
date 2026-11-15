@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import { approvalSummary } from '@/components/inbox/approval-model'
 import {
   accessChoices,
@@ -10,7 +11,7 @@ import {
 } from './access-model'
 
 const ARGS = {
-  agent: 'chief-of-staff',
+  agent: DEFAULT_AGENT,
   family: 'email',
   connectors: [{ id: 'outlook', name: 'Outlook' }],
   access: 'read',
@@ -22,7 +23,7 @@ const ARGS = {
 describe('parseAccessRequest', () => {
   it('reads the args of a connector_access approval', () => {
     expect(parseAccessRequest(ARGS)).toEqual({
-      agent: 'chief-of-staff',
+      agent: DEFAULT_AGENT,
       family: 'email',
       connectors: [{ id: 'outlook', name: 'Outlook' }],
       access: 'read',
@@ -63,9 +64,9 @@ describe('accessSentence', () => {
   it('says the family and access', () => {
     const request = parseAccessRequest(ARGS)
     if (!request) throw new Error('parse')
-    expect(accessSentence(request, 'Chief of Staff')).toEqual({
+    expect(accessSentence(request, 'Nandi')).toEqual({
       key: 'emailRead',
-      values: { agent: 'Chief of Staff', names: 'Outlook' },
+      values: { agent: 'Nandi', names: 'Outlook' },
     })
     expect(
       accessSentence(
@@ -125,7 +126,7 @@ describe('approvalSummary for connector_access', () => {
   it('says who asks for what', () => {
     expect(approvalSummary('connector_access', ARGS)).toEqual({
       key: 'connectorAccess',
-      values: { agent: 'Chief OF Staff', names: 'Outlook' },
+      values: { agent: 'Nandi', names: 'Outlook' },
     })
   })
 })

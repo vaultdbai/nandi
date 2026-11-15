@@ -6,7 +6,7 @@ use serde_json::json;
 
 use super::*;
 use crate::db;
-use crate::services::builtin_agents::CHIEF_OF_STAFF;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::gateway::assignments::{self, AssignmentStatus, GatewayAssignment};
 use crate::services::gateway::holds::{self, GatewayHold, HoldStatus};
 use crate::services::inbox::thread;
@@ -279,19 +279,19 @@ where
     panic!("timed out waiting for {what}");
 }
 
-/// The Chief of Staff's pending approvals (the Inbox list leaves its chat
+/// Nandi's pending approvals (the Inbox list leaves its chat
 /// decisions out)
-async fn chief_approvals(state: &AppState) -> Vec<crate::model::PendingApproval> {
+async fn nandi_approvals(state: &AppState) -> Vec<crate::model::PendingApproval> {
     state
         .db()
-        .call(|conn| db::pending_approvals(conn, Some(CHIEF_OF_STAFF)))
+        .call(|conn| db::pending_approvals(conn, Some(DEFAULT_AGENT)))
         .await
         .unwrap()
 }
 
-/// A Chief of Staff whose next turn proposes `tool` with `args`, never
+/// A Nandi whose next turn proposes `tool` with `args`, never
 /// marked as needing approval: the gate must make it wait anyway
-async fn chief_proposes(state: &AppState, tool: &str, args: serde_json::Value) {
+async fn nandi_proposes(state: &AppState, tool: &str, args: serde_json::Value) {
     crate::services::builtin_agents::seed(state.store().layout()).unwrap();
     state.store().load().unwrap();
     let script = json!({
@@ -321,7 +321,7 @@ async fn chief_proposes(state: &AppState, tool: &str, args: serde_json::Value) {
 async fn a_chat_decision_waits_for_the_users_confirm_then_calls_the_service() {
     let state = AppState::for_tests(Vec::new());
     held(&state, "t1").await;
-    chief_proposes(&state, REFUSE, json!({"reason": "Ask Bea instead"})).await;
+    nandi_proposes(&state, REFUSE, json!({"reason": "Ask Bea instead"})).await;
     let id = "inbox:gatewayHold:t1".to_string();
     thread::open(&state, id.clone()).await.unwrap();
     thread::send(&state, id.clone(), "Decline it, Bea owns this".into(), None)
@@ -329,10 +329,10 @@ async fn a_chat_decision_waits_for_the_users_confirm_then_calls_the_service() {
         .unwrap();
 
     wait_for("the confirm card", || async {
-        !chief_approvals(&state).await.is_empty()
+        !nandi_approvals(&state).await.is_empty()
     })
     .await;
-    let approval = chief_approvals(&state).await.remove(0);
+    let approval = nandi_approvals(&state).await.remove(0);
     assert_eq!(approval.tool, REFUSE);
     // Nothing is decided by the chat sentence, and the confirm isn't an
     // Inbox item of its own
@@ -344,7 +344,7 @@ async fn a_chat_decision_waits_for_the_users_confirm_then_calls_the_service() {
 
     crate::services::chat::approve_action(
         &state,
-        Some(CHIEF_OF_STAFF),
+        Some(DEFAULT_AGENT),
         approval.id,
         ApprovalDecision::Approved,
     )
@@ -374,22 +374,22 @@ async fn a_chat_decision_waits_for_the_users_confirm_then_calls_the_service() {
 async fn a_refused_confirm_decides_nothing() {
     let state = AppState::for_tests(Vec::new());
     held(&state, "t1").await;
-    chief_proposes(&state, APPROVE, json!({})).await;
+    nandi_proposes(&state, APPROVE, json!({})).await;
     let id = "inbox:gatewayHold:t1".to_string();
     thread::open(&state, id.clone()).await.unwrap();
     thread::send(&state, id, "Approve it".into(), None)
         .await
         .unwrap();
     wait_for("the confirm card", || async {
-        !chief_approvals(&state).await.is_empty()
+        !nandi_approvals(&state).await.is_empty()
     })
     .await;
-    let approval = chief_approvals(&state).await.remove(0);
+    let approval = nandi_approvals(&state).await.remove(0);
     crate::services::chat::approve_action(&state, None, approval.id, ApprovalDecision::Rejected)
         .await
         .unwrap();
     wait_for("the turn to end", || async {
-        chief_approvals(&state).await.is_empty()
+        nandi_approvals(&state).await.is_empty()
     })
     .await;
     tokio::time::sleep(Duration::from_millis(200)).await;

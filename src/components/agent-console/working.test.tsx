@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import { render, screen } from '@/test/test-utils'
 import type { AgentInfo, UiMessage } from '@/types/agent'
 import { MessageList } from './MessageList'
@@ -79,13 +80,13 @@ describe('turnStartedAt', () => {
 })
 
 describe('MessageList working dots', () => {
-  const agent = { id: 'chief-of-staff', name: 'Chief of Staff' } as AgentInfo
+  const agent = { id: DEFAULT_AGENT, name: 'Nandi' } as AgentInfo
 
   it('shows the agent working after the user sends', () => {
     render(<MessageList messages={[user()]} assistant={agent} working />)
     expect(
       screen.getByRole('status', {
-        name: 'Chief of Staff is working on your request',
+        name: 'Nandi is working on your request',
       })
     ).toHaveTextContent('Working on it...')
   })

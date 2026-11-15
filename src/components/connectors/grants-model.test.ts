@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { GrantInfo } from '@/lib/bindings'
+import { DEFAULT_AGENT, type GrantInfo } from '@/lib/bindings'
 import {
   agentGrants,
   grantableConnectors,
@@ -8,7 +8,7 @@ import {
 } from './grants-model'
 
 const NAMES: GrantNames = {
-  agent: id => ({ 'chief-of-staff': 'Chief of Staff', bot: 'Bot' })[id],
+  agent: id => ({ [DEFAULT_AGENT]: 'Nandi', bot: 'Bot' })[id],
   connector: id => ({ tracker: 'Issue tracker' })[id],
 }
 
@@ -23,14 +23,14 @@ describe('groupGrants', () => {
   it('groups by agent with names, read before write', () => {
     const groups = groupGrants(
       [
-        grant('chief-of-staff', 'tracker', 'write'),
-        grant('chief-of-staff', 'outlook'),
+        grant(DEFAULT_AGENT, 'tracker', 'write'),
+        grant(DEFAULT_AGENT, 'outlook'),
         grant('bot', 'tracker', 'read', 'local'),
-        grant('chief-of-staff', 'tracker'),
+        grant(DEFAULT_AGENT, 'tracker'),
       ],
       NAMES
     )
-    expect(groups.map(g => g.agentName)).toEqual(['Bot', 'Chief of Staff'])
+    expect(groups.map(g => g.agentName)).toEqual(['Bot', 'Nandi'])
     expect(
       groups[1]?.rows.map(r => `${r.connectorName}:${r.grant.access}`)
     ).toEqual(['Issue tracker:read', 'Issue tracker:write', 'Outlook:read'])
@@ -53,7 +53,7 @@ describe('agentGrants', () => {
       grant('bot', 'tracker', 'read', 'local'),
       grant('bot', 'tracker', 'read', 'saved'),
       grant('bot', 'other'),
-      grant('chief-of-staff', 'tracker', 'write'),
+      grant(DEFAULT_AGENT, 'tracker', 'write'),
     ]
     const mine = agentGrants(grants, 'bot', 'tracker')
     expect(mine.read.map(g => g.scope)).toEqual(['saved', 'local'])

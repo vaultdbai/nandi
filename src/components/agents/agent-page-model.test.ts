@@ -153,25 +153,18 @@ describe('sortAgents', () => {
         problem: { kind: 'waiting' as const, count: 1 },
         lastRunAt: null,
       },
-      { name: 'Chief of Staff', builtin: true, problem: null, lastRunAt: null },
+      { name: 'Nandi', isDefault: true, problem: null, lastRunAt: null },
     ]
-    expect(sortAgents(rows).map(r => r.name)).toEqual([
-      'Chief of Staff',
-      'waits',
-    ])
+    expect(sortAgents(rows).map(r => r.name)).toEqual(['Nandi', 'waits'])
   })
 
   it('keeps the built-in agents in the order they come', () => {
     const rows = [
-      { name: 'Chief of Staff', builtin: true, problem: null, lastRunAt: 1 },
-      { name: 'Guide', builtin: true, problem: null, lastRunAt: 9 },
+      { name: 'Nandi', isDefault: true, problem: null, lastRunAt: 1 },
+      { name: 'Guide', isDefault: true, problem: null, lastRunAt: 9 },
       { name: 'Amy', problem: null, lastRunAt: 5 },
     ]
-    expect(sortAgents(rows).map(r => r.name)).toEqual([
-      'Chief of Staff',
-      'Guide',
-      'Amy',
-    ])
+    expect(sortAgents(rows).map(r => r.name)).toEqual(['Nandi', 'Guide', 'Amy'])
   })
 })
 

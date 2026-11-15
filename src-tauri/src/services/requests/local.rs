@@ -79,12 +79,12 @@ pub enum RequestSource {
     /// The user, from the ask box or Studio
     #[default]
     Me,
-    /// The Chief of Staff, from new mail
+    /// Nandi, from new mail
     Email,
-    /// The Chief of Staff, from a calendar change
+    /// Nandi, from a calendar change
     Calendar,
-    /// The Chief of Staff, in a chat
-    ChiefOfStaff,
+    /// Nandi, in a chat
+    Nandi,
     /// A teammate's request to one of the user's agents (intake only)
     Teammate,
 }
@@ -645,7 +645,7 @@ async fn observe(state: &AppState, step: &LocalStep) -> Option<(StepStatus, Opti
 async fn start(state: &AppState, request: &LocalRequest, step: &mut LocalStep, now: i64) {
     step.started_at = Some(now);
     let started = match step.kind {
-        // The Chief of Staff's own step: in the task's thread or the
+        // Nandi's own step: in the task's thread or the
         // Request's conversation, never its main chat
         PlanStepKind::LocalAgent if self_step::is_self_step(step.kind, &step.target) => {
             self_step::start(state, request, step)
@@ -737,7 +737,7 @@ pub async fn tick(state: &AppState, id: &str) -> Result<bool, String> {
         state.db().call(move |conn| save(conn, &saved)).await?;
         events::emit(state.bus(), &RequestUpdated { id: id.to_string() });
         if request.status == RequestStatus::Done {
-            // Recurring work: the Chief of Staff offers to save it
+            // Recurring work: Nandi offers to save it
             super::recurrence::on_done(state, &request).await;
         }
     }
@@ -783,7 +783,7 @@ pub async fn start_request(
     start_request_from(state, plan, text, RequestSource::Me).await
 }
 
-/// Like [`start_request`], for work the Chief of Staff started itself
+/// Like [`start_request`], for work Nandi started itself
 pub async fn start_request_from(
     state: &AppState,
     plan: ActionPlan,
@@ -796,7 +796,7 @@ pub async fn start_request_from(
 }
 
 /// Saves a plan as a Request without starting it, so the caller can link
-/// it first (intake links its thread, where a Chief of Staff step runs);
+/// it first (intake links its thread, where a Nandi step runs);
 /// [`spawn_runner`] starts it. Returns its ID.
 pub async fn create_request(
     state: &AppState,
@@ -1362,7 +1362,7 @@ mod tests {
             "r1",
             "Pay the Acme bill",
             &plan(&[
-                (PlanStepKind::LocalAgent, "chief-of-staff"),
+                (PlanStepKind::LocalAgent, "assistant"),
                 (PlanStepKind::LocalAgent, "writer"),
             ]),
             RequestSource::Email,
@@ -1386,9 +1386,9 @@ mod tests {
         // agent, sign in, agent, pay, agent; then the writer's step as it was
         let manual: Vec<bool> = workflow.steps().iter().map(|s| s.is_manual()).collect();
         assert_eq!(manual, vec![false, true, false, true, false, false]);
-        assert!(yaml.contains("Your part of \\\"Do chief-of-staff\\\": Sign in"));
-        assert!(yaml.contains("Your part of \\\"Do chief-of-staff\\\": Pay"));
-        assert!(yaml.contains("Do chief-of-staff: Billing > Pay bill; Enter the amount"));
+        assert!(yaml.contains("Your part of \\\"Do assistant\\\": Sign in"));
+        assert!(yaml.contains("Your part of \\\"Do assistant\\\": Pay"));
+        assert!(yaml.contains("Do assistant: Billing > Pay bill; Enter the amount"));
         assert!(yaml.contains("  - id: step-6\n    agent: writer"));
 
         // A run plan with no hand-over leaves the step whole
@@ -1610,17 +1610,17 @@ mod tests {
         );
     }
 
-    // -- The Chief of Staff's own step ---------------------------------------
+    // -- Nandi's own step ---------------------------------------
 
-    use crate::services::builtin_agents::{self, CHIEF_OF_STAFF};
+    use crate::services::builtin_agents::{self, DEFAULT_AGENT};
     use crate::services::intake;
 
-    /// The Chief of Staff exists, and every agent answers with its input
-    async fn chief_of_staff_answers(state: &AppState) {
+    /// Nandi exists, and every agent answers with its input
+    async fn nandi_answers(state: &AppState) {
         builtin_agents::seed(state.store().layout()).unwrap();
         state
             .store()
-            .commit(crate::services::domain::EntityKind::Agent, CHIEF_OF_STAFF)
+            .commit(crate::services::domain::EntityKind::Agent, DEFAULT_AGENT)
             .unwrap();
         state
             .db()
@@ -1682,7 +1682,7 @@ mod tests {
             .call(|conn| {
                 conn.query_row(
                     "SELECT COUNT(*) FROM messages WHERE conversation_id = ?1",
-                    [db::agent_conversation_id(CHIEF_OF_STAFF)],
+                    [db::agent_conversation_id(DEFAULT_AGENT)],
                     |row| row.get(0),
                 )
             })
@@ -1691,10 +1691,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_chief_of_staff_step_runs_in_the_task_thread_and_settles() {
+    async fn a_nandi_step_runs_in_the_task_thread_and_settles() {
         let state = AppState::for_tests(Vec::new());
-        chief_of_staff_answers(&state).await;
-        // Queued from mail with a plan that gives the Chief of Staff a step
+        nandi_answers(&state).await;
+        // Queued from mail with a plan that gives Nandi a step
         let item = intake::QueuedWork {
             id: "q1".into(),
             at: db::now_ms() as f64,
@@ -1708,7 +1708,7 @@ mod tests {
             status: intake::IntakeStatus::Pending,
             result_request_id: None,
             thread_id: intake::thread::id_for("q1"),
-            plan: Some(plan(&[(PlanStepKind::LocalAgent, CHIEF_OF_STAFF)])),
+            plan: Some(plan(&[(PlanStepKind::LocalAgent, DEFAULT_AGENT)])),
         };
         let saved = item.clone();
         state
@@ -1737,13 +1737,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_chief_of_staff_step_without_a_thread_gets_the_requests_own_conversation() {
+    async fn a_nandi_step_without_a_thread_gets_the_requests_own_conversation() {
         let state = AppState::for_tests(Vec::new());
-        chief_of_staff_answers(&state).await;
+        nandi_answers(&state).await;
         let id = start_request(
             &state,
             plan(&[
-                (PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
+                (PlanStepKind::LocalAgent, DEFAULT_AGENT),
                 (PlanStepKind::Manual, "check"),
             ]),
             "Download the October statement from acme-bank.com".into(),
@@ -1767,29 +1767,29 @@ mod tests {
             .call(move |conn| db::conversation_agent(conn, &conversation))
             .await
             .unwrap();
-        assert_eq!(owner.as_deref(), Some(CHIEF_OF_STAFF));
+        assert_eq!(owner.as_deref(), Some(DEFAULT_AGENT));
         assert_eq!(main_chat_messages(&state).await, 0);
 
-        // Two Chief of Staff steps in one plan are refused
+        // Two Nandi steps in one plan are refused
         let twice = plan(&[
-            (PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
-            (PlanStepKind::LocalAgent, CHIEF_OF_STAFF),
+            (PlanStepKind::LocalAgent, DEFAULT_AGENT),
+            (PlanStepKind::LocalAgent, DEFAULT_AGENT),
         ]);
         assert!(start_request(&state, twice, "Twice".into()).await.is_err());
         state.shutdown();
     }
 
     #[tokio::test]
-    async fn work_a_chief_of_staff_step_starts_waits_for_the_user() {
+    async fn work_a_nandi_step_starts_waits_for_the_user() {
         let state = AppState::for_tests(Vec::new());
         let before = state.db().call(|conn| open_ids(conn)).await.unwrap();
         let outcome = super::super::tool::call(
             &state,
-            RequestSource::ChiefOfStaff,
+            RequestSource::Nandi,
             None,
             true,
             super::super::tool::START,
-            &json!({ "what": "Chief of Staff: pay the Globex bill on globex.com" }),
+            &json!({ "what": "Nandi: pay the Globex bill on globex.com" }),
         )
         .await;
         assert!(!outcome.is_error, "{}", outcome.result);
@@ -1810,7 +1810,7 @@ mod tests {
         use crate::services::requests::digest;
 
         let state = AppState::for_tests(Vec::new());
-        let bill = plan(&[(PlanStepKind::LocalAgent, CHIEF_OF_STAFF)]);
+        let bill = plan(&[(PlanStepKind::LocalAgent, DEFAULT_AGENT)]);
         // Last month's, done
         let mut earlier = new_request(
             "r-oct",
@@ -1858,7 +1858,7 @@ mod tests {
                 conn.execute(
                     "INSERT INTO runs (id, agent_id, conversation_id, status, input, started_at, source_type)
                      VALUES ('run-nov', ?1, ?2, 'completed', 'x', ?3, 'request')",
-                    params![CHIEF_OF_STAFF, t, db::now_ms()],
+                    params![DEFAULT_AGENT, t, db::now_ms()],
                 )?;
                 Ok(())
             })
@@ -1901,6 +1901,6 @@ mod tests {
         let yaml = draft_workflow_from_request(&state, "r-nov".into())
             .await
             .unwrap();
-        assert!(yaml.contains("agent: chief-of-staff"));
+        assert!(yaml.contains(&format!("agent: {DEFAULT_AGENT}")));
     }
 }

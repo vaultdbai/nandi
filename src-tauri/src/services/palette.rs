@@ -984,7 +984,7 @@ mod tests {
             status: agents::AgentStatus::Idle,
             current_task: None,
             origin: agents::AgentOrigin::Local,
-            builtin: false,
+            kind: agents::AgentKind::Local,
         };
         let mut results: Vec<PaletteResult> = per_entity_actions(&[agent], &[], &[])
             .into_iter()

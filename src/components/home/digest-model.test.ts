@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ChiefOfStaffDigest, DigestItem, QueuedWork } from '@/lib/bindings'
+import type { NandiDigest, DigestItem, QueuedWork } from '@/lib/bindings'
 import {
   digestLabelKey,
   digestRows,
@@ -32,7 +32,7 @@ const digest = (
   items: DigestItem[],
   since: number | null = 1,
   queue: QueuedWork[] = []
-): ChiefOfStaffDigest => ({
+): NandiDigest => ({
   since,
   items,
   queue,

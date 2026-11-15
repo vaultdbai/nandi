@@ -45,7 +45,7 @@ beforeEach(() => {
     listGatewayAssignments: ok([]),
     listTrustRequests: ok([]),
     listRequestReturns: ok([]),
-    getChiefOfStaffDigest: ok({ since: null, items: [], queue: [] }),
+    getNandiDigest: ok({ since: null, items: [], queue: [] }),
     openInboxThread: ok(THREAD),
     getConversation: ok({
       conversationId: 'inbox:knowMe:you',

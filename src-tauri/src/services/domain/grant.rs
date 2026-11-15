@@ -12,7 +12,7 @@
 //!
 //! ```yaml
 //! connector_grants:
-//!   - { agent: chief-of-staff, connector: outlook, access: read }
+//!   - { agent: coordinator, connector: outlook, access: read }
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -207,14 +207,14 @@ mod tests {
     #[test]
     fn grants_are_per_agent_connector_and_access() {
         let mut grants = Grants::default();
-        assert!(grants.add(grant("chief-of-staff", "outlook", GrantAccess::Read)));
-        assert!(!grants.add(grant("chief-of-staff", "outlook", GrantAccess::Read)));
-        assert!(grants.allows("chief-of-staff", "outlook", GrantAccess::Read));
-        assert!(!grants.allows("chief-of-staff", "outlook", GrantAccess::Write));
-        assert!(!grants.allows("chief-of-staff", "gmail", GrantAccess::Read));
+        assert!(grants.add(grant("coordinator", "outlook", GrantAccess::Read)));
+        assert!(!grants.add(grant("coordinator", "outlook", GrantAccess::Read)));
+        assert!(grants.allows("coordinator", "outlook", GrantAccess::Read));
+        assert!(!grants.allows("coordinator", "outlook", GrantAccess::Write));
+        assert!(!grants.allows("coordinator", "gmail", GrantAccess::Read));
         assert!(!grants.allows("pr-reviewer", "outlook", GrantAccess::Read));
-        assert!(grants.remove("chief-of-staff", "outlook", GrantAccess::Read));
-        assert!(!grants.remove("chief-of-staff", "outlook", GrantAccess::Read));
+        assert!(grants.remove("coordinator", "outlook", GrantAccess::Read));
+        assert!(!grants.remove("coordinator", "outlook", GrantAccess::Read));
         assert!(grants.is_empty());
     }
 
@@ -231,11 +231,11 @@ mod tests {
     #[test]
     fn local_settings_round_trip_and_refuse_bad_grants() {
         let yaml =
-            "connector_grants:\n  - { agent: chief-of-staff, connector: outlook, access: read }\n";
+            "connector_grants:\n  - { agent: coordinator, connector: outlook, access: read }\n";
         let local = LocalSettings::from_yaml(yaml).unwrap();
         assert!(local
             .connector_grants
-            .allows("chief-of-staff", "outlook", GrantAccess::Read));
+            .allows("coordinator", "outlook", GrantAccess::Read));
         assert_eq!(LocalSettings::from_yaml(&local.to_yaml()).unwrap(), local);
         assert_eq!(
             LocalSettings::from_yaml("").unwrap(),
