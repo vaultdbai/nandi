@@ -4,25 +4,87 @@ use rusqlite::types::Value;
 use sha2::{Digest, Sha256};
 
 use super::*;
+use crate::services::builtin_agents::DEFAULT_AGENT;
 
 /// The SHA-256 of every shipped migration file. A migration that shipped
 /// never changes: add the next one, and its checksum here.
-const SHIPPED: &[(&str, &str)] = &[(
-    "001_baseline.sql",
-    "800374d023d39a296641f51e8a22a9b649ad09d2dc89803ef8e3aac946f4e1c3",
-)];
+const SHIPPED: &[(&str, &str)] = &[
+    (
+        "002_nandi_0_1_0.sql",
+        "2dbbf27ac6af7577478004042985dadf867577e86ce1e2d6a95a5913c03f002a",
+    ),
+    (
+        "006_since_0_1_0.sql",
+        "8d4fbe8866f4bcee4e2a9edf271bfe0d75b127773a8fbb35e7727d18c66dcbf9",
+    ),
+];
 
-const BASELINE_ROWS: &str = include_str!("migrations/fixtures/baseline_rows.sql");
+/// A person's rows as Nandi 0.1.0 wrote them
+const V0_1_0_ROWS: &str = include_str!("migrations/fixtures/v0_1_0_rows.sql");
 
-/// Test-only steps after the baseline, the way a real one would look
+/// The version Nandi 0.1.0 stamped
+const V0_1_0: i64 = 2;
+
+// What 006 does to a 0.1.0 database's rows, for the row-by-row check
+
+/// Tables of removed features: dropped with their rows
+const REMOVED_TABLES: &[&str] = &[
+    "teams",
+    "team_members",
+    "roster_cache",
+    "capability_registries",
+    "circuit_breakers",
+];
+/// Columns nothing reads: dropped
+const REMOVED_COLUMNS: &[(&str, &str)] = &[
+    ("capabilities_projection", "registry_origin"),
+    ("capability_evidence", "approval_required"),
+    ("reassigned_tasks", "new_task_id"),
+];
+/// Views of the gold copy: emptied, rebuilt from the files at startup
+const REBUILT_FROM_THE_GOLD_COPY: &[&str] = &[
+    "agents",
+    "workflows",
+    "triggers",
+    "settings",
+    "connectors",
+    "sync_state",
+    "capability_index",
+];
+/// Columns holding an agent ID: `chief-of-staff` becomes `nandi`
+const AGENT_ID_COLUMNS: &[(&str, &str)] = &[
+    ("conversations", "agent_id"),
+    ("runs", "agent_id"),
+    ("agent_queue", "agent_id"),
+    ("approvals", "agent_id"),
+    ("harness_sessions", "agent_id"),
+    ("delegations", "target_agent"),
+    ("delegations", "requester_agent"),
+    ("tasks", "requester_agent"),
+    ("tasks", "provider_agent"),
+    ("request_returns", "provider_agent"),
+    ("eta_history", "provider_agent"),
+    ("capability_evidence", "provider_id"),
+    ("capabilities_projection", "owner_id"),
+    ("request_steps", "target"),
+    ("agent_state", "agent_id"),
+    ("agent_memory", "agent_id"),
+    ("trust_policies", "provider_agent"),
+    ("blocked_members", "agent_id"),
+    ("capability_providers", "provider_id"),
+    ("capability_aggregates", "provider_id"),
+    ("provider_circuits", "provider_id"),
+];
+
+/// Test-only steps after the shipped chain, the way a real one would look
 const ADD_A_COLUMN: Migration = Migration {
-    version: 2,
-    file: "002_runs_label.sql",
+    version: 7,
+    file: "007_runs_label.sql",
     sql: "ALTER TABLE runs ADD COLUMN label TEXT NOT NULL DEFAULT '';",
 };
 const REBUILD_CONVERSATIONS: Migration = Migration {
-    version: 3,
-    file: "003_rebuild_conversations.sql",
+    version: 8,
+    file: "008_rebuild_conversations.sql",
     sql: "CREATE TABLE conversations_new (
               id         TEXT PRIMARY KEY,
               agent_id   TEXT NOT NULL,
@@ -37,11 +99,9 @@ const REBUILD_CONVERSATIONS: Migration = Migration {
           CREATE INDEX conversations_agent ON conversations(agent_id);",
 };
 
+/// The shipped chain, then `steps`
 fn chain(steps: &[Migration]) -> Vec<Migration> {
-    [MIGRATIONS[0]]
-        .into_iter()
-        .chain(steps.iter().copied())
-        .collect()
+    MIGRATIONS.iter().chain(steps).copied().collect()
 }
 
 fn user_version(conn: &Connection) -> i64 {
@@ -60,7 +120,8 @@ fn schema(conn: &Connection) -> Vec<(String, String, Option<String>)> {
         .collect()
 }
 
-type Rows = BTreeMap<String, Vec<BTreeMap<String, Value>>>;
+type Row = BTreeMap<String, Value>;
+type Rows = BTreeMap<String, Vec<Row>>;
 
 /// Every row of every table that has rows, by column name
 fn rows(conn: &Connection) -> Rows {
@@ -77,7 +138,7 @@ fn rows(conn: &Connection) -> Rows {
             .prepare(&format!("SELECT * FROM \"{table}\" ORDER BY rowid"))
             .unwrap();
         let columns: Vec<String> = stmt.column_names().into_iter().map(Into::into).collect();
-        let rows: Vec<BTreeMap<String, Value>> = stmt
+        let rows: Vec<Row> = stmt
             .query_map([], |row| {
                 columns
                     .iter()
@@ -110,26 +171,65 @@ fn assert_rows_survived(before: &Rows, after: &Rows) {
     }
 }
 
-/// A baseline database file holding the fixture rows, as a person's
-/// would be. WAL mode, like the app's.
-fn baseline_file(dir: &Path) -> (Connection, PathBuf) {
+/// `value` in `table.column` after 006: an agent ID is renamed
+fn renamed(table: &str, column: &str, value: &Value) -> Value {
+    let chief_of_staff = Value::Text("chief-of-staff".into());
+    if AGENT_ID_COLUMNS.contains(&(table, column)) && *value == chief_of_staff {
+        Value::Text(DEFAULT_AGENT.into())
+    } else {
+        value.clone()
+    }
+}
+
+/// The rows a 0.1.0 database should hold after 006, worked out from the
+/// rows it held before and the lists above
+fn expected_after_0_1_0(before: &Rows) -> Rows {
+    let kept_tables = before.iter().filter(|(table, _)| {
+        !REMOVED_TABLES.contains(&table.as_str())
+            && !REBUILT_FROM_THE_GOLD_COPY.contains(&table.as_str())
+    });
+    kept_tables
+        .map(|(table, rows)| {
+            let rows = rows
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .filter(|(column, _)| {
+                            !REMOVED_COLUMNS.contains(&(table.as_str(), column.as_str()))
+                        })
+                        .map(|(column, value)| (column.clone(), renamed(table, column, value)))
+                        .collect()
+                })
+                .collect();
+            (table.clone(), rows)
+        })
+        .collect()
+}
+
+/// A database file Nandi 0.1.0 wrote, holding the fixture rows. WAL mode,
+/// like the app's.
+fn v0_1_0_file(dir: &Path) -> (Connection, PathBuf) {
     let path = dir.join("state.db");
     let conn = Connection::open(&path).unwrap();
     conn.pragma_update(None, "journal_mode", "WAL").unwrap();
     conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
     upgrade(&conn, &MIGRATIONS[..1], Some(&path)).unwrap();
-    conn.execute_batch(BASELINE_ROWS).unwrap();
+    assert_eq!(user_version(&conn), V0_1_0);
+    conn.execute_batch(V0_1_0_ROWS).unwrap();
     (conn, path)
 }
 
 #[test]
-fn versions_count_from_one_without_gaps() {
-    for (index, migration) in MIGRATIONS.iter().enumerate() {
-        assert_eq!(migration.version, index as i64 + 1, "{}", migration.file);
+fn versions_rise_and_name_their_files() {
+    for pair in MIGRATIONS.windows(2) {
+        assert!(pair[0].version < pair[1].version, "{}", pair[1].file);
+    }
+    for migration in MIGRATIONS {
         let number = format!("{:03}_", migration.version);
         assert!(migration.file.starts_with(&number), "{}", migration.file);
     }
-    assert_eq!(SCHEMA_VERSION, MIGRATIONS.len() as i64);
+    assert_eq!(MIGRATIONS[0].version, V0_1_0, "0.1.0's schema comes first");
+    assert_eq!(SCHEMA_VERSION, MIGRATIONS.last().unwrap().version);
 }
 
 #[test]
@@ -162,11 +262,29 @@ fn every_migration_file_is_in_the_chain() {
 }
 
 #[test]
+fn each_version_has_its_standing() {
+    let cases = [
+        (0, Standing::New),
+        (1, Standing::Unreleased),
+        (2, Standing::Behind),
+        (3, Standing::Unreleased),
+        (4, Standing::Unreleased),
+        (5, Standing::Unreleased),
+        (6, Standing::Current),
+        (7, Standing::Newer),
+    ];
+    for (version, expected) in cases {
+        assert_eq!(standing(version, MIGRATIONS), expected, "version {version}");
+    }
+}
+
+#[test]
 fn a_fresh_database_and_an_upgraded_one_have_the_same_schema() {
     for migrations in [
         MIGRATIONS.to_vec(),
         chain(&[ADD_A_COLUMN, REBUILD_CONVERSATIONS]),
     ] {
+        let latest = migrations.last().unwrap().version;
         let fresh = Connection::open_in_memory().unwrap();
         upgrade(&fresh, &migrations, None).unwrap();
         // Stopped after each step, as a person on that version would be
@@ -175,29 +293,101 @@ fn a_fresh_database_and_an_upgraded_one_have_the_same_schema() {
             upgrade(&upgraded, &migrations[..stop], None).unwrap();
             upgrade(&upgraded, &migrations, None).unwrap();
             assert_eq!(schema(&upgraded), schema(&fresh), "stopped at {stop}");
-            assert_eq!(user_version(&upgraded), migrations.len() as i64);
+            assert_eq!(user_version(&upgraded), latest);
         }
     }
 }
 
 #[test]
-fn every_baseline_row_survives_the_migration_chain() {
+fn a_0_1_0_database_upgrades_row_by_row() {
     let dir = tempfile::tempdir().unwrap();
-    let (conn, path) = baseline_file(dir.path());
+    let (conn, path) = v0_1_0_file(dir.path());
     let before = rows(&conn);
     for table in [
+        "conversations",
         "runs",
-        "messages",
         "approvals",
-        "intake_queue",
-        "tasks",
-        "delegations",
+        "agent_state",
+        "request_steps",
+        "relay_state",
+        "agents",
+        "teams",
+        "capability_evidence",
     ] {
         assert!(before.contains_key(table), "the fixture has {table} rows");
     }
-    // The shipped chain, then one with a table rebuilt under a cascade
+
+    let done = upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
+    assert!(matches!(done, Upgrade::Upgraded { from: V0_1_0, .. }));
+    let after = rows(&conn);
+    for (table, rows) in &expected_after_0_1_0(&before) {
+        assert_eq!(after.get(table), Some(rows), "{table}");
+    }
+    for table in REMOVED_TABLES.iter().chain(REBUILT_FROM_THE_GOLD_COPY) {
+        assert!(!after.contains_key(*table), "{table} has no rows");
+    }
+}
+
+#[test]
+fn no_row_still_names_the_chief_of_staff() {
+    let dir = tempfile::tempdir().unwrap();
+    let (conn, path) = v0_1_0_file(dir.path());
     upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
-    assert_rows_survived(&before, &rows(&conn));
+
+    let chief_of_staff = Value::Text("chief-of-staff".into());
+    for (table, rows) in rows(&conn) {
+        for row in rows {
+            for (column, value) in row {
+                assert_ne!(value, chief_of_staff, "{table}.{column}");
+            }
+        }
+    }
+    // The person's own agent keeps its rows as they were
+    let writer: String = conn
+        .query_row(
+            "SELECT agent_id FROM conversations WHERE id = 'conv-writer'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(writer, "writer");
+}
+
+#[test]
+fn an_existing_nandi_row_wins_over_the_renamed_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let (conn, path) = v0_1_0_file(dir.path());
+    conn.execute(
+        "INSERT INTO agent_state (agent_id, status, error, updated_at)
+             VALUES (?1, 'running', NULL, 3000)",
+        [DEFAULT_AGENT],
+    )
+    .unwrap();
+    upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
+
+    let states: Vec<(String, String)> = conn
+        .prepare("SELECT agent_id, status FROM agent_state ORDER BY agent_id")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    let expected = [
+        ("chief-of-staff", "idle"),
+        (DEFAULT_AGENT, "running"),
+        ("writer", "error"),
+    ]
+    .map(|(id, status)| (id.to_string(), status.to_string()));
+    assert_eq!(states, expected);
+}
+
+#[test]
+fn every_row_survives_a_later_step() {
+    let dir = tempfile::tempdir().unwrap();
+    let (conn, path) = v0_1_0_file(dir.path());
+    upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
+    let before = rows(&conn);
+    // A table rebuilt under a cascade loses nothing
     upgrade(
         &conn,
         &chain(&[ADD_A_COLUMN, REBUILD_CONVERSATIONS]),
@@ -210,26 +400,26 @@ fn every_baseline_row_survives_the_migration_chain() {
 #[test]
 fn an_upgrade_keeps_a_copy_of_the_database_first() {
     let dir = tempfile::tempdir().unwrap();
-    let (conn, path) = baseline_file(dir.path());
+    let (conn, path) = v0_1_0_file(dir.path());
     let before = rows(&conn);
 
-    let done = upgrade(&conn, &chain(&[ADD_A_COLUMN]), Some(&path)).unwrap();
-    let backup = dir.path().join("state.db.bak-v1");
+    let done = upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
+    let backup = dir.path().join("state.db.bak-v2");
     assert_eq!(
         done,
         Upgrade::Upgraded {
-            from: 1,
-            to: 2,
+            from: V0_1_0,
+            to: SCHEMA_VERSION,
             backup: Some(backup.clone())
         }
     );
-    assert_eq!(user_version(&conn), 2);
+    assert_eq!(user_version(&conn), SCHEMA_VERSION);
     // The copy is the old version with every committed row (none left in the WAL)
     let copy = Connection::open(&backup).unwrap();
-    assert_eq!(user_version(&copy), 1);
+    assert_eq!(user_version(&copy), V0_1_0);
     assert_eq!(rows(&copy), before);
     // Up to date now: nothing more to do
-    let again = upgrade(&conn, &chain(&[ADD_A_COLUMN]), Some(&path)).unwrap();
+    let again = upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
     assert_eq!(again, Upgrade::UpToDate);
 }
 
@@ -246,39 +436,53 @@ fn a_new_database_gets_the_whole_schema_and_no_copy() {
 #[test]
 fn a_failed_migration_rolls_every_step_back() {
     let broken_sql = Migration {
-        version: 3,
-        file: "003_broken.sql",
+        version: 8,
+        file: "008_broken.sql",
         sql: "ALTER TABLE no_such_table ADD COLUMN x TEXT;",
     };
     // Deletes a conversation its messages and runs still point to
     let breaks_a_key = Migration {
-        version: 3,
-        file: "003_breaks_a_key.sql",
-        sql: "DELETE FROM conversations WHERE id = 'conv-agent';",
+        version: 8,
+        file: "008_breaks_a_key.sql",
+        sql: "DELETE FROM conversations WHERE id = 'conv-cos';",
     };
     let cases = [
-        (broken_sql, "migration 003_broken.sql failed"),
+        (broken_sql, "migration 008_broken.sql failed"),
         (breaks_a_key, "lost the row they refer to"),
     ];
     for (failing, reason) in cases {
         let dir = tempfile::tempdir().unwrap();
-        let (conn, path) = baseline_file(dir.path());
+        let (conn, path) = v0_1_0_file(dir.path());
         let before = rows(&conn);
         let schema_before = schema(&conn);
 
         let error = upgrade(&conn, &chain(&[ADD_A_COLUMN, failing]), Some(&path)).unwrap_err();
-        assert!(error.contains("from version 1 to 3"), "{error}");
+        assert!(error.contains("from version 2 to 8"), "{error}");
         assert!(error.contains(reason), "{error}");
         assert!(error.contains("Nothing was changed"), "{error}");
-        assert!(error.contains("state.db.bak-v1"), "{error}");
-        // Step 002 went back too
-        assert_eq!(user_version(&conn), 1);
+        assert!(error.contains("state.db.bak-v2"), "{error}");
+        // 006 and 007 went back too
+        assert_eq!(user_version(&conn), V0_1_0);
         assert_eq!(schema(&conn), schema_before);
         assert_eq!(rows(&conn), before);
         let keys_on: bool = conn
             .pragma_query_value(None, "foreign_keys", |row| row.get(0))
             .unwrap();
         assert!(keys_on, "foreign keys are back on");
+    }
+}
+
+#[test]
+fn a_database_from_an_unreleased_build_is_refused_untouched() {
+    for version in [1, 3, 4, 5] {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "user_version", version).unwrap();
+        let error = upgrade(&conn, MIGRATIONS, None).unwrap_err();
+        assert!(error.contains("never released"), "{error}");
+        assert!(error.contains("Reset your dev data"), "{error}");
+        assert!(!error.contains("newer"), "{error}");
+        assert!(schema(&conn).is_empty());
+        assert_eq!(user_version(&conn), version);
     }
 }
 

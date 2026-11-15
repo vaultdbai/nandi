@@ -4,7 +4,7 @@
 
 use rusqlite::{Connection, OpenFlags};
 
-use crate::db::SCHEMA_VERSION;
+use crate::db::{standing, Standing, MIGRATIONS, SCHEMA_VERSION};
 use crate::llm::{self, Provider};
 use crate::runtime::{self, DEFAULT_RUNTIME_IMAGE};
 use crate::services::agents::{self, SkillConfig};
@@ -127,19 +127,26 @@ fn check_db(report: &mut Report) {
     }
     let version = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .and_then(|conn| conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)));
-    match version {
-        Ok(SCHEMA_VERSION) => {
+    let version = match version {
+        Ok(version) => version,
+        Err(e) => return report.fail(format!("Failed to read {}: {e}", path.display())),
+    };
+    match standing(version, MIGRATIONS) {
+        Standing::Current => {
             report.pass(format!("{} has schema v{SCHEMA_VERSION}", path.display()));
         }
-        Ok(version) if version < SCHEMA_VERSION => report.pass(format!(
+        Standing::New | Standing::Behind => report.pass(format!(
             "{} has schema v{version}; Nandi upgrades it to v{SCHEMA_VERSION} on its next start",
             path.display()
         )),
-        Ok(version) => report.fail(format!(
+        Standing::Unreleased => report.fail(format!(
+            "{} has schema v{version}, from a development build that was never released;              reset your dev data (delete it with its -wal and -shm files)",
+            path.display()
+        )),
+        Standing::Newer => report.fail(format!(
             "{} has schema v{version}, from a newer Nandi; this build reads up to v{SCHEMA_VERSION}",
             path.display()
         )),
-        Err(e) => report.fail(format!("Failed to read {}: {e}", path.display())),
     }
 }
 

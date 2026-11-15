@@ -276,5 +276,5 @@ export function useAddItem() {
 
 ### Schema Rules
 
-- Nandi's state database is built by numbered migrations in `src-tauri/src/db/migrations/`, starting with `001_baseline.sql`. `PRAGMA user_version` holds the last one applied (`SCHEMA_VERSION`). On every open `init_db` runs the missing ones in one transaction, after keeping a copy of the file
+- Nandi's state database is built by numbered migrations in `src-tauri/src/db/migrations/`, starting with `002_nandi_0_1_0.sql` (the schema Nandi 0.1.0 shipped as version 2). `PRAGMA user_version` holds the last one applied (`SCHEMA_VERSION`). On every open `init_db` runs the missing ones in one transaction, after keeping a copy of the file
 - To change a table, add the next migration. Never edit a shipped one. See [data-model.md](./data-model.md#state-database-migrations)

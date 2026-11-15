@@ -1,16 +1,19 @@
--- Migration 001: the baseline. The whole state.db schema as it stood when
--- numbered migrations began (2026-11-15). Shipped migrations never change:
--- add the next numbered file instead (docs/developer/data-model.md).
+-- Migration 002: the state.db schema Nandi 0.1.0 shipped (released
+-- 2026-11-04), word for word from `src-tauri/src/db.rs` at the tag v0.1.0.
+-- 0.1.0 stamped it version 2. Versions 1 and 3 to 5 were development
+-- builds that were never released: `migrations::upgrade` refuses them.
+-- Shipped migrations never change: add the next numbered file instead
+-- (docs/developer/data-model.md).
 
-CREATE TABLE conversations (
+CREATE TABLE IF NOT EXISTS conversations (
     id          TEXT PRIMARY KEY,
     agent_id    TEXT NOT NULL,
     created_at  INTEGER NOT NULL,
     title       TEXT
 );
-CREATE INDEX conversations_agent ON conversations(agent_id);
+CREATE INDEX IF NOT EXISTS conversations_agent ON conversations(agent_id);
 
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
     id              TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     run_id          TEXT,
@@ -19,10 +22,10 @@ CREATE TABLE messages (
     created_at      INTEGER NOT NULL,
     metadata        TEXT NOT NULL DEFAULT '{}'
 );
-CREATE INDEX messages_conversation ON messages(conversation_id, created_at);
-CREATE INDEX messages_run ON messages(run_id);
+CREATE INDEX IF NOT EXISTS messages_conversation ON messages(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS messages_run ON messages(run_id);
 
-CREATE TABLE runs (
+CREATE TABLE IF NOT EXISTS runs (
     id              TEXT PRIMARY KEY,
     agent_id        TEXT NOT NULL,
     conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -52,12 +55,12 @@ CREATE TABLE runs (
     -- The runtime that ran it: `native`, `claude-code`, ...
     runtime         TEXT
 );
-CREATE INDEX runs_agent ON runs(agent_id, started_at);
-CREATE INDEX runs_status ON runs(status);
+CREATE INDEX IF NOT EXISTS runs_agent ON runs(agent_id, started_at);
+CREATE INDEX IF NOT EXISTS runs_status ON runs(status);
 
 -- Runs waiting for their agent's current turn, with the input to start
 -- them with. A row is deleted when its run starts or is cancelled.
-CREATE TABLE agent_queue (
+CREATE TABLE IF NOT EXISTS agent_queue (
     id           TEXT PRIMARY KEY,
     agent_id     TEXT NOT NULL,
     run_id       TEXT NOT NULL,
@@ -72,12 +75,12 @@ CREATE TABLE agent_queue (
     attachments  TEXT,
     created_at   INTEGER NOT NULL
 );
-CREATE INDEX agent_queue_order ON agent_queue(agent_id, priority, created_at);
+CREATE INDEX IF NOT EXISTS agent_queue_order ON agent_queue(agent_id, priority, created_at);
 
 -- Projection of `triggers/<id>.yaml`: rules that start agent or workflow
 -- runs when something happens. `source_config` never holds a secret (it's
 -- in the keyring).
-CREATE TABLE triggers (
+CREATE TABLE IF NOT EXISTS triggers (
     id                 TEXT PRIMARY KEY,
     name               TEXT NOT NULL,
     enabled            INTEGER NOT NULL DEFAULT 1,
@@ -97,16 +100,16 @@ CREATE TABLE triggers (
     source_path        TEXT,
     projection_version INTEGER
 );
-CREATE INDEX triggers_enabled ON triggers(enabled, source_type);
+CREATE INDEX IF NOT EXISTS triggers_enabled ON triggers(enabled, source_type);
 
 -- Runtime state of each trigger, kept when the projection is rebuilt
-CREATE TABLE trigger_state (
+CREATE TABLE IF NOT EXISTS trigger_state (
     trigger_id    TEXT PRIMARY KEY,
     last_fired_at INTEGER
 );
 
 -- Every time a trigger fired, whether or not it dispatched a run
-CREATE TABLE trigger_fires (
+CREATE TABLE IF NOT EXISTS trigger_fires (
     id         TEXT PRIMARY KEY,
     trigger_id TEXT NOT NULL,
     fired_at   INTEGER NOT NULL,
@@ -118,18 +121,18 @@ CREATE TABLE trigger_fires (
     status     TEXT NOT NULL,
     error      TEXT
 );
-CREATE INDEX trigger_fires_trigger ON trigger_fires(trigger_id, fired_at DESC);
+CREATE INDEX IF NOT EXISTS trigger_fires_trigger ON trigger_fires(trigger_id, fired_at DESC);
 
-CREATE TABLE run_events (
+CREATE TABLE IF NOT EXISTS run_events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id      TEXT NOT NULL,
     kind        TEXT NOT NULL,
     payload     TEXT NOT NULL,
     created_at  INTEGER NOT NULL
 );
-CREATE INDEX run_events_run ON run_events(run_id);
+CREATE INDEX IF NOT EXISTS run_events_run ON run_events(run_id);
 
-CREATE TABLE approvals (
+CREATE TABLE IF NOT EXISTS approvals (
     id           TEXT PRIMARY KEY,
     agent_id     TEXT NOT NULL,
     run_id       TEXT NOT NULL,
@@ -146,10 +149,10 @@ CREATE TABLE approvals (
     -- expired or is pending
     decided_by   TEXT
 );
-CREATE INDEX approvals_status ON approvals(status);
+CREATE INDEX IF NOT EXISTS approvals_status ON approvals(status);
 
 -- Projection of `workflows/*.yaml` (global and agent-scoped)
-CREATE TABLE workflows (
+CREATE TABLE IF NOT EXISTS workflows (
     id                 TEXT PRIMARY KEY,
     name               TEXT NOT NULL,
     definition         TEXT NOT NULL,
@@ -163,7 +166,7 @@ CREATE TABLE workflows (
 
 -- No foreign key to `workflows`: that table is a projection and may be
 -- rebuilt at any time; run history must survive it.
-CREATE TABLE workflow_runs (
+CREATE TABLE IF NOT EXISTS workflow_runs (
     id          TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL,
     status      TEXT NOT NULL,
@@ -173,7 +176,7 @@ CREATE TABLE workflow_runs (
 );
 
 -- Projection of `.nandi/settings.yaml`, one row per top-level key
-CREATE TABLE settings (
+CREATE TABLE IF NOT EXISTS settings (
     key                TEXT PRIMARY KEY,
     value              TEXT NOT NULL,
     source_path        TEXT,
@@ -182,13 +185,13 @@ CREATE TABLE settings (
 
 -- Machine-local runtime settings (engine choice, canned script). Not in
 -- the repo, never rebuilt.
-CREATE TABLE local_settings (
+CREATE TABLE IF NOT EXISTS local_settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 
 -- Projection of `<agents>/<id>/skill.md` + `instructions.md`
-CREATE TABLE agents (
+CREATE TABLE IF NOT EXISTS agents (
     id                 TEXT PRIMARY KEY,
     name               TEXT NOT NULL,
     description        TEXT NOT NULL DEFAULT '',
@@ -206,7 +209,7 @@ CREATE TABLE agents (
 );
 
 -- Projection of `.nandi/connectors.yaml`
-CREATE TABLE connectors (
+CREATE TABLE IF NOT EXISTS connectors (
     id                 TEXT PRIMARY KEY,
     kind               TEXT NOT NULL,
     -- {config, secretRefs} (JSON); never secrets
@@ -217,7 +220,7 @@ CREATE TABLE connectors (
 
 -- What each projected entity was built from: its file and the file's
 -- hash, so drift (a file changed while the app was closed) is detected
-CREATE TABLE sync_state (
+CREATE TABLE IF NOT EXISTS sync_state (
     entity_kind       TEXT NOT NULL,
     entity_id         TEXT NOT NULL,
     source_path       TEXT NOT NULL,
@@ -227,7 +230,7 @@ CREATE TABLE sync_state (
 );
 
 -- Health of each agent's orchestrator (e.g. 'error' after a panic)
-CREATE TABLE agent_state (
+CREATE TABLE IF NOT EXISTS agent_state (
     agent_id    TEXT PRIMARY KEY,
     status      TEXT NOT NULL,
     error       TEXT,
@@ -235,18 +238,38 @@ CREATE TABLE agent_state (
 );
 
 -- Agent cards by what they serve; rebuilt from the agents
-CREATE TABLE capability_index (
+CREATE TABLE IF NOT EXISTS capability_index (
     entity_id   TEXT NOT NULL,
     capability  TEXT NOT NULL,
     agent_card  TEXT NOT NULL,
     updated_at  INTEGER NOT NULL,
     PRIMARY KEY (entity_id, capability)
 );
-CREATE INDEX idx_capability_index_capability
+CREATE INDEX IF NOT EXISTS idx_capability_index_capability
     ON capability_index(capability);
 
+-- Teams and their private registries
+CREATE TABLE IF NOT EXISTS teams (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    github_org    TEXT NOT NULL,
+    registry_repo TEXT NOT NULL,
+    created_at    INTEGER NOT NULL,
+    -- 'github' (the org) or 'entra' (the group ID)
+    source_kind       TEXT NOT NULL DEFAULT 'github',
+    source_identifier TEXT
+);
+CREATE TABLE IF NOT EXISTS team_members (
+    team_id       TEXT NOT NULL,
+    github_handle TEXT NOT NULL,
+    display_name  TEXT NOT NULL,
+    role          TEXT NOT NULL,
+    joined_at     INTEGER NOT NULL,
+    PRIMARY KEY (team_id, github_handle)
+);
+
 -- Cross-user tasks, both directions
-CREATE TABLE delegations (
+CREATE TABLE IF NOT EXISTS delegations (
     id              TEXT PRIMARY KEY,
     -- 'outbound' (we asked) or 'inbound' (we served)
     direction       TEXT NOT NULL DEFAULT 'outbound',
@@ -266,11 +289,11 @@ CREATE TABLE delegations (
     -- The run that asked
     parent_run_id   TEXT
 );
-CREATE INDEX idx_delegations_started ON delegations(started_at);
+CREATE INDEX IF NOT EXISTS idx_delegations_started ON delegations(started_at);
 
 -- Requests that came back while nobody watched (`a2a::returns`): Inbox
 -- items until dismissed (`seen_at`)
-CREATE TABLE request_returns (
+CREATE TABLE IF NOT EXISTS request_returns (
     task_id         TEXT PRIMARY KEY,
     from_name       TEXT NOT NULL,
     provider_agent  TEXT NOT NULL,
@@ -282,16 +305,16 @@ CREATE TABLE request_returns (
     returned_at     REAL NOT NULL,
     seen_at         REAL
 );
-CREATE INDEX idx_request_returns_returned ON request_returns(returned_at);
+CREATE INDEX IF NOT EXISTS idx_request_returns_returned ON request_returns(returned_at);
 
 -- Relay connection state: instance ID, last seen online agents
-CREATE TABLE relay_state (
+CREATE TABLE IF NOT EXISTS relay_state (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 
 -- Who may call which local agent: allow | deny | ask
-CREATE TABLE trust_policies (
+CREATE TABLE IF NOT EXISTS trust_policies (
     requester      TEXT NOT NULL,
     provider_agent TEXT NOT NULL,
     policy         TEXT NOT NULL,
@@ -300,7 +323,7 @@ CREATE TABLE trust_policies (
 );
 
 -- A cache of each agent's memory.md (the file is the gold copy)
-CREATE TABLE agent_memory (
+CREATE TABLE IF NOT EXISTS agent_memory (
     agent_id   TEXT NOT NULL,
     idx        INTEGER NOT NULL,
     content    TEXT NOT NULL,
@@ -310,7 +333,7 @@ CREATE TABLE agent_memory (
 );
 
 -- One row per attempt at a delegated task, on each side
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS tasks (
     id                  TEXT PRIMARY KEY,
     requester_instance  TEXT NOT NULL,
     requester_agent     TEXT NOT NULL,
@@ -335,11 +358,11 @@ CREATE TABLE tasks (
     attempt_number      INTEGER NOT NULL DEFAULT 1,
     previous_attempt_id TEXT
 );
-CREATE INDEX idx_tasks_state ON tasks(state);
-CREATE INDEX idx_tasks_created ON tasks(created_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
+CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
 
 -- Every task transition, written with it
-CREATE TABLE task_events (
+CREATE TABLE IF NOT EXISTS task_events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id     TEXT NOT NULL,
     from_state  TEXT,
@@ -350,36 +373,38 @@ CREATE TABLE task_events (
     stage       TEXT,
     at          INTEGER NOT NULL
 );
-CREATE INDEX idx_task_events_task ON task_events(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id);
 
 -- Progress, status, and clarification traffic
-CREATE TABLE task_messages (
+CREATE TABLE IF NOT EXISTS task_messages (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id TEXT NOT NULL,
     kind    TEXT NOT NULL,
     payload TEXT NOT NULL DEFAULT 'null',
     at      INTEGER NOT NULL
 );
-CREATE INDEX idx_task_messages_task ON task_messages(task_id);
-
--- Provider side: results kept until the relay has them (a2a::result_outbox)
-CREATE TABLE result_outbox (
-    task_id TEXT PRIMARY KEY,
-    result  TEXT NOT NULL,
-    kept_at INTEGER NOT NULL
-);
+CREATE INDEX IF NOT EXISTS idx_task_messages_task ON task_messages(task_id);
 
 -- Completed task durations, for ETA estimates
-CREATE TABLE eta_history (
+CREATE TABLE IF NOT EXISTS eta_history (
     capability       TEXT NOT NULL,
     provider_agent   TEXT NOT NULL,
     duration_seconds INTEGER NOT NULL,
     at               INTEGER NOT NULL
 );
-CREATE INDEX idx_eta_history ON eta_history(capability, provider_agent, at);
+CREATE INDEX IF NOT EXISTS idx_eta_history ON eta_history(capability, provider_agent, at);
+
+-- Consecutive failures per instance and capability, for the gateway path
+CREATE TABLE IF NOT EXISTS circuit_breakers (
+    instance_id          TEXT NOT NULL,
+    capability           TEXT NOT NULL,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    opened_at            INTEGER,
+    PRIMARY KEY (instance_id, capability)
+);
 
 -- Per-caller gateway allowances
-CREATE TABLE gateway_callers (
+CREATE TABLE IF NOT EXISTS gateway_callers (
     caller_instance      TEXT PRIMARY KEY,
     caller_owner         TEXT NOT NULL DEFAULT '',
     allowed_capabilities TEXT NOT NULL DEFAULT '[]',
@@ -390,26 +415,15 @@ CREATE TABLE gateway_callers (
 );
 
 -- Gateway tasks per caller per month, `YYYY-MM`
-CREATE TABLE gateway_usage (
+CREATE TABLE IF NOT EXISTS gateway_usage (
     caller_instance TEXT NOT NULL,
     month           TEXT NOT NULL,
     task_count      INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (caller_instance, month)
 );
 
--- Tasks the relay delivered held for my approval by a group's policy:
--- a member's first request (`SealedTask.first_time_groups`, code
--- `first_request`) or a hold (`SealedTask.group_holds`, its code). Each
--- waits for my approval whatever my level (`services::groups::enforce`)
-CREATE TABLE group_holds (
-    task_id  TEXT NOT NULL,
-    group_id TEXT NOT NULL,
-    code     TEXT NOT NULL,
-    PRIMARY KEY (task_id, group_id, code)
-);
-
 -- Gateway requests held for the owner's approval
-CREATE TABLE gateway_holds (
+CREATE TABLE IF NOT EXISTS gateway_holds (
     task_id         TEXT PRIMARY KEY,
     caller_instance TEXT NOT NULL,
     -- The caller's display name, as the gateway knew it
@@ -423,10 +437,10 @@ CREATE TABLE gateway_holds (
     expires_at      INTEGER NOT NULL,
     decided_at      INTEGER
 );
-CREATE INDEX idx_gateway_holds_status ON gateway_holds(status);
+CREATE INDEX IF NOT EXISTS idx_gateway_holds_status ON gateway_holds(status);
 
 -- Work assigned to the owner (`assign-me`), open until they end it
-CREATE TABLE gateway_assignments (
+CREATE TABLE IF NOT EXISTS gateway_assignments (
     task_id         TEXT PRIMARY KEY,
     caller_instance TEXT NOT NULL,
     -- Who assigned it, as the gateway knew them
@@ -441,10 +455,10 @@ CREATE TABLE gateway_assignments (
     due_at          INTEGER,
     closed_at       INTEGER
 );
-CREATE INDEX idx_gateway_assignments_status ON gateway_assignments(status);
+CREATE INDEX IF NOT EXISTS idx_gateway_assignments_status ON gateway_assignments(status);
 
 -- Links the requester attached to an assignment, in their order
-CREATE TABLE gateway_assignment_links (
+CREATE TABLE IF NOT EXISTS gateway_assignment_links (
     task_id         TEXT NOT NULL REFERENCES gateway_assignments(task_id) ON DELETE CASCADE,
     position        INTEGER NOT NULL,
     name            TEXT NOT NULL,
@@ -453,36 +467,33 @@ CREATE TABLE gateway_assignment_links (
 );
 
 -- How we treat another member's instance
-CREATE TABLE trust_relationships (
+CREATE TABLE IF NOT EXISTS trust_relationships (
     instance_id           TEXT PRIMARY KEY,
     added_as_trusted_peer INTEGER NOT NULL DEFAULT 0,
     delegations_paused    INTEGER NOT NULL DEFAULT 0,
     last_updated          INTEGER NOT NULL
 );
 
--- Other members' public keys, pinned on first sight
--- (`services::network::peer_keys`). `changed_*`: other keys the relay's
--- directory shows since; sending to them waits until the user accepts.
-CREATE TABLE peer_keys (
-    instance_id         TEXT PRIMARY KEY,
-    signing_key         TEXT NOT NULL,
-    sealing_key         TEXT NOT NULL,
-    pinned_at           INTEGER NOT NULL,
-    changed_signing_key TEXT,
-    changed_sealing_key TEXT,
-    changed_at          INTEGER
-);
-
 -- Another member's agents we blocked
-CREATE TABLE blocked_members (
+CREATE TABLE IF NOT EXISTS blocked_members (
     instance_id TEXT NOT NULL,
     agent_id    TEXT NOT NULL,
     blocked_at  INTEGER NOT NULL,
     PRIMARY KEY (instance_id, agent_id)
 );
 
--- Capability files (`.nandi/capabilities/<id>.yaml`), projected
-CREATE TABLE capabilities_projection (
+-- Member profiles per team, cached for 60s
+CREATE TABLE IF NOT EXISTS roster_cache (
+    team_id      TEXT NOT NULL,
+    member_handle TEXT NOT NULL,
+    profile_json TEXT NOT NULL,
+    cached_at    INTEGER NOT NULL,
+    PRIMARY KEY (team_id, member_handle)
+);
+
+-- Capability files (`.nandi/capabilities/<id>.yaml`) and registry
+-- definitions, projected. `registry_origin` is NULL for local ones.
+CREATE TABLE IF NOT EXISTS capabilities_projection (
     id                 TEXT PRIMARY KEY,
     version            TEXT,
     name               TEXT,
@@ -492,12 +503,13 @@ CREATE TABLE capabilities_projection (
     owner_display_name TEXT,
     definition_json    TEXT NOT NULL,
     source_path        TEXT,
+    registry_origin    TEXT,
     projection_version INTEGER,
     updated_at         INTEGER
 );
 
 -- Who provides what, here and on other instances
-CREATE TABLE capability_providers (
+CREATE TABLE IF NOT EXISTS capability_providers (
     capability_id      TEXT NOT NULL,
     capability_version TEXT,
     instance_id        TEXT NOT NULL,
@@ -512,8 +524,21 @@ CREATE TABLE capability_providers (
     PRIMARY KEY (capability_id, instance_id, provider_id)
 );
 
+-- Subscribed git registries
+CREATE TABLE IF NOT EXISTS capability_registries (
+    id             TEXT PRIMARY KEY,
+    url            TEXT NOT NULL UNIQUE,
+    -- local | github | gitlab | generic
+    kind           TEXT NOT NULL,
+    branch_prefix  TEXT,
+    user_slug      TEXT,
+    last_synced_at INTEGER,
+    last_commit    TEXT,
+    subscribed     INTEGER DEFAULT 1
+);
+
 -- One row per finished task per side
-CREATE TABLE capability_evidence (
+CREATE TABLE IF NOT EXISTS capability_evidence (
     id                   TEXT PRIMARY KEY,
     capability_id        TEXT NOT NULL,
     capability_version   TEXT,
@@ -530,18 +555,19 @@ CREATE TABLE capability_evidence (
     cost_usd             REAL,
     clarification_rounds INTEGER DEFAULT 0,
     escalation_required  INTEGER DEFAULT 0,
+    approval_required    INTEGER DEFAULT 0,
     user_rating          INTEGER,
     -- JSON, for workflow providers
     step_breakdown       TEXT,
     observed_at          INTEGER NOT NULL,
     metadata             TEXT
 );
-CREATE INDEX idx_ev_cap_provider
+CREATE INDEX IF NOT EXISTS idx_ev_cap_provider
     ON capability_evidence(capability_id, provider_instance, provider_id);
-CREATE INDEX idx_ev_time ON capability_evidence(capability_id, observed_at);
+CREATE INDEX IF NOT EXISTS idx_ev_time ON capability_evidence(capability_id, observed_at);
 
 -- The unified tool catalog
-CREATE TABLE tool_catalog (
+CREATE TABLE IF NOT EXISTS tool_catalog (
     id              TEXT PRIMARY KEY,
     definition_json TEXT NOT NULL,
     -- builtin | connector | pilot | custom
@@ -553,7 +579,7 @@ CREATE TABLE tool_catalog (
 
 -- Cached rolling aggregates. Key columns are '' rather than NULL (NULLs
 -- never collide in a primary key, so upserts would duplicate).
-CREATE TABLE capability_aggregates (
+CREATE TABLE IF NOT EXISTS capability_aggregates (
     capability_id     TEXT NOT NULL,
     provider_instance TEXT NOT NULL DEFAULT '',
     provider_kind     TEXT NOT NULL DEFAULT '',
@@ -565,7 +591,7 @@ CREATE TABLE capability_aggregates (
 );
 
 -- Clusters of clarification questions per capability
-CREATE TABLE capability_ambiguities (
+CREATE TABLE IF NOT EXISTS capability_ambiguities (
     id                 TEXT PRIMARY KEY,
     capability_id      TEXT NOT NULL,
     cluster_label      TEXT NOT NULL,
@@ -576,10 +602,10 @@ CREATE TABLE capability_ambiguities (
     last_seen_at       INTEGER,
     promoted_to_schema INTEGER DEFAULT 0
 );
-CREATE INDEX idx_ambiguities_cap ON capability_ambiguities(capability_id);
+CREATE INDEX IF NOT EXISTS idx_ambiguities_cap ON capability_ambiguities(capability_id);
 
 -- Consecutive failures per provider and capability
-CREATE TABLE provider_circuits (
+CREATE TABLE IF NOT EXISTS provider_circuits (
     instance_id          TEXT NOT NULL,
     provider_id          TEXT NOT NULL,
     capability_id        TEXT NOT NULL,
@@ -589,7 +615,7 @@ CREATE TABLE provider_circuits (
 );
 
 -- Harness sessions and their events
-CREATE TABLE harness_sessions (
+CREATE TABLE IF NOT EXISTS harness_sessions (
     id              TEXT PRIMARY KEY,
     adapter_id      TEXT NOT NULL,
     agent_id        TEXT,
@@ -609,10 +635,10 @@ CREATE TABLE harness_sessions (
     started_at      INTEGER NOT NULL,
     ended_at        INTEGER
 );
-CREATE INDEX harness_sessions_agent ON harness_sessions(agent_id, started_at);
-CREATE INDEX harness_sessions_run ON harness_sessions(run_id);
+CREATE INDEX IF NOT EXISTS harness_sessions_agent ON harness_sessions(agent_id, started_at);
+CREATE INDEX IF NOT EXISTS harness_sessions_run ON harness_sessions(run_id);
 
-CREATE TABLE harness_events (
+CREATE TABLE IF NOT EXISTS harness_events (
     session_id  TEXT NOT NULL REFERENCES harness_sessions(id) ON DELETE CASCADE,
     seq         INTEGER NOT NULL,
     kind        TEXT NOT NULL,
@@ -622,7 +648,7 @@ CREATE TABLE harness_events (
 );
 
 -- Harness CLIs found on this machine
-CREATE TABLE detected_harnesses (
+CREATE TABLE IF NOT EXISTS detected_harnesses (
     harness_id          TEXT PRIMARY KEY,
     installed           INTEGER NOT NULL DEFAULT 0,
     executable          TEXT,
@@ -635,7 +661,7 @@ CREATE TABLE detected_harnesses (
 );
 
 -- Machine-local harness preferences
-CREATE TABLE harness_preferences (
+CREATE TABLE IF NOT EXISTS harness_preferences (
     harness_id      TEXT PRIMARY KEY,
     is_default      INTEGER NOT NULL DEFAULT 0,
     default_model   TEXT,
@@ -646,7 +672,7 @@ CREATE TABLE harness_preferences (
 );
 
 -- A cache of `aws configure` output: the AWS config files stay the source
-CREATE TABLE aws_profiles (
+CREATE TABLE IF NOT EXISTS aws_profiles (
     name                TEXT PRIMARY KEY,
     kind                TEXT NOT NULL,
     region              TEXT,
@@ -665,7 +691,7 @@ CREATE TABLE aws_profiles (
 );
 
 -- A cache of the Bedrock models AWS lists per region
-CREATE TABLE bedrock_models_cache (
+CREATE TABLE IF NOT EXISTS bedrock_models_cache (
     region      TEXT NOT NULL,
     model_id    TEXT NOT NULL,
     kind        TEXT NOT NULL,
@@ -677,7 +703,7 @@ CREATE TABLE bedrock_models_cache (
 );
 
 -- What was asked in the ask box and what came back
-CREATE TABLE ask_history (
+CREATE TABLE IF NOT EXISTS ask_history (
     id               TEXT PRIMARY KEY,
     request_text     TEXT NOT NULL,
     -- `AskContext` JSON
@@ -688,16 +714,16 @@ CREATE TABLE ask_history (
     response_payload TEXT NOT NULL,
     at               INTEGER NOT NULL
 );
-CREATE INDEX idx_ask_at ON ask_history(at);
+CREATE INDEX IF NOT EXISTS idx_ask_at ON ask_history(at);
 
 -- Machine-local Work view state (e.g. paused workflow runs)
-CREATE TABLE work_preferences (
+CREATE TABLE IF NOT EXISTS work_preferences (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 
 -- Manual workflow steps waiting for a person
-CREATE TABLE manual_steps (
+CREATE TABLE IF NOT EXISTS manual_steps (
     run_id       TEXT NOT NULL,
     step_id      TEXT NOT NULL,
     workflow_id  TEXT NOT NULL,
@@ -709,20 +735,22 @@ CREATE TABLE manual_steps (
     completed_at INTEGER,
     PRIMARY KEY (run_id, step_id)
 );
-CREATE INDEX idx_manual_steps_status ON manual_steps(status);
+CREATE INDEX IF NOT EXISTS idx_manual_steps_status ON manual_steps(status);
 
 -- Tasks handed from one provider to another
-CREATE TABLE reassigned_tasks (
+CREATE TABLE IF NOT EXISTS reassigned_tasks (
     task_id       TEXT NOT NULL,
     from_instance TEXT NOT NULL,
     to_instance   TEXT NOT NULL,
     reason        TEXT,
+    -- The requester's new attempt, once created
+    new_task_id   TEXT,
     reassigned_at INTEGER NOT NULL,
     PRIMARY KEY (task_id, to_instance)
 );
 
 -- The last-read repo LLM config
-CREATE TABLE repo_config_cache (
+CREATE TABLE IF NOT EXISTS repo_config_cache (
     key       TEXT PRIMARY KEY,
     value     TEXT NOT NULL,
     synced_at INTEGER NOT NULL
@@ -730,11 +758,10 @@ CREATE TABLE repo_config_cache (
 
 -- Local asks saved as Requests, with their Steps linked to the run,
 -- workflow run or task that does each
-CREATE TABLE requests (
+CREATE TABLE IF NOT EXISTS requests (
     id         TEXT PRIMARY KEY,
     title      TEXT NOT NULL,
-    -- me (the ask box, Studio) | email | calendar | nandi (work the
-    -- Nandi started itself)
+    -- me (the ask box) for now; trigger | schedule | workflow | peer later
     source     TEXT NOT NULL,
     -- What was asked, word for word
     ask_text   TEXT NOT NULL DEFAULT '',
@@ -747,9 +774,9 @@ CREATE TABLE requests (
     updated_at INTEGER NOT NULL,
     ended_at   INTEGER
 );
-CREATE INDEX idx_requests_status ON requests(status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status, updated_at);
 
-CREATE TABLE request_steps (
+CREATE TABLE IF NOT EXISTS request_steps (
     request_id      TEXT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
     -- 0-based, the plan's order
     position        INTEGER NOT NULL,
@@ -769,54 +796,6 @@ CREATE TABLE request_steps (
     ended_at        INTEGER,
     PRIMARY KEY (request_id, position)
 );
-CREATE INDEX idx_request_steps_run ON request_steps(run_id);
-CREATE INDEX idx_request_steps_workflow_run ON request_steps(workflow_run_id);
-
--- News Nandi added to a Request while it ran
-CREATE TABLE request_updates (
-    request_id TEXT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
-    at         INTEGER NOT NULL,
-    -- email | calendar | nandi
-    source     TEXT NOT NULL,
-    text       TEXT NOT NULL
-);
-CREATE INDEX idx_request_updates_at ON request_updates(at);
-
--- Work from outside (mail, calendar), screened and waiting for the user's
--- approval before it starts or reaches a Request (`services::intake`)
-CREATE TABLE intake_queue (
-    id                TEXT PRIMARY KEY,
-    at                INTEGER NOT NULL,
-    -- email | calendar (`RequestSource`)
-    source            TEXT NOT NULL,
-    -- start | update
-    action            TEXT NOT NULL,
-    request_id        TEXT,
-    request_title     TEXT,
-    text              TEXT NOT NULL,
-    sender            TEXT,
-    -- `Screening` JSON
-    screening         TEXT NOT NULL,
-    -- pending | approved | dismissed
-    status            TEXT NOT NULL,
-    result_request_id TEXT,
-    -- Its Nandi thread (`intake:<id>`, a conversation)
-    thread_id         TEXT NOT NULL,
-    -- `ActionPlan` JSON, for `start`: planned when it was queued
-    plan              TEXT
-);
-CREATE INDEX idx_intake_queue_status ON intake_queue(status, at);
-CREATE INDEX idx_intake_queue_thread ON intake_queue(thread_id);
-CREATE INDEX idx_request_steps_task ON request_steps(task_id);
-
--- A run's plan, step by step (`services::run_plan`): run data, never the
--- gold copy. Each `plan_set` adds a revision; `plan_update` changes the
--- latest one.
-CREATE TABLE run_plans (
-    run_id     TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-    revision   INTEGER NOT NULL,
-    -- `RunPlanStep[]` JSON
-    steps      TEXT NOT NULL,
-    updated_at INTEGER NOT NULL,
-    PRIMARY KEY (run_id, revision)
-);
+CREATE INDEX IF NOT EXISTS idx_request_steps_run ON request_steps(run_id);
+CREATE INDEX IF NOT EXISTS idx_request_steps_workflow_run ON request_steps(workflow_run_id);
+CREATE INDEX IF NOT EXISTS idx_request_steps_task ON request_steps(task_id);

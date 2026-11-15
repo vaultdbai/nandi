@@ -1,9 +1,9 @@
 //! Opening a database on the schema: the migrations, then default settings.
 
-use super::migrations::{self, MIGRATIONS};
+use super::migrations;
 use super::*;
 
-pub use super::migrations::{Upgrade, SCHEMA_VERSION};
+pub use super::migrations::{standing, Standing, Upgrade, MIGRATIONS, SCHEMA_VERSION};
 
 /// Brings a database without a file (in memory, in tests) to the latest
 /// schema and seeds default settings. Safe to run on every open.

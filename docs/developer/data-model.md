@@ -149,27 +149,32 @@ pub display_name: String,
 
 `state.db` is versioned by numbered, forward-only migrations in `src-tauri/src/db/migrations/`, embedded in the app (`db::migrations`). `PRAGMA user_version` holds the number of the last one applied.
 
-| When the app opens `state.db` and finds | What happens                                                                                                                                           |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Version 0 (a new, empty file)           | Every migration runs, from `001_baseline.sql`. No copy is kept                                                                                         |
-| An older version                        | After a WAL checkpoint, the file is copied to `state.db.bak-v<old>`. The missing migrations run in order in **one** transaction                        |
-| The latest version                      | Nothing                                                                                                                                                |
-| A newer version                         | Refused untouched: "The local database was written by a newer version of Nandi … Install the newer Nandi again to open it."                            |
-| A migration fails                       | Everything rolls back, the database stays at its old version, and the app stops with a calm error naming the copy. Agents and workflows aren't touched |
+The numbers follow what released builds stamped. Nandi 0.1.0 wrote version 2, so its schema is `002_nandi_0_1_0.sql`, word for word from the tag. `006_since_0_1_0.sql` takes it to today's schema. Versions 1 and 3 to 5 were written only by development builds and have no migration.
 
-A fresh database runs the same chain as an upgraded one, so their schemas are always the same (`a_fresh_database_and_an_upgraded_one_have_the_same_schema`). Foreign keys are off while the migrations run and every key is checked before the commit.
+| When the app opens `state.db` and finds    | What happens                                                                                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Version 0 (a new, empty file)              | Every migration runs, from `002_nandi_0_1_0.sql`. No copy is kept                                                                                      |
+| An older released version (2, Nandi 0.1.0) | After a WAL checkpoint, the file is copied to `state.db.bak-v<old>`. The missing migrations run in order in **one** transaction                        |
+| The latest version                         | Nothing                                                                                                                                                |
+| A version no migration ends at (1, 3 to 5) | Refused untouched: "… written by a development build of Nandi that was never released … Reset your dev data: …"                                        |
+| A newer version                            | Refused untouched: "The local database was written by a newer version of Nandi … Install the newer Nandi again to open it."                            |
+| A migration fails                          | Everything rolls back, the database stays at its old version, and the app stops with a calm error naming the copy. Agents and workflows aren't touched |
+
+A fresh database runs the same chain as an upgraded one, so their schemas are always the same (`a_fresh_database_and_an_upgraded_one_have_the_same_schema`). Foreign keys are off while the migrations run and every key is checked before the commit. `db::standing` tells these cases apart, for `upgrade` and for `nandi verify`.
+
+**From 0.1.0 (`006`):** every row the person owns is kept, with `chief-of-staff` renamed to `nandi` in every agent ID column (conversations of Inbox and intake threads included) and RequestSource `chiefOfStaff` renamed to `nandi`. A table keyed by agent that already has a `nandi` row keeps it. The tables of removed features (teams and rosters, capability registries, circuit breakers) and three unread columns are dropped. The projection and the capability index are emptied: the next start rebuilds them from the gold copy, after the gold copy upgrade has moved the agent's folder. `migrations/fixtures/v0_1_0_rows.sql` holds a 0.1.0 database's rows; `a_0_1_0_database_upgrades_row_by_row` checks each one.
 
 **Adding a migration:**
 
-1. Add `src-tauri/src/db/migrations/NNN_<what>.sql`, the next number, three digits. Write plain SQL: `ALTER TABLE … ADD COLUMN`, or SQLite's 12-step table rebuild (create `<table>_new`, copy, drop, rename, recreate indexes) for anything `ALTER TABLE` can't do.
+1. Add `src-tauri/src/db/migrations/NNN_<what>.sql`, the next number after the last migration, three digits. Write plain SQL: `ALTER TABLE … ADD COLUMN`, or SQLite's 12-step table rebuild (create `<table>_new`, copy, drop, rename, recreate indexes) for anything `ALTER TABLE` can't do.
 2. Append `migration!(NNN, "NNN_<what>.sql")` to `MIGRATIONS` in `db/migrations.rs`. `SCHEMA_VERSION` follows.
 3. Append its SHA-256 to `SHIPPED` in `db/migrations_tests.rs`.
-4. If the migration moves or reshapes data, add rows for it to `migrations/fixtures/baseline_rows.sql` (or a fixture of its own) so `every_baseline_row_survives_the_migration_chain` covers it.
+4. If the migration moves or reshapes data, add rows for it to `migrations/fixtures/v0_1_0_rows.sql` (or a fixture of its own) and a check like `a_0_1_0_database_upgrades_row_by_row`.
 5. If it changes a projected table, bump `PROJECTION_VERSION` too.
 
 | ✅ Do                                          | ❌ Don't                                                          |
 | ---------------------------------------------- | ----------------------------------------------------------------- |
-| Add `002_runs_label.sql`                       | Edit `001_baseline.sql` (the checksum test fails)                 |
+| Add `007_runs_label.sql`                       | Edit `006_since_0_1_0.sql` (the checksum test fails)              |
 | Copy rows forward when rebuilding a table      | Drop a table and let a rebuild fill it (runtime rows are history) |
 | Keep each migration small and about one change | Read or write the gold copy from a migration                      |
 

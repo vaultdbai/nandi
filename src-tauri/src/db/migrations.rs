@@ -6,7 +6,13 @@
 //! hasn't had, in order, in one transaction. Before it changes a database
 //! file it keeps a copy beside it, `state.db.bak-v<old>`.
 //!
-//! A new database runs the same chain from 001, so a fresh database and an
+//! The numbers follow the versions released builds stamped: Nandi 0.1.0
+//! wrote version 2 (migration 002, its schema word for word), and 006
+//! takes it to today's. A version no migration ends at (1, 3 to 5) was
+//! written by a development build that was never released: it is refused
+//! with a "reset your dev data" message.
+//!
+//! A new database runs the same chain from 002, so a fresh database and an
 //! upgraded one always have the same schema. A shipped migration never
 //! changes (a test holds their checksums): add the next numbered file.
 //! See `docs/developer/data-model.md#schema-changes`.
@@ -15,7 +21,8 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 
-/// One step of the schema. `version` is its number, from 1 with no gaps.
+/// One step of the schema. `version` is its number: they rise, and may
+/// skip numbers that only development builds used.
 #[derive(Debug, Clone, Copy)]
 pub struct Migration {
     pub version: i64,
@@ -36,10 +43,44 @@ macro_rules! migration {
 }
 
 /// Every migration the app ships, in order. Append only.
-pub const MIGRATIONS: &[Migration] = &[migration!(1, "001_baseline.sql")];
+pub const MIGRATIONS: &[Migration] = &[
+    migration!(2, "002_nandi_0_1_0.sql"),
+    migration!(6, "006_since_0_1_0.sql"),
+];
 
 /// The schema version this build writes: the last migration's number.
-pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
+pub const SCHEMA_VERSION: i64 = MIGRATIONS[MIGRATIONS.len() - 1].version;
+
+/// Where a database's version stands against a chain of migrations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Standing {
+    /// A new, empty database (version 0)
+    New,
+    /// At the last migration
+    Current,
+    /// At a released version the chain continues from
+    Behind,
+    /// At a version only a development build wrote: no migration ends there
+    Unreleased,
+    /// Past the last migration: written by a newer Nandi
+    Newer,
+}
+
+/// Where `version` stands against `migrations`.
+pub fn standing(version: i64, migrations: &[Migration]) -> Standing {
+    let latest = migrations.last().map_or(0, |m| m.version);
+    if version == 0 {
+        Standing::New
+    } else if version == latest {
+        Standing::Current
+    } else if version > latest {
+        Standing::Newer
+    } else if migrations.iter().any(|m| m.version == version) {
+        Standing::Behind
+    } else {
+        Standing::Unreleased
+    }
+}
 
 /// What [`upgrade`] did to a database.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,7 +100,8 @@ pub enum Upgrade {
 
 /// Brings `conn` to the last of `migrations`. `file` is the database's
 /// path: an existing database file is copied to `<file>.bak-v<old>` before
-/// it changes. A database newer than `migrations` is refused untouched.
+/// it changes. A database newer than `migrations`, or at a version only a
+/// development build wrote, is refused untouched.
 /// A failed migration rolls everything back.
 pub fn upgrade(
     conn: &Connection,
@@ -70,22 +112,30 @@ pub fn upgrade(
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(|e| format!("Couldn't read the local database's version: {e}"))?;
     let latest = migrations.last().map_or(0, |m| m.version);
-    if found > latest {
-        return Err(format!(
-            "The local database was written by a newer version of Nandi (database \
-             version {found}; this version reads up to {latest}). Nothing was changed. \
-             Install the newer Nandi again to open it."
-        ));
-    }
-    if found == latest {
-        return Ok(Upgrade::UpToDate);
+    match standing(found, migrations) {
+        Standing::Current => return Ok(Upgrade::UpToDate),
+        Standing::New | Standing::Behind => {}
+        Standing::Newer => {
+            return Err(format!(
+                "The local database was written by a newer version of Nandi (database                  version {found}; this version reads up to {latest}). Nothing was changed.                  Install the newer Nandi again to open it."
+            ))
+        }
+        Standing::Unreleased => {
+            return Err(format!(
+                "The local database was written by a development build of Nandi that was                  never released (database version {found}), so it can't be updated.                  Nothing was changed. Reset your dev data: quit Nandi, delete                  ~/.nandi/local/state.db with its -wal and -shm files, and start it again.                  Your agents and workflows in ~/.nandi/repo aren't touched."
+            ))
+        }
     }
     let backup = match file {
         Some(path) if found > 0 => Some(back_up(conn, path, found)?),
         _ => None,
     };
-    let pending = &migrations[found as usize..];
-    apply(conn, pending, latest).map_err(|failure| {
+    let pending: Vec<Migration> = migrations
+        .iter()
+        .filter(|m| m.version > found)
+        .copied()
+        .collect();
+    apply(conn, &pending, latest).map_err(|failure| {
         let kept = backup
             .as_ref()
             .map(|path| format!(" A copy of it from before is at {}.", path.display()))
