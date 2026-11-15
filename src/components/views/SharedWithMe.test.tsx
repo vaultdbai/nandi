@@ -24,7 +24,7 @@ const relayAtlas = sharedAgent(agentCard('bob', 'atlas', { name: 'Atlas' }), {
   sources: ['relay'],
 })
 
-/** `find-papers`: Atlas (auto, online) and Papers (offline) */
+/** `find-papers`: Atlas (auto, online) and Papers (not picked now) */
 const findPapers: CapabilityProviders = {
   capability: 'find-papers',
   providers: [
@@ -39,8 +39,7 @@ const findPapers: CapabilityProviders = {
       ],
     }),
     providerOption(papersAgent.card, {
-      online: false,
-      unavailable: 'offline',
+      unavailable: 'notNow',
     }),
   ],
   pinned: null,
@@ -181,7 +180,7 @@ describe('SharedWithMeView', () => {
       'Bob is free · Bob is usually quick'
     )
     const papers = within(capability.getByTestId('provider-alice/papers'))
-    expect(papers.getByText(/unavailable\.offline|Offline/)).toBeInTheDocument()
+    expect(papers.getByText(/unavailable\.notNow|Online, but not picked/)).toBeInTheDocument()
 
     await user.click(
       papers.getByRole('button', { name: /capabilities\.pin$|^pin$/i })

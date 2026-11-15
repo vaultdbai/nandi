@@ -2450,7 +2450,6 @@
   "shared.capabilities.unavailable.closed": "Not taking delegated tasks",
   "shared.capabilities.unavailable.full": "Busy: at its limit",
   "shared.capabilities.unavailable.isRequester": "That's you",
-  "shared.capabilities.unavailable.offline": "Offline: not on the relay now",
   "shared.capabilities.unavailable.notNow": "Online, but not picked right now",
   "routing.reason.named": "You asked for {{name}}",
   "routing.reason.pinned": "You pinned {{name}}",

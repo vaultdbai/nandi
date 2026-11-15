@@ -2450,7 +2450,6 @@
   "shared.capabilities.unavailable.closed": "N’accepte pas de tâches déléguées",
   "shared.capabilities.unavailable.full": "Occupé : à sa limite",
   "shared.capabilities.unavailable.isRequester": "C’est vous",
-  "shared.capabilities.unavailable.offline": "Hors ligne : pas sur le relais pour le moment",
   "shared.capabilities.unavailable.notNow": "En ligne, mais pas choisi pour le moment",
   "routing.reason.named": "Vous avez demandé {{name}}",
   "routing.reason.pinned": "Vous avez épinglé {{name}}",

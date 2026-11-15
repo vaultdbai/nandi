@@ -75,8 +75,6 @@ pub enum Unavailable {
     Full,
     /// It's the requester
     IsRequester,
-    /// Not online at the relay
-    Offline,
     /// Online, but the relay doesn't pick them now (failing lately, or
     /// missing what the request needs)
     NotNow,
@@ -370,10 +368,9 @@ pub fn capability_overview(
                         .map(|i| i as u32 + 1);
                     option.unavailable = if option.rank.is_some() {
                         None
-                    } else if !option.online {
-                        Some(Unavailable::Offline)
                     } else {
-                        // Online and open, but not in the relay's plan
+                        // Not in the relay's plan: the card can't take the task,
+                        // or the relay doesn't pick it now
                         Some(
                             availability(&option.card, &capability, requester)
                                 .err()

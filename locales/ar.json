@@ -2450,7 +2450,6 @@
   "shared.capabilities.unavailable.closed": "لا يقبل المهام المفوّضة",
   "shared.capabilities.unavailable.full": "مشغول: بلغ الحد الأقصى",
   "shared.capabilities.unavailable.isRequester": "هذا أنت",
-  "shared.capabilities.unavailable.offline": "غير متصل: ليس على المُرحِّل الآن",
   "shared.capabilities.unavailable.notNow": "متصل، لكن لم يُختر الآن",
   "routing.reason.named": "طلبت {{name}} بالاسم",
   "routing.reason.pinned": "ثبّتّ {{name}}",

@@ -8998,10 +8998,6 @@ export type Unavailable =
  */
 "isRequester" | 
 /**
- * Not online at the relay
- */
-"offline" | 
-/**
  * Online, but the relay doesn't pick them now (failing lately, or
  * missing what the request needs)
  */

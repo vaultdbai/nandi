@@ -2450,7 +2450,6 @@
   "shared.capabilities.unavailable.closed": "委任されたタスクを受け付けていません",
   "shared.capabilities.unavailable.full": "ビジー: 上限に達しています",
   "shared.capabilities.unavailable.isRequester": "あなた自身です",
-  "shared.capabilities.unavailable.offline": "オフライン: 現在リレーに接続していません",
   "shared.capabilities.unavailable.notNow": "オンラインですが、今は選ばれていません",
   "routing.reason.named": "{{name}} を指定しました",
   "routing.reason.pinned": "{{name}} をピン留めしています",
