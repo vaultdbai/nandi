@@ -1,10 +1,10 @@
 # Entra ID Setup
 
-> **Planned for v2. Not in the app today.** v1 has no sign-in: the first run reads the local identity in `NANDI.md`, and teams can be any git URL. This page is kept as the design for v2. See `docs/tasks-todo/task-x-v2-sign-in.md`.
+> **Planned for v2. Not in the app today.** v1 has no sign-in: the first run reads the local identity in `NANDI.md`, and packs travel through marketplace registries (any git URL). This page is kept as the design for v2. See `docs/tasks-todo/task-x-v2-sign-in.md`.
 
-Nandi can sign in with Microsoft Entra ID (formerly Azure AD) and build teams from Entra groups. Sign-in is the OAuth 2.0 Device Authorization Grant (RFC 8628), the same flow as [GitHub sign-in](./github-auth.md): Nandi shows a code, opens `https://microsoft.com/devicelogin`, and polls until you approve. No redirect URI or client secret is involved.
+Nandi can sign in with Microsoft Entra ID (formerly Azure AD) and read its Entra groups. Sign-in is the OAuth 2.0 Device Authorization Grant (RFC 8628), the same flow as [GitHub sign-in](./github-auth.md): Nandi shows a code, opens `https://microsoft.com/devicelogin`, and polls until you approve. No redirect URI or client secret is involved.
 
-Microsoft sign-in is additional to GitHub. GitHub still holds the agents repo; signing in with Microsoft from the Login screen opens the app with local agents, the way "Continue without GitHub" does, and Entra groups can then back teams.
+Microsoft sign-in is additional to GitHub. GitHub still holds the agents repo; signing in with Microsoft from the Login screen opens the app with local agents, the way "Continue without GitHub" does, and Entra groups can then be read.
 
 ## Register the app (one time, per tenant)
 
@@ -58,28 +58,19 @@ Environment variables override the file, and make the form read-only:
 - A stale access token is refreshed with `grant_type=refresh_token`; if Microsoft refuses the refresh token, or Graph answers 401, the session is cleared and the user is asked to sign in again.
 - Tokens never reach a client. Clients see `AuthStatus` only.
 
-## Groups and teams
+## Groups
 
 `list_entra_groups` reads `GET /v1.0/me/memberOf` (following `@odata.nextLink`, at most 20 pages, and only back to the Graph host), keeps `#microsoft.graph.group` entries (directory roles and administrative units are dropped), and caches them in `entra_teams_cache`.
 
-In the **Groups I'm a member of** list, each group can be:
-
-- **Mapped to a team** (`set_team_source(team, "entra", groupId)`, which also writes `entra_group_team_map` in `config.json`); choosing _Not mapped_ removes it from the map.
-- **Created as a team** (`create_team_from_entra_group`): a Nandi team whose ID is the group name's slug, source `entra/<groupId>`, and registry repo `github.com/<your GitHub user>/<slug>-registry` (just `<slug>-registry` when not signed in to GitHub). Nandi doesn't create that repo.
-
-**Sync from Entra ID** (Teams view, or **Re-sync** on an Entra team) runs `sync_entra_teams`: for each of my groups that maps to a team (the map, else a team already sourced from it, else, with `entra_auto_map_by_name: true`, a team with the same name), it reads `GET /v1.0/groups/{id}/members`, keeps users, and makes them the team's members (UPN, else mail, as the handle; roles and join times of existing members are kept). It never creates teams. A team's registry sync no longer refreshes members from GitHub once it is Entra-backed.
-
-Teams carry `source: { kind: "github" | "entra", identifier }`, persisted in `teams.source_kind` / `source_identifier`; rows from before v9 are GitHub teams.
+Mapping an Entra group to a Nandi team is gone: git-registry teams were removed on 2026-11-14 (owner decision 11). How Entra groups relate to [relay groups](./groups.md) is not decided.
 
 ## Code
 
 | Piece          | Where                                                                           |
 | -------------- | ------------------------------------------------------------------------------- |
 | Sign-in, Graph | `src-tauri/src/services/auth/microsoft.rs` (mock server in its `mock` module)   |
-| Group teams    | `src-tauri/src/services/team/entra.rs`                                          |
-| Commands       | `rpc/teams.rs`                                                                  |
 | Routes         | `POST /api/rpc/{name}` (`src-tauri/src/http/rpc.rs`)                            |
-| UI             | `src/components/entra/`, `EntraSetupView`, `EntraPane`, `Login`, `TeamView`     |
+| UI             | `src/components/entra/`, `EntraSetupView`, `EntraPane`, `Login`                 |
 | Hooks          | `src/hooks/useEntraAuth.ts` (queries, mutations, and the shared device polling) |
 
 `MicrosoftAuthService` (from `AppState::microsoft_auth()`) holds the HTTP client and, in tests, the login and Graph base URLs of a loopback mock (`set_endpoints`).

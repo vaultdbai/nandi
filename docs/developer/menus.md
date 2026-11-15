@@ -178,7 +178,7 @@ The webview's own right-click menu (Back, Refresh, Share, Inspect…) is never s
 - Editable fields get the native text menu (`showTextInputContextMenu`), selected text the edit menu, anything else no menu
 - In dev builds, Shift+right-click still opens the browser menu, for Inspect
 
-Item menus are Radix dropdowns opened from a "…" button **and** from right-click, so they work in the browser transport too. Example: the sidebar agent menu (`components/sharing/AgentMenu.tsx`): Open, View runs, **Share with team ▸** (my teams, checked where it's shared), **Callable over the relay** (`accepts_delegation`), and Sharing settings…. Sharing only ever goes to a team's private registry or the relay.
+Item menus are Radix dropdowns opened from a "…" button **and** from right-click, so they work in the browser transport too. Example: the sidebar agent menu (`components/sharing/AgentMenu.tsx`): Open, View runs, **Callable over the relay** (`accepts_delegation`), and Sharing settings….
 
 ```tsx
 <NavItem

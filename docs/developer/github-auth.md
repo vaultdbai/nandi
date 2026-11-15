@@ -21,7 +21,6 @@ Identity stays local (`NANDI.md`); this sign-in only supplies a credential.
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | GitHub connector             | `catalog.rs`: a pasted token first, then the sign-in (only when `api_url` is github.com), then `gh auth token`    |
 | Backup (`services/remote`)   | `CredentialKind::Github`: the stored credential holds no token; `credential()` fills in the sign-in's when loaded |
-| Team registries              | `TeamService::registry_token(url)` → `registry::sync` / `push_head`                                               |
 | Marketplace sources          | A registry whose `auth` is `nandi.github.token` ("Use my GitHub sign-in") reads through `auth::github::token`     |
 | Community source, publishing | `auth::require_token`: the sign-in, else a Backup token credential                                                |
 
@@ -43,7 +42,7 @@ The Nandi OAuth App's client ID (`DEFAULT_CLIENT_ID` in `auth/github.rs`) is pub
 NANDI_GITHUB_CLIENT_ID=Ov23li... pnpm tauri dev
 ```
 
-The scope is `repo` (read and write the user's repositories: Backup pushes, team registries, pull request reviews). Organizations that restrict third-party OAuth apps must approve the app once before their private repositories are reachable.
+The scope is `repo` (read and write the user's repositories: Backup pushes, pull request reviews). Organizations that restrict third-party OAuth apps must approve the app once before their private repositories are reachable.
 
 ## Manual test
 

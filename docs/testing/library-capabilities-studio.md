@@ -65,13 +65,13 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 
 - **What:** The third Library tab embeds the Shared-with-me list (agents others share for delegation), using the same search box and Can do filter; Can do options include capabilities from shared agent cards.
 - **Where:** Library → Shared with me. `LibraryView.tsx` → `src/components/views/SharedWithMe` (embedded). View `{kind:'library', tab:'shared'}`.
-- **Preconditions:** Connected to a relay / team with someone sharing an agent.
+- **Preconditions:** Connected to a relay with someone sharing an agent.
 - **Steps:** 1. Open the tab. 2. Search. 3. Filter by Can do.
 - **Expected:** Shared agents listed and filtered; kind chips hidden on this tab.
 - **Edge / negative cases:** Offline relay: empty or error state from SharedWithMe.
 - **Automation:** Covered by: none here (see Network section) | Layer: manual | Gap: embedded-mode test.
 - **Needs relay:** yes
-- **Status:** Shipped (content owned by the Teams/Network area)
+- **Status:** Shipped (content owned by the Network area)
 
 ### LB-07 — Sources freshness, Refresh and Sources link (Browse)
 

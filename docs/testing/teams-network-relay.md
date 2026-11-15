@@ -1,11 +1,11 @@
-# Teams, Network, Sharing, Delegation and Relay
+# Network, Sharing, Delegation and Relay
 
-Scope: teams (git registries), local identity, sharing agents (team and relay), trust (policies, trusted peers, pause, block, trust requests), the Network page (People, Groups, Sharing, Connection), groups and their signed policies, member profiles, task reassignment, agent-to-agent delegation and clarification, the relay (in-app client, `nandi relay`, `nandi-relay`), the git remote for `~/.nandi/repo`, the team-shared `.nandi/llm.yaml`, and the HTTP/WebSocket server with its web auth.
+Scope: local identity, sharing agents (relay), trust (policies, trusted peers, pause, block, trust requests), the Network page (People, Groups, Sharing, Connection), groups and their signed policies, member profiles, task reassignment, agent-to-agent delegation and clarification, the relay (in-app client, `nandi relay`, `nandi-relay`), the git remote for `~/.nandi/repo`, the repo-shared `.nandi/llm.yaml`, and the HTTP/WebSocket server with its web auth.
 
 Notes that apply to the whole section:
 
-- Teams are **any git URL** today. `services/team/mod.rs` says it plainly: "There is no GitHub (or any other) API: a registry is any git URL." Commit `91c8fad` (feat(auth-remote): remove auth, add git remote) removed GitHub sign-in. The GitHub-org and Entra ID teams that userguide section 9 describes are not in the code, so they are listed under Gaps.
-- Branches pushed by Nandi use the prefix `nandi/` (`services/remote/mod.rs` `DEFAULT_BRANCH_PREFIX = "nandi"`). The user guide still says `nandi/share-…`.
+- Git-registry teams were removed on 2026-11-14 (owner decision 11). Relay groups replace them (see the Groups entries). Packs travel through marketplace registries: Settings → Sources → Add registry takes any git URL.
+- Branches pushed by Nandi use the prefix `nandi/` (`services/remote/mod.rs` `DEFAULT_BRANCH_PREFIX = "nandi"`).
 - Two-instance testing: run each instance with its own `NANDI_HOME` and `NANDI_RELAY_URL`. To drive an instance over HTTP, send `Authorization: Bearer $(cat $NANDI_HOME/web_token)`. Fixed ports come from `--headless --port N` (`docs/relay-testing.md` in nandi-relay).
 
 ## Identity
@@ -15,155 +15,68 @@ Notes that apply to the whole section:
 - **Duplicate:** tested under ST-13. This ID is kept so old references stay valid; don't test it separately.
 - **Needs relay:** no
 
-## Teams (git registries)
+## Removed teams, and the People group filter
 
 ### TM-02 — Create a team from a registry git URL
 
-- **What:** You create a team by entering any git URL for a shared "registry" repo. Nandi clones it to `~/.nandi/repo/teams/<id>/`. If the registry layout is missing, Nandi scaffolds it and pushes the scaffold to `nandi/<my slug>`, never to the default branch. You are added as Owner.
-- **Where:** Network → People → team filter → "Manage teams…" → Teams → **New team** (dialog "Registry git URL"). Code: `src/components/views/TeamView.tsx` (`CreateTeamDialog`), `rpc/teams.rs` (`create_team`; its argument is still named `github_org` but takes a URL), `services/team/mod.rs` (`create_team`), `services/team/registry.rs`. HTTP: `POST /api/rpc/create_team`, `POST /api/rpc/list_teams`.
-- **Preconditions:** A user slug is set (TM-01). You have a reachable git remote with push rights, or a local bare repo for testing.
-- **Steps:** 1. Open Network → People. 2. In the team select, choose "Manage teams…". 3. Click **New team**. 4. Enter `file:///…/acme-registry.git` or an https URL and click **Create team**.
-- **Expected:**
-  - The team appears in "My teams" with "Members: 1" and you shown as Owner.
-  - The team ID is the last URL segment without `.git`, lowercased, with other characters turned into `-` (`…/acme/nandi-registry.git` gives `nandi-registry`). A team's source is always a git URL; there is no `github` source and no `registryUrl` request field.
-  - A `teams` row and a `team_members` row are written, and `~/.nandi/repo/teams/<id>/` exists.
-  - The remote gets a `nandi/<slug>` branch ("Set up the Nandi registry") and its default branch is untouched.
-  - A `team://changed` event fires.
-- **Edge / negative cases:**
-  - Creating a team whose ID already exists fails with "You're already in a team called <id>".
-  - A non-git URL fails validation.
-  - A URL that yields no name fails with "Can't name a team after '<url>'".
-  - When the push fails (unreachable remote, no rights), the team row and the checkout are rolled back.
-  - Creating a team with no slug set fails.
-- **Automation:** Covered by: `services/team/mod.rs` tests (`team_ids_come_from_the_url`, `create_team_scaffolds_an_empty_registry_on_a_nandi_branch`, `create_team_leaves_a_scaffolded_registry_alone`, `create_team_rejects_bad_urls_and_rolls_back_failures`, `me_is_the_identity_slug`), `services/team/registry.rs` (`sync_clones_an_empty_remote_then_pulls`, `push_head_never_pushes_the_default_branch`); `src/components/views/TeamView.test.tsx` | Layer: api (use a local bare repo as the remote) | Gap: none notable.
+- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
-- **Status:** Shipped
 
 ### TM-03 — Team detail: members, shared agents, packs, last sync
 
-- **What:** Selecting a team shows its members with roles (Owner/Admin/Member), the agents shared in its registry ("Shared by {name}"), the registry's packs, "Last synced {time}" (or "Not synced yet"), a roster section and a team activity feed.
-- **Where:** Network → People → Manage teams… → select a team. Code: `TeamView.tsx` (`TeamDetailPane`, `MembersCard`), `src/components/team/TeamRosterSection.tsx`, `MemberCard.tsx`, `TeamActivityFeed.tsx`, `rpc/teams.rs` (`get_team`), `rpc/teams_roster.rs` (`get_team_roster`, `get_member_profile`), `services/team/roster.rs`. HTTP: `POST /api/rpc/get_team`, `POST /api/rpc/get_team_roster`, `POST /api/rpc/get_member_profile`.
-- **Preconditions:** You are in a team (TM-02). For roster stats, at least one member is on the relay and has delegation history with you.
-- **Steps:** 1. Open the team. 2. Check the Members, Shared agents and Packs cards. 3. Check the roster cards: shared agents, team count, sent and received counts, and Open profile. 4. Check the activity feed.
-- **Expected:**
-  - Each card renders.
-  - A member with no gateway shows "Not connected".
-  - Activity lines read inbound or outbound (`members.activity.*`).
-  - The roster is cached for about a minute (`team://roster_changed` when it changes).
-- **Edge / negative cases:**
-  - An empty registry shows `teams.agents.empty` and `teams.packs.empty`.
-  - A malformed agent folder in the registry is skipped with a log warning.
-  - Roster load errors show `members.roster.unavailable`.
-- **Automation:** Covered by: `services/team/roster.rs` tests (`rosters_join_members_publishers_gateways_and_teams`, `delegation_stats_count_both_directions`, `rosters_are_cached_for_a_minute`, `a_member_without_a_gateway_is_not_connected`); `TeamView.test.tsx` | Layer: api | Gap: no UI test for TeamActivityFeed or MemberCard.
+- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
-- **Status:** Shipped
 
 ### TM-04 — Sync team registry
 
-- **What:** Fetches and fast-forwards the team's checkout so that newly merged shares appear and pending shares that were merged leave the pending list.
-- **Where:** Team detail → **Sync**. Code: `rpc/teams.rs` (`sync_team_registry`). HTTP: `POST /api/rpc/sync_team_registry`.
-- **Preconditions:** You are in a team, and a share branch was merged on the remote.
-- **Steps:** 1. Merge a `nandi/share-…` branch into the registry's default branch on the remote. 2. Click **Sync**.
-- **Expected:** "Last synced" updates. The agent appears under Shared agents, and its "Waiting for a team admin to merge" badge disappears. A `team://changed` event fires.
-- **Edge / negative cases:**
-  - When the remote is unreachable, the toast is `teams.error.sync` with the git error.
-  - An unknown team ID returns an error.
-- **Automation:** Covered by: `registry.rs` (`sync_clones_an_empty_remote_then_pulls`), `mod.rs` (`merged_shares_stop_being_pending`) | Layer: api | Gap: none.
+- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
-- **Status:** Shipped
 
 ### TM-05 — Join (re-sync) a known team
 
-- **What:** Re-syncs a team that already has a row on this machine and lists you as a Member. It cannot join a team by ID alone, because there is no directory service.
-- **Where:** API and command only: `rpc/teams.rs` (`join_team`), `POST /api/rpc/join_team`. The `useTeams` hook supports a `join` action, but no screen calls it.
-- **Preconditions:** The team row exists locally.
-- **Steps:** 1. `POST /api/rpc/join_team` for a known team. 2. Repeat with an unknown ID.
-- **Expected:** For the known team, the checkout syncs and a member row exists for you. For the unknown ID, a 400 error says "There's no team <id> here. Add it with its registry's git URL instead."
-- **Edge / negative cases:** Joining with no slug set fails.
-- **Automation:** Covered by: `mod.rs` (`join_team_needs_a_known_team`) | Layer: api | Gap: none.
+- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
-- **Status:** Partial (no UI entry point; new teams come in through TM-02)
 
 ### TM-06 — Leave team
 
-- **What:** Forgets the team on this machine. It deletes the team and member rows and removes the checkout folder. Nothing on the remote changes.
-- **Where:** Team detail → **Leave**. HTTP: `POST /api/rpc/leave_team`.
-- **Preconditions:** You are in a team.
-- **Steps:** 1. Click **Leave**.
-- **Expected:** The team disappears from the list, `~/.nandi/repo/teams/<id>/` is deleted, and a `team://changed` event fires. The remote is unchanged.
-- **Edge / negative cases:**
-  - There is no confirmation dialog: one click leaves. Check this is acceptable.
-  - Leaving an unknown ID returns an error.
-- **Automation:** Covered by: none specific | Layer: api | Gap: no test for leave.
+- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
-- **Status:** Shipped
 
 ### TM-07 — Share an agent with a team (push a share branch, pending merge)
 
-- **What:** Copies the agent folder into the registry and updates `index.json` and the publisher file. The change is pushed to `nandi/share-<slug>-<agent>`. Nothing is merged: the share stays pending until a team admin merges the branch.
-- **Where:**
-  - Team strip on People ("Share an agent with this team"), or Team detail → **Share agent** (`ShareAgentDialog`).
-  - Agent menu → "Share with team" (TM-10).
-  - Agent sharing dialog (TM-11).
-  - Code: `services/team/mod.rs` (`share_agent`, `remember_pending_share`, `pending_shares`), `src/components/team/share-toast.ts`.
-  - HTTP: `POST /api/rpc/share_agent`.
-- **Preconditions:** You are in a team, you have your own agent (not vendored from the marketplace), and push access.
-- **Steps:** 1. Click **Share agent**. 2. Pick an agent and click **Share**. 3. Look at the toast. 4. Look at the team's agent list.
-- **Expected:**
-  - The toast reads `teams.shareDialog.pushed` with the branch name and a **Copy branch** action that copies it to the clipboard.
-  - The remote has `nandi/share-<slug>-<agent>`.
-  - Team detail shows the agent with the "Waiting for a team admin to merge" badge and its "Pushed as branch" hint, stored under the `local_settings` pending-shares key.
-  - Sharing again with no change returns `branch: null` and the toast `teams.shareDialog.done`.
-- **Edge / negative cases:**
-  - Sharing a marketplace-installed agent fails with "…installed from the marketplace. Fork it to share your own copy."
-  - When another publisher already shared the same agent ID, sharing fails with "<publisher> already shared an agent called '<id>' with this team".
-  - An unknown agent fails with "No agent '<id>'".
-  - With no agents of your own, the dialog shows `teams.shareDialog.noAgents`.
-- **Automation:** Covered by: `mod.rs` (`shares_push_a_share_branch`, `merged_shares_stop_being_pending`), `registry.rs` (`copy_agent_copies_the_folder_without_local_clutter`, `index_round_trips_and_defaults`); `TeamView.test.tsx`, `src/components/sharing/AgentMenu.test.tsx` | Layer: api | Gap: no UI test checks the Copy branch toast.
+- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
-- **Status:** Shipped
 
 ### TM-08 — Stop sharing an agent with a team
 
-- **What:** Removes the agent folder and its index entry, and pushes the change to `nandi/unshare-<slug>-<agent>`. Only the agent's publisher can do this.
-- **Where:** Team detail → **Stop sharing**, Shared by me → sharing toggle (with confirmation), or the Agent menu team checkbox. HTTP: `POST /api/rpc/unshare_agent`.
-- **Preconditions:** You shared the agent earlier.
-- **Steps:** 1. Click **Stop sharing**. 2. Check the remote branches.
-- **Expected:** An unshare branch is pushed. Shared by me shows the toast "Stopped sharing", and the agent disappears from Shared by me once the change is merged and synced.
-- **Edge / negative cases:**
-  - Unsharing an agent someone else shared fails with "'<id>' was shared by <x>, not you".
-  - Errors show `teams.error.unshare`.
-- **Automation:** Covered by: none specific in Rust; `SharedByMe.test.tsx` covers the toggle | Layer: api | Gap: no Rust test for unshare.
+- **Status:** Removed 2026-11-14 (owner decision 11: relay groups replace git-registry teams; packs travel through marketplace registries).
 - **Needs relay:** no
-- **Status:** Shipped
 
-### TM-09 — Teams as a filter on People, with the team strip
+### TM-09 — People: Group filter
 
-- **What:** The People team select narrows the directory to members of that team's roster who have an instance ID. It shows a strip with the team name, "Members: N", "Share an agent with this team" and "Manage team".
-- **Where:** Network → People → team select. Code: `src/components/views/NetworkView.tsx` (`TeamMembers`, `TeamStrip`).
-- **Preconditions:** You are in a team whose members are on the relay.
-- **Steps:** 1. Choose a team in the select. 2. Toggle All, Online and Recently active. 3. Click "Manage team".
-- **Expected:** Only roster members are listed. With none online, the text is "No one from this team is on the relay right now." (`network.people.teamNobodyOnline`). "Manage team" opens Teams with a back button labelled "People" (`network.people.back`).
+- **What:** The People Group filter lists your relay groups, "All groups" and "Manage groups…". Choosing a group narrows the directory to that group's members and shows "Open group". "Manage groups…" opens Network → Groups.
+- **Where:** Network → People → Group filter. Code: `src/components/views/NetworkView.tsx`, `src/components/network/groups-model.ts` (`myGroups`, `peopleInGroup`); the view carries `memberOf` (the group ID).
+- **Preconditions:** Connected to a relay, in at least one group with another member.
+- **Steps:** 1. Choose a group in the Group filter. 2. Toggle All, Online and Recently active. 3. Click "Open group". 4. Go back, choose "All groups". 5. Choose "Manage groups…".
+- **Expected:** Only that group's members are listed. "Open group" opens the group page. "All groups" lists everyone again. "Manage groups…" opens Network → Groups.
 - **Edge / negative cases:** A search with no matches shows `network.noMatches`.
-- **Automation:** Covered by: `src/components/views/NetworkView.test.tsx` | Layer: ui-e2e | Gap: none.
+- **Automation:** Covered by: `src/components/network/groups-model.test.ts`, `src/components/views/NetworkView.test.tsx` | Layer: ui-e2e | Gap: none.
 - **Needs relay:** yes
 - **Status:** Shipped
 
 ## Sharing agents
 
-### TM-10 — Agent menu: Share with team, Callable over the relay
+### TM-10 — Agent menu: Callable over the relay
 
-- **What:** Each agent's menu has a "Share with team" submenu with a checkbox per team, and a "Callable over the relay" toggle. Turning either on asks for confirmation first. Relay sharing turns the agent's `accept_inbound` on or off (skill.md `accepts_delegation`).
-- **Where:** Agents list or agent page → "…" menu. Code: `src/components/sharing/AgentMenu.tsx`, `src/hooks/useAgentSharing.ts` (`useToggleTeamShare`, `useSetRelaySharing` → `get_agent_delegation`/`set_agent_delegation`).
-- **Preconditions:** You have your own agent. For teams, you are in at least one.
-- **Steps:** 1. Open the agent menu. 2. Check a team and confirm "Share {name} with {team}?". 3. Toggle "Callable over the relay" and confirm "Let everyone on your relay use {name}?". 4. Turn it off.
+- **What:** Each agent's menu has a "Callable over the relay" toggle. Turning it on asks for confirmation first. Relay sharing turns the agent's `accept_inbound` on or off (skill.md `accepts_delegation`).
+- **Where:** Agents list or agent page → "…" menu. Code: `src/components/sharing/AgentMenu.tsx`, `src/hooks/useAgentSharing.ts` (`useSetRelaySharing` → `get_agent_delegation`/`set_agent_delegation`).
+- **Preconditions:** You have your own agent.
+- **Steps:** 1. Open the agent menu. 2. Toggle "Callable over the relay" and confirm "Let everyone on your relay use {name}?". 3. Turn it off.
 - **Expected:**
-  - The team checkbox triggers TM-07.
   - The relay toggle shows the toasts `agentMenu.relayOn` and `agentMenu.relayOff`.
   - skill.md `accepts_delegation` flips, and the cards re-register at the relay within about 500 ms.
 - **Edge / negative cases:**
   - A marketplace agent shows "Installed from the marketplace: only its owner can share it".
-  - With no teams, the submenu shows `agentMenu.noTeams`.
   - Errors show `agentMenu.relayError`.
 - **Automation:** Covered by: `src/components/sharing/AgentMenu.test.tsx` | Layer: ui-e2e | Gap: none.
 - **Needs relay:** yes
@@ -171,34 +84,32 @@ Notes that apply to the whole section:
 
 ### TM-11 — Agent sharing dialog ("Share {name}")
 
-- **What:** Shows what others see (owner, capabilities from `serves:`, call count and last called), a switch per team, and the relay switch.
+- **What:** Shows what others see (owner, capabilities from `serves:`, call count and last called), and the relay switch.
 - **Where:** Agents list or agent page → "…" menu → "Sharing settings…". Code: `src/components/sharing/AgentSharingDialog.tsx`.
 - **Preconditions:** You have an agent.
-- **Steps:** 1. Open the dialog. 2. Toggle a team. 3. Toggle the relay switch.
-- **Expected:** The same effects as TM-10. An agent with no `serves:` shows `agentSharing.noCapabilities`. With no teams, the dialog shows "You aren't in any team yet." and a Go to Teams link.
-- **Edge / negative cases:** A vendored agent shows `agentSharing.notYours` and the team switches are not offered.
+- **Steps:** 1. Open the dialog. 2. Toggle the relay switch.
+- **Expected:** The same effect as TM-10. An agent with no `serves:` shows `agentSharing.noCapabilities`.
+- **Edge / negative cases:** A vendored agent shows `agentSharing.notYours` and the relay switch is not offered.
 - **Automation:** Covered by: none dedicated | Layer: ui-e2e | Gap: no test for AgentSharingDialog.
 - **Needs relay:** yes
 - **Status:** Shipped
 
-### TM-12 — Shared with me (agents from teams and the relay)
+### TM-12 — Shared with me (agents online at the relay)
 
-- **What:** Lists other people's agents from your team registries and the relay, merged by card ID, with your own left out and blocked agents filtered.
+- **What:** Lists the agents online at your relay, with your own left out and blocked agents filtered.
   - Agents are grouped by owner ("Alice · Agents: 3"). Each group can be folded and has **View profile** and **Trust** (the TrustControls popover).
-  - The "From" filter offers Everyone, My teams, Relay and "Used in the last 7 days".
-  - Each card has **Call**. "Install locally" is disabled.
+  - The filter offers Everyone and Recently used.
+  - Each card has **Call**.
 - **Where:** Library → Shared tab (`{kind:'library', tab:'shared'}`). Code: `src/components/views/SharedWithMe.tsx`, `src/components/network/OwnerGroupHeader.tsx`, `rpc/shared.rs` (`list_agents_shared_with_me`), `services/shared.rs`. HTTP: `POST /api/rpc/list_agents_shared_with_me`.
-- **Preconditions:** You are in a team with shared agents, and/or connected to a relay where others accept delegation.
-- **Steps:** 1. Open Library → Shared. 2. Switch the From filter. 3. Fold an owner group. 4. Open View profile. 5. Open the Trust popover.
+- **Preconditions:** Connected to a relay where others accept delegation.
+- **Steps:** 1. Open Library → Shared. 2. Switch the filter. 3. Fold an owner group. 4. Open View profile. 5. Open the Trust popover.
 - **Expected:**
-  - Cards show owner, capabilities and a Team or Relay source badge.
-  - Team-registry-only agents are offline and cannot take tasks.
+  - Cards show owner and capabilities.
   - The empty states are `shared.withMe.notConnectedTitle` when there is no network and `shared.withMe.noneTitle` when connected, each with Find people or Go to Network.
 - **Edge / negative cases:**
   - Blocked agents and members do not appear.
   - Load errors show `shared.loadError`.
-  - Hovering "Install locally" shows the tooltip "Installing a team agent locally isn't available yet".
-- **Automation:** Covered by: `src/components/views/SharedWithMe.test.tsx`, `src/hooks/useSharedAgents.test.ts`; Rust `services/shared.rs` (`a_team_shared_agent_shows_up_with_its_team`, `team_and_relay_copies_merge_by_card_id_and_mine_are_left_out`, `blocked_agents_are_filtered_from_listings`) | Layer: api | Gap: none.
+- **Automation:** Covered by: `src/components/views/SharedWithMe.test.tsx`, `src/hooks/useSharedAgents.test.ts`; Rust `services/shared.rs` (`blocked_agents_are_filtered_from_listings`) | Layer: api | Gap: none.
 - **Needs relay:** yes
 - **Status:** Shipped
 
@@ -242,16 +153,16 @@ Notes that apply to the whole section:
 
 ### TM-15 — Shared by me
 
-- **What:** Lists your agents that accept delegation or are shared to a team. Each shows "N calls in 30 days", last called (or "never called"), "Accepts delegation (relay)" and "Shared to {team}" chips, with search and an "All / Recently used" filter. Each sharing chip can be turned off after a confirmation.
+- **What:** Lists your agents that accept delegation. Each shows "N calls in 30 days", last called (or "never called") and an "Accepts delegation (relay)" chip, with search and an "All / Recently used" filter. The chip can be turned off after a confirmation.
 - **Where:** Network → Sharing → Shared (`{kind:'network', tab:'sharing', sharing:'shared'}`). Code: `src/components/views/SharedByMe.tsx`, `rpc/shared.rs` (`list_agents_shared_by_me`). HTTP: `POST /api/rpc/list_agents_shared_by_me`.
-- **Preconditions:** At least one agent is shared or accepts delegation.
-- **Steps:** 1. Open the tab. 2. Search. 3. Turn off a chip and confirm.
+- **Preconditions:** At least one agent accepts delegation.
+- **Steps:** 1. Open the tab. 2. Search. 3. Turn off the chip and confirm.
 - **Expected:**
   - The call counts match inbound `delegations` rows.
-  - Turning off relay sharing sets `accept_inbound=false`. Turning off a team chip triggers TM-08.
+  - Turning off relay sharing sets `accept_inbound=false`.
   - The toast reads "Stopped sharing".
 - **Edge / negative cases:**
-  - The empty state is `shared.byMe.emptyTitle` with a Go to Teams link.
+  - The empty state is `shared.byMe.emptyTitle` with a Go to Network link.
   - Errors show `shared.byMe.stopFailed`.
 - **Automation:** Covered by: `src/components/views/SharedByMe.test.tsx`; Rust `services/shared.rs` (`shared_by_me_sums_calls_by_card_id_and_agent_id`, `call_stats_count_the_window_per_direction`, `shared_by_me_lists_delegating_agents_with_inbound_calls`) | Layer: api | Gap: none.
 - **Needs relay:** no
@@ -278,10 +189,10 @@ Notes that apply to the whole section:
 
 - **What:** A one-sentence summary ("N trusted people can send you work right away. Everyone else asks first."), then a List/Graph toggle showing either a list of callers or a trust graph.
   - The list (`GatewayCallersTable`) edits or removes per-caller gateway policies.
-  - The graph has four node kinds: My agents, Agents I can call, Agents that call me, and Teams.
+  - The graph has three node kinds: My agents, Agents I can call, and Agents that call me.
   - Clicking a call line sets Allow, Ask or Deny for that caller.
 - **Where:** Network → Sharing → Who may call you, List/Graph toggle (the graph is `{kind:'network', tab:'sharing', sharing:'callers', callers:'graph'}`). Code: `src/components/views/SharingView.tsx` (`CallersPanel`), `src/components/agent-console/TrustGraph.tsx`, `useSetTrustPolicy`.
-- **Preconditions:** You have delegation history or team shares, so the graph has edges.
+- **Preconditions:** You have delegation history, so the graph has edges.
 - **Steps:** 1. Switch to Graph. 2. Click an agent to see its connections. 3. Click an inbound call line and choose Deny. 4. Switch to List and remove a caller.
 - **Expected:**
   - The edge label reads "{from} → {to} ({n} calls)".
@@ -299,7 +210,7 @@ Notes that apply to the whole section:
   - **Deny** dismisses the request until they ask again.
   - **Deny** with "and block" asks for confirmation, then blocks them.
   - There is no "trust once".
-- **Where:** The strip at the top of Network → Sharing (`src/components/network/TrustRequestsStrip.tsx`) and the Home Inbox (`src/components/inbox/Inbox.tsx`, kind `trustRequest`). Code: `services/team/trust_requests.rs`, `rpc/teams_roster.rs` (`list_trust_requests`, `respond_trust_request`). HTTP: `POST /api/rpc/list_trust_requests`, `POST /api/rpc/respond_trust_request {"answer":"trust"|"deny","block":bool}`. Event: `trust://request_received`.
+- **Where:** The strip at the top of Network → Sharing (`src/components/network/TrustRequestsStrip.tsx`) and the Home Inbox (`src/components/inbox/Inbox.tsx`, kind `trustRequest`). Code: `services/network/trust_requests.rs`, `rpc/network.rs` (`list_trust_requests`, `respond_trust_request`). HTTP: `POST /api/rpc/list_trust_requests`, `POST /api/rpc/respond_trust_request {"answer":"trust"|"deny","block":bool}`. Event: `trust://request_received`.
 - **Preconditions:** Two instances. B has an agent accepting delegation, B's policy for A is Ask, and A is not trusted.
 - **Steps:** 1. A calls B's agent twice. 2. On B, open Network → Sharing. 3. Click **Trust**. 4. A calls again.
 - **Expected:**
@@ -310,14 +221,14 @@ Notes that apply to the whole section:
   - Paused, blocked or explicitly denied people are not listed.
   - Only trust refusals of incoming tasks count.
   - The strip is hidden when there are no requests.
-- **Automation:** Covered by: `services/team/trust_requests.rs` tests (`refusals_fold_into_one_request_per_person`, `trusted_people_are_not_waiting`, `paused_or_blocked_people_are_not_waiting`, `an_explicit_never_is_not_a_request`, `not_now_hides_until_they_ask_again`, `only_trust_refusals_of_incoming_tasks_are_read`, `trust_answers_the_request_and_deny_hides_it`) | Layer: api (two instances) | Gap: no UI test for TrustRequestsStrip or the Inbox trust row.
+- **Automation:** Covered by: `services/network/trust_requests.rs` tests (`refusals_fold_into_one_request_per_person`, `trusted_people_are_not_waiting`, `paused_or_blocked_people_are_not_waiting`, `an_explicit_never_is_not_a_request`, `not_now_hides_until_they_ask_again`, `only_trust_refusals_of_incoming_tasks_are_read`, `trust_answers_the_request_and_deny_hides_it`) | Layer: api (two instances) | Gap: no UI test for TrustRequestsStrip or the Inbox trust row.
 - **Needs relay:** yes
 - **Status:** Shipped
 
 ### TM-19 — Member trust switches: Trusted peer
 
 - **What:** Marks a member's instance as a trusted peer. This writes `trust_relationships` and adds them to `federation.trusted_peers` in NANDI.md (an atomic write that keeps everything else), so their tasks pass the Ask policy.
-- **Where:** Member profile header → **Trust** popover, or the profile's Trust tab (`src/components/network/TrustControls.tsx`, `src/components/team/MemberTrustPanel.tsx`). Code: `services/team/trust.rs` (`set_trust_relationship`). HTTP: `POST /api/rpc/set_trust_relationship` with body `{"instanceId","update":{"addedAsTrustedPeer":bool,"delegationsPaused":null}}`. Event: `trust://relationship_updated`.
+- **Where:** Member profile header → **Trust** popover, or the profile's Trust tab (`src/components/network/TrustControls.tsx`, `src/components/network/MemberTrustPanel.tsx`). Code: `services/network/member_trust.rs` (`set_trust_relationship`). HTTP: `POST /api/rpc/set_trust_relationship` with body `{"instanceId","update":{"addedAsTrustedPeer":bool,"delegationsPaused":null}}`. Event: `trust://relationship_updated`.
 - **Preconditions:** A member is known on the directory.
 - **Steps:** 1. Toggle Trusted peer on. 2. Check NANDI.md. 3. Have that member call one of your agents with policy Ask.
 - **Expected:** The "Trusted" badge shows, NANDI.md lists the peer, and the call runs.
@@ -325,7 +236,7 @@ Notes that apply to the whole section:
   - A missing `federation` section is created.
   - An empty instance ID is rejected.
   - Errors show `members.trust.failed`.
-- **Automation:** Covered by: `team/trust.rs` (`trusted_peers_edits_keep_everything_else`, `a_missing_federation_section_is_created`, `the_file_is_written_atomically_and_left_alone_when_missing`, `relationships_upsert_and_checks_read_them`, `service_functions_emit_and_validate`), `a2a/tests.rs` (`a_trusted_peer_passes_the_ask_policy`) | Layer: api | Gap: no UI test for TrustControls.
+- **Automation:** Covered by: `network/member_trust.rs` (`trusted_peers_edits_keep_everything_else`, `a_missing_federation_section_is_created`, `the_file_is_written_atomically_and_left_alone_when_missing`, `relationships_upsert_and_checks_read_them`, `service_functions_emit_and_validate`), `a2a/tests.rs` (`a_trusted_peer_passes_the_ask_policy`) | Layer: api | Gap: no UI test for TrustControls.
 - **Needs relay:** yes
 - **Status:** Shipped
 
@@ -347,7 +258,7 @@ Notes that apply to the whole section:
 ### TM-21 — Block a member, or one of their agents
 
 - **What:** "Block this member" stores `(instance, *)` in `blocked_members`. Their tasks are rejected the moment they arrive, and none of their agents are used. To block a single agent, use **Block** next to that agent on the member profile's Capabilities tab (`MemberAgentsPanel`), or the block API.
-- **Where:** The Trust popover or Trust tab → "Block this member"; member profile → Capabilities → **Block** / **Unblock** for one agent. Code: `services/team/trust.rs` (`block_agent_from_member`, `unblock_agent_from_member`, `ALL_AGENTS`). HTTP: `POST /api/rpc/block_agent_from_member|unblock_agent_from_member`.
+- **Where:** The Trust popover or Trust tab → "Block this member"; member profile → Capabilities → **Block** / **Unblock** for one agent. Code: `services/network/member_trust.rs` (`block_agent_from_member`, `unblock_agent_from_member`, `ALL_AGENTS`). HTTP: `POST /api/rpc/block_agent_from_member|unblock_agent_from_member`.
 - **Preconditions:** A known member.
 - **Steps:** 1. Block the member. 2. Have them call you. 3. Unblock. 4. Block a single agent and check Shared with me.
 - **Expected:**
@@ -355,7 +266,7 @@ Notes that apply to the whole section:
   - A blocked agent disappears from Shared with me and from the provider ranking.
   - Unblocking restores everything, and `lastUpdated` does not move backwards.
 - **Edge / negative cases:** A blocked requester agent is rejected even when its instance isn't blocked.
-- **Automation:** Covered by: `a2a/tests.rs` (`a_blocked_requester_instance_is_rejected_on_arrival`), `shared.rs` (`blocked_agents_are_filtered_from_listings`), `team/roster.rs` (`profiles_group_agents_and_mark_blocked_ones`) | Layer: api | Gap: none.
+- **Automation:** Covered by: `a2a/tests.rs` (`a_blocked_requester_instance_is_rejected_on_arrival`), `shared.rs` (`blocked_agents_are_filtered_from_listings`)) | Layer: api | Gap: none.
 - **Needs relay:** yes
 - **Status:** Shipped
 
@@ -378,7 +289,7 @@ Notes that apply to the whole section:
 - **What:** A card per member in the relay's member directory (`QueryDirectory`; this instance is left out), online first and then by name. The relay keeps members who left, offline with when it last saw them, across its restarts, until the operator revokes them. Each card shows the display name, @handle, presence ("Online", "Seen {time}" or "Not seen yet"), availability when they set one (NW-14), "Capabilities: N" and "Agents: N", and a "Gateway only" tag, with Open profile, **Ask** and Copy ID.
   - With the relay down, People shows the last listing, everyone offline, with the note "Showing everyone as last seen. Connect to your company's relay to see who's around now." **Refresh** then answers "Connect to your company's relay" (RL-36).
   - Search filters the cards by name, handle, description, capabilities and responsibilities (the member's NANDI.md `responsibilities:`, GW-04), so "SOX" finds whoever lists "SOX audit".
-  - The filter offers All, Online, and Recently active (last 24 h).
+  - The filter offers All, Online, and Recently active (last 24 h). The Group filter narrows to a group's members (TM-09).
   - **Refresh** re-queries the relay.
 - **Where:** Network → People. Code: `NetworkView.tsx` (`MemberGrid`), `src/components/network/MemberCardCompact.tsx`, `src/hooks/useNetwork.ts` (`filterMembers`, `searchMembers`, `RECENTLY_ACTIVE_MS`), `services/network/mod.rs`, `rpc/network.rs` (`get_network_snapshot`, `refresh_network`). HTTP: `POST /api/rpc/get_network_snapshot`, `POST /api/rpc/refresh_network`.
 - **Preconditions:** Connected to a relay with at least one other instance whose gateway has `relay.enabled` on, with `responsibilities: [SOX audit]` in its NANDI.md.
@@ -439,14 +350,14 @@ Notes that apply to the whole section:
 ### NW-06 — Member profile
 
 - **What:** The profile header shows avatar, name, presence ("Online", "Seen {time}", or "This member hasn't connected their Nandi yet") and the Trusted, Paused, Blocked and "Blocked agents: N" badges, plus a Trust popover. Below it are the diagnosis (NW-07), Ask (NW-08) and four tabs: Gateway (their NANDI.md), Capabilities (with their agents), Recent delegations (both directions) and Trust.
-- **Where:** People card → Open profile; Shared groups → View profile; the delegation thread side panel. Code: `src/components/views/MemberProfileView.tsx`, `src/components/team/Member*Panel.tsx`, `rpc/teams_roster.rs` (`get_member_by_instance`). HTTP: `POST /api/rpc/get_member_by_instance`.
+- **Where:** People card → Open profile; Shared groups → View profile; the delegation thread side panel. Code: `src/components/views/MemberProfileView.tsx`, `src/components/network/Member*Panel.tsx`, `rpc/network.rs` (`get_member_by_instance`), `services/network/profile.rs`. HTTP: `POST /api/rpc/get_member_by_instance`.
 - **Preconditions:** A member known on the directory.
 - **Steps:** 1. Open a profile. 2. Visit each tab. 3. Click the back button "People".
 - **Expected:** Each tab renders. Under the presence line the header shows the member's availability when they set one (NW-14). The Gateway tab lists "Responsible for" with the member's `responsibilities` as tags when the card has any, even when their NANDI.md body isn't shared. A member without a gateway shows the empty state `members.notConnectedDescription` and no diagnosis or Ask.
 - **Edge / negative cases:**
   - An unknown instance gets an empty-state profile, not an error.
   - Load errors show `members.loadError`.
-- **Automation:** Covered by: `src/components/views/MemberProfileView.test.tsx`; Rust `team/roster.rs` (`an_unknown_instance_gets_the_empty_state`, `profiles_group_agents_and_mark_blocked_ones`) | Layer: ui-e2e | Gap: none.
+- **Automation:** Covered by: `src/components/views/MemberProfileView.test.tsx` | Layer: ui-e2e | Gap: none.
 - **Needs relay:** yes
 - **Status:** Shipped
 
@@ -1120,7 +1031,7 @@ Notes that apply to the whole section:
 ### RL-34 — Everyone on the company's relay is trusted
 
 - **What:** When this Nandi's relay connection carries an instance token (the relay needs a secret, so only enrolled instances are on it) and the relay isn't a public one, every member the relay lists is trusted, as if marked **Trusted peer**, unless the owner turns off **Trust everyone on this relay** (Network › Connection, `trust.relayMembers`, on by default). Pause and Block still apply. Where it can't apply the switch shows off and disabled, whatever was saved, with the reason: no relay yet ("Applies once you join your company's relay…"), an open relay, or the public relay ("Anyone with an email can join the public relay, so you trust people one by one.", `RelayTrust.public`); the switch and the words always agree. Revoking someone on the relay (RL-30) takes them off it, so they lose this trust too.
-- **Where:** `services/team/trust.rs` (`is_trusted`, `trusted_by_relay`, `on_a_secured_relay`, `relay_trust`, `set_trusts_relay_members`), used by `a2a/executor.rs` (agent and workflow trust checks) and `team/trust_requests.rs`. Commands `get_relay_trust`, `set_relay_trust`; HTTP `POST /api/rpc/get_relay_trust|set_relay_trust`. UI: `ConnectionView.tsx` (`RelayTrustCard`).
+- **Where:** `services/network/member_trust.rs` (`is_trusted`, `trusted_by_relay`, `on_a_secured_relay`, `relay_trust`, `set_trusts_relay_members`), used by `a2a/executor.rs` (agent and workflow trust checks) and `network/trust_requests.rs`. Commands `get_relay_trust`, `set_relay_trust`; HTTP `POST /api/rpc/get_relay_trust|set_relay_trust`. UI: `ConnectionView.tsx` (`RelayTrustCard`).
 - **Preconditions:** A relay with `NANDI_RELAY_SECRET` and a join code, three Nandis enrolled on it.
 - **Steps:**
   1. From one Nandi, ask another's agent for a capability set to **Ask** (not Allow), without marking each other trusted.
@@ -1158,7 +1069,7 @@ Notes that apply to the whole section:
   - The profile shows the key's short fingerprint (`Key 3F2A 91C0 7B44 E1D9`), or a calm "Their key changed" notice with the old and new fingerprints and **Accept new key**.
   - A refused send reads "Their key changed. Open their profile…".
   - A result or message from their new device is refused too (it isn't signed by the pinned key, RL-42), and an open profile updates on its own (`network://member_key_changed`).
-- **Where:** `services/network/peer_keys.rs` (`observe`, `pinned`, `learn`, `PinnedKeys`, `accept`), `network/mod.rs` (`refresh_with`), `relay/client.rs` (the key book), `team/roster.rs` (`MemberProfile.key`); command `accept_peer_key`, HTTP `POST /api/rpc/accept_peer_key`; UI `MemberKeyNotice.tsx` on `MemberProfileView`, `agent-sync.ts`.
+- **Where:** `services/network/peer_keys.rs` (`observe`, `pinned`, `learn`, `PinnedKeys`, `accept`), `network/mod.rs` (`refresh_with`), `relay/client.rs` (the key book), `network/profile.rs` (`MemberProfile.key`); command `accept_peer_key`, HTTP `POST /api/rpc/accept_peer_key`; UI `MemberKeyNotice.tsx` on `MemberProfileView`, `agent-sync.ts`.
 - **Preconditions:** Two Nandis on a relay with a secret, each seeing the other in People.
 - **Steps:**
   1. Open the other member's profile and note the key.
@@ -1321,7 +1232,7 @@ Notes that apply to the whole section:
 
 - **What:** Nearly every feature is reachable as REST under `/api/*` (body and response JSON in camelCase, errors `400 {"error"}`), so tests and scripts can drive Nandi without the UI. Route groups, from `src-tauri/src/http/routes.rs` plus the modules merged in `http/mod.rs`:
   - Core: `/agents…`, `/approvals/pending`, `/queue/{runId}/…`, `/snapshots/…`, `/runs…`, `/audit/{kind}`, `/workflows…`, `/workflow-templates`, `/workflow-runs/{id}/approve`, `/studio/conversations…`, `/conversations/{id}`, `/attachments/{id}`, `/preferences`, `/llm-keys…`, `/ollama`, `/default-model`, `/free-trial`, `/egress/…`, `/repo/status|rebuild`, `/emergency-data/…`.
-  - This area: `/identity/*`, `/teams…`, `/teams/{id}/roster`, `/members/…`, `/trust/requests…`, `/trust/policies`, `/shared/with-me|by-me|capabilities|pins`, `/network/snapshot|refresh|members/{instance}[/trust]`, `/relay/status|url|agents|test|instances`, `/delegation/providers|tasks|tasks/{id}|history|pending-clarifications`, `/delegation/{id}/clarify|escalate/{q}`, `/agents/{id}/delegation`, `/agents/{id}/clarification-policy`, `/tasks…` (list, detail, cancel, status, events, messages, reassign, reassign-candidates), `/eta/{capability}`, `/remote/*`, `/config/llm[/reload]`.
+  - This area: `/identity/*`, `/members/…`, `/trust/requests…`, `/trust/policies`, `/shared/with-me|by-me|capabilities|pins`, `/network/snapshot|refresh|members/{instance}[/trust]`, `/relay/status|url|agents|test|instances`, `/delegation/providers|tasks|tasks/{id}|history|pending-clarifications`, `/delegation/{id}/clarify|escalate/{q}`, `/agents/{id}/delegation`, `/agents/{id}/clarification-policy`, `/tasks…` (list, detail, cancel, status, events, messages, reassign, reassign-candidates), `/eta/{capability}`, `/remote/*`, `/config/llm[/reload]`.
   - Other modules (owned by other sections): marketplace, mascot, triggers (including unauthenticated `/api/triggers/webhook|device/…`), repo, pilots, connectors, images, capability, capabilities, tools, analysis, workflow builder, marketplace search, companion, palette, memory, requests, policies, gateway, harnesses, harness sessions, aws-auth, bedrock, ask, studio, work, manual steps.
   - Events: `GET /ws` (RL-24).
 - **Where:** `src-tauri/src/http/*.rs`.
@@ -1464,14 +1375,9 @@ Notes that apply to the whole section:
 
 ## Gaps and planned (not testable yet)
 
-- **GitHub-org teams** (create the team from an org, roles from org membership, auto-create a private `nandi-registry`): described in `docs/userguide/userguide.md` §9 and `docs/developer/github-auth.md`. They were removed in `91c8fad` (remove auth). Teams are any git URL, there is no GitHub API, and `commands/auth.rs` and `http/github.rs` no longer exist. Roles other than Owner (self, on create) and Member (on join) are never assigned.
-- **Entra ID group teams and Microsoft sign-in** (Settings → Entra ID, device code, "Sync from Entra ID"): described in userguide §9 and `docs/developer/entra-setup.md`. Added in `d472f58` and later removed; nothing of it remains in the code (the old `entra_teams_cache` table is gone from the v2 schema).
-- **Userguide §9 states team shares come from "GitHub orgs" and branch `nandi/share-…`**: the code pushes `nandi/share-<slug>-<agent>`. Docs to update.
 - **Userguide §9 says delegation settings live in the agent's "Permissions" tab**: they are in Agent → Settings → Sharing.
 - **Userguide §10 "Delegate: the Relay screen lists agents online … Call"**: the old Relay screen and its strings (`relay.agents.*`, `relay.call.*`) no longer render. Calling now happens from Library → Shared (TM-14).
 - **LAN warning banner** ("Running on the local network. Public relay coming soon."), promised by `docs/developer/relay-defaults.md` and userguide §10: the `relay.lanBanner.*` strings exist, but no component renders them.
-- **"Install locally" for a team agent**: the button is always disabled ("Installing a team agent locally isn't available yet", `SharedWithMe.tsx`).
-- **No UI to join a team by ID**: `join_team` is API-only and only re-syncs a known row.
 - **Delegation history page with filters** (status, capability, owner, tokens columns; `delegation.history.*` strings): there is no such page; delegations show in Home → All activity, and the history filters UI is not rendered.
 - **The live public relay** (`wss://relay.vaultdb.ai/relay`): joining it is built (RL-45 to RL-47); the relay itself isn't deployed yet (DNS, TLS, the GitHub, Google and Microsoft OAuth apps). See `docs/developer/relay-defaults.md` "The public relay".
 - **Relay token UX**: the token flow exists in nandi-relay's `src/server.rs`, but there is no way to issue or enter tokens other than by hand (`relay-defaults.md`).

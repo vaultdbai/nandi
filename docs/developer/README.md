@@ -30,7 +30,7 @@ Technical documentation for building and extending this app. These docs describe
 | [Email](./email.md)                                                                       | Outlook and Gmail read-only for the Chief of Staff's notes; token refresh         |
 | [Connector hub](./connector-hub.md)                                                       | Connector packages, grants while agents work, calendars and files, calendar notes |
 | [S3 Backup](./s3-backup.md)                                                               | Folder backups to S3 Deep Archive, AWS setup tools, derived triggers              |
-| [Entra ID Setup](./entra-setup.md)                                                        | v2, not in the app: Microsoft sign-in, app registration, Entra-group teams        |
+| [Entra ID Setup](./entra-setup.md)                                                        | v2, not in the app: Microsoft sign-in, app registration, Entra groups             |
 | [Marketplace](./marketplace.md)                                                           | Registries, installing, forking, updating agents                                  |
 | [Pilots](./pilots.md)                                                                     | Host-side OS control, per-agent consent, revoking                                 |
 | [Command System](./command-system.md)                                                     | Unified action dispatch, command registration                                     |

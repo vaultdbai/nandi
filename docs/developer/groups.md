@@ -20,6 +20,8 @@ src/components/network/{groups-model,group-toast}.ts
 
 Every command is one declaration in `rpc/groups.rs`, served over IPC and `POST /api/rpc/{name}`: `list_groups` (`GroupsOverview`), `create_group`, `get_group`, `update_group`, `set_group_policy`, `invite_to_group`, `revoke_group_invite`, `join_group`, `leave_group`, `set_group_role`, `remove_group_member`, `get_group_access`, `set_group_access`.
 
+The People screen filters by group: `myGroups` and `peopleInGroup` in `groups-model.ts` (tested in `groups-model.test.ts` and `NetworkView.test.tsx`), with the `memberOf` field on the network view, **Manage groups…** opening Network > Groups and **Open group** on a chosen group.
+
 Without a relay every call answers `RelayUnavailable` (the UI shows `RelayConnectNotice`), except `list_groups` (`connected: false`) and the access level, which is a local file.
 
 ## The gold copy

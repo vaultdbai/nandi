@@ -3,15 +3,16 @@
 What wave EF added on top of the network-first wave (`a2a-delegation.md`,
 `interaction-layer.md`): trust down to a whole member, supervisor
 reassignment of delegated tasks, workflows that wait days for a person,
-and a team-shared `.nandi/llm.yaml`.
+and a repo-shared `.nandi/llm.yaml`.
 
 ## Module map
 
 ```text
 src-tauri/src/services/
   network/mod.rs           NetworkService: directory snapshot, member diff, events
-  team/roster.rs           member profiles, by team or by instance
-  team/trust.rs            trusted peers, paused delegations, blocked agents / members
+  network/profile.rs       member profile, by instance
+  network/member_trust.rs  trusted peers, paused delegations, blocked agents / members
+  network/trust_requests.rs  trust requests from people not yet trusted
   a2a/reassign.rs          reassign (provider), accept (requester), candidates
   workflows/manual_steps.rs  manual_steps table, pending list, complete_manual_step
   config/repo_config.rs    .nandi/llm.yaml: parse, precedence, harness + native defaults
@@ -29,9 +30,9 @@ src-tauri/src/services/
 | `get_repo_llm_config`, `reload_repo_llm_config`        | `POST /api/rpc/get_repo_llm_config`, `POST /api/rpc/reload_repo_llm_config`     |
 
 The wave spec named the member commands `get_member_profile`,
-`block_agent`, and `pause_delegations`; those already existed from wave
-final under the names above (and `get_member_profile` is the team-scoped
-one), so no duplicates were added.
+`block_agent`, and `pause_delegations`; the commands live under the names
+above, in `rpc/network.rs` (`get_member_profile` went with git-registry
+teams).
 
 ## Network directory and trust
 

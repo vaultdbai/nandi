@@ -12,7 +12,7 @@ This guide is for people who are comfortable with a terminal and git but new to 
 6. [Workflows](#6-workflows)
 7. [Triggers](#7-triggers)
 8. [Library](#8-library)
-9. [Teams and collaboration](#9-teams-and-collaboration)
+9. [Collaboration](#9-collaboration)
 10. [Relay and remote delegation](#10-relay-and-remote-delegation)
 11. [Local models](#11-local-models)
 12. [Troubleshooting](#12-troubleshooting)
@@ -275,7 +275,7 @@ The sidebar has seven pages. Three open one level down: **Ask** (**+ New chat**,
 | **Agents**      | Every agent as a row with its runtime, last 7 days and sharing. Click one for its page (Overview, Chat, Runs, Settings); **New agent** makes one.                                                  |
 | **Automations** | **Workflows** and **Triggers**, each with its **New** button.                                                                                                                                      |
 | **Library**     | **Installed**, **Browse** and **Shared with me**: agents, workflows, tools (built-ins, connectors, pilots) and packs, each with one card.                                                          |
-| **Network**     | **People**, **Teams**, **Sharing** (Gateway, Shared by me, Trust graph, Capabilities) and **Connection** (the relay). A dot shows whether you're connected.                                        |
+| **Network**     | **People**, **Groups**, **Sharing** (Gateway, Shared by me, Trust graph, Capabilities) and **Connection** (the relay). A dot shows whether you're connected.                                       |
 | **Settings**    | **Models & runtimes**, **Account**, **Cloud credentials**, **Internet access**, **Sources** and **Logs**.                                                                                          |
 
 Up and Down move through the sidebar, Right opens a branch (or steps into it), Left closes it (or goes back up), and Enter opens the page. **Ctrl+K** (⌘K) opens the command palette; its first row, **Ask Nandi: …**, sends what you typed to **Ask**.
@@ -588,7 +588,7 @@ Built-in tools (Run shell commands, Read files, Write files, List folders, Ask o
 **GitHub.**
 
 - Lets agents read pull requests and files, and post a review with inline comments. Posting always waits for your approval.
-- Click **Sign in with GitHub** in its Setup (or in Settings › Account): enter the code GitHub shows you and approve. That one sign-in also works for Backup, teams, sources and publishing on github.com. If you'd rather not, paste a fine-grained token (Contents: read; Pull requests: read and write), or sign in with the GitHub CLI (`gh auth login`).
+- Click **Sign in with GitHub** in its Setup (or in Settings › Account): enter the code GitHub shows you and approve. That one sign-in also works for Backup, sources and publishing on github.com. If you'd rather not, paste a fine-grained token (Contents: read; Pull requests: read and write), or sign in with the GitHub CLI (`gh auth login`).
 - The calls run on your computer, so the token never reaches an agent's container.
 
 **AWS.**
@@ -619,19 +619,17 @@ To change an installed agent, **Fork** it from the **⋯** menu. The fork is a n
 
 ---
 
-## 9. Teams and collaboration
+## 9. Collaboration
 
-Teams are for 5 to 20 people who trust each other. There's no Nandi server: a team is a private `nandi-registry` repo in a GitHub organization.
+There's no Nandi server for your team. People work together through your company's relay (see [section 10](#10-relay-and-remote-delegation)): it lists who is online, passes tasks and holds your groups. Packs travel through marketplace registries.
 
-### GitHub-org teams
+### Sharing packs by git URL
 
-Open **Network › Teams** and click **New team**. Pick one of your GitHub orgs; Nandi creates a private `nandi-registry` there if it doesn't exist, or **Join existing** if a teammate already did. Membership and roles (Owner, Admin, Member) come from the org.
+To share packs with your colleagues, put them in a git repo laid out like a registry and have each person add it: **Settings › Sources › Add registry**. Any git URL works. Use a token (kept in your keychain) or **Use my GitHub sign-in**. What you install from it goes through the same signature check and the same consent dialog as anything from the marketplace.
 
-**Share agent** pushes the agent's folder to a `nandi/share-…` branch in the team registry; Nandi says which branch, with **Copy branch**. A team admin must merge it, and until then the agent shows **Waiting for a team admin to merge** on the Team page. Teammates see it under **Shared with me**; your shared agents are under **Shared by me**, with call counts.
+### Sharing agents with people
 
-### Entra ID groups
-
-Organizations on Microsoft 365 can back teams with Entra ID groups instead of GitHub org membership. An admin enters the tenant and app (client) ID once in **Settings → Entra ID**; then each person signs in with Microsoft using a device code, the same way as GitHub. Groups can be mapped to teams, and **Sync from Entra ID** on the Team page keeps membership current. GitHub still stores the agents; Entra decides who is on the team.
+People don't share agents through a registry. Turn on **Accepts tasks from other agents** in the agent's Permissions tab and it shows up for people on your relay (see [Sharing agents for delegation](#sharing-agents-for-delegation)).
 
 ### My notes
 
@@ -703,7 +701,7 @@ The **Chief of Staff** agent comes with Nandi (first under Agents) and works wit
 
 <!-- studio-guide: network-and-delegation -->
 
-Sharing a folder lets teammates install your agent. **Delegation** lets their agents call yours while it runs on your machine. In your agent's **Permissions** tab:
+**Delegation** lets other people's agents call yours while it runs on your machine. In your agent's **Permissions** tab:
 
 - **Accepts tasks from other agents**, plus the capabilities it serves (e.g. `summarize-paper`) and how many tasks at once.
 - **Can call other agents** gives your agent the `delegate_to_agent` tool. Each call asks you first.
@@ -712,7 +710,7 @@ Sharing a folder lets teammates install your agent. **Delegation** lets their ag
 
 ### Shared with me and Shared by me
 
-Both lists group agents by owner ("Alice · Agents: 3"). Click the arrow next to an owner to fold their agents away; **View profile** opens their member profile, and **Trust** opens their trust switches.
+**Shared with me** is the agents that are online at your relay. **Shared by me** is your agents that accept delegation. Both lists group agents by owner ("Alice · Agents: 3"); the filter is **Everyone** or **Recently used**. Click the arrow next to an owner to fold their agents away; **View profile** opens their member profile, and **Trust** opens their trust switches.
 
 ### Everyone on your company's relay is trusted
 
@@ -724,7 +722,7 @@ When someone who isn't trusted yet tries to send you work and your policy is **A
 
 ### Members and trust
 
-**Network** lists everyone connected to your relay, online first, with what their gateway offers; filter to **Online** or **Recently active**. Open someone to see their profile, with a **Can {name} receive from me?** check that lists what's missing (on the relay, listed, accepts tasks, trusts you…) and a message you can copy and send them: their gateway (their NANDI.md), capabilities and agents, recent delegations between you, and trust. Trust has three switches, also in the profile's header:
+**Network › People** lists everyone connected to your relay, online first, with what their gateway offers; filter to **Online** or **Recently active**. The **Group** filter lists your relay groups and **All groups**; pick a group to see only its members, with **Open group**, or choose **Manage groups…** to open **Network › Groups**. Open someone to see their profile, with a **Can {name} receive from me?** check that lists what's missing (on the relay, listed, accepts tasks, trusts you…) and a message you can copy and send them: their gateway (their NANDI.md), capabilities and agents, recent delegations between you, and trust. Trust has three switches, also in the profile's header:
 
 - **Trusted peer**: adds them to the trusted peers in your NANDI.md.
 - **Pause delegations**: your gateway turns their tasks away and you stop sending them work, until you switch it back.

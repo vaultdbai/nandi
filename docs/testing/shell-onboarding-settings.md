@@ -1110,7 +1110,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
   1. Settings › Account → **Sign in with GitHub**; enter the code on github.com and approve.
   2. Library › GitHub: Start works with no pasted token.
   3. Settings › Backup: URL `https://github.com/<you>/<repo>.git`, credential **GitHub sign-in**, Save, Test, Push.
-  4. Create a team with a private `https://github.com/...` registry; it syncs.
+  4. Settings › Sources › Add registry with a private `https://github.com/...` URL and **Use my GitHub sign-in**; it loads.
   5. **Sign out**, then Backup › Push.
 - **Expected:** Steps 2–4 work without any pasted token. After step 5 the push fails with "Sign in to GitHub (Settings › Account) to use it for this remote", and the GitHub connector's Setup shows "Sign in to GitHub, or add a GitHub token" (unless the GitHub CLI is signed in). No token appears in any file under `~/.nandi`.
 - **Edge / negative cases:** Cancel on github.com → "Sign-in was cancelled."; letting the code expire → "The sign-in code expired. Please start again."; the GitHub sign-in credential with a non-github.com URL → refused on Save; "Use my GitHub sign-in" while signed out → "Sign in to GitHub first (Settings › Account)"; a connector with a GitHub Enterprise `api_url` doesn't use the sign-in.
@@ -1322,7 +1322,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ## Gaps and planned (not testable yet)
 
-- **Sign-in as identity is v2.** Signing in to Nandi itself (Entra ID, GitHub-org teams) is planned for v2 (`docs/tasks-todo/task-x-v2-sign-in.md`); AuthGate routes on local identity only. The optional GitHub sign-in in Settings › Account (ST-32) only supplies a token for github.com repositories.
+- **Sign-in as identity is v2.** Signing in to Nandi itself (Entra ID) is planned for v2 (`docs/tasks-todo/task-x-v2-sign-in.md`); AuthGate routes on local identity only. The optional GitHub sign-in in Settings › Account (ST-32) only supplies a token for github.com repositories.
 - **Userguide steps still use the removed flow.** `docs/userguide/quickstart.md:56` and `docs/userguide/userguide.md:294,622` tell users to use "Sync now" in the account menu. Backup is now Settings › Backup, and "Back up now".
 - **Entra ID sign-in is documented but not in the app.** `docs/developer/entra-setup.md` and `docs/userguide/userguide.md:504-506` describe Settings → Entra ID, Microsoft sign-in and "Sync from Entra ID" (the `docs/developer/README.md` index now marks it v2). No Settings section, command or UI exists for it. Only leftovers remain (for example in `db/schema.rs` and `harness/gateway.rs`).
 - **Untranslated text.** The Windows window-control aria labels are hard-coded English.

@@ -13,7 +13,7 @@ Shared preconditions used below:
 
 ### AG-01 — Agents list page
 
-- **What:** Every agent as one row: avatar, name, live status pill, description (or "Its file can't be loaded right now."), runtime and model (or "In a container" for a CLI runtime), 7-day health cells with run counts, a problem line or "Last run …", the Shared column (`From <publisher>`, Team, Relay, "Team + Relay", or "—") and Accepts requests On/Off. Rows waiting on the user come first, then rows with a problem, then by latest run, then by name.
+- **What:** Every agent as one row: avatar, name, live status pill, description (or "Its file can't be loaded right now."), runtime and model (or "In a container" for a CLI runtime), 7-day health cells with run counts, a problem line or "Last run …", the Shared column (`From <publisher>`, Relay, or "—") and Accepts requests On/Off. Rows waiting on the user come first, then rows with a problem, then by latest run, then by name.
 - **Where:** Sidebar → Agents. `src/components/views/AgentsListView.tsx`, ordering and labels in `src/components/agents/agent-page-model.ts` (`sortAgents`, `sharedLabel`, `runtimeDetail`, `runtimeName`). Data: `list_agents` and `list_agent_overviews` (`src-tauri/src/rpc/agents.rs`, `src-tauri/src/services/agent_overview.rs`). HTTP `POST /api/rpc/list_agents`, `POST /api/rpc/list_agent_overviews` `{todayStart}`.
 - **Preconditions:** At least two agents; one with recent runs.
 - **Steps:**
@@ -67,7 +67,7 @@ Shared preconditions used below:
 
 ### AG-04 — Agent row menu
 
-- **What:** The always-visible "⋯" on each row (or right-click) offers Open, Chat, View runs, Edit in Ask (own agents only), Share with team (submenu of teams, asks before sharing), "Callable over the relay" (a toggle; asks first), "Sharing settings…", and "Delete agent…".
+- **What:** The always-visible "⋯" on each row (or right-click) offers Open, Chat, View runs, Edit in Ask (own agents only), "Callable over the relay" (a toggle; asks first), "Sharing settings…", and "Delete agent…".
 - **Where:** `src/components/sharing/AgentMenu.tsx`, used by `AgentsListView.tsx`.
 - **Preconditions:** One local agent and one installed (marketplace) agent.
 - **Steps:**
@@ -75,8 +75,7 @@ Shared preconditions used below:
   2. Open "⋯" on an installed agent.
 - **Expected:** View runs opens the agent page on the Runs tab. On an installed agent the menu says "Installed from the marketplace: only its owner can share it", sharing items are disabled and Edit in Ask is absent.
 - **Edge / negative cases:**
-  - No teams: the submenu offers "No teams yet: set one up…".
-  - Sharing toggles and relay sharing are covered in the network/sharing section.
+  - Relay sharing is covered in the network/sharing section.
 - **Automation:** Covered by: `src/components/sharing/AgentMenu.test.tsx` | Layer: unit | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
@@ -1002,7 +1001,7 @@ Shared preconditions used below:
 
 ### CH-26 — Trust graph
 
-- **What:** Force-directed graph of my agents, agents I call, agents that call me, and teams; edges weighted by calls in the last 30 days. Click a node to highlight its connections; click an inbound edge to set allow / deny / ask.
+- **What:** Force-directed graph of my agents, agents I call, and agents that call me; edges weighted by calls in the last 30 days. Click a node to highlight its connections; click an inbound edge to set allow / deny / ask.
 - **Where:** Network → Sharing → Trust graph. `src/components/agent-console/TrustGraph.tsx`, `trust-graph-model.ts`.
 - **Preconditions:** Some delegation history.
 - **Steps:** Open the graph; click an inbound edge; set deny.
