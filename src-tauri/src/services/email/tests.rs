@@ -579,6 +579,26 @@ async fn disconnecting_wipes_the_sign_in_the_cursor_and_the_grant() {
 }
 
 #[tokio::test]
+async fn the_mail_check_trigger_waits_for_a_mailbox() {
+    let mock = mock(outlook_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    let guard = MailCheckGuard::new(&state);
+    assert_eq!(
+        guard.hold(MAIL_CHECK).as_deref(),
+        Some("Skipped: no mailbox is connected")
+    );
+    assert_eq!(
+        guard.hold(crate::services::builtin_agents::MORNING_DIGEST),
+        None,
+        "only the mail check"
+    );
+
+    connected(&state, MailProvider::Outlook).await;
+    assert_eq!(guard.hold(MAIL_CHECK), None);
+    state.shutdown();
+}
+
+#[tokio::test]
 async fn paused_mailboxes_are_not_read() {
     let mock = mock(outlook_api).await;
     let (state, recorder) = state_with(&mock).await;

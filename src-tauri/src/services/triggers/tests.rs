@@ -347,6 +347,65 @@ async fn a_schedule_skips_a_fire_while_its_last_run_is_still_going() {
     state.shutdown();
 }
 
+/// Holds back every fire of the trigger it names
+struct HoldOne(String);
+
+impl FireGuard for HoldOne {
+    fn hold(&self, trigger_id: &str) -> Option<String> {
+        (trigger_id == self.0).then(|| "Skipped: not now".to_string())
+    }
+}
+
+#[tokio::test]
+async fn a_guard_skips_the_fires_it_holds_but_not_a_test_fire() {
+    let (state, _recorder) = app().await;
+    let yearly = |name| {
+        input(
+            name,
+            TriggerSourceType::Cron,
+            json!({"schedule": "0 0 1 1 *"}),
+        )
+    };
+    let held = create_trigger(&state, yearly("Held"))
+        .await
+        .unwrap()
+        .trigger
+        .id;
+    let free = create_trigger(&state, yearly("Free"))
+        .await
+        .unwrap()
+        .trigger
+        .id;
+    state
+        .triggers()
+        .set_fire_guard(Arc::new(HoldOne(held.clone())));
+
+    for id in [&held, &free] {
+        state
+            .triggers()
+            .tx
+            .send(TriggerEvent {
+                trigger_id: id.clone(),
+                source: TriggerSourceType::Cron,
+                payload: json!({}),
+                test: false,
+                handover: false,
+            })
+            .await
+            .unwrap();
+    }
+    let skipped = wait_for_fires(&state, &held, 1).await.pop().unwrap();
+    assert_eq!(skipped.status, TriggerFireStatus::Skipped);
+    assert_eq!(skipped.error.as_deref(), Some("Skipped: not now"));
+    assert!(skipped.run_id.is_none());
+    let ran = wait_for_fires(&state, &free, 1).await.pop().unwrap();
+    assert_eq!(ran.status, TriggerFireStatus::Queued);
+
+    let test = test_fire_trigger(&state, held, None).await.unwrap();
+    assert_eq!(test.status, TriggerFireStatus::Queued);
+    state.shutdown();
+}
+
 #[tokio::test]
 async fn the_file_watcher_fires_once_per_debounced_burst() {
     let (state, _recorder) = app().await;

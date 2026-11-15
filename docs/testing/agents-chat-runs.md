@@ -380,7 +380,8 @@ Shared preconditions used below:
   - The **Nandi** item sits at the top of the sidebar, by Nandi's own name, with its status dot. It opens Nandi's agent page with the same tabs as any agent: Overview, Chat, Runs, Playbooks and Settings (model, Internet access, Your rules, permissions, connectors, sharing, memory). Its page and runs light the Nandi item, never Agents. The page has no Back to Agents.
   - Settings has a **Nandi's settings** button in its header that opens Nandi's Settings tab.
   - Delete is never offered. **Reset to defaults…** is, in the page's ⋯ menu and in Settings › Danger zone.
-  - The confirm names what changes: its settings (`skill.md`), Your rules (back to the `instructions.md` template) and its playbooks (edited ones go back, added ones go). It says that memory, runs, chats, connector grants and triggers stay, and that the old versions stay in the agents repo's git history. Nothing changes until **Reset to defaults** is pressed.
+  - The confirm names what changes: its settings (`skill.md`), Your rules (back to the `instructions.md` template) and its playbooks (edited ones go back, added ones go). It says that memory, runs, chats, connector grants and other triggers stay, and that the old versions stay in the agents repo's git history. Nothing changes until **Reset to defaults** is pressed.
+  - It also puts back Nandi's default triggers, the morning digest and the mail check, as they ship, even ones the person removed (AG-37). Other triggers stay.
   - The reset writes through the agent repository and commits like any gold-copy change. Two git commits: "Keep Nandi's files before a reset to defaults" (the person's files as they were, even if never synced) and "Reset Nandi to defaults". Without a git repository the reset is refused and nothing changes.
 - **Where:** `src/store/navigation-store.ts` (`NAV_SECTIONS`, `navSection`), `src/components/layout/nav-tree.ts`, `Sidebar.tsx`, `views/AgentView.tsx`, `agents/AgentSettingsTab.tsx`, `agents/ResetNandiDialog.tsx`, `settings/SettingsView.tsx` (`NandiSettingsLink`), `hooks/useAgentEditor.ts` (`useResetDefaultAgent`); command `reset_default_agent` (`rpc/agents.rs` → `services/agents.rs` → `builtin_agents::reset_default`), `repos/agent_repo.rs` (`replace_playbooks`, `definition_files`).
 - **Preconditions:** A Nandi home whose Nandi has an edited name, Your rules, an edited playbook and an added one.
@@ -400,6 +401,37 @@ Shared preconditions used below:
   - The gold copy isn't a git repository: the reset fails with that reason and the files stay.
   - Unsaved edits on the Settings tab: the reset writes the files; the form reloads from them.
 - **Automation:** Covered by: `builtin_agents.rs` (`a_reset_restores_the_shipped_files`, `a_reset_keeps_the_old_files_in_the_history`, `a_reset_needs_the_gold_copys_history`), `ResetNandiDialog.test.tsx` (the confirm), `nav-tree.test.ts`, `Sidebar.test.tsx`, `navigation-store.test.ts` | Layer: unit + ui | Gap: no UI test of the menu item or the Settings link.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### AG-37 — Nandi's default schedule
+
+- **What:** Nandi ships with two triggers of its own, on by default (owner decision N-4). They are ordinary cron triggers that target Nandi: the person edits, turns off or removes them like any trigger.
+
+  | Trigger                           | When               | What Nandi does                                                                |
+  | --------------------------------- | ------------------ | ------------------------------------------------------------------------------ |
+  | Morning digest (`morning-digest`) | Every day at 08:00 | A short brief for the day: meetings, work waiting, work in progress, deadlines |
+  | Mail check (`mail-check`)         | Weekdays at 16:00  | Looks over the day's mail for asks with no reply and promised replies          |
+  - They are written once, into a fresh install, in its first commit. A trigger the person removes stays removed. **Reset to defaults** (AG-36) puts both back as they ship.
+  - The mail check runs only while a mailbox is connected. Without one, each fire is recorded as skipped ("no mailbox is connected") and starts no run. A test fire always runs.
+  - The email check that hands new mail to Nandi every few minutes is separate (Settings › Email).
+
+- **Where:** `src-tauri/resources/builtin-agents/nandi/triggers/`, `builtin_agents.rs` (`DEFAULT_TRIGGERS`, `seed_triggers`, `reset_default`), `repo_bootstrap.rs` (`bootstrap`), `triggers/mod.rs` (`FireGuard`), `triggers/dispatch.rs` (`process`), `email/mod.rs` (`MailCheckGuard`), `ResetNandiDialog.tsx`.
+- **Preconditions:** A new Nandi home (empty `~/.nandi`).
+- **Steps:**
+  1. Start Nandi and open Triggers.
+  2. Test-fire **Morning digest**.
+  3. Delete **Mail check** and restart Nandi.
+  4. Reset Nandi to defaults (AG-36) and open Triggers.
+- **Expected:**
+  - Step 1: Morning digest and Mail check are listed, on, with Nandi as the target.
+  - Step 2: a Nandi run starts with the digest prompt.
+  - Step 3: Mail check stays gone.
+  - Step 4: both are back with their shipped schedules.
+- **Edge / negative cases:**
+  - No mailbox connected at 16:00 on a weekday: the Mail check fire is skipped, with no run.
+  - A home restored from a remote (not fresh) gets no default triggers; its own triggers come with it.
+- **Automation:** Covered by: `builtin_agents.rs` (`the_default_triggers_are_nandis_and_on`, `seeds_the_default_triggers_without_overwriting_them`, `a_reset_restores_the_default_triggers_and_keeps_the_others`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`, `a_removed_default_trigger_stays_removed`), `triggers/tests.rs` (`a_guard_skips_the_fires_it_holds_but_not_a_test_fire`), `email/tests.rs` (`the_mail_check_trigger_waits_for_a_mailbox`), `ResetNandiDialog.test.tsx` | Layer: unit + ui | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 

@@ -13,12 +13,17 @@
 //! Its playbooks (`skills/`) are written with the folder: once, when the
 //! agent has no `skills/` folder. Playbooks the user edits or removes stay
 //! as they left them.
+//!
+//! Its default schedule, the morning digest and the mail check, is a pair
+//! of ordinary triggers ([`DEFAULT_TRIGGERS`]), written once into a fresh
+//! install. The user edits or removes them like any trigger; a removed one
+//! stays removed until a reset to defaults.
 
 use std::path::{Path, PathBuf};
 
 use crate::services::domain::agent::Agent;
 use crate::services::domain::playbook::Playbook;
-use crate::services::domain::{AgentId, EntityKind};
+use crate::services::domain::{AgentId, EntityKind, Trigger};
 use crate::services::repo_service::GitService;
 use crate::services::repo_store::RepoStore;
 use crate::services::repos::fs_atomic::write_if_changed;
@@ -77,6 +82,26 @@ pub const BUILTIN_AGENTS: &[BuiltinAgent] = &[BuiltinAgent {
     ],
 }];
 
+/// The trigger that has Nandi write the morning digest, at 08:00 every day
+pub const MORNING_DIGEST: &str = "morning-digest";
+/// The trigger that has Nandi look over the day's mail, at 16:00 on
+/// weekdays. It runs only while a mailbox is connected
+/// (`email::MailCheckGuard`)
+pub const MAIL_CHECK: &str = "mail-check";
+
+/// Nandi's default schedule (owner decision N-4): `(id, trigger YAML)`.
+/// Each targets [`DEFAULT_AGENT`] and is on by default.
+pub const DEFAULT_TRIGGERS: &[(&str, &str)] = &[
+    (
+        MORNING_DIGEST,
+        include_str!("../../resources/builtin-agents/nandi/triggers/morning-digest.yaml"),
+    ),
+    (
+        MAIL_CHECK,
+        include_str!("../../resources/builtin-agents/nandi/triggers/mail-check.yaml"),
+    ),
+];
+
 /// Whether `id` is the default agent's ID
 pub fn is_default(id: &str) -> bool {
     id == DEFAULT_AGENT
@@ -110,6 +135,20 @@ pub fn seed(layout: &RepoLayout) -> Result<Vec<PathBuf>, String> {
             }
         }
         log::info!("Added the playbooks of the built-in agent '{id}'");
+    }
+    Ok(written)
+}
+
+/// Writes Nandi's default triggers that the repo lacks and returns the
+/// files written. Call it for a fresh install only, so a trigger the
+/// person removed is never added again.
+pub fn seed_triggers(layout: &RepoLayout) -> Result<Vec<PathBuf>, String> {
+    let mut written = Vec::new();
+    for (id, yaml) in DEFAULT_TRIGGERS {
+        let path = layout.trigger_path(id);
+        if write_new(&path, yaml)? {
+            written.push(path);
+        }
     }
     Ok(written)
 }
@@ -160,10 +199,20 @@ fn shipped_default() -> Result<(Agent, Vec<Playbook>), String> {
     Ok((agent, playbooks))
 }
 
+/// Nandi's default triggers as they ship
+fn shipped_triggers() -> Result<Vec<Trigger>, String> {
+    DEFAULT_TRIGGERS
+        .iter()
+        .map(|(_, yaml)| Trigger::from_yaml(yaml))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("A shipped trigger doesn't load: {e}"))
+}
+
 /// Puts Nandi back as it ships (owner decision N-5): its skill.md, which
 /// holds its model, network and other settings; the instructions.md
-/// template; and its playbooks, so playbooks the person added go. Its
-/// memory, runs, grants and triggers stay.
+/// template; its playbooks, so playbooks the person added go; and its
+/// default triggers (the morning digest and the mail check), even ones the
+/// person removed. Its memory, runs, grants and other triggers stay.
 ///
 /// Like any gold-copy change, the files are written through the agent
 /// repository and committed. Two git commits: first the person's files as
@@ -180,12 +229,22 @@ pub fn reset_default(store: &RepoStore, git: &GitService) -> Result<(), String> 
     };
 
     let mut files = agents.definition_files(DEFAULT_AGENT)?;
+    files.extend(
+        DEFAULT_TRIGGERS
+            .iter()
+            .map(|(id, _)| store.layout().trigger_path(id)),
+    );
     git.commit_files(&relative(&files), BEFORE_RESET_COMMIT, owner.as_deref())?;
 
     let (agent, playbooks) = shipped_default()?;
+    let triggers = shipped_triggers()?;
     agents.save(&agent)?;
     agents.replace_playbooks(DEFAULT_AGENT, &playbooks)?;
     store.commit(EntityKind::Agent, DEFAULT_AGENT)?;
+    for trigger in &triggers {
+        store.repos().triggers.save(trigger)?;
+        store.commit(EntityKind::Trigger, trigger.id().as_str())?;
+    }
 
     files.extend(agents.definition_files(DEFAULT_AGENT)?);
     files.sort();
@@ -264,6 +323,8 @@ pub fn note_identity(store: &RepoStore, name: Option<&str>, email: &str) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::domain::trigger::Target;
+    use crate::services::domain::TriggerId;
 
     fn layout() -> (tempfile::TempDir, RepoLayout) {
         let tmp = tempfile::tempdir().unwrap();
@@ -432,10 +493,35 @@ mod tests {
         assert!(layout.skill_path(DEFAULT_AGENT).is_file());
     }
 
+    #[test]
+    fn the_default_triggers_are_nandis_and_on() {
+        let triggers = shipped_triggers().unwrap();
+        let ids: Vec<&str> = triggers.iter().map(|t| t.id().as_str()).collect();
+        assert_eq!(ids, [MORNING_DIGEST, MAIL_CHECK]);
+        for trigger in &triggers {
+            assert_eq!(trigger.target(), &Target::Agent(nandi_id()));
+            assert!(trigger.enabled(), "{} is on by default", trigger.id());
+        }
+    }
+
+    #[test]
+    fn seeds_the_default_triggers_without_overwriting_them() {
+        let (_tmp, layout) = layout();
+        assert_eq!(
+            seed_triggers(&layout).unwrap().len(),
+            DEFAULT_TRIGGERS.len()
+        );
+        let digest = layout.trigger_path(MORNING_DIGEST);
+        std::fs::write(&digest, "edited").unwrap();
+        assert!(seed_triggers(&layout).unwrap().is_empty());
+        assert_eq!(std::fs::read_to_string(digest).unwrap(), "edited");
+    }
+
     /// A seeded gold copy in a git repository, with its store
     fn gold_copy() -> (tempfile::TempDir, RepoStore, GitService) {
         let (tmp, layout) = layout();
         seed(&layout).unwrap();
+        seed_triggers(&layout).unwrap();
         git2::Repository::init(&layout.root).unwrap();
         let git = GitService::new(&layout.root);
         let store = RepoStore::sqlite(
@@ -491,6 +577,47 @@ mod tests {
         expected.sort_by(|a, b| a.name().cmp(b.name()));
         assert_eq!(playbooks, expected, "shipped ones back, the added one gone");
         assert_eq!(std::fs::read_to_string(memory).unwrap(), "Likes tea\n");
+    }
+
+    fn trigger_id(id: &str) -> TriggerId {
+        TriggerId::parse(id).unwrap()
+    }
+
+    #[test]
+    fn a_reset_restores_the_default_triggers_and_keeps_the_others() {
+        let (_tmp, store, git) = gold_copy();
+        let triggers = &store.repos().triggers;
+        let digest = store.layout().trigger_path(MORNING_DIGEST);
+        let earlier = std::fs::read_to_string(&digest)
+            .unwrap()
+            .replace("0 8 * * *", "0 6 * * *");
+        std::fs::write(&digest, earlier).unwrap();
+        store.commit(EntityKind::Trigger, MORNING_DIGEST).unwrap();
+        triggers.delete(&trigger_id(MAIL_CHECK)).unwrap();
+        store.commit(EntityKind::Trigger, MAIL_CHECK).unwrap();
+        let own = Trigger::from_yaml(
+            "id: my-own
+name: Mine
+enabled: true
+source:
+  type: cron
+  config:
+    schedule: \"0 9 * * 1\"
+target:
+  type: agent
+  id: writer
+",
+        )
+        .unwrap();
+        triggers.save(&own).unwrap();
+        store.commit(EntityKind::Trigger, "my-own").unwrap();
+
+        reset_default(&store, &git).unwrap();
+
+        for shipped in shipped_triggers().unwrap() {
+            assert_eq!(triggers.load(shipped.id()).unwrap(), shipped);
+        }
+        assert_eq!(triggers.load(&trigger_id("my-own")).unwrap(), own);
     }
 
     #[test]

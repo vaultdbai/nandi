@@ -163,6 +163,16 @@ pub struct TriggerEngine {
     dispatching: tokio::sync::Mutex<()>,
     /// Calendar handovers over the relay (set once it's up)
     duty_network: Arc<OnceLock<Arc<dyn handover::DutyNetwork>>>,
+    /// Holds back fires the engine can't judge itself (set at startup)
+    fire_guard: OnceLock<Arc<dyn FireGuard>>,
+}
+
+/// Says why a trigger's fire should not run now, for a reason outside the
+/// trigger engine: Nandi's mail check while no mailbox is connected
+/// (`email::MailCheckGuard`). A held fire is recorded as skipped.
+pub trait FireGuard: Send + Sync {
+    /// Why trigger `trigger_id` should not run now, or `None`
+    fn hold(&self, trigger_id: &str) -> Option<String>;
 }
 
 impl TriggerEngine {
@@ -195,6 +205,7 @@ impl TriggerEngine {
             storms: Mutex::default(),
             dispatching: tokio::sync::Mutex::const_new(()),
             duty_network: Arc::default(),
+            fire_guard: OnceLock::new(),
         }
     }
 
@@ -242,6 +253,16 @@ impl TriggerEngine {
     /// Lets calendar triggers hand over to backups on other Nandis.
     pub fn set_duty_network(&self, network: Arc<dyn handover::DutyNetwork>) {
         let _ = self.duty_network.set(network);
+    }
+
+    /// Sets the guard that may hold a fire back ([`FireGuard`]).
+    pub fn set_fire_guard(&self, guard: Arc<dyn FireGuard>) {
+        let _ = self.fire_guard.set(guard);
+    }
+
+    /// Why the guard holds trigger `id` back, if it does
+    fn held(&self, id: &str) -> Option<String> {
+        self.fire_guard.get()?.hold(id)
     }
 
     /// Re-reads the rules (from the projection, secrets from the keyring)

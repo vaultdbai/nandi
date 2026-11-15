@@ -53,11 +53,12 @@ pub use settings::{BackfillRange, EmailSettings};
 use crate::db;
 use crate::model::{SourceType, Timestamp};
 use crate::services::auth::oauth::{self, DeviceFlowState, OAuthFlows};
-use crate::services::builtin_agents::DEFAULT_AGENT;
+use crate::services::builtin_agents::{DEFAULT_AGENT, MAIL_CHECK};
 use crate::services::domain::grant::{ConnectorGrant, GrantAccess, GrantScope};
 use crate::services::events::{self, NandiEvent};
 use crate::services::orchestrator::{RunSource, PRIORITY_SCHEDULED};
-use crate::services::AppState;
+use crate::services::triggers::FireGuard;
+use crate::services::{AppState, WeakAppState};
 use crate::utils::nandi_config::{self, NandiConfig};
 use api::MailError;
 use mail::Identity;
@@ -442,6 +443,28 @@ pub fn connected(state: &AppState) -> Vec<MailProvider> {
         .iter()
         .map(|a| a.provider)
         .collect()
+}
+
+/// Holds Nandi's mail check trigger while no mailbox is connected, so it
+/// runs only once there is mail to look at
+pub struct MailCheckGuard(WeakAppState);
+
+impl MailCheckGuard {
+    pub fn new(state: &AppState) -> Self {
+        Self(state.downgrade())
+    }
+}
+
+impl FireGuard for MailCheckGuard {
+    fn hold(&self, trigger_id: &str) -> Option<String> {
+        if trigger_id != MAIL_CHECK {
+            return None;
+        }
+        let state = self.0.upgrade()?;
+        connected(&state)
+            .is_empty()
+            .then(|| "Skipped: no mailbox is connected".to_string())
+    }
 }
 
 /// The address of the connected `provider` mailbox, if any

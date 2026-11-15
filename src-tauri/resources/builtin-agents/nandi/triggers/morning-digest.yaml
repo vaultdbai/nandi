@@ -1,0 +1,15 @@
+id: morning-digest
+name: Morning digest
+enabled: true
+source:
+  type: cron
+  config:
+    schedule: "0 8 * * *"
+target:
+  type: agent
+  id: nandi
+input_template: |
+  Morning digest. Write me a short brief for today, at most ten lines:
+  my meetings (if a calendar is connected), work waiting on me, work in
+  progress, what finished since yesterday, and the asks and deadlines in
+  my notes. Plain words. Say "Nothing new" if there is nothing.

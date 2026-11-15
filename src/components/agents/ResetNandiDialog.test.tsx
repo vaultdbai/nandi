@@ -43,6 +43,7 @@ describe('ResetNandiDialog', () => {
       'Its settings: name, model, network and tools (skill.md)',
       'Your rules, back to the template (instructions.md)',
       'Its playbooks: edited ones go back, ones you added are removed',
+      'Its morning digest and mail check, even if you removed them',
     ])
     expect(screen.getByText(/memory, runs, chats/)).toBeInTheDocument()
     expect(screen.getByText(/git history/)).toBeInTheDocument()

@@ -41,11 +41,15 @@ pub fn install_layout() -> Result<RepoLayout, String> {
 
 /// Opens the repo at `layout.root`, creating it if needed, and writes what
 /// it lacks. A repo created here (or one with no commit and no remote yet)
-/// gets the initial commit.
+/// gets Nandi's default triggers and the initial commit.
 pub fn bootstrap(layout: &RepoLayout) -> Result<(), String> {
     let (repo, fresh) = open_or_init(&layout.root)?;
     ensure_scaffolding(layout, &repo, None)?;
     if fresh {
+        // Once, so a default trigger the person removes stays removed
+        for path in builtin_agents::seed_triggers(layout)? {
+            stage_add(&repo, &layout.root, &path);
+        }
         commit_all(&repo, INITIAL_COMMIT, None)?;
         log::info!("Created the Nandi repo at {}", layout.root.display());
     }
@@ -206,6 +210,9 @@ mod tests {
         assert!(layout.settings_path().is_file());
         assert!(layout.manifest_path().is_file());
         assert!(layout.skill_path(builtin_agents::DEFAULT_AGENT).is_file());
+        for (id, _) in builtin_agents::DEFAULT_TRIGGERS {
+            assert!(layout.trigger_path(id).is_file(), "{id} is on by default");
+        }
         assert!(
             repo.statuses(None).unwrap().is_empty(),
             "nothing left uncommitted"
@@ -221,6 +228,19 @@ mod tests {
             0,
             "a second start commits nothing"
         );
+    }
+
+    #[test]
+    fn a_removed_default_trigger_stays_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let layout = RepoLayout::new(tmp.path().join("repo"), tmp.path().join("trash"));
+        bootstrap(&layout).unwrap();
+        let digest = layout.trigger_path(builtin_agents::MORNING_DIGEST);
+        std::fs::remove_file(&digest).unwrap();
+
+        bootstrap(&layout).unwrap();
+        assert!(!digest.exists(), "only a fresh install gets it");
+        assert!(layout.trigger_path(builtin_agents::MAIL_CHECK).is_file());
     }
 
     #[test]

@@ -94,6 +94,12 @@ pub async fn process(engine: &TriggerEngine, event: TriggerEvent) -> Option<Trig
         run_status: None,
     };
 
+    if !event.test {
+        if let Some(reason) = engine.held(&trigger.id) {
+            return record(engine, fire, TriggerFireStatus::Skipped, Some(reason)).await;
+        }
+    }
+
     // A backup taking over is the same duty, not another fire
     if !event.test && !event.handover {
         if let Some(next) = rate_limited_until(&trigger, now) {

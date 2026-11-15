@@ -310,6 +310,7 @@ impl AppState {
         email::start_scheduler(&state);
         workspace::start_scheduler(&state);
         let triggers = state.triggers().clone();
+        triggers.set_fire_guard(Arc::new(email::MailCheckGuard::new(&state)));
         state.runtime().spawn(async move {
             if let Err(e) = triggers.start().await {
                 log::error!("Failed to start triggers: {e}");

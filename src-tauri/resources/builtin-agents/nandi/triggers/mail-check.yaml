@@ -1,0 +1,15 @@
+id: mail-check
+name: Mail check
+enabled: true
+source:
+  type: cron
+  config:
+    schedule: "0 16 * * 1-5"
+target:
+  type: agent
+  id: nandi
+input_template: |
+  Mail check. Look over today's mail (`mail_list_new`) for what still
+  needs me: asks with no reply, replies I promised, deadlines this week.
+  Skip what my notes or open work already cover. Start work or note the
+  rest, as your Email section says. End with one line on what you found.
