@@ -2,17 +2,19 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import type { ActivityFilters } from '@/components/home/activity-model'
 import type { AgentTab } from '@/components/agents/agent-page-model'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import type { SettingsSection } from '@/lib/settings-nav'
 
 /**
  * Everything the main pane can show. Navigation is plain state (no router):
  * a desktop app has no URLs to keep in sync.
  *
- * The sidebar has eight pages (`NAV_SECTIONS`); every other view is a
- * detail page that belongs to one of them (`navSection`).
+ * The sidebar has nine pages (`NAV_SECTIONS`); every other view is a
+ * detail page that belongs to one of them (`navSection`). Nandi's page is
+ * its agent page.
  */
 export type View =
-  // The eight sidebar pages
+  // The sidebar pages
   /** Inbox, Running, Recent; `welcome` greets the packs just installed */
   | { kind: 'home'; welcome?: { packIds: string[] } }
   /** Home › All activity: runs and delegations, `filters` kept for Back */
@@ -131,8 +133,9 @@ export type SharingTab =
 /** Who may call you, as a list or the trust graph */
 export type CallersView = 'list' | 'graph'
 
-/** The eight sidebar items, in order */
+/** The sidebar items, in order: Nandi, the default agent, on top */
 export const NAV_SECTIONS = [
+  'nandi',
   'home',
   'studio',
   'notes',
@@ -144,6 +147,9 @@ export const NAV_SECTIONS = [
 ] as const
 
 export type NavSection = (typeof NAV_SECTIONS)[number]
+
+/** Whether `agentId` is Nandi's: its page is the Nandi item, not Agents' */
+const isDefaultAgentId = (agentId: string) => agentId === DEFAULT_AGENT
 
 /** Which sidebar item a view belongs to (`null`: none, e.g. onboarding) */
 export function navSection(view: View): NavSection | null {
@@ -158,9 +164,10 @@ export function navSection(view: View): NavSection | null {
     case 'intake-thread':
     case 'inbox-thread':
       return 'home'
-    case 'agents':
     case 'agent':
     case 'run':
+      return isDefaultAgentId(view.agentId) ? 'nandi' : 'agents'
+    case 'agents':
     case 'run-detail':
       return 'agents'
     case 'automations':
@@ -188,6 +195,7 @@ export function navSection(view: View): NavSection | null {
 
 /** The view each sidebar item opens */
 export const SECTION_VIEWS: Record<NavSection, View> = {
+  nandi: { kind: 'agent', agentId: DEFAULT_AGENT },
   home: { kind: 'home' },
   agents: { kind: 'agents' },
   automations: { kind: 'automations' },

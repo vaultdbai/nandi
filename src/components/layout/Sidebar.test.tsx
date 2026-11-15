@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { act, render, screen, within } from '@/test/test-utils'
 import { commands } from '@/lib/tauri-bindings'
-import type { RelayStatus } from '@/lib/bindings'
+import { DEFAULT_AGENT, type RelayStatus } from '@/lib/bindings'
 import { useAgentStore } from '@/store/agent-store'
 import { useNavigationStore, type View } from '@/store/navigation-store'
 import { useNavTreeStore } from '@/store/nav-tree-store'
@@ -28,6 +28,7 @@ const relay = (relayUrl: string | null, connected: boolean): RelayStatus => ({
 })
 
 const ITEMS = [
+  'Nandi',
   'Home',
   'Ask',
   'My notes',
@@ -53,7 +54,7 @@ describe('Sidebar', () => {
     })
   })
 
-  it('has eight items, in order, closed at first', () => {
+  it('has Nandi on top of the eight items, in order, closed at first', () => {
     render(<Sidebar />)
     const buttons = within(screen.getByRole('navigation')).getAllByRole(
       'button'
@@ -63,9 +64,11 @@ describe('Sidebar', () => {
     expect(navButton('Home')).toHaveAttribute('aria-expanded', 'false')
     expect(navButton('Automations')).toHaveAttribute('aria-expanded', 'false')
     expect(navButton('Settings')).not.toHaveAttribute('aria-expanded')
+    expect(navButton('Nandi')).not.toHaveAttribute('aria-expanded')
   })
 
   it.each<[string, View]>([
+    ['Nandi', { kind: 'agent', agentId: DEFAULT_AGENT }],
     ['Home', { kind: 'home' }],
     ['Agents', { kind: 'agents' }],
     ['Automations', { kind: 'automations' }],
@@ -178,6 +181,14 @@ describe('Sidebar', () => {
     )
     expect(navButton('Network')).toHaveAttribute('aria-current', 'page')
     expect(navButton('Agents')).not.toHaveAttribute('aria-current')
+    // Nandi's runs light Nandi, never Agents
+    act(() =>
+      useNavigationStore
+        .getState()
+        .navigate({ kind: 'run', agentId: DEFAULT_AGENT, runId: 'r' })
+    )
+    expect(navButton('Nandi')).toHaveAttribute('aria-current', 'page')
+    expect(navButton('Agents')).not.toHaveAttribute('aria-current')
   })
 
   it('moves between items with the arrow keys', async () => {
@@ -186,10 +197,10 @@ describe('Sidebar', () => {
     navButton('Home').focus()
     await user.keyboard('{ArrowDown}')
     expect(navButton('Ask')).toHaveFocus()
-    await user.keyboard('{ArrowUp}{ArrowUp}')
+    await user.keyboard('{ArrowUp}{ArrowUp}{ArrowUp}')
     expect(navButton('Settings')).toHaveFocus()
     await user.keyboard('{Home}')
-    expect(navButton('Home')).toHaveFocus()
+    expect(navButton('Nandi')).toHaveFocus()
     await user.keyboard('{End}{Enter}')
     expect(current()).toEqual({ kind: 'settings' })
   })

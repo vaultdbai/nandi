@@ -1,8 +1,13 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Sparkles } from 'lucide-react'
 import { AppearancePane } from '@/components/preferences/panes/AppearancePane'
+import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { AuditLogView } from '@/components/views/AuditLogView'
+import { useAgents } from '@/hooks/useAgents'
+import { defaultAgentName } from '@/lib/agent-identity'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import {
   DEFAULT_SETTINGS_SECTION,
   isSettingsSection,
@@ -71,6 +76,7 @@ export function SettingsView({
             </NativeSelectOption>
           ))}
         </NativeSelect>
+        <NandiSettingsLink />
       </header>
       <div className="flex min-h-0 flex-1">
         <nav
@@ -121,6 +127,32 @@ export function SettingsView({
         </main>
       </div>
     </div>
+  )
+}
+
+/**
+ * Nandi's own settings live on its page (owner decision N-2): Settings
+ * links there instead of repeating them
+ */
+function NandiSettingsLink() {
+  const { t } = useTranslation()
+  const { data: agents = [] } = useAgents()
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="ms-auto"
+      onClick={() =>
+        useNavigationStore.getState().navigate({
+          kind: 'agent',
+          agentId: DEFAULT_AGENT,
+          tab: 'settings',
+        })
+      }
+    >
+      <Sparkles />
+      {t('settings.nandiLink', { name: defaultAgentName(agents) })}
+    </Button>
   )
 }
 

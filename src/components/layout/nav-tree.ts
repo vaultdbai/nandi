@@ -1,7 +1,7 @@
 /**
- * The sidebar's tree: the eight pages, and one level under four of them:
- * Home's Inbox, Decisions and All activity, Ask's latest chats, every agent, and
- * Automations' workflows and triggers. Library, Network, Notes and
+ * The sidebar's tree: Nandi on top, the eight pages, and one level under four of them:
+ * Home's Inbox, Decisions and All activity, Ask's latest chats, the person's agents, and
+ * Automations' workflows and triggers. Nandi, Library, Network, Notes and
  * Settings are single items (their pages have their own tabs and sections).
  * Pure: the sidebar passes in the lists and renders what comes back.
  *
@@ -14,7 +14,11 @@ import type {
   AgentStatus,
   StudioConversationSummary,
 } from '@/lib/bindings'
-import { isDefaultAgent, ownAgents } from '@/lib/agent-identity'
+import {
+  defaultAgentName,
+  isDefaultAgent,
+  ownAgents,
+} from '@/lib/agent-identity'
 import type { SettingsSection } from '@/lib/settings-nav'
 import {
   NAV_SECTIONS,
@@ -105,24 +109,21 @@ function chatNodes(chats: readonly StudioConversationSummary[]): NavNode[] {
 }
 
 /**
- * Nandi on top, always shown and never counted; then the person's own
- * agents, busiest first; past the limit, All agents with their count
+ * The person's own agents, busiest first; past the limit, All agents with
+ * their count. Nandi has its own item on top, so it is never one of them.
  */
 function agentNodes(agents: readonly AgentInfo[]): NavNode[] {
-  const nandi = agents.filter(isDefaultAgent)
   const own = ownAgents(agents).sort(
     (a, b) =>
       STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
       a.name.localeCompare(b.name)
   )
-  const nodes: NavNode[] = [...nandi, ...own.slice(0, LIST_LIMIT)].map(
-    agent => ({
-      id: `agent:${agent.id}`,
-      label: { text: agent.name || agent.id },
-      view: { kind: 'agent', agentId: agent.id },
-      dot: STATUS_DOTS[agent.status],
-    })
-  )
+  const nodes: NavNode[] = own.slice(0, LIST_LIMIT).map(agent => ({
+    id: `agent:${agent.id}`,
+    label: { text: agent.name || agent.id },
+    view: { kind: 'agent', agentId: agent.id },
+    dot: STATUS_DOTS[agent.status],
+  }))
   if (own.length > LIST_LIMIT) {
     nodes.push({
       id: 'agents:all',
@@ -139,6 +140,19 @@ const tab = (id: string, label: string, view: View): NavNode => ({
   label: key(label),
   view,
 })
+
+/** Nandi's status, and Settings' "needs attention" */
+function sectionDot(
+  section: NavSection,
+  input: NavTreeInput,
+  nandi: AgentInfo | undefined
+): NavDot | undefined {
+  if (section === 'nandi') return nandi && STATUS_DOTS[nandi.status]
+  if (section === 'settings' && Object.values(input.attention).some(Boolean)) {
+    return 'attention'
+  }
+  return undefined
+}
 
 /** The whole tree, in sidebar order */
 export function buildNavTree(input: NavTreeInput): NavNode[] {
@@ -165,22 +179,25 @@ export function buildNavTree(input: NavTreeInput): NavNode[] {
       }),
     ],
     // Their pages' own tabs and sections are enough
+    nandi: undefined,
     library: undefined,
     network: undefined,
     notes: undefined,
     settings: undefined,
   }
+  const nandi = input.agents.find(isDefaultAgent)
   return NAV_SECTIONS.map(section => ({
     id: section,
-    label: key(`nav.${section}`),
+    // Nandi goes by its own name, which the person may change
+    label:
+      section === 'nandi'
+        ? { text: defaultAgentName(input.agents) }
+        : key(`nav.${section}`),
     view: SECTION_VIEWS[section],
     badge:
       section === 'home' && input.inboxCount > 0 ? input.inboxCount : undefined,
     badgeView: section === 'home' ? { kind: 'inbox' } : undefined,
-    dot:
-      section === 'settings' && Object.values(input.attention).some(Boolean)
-        ? 'attention'
-        : undefined,
+    dot: sectionDot(section, input, nandi),
     children: children[section],
   }))
 }

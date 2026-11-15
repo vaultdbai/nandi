@@ -350,27 +350,56 @@ Shared preconditions used below:
 - **What:** Nandi, the default agent (ID `nandi`), is built into the app, not installed from a pack.
   - On every start (and when a repo is fetched from a remote), the app writes `.nandi/agents/nandi/skill.md` and `instructions.md` if `skill.md` is missing, and stages them. A new repo's first commit includes it.
   - It's an ordinary local agent: no install, consent or fork. The user edits its skill and **Your rules** like any agent of their own; Backup commits and pushes its history with the rest of the repo. An existing folder is never overwritten.
-  - It can't be deleted: Delete is hidden in its menu, page and Settings, and `delete_agent` refuses it. If its `skill.md` is removed by hand, the next start puts the shipped one back and keeps the user's `instructions.md`.
-  - It is not one more agent. The sidebar shows it on top under Agents, whatever its status, but the All agents count and the Agents page list only the person's own and installed agents.
+  - It can't be deleted: Delete is hidden in its menu, page and Settings, and `delete_agent` refuses it; **Reset to defaults** takes its place (AG-36). If its `skill.md` is removed by hand, the next start puts the shipped one back and keeps the user's `instructions.md`.
+  - It is not one more agent. It has its own **Nandi** item at the top of the sidebar (AG-36); the list under Agents, the All agents count and the Agents page hold only the person's own and installed agents.
   - Pickers show it as a fixed **Nandi** choice above the person's agents: a trigger's target, a workflow step's agent, a template's steps, a pilot's grant, Settings › Internet access, and Network's "takes requests by name".
   - Home's Get started, the welcome strip and the companion's first-run text mean "none of the person's own agents", so they still suggest a starter pack and never name Nandi as one of the user's agents.
-- **Where:** `src-tauri/src/services/builtin_agents.rs` (`DEFAULT_AGENT`, `seed`), `src-tauri/resources/builtin-agents/nandi/`, `repo_bootstrap.rs` (`ensure_scaffolding`), `services/agents.rs` (`AgentInfo.kind`, `AgentKind`, `delete_agent`), `lib/agent-identity.ts` (`isDefaultAgent`), `nav-tree.ts` (`agentNodes`), `AgentsListView.tsx`, `agents/AgentOptions.tsx` (the pickers), `dashboard-model.ts`, `CompanionWindow.tsx`, `ReachabilityChecklist.tsx` (`ChooseAgents`), `AgentMenu.tsx`, `AgentView.tsx`, `AgentSettingsTab.tsx`.
+- **Where:** `src-tauri/src/services/builtin_agents.rs` (`DEFAULT_AGENT`, `seed`), `src-tauri/resources/builtin-agents/nandi/`, `repo_bootstrap.rs` (`ensure_scaffolding`), `services/agents.rs` (`AgentInfo.kind`, `AgentKind`, `delete_agent`), `lib/agent-identity.ts` (`isDefaultAgent`), `nav-tree.ts` (`agentNodes`, the `nandi` item), `AgentsListView.tsx`, `agents/AgentOptions.tsx` (the pickers), `dashboard-model.ts`, `CompanionWindow.tsx`, `ReachabilityChecklist.tsx` (`ChooseAgents`), `AgentMenu.tsx`, `AgentView.tsx`, `AgentSettingsTab.tsx`.
 - **Preconditions:** A new Nandi home (empty `~/.nandi`).
 - **Steps:**
   1. Start Nandi and finish setup without picking a starter pack.
-  2. Open Agents › Nandi, open its menu and Settings.
+  2. Open Nandi at the top of the sidebar, open its menu and Settings.
   3. In Settings › Your rules, add a line and save. Restart Nandi.
   4. Open My notes with no notes.
 - **Expected:**
-  - Step 1: Nandi is first under Agents and not on the Agents page; a new trigger's **Run** picker shows Nandi above "Agents"; `git log` in `~/.nandi/repo` shows its files in the first commit.
-  - Step 2: no Delete anywhere; no "installed from the marketplace" banner.
+  - Step 1: Nandi is the sidebar's top item, not under Agents and not on the Agents page; a new trigger's **Run** picker shows Nandi above "Agents"; `git log` in `~/.nandi/repo` shows its files in the first commit.
+  - Step 2: no Delete anywhere, Reset to defaults instead; no "installed from the marketplace" banner.
   - Step 3: the line is still there after the restart.
   - Step 4: "No notes yet" with **Open Chief of Staff**.
 - **Edge / negative cases:**
   - Installing a pack that contains an agent `nandi` is refused ("you already have nandi").
   - Deleting `.nandi/agents/nandi/skill.md` by hand: the next start restores it.
   - An old `.nandi/agents/chief-of-staff/` folder from a dev build stays as an ordinary agent; nothing reads it. Reset `~/.nandi` to drop it.
-- **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `keeps_the_users_edits`, `restores_a_removed_skill_but_keeps_the_role`, `the_shipped_skills_parse_and_stay_short`, `no_file_outside_this_one_spells_the_default_agent_id`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_the_default_agent_first`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`), `agent-identity.test.ts`, `AgentOptions.test.tsx`, `nav-tree.test.ts` ('keeps Nandi on top…'), `AgentsListView.test.tsx`, `TriggerForm.test.tsx`, `InternetAccessSection.test.tsx`, `ChooseAgents.test.tsx`, `dashboard-model.test.ts`, `CompanionWindow.test.tsx` ('greets a first run…') | Layer: unit + ui | Gap: no test of the hidden Delete; the workflow step, template and pilot grant pickers are covered through `AgentOptions.test.tsx` only.
+- **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `keeps_the_users_edits`, `restores_a_removed_skill_but_keeps_the_role`, `the_shipped_skills_parse_and_stay_short`, `no_file_outside_this_one_spells_the_default_agent_id`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_the_default_agent_first`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`), `agent-identity.test.ts`, `AgentOptions.test.tsx`, `nav-tree.test.ts` ('gives Nandi its own item…'), `AgentsListView.test.tsx`, `TriggerForm.test.tsx`, `StepDetailsPanel.test.tsx`, `NewWorkflowMenu.test.tsx`, `LibraryDrawer.test.tsx` (the step, template and pilot grant pickers), `InternetAccessSection.test.tsx`, `ChooseAgents.test.tsx`, `dashboard-model.test.ts`, `CompanionWindow.test.tsx` ('greets a first run…') | Layer: unit + ui | Gap: no test of the hidden Delete.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### AG-36 — Nandi's page and Reset to defaults
+
+- **What:** Nandi has its own page, apart from Agents (owner decisions N-2, N-5).
+  - The **Nandi** item sits at the top of the sidebar, by Nandi's own name, with its status dot. It opens Nandi's agent page with the same tabs as any agent: Overview, Chat, Runs, Playbooks and Settings (model, Internet access, Your rules, permissions, connectors, sharing, memory). Its page and runs light the Nandi item, never Agents. The page has no Back to Agents.
+  - Settings has a **Nandi's settings** button in its header that opens Nandi's Settings tab.
+  - Delete is never offered. **Reset to defaults…** is, in the page's ⋯ menu and in Settings › Danger zone.
+  - The confirm names what changes: its settings (`skill.md`), Your rules (back to the `instructions.md` template) and its playbooks (edited ones go back, added ones go). It says that memory, runs, chats, connector grants and triggers stay, and that the old versions stay in the agents repo's git history. Nothing changes until **Reset to defaults** is pressed.
+  - The reset writes through the agent repository and commits like any gold-copy change. Two git commits: "Keep Nandi's files before a reset to defaults" (the person's files as they were, even if never synced) and "Reset Nandi to defaults". Without a git repository the reset is refused and nothing changes.
+- **Where:** `src/store/navigation-store.ts` (`NAV_SECTIONS`, `navSection`), `src/components/layout/nav-tree.ts`, `Sidebar.tsx`, `views/AgentView.tsx`, `agents/AgentSettingsTab.tsx`, `agents/ResetNandiDialog.tsx`, `settings/SettingsView.tsx` (`NandiSettingsLink`), `hooks/useAgentEditor.ts` (`useResetDefaultAgent`); command `reset_default_agent` (`rpc/agents.rs` → `services/agents.rs` → `builtin_agents::reset_default`), `repos/agent_repo.rs` (`replace_playbooks`, `definition_files`).
+- **Preconditions:** A Nandi home whose Nandi has an edited name, Your rules, an edited playbook and an added one.
+- **Steps:**
+  1. Click **Nandi** at the top of the sidebar. Open each tab.
+  2. Open Settings, then **Nandi's settings**.
+  3. Open the ⋯ menu, **Reset to defaults…**, then Cancel.
+  4. Open it again and press **Reset to defaults**.
+  5. Run `git log -3 --stat` in `~/.nandi/repo`.
+- **Expected:**
+  - Step 1: the page opens with every tab; the Nandi item is lit, Agents isn't.
+  - Step 2: Nandi's Settings tab opens.
+  - Step 3: nothing changes.
+  - Step 4: toast "Nandi is back to its defaults"; the name, Your rules and playbooks are the shipped ones, the added playbook is gone; memory is kept.
+  - Step 5: the reset commit, and before it the commit holding the edited files.
+- **Edge / negative cases:**
+  - The gold copy isn't a git repository: the reset fails with that reason and the files stay.
+  - Unsaved edits on the Settings tab: the reset writes the files; the form reloads from them.
+- **Automation:** Covered by: `builtin_agents.rs` (`a_reset_restores_the_shipped_files`, `a_reset_keeps_the_old_files_in_the_history`, `a_reset_needs_the_gold_copys_history`), `ResetNandiDialog.test.tsx` (the confirm), `nav-tree.test.ts`, `Sidebar.test.tsx`, `navigation-store.test.ts` | Layer: unit + ui | Gap: no UI test of the menu item or the Settings link.
 - **Needs relay:** no
 - **Status:** Shipped
 

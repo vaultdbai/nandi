@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Bot,
   Copy,
+  History,
   MessageSquare,
   MoreHorizontal,
   PencilRuler,
@@ -60,6 +61,7 @@ import { AgentSettingsTab } from '@/components/agents/AgentSettingsTab'
 import { AgentPlaybooksTab } from '@/components/agents/AgentPlaybooksTab'
 import { AgentTaskStrip } from '@/components/agents/AgentTaskStrip'
 import { DeleteAgentDialog } from '@/components/agents/DeleteAgentDialog'
+import { ResetNandiDialog } from '@/components/agents/ResetNandiDialog'
 import {
   AGENT_TABS,
   runtimeDetail,
@@ -228,17 +230,20 @@ function AgentPage({
       <ViewHeader
         leading={
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7"
-              aria-label={t('agentPage.back')}
-              onClick={() =>
-                useNavigationStore.getState().navigate({ kind: 'agents' })
-              }
-            >
-              <ArrowLeft className="rtl:rotate-180" />
-            </Button>
+            {/* Nandi's page is a sidebar item of its own, not one of Agents */}
+            {!isDefaultAgent(agent) && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                aria-label={t('agentPage.back')}
+                onClick={() =>
+                  useNavigationStore.getState().navigate({ kind: 'agents' })
+                }
+              >
+                <ArrowLeft className="rtl:rotate-180" />
+              </Button>
+            )}
             <AgentAvatar agent={agent} className="size-8" />
           </div>
         }
@@ -432,7 +437,8 @@ function AgentChat({
 
 /**
  * The page's "⋯": chat, publish, sharing, copy the ID, the container, and
- * delete. Always visible (never right-click only).
+ * delete, or for Nandi reset to defaults. Always visible (never right-click
+ * only).
  */
 function AgentPageMenu({
   agent,
@@ -448,6 +454,7 @@ function AgentPageMenu({
   const [publishing, setPublishing] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [restarting, setRestarting] = useState(false)
   const mine = agent.origin.kind === 'local'
   const running = control.status === 'running'
@@ -520,17 +527,30 @@ function AgentPageMenu({
               {t('agentPage.container.start')}
             </DropdownMenuItem>
           )}
-          {mine && !isDefaultAgent(agent) && (
+          {isDefaultAgent(agent) ? (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
-                onSelect={() => setDeleting(true)}
+                onSelect={() => setResetting(true)}
               >
-                <Trash2 />
-                {t('agentPage.delete.action')}
+                <History />
+                {t('agentPage.reset.action')}
               </DropdownMenuItem>
             </>
+          ) : (
+            mine && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => setDeleting(true)}
+                >
+                  <Trash2 />
+                  {t('agentPage.delete.action')}
+                </DropdownMenuItem>
+              </>
+            )
           )}
         </DropdownMenuContent>
       </DropdownMenu>
@@ -546,11 +566,19 @@ function AgentPageMenu({
         open={sharing}
         onOpenChange={setSharing}
       />
-      <DeleteAgentDialog
-        agent={agent}
-        open={deleting}
-        onOpenChange={setDeleting}
-      />
+      {isDefaultAgent(agent) ? (
+        <ResetNandiDialog
+          agent={agent}
+          open={resetting}
+          onOpenChange={setResetting}
+        />
+      ) : (
+        <DeleteAgentDialog
+          agent={agent}
+          open={deleting}
+          onOpenChange={setDeleting}
+        />
+      )}
       <AlertDialog open={restarting} onOpenChange={setRestarting}>
         <AlertDialogContent>
           <AlertDialogHeader>

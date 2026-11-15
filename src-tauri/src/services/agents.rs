@@ -603,6 +603,15 @@ pub async fn delete_agent(state: &AppState, agent_id: &str) -> Result<(), String
     Ok(())
 }
 
+/// Puts Nandi, the default agent, back as it ships, keeping the person's
+/// files in the gold copy's history (`builtin_agents::reset_default`)
+pub async fn reset_default_agent(state: &AppState) -> Result<(), String> {
+    let (store, git) = (state.store().clone(), state.git_service().clone());
+    tokio::task::spawn_blocking(move || builtin_agents::reset_default(&store, &git))
+        .await
+        .map_err(|e| format!("Reset task failed: {e}"))?
+}
+
 /// Before an agent's folder goes away (delete, uninstall, fork): refuses
 /// while it has an active run or queued requests, then stops its container
 /// and orchestrator.

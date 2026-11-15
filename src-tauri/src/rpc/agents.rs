@@ -21,4 +21,8 @@ super::commands! {
     fn restart_agent(state, agent_id: String) -> String => agents::restart_agent(&state, &agent_id).await;
 
     fn delete_agent(state, agent_id: String) -> () => agents::delete_agent(&state, &agent_id).await;
+
+    /// Puts Nandi, the default agent, back as it ships; its old files stay
+    /// in the gold copy's git history
+    fn reset_default_agent(state) -> () => agents::reset_default_agent(&state).await;
 }

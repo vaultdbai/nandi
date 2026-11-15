@@ -296,6 +296,49 @@ impl AgentRepository {
         Ok(())
     }
 
+    /// Makes `playbooks` agent `id`'s whole `skills/` folder: each is
+    /// written, and every other playbook file goes. Returns the files
+    /// written or removed. Installed agents' playbooks are read-only.
+    pub fn replace_playbooks(&self, id: &str, playbooks: &[Playbook]) -> RepoResult<Vec<PathBuf>> {
+        self.ensure_writable(id)?;
+        check_unique(playbooks)?;
+        let dir = self.playbooks_dir(id)?;
+        let mut changed = Vec::new();
+        for (stem, path) in playbook_files(&dir) {
+            if playbooks.iter().any(|playbook| playbook.name() == stem) {
+                continue;
+            }
+            if remove_if_exists(&path).map_err(|e| RepoError::io(&path, e))? {
+                self.git.stage_remove(&path);
+                changed.push(path);
+            }
+        }
+        fs::create_dir_all(&dir).map_err(|e| RepoError::io(&dir, e))?;
+        for playbook in playbooks {
+            let path = dir.join(format!("{}.md", playbook.name()));
+            if write_if_changed(&path, playbook.to_md().as_bytes())
+                .map_err(|e| RepoError::io(&path, e))?
+            {
+                self.git.stage_add(&path);
+                changed.push(path);
+            }
+        }
+        Ok(changed)
+    }
+
+    /// The files that define agent `id`: its skill.md and instructions.md
+    /// (whether or not they exist) and each playbook. Not its memory.
+    pub fn definition_files(&self, id: &str) -> RepoResult<Vec<PathBuf>> {
+        let dir = self.place(id)?.dir;
+        let mut files = vec![dir.join(SKILL_FILE), dir.join(INSTRUCTIONS_FILE)];
+        files.extend(
+            playbook_files(&dir.join(PLAYBOOKS_DIR))
+                .into_iter()
+                .map(|(_, path)| path),
+        );
+        Ok(files)
+    }
+
     fn read_place(&self, id: &AgentId, place: &AgentPlace) -> RepoResult<Agent> {
         let skill_path = place.dir.join(SKILL_FILE);
         let skill = read_text(&skill_path, EntityKind::Agent, id.as_str())?;

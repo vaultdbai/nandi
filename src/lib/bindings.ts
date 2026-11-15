@@ -128,6 +128,18 @@ async deleteAgent(agentId: string) : Promise<Result<null, string>> {
 }
 },
 /**
+ * Puts Nandi, the default agent, back as it ships; its old files stay
+ * in the gold copy's git history
+ */
+async resetDefaultAgent() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reset_default_agent") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Wipes the local projection and rebuilds it from the repo files. Refuses
  * while a file is invalid unless `force` (which skips invalid files).
  */

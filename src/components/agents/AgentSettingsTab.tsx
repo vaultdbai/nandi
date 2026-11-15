@@ -53,6 +53,7 @@ import { openSettings } from '@/lib/settings-nav'
 import { cn } from '@/lib/utils'
 import type { AgentInfo } from '@/types/agent'
 import { DeleteAgentDialog } from './DeleteAgentDialog'
+import { ResetNandiDialog } from './ResetNandiDialog'
 import { NetworkAccess } from './NetworkAccess'
 import {
   hasModelFormatError,
@@ -156,6 +157,7 @@ function SettingsForm({
   const [draft, setDraft] = useState(saved)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [revision, setRevision] = useState(0)
   const dirty = !sameDraft(draft, saved)
   const errors = validateDraft(draft)
@@ -353,6 +355,25 @@ function SettingsForm({
               agent={agent}
               open={deleting}
               onOpenChange={setDeleting}
+            />
+          </Section>
+        )}
+        {agent.kind === 'default' && (
+          <Section title={t('agentPage.settings.danger')}>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 p-3 text-sm">
+              <p>{t('agentPage.reset.hint', { name: agent.name })}</p>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setResetting(true)}
+              >
+                {t('agentPage.reset.action')}
+              </Button>
+            </div>
+            <ResetNandiDialog
+              agent={agent}
+              open={resetting}
+              onOpenChange={setResetting}
             />
           </Section>
         )}

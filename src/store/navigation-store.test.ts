@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import {
   MAX_HISTORY,
   NAV_SECTIONS,
@@ -106,6 +107,9 @@ describe('the seven pages', () => {
       [{ kind: 'agent', agentId: 'a' }, 'agents'],
       [{ kind: 'run', agentId: 'a', runId: 'r' }, 'agents'],
       [{ kind: 'run-detail', runId: 'r' }, 'agents'],
+      // Nandi's page and runs are its own item, not Agents'
+      [{ kind: 'agent', agentId: DEFAULT_AGENT, tab: 'settings' }, 'nandi'],
+      [{ kind: 'run', agentId: DEFAULT_AGENT, runId: 'r' }, 'nandi'],
       [{ kind: 'workflow', workflowId: 'w' }, 'automations'],
       [{ kind: 'workflow-builder', workflowId: 'w' }, 'automations'],
       [{ kind: 'trigger', triggerId: 't' }, 'automations'],

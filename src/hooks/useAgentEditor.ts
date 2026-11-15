@@ -9,6 +9,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { withSite } from '@/components/agents/network-access-model'
 import { agentsQueryKeys } from '@/hooks/useAgents'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import { client } from '@/lib/client'
 import { logger } from '@/lib/logger'
 import type {
@@ -350,6 +351,19 @@ export function useResetAgentInstructions(agentId: string) {
         'Failed to reset the rules'
       ),
     onSuccess: () => invalidate(agentId),
+  })
+}
+
+/**
+ * Puts Nandi, the default agent, back as it ships. The person's old files
+ * are committed first, so they stay in the gold copy's history.
+ */
+export function useResetDefaultAgent() {
+  const invalidate = useInvalidateRepo()
+  return useMutation({
+    mutationFn: () =>
+      unwrap(client.resetDefaultAgent(), 'Failed to reset Nandi'),
+    onSuccess: () => invalidate(DEFAULT_AGENT),
   })
 }
 

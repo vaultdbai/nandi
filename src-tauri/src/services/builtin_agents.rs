@@ -16,9 +16,14 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::services::domain::agent::Agent;
+use crate::services::domain::playbook::Playbook;
+use crate::services::domain::{AgentId, EntityKind};
+use crate::services::repo_service::GitService;
+use crate::services::repo_store::RepoStore;
 use crate::services::repos::fs_atomic::write_if_changed;
 use crate::services::repos::layout::{INSTRUCTIONS_FILE, PLAYBOOKS_DIR, SKILL_FILE};
-use crate::services::repos::RepoLayout;
+use crate::services::repos::{RepoLayout, Repository};
 
 /// The ID of the default agent, Nandi: it keeps My notes and answers for
 /// the user
@@ -119,6 +124,77 @@ fn write_new(path: &Path, content: &str) -> Result<bool, String> {
     Ok(true)
 }
 
+/// The commit that keeps the person's own files in the gold copy's history
+/// before a reset to defaults changes them
+pub const BEFORE_RESET_COMMIT: &str = "Keep Nandi's files before a reset to defaults";
+/// The commit of a reset to defaults
+pub const RESET_COMMIT: &str = "Reset Nandi to defaults";
+
+/// The default agent as it ships: its skill.md (with its default settings),
+/// the instructions.md template, and its playbooks
+fn shipped_default() -> Result<(Agent, Vec<Playbook>), String> {
+    let nandi = BUILTIN_AGENTS
+        .iter()
+        .find(|agent| is_default(agent.id))
+        .ok_or("Nandi doesn't ship with this build")?;
+    let shipped = |name: &str| {
+        nandi
+            .files
+            .iter()
+            .find(|(file, _)| *file == name)
+            .map(|(_, content)| *content)
+    };
+    let skill = shipped(SKILL_FILE).ok_or("Nandi ships without a skill.md")?;
+    let agent = Agent::from_files(
+        AgentId::parse(DEFAULT_AGENT).map_err(|e| e.to_string())?,
+        skill,
+        shipped(INSTRUCTIONS_FILE),
+    )
+    .map_err(|e| format!("Nandi's shipped skill.md doesn't load: {e}"))?;
+    let playbooks = nandi
+        .playbooks
+        .iter()
+        .map(|(name, content)| Playbook::from_md(name, content))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("A shipped playbook doesn't load: {e}"))?;
+    Ok((agent, playbooks))
+}
+
+/// Puts Nandi back as it ships (owner decision N-5): its skill.md, which
+/// holds its model, network and other settings; the instructions.md
+/// template; and its playbooks, so playbooks the person added go. Its
+/// memory, runs, grants and triggers stay.
+///
+/// Like any gold-copy change, the files are written through the agent
+/// repository and committed. Two git commits: first the person's files as
+/// they are ([`BEFORE_RESET_COMMIT`]), so nothing they wrote is lost, then
+/// the reset ([`RESET_COMMIT`]). Without a git repository nothing changes.
+pub fn reset_default(store: &RepoStore, git: &GitService) -> Result<(), String> {
+    let agents = &store.repos().agents;
+    let owner = store.repos().load_manifest().ok().and_then(|m| m.owner);
+    let relative = |paths: &[PathBuf]| -> Vec<String> {
+        paths
+            .iter()
+            .filter_map(|path| store.layout().relative(path))
+            .collect()
+    };
+
+    let mut files = agents.definition_files(DEFAULT_AGENT)?;
+    git.commit_files(&relative(&files), BEFORE_RESET_COMMIT, owner.as_deref())?;
+
+    let (agent, playbooks) = shipped_default()?;
+    agents.save(&agent)?;
+    agents.replace_playbooks(DEFAULT_AGENT, &playbooks)?;
+    store.commit(EntityKind::Agent, DEFAULT_AGENT)?;
+
+    files.extend(agents.definition_files(DEFAULT_AGENT)?);
+    files.sort();
+    files.dedup();
+    git.commit_files(&relative(&files), RESET_COMMIT, owner.as_deref())?;
+    log::info!("Reset the default agent '{DEFAULT_AGENT}' to its shipped files");
+    Ok(())
+}
+
 /// The "My role" line that says who the user is
 const NAME_LINE: &str = "- **Name and title:**";
 
@@ -171,11 +247,7 @@ pub fn with_mailbox_identity(
 
 /// Writes the mailbox owner into Nandi's "My role" (see
 /// [`with_mailbox_identity`]), through the agent repository
-pub fn note_identity(
-    store: &crate::services::repo_store::RepoStore,
-    name: Option<&str>,
-    email: &str,
-) -> Result<bool, String> {
+pub fn note_identity(store: &RepoStore, name: Option<&str>, email: &str) -> Result<bool, String> {
     let current = store.skill(DEFAULT_AGENT)?.instructions;
     let Some(updated) = with_mailbox_identity(&current, name, email) else {
         return Ok(false);
@@ -185,15 +257,13 @@ pub fn note_identity(
         .agents
         .save_instructions(DEFAULT_AGENT, &updated)
         .map_err(|e| e.to_string())?;
-    store.commit(crate::services::domain::EntityKind::Agent, DEFAULT_AGENT)?;
+    store.commit(EntityKind::Agent, DEFAULT_AGENT)?;
     Ok(true)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::domain::agent::Agent;
-    use crate::services::domain::AgentId;
 
     fn layout() -> (tempfile::TempDir, RepoLayout) {
         let tmp = tempfile::tempdir().unwrap();
@@ -360,6 +430,126 @@ mod tests {
         let written = seed(&layout).unwrap();
         assert_eq!(written.len(), builtin(DEFAULT_AGENT).playbooks.len());
         assert!(layout.skill_path(DEFAULT_AGENT).is_file());
+    }
+
+    /// A seeded gold copy in a git repository, with its store
+    fn gold_copy() -> (tempfile::TempDir, RepoStore, GitService) {
+        let (tmp, layout) = layout();
+        seed(&layout).unwrap();
+        git2::Repository::init(&layout.root).unwrap();
+        let git = GitService::new(&layout.root);
+        let store = RepoStore::sqlite(
+            crate::services::repos::Repos::new(layout),
+            crate::db::Db::in_memory(),
+        );
+        store.load().unwrap();
+        (tmp, store, git)
+    }
+
+    fn nandi_id() -> AgentId {
+        AgentId::parse(DEFAULT_AGENT).unwrap()
+    }
+
+    /// The text of `path` in `commit`, or `None` when it isn't there
+    fn file_in(repo: &git2::Repository, commit: &git2::Commit, path: &str) -> Option<String> {
+        let entry = commit.tree().unwrap().get_path(Path::new(path)).ok()?;
+        let blob = repo.find_blob(entry.id()).unwrap();
+        Some(String::from_utf8(blob.content().to_vec()).unwrap())
+    }
+
+    #[test]
+    fn a_reset_restores_the_shipped_files() {
+        let (_tmp, store, git) = gold_copy();
+        let agents = &store.repos().agents;
+        let skill = store.layout().skill_path(DEFAULT_AGENT);
+        let shipped_skill = std::fs::read_to_string(&skill).unwrap();
+        let renamed = shipped_skill.replacen("name: Nandi", "name: My Nandi", 1);
+        assert_ne!(renamed, shipped_skill);
+        std::fs::write(&skill, renamed).unwrap();
+        store.commit(EntityKind::Agent, DEFAULT_AGENT).unwrap();
+        assert_eq!(store.display_name(DEFAULT_AGENT), "My Nandi");
+        agents
+            .save_instructions(DEFAULT_AGENT, "# My role\nDev\n")
+            .unwrap();
+        let own = Playbook::new("my-own", "Mine", "Always", "Do it my way.").unwrap();
+        agents.save_playbook(DEFAULT_AGENT, &own, None).unwrap();
+        agents.delete_playbook(DEFAULT_AGENT, "occasions").unwrap();
+        let memory = agents.write_memory(DEFAULT_AGENT, "Likes tea\n").unwrap();
+
+        reset_default(&store, &git).unwrap();
+
+        let (shipped_agent, shipped_playbooks) = shipped_default().unwrap();
+        let agent = agents.load(&nandi_id()).unwrap();
+        assert_eq!(agent.to_skill_md(), shipped_agent.to_skill_md());
+        assert_eq!(
+            agent.to_instructions_md(),
+            shipped_agent.to_instructions_md()
+        );
+        assert_eq!(store.display_name(DEFAULT_AGENT), "Nandi", "projected");
+        let playbooks = agents.load_playbooks(DEFAULT_AGENT).unwrap().entities;
+        let mut expected = shipped_playbooks;
+        expected.sort_by(|a, b| a.name().cmp(b.name()));
+        assert_eq!(playbooks, expected, "shipped ones back, the added one gone");
+        assert_eq!(std::fs::read_to_string(memory).unwrap(), "Likes tea\n");
+    }
+
+    #[test]
+    fn a_reset_keeps_the_old_files_in_the_history() {
+        let (_tmp, store, git) = gold_copy();
+        let agents = &store.repos().agents;
+        let own = Playbook::new("my-own", "Mine", "Always", "Do it my way.").unwrap();
+        agents.save_playbook(DEFAULT_AGENT, &own, None).unwrap();
+        agents
+            .save_instructions(DEFAULT_AGENT, "# My role\nDev\n")
+            .unwrap();
+
+        reset_default(&store, &git).unwrap();
+
+        let repo = git2::Repository::open(&store.layout().root).unwrap();
+        let reset = repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(reset.message(), Some(RESET_COMMIT));
+        let before = reset.parent(0).unwrap();
+        assert_eq!(before.message(), Some(BEFORE_RESET_COMMIT));
+
+        let playbook = format!("{}/skills/my-own.md", agent_path(&store));
+        let role = format!("{}/{INSTRUCTIONS_FILE}", agent_path(&store));
+        assert!(
+            file_in(&repo, &before, &playbook).is_some(),
+            "kept in history"
+        );
+        assert_eq!(
+            file_in(&repo, &before, &role).as_deref(),
+            Some("# My role\nDev\n")
+        );
+        assert_eq!(file_in(&repo, &reset, &playbook), None);
+        assert!(git.status().unwrap().files.is_empty(), "all committed");
+    }
+
+    #[test]
+    fn a_reset_needs_the_gold_copys_history() {
+        let (_tmp, layout) = layout();
+        seed(&layout).unwrap();
+        let git = GitService::new(&layout.root);
+        let store = RepoStore::sqlite(
+            crate::services::repos::Repos::new(layout),
+            crate::db::Db::in_memory(),
+        );
+        store.load().unwrap();
+        let skill = store.layout().skill_path(DEFAULT_AGENT);
+        let edited = std::fs::read_to_string(&skill).unwrap() + "\nMy own words.\n";
+        std::fs::write(&skill, &edited).unwrap();
+
+        let error = reset_default(&store, &git).unwrap_err();
+        assert!(error.contains("isn't a git repository"), "{error}");
+        assert_eq!(std::fs::read_to_string(&skill).unwrap(), edited);
+    }
+
+    /// Nandi's folder, relative to the repo root
+    fn agent_path(store: &RepoStore) -> String {
+        store
+            .layout()
+            .relative(&store.layout().agent_dir(DEFAULT_AGENT))
+            .unwrap()
     }
 
     fn shipped_playbooks() -> Vec<crate::services::domain::playbook::Playbook> {

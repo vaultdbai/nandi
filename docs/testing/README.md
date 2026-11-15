@@ -283,6 +283,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | AG-33 | Playbooks: skill files an agent reads on demand                         | Shipped            | unit          | no          |                                             |
 | AG-34 | Sites and accounts: site secrets, site profiles, sign out everywhere    | Shipped            | unit          | no          |                                             |
 | AG-35 | "Remember how I do this": an agent proposes a playbook                  | Shipped            | unit          | no          |                                             |
+| AG-36 | Nandi's page and Reset to defaults                                      | Shipped            | unit + ui     | no          |                                             |
 | AG-29 | Settings tab: Internet access (allowed sites)                           | Shipped            | unit          | no          |                                             |
 | AG-17 | Settings tab: Permissions panel                                         | Shipped            | unit          | no          |                                             |
 | AG-18 | Settings tab: Connectors and shared folders                             | Shipped            | unit          | no          |                                             |

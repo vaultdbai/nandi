@@ -63,6 +63,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             agents::stop_agent,
             agents::restart_agent,
             agents::delete_agent,
+            agents::reset_default_agent,
             repo::repo_rebuild,
             repo::repo_status,
             repo::repo_save_agent,
