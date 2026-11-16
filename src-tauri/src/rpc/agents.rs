@@ -2,6 +2,7 @@
 
 use crate::services::agent_overview::{self, AgentOverview};
 use crate::services::agents::{self, AgentInfo, CreateAgentInput};
+use crate::services::shipped_files::ShippedUpdate;
 
 super::commands! {
     fn list_agents(state) -> Vec<AgentInfo> => agents::list_agents(&state).await;
@@ -25,4 +26,16 @@ super::commands! {
     /// Puts Nandi, the default agent, back as it ships; its old files stay
     /// in the gold copy's git history
     fn reset_default_agent(state) -> () => agents::reset_default_agent(&state).await;
+
+    /// The files Nandi ships that the person edited and this build
+    /// changed, each with a diff from theirs
+    fn default_agent_updates(state) -> Vec<ShippedUpdate> => agents::default_agent_updates(&state).await;
+
+    /// Take update: commits this build's version of a shipped file over the
+    /// person's; theirs stays in git history
+    fn take_default_agent_update(state, path: String) -> () => agents::take_default_agent_update(&state, &path).await;
+
+    /// Keep mine: the update to this file isn't offered again until a newer
+    /// version ships
+    fn keep_default_agent_file(state, path: String) -> () => agents::keep_default_agent_file(&state, &path).await;
 }

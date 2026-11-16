@@ -435,6 +435,44 @@ Shared preconditions used below:
 - **Needs relay:** no
 - **Status:** Shipped
 
+### AG-38 — Updates to Nandi's shipped files
+
+- **What:** A new version of Nandi brings new versions of the files it ships for Nandi: `skill.md`, `instructions.md`, the playbooks and the default triggers. The person's edits are never overwritten.
+  - At start, each shipped file is compared with what Nandi last wrote there (`.nandi/shipped.yaml`, by SHA-256):
+
+    | The file                         | What happens                              |
+    | -------------------------------- | ----------------------------------------- |
+    | Unedited, and the version has it | Replaced by the new version and committed |
+    | Edited by the person             | Kept; Nandi's page offers the update      |
+    | Deleted by the person            | Stays deleted                             |
+    | New in this version              | Added and committed                       |
+    | From Nandi 0.1.0 (no record yet) | Edited or not by the hashes 0.1.0 shipped |
+
+  - The commit is "Update Nandi's shipped files", naming the files updated and added.
+  - For an edited file, Nandi's page shows **An update to Nandi's instructions is available** with each file, a diff from the person's version to the new one, and **Take update** / **Keep mine**.
+  - **Take update** commits the person's version first ("Keep my … before taking Nandi's update"), then the new one ("Take Nandi's update to …").
+  - **Keep mine** records the choice in `.nandi/shipped.yaml` and commits it. That version isn't offered again; a later one is.
+  - **Reset to defaults** (AG-36) records the files it writes and forgets every Keep mine.
+- **Where:** `services/shipped_files.rs` (`update`, `decide`, `offers`, `take`, `keep_mine`, `restore`), `repo_bootstrap.rs` (`bootstrap`, `commit_shipped_update`), `builtin_agents.rs` (`reset_default`); commands `default_agent_updates`, `take_default_agent_update`, `keep_default_agent_file` (`rpc/agents.rs` → `services/agents.rs`); `agents/NandiUpdateCard.tsx`, `agents/nandi-update-model.ts`, `hooks/useAgentEditor.ts`, `views/AgentView.tsx`.
+- **Preconditions:** A Nandi home from an older build where Nandi's Your rules was edited and `skill.md` wasn't, and a newer build whose shipped `skill.md` and `instructions.md` differ.
+- **Steps:**
+  1. Start the newer build. Run `git log -1 --stat` in `~/.nandi/repo`.
+  2. Open Nandi's page.
+  3. Press **Keep mine**, then restart Nandi and open its page.
+  4. Edit Your rules again on a build with a newer `instructions.md`, open Nandi's page and press **Take update**.
+- **Expected:**
+  - Step 1: the commit "Update Nandi's shipped files" changes `skill.md` only.
+  - Step 2: the card names `instructions.md` with the diff; nothing else on the page changed.
+  - Step 3: the card is gone and stays gone.
+  - Step 4: Your rules is the shipped version; `git log -2` shows the person's version, then the update.
+- **Edge / negative cases:**
+  - A playbook the person deleted stays deleted, even when the new version changed it.
+  - A new playbook or default trigger is added even when its folder exists.
+  - A malformed `.nandi/shipped.yaml`: nothing is updated; the error is logged.
+- **Automation:** Covered by: `shipped_files_tests.rs` (`decides_by_what_nandi_wrote_what_is_there_and_what_ships`, `an_update_replaces_unedited_files_keeps_edited_ones_and_adds_new_ones`, `a_gold_copy_from_0_1_0_tells_edited_from_unedited_by_its_hashes`, `take_update_writes_this_builds_version_and_commits_it`, `keep_mine_is_remembered_until_a_newer_version_ships`, `a_reset_writes_the_shipped_files_records_them_and_forgets_keep_mine`), `NandiUpdateCard.test.tsx` | Layer: unit + ui | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ### AG-31 — Nandi browses websites
 
 - **What:** Nandi browses websites itself, in a browser the user watches. There is no separate Browser agent.

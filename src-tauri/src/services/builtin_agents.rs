@@ -18,6 +18,9 @@
 //! of ordinary triggers ([`DEFAULT_TRIGGERS`]), written once into a fresh
 //! install. The user edits or removes them like any trigger; a removed one
 //! stays removed until a reset to defaults.
+//!
+//! A newer build's versions of these files reach the files the person
+//! never edited, and are offered for the others (`shipped_files`).
 
 use std::path::{Path, PathBuf};
 
@@ -28,7 +31,8 @@ use crate::services::repo_service::GitService;
 use crate::services::repo_store::RepoStore;
 use crate::services::repos::fs_atomic::write_if_changed;
 use crate::services::repos::layout::{INSTRUCTIONS_FILE, PLAYBOOKS_DIR, SKILL_FILE};
-use crate::services::repos::{RepoLayout, Repository};
+use crate::services::repos::RepoLayout;
+use crate::services::shipped_files;
 
 /// The ID of the default agent, Nandi: it keeps My notes and answers for
 /// the user
@@ -238,10 +242,12 @@ fn shipped_triggers() -> Result<Vec<Trigger>, String> {
 /// default triggers (the morning digest and the mail check), even ones the
 /// person removed. Its memory, runs, grants and other triggers stay.
 ///
-/// Like any gold-copy change, the files are written through the agent
-/// repository and committed. Two git commits: first the person's files as
-/// they are ([`BEFORE_RESET_COMMIT`]), so nothing they wrote is lost, then
-/// the reset ([`RESET_COMMIT`]). Without a git repository nothing changes.
+/// The shipped files are written byte for byte and recorded
+/// (`shipped_files::restore`), then projected and committed like any
+/// gold-copy change. Two git commits: first the person's files as they are
+/// ([`BEFORE_RESET_COMMIT`]), so nothing they wrote is lost, then the reset
+/// ([`RESET_COMMIT`]) with the record. Without a git repository nothing
+/// changes.
 pub fn reset_default(store: &RepoStore, git: &GitService) -> Result<(), String> {
     let agents = &store.repos().agents;
     let owner = store.repos().load_manifest().ok().and_then(|m| m.owner);
@@ -260,17 +266,21 @@ pub fn reset_default(store: &RepoStore, git: &GitService) -> Result<(), String> 
     );
     git.commit_files(&relative(&files), BEFORE_RESET_COMMIT, owner.as_deref())?;
 
-    let (agent, playbooks) = shipped_default()?;
+    // Both load, so nothing is written from a shipped file that doesn't
+    let (_, playbooks) = shipped_default()?;
     let triggers = shipped_triggers()?;
-    agents.save(&agent)?;
+    // The shipped set of playbooks: ones the person added go
     agents.replace_playbooks(DEFAULT_AGENT, &playbooks)?;
+    // Then every file byte for byte as it ships, so the next update finds
+    // them unedited
+    shipped_files::restore(store.layout())?;
     store.commit(EntityKind::Agent, DEFAULT_AGENT)?;
     for trigger in &triggers {
-        store.repos().triggers.save(trigger)?;
         store.commit(EntityKind::Trigger, trigger.id().as_str())?;
     }
 
     files.extend(agents.definition_files(DEFAULT_AGENT)?);
+    files.push(store.layout().shipped_path());
     files.sort();
     files.dedup();
     git.commit_files(&relative(&files), RESET_COMMIT, owner.as_deref())?;
@@ -349,6 +359,7 @@ mod tests {
     use super::*;
     use crate::services::domain::trigger::Target;
     use crate::services::domain::TriggerId;
+    use crate::services::repos::Repository;
 
     fn layout() -> (tempfile::TempDir, RepoLayout) {
         let tmp = tempfile::tempdir().unwrap();

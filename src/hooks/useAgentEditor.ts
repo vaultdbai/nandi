@@ -23,6 +23,7 @@ import type {
 const editorQueryKeys = {
   definition: (agentId: string) => ['agent-definition', agentId] as const,
   pilots: ['pilot-definitions'] as const,
+  shippedUpdates: ['default-agent-updates'] as const,
 }
 
 // ---------------------------------------------------------------------------
@@ -359,11 +360,55 @@ export function useResetAgentInstructions(agentId: string) {
  * are committed first, so they stay in the gold copy's history.
  */
 export function useResetDefaultAgent() {
-  const invalidate = useInvalidateRepo()
+  const invalidate = useInvalidateDefaultAgent()
   return useMutation({
     mutationFn: () =>
       unwrap(client.resetDefaultAgent(), 'Failed to reset Nandi'),
-    onSuccess: () => invalidate(DEFAULT_AGENT),
+    onSuccess: invalidate,
+  })
+}
+
+/** After Nandi's files change: its page and the updates on offer */
+function useInvalidateDefaultAgent() {
+  const queryClient = useQueryClient()
+  const invalidate = useInvalidateRepo()
+  return () => {
+    invalidate(DEFAULT_AGENT)
+    void queryClient.invalidateQueries({
+      queryKey: editorQueryKeys.shippedUpdates,
+    })
+  }
+}
+
+/**
+ * The files Nandi ships that the person edited and this version changed,
+ * each with a diff. Unedited ones were already updated at startup.
+ */
+export function useDefaultAgentUpdates() {
+  return useQuery({
+    queryKey: editorQueryKeys.shippedUpdates,
+    queryFn: () =>
+      unwrap(client.defaultAgentUpdates(), "Failed to check Nandi's files"),
+  })
+}
+
+/** Take update: commits this version's file over the person's */
+export function useTakeDefaultAgentUpdate() {
+  const invalidate = useInvalidateDefaultAgent()
+  return useMutation({
+    mutationFn: (path: string) =>
+      unwrap(client.takeDefaultAgentUpdate(path), 'Failed to take the update'),
+    onSuccess: invalidate,
+  })
+}
+
+/** Keep mine: the update to this file isn't offered again for this version */
+export function useKeepDefaultAgentFile() {
+  const invalidate = useInvalidateDefaultAgent()
+  return useMutation({
+    mutationFn: (path: string) =>
+      unwrap(client.keepDefaultAgentFile(path), 'Failed to keep your file'),
+    onSuccess: invalidate,
   })
 }
 

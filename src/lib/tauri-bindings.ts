@@ -74,6 +74,7 @@ export type {
   RunSummary,
   SavedTrigger,
   SendMessageResult,
+  ShippedUpdate,
   SourceType,
   StudioConversationSummary,
   Trigger,

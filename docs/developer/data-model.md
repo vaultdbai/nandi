@@ -14,34 +14,35 @@ On every start, `services::migration::bootstrap` opens `~/.nandi/repo`, or creat
 
 ## What Lives Where
 
-| Data                                                                                | Where                                                 | In git | Rebuildable               |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------- | ------ | ------------------------- |
-| Agents (`skill.md`, `instructions.md`)                                              | `~/.nandi/repo/.nandi/agents/<id>/`                   | ✅     | source                    |
-| Agent playbooks                                                                     | `~/.nandi/repo/.nandi/agents/<id>/skills/<name>.md`   | ✅     | source                    |
-| Agent-scoped workflows                                                              | `~/.nandi/repo/.nandi/agents/<id>/workflows/<w>.yaml` | ✅     | source                    |
-| Global workflows                                                                    | `~/.nandi/repo/.nandi/workflows/<w>.yaml`             | ✅     | source                    |
-| Triggers                                                                            | `~/.nandi/repo/.nandi/triggers/<t>.yaml`              | ✅     | source                    |
-| Portable settings (theme, language, default model, provider pins)                   | `~/.nandi/repo/.nandi/settings.yaml`                  | ✅     | source                    |
-| Connector declarations                                                              | `~/.nandi/repo/.nandi/connectors.yaml`                | ✅     | source                    |
-| Groups I'm in: each group's signed policy and members ([groups](./groups.md))       | `~/.nandi/repo/.nandi/groups/<group-id>.md`           | ✅     | refreshed from the relay  |
-| My access level per group                                                           | `~/.nandi/repo/.nandi/groups/access.yaml`             | ✅     | source                    |
-| Every Inbox decision: who, what, why, and the chat it came from                     | `~/.nandi/repo/.nandi/decisions/<yyyy-mm>.md`         | ✅     | source (append-only)      |
-| Repo format version, owner                                                          | `~/.nandi/repo/.nandi/manifest.yaml`                  | ✅     | source                    |
-| Marketplace installs (read-only until forked)                                       | `~/.nandi/repo/.nandi/agents/marketplace/…`           | ✅     | source                    |
-| What was installed from where                                                       | `~/.nandi/repo/.nandi/installed.yaml`                 | ✅     | source                    |
-| Registry index cache, fetch scratch repos                                           | `~/.nandi/local/cache/`                               | ❌     | ✅ re-fetched             |
-| Projection (`agents`, `workflows`, `triggers`, …)                                   | `~/.nandi/local/state.db`                             | ❌     | ✅ `nandi rebuild`        |
-| Tasks the relay held for my approval by a group's policy                            | `state.db` → `group_holds`                            | ❌     | ❌ runtime history        |
-| Runs, messages, approvals, queue, fires, workflow runs                              | `~/.nandi/local/state.db`                             | ❌     | ❌ runtime history        |
-| Run events and approval decisions, kept beyond `state.db` ([run trail](#run-trail)) | `~/.nandi/local/run-trail.jsonl`                      | ❌     | source (append-only)      |
-| Inbox Ask chats (`inbox:<kind>:<id>`, `intake:<id>`): their messages                | `state.db` → `conversations`, `messages`              | ❌     | ❌ stays on this computer |
-| Engine choice, canned script                                                        | `state.db` → `local_settings`                         | ❌     | ❌ machine-local          |
-| First-run step reached (`onboarding.step`), per Nandi home                          | `state.db` → `local_settings`                         | ❌     | ❌ machine-local          |
-| Dismissed hints (Get started, backup nudge)                                         | webview `localStorage` (`lib/dismissals.ts`)          | ❌     | ❌ hint comes back        |
-| Audit logs (llm, egress, triggers)                                                  | `~/.nandi/local/logs/`                                | ❌     | ❌                        |
-| Agent workdirs                                                                      | `~/.nandi/local/work/<id>/`                           | ❌     | ephemeral                 |
-| Secrets (LLM/AWS keys, trigger secrets, remote credential)                          | OS keyring                                            | ❌     | ❌                        |
-| Deleted agents, replaced repos                                                      | `~/.nandi/trash/`                                     | ❌     | —                         |
+| Data                                                                                                       | Where                                                 | In git | Rebuildable               |
+| ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------ | ------------------------- |
+| Agents (`skill.md`, `instructions.md`)                                                                     | `~/.nandi/repo/.nandi/agents/<id>/`                   | ✅     | source                    |
+| Agent playbooks                                                                                            | `~/.nandi/repo/.nandi/agents/<id>/skills/<name>.md`   | ✅     | source                    |
+| Agent-scoped workflows                                                                                     | `~/.nandi/repo/.nandi/agents/<id>/workflows/<w>.yaml` | ✅     | source                    |
+| Global workflows                                                                                           | `~/.nandi/repo/.nandi/workflows/<w>.yaml`             | ✅     | source                    |
+| Triggers                                                                                                   | `~/.nandi/repo/.nandi/triggers/<t>.yaml`              | ✅     | source                    |
+| Portable settings (theme, language, default model, provider pins)                                          | `~/.nandi/repo/.nandi/settings.yaml`                  | ✅     | source                    |
+| Connector declarations                                                                                     | `~/.nandi/repo/.nandi/connectors.yaml`                | ✅     | source                    |
+| Groups I'm in: each group's signed policy and members ([groups](./groups.md))                              | `~/.nandi/repo/.nandi/groups/<group-id>.md`           | ✅     | refreshed from the relay  |
+| My access level per group                                                                                  | `~/.nandi/repo/.nandi/groups/access.yaml`             | ✅     | source                    |
+| Every Inbox decision: who, what, why, and the chat it came from                                            | `~/.nandi/repo/.nandi/decisions/<yyyy-mm>.md`         | ✅     | source (append-only)      |
+| Repo format version, owner                                                                                 | `~/.nandi/repo/.nandi/manifest.yaml`                  | ✅     | source                    |
+| Marketplace installs (read-only until forked)                                                              | `~/.nandi/repo/.nandi/agents/marketplace/…`           | ✅     | source                    |
+| What was installed from where                                                                              | `~/.nandi/repo/.nandi/installed.yaml`                 | ✅     | source                    |
+| Nandi's shipped files as last written, and Keep mine choices ([updates](#updates-to-nandis-shipped-files)) | `~/.nandi/repo/.nandi/shipped.yaml`                   | ✅     | source                    |
+| Registry index cache, fetch scratch repos                                                                  | `~/.nandi/local/cache/`                               | ❌     | ✅ re-fetched             |
+| Projection (`agents`, `workflows`, `triggers`, …)                                                          | `~/.nandi/local/state.db`                             | ❌     | ✅ `nandi rebuild`        |
+| Tasks the relay held for my approval by a group's policy                                                   | `state.db` → `group_holds`                            | ❌     | ❌ runtime history        |
+| Runs, messages, approvals, queue, fires, workflow runs                                                     | `~/.nandi/local/state.db`                             | ❌     | ❌ runtime history        |
+| Run events and approval decisions, kept beyond `state.db` ([run trail](#run-trail))                        | `~/.nandi/local/run-trail.jsonl`                      | ❌     | source (append-only)      |
+| Inbox Ask chats (`inbox:<kind>:<id>`, `intake:<id>`): their messages                                       | `state.db` → `conversations`, `messages`              | ❌     | ❌ stays on this computer |
+| Engine choice, canned script                                                                               | `state.db` → `local_settings`                         | ❌     | ❌ machine-local          |
+| First-run step reached (`onboarding.step`), per Nandi home                                                 | `state.db` → `local_settings`                         | ❌     | ❌ machine-local          |
+| Dismissed hints (Get started, backup nudge)                                                                | webview `localStorage` (`lib/dismissals.ts`)          | ❌     | ❌ hint comes back        |
+| Audit logs (llm, egress, triggers)                                                                         | `~/.nandi/local/logs/`                                | ❌     | ❌                        |
+| Agent workdirs                                                                                             | `~/.nandi/local/work/<id>/`                           | ❌     | ephemeral                 |
+| Secrets (LLM/AWS keys, trigger secrets, remote credential)                                                 | OS keyring                                            | ❌     | ❌                        |
+| Deleted agents, replaced repos                                                                             | `~/.nandi/trash/`                                     | ❌     | —                         |
 
 The audit logs in `~/.nandi/local/logs/` (`llm`, `egress`, `triggers`, `pilots`, `connectors`) are plain JSONL written only through `audit::append`. Each line carries `prev_sha256`, the SHA-256 of the line before it (zeros for the first), and each append is fsynced. `audit::chain::verify` finds the first line that doesn't follow the one before it (an edited, removed or moved line). A failed write is counted against its log; the Logs view shows "Audit degraded" for lost entries or a broken chain (`get_audit_health`).
 
@@ -227,6 +228,32 @@ Groups (signed by their admin), decisions (append-only records) and marketplace 
 | A definition file (settings grants, triggers, workflows, agents) with a value that is exactly `chief-of-staff` | The value becomes `nandi` (`FileFormat::edit`, the file keeps its format) |
 
 "Edited" compares each file's SHA-256 with LF line endings against the shipped files: `SHIPPED_IN_0_1_0` (from the tag) or this build's. Files git ignores (`work/`) are neither compared nor committed. State.db's side of the rename is migration 006.
+
+### Updates to Nandi's Shipped Files
+
+Nandi ships its default agent's files: `skill.md`, `instructions.md`, the playbooks (`resources/builtin-agents/nandi/`) and its default triggers. A newer build updates the ones the person never edited and offers the others (`services::shipped_files`).
+
+`.nandi/shipped.yaml` records, for each shipped file by its path, the SHA-256 (LF line endings) of the version Nandi last wrote there, and under `kept` the shipped version the person chose Keep mine over. It lives in the gold copy, not in `state.db`, because it is about the gold copy's files: it is committed with them, travels with Backup and a restore, and a new `state.db` never loses it.
+
+At start, after the scaffolding and before the format upgrade, `repo_bootstrap::bootstrap` runs `shipped_files::update` and commits what it wrote, "Update Nandi's shipped files" (in a fresh install, the initial commit). `shipped_files::decide` is the whole rule:
+
+| The file in the gold copy               | Step      | What happens                             |
+| --------------------------------------- | --------- | ---------------------------------------- |
+| Already this build's version            | `Record`  | Its hash is recorded                     |
+| As Nandi last wrote it, and it changed  | `Replace` | The new version is written and committed |
+| Edited, and this build changed it       | `Offer`   | Kept; Nandi's page offers the update     |
+| Edited, and this build didn't change it | `Leave`   | Nothing                                  |
+| Kept mine over this build's version     | `Leave`   | Nothing until a newer version ships      |
+| Deleted after Nandi wrote it            | `Leave`   | Stays deleted                            |
+| Not there and never written             | `Add`     | Written and committed                    |
+
+A gold copy from 0.1.0 has no `shipped.yaml`. Its `skill.md` and `instructions.md` are compared with `SHIPPED_IN_0_1_0`; everything else is new.
+
+| Action on Nandi's page | What happens                                                                                               |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Take update            | Commits the person's version, then writes the new one, records it and commits ("Take Nandi's update to …") |
+| Keep mine              | Records the shipped version's hash under `kept` and commits `shipped.yaml`                                 |
+| Reset to defaults      | Writes each file byte for byte as it ships, records it and clears `kept`, in the reset's commit            |
 
 ## Secrets Boundary
 

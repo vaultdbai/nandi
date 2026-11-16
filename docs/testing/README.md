@@ -280,6 +280,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | AG-30 | Nandi, the default agent, comes with the app                            | Shipped            | unit + ui     | no          | 2026-11-01 pass                             |
 | AG-36 | Nandi's page and Reset to defaults                                      | Shipped            | unit + ui     | no          |                                             |
 | AG-37 | Nandi's default schedule                                                | Shipped            | unit + ui     | no          |                                             |
+| AG-38 | Updates to Nandi's shipped files                                        | Shipped            | unit + ui     | no          |                                             |
 | AG-31 | Nandi browses websites                                                  | Shipped            | unit          | no          |                                             |
 | AG-32 | Run plans: plan first, live checklist, finish check                     | Shipped            | unit          | no          |                                             |
 | AG-33 | Playbooks: skill files an agent reads on demand                         | Shipped            | unit          | no          |                                             |

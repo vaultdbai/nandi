@@ -20,6 +20,7 @@
 //! .nandi/groups/access.yaml                               (my access level per group)
 //! .nandi/decisions/<yyyy-mm>.md                           (every Inbox decision: who, what, why)
 //! .nandi/installed.yaml                                   (marketplace installs)
+//! .nandi/shipped.yaml                                     (Nandi's shipped files, by hash)
 //! .nandi/agents/marketplace/<publisher>/<id>/…            (installed agents)
 //! .nandi/agents/marketplace/packs/<pack>/agents/<id>/…    (installed packs)
 //! .nandi/agents/marketplace/packs/<pack>/workflows/<w>.yaml
@@ -48,6 +49,8 @@ pub const CONNECTOR_PACKAGES_DIR: &str = "connectors";
 pub const CONNECTOR_FILE: &str = "connector.md";
 pub const MANIFEST_FILE: &str = "manifest.yaml";
 pub const INSTALLED_FILE: &str = "installed.yaml";
+/// Under `.nandi/`: the SHA-256 of each file Nandi ships, as last written
+pub const SHIPPED_FILE: &str = "shipped.yaml";
 /// Under `.nandi/`: capability definitions
 pub const CAPABILITIES_DIR: &str = "capabilities";
 /// Under `.nandi/`: policies
@@ -148,6 +151,12 @@ impl RepoLayout {
     /// `.nandi/installed.yaml`: every vendored marketplace source
     pub fn installed_path(&self) -> PathBuf {
         self.meta_dir.join(INSTALLED_FILE)
+    }
+
+    /// `.nandi/shipped.yaml`: what Nandi last wrote of its shipped files
+    /// (`services::shipped_files`)
+    pub fn shipped_path(&self) -> PathBuf {
+        self.meta_dir.join(SHIPPED_FILE)
     }
 
     /// `.nandi/capabilities/`: one `<id>.yaml` per capability

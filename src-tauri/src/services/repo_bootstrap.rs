@@ -3,11 +3,12 @@
 //! On every start, `~/.nandi/repo` is opened, or created as a git repo on
 //! `main`. Whatever the repo lacks of `.nandi/settings.yaml`, `.gitignore`,
 //! the built-in agents and `.nandi/manifest.yaml` is written (the manifest
-//! last), and a freshly created repo gets an initial commit.
+//! last), and a freshly created repo gets an initial commit. Nandi's
+//! shipped files are then updated where the person never edited them
+//! (`shipped_files`).
 
 use std::path::Path;
 
-use crate::services::builtin_agents;
 use crate::services::domain::repo::RepoManifest;
 use crate::services::domain::settings::{SecretRef, Settings};
 use crate::services::egress::credentials::{ACCESS_KEY_ENTRY, SECRET_KEY_ENTRY};
@@ -16,6 +17,7 @@ use crate::services::repo_service::GitService;
 use crate::services::repos::formats::FormatUpgrade;
 use crate::services::repos::fs_atomic::write_if_changed;
 use crate::services::repos::{RepoLayout, Repos, SingletonRepository};
+use crate::services::{builtin_agents, shipped_files};
 
 /// The message of the commit a fresh repo starts with
 pub const INITIAL_COMMIT: &str = "Initialize Nandi repo";
@@ -43,7 +45,9 @@ pub fn install_layout() -> Result<RepoLayout, String> {
 
 /// Opens the repo at `layout.root`, creating it if needed, and writes what
 /// it lacks. A repo created here (or one with no commit and no remote yet)
-/// gets Nandi's default triggers and the initial commit.
+/// gets Nandi's default triggers and the initial commit. Then Nandi's
+/// shipped files are brought up to this build (`shipped_files::update`):
+/// in the initial commit, or in a commit of their own.
 pub fn bootstrap(layout: &RepoLayout) -> Result<(), String> {
     let (repo, fresh) = open_or_init(&layout.root)?;
     ensure_scaffolding(layout, &repo, None)?;
@@ -52,10 +56,28 @@ pub fn bootstrap(layout: &RepoLayout) -> Result<(), String> {
         for path in builtin_agents::seed_triggers(layout)? {
             stage_add(&repo, &layout.root, &path);
         }
+    }
+    let shipped = shipped_files::update(layout)?;
+    if fresh {
         commit_all(&repo, INITIAL_COMMIT, None)?;
         log::info!("Created the Nandi repo at {}", layout.root.display());
+    } else {
+        commit_shipped_update(layout, &shipped)?;
     }
     Ok(())
+}
+
+/// Commits only the files `update` wrote, saying which. Returns the
+/// commit, if any.
+pub(crate) fn commit_shipped_update(
+    layout: &RepoLayout,
+    update: &shipped_files::Updated,
+) -> Result<Option<String>, String> {
+    let paths = update.paths(layout);
+    if paths.is_empty() {
+        return Ok(None);
+    }
+    GitService::new(&layout.root).commit_files(&paths, &update.commit_message(), None)
 }
 
 /// Writes every definition file at an older format back at the current

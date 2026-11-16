@@ -140,6 +140,42 @@ async resetDefaultAgent() : Promise<Result<null, string>> {
 }
 },
 /**
+ * The files Nandi ships that the person edited and this build
+ * changed, each with a diff from theirs
+ */
+async defaultAgentUpdates() : Promise<Result<ShippedUpdate[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("default_agent_updates") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Take update: commits this build's version of a shipped file over the
+ * person's; theirs stays in git history
+ */
+async takeDefaultAgentUpdate(path: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("take_default_agent_update", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Keep mine: the update to this file isn't offered again until a newer
+ * version ships
+ */
+async keepDefaultAgentFile(path: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("keep_default_agent_file", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Wipes the local projection and rebuilds it from the repo files. Refuses
  * while a file is invalid unless `force` (which skips invalid files).
  */
@@ -8481,6 +8517,27 @@ sources: ShareSource[];
  * Delegations in the last 30 days
  */
 callCount: number; lastCalledAt: number | null }
+/**
+ * An update Nandi's page offers: a shipped file the person edited, and
+ * this build's version of it
+ */
+export type ShippedUpdate = { 
+/**
+ * The file, relative to the gold copy's root
+ */
+path: string; 
+/**
+ * The person's version
+ */
+mine: string; 
+/**
+ * This build's version
+ */
+shipped: string; 
+/**
+ * A unified diff from theirs to this build's
+ */
+diff: string }
 export type SignInPhase = "waiting" | "connected" | "failed"
 export type SignInProblem = { kind: SignInProblemKind; 
 /**

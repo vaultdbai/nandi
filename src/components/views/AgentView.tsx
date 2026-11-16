@@ -61,6 +61,7 @@ import { AgentSettingsTab } from '@/components/agents/AgentSettingsTab'
 import { AgentPlaybooksTab } from '@/components/agents/AgentPlaybooksTab'
 import { AgentTaskStrip } from '@/components/agents/AgentTaskStrip'
 import { DeleteAgentDialog } from '@/components/agents/DeleteAgentDialog'
+import { NandiUpdateCard } from '@/components/agents/NandiUpdateCard'
 import { ResetNandiDialog } from '@/components/agents/ResetNandiDialog'
 import {
   AGENT_TABS,
@@ -284,6 +285,7 @@ function AgentPage({
         onOpenRules={() => changeTab('settings')}
       />
       {warning && <AgentWarningBanner agentId={agent.id} warning={warning} />}
+      {isDefaultAgent(agent) && <NandiUpdateCard agent={agent} />}
       {pending[0] && (
         <div className="border-b bg-warning/5 px-4 py-2">
           <ApprovalRequestCard

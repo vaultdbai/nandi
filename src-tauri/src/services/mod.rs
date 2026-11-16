@@ -75,6 +75,7 @@ pub mod requests;
 pub mod secrets;
 pub mod selection;
 pub mod shared;
+pub mod shipped_files;
 pub mod snapshots;
 pub mod studio;
 pub mod tools;

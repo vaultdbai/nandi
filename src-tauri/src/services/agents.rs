@@ -28,6 +28,7 @@ use crate::services::egress::capabilities::Capabilities;
 use crate::services::repo_store::RepoStore;
 use crate::services::repos::agent_locator::{self, AgentPlace, Origin};
 use crate::services::repos::Repository;
+use crate::services::shipped_files::{self, ShippedUpdate};
 use crate::services::AppState;
 
 /// Docker label that links a container to an agent folder name.
@@ -610,6 +611,38 @@ pub async fn reset_default_agent(state: &AppState) -> Result<(), String> {
     tokio::task::spawn_blocking(move || builtin_agents::reset_default(&store, &git))
         .await
         .map_err(|e| format!("Reset task failed: {e}"))?
+}
+
+/// The updates to Nandi's shipped files on offer (`shipped_files::offers`)
+pub async fn default_agent_updates(state: &AppState) -> Result<Vec<ShippedUpdate>, String> {
+    let layout = state.store().layout().clone();
+    tokio::task::spawn_blocking(move || shipped_files::offers(&layout))
+        .await
+        .map_err(|e| format!("Update check failed: {e}"))?
+}
+
+/// Take update for one of Nandi's shipped files (`shipped_files::take`)
+pub async fn take_default_agent_update(state: &AppState, path: &str) -> Result<(), String> {
+    let (store, git, path) = (
+        state.store().clone(),
+        state.git_service().clone(),
+        path.to_string(),
+    );
+    tokio::task::spawn_blocking(move || shipped_files::take(&store, &git, &path))
+        .await
+        .map_err(|e| format!("Update task failed: {e}"))?
+}
+
+/// Keep mine for one of Nandi's shipped files (`shipped_files::keep_mine`)
+pub async fn keep_default_agent_file(state: &AppState, path: &str) -> Result<(), String> {
+    let (store, git, path) = (
+        state.store().clone(),
+        state.git_service().clone(),
+        path.to_string(),
+    );
+    tokio::task::spawn_blocking(move || shipped_files::keep_mine(&store, &git, &path))
+        .await
+        .map_err(|e| format!("Keep task failed: {e}"))?
 }
 
 /// Before an agent's folder goes away (delete, uninstall, fork): refuses
