@@ -121,6 +121,35 @@ describe('AuditLogView', () => {
     ).toBeInTheDocument()
   })
 
+  it('notes older entries from before the chain calmly, never as degraded', async () => {
+    commands.getAuditHealth = vi.fn(async () =>
+      ok<AuditHealth>({
+        lostEntries: 0,
+        lastError: null,
+        chain: {
+          state: 'beforeTheChain',
+          lines: 3,
+          older: 40,
+          file: 'llm.pre-chain.log',
+        },
+      })
+    )
+    render(<AuditLogView tab="llm" />)
+
+    expect(
+      await screen.findByText(t('audit.beforeTheChain.title'))
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        i18n.t('audit.beforeTheChain.body', {
+          count: 40,
+          file: 'llm.pre-chain.log',
+        })
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(t('audit.degraded.title'))).toBeNull()
+  })
+
   it('reads the tab’s log, newest first, with secrets redacted', async () => {
     render(<AuditLogView tab="llm" />)
 

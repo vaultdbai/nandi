@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Info,
   RefreshCw,
   ScrollText,
   Search,
@@ -131,7 +132,10 @@ function RunTrailDegradedNotice() {
   )
 }
 
-/** Lost entries and a broken chain, in words; nothing while intact */
+/**
+ * Lost entries and a broken chain, in words. A log kept from before the
+ * chain (Nandi 0.1.0) gets a calm note; nothing while intact.
+ */
 function DegradedNotice({
   health,
   title,
@@ -140,8 +144,23 @@ function DegradedNotice({
   title: string
 }) {
   const { t } = useTranslation()
-  if (!health || !isAuditDegraded(health)) return null
+  if (!health) return null
   const { chain, lostEntries, lastError } = health
+  if (!isAuditDegraded(health)) {
+    if (chain.state !== 'beforeTheChain') return null
+    return (
+      <Alert>
+        <Info />
+        <AlertTitle>{t('audit.beforeTheChain.title')}</AlertTitle>
+        <AlertDescription>
+          {t('audit.beforeTheChain.body', {
+            count: chain.older,
+            file: chain.file,
+          })}
+        </AlertDescription>
+      </Alert>
+    )
+  }
 
   return (
     <Alert variant="destructive">

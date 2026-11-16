@@ -248,6 +248,11 @@ impl AppState {
         }
         let db = Db::open(&db_file)?;
         let local = nandi_config::local_dir()?;
+        // Logs Nandi 0.1.0 wrote without the hash chain are kept aside, so
+        // the Logs view shows them as older entries, not a broken chain
+        if let Ok(logs) = nandi_config::logs_dir() {
+            crate::audit::set_aside_unchained_logs(&logs);
+        }
         // Before anything reads it: the instance ID outlives the database
         network::keep_instance_id(&db, &local);
         // A new `state.db` gets its run history and decisions back

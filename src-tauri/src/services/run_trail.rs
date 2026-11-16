@@ -67,7 +67,7 @@ pub struct Restored {
 impl Restored {
     /// The trail was read whole and its chain holds
     pub fn is_clean(&self) -> bool {
-        self.unreadable.is_empty() && matches!(self.chain, ChainCheck::Intact { .. })
+        self.unreadable.is_empty() && !matches!(self.chain, ChainCheck::Broken { .. })
     }
 }
 

@@ -5066,7 +5066,12 @@ export type ChainCheck =
  * `line` (1-based) doesn't follow the line before it: that line or the
  * one before was edited, removed or moved
  */
-{ state: "broken"; line: number; reason: string }
+{ state: "broken"; line: number; reason: string } | 
+/**
+ * Every line chains, and `older` entries written before the chain
+ * began (by Nandi 0.1.0) are kept beside the log, in `file`
+ */
+{ state: "beforeTheChain"; lines: number; older: number; file: string }
 /**
  * What kind of thing changed
  */

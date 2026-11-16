@@ -5,6 +5,12 @@
 //!
 //! The file stays plain JSONL. The chain covers a line once the next one is
 //! written: the newest line has no successor to vouch for it.
+//!
+//! Nandi 0.1.0 wrote its logs without the chain. Such a log is set aside
+//! as `<name>.pre-chain.log` ([`set_aside_if_unchained`]) and a new chain
+//! starts in its place, so its entries are kept but never vouched for:
+//! [`verify`] reports them as older entries before the chain, not as a
+//! broken chain.
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -53,6 +59,13 @@ pub enum ChainCheck {
     /// `line` (1-based) doesn't follow the line before it: that line or the
     /// one before was edited, removed or moved
     Broken { line: u32, reason: String },
+    /// Every line chains, and `older` entries written before the chain
+    /// began (by Nandi 0.1.0) are kept beside the log, in `file`
+    BeforeTheChain {
+        lines: u32,
+        older: u32,
+        file: String,
+    },
 }
 
 /// A log's state for the Logs view: what failed to write this session, and
@@ -114,7 +127,13 @@ fn write_lines(path: &Path, entries: Vec<Value>) -> Result<(), String> {
     // may have got part of the way
     let mut prev = match log.head.take() {
         Some(head) => head,
-        None => last_line(path)?.map_or_else(|| GENESIS.to_string(), |line| sha256_hex(&line)),
+        None => {
+            // Never chain onto a log 0.1.0 wrote
+            if let Err(e) = set_aside_if_unchained(path) {
+                log::warn!("{e}");
+            }
+            last_line(path)?.map_or_else(|| GENESIS.to_string(), |line| sha256_hex(&line))
+        }
     };
     let mut text = String::new();
     for entry in entries {
@@ -156,8 +175,123 @@ pub fn health(path: &Path) -> Result<AuditHealth, String> {
 }
 
 /// Walks the log at `path` and checks that every line chains to the one
-/// before it.
+/// before it. Entries set aside from before the chain are reported as
+/// such, never as a break.
 pub fn verify(path: &Path) -> Result<ChainCheck, String> {
+    let check = verify_chain(path)?;
+    let older_path = pre_chain_path(path);
+    let older = count_lines(&older_path)?;
+    Ok(match check {
+        ChainCheck::Intact { lines } if older > 0 => ChainCheck::BeforeTheChain {
+            lines,
+            older,
+            file: file_name(&older_path),
+        },
+        check => check,
+    })
+}
+
+/// Where a log written before the chain is kept: `llm.log` becomes
+/// `llm.pre-chain.log`
+pub fn pre_chain_path(path: &Path) -> PathBuf {
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+    let name = match path.extension() {
+        Some(extension) => format!("{stem}.pre-chain.{}", extension.to_string_lossy()),
+        None => format!("{stem}.pre-chain"),
+    };
+    path.with_file_name(name)
+}
+
+/// Sets the log at `path` aside as [`pre_chain_path`] when it was written
+/// before the chain (its first line is a JSON object with no chain hash),
+/// so a new chain starts in its place. Returns whether it did. A copy
+/// already set aside is never overwritten. It doesn't take the logs' lock:
+/// [`write_lines`] calls it while holding it.
+pub fn set_aside_if_unchained(path: &Path) -> Result<bool, String> {
+    let Some(first) = first_line(path)? else {
+        return Ok(false);
+    };
+    let unchained = matches!(
+        serde_json::from_slice::<Value>(&first),
+        Ok(Value::Object(fields)) if !fields.contains_key(PREV_FIELD)
+    );
+    if !unchained {
+        return Ok(false);
+    }
+    let older = pre_chain_path(path);
+    if older.exists() {
+        return Err(format!(
+            "{} was written before the audit chain, but {} already exists: it is left as it is",
+            path.display(),
+            older.display()
+        ));
+    }
+    std::fs::rename(path, &older)
+        .map_err(|e| format!("Failed to set {} aside: {e}", path.display()))?;
+    log::info!(
+        "Kept {} as {}: it was written before the audit chain",
+        path.display(),
+        older.display()
+    );
+    Ok(true)
+}
+
+/// [`set_aside_if_unchained`] for every log in `dir`, at startup, so the
+/// Logs view reports older entries before anything is written
+pub fn set_aside_unchained_logs(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for path in entries.flatten().map(|entry| entry.path()) {
+        let name = file_name(&path);
+        if !name.ends_with(".log") || name.contains(".pre-chain.") {
+            continue;
+        }
+        match set_aside_if_unchained(&path) {
+            // A new chain: forget any head known for the old file
+            Ok(true) => {
+                logs().remove(&path);
+            }
+            Ok(false) => {}
+            Err(e) => log::warn!("{e}"),
+        }
+    }
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// The first line of the file at `path`, without its newline. `None`: no
+/// file, or empty.
+fn first_line(path: &Path) -> Result<Option<Vec<u8>>, String> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("Failed to open {}: {e}", path.display())),
+    };
+    let mut line = Vec::new();
+    BufReader::new(file)
+        .read_until(b'\n', &mut line)
+        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    let line = line.strip_suffix(b"\n").unwrap_or(&line).to_vec();
+    Ok((!line.is_empty()).then_some(line))
+}
+
+/// Lines in the file at `path`; 0 when there is none
+fn count_lines(path: &Path) -> Result<u32, String> {
+    match File::open(path) {
+        Ok(file) => Ok(BufReader::new(file).split(b'\n').count() as u32),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(0),
+        Err(e) => Err(format!("Failed to open {}: {e}", path.display())),
+    }
+}
+
+/// The chain of the log at `path` itself
+fn verify_chain(path: &Path) -> Result<ChainCheck, String> {
     let file = match File::open(path) {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -246,7 +380,7 @@ mod tests {
     fn broken_at(check: &ChainCheck) -> Option<u32> {
         match check {
             ChainCheck::Broken { line, .. } => Some(*line),
-            ChainCheck::Intact { .. } => None,
+            ChainCheck::Intact { .. } | ChainCheck::BeforeTheChain { .. } => None,
         }
     }
 
@@ -363,5 +497,96 @@ mod tests {
             let expected = last.map(|line| line.as_bytes().to_vec());
             assert_eq!(last_line(&path).unwrap(), expected, "{text:.20}");
         }
+    }
+
+    /// Two lines as Nandi 0.1.0 wrote them: no chain hash
+    const UNCHAINED_0_1_0: &str = "{\"ts\":1,\"outcome\":\"ok\"}\n{\"ts\":2,\"outcome\":\"ok\"}\n";
+
+    #[test]
+    fn the_pre_chain_copy_sits_beside_its_log() {
+        let cases = [
+            ("logs/llm.log", "logs/llm.pre-chain.log"),
+            ("local/run-trail.jsonl", "local/run-trail.pre-chain.jsonl"),
+            ("logs/plain", "logs/plain.pre-chain"),
+        ];
+        for (log, older) in cases {
+            assert_eq!(pre_chain_path(Path::new(log)), Path::new(older), "{log}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_0_1_0_log_is_set_aside_and_a_new_chain_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("llm.log");
+        std::fs::write(&path, UNCHAINED_0_1_0).unwrap();
+
+        set_aside_unchained_logs(dir.path());
+        let older = dir.path().join("llm.pre-chain.log");
+        assert_eq!(std::fs::read_to_string(&older).unwrap(), UNCHAINED_0_1_0);
+        assert!(!path.exists());
+        let expected = |lines| ChainCheck::BeforeTheChain {
+            lines,
+            older: 2,
+            file: "llm.pre-chain.log".to_string(),
+        };
+        assert_eq!(verify(&path).unwrap(), expected(0));
+
+        append(path.clone(), &json!({ "ts": 3, "outcome": "ok" })).await;
+        let first: Value = serde_json::from_str(&read_lines(&path)[0]).unwrap();
+        assert_eq!(first[PREV_FIELD], GENESIS, "the new chain starts fresh");
+        assert_eq!(verify(&path).unwrap(), expected(1));
+        // Nothing more to set aside
+        assert!(!set_aside_if_unchained(&path).unwrap());
+    }
+
+    #[tokio::test]
+    async fn the_first_write_sets_a_0_1_0_log_aside() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("egress.log");
+        std::fs::write(&path, UNCHAINED_0_1_0).unwrap();
+
+        append(path.clone(), &json!({ "ts": 3, "outcome": "ok" })).await;
+        assert!(dir.path().join("egress.pre-chain.log").exists());
+        assert!(matches!(
+            verify(&path).unwrap(),
+            ChainCheck::BeforeTheChain {
+                lines: 1,
+                older: 2,
+                ..
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn only_unchained_logs_are_set_aside() {
+        let cases = [
+            ("a chained log", None),
+            ("an empty log", Some("")),
+            ("a log that isn't JSON", Some("not json\n")),
+        ];
+        for (case, text) in cases {
+            let (dir, path) = log_with(2).await;
+            if let Some(text) = text {
+                std::fs::write(&path, text).unwrap();
+            }
+            assert!(!set_aside_if_unchained(&path).unwrap(), "{case}");
+            assert!(!pre_chain_path(&path).exists(), "{case}");
+            drop(dir);
+        }
+    }
+
+    #[test]
+    fn a_kept_copy_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("llm.log");
+        std::fs::write(&path, UNCHAINED_0_1_0).unwrap();
+        std::fs::write(pre_chain_path(&path), "kept\n").unwrap();
+
+        assert!(set_aside_if_unchained(&path).is_err());
+        assert_eq!(
+            std::fs::read_to_string(pre_chain_path(&path)).unwrap(),
+            "kept\n"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), UNCHAINED_0_1_0);
     }
 }

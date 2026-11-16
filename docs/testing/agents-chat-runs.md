@@ -1295,7 +1295,7 @@ Shared preconditions used below:
 - **Preconditions:** Some model calls, an egress request and a trigger fire.
 - **Steps:** Open each tab; search; page; Download.
 - **Expected:** Newest first; downloaded file has every entry, one JSON per line; no keys or prompt text anywhere.
-- **Edge / negative cases:** Missing log file = empty list; unknown kind = error; page size capped at 500 server-side.
+- **Edge / negative cases:** Missing log file = empty list; unknown kind = error; page size capped at 500 server-side. A log Nandi 0.1.0 wrote without the hash chain is kept as `<name>.pre-chain.log` at the first start of a newer build and a new chain starts: the tab shows a calm "Older entries kept" note ("N entries from before the audit chain began (Nandi 0.1.0) are kept in llm.pre-chain.log…"), never "Audit degraded" (`audit/chain.rs`: `a_0_1_0_log_is_set_aside_and_a_new_chain_starts`, `the_first_write_sets_a_0_1_0_log_aside`, `only_unchained_logs_are_set_aside`, `a_kept_copy_is_never_overwritten`; `AuditLogView.test.tsx`).
 - **Automation:** Covered by: `AuditLogView.test.tsx`, `src/hooks/useAuditLog.test.ts`, Rust tests in `src-tauri/src/audit.rs` (`redacts_secret_fields_and_text`, `reads_jsonl_newest_first_and_pages`, …) | Layer: unit + api | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped

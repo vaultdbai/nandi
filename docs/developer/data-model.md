@@ -45,6 +45,8 @@ On every start, `services::migration::bootstrap` opens `~/.nandi/repo`, or creat
 
 The audit logs in `~/.nandi/local/logs/` (`llm`, `egress`, `triggers`, `pilots`, `connectors`) are plain JSONL written only through `audit::append`. Each line carries `prev_sha256`, the SHA-256 of the line before it (zeros for the first), and each append is fsynced. `audit::chain::verify` finds the first line that doesn't follow the one before it (an edited, removed or moved line). A failed write is counted against its log; the Logs view shows "Audit degraded" for lost entries or a broken chain (`get_audit_health`).
 
+Nandi 0.1.0 wrote these logs without the chain. At start (`audit::set_aside_unchained_logs`), and before the first write to any log in a session, a log whose first line has no `prev_sha256` is renamed to `<name>.pre-chain.log` (`llm.log` becomes `llm.pre-chain.log`) and a new chain starts in its place. An existing `.pre-chain.log` is never overwritten. `verify` then reports `ChainCheck::BeforeTheChain { lines, older, file }`, not `Broken`, and Settings › Logs shows a calm "Older entries kept" note instead of "Audit degraded". The older entries are kept but nothing vouches for them.
+
 ## Run Trail
 
 `run_events` and approval decisions are the audit-relevant part of `state.db`. They survive a `state.db` reset (owner decision 5, 2026-11-14): `services::run_trail` appends each one to `~/.nandi/local/run-trail.jsonl` as its transaction commits.
