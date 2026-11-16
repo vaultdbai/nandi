@@ -1,6 +1,6 @@
 [package]
 name = "nandi"
-version = "0.1.0"
+version = "0.2.0"
 description = "Nandi: a local-first desktop app for running AI agents"
 authors = ["VaultDB.ai"]
 license = "Apache-2.0"

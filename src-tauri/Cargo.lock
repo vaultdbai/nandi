@@ -4003,7 +4003,7 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "nandi"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "agent-client-protocol",
  "async-trait",
@@ -4088,7 +4088,7 @@ dependencies = [
 
 [[package]]
 name = "nandi-protocol"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "glob",
  "jiff",
@@ -4101,7 +4101,7 @@ dependencies = [
 
 [[package]]
 name = "nandi-relay"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -4131,7 +4131,7 @@ dependencies = [
 
 [[package]]
 name = "nandi-seal"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 3.0.0",
