@@ -52,6 +52,7 @@ const homeRow = (overrides: Partial<HomeRow> = {}): HomeRow => ({
   view: { kind: 'work-item', id: 'w1' },
   rating: null,
   retry: null,
+  retryAt: null,
   ...overrides,
 })
 

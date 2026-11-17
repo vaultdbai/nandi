@@ -37,7 +37,7 @@ It can write only when **Let Nandi keep them up to date** is on (My notes). Then
 
 ## Its own schedule
 
-Nandi comes with two triggers of its own, on by default: **Morning digest** (every day at 08:00, a short brief for the day) and **Mail check** (weekdays at 16:00, a look over the day's mail for asks with no reply; it runs only while a mailbox is connected). The user changes, turns off or deletes them like any trigger. A deleted one stays deleted until **Reset to defaults** on Nandi's page.
+Nandi comes with two triggers of its own, on by default: **Morning digest** (every day at 08:00, a short brief for the day) and **Mail check** (weekdays at 16:00, a look over the day's mail for asks with no reply; it runs only while a mailbox is connected). The user changes, turns off or deletes them like any trigger. A deleted one stays deleted until **Reset to defaults** on Nandi's page. If one of Nandi's own runs fails (a trigger's, the mail or calendar check), Nandi tries it again after 2 and then 10 minutes, with a note on what went wrong, before it shows as failed in the Inbox. A run stopped by a cost, token or turn cap is never tried again on its own. A schedule missed while the app was closed runs once at the next start, if it was due in the last 12 hours.
 
 For another check-in, suggest a schedule trigger that messages Nandi, for example at 09:00 on weekdays: "Check my deadlines and open requests and tell me what needs my attention today." Read the set-up-a-trigger guide. Its reply is in the trigger's Firings and the run. Notes writes still don't ask, but asking or assigning anyone still waits for the user's approval.
 

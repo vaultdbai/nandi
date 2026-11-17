@@ -152,7 +152,7 @@ pub display_name: String,
 
 `state.db` is versioned by numbered, forward-only migrations in `src-tauri/src/db/migrations/`, embedded in the app (`db::migrations`). `PRAGMA user_version` holds the number of the last one applied.
 
-The numbers follow what released builds stamped. Nandi 0.1.0 wrote version 2, so its schema is `002_nandi_0_1_0.sql`, word for word from the tag. `006_since_0_1_0.sql` takes it to today's schema. Versions 1 and 3 to 5 were written only by development builds and have no migration.
+The numbers follow what released builds stamped. Nandi 0.1.0 wrote version 2, so its schema is `002_nandi_0_1_0.sql`, word for word from the tag. `006_since_0_1_0.sql` takes it to Nandi 0.2.0's schema, and `007_run_retries.sql` adds `runs.retry_of` and `runs.attempt` ([triggers.md](./triggers.md#when-a-run-fails-or-a-time-is-missed)). Versions 1 and 3 to 5 were written only by development builds and have no migration.
 
 | When the app opens `state.db` and finds    | What happens                                                                                                                                           |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -177,7 +177,7 @@ A fresh database runs the same chain as an upgraded one, so their schemas are al
 
 | ✅ Do                                          | ❌ Don't                                                          |
 | ---------------------------------------------- | ----------------------------------------------------------------- |
-| Add `007_runs_label.sql`                       | Edit `006_since_0_1_0.sql` (the checksum test fails)              |
+| Add `008_runs_label.sql`                       | Edit `007_run_retries.sql` (the checksum test fails)              |
 | Copy rows forward when rebuilding a table      | Drop a table and let a rebuild fill it (runtime rows are history) |
 | Keep each migration small and about one change | Read or write the gold copy from a migration                      |
 

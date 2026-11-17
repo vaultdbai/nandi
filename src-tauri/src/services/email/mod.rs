@@ -68,6 +68,8 @@ use settings::{CheckState, EmailAccount};
 
 /// The first read (and a restart after an expired cursor) goes back this far
 pub const READ_WINDOW_DAYS: i64 = 14;
+/// Read again (the user's resync) goes back this far
+pub const READ_AGAIN_DAYS: i64 = 3;
 /// How far before the last hand-over a check looks again, for mail that
 /// arrived while that check was running
 const CATCH_UP_SLACK_SECS: i64 = 60 * 60;
@@ -761,6 +763,33 @@ fn check_soon(state: &AppState) {
     });
 }
 
+/// Reads the last [`READ_AGAIN_DAYS`] days again, in the background, after
+/// any check that is going: the user's resync when something went wrong.
+/// The change cursors stay where they are.
+pub async fn read_again(state: &AppState) -> EmailStatus {
+    if state.email().auto_check.load(Ordering::SeqCst) {
+        let weak = state.downgrade();
+        state.runtime().spawn(async move {
+            if let Some(state) = weak.upgrade() {
+                check_with(&state, CheckMode::Again).await;
+            }
+        });
+    }
+    let mut status = status(state).await;
+    status.checking = true;
+    status
+}
+
+/// What a check reads
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckMode {
+    /// New mail since the cursors, which then move
+    New,
+    /// The last [`READ_AGAIN_DAYS`] days, whatever was handed over; the
+    /// cursors don't move
+    Again,
+}
+
 /// What one check did
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CheckOutcome {
@@ -773,9 +802,19 @@ pub struct CheckOutcome {
 /// and hands all new mail over in one run. Cursors move only once the run
 /// is queued, so mail is never skipped.
 pub async fn check_all(state: &AppState) -> CheckOutcome {
+    check_with(state, CheckMode::New).await
+}
+
+/// One check at a time: a due check skips while another runs, Read again
+/// waits for it
+async fn check_with(state: &AppState, mode: CheckMode) -> CheckOutcome {
     let email = state.email();
-    let Ok(_one_check) = email.check_lock.try_lock() else {
-        return CheckOutcome::default();
+    let _one_check = match mode {
+        CheckMode::New => match email.check_lock.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => return CheckOutcome::default(),
+        },
+        CheckMode::Again => email.check_lock.lock().await,
     };
     let settings = email_settings(state);
     let accounts: Vec<EmailAccount> = granted(state, DEFAULT_AGENT)
@@ -788,7 +827,7 @@ pub async fn check_all(state: &AppState) -> CheckOutcome {
     }
     email.checking.store(true, Ordering::SeqCst);
     emit_changed(state);
-    let outcome = run_check(state, &settings, &accounts).await;
+    let outcome = run_check(state, &settings, &accounts, mode).await;
     email.checking.store(false, Ordering::SeqCst);
     email.schedule_next(settings.interval_minutes);
     emit_changed(state);
@@ -799,10 +838,17 @@ async fn run_check(
     state: &AppState,
     settings: &EmailSettings,
     accounts: &[EmailAccount],
+    mode: CheckMode,
 ) -> CheckOutcome {
     let setup = state.email().setup();
     let started = db::now_ms() / 1000;
-    let window_start = started - READ_WINDOW_DAYS * 24 * 60 * 60;
+    let again = mode == CheckMode::Again;
+    let days = if again {
+        READ_AGAIN_DAYS
+    } else {
+        READ_WINDOW_DAYS
+    };
+    let window_start = started - days * 24 * 60 * 60;
     let me: Vec<Identity> = settings
         .accounts
         .iter()
@@ -823,11 +869,16 @@ async fn run_check(
     for account in accounts {
         let provider = account.provider;
         let mut check = check_state(state, provider).await;
-        let cursor: Value = load_setting(state, provider.cursor_key()).await;
+        // Read again lists the window as a first read would
+        let cursor: Value = if again {
+            Value::Null
+        } else {
+            load_setting(state, provider.cursor_key()).await
+        };
         let mailbox = Mailbox::new(provider, &setup, state.secrets());
         match mailbox.changes(&cursor, window_start).await {
             Ok(changes) => {
-                if cursor.is_null() {
+                if cursor.is_null() && !again {
                     let oldest = changes.headers.iter().map(|h| h.at).min();
                     first_reads.push((provider, oldest.unwrap_or(window_start)));
                 }
@@ -843,9 +894,11 @@ async fn run_check(
                 found.truncate(batch::MAX_BATCH * 2);
                 mailbox.add_list_headers(&mut found).await;
                 found.retain(|h| filter.keep(h));
-                first_read |= cursor.is_null();
+                first_read |= cursor.is_null() && !again;
                 headers.extend(found);
-                cursors.push((provider, changes.cursor));
+                if !again {
+                    cursors.push((provider, changes.cursor));
+                }
                 check.needs_sign_in = false;
                 check.error = None;
             }
@@ -882,13 +935,15 @@ async fn run_check(
             first_read,
             window_days: READ_WINDOW_DAYS,
             backfill: false,
+            again,
         }
         .prompt();
-        let title = format!(
-            "Email: {} new email{}",
-            headers.len(),
-            if headers.len() == 1 { "" } else { "s" }
-        );
+        let plural = if headers.len() == 1 { "" } else { "s" };
+        let title = if again {
+            format!("Email: {} email{plural} read again", headers.len())
+        } else {
+            format!("Email: {} new email{plural}", headers.len())
+        };
         match state.email().sink().submit(state, title, text).await {
             Ok(run_id) => {
                 log::info!("Handed {} emails to Nandi", headers.len());
@@ -916,7 +971,11 @@ async fn run_check(
         for (provider, oldest) in first_reads {
             backfill::begin(state, provider, backfill_start(oldest, cut_at)).await;
         }
-        for (_, check) in checked.iter_mut().filter(|(_, c)| c.error.is_none()) {
+        // Read again hands over nothing new: new mail still comes by the cursor
+        for (_, check) in checked
+            .iter_mut()
+            .filter(|(_, c)| c.error.is_none() && !again)
+        {
             check.caught_up_to = Some(started);
         }
     }

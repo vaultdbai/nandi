@@ -491,16 +491,19 @@ async fn abort_run(
     deps.bus
         .turn_done(ctx, RunStatus::Failed, Some(reason.clone()))
         .await?;
-    events::emit(
-        &deps.bus,
-        &AgentTurnAborted {
-            agent_id: ctx.agent_id.clone(),
-            run_id: ctx.run_id.clone(),
-            middleware: middleware.to_string(),
-            reason,
-        },
-    );
-    Ok(())
+    // Kept in the run's log: Run Detail shows why it stopped, and a run a
+    // policy stopped is never tried again on its own (`run_retry`)
+    deps.bus
+        .record(
+            &ctx.run_id,
+            AgentTurnAborted {
+                agent_id: ctx.agent_id.clone(),
+                run_id: ctx.run_id.clone(),
+                middleware: middleware.to_string(),
+                reason,
+            },
+        )
+        .await
 }
 
 /// Appends a `post_turn` continuation to the run as a user-role message

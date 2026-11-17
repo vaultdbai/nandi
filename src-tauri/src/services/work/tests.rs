@@ -250,7 +250,7 @@ fn a_trigger_firing_is_a_work_item_in_its_runs_state() {
         (RunStatus::Failed, WorkState::Failed),
         (RunStatus::Cancelled, WorkState::Cancelled),
     ] {
-        let item = from_trigger_fire(&fire(), "Morning check", &agent_run(status));
+        let item = from_trigger_fire(&fire(), "Morning check", &agent_run(status), None);
         assert_eq!(item.state, expected, "{status:?}");
         assert_eq!(item.kind, WorkKind::Trigger);
         // Named after the trigger, opening the run it started
@@ -265,8 +265,29 @@ fn a_trigger_firing_is_a_work_item_in_its_runs_state() {
             "{status:?}"
         );
     }
-    let done = from_trigger_fire(&fire(), "Morning check", &agent_run(RunStatus::Completed));
+    let done = from_trigger_fire(
+        &fire(),
+        "Morning check",
+        &agent_run(RunStatus::Completed),
+        None,
+    );
     assert_eq!(done.progress.percent, 100);
+}
+
+#[test]
+fn a_failed_firing_nandi_will_try_again_waits_on_that() {
+    let item = from_trigger_fire(
+        &fire(),
+        "Morning check",
+        &agent_run(RunStatus::Failed),
+        Some(5_000),
+    );
+    // Not red in the Inbox: Nandi has it in hand
+    assert_eq!(item.state, WorkState::Waiting);
+    let next = item.next_action.unwrap();
+    assert_eq!(next.kind, NextActionKind::Auto);
+    assert_eq!(next.deadline, Some(5_000.0));
+    assert_eq!(next.target.run_id.as_deref(), Some("run-9"));
 }
 
 fn task_record(input: serde_json::Value) -> crate::services::a2a::task::TaskRecord {

@@ -57,6 +57,35 @@ describe('workRow', () => {
       workRow(item({ id: 't1', kind: 'task', state: 'failed' })).retry
     ).toEqual({ kind: 'request', requestId: 't1' })
   })
+
+  it('shows when Nandi tries a failed run again, and retries it once it gave up', () => {
+    const trigger = { id: 'run-9', kind: 'trigger', workflowId: null } as const
+    const waiting = workRow(
+      item({
+        ...trigger,
+        state: 'waiting',
+        nextAction: {
+          description: 'Nandi tries run run-9 again',
+          kind: 'auto',
+          deadline: NOW + 2 * MIN,
+          reasonKind: null,
+          target: {
+            runId: 'run-9',
+            stepId: null,
+            agentId: 'nandi',
+            taskId: null,
+          },
+        },
+      })
+    )
+    expect(waiting).toMatchObject({ status: 'waiting', retryAt: NOW + 2 * MIN })
+    expect(waiting.retry).toBeNull()
+    const failed = workRow(item({ ...trigger, state: 'failed' }))
+    expect(failed).toMatchObject({
+      retryAt: null,
+      retry: { kind: 'run', runId: 'run-9' },
+    })
+  })
 })
 
 describe('buildHomeFeed', () => {

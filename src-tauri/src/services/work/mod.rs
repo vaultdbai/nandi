@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::model::{RunStatus, RunSummary, Timestamp};
+use crate::model::{RunStatus, RunSummary, SourceType, Timestamp};
 use crate::services::a2a::task::{self, ReasonKind, TaskFilter, TaskRecord, TaskState};
 use crate::services::events;
 use crate::services::events::NandiEvent;
@@ -15,6 +15,7 @@ use crate::services::triggers::schema::TriggerFire;
 use crate::services::workflows::{
     WorkflowRun, WorkflowRunStatus, WorkflowStepRun, WorkflowStepStatus,
 };
+use crate::services::{run_retry, run_waiter};
 use crate::services::{AppState, WeakAppState};
 
 pub type WorkError = String;
@@ -31,6 +32,8 @@ pub const WORK_ITEM_REMOVED: &str = "work://item_removed";
 pub enum WorkKind {
     Workflow,
     Task,
+    /// An agent run Nandi started on its own: a trigger's, or a failed
+    /// email or calendar check
     Trigger,
     ManualStep,
     /// A local ask carried out as a Request (task 14)
@@ -150,20 +153,23 @@ const DONE_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 /// Trigger firings considered
 const FIRES_LISTED: u32 = 100;
 
-/// Agent runs started by trigger firings since `since`, as work items
+/// Agent runs started by trigger firings since `since`, as work items,
+/// each in the state of its latest attempt (`run_retry`)
 async fn trigger_items(state: &AppState, since: i64) -> Vec<WorkItem> {
     state
         .db()
         .call(move |conn| {
             let fires =
                 crate::services::triggers::store::agent_fires_since(conn, since, FIRES_LISTED)?;
+            let now = crate::db::now_ms();
             let mut items = Vec::new();
             for (fire, name) in fires {
                 let Some(run_id) = fire.run_id.as_deref() else {
                     continue;
                 };
-                if let Some(run) = crate::db::get_run(conn, run_id)? {
-                    items.push(from_trigger_fire(&fire, &name, &run));
+                if let Some(run) = run_waiter::newest_run(conn, run_id)? {
+                    let next_try = run_retry::next_try(conn, &run.id, now)?;
+                    items.push(from_trigger_fire(&fire, &name, &run, next_try));
                 }
             }
             Ok(items)
@@ -175,13 +181,62 @@ async fn trigger_items(state: &AppState, since: i64) -> Vec<WorkItem> {
         })
 }
 
+/// Nandi's own checks (`run_retry::RETRIED` without a trigger of their
+/// own): listed only once they failed
+const OWN_CHECKS: &[SourceType] = &[SourceType::Email, SourceType::CalendarCheck];
+
+/// The email and calendar checks that failed since `since`, as work items:
+/// waiting while Nandi will try again, failed once it has given up
+async fn failed_check_items(state: &AppState, since: i64) -> Vec<WorkItem> {
+    state
+        .db()
+        .call(move |conn| {
+            let now = crate::db::now_ms();
+            let mut items = Vec::new();
+            for failed in run_retry::store::latest_failures(conn, since, OWN_CHECKS)? {
+                let run = failed.run;
+                let next_try = run_retry::next_try(conn, &run.id, now)?;
+                let title = run
+                    .source_label
+                    .clone()
+                    .unwrap_or_else(|| run.source_type.as_str().to_string());
+                items.push(from_agent_run(&run, title, run.started_at, next_try));
+            }
+            Ok(items)
+        })
+        .await
+        .unwrap_or_else(|e| {
+            log::warn!("Work: failed checks not listed: {e}");
+            Vec::new()
+        })
+}
+
 /// A trigger firing that started agent run `run`: one work item named
-/// after the trigger, in the run's state, opening that run
-pub fn from_trigger_fire(fire: &TriggerFire, trigger_name: &str, run: &RunSummary) -> WorkItem {
+/// after the trigger, in the state of the run's latest attempt, opening it.
+/// `next_try`: when Nandi tries a failed run again on its own.
+pub fn from_trigger_fire(
+    fire: &TriggerFire,
+    trigger_name: &str,
+    run: &RunSummary,
+    next_try: Option<i64>,
+) -> WorkItem {
+    from_agent_run(run, trigger_name.to_string(), fire.fired_at, next_try)
+}
+
+/// An agent run Nandi started on its own, as a work item. A failed run
+/// Nandi will try again waits on that, not on the user.
+fn from_agent_run(
+    run: &RunSummary,
+    title: String,
+    started_at: Timestamp,
+    next_try: Option<i64>,
+) -> WorkItem {
+    let retrying = run.status == RunStatus::Failed && next_try.is_some();
     let state = match run.status {
         RunStatus::Queued | RunStatus::Running | RunStatus::Compacted => WorkState::Active,
         RunStatus::AwaitingApproval => WorkState::Waiting,
         RunStatus::Completed => WorkState::Done,
+        RunStatus::Failed if retrying => WorkState::Waiting,
         RunStatus::Failed => WorkState::Failed,
         RunStatus::Cancelled => WorkState::Cancelled,
     };
@@ -189,10 +244,32 @@ pub fn from_trigger_fire(fire: &TriggerFire, trigger_name: &str, run: &RunSummar
         state,
         WorkState::Done | WorkState::Failed | WorkState::Cancelled
     );
+    let target = NextActionTarget {
+        run_id: Some(run.id.clone()),
+        agent_id: Some(run.agent_id.clone()),
+        ..NextActionTarget::default()
+    };
+    let next_action = match (run.status, next_try) {
+        (RunStatus::AwaitingApproval, _) => Some(NextAction {
+            description: format!("Approve a tool call for {}", run.agent_id),
+            kind: NextActionKind::Approval,
+            deadline: None,
+            reason_kind: Some(ReasonKind::NeedsMyApproval),
+            target,
+        }),
+        (RunStatus::Failed, Some(at)) => Some(NextAction {
+            description: format!("Nandi tries run {} again", run.id),
+            kind: NextActionKind::Auto,
+            deadline: Some(crate::db::ts(at)),
+            reason_kind: None,
+            target,
+        }),
+        _ => None,
+    };
     WorkItem {
         id: run.id.clone(),
         kind: WorkKind::Trigger,
-        title: trigger_name.to_string(),
+        title,
         state,
         owner: None,
         progress: WorkProgress {
@@ -200,21 +277,11 @@ pub fn from_trigger_fire(fire: &TriggerFire, trigger_name: &str, run: &RunSummar
             total_steps: 1,
             percent: if finished { 100 } else { 0 },
         },
-        next_action: (run.status == RunStatus::AwaitingApproval).then(|| NextAction {
-            description: format!("Approve a tool call for {}", run.agent_id),
-            kind: NextActionKind::Approval,
-            deadline: None,
-            reason_kind: Some(ReasonKind::NeedsMyApproval),
-            target: NextActionTarget {
-                run_id: Some(run.id.clone()),
-                agent_id: Some(run.agent_id.clone()),
-                ..NextActionTarget::default()
-            },
-        }),
+        next_action,
         workflow_id: None,
         rating: None,
-        started_at: fire.fired_at,
-        updated_at: run.ended_at.unwrap_or(run.started_at).max(fire.fired_at),
+        started_at,
+        updated_at: run.ended_at.unwrap_or(run.started_at).max(started_at),
     }
 }
 /// Delegated tasks considered
@@ -248,6 +315,7 @@ impl WorkService {
             .collect();
         // Trigger firings that ran an agent (a workflow firing is its run)
         items.extend(trigger_items(&state, since).await);
+        items.extend(failed_check_items(&state, since).await);
         let tasks = task::list_tasks(
             &state,
             TaskFilter {

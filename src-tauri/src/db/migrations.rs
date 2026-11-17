@@ -7,8 +7,8 @@
 //! file it keeps a copy beside it, `state.db.bak-v<old>`.
 //!
 //! The numbers follow the versions released builds stamped: Nandi 0.1.0
-//! wrote version 2 (migration 002, its schema word for word), and 006
-//! takes it to today's. A version no migration ends at (1, 3 to 5) was
+//! wrote version 2 (migration 002, its schema word for word), 006 takes
+//! it to Nandi 0.2.0's, and 007 adds run retries. A version no migration ends at (1, 3 to 5) was
 //! written by a development build that was never released: it is refused
 //! with a "reset your dev data" message.
 //!
@@ -46,6 +46,7 @@ macro_rules! migration {
 pub const MIGRATIONS: &[Migration] = &[
     migration!(2, "002_nandi_0_1_0.sql"),
     migration!(6, "006_since_0_1_0.sql"),
+    migration!(7, "007_run_retries.sql"),
 ];
 
 /// The schema version this build writes: the last migration's number.

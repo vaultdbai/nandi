@@ -266,7 +266,7 @@ Inside its container, the agent's folder is mounted read-only at `/agent/skill` 
 
 ### Finding your way
 
-The sidebar has seven pages. Three open one level down: **Ask** (**+ New chat**, which opens an empty chat that's saved once you send its first message, your five latest chats and **All chats**), **Agents** (each agent, with a dot for what it's doing, busiest first) and **Automations** (**Workflows** and **Triggers**). Home, Library, Network and Settings are single items; their pages have their own tabs. Click a name to open it (and its branch), or the arrow beside it to open or close the branch only. Branches stay as you left them, and the one above the page you're on opens by itself.
+The sidebar has eight pages: **Home** first, then **Nandi** with **My notes** under it, since Nandi keeps your notes. Five open one level down: **Home** (**Inbox**, **Decisions** and **All activity**), **Nandi** (**My notes**), **Ask** (**+ New chat**, which opens an empty chat that's saved once you send its first message, your five latest chats and **All chats**), **Agents** (each agent, with a dot for what it's doing, busiest first) and **Automations** (**Workflows** and **Triggers**). Library, Network and Settings are single items; their pages have their own tabs. Click a name to open it (and its branch), or the arrow beside it to open or close the branch only. Branches stay as you left them, and the one above the page you're on opens by itself.
 
 | Item            | What's there                                                                                                                                                                                       |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -301,7 +301,7 @@ When nothing needs you and nothing runs, Home says so in one line. On a fresh in
 
 An approval is a tool call that is waiting for your approval. The agent is suspended, not spinning: it uses no tokens, and the approval survives an app restart.
 
-Every approval waiting on you is in the **Inbox** on **Home** (the number on **Home** in the sidebar), together with workflow steps waiting for your approval, questions another Nandi asked you, manual workflow steps, and a missing model. Each has its fix right there. Failures from the last day are listed after them with **Retry** and **Dismiss**; they aren't counted in the number. You can decide the same approval in the chat, in the run's **Approvals** tab, on its Request page, or in the Inbox: deciding it in one place clears it everywhere.
+Every approval waiting on you is in the **Inbox** on **Home** (the number on **Home** in the sidebar), together with workflow steps waiting for your approval, questions another Nandi asked you, manual workflow steps, and a missing model. Each has its fix right there. Failures from the last day are listed after them with **Retry** and **Dismiss**; they aren't counted in the number. Work Nandi started on its own (the morning digest, a trigger, the mail check) isn't listed as failed straight away: Nandi tries it again after 2 minutes and again after 10, and it only turns red once those tries fail too. If the app was closed at 8:00, the morning digest runs when you open it (up to 12 hours late). You can decide the same approval in the chat, in the run's **Approvals** tab, on its Request page, or in the Inbox: deciding it in one place clears it everywhere.
 
 - **Approve** runs the call; the agent continues.
 - **Reject** asks you to confirm, then skips it; the model is told, and should adjust its plan rather than retry.
@@ -663,7 +663,7 @@ Nandi can keep My notes up to date from your email, so you don't have to write t
 - **What it does with it.** Nandi notes what you're asked to do, what you promised, deadlines, decisions and who owns what. Each note says which email it came from: sender, date and subject. Edit or delete any note; it won't add a deleted one back.
 - **What it never does.** Nandi never sends, moves, deletes or marks your mail read, and keeps no copy of it: only where it got to, and the notes. Your sign-in stays in this computer's keychain and never goes into a container. Text in an email is never treated as an instruction.
 - **Older mail.** **Also read older mail in the background** (at setup and in **Settings › Email**): **Last 3 months**, **Last year**, **Everything** (the default) or **Don't**. Before it starts, Nandi estimates how many emails and Nandi runs that is. It reads a batch of up to 60 emails every 10 minutes, newest first, only when Nandi isn't busy with new mail. Past deadlines are noted as history, not to-dos. The card shows "Reading older mail: back to <month>, N emails so far" with **Pause** and **Stop**, then "Older mail read".
-- **Your controls.** **Check now**, **Pause**, and **Stop reading my email**, which signs out and forgets where it got to. Your notes stay. With no mailbox connected, Home shows **Connect your email** with the buttons to do it.
+- **Your controls.** **Check now**, **Read again** (the last 3 days once more, for anything Nandi missed; it doesn't repeat what your notes have), **Pause**, and **Stop reading my email**, which signs out and forgets where it got to. Your notes stay. With no mailbox connected, Home shows **Connect your email** with the buttons to do it.
 - **If sign-in stops.** Some companies need an IT admin to approve Nandi first. Nandi says so and gives you a link to send them. Gmail test sign-ins end every 7 days: choose **Reconnect**.
 
 ### Auto-approve rules
@@ -681,7 +681,7 @@ On a clean email item that waits, **Always allow mail from <domain>** adds a dom
 
 List what you're responsible for in **Network › Sharing › What you offer** (one per line). Everyone on your relay can then find you by topic, even if your profile is private.
 
-**Nandi**, the default agent, comes with the app (at the top of the sidebar) and works with you and your team:
+**Nandi**, the default agent, comes with the app (in the sidebar under Home) and works with you and your team:
 
 - **Who is responsible:** answers "who is responsible for the SOX audit?" from what people published.
 - **Asking and assigning:** asks people or their agents, and assigns work, each after your approval.

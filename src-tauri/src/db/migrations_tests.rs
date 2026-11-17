@@ -17,6 +17,10 @@ const SHIPPED: &[(&str, &str)] = &[
         "006_since_0_1_0.sql",
         "8d4fbe8866f4bcee4e2a9edf271bfe0d75b127773a8fbb35e7727d18c66dcbf9",
     ),
+    (
+        "007_run_retries.sql",
+        "44e5336244bf01effcf19c94dde51b8d0eb03e787a4039dd3d548f8cdf8724cf",
+    ),
 ];
 
 /// A person's rows as Nandi 0.1.0 wrote them
@@ -35,6 +39,13 @@ const REMOVED_TABLES: &[&str] = &[
     "capability_registries",
     "circuit_breakers",
 ];
+/// Columns 007 adds to every existing run: a first attempt
+fn added_columns() -> [(&'static str, &'static str, Value); 2] {
+    [
+        ("runs", "retry_of", Value::Null),
+        ("runs", "attempt", Value::Integer(1)),
+    ]
+}
 /// Columns nothing reads: dropped
 const REMOVED_COLUMNS: &[(&str, &str)] = &[
     ("capabilities_projection", "registry_origin"),
@@ -78,13 +89,13 @@ const AGENT_ID_COLUMNS: &[(&str, &str)] = &[
 
 /// Test-only steps after the shipped chain, the way a real one would look
 const ADD_A_COLUMN: Migration = Migration {
-    version: 7,
-    file: "007_runs_label.sql",
+    version: 8,
+    file: "008_runs_label.sql",
     sql: "ALTER TABLE runs ADD COLUMN label TEXT NOT NULL DEFAULT '';",
 };
 const REBUILD_CONVERSATIONS: Migration = Migration {
-    version: 8,
-    file: "008_rebuild_conversations.sql",
+    version: 9,
+    file: "009_rebuild_conversations.sql",
     sql: "CREATE TABLE conversations_new (
               id         TEXT PRIMARY KEY,
               agent_id   TEXT NOT NULL,
@@ -181,8 +192,8 @@ fn renamed(table: &str, column: &str, value: &Value) -> Value {
     }
 }
 
-/// The rows a 0.1.0 database should hold after 006, worked out from the
-/// rows it held before and the lists above
+/// The rows a 0.1.0 database should hold after the migrations, worked out
+/// from the rows it held before and the lists above
 fn expected_after_0_1_0(before: &Rows) -> Rows {
     let kept_tables = before.iter().filter(|(table, _)| {
         !REMOVED_TABLES.contains(&table.as_str())
@@ -193,12 +204,19 @@ fn expected_after_0_1_0(before: &Rows) -> Rows {
             let rows = rows
                 .iter()
                 .map(|row| {
-                    row.iter()
+                    let mut row: Row = row
+                        .iter()
                         .filter(|(column, _)| {
                             !REMOVED_COLUMNS.contains(&(table.as_str(), column.as_str()))
                         })
                         .map(|(column, value)| (column.clone(), renamed(table, column, value)))
-                        .collect()
+                        .collect();
+                    for (added_to, column, value) in added_columns() {
+                        if added_to == table {
+                            row.insert(column.to_string(), value);
+                        }
+                    }
+                    row
                 })
                 .collect();
             (table.clone(), rows)
@@ -270,8 +288,9 @@ fn each_version_has_its_standing() {
         (3, Standing::Unreleased),
         (4, Standing::Unreleased),
         (5, Standing::Unreleased),
-        (6, Standing::Current),
-        (7, Standing::Newer),
+        (6, Standing::Behind),
+        (7, Standing::Current),
+        (8, Standing::Newer),
     ];
     for (version, expected) in cases {
         assert_eq!(standing(version, MIGRATIONS), expected, "version {version}");

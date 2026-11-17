@@ -1140,6 +1140,18 @@ async getRunStats(range: DateRange) : Promise<Result<RunStats, string>> {
 }
 },
 /**
+ * Tries a failed run again now, whatever its attempt (the Inbox's
+ * Retry); returns the new run's ID
+ */
+async retryRun(runId: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("retry_run", { runId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * `log_kind`: `llm` | `egress` | `triggers` | `pilots`; newest first
  */
 async listAuditLog(logKind: string, limit: number, offset: number) : Promise<Result<AuditEntry[], string>> {
@@ -2069,6 +2081,18 @@ async pollEmailSignIn(provider: MailProvider) : Promise<Result<EmailSignInPoll, 
 async checkEmailNow() : Promise<Result<EmailStatus, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("check_email_now") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Reads the last few days of mail again, in the background (the
+ * user's resync); the change cursors stay where they are
+ */
+async readEmailAgain() : Promise<Result<EmailStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("read_email_again") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -9225,7 +9249,12 @@ export type WorkItemRemoved = { id: string }
  * `work://item_updated` / `work://item_added`
  */
 export type WorkItemUpdated = { item: WorkItem }
-export type WorkKind = "workflow" | "task" | "trigger" | "manualStep" | 
+export type WorkKind = "workflow" | "task" | 
+/**
+ * An agent run Nandi started on its own: a trigger's, or a failed
+ * email or calendar check
+ */
+"trigger" | "manualStep" | 
 /**
  * A local ask carried out as a Request (task 14)
  */

@@ -1,9 +1,19 @@
 //! Cron source: one task per enabled cron trigger that sleeps until the
 //! schedule's next occurrence (local time), then publishes a fire.
 //!
+//! - It waits on the wall clock, a minute at a time at most, so a laptop
+//!   that slept through 8:00 fires when it wakes, not hours later.
+//! - A time missed while the app was closed fires once at the next start
+//!   ([`missed`]): the morning digest still comes when the laptop opens at
+//!   9. Only the latest missed time, only within [`CATCH_UP_WINDOW`], and
+//!   only for schedules an hour or more apart (a five-minute one just
+//!   fires next).
+//!
 //! Schedules use standard POSIX semantics (`0 9 * * 1-5` is 9:00 on
 //! weekdays; day-of-week 0 and 7 are Sunday). An optional leading seconds
 //! field allows sub-minute schedules (`*/5 * * * * *`).
+
+use std::time::Duration;
 
 use chrono::{DateTime, Local};
 use croner::parser::{CronParser, Seconds};
@@ -33,6 +43,32 @@ pub fn next_after(cron: &Cron, after: &DateTime<Local>) -> Option<DateTime<Local
 
 /// Next occurrences a preview lists
 pub const PREVIEW_COUNT: usize = 3;
+/// A missed time older than this is left: the next one comes soon enough
+pub const CATCH_UP_WINDOW: chrono::TimeDelta = chrono::TimeDelta::hours(12);
+/// Schedules closer than this aren't caught up
+const CATCH_UP_MIN_GAP: chrono::TimeDelta = chrono::TimeDelta::hours(1);
+/// The longest single sleep: the clock is checked again after it
+const MAX_SLEEP: Duration = Duration::from_secs(60);
+
+/// The latest time the schedule was due after `last_fired` and by `now`,
+/// if one was missed within [`CATCH_UP_WINDOW`]. A trigger that never
+/// fired has nothing to catch up.
+pub fn missed(
+    cron: &Cron,
+    last_fired: Option<DateTime<Local>>,
+    now: DateTime<Local>,
+) -> Option<DateTime<Local>> {
+    let mut due = next_after(cron, &last_fired?)?;
+    let gap = next_after(cron, &due)? - due;
+    if due > now || gap < CATCH_UP_MIN_GAP {
+        return None;
+    }
+    // At most a window's worth of steps, as the gap is an hour or more
+    while let Some(later) = next_after(cron, &due).filter(|at| *at <= now) {
+        due = later;
+    }
+    (now - due <= CATCH_UP_WINDOW).then_some(due)
+}
 
 /// A schedule checked as the user types: whether it parses and when it
 /// would fire next. Uses the scheduler's own parser, so they always agree.
@@ -72,34 +108,55 @@ pub fn preview(schedule: &str, after: DateTime<Local>, count: usize) -> CronPrev
     }
 }
 
+fn fire(trigger_id: &str, at: DateTime<Local>, caught_up: bool) -> TriggerEvent {
+    let mut payload = json!({
+        "scheduled_at": at.to_rfc3339(),
+        "trigger_id": trigger_id,
+    });
+    if caught_up {
+        payload["caught_up"] = json!(true);
+    }
+    TriggerEvent {
+        trigger_id: trigger_id.to_string(),
+        source: TriggerSourceType::Cron,
+        payload,
+        test: false,
+        handover: false,
+    }
+}
+
 /// Starts the job; abort the handle to stop it (on reload or disable).
+/// `catch_up`: a time missed while the app was closed, fired first.
 pub fn spawn(
     runtime: &tokio::runtime::Handle,
     trigger_id: String,
     cron: Cron,
     events: mpsc::Sender<TriggerEvent>,
+    catch_up: Option<DateTime<Local>>,
 ) -> AbortHandle {
     runtime
         .spawn(async move {
+            if let Some(at) = catch_up {
+                log::info!("Cron trigger '{trigger_id}' missed {at}: firing it now");
+                if events.send(fire(&trigger_id, at, true)).await.is_err() {
+                    return;
+                }
+            }
             let mut after = Local::now();
             loop {
                 let Some(next) = next_after(&cron, &after) else {
                     log::warn!("Cron trigger '{trigger_id}' has no future occurrences");
                     return;
                 };
-                let wait = (next - Local::now()).to_std().unwrap_or_default();
-                tokio::time::sleep(wait).await;
-                let event = TriggerEvent {
-                    trigger_id: trigger_id.clone(),
-                    source: TriggerSourceType::Cron,
-                    payload: json!({
-                        "scheduled_at": next.to_rfc3339(),
-                        "trigger_id": trigger_id,
-                    }),
-                    test: false,
-                    handover: false,
-                };
-                if events.send(event).await.is_err() {
+                // Short sleeps on the wall clock: a sleeping laptop stops
+                // the timers, not the clock
+                while let Ok(left) = (next - Local::now()).to_std() {
+                    if left.is_zero() {
+                        break;
+                    }
+                    tokio::time::sleep(left.min(MAX_SLEEP)).await;
+                }
+                if events.send(fire(&trigger_id, next, false)).await.is_err() {
                     return; // engine stopped
                 }
                 // Never fire the same occurrence twice, even if the sleep
@@ -152,6 +209,31 @@ mod tests {
         let bad = preview("61 * * * *", friday, PREVIEW_COUNT);
         assert!(!bad.valid && bad.next.is_empty());
         assert!(bad.error.unwrap().contains("Invalid cron schedule"));
+    }
+
+    #[test]
+    fn a_time_missed_while_closed_is_caught_up_once() {
+        let daily = parse_schedule("0 8 * * *").unwrap();
+        let at = |d, h, m| Local.with_ymd_and_hms(2026, 11, d, h, m, 0).unwrap();
+        // Fired yesterday at 8, opened today at 9: today's 8:00
+        assert_eq!(
+            missed(&daily, Some(at(16, 8, 0)), at(17, 9, 0)),
+            Some(at(17, 8, 0))
+        );
+        // Closed for three days: only the latest time
+        assert_eq!(
+            missed(&daily, Some(at(13, 8, 0)), at(16, 9, 30)),
+            Some(at(16, 8, 0))
+        );
+        // Already fired today, or not due yet
+        assert_eq!(missed(&daily, Some(at(17, 8, 0)), at(17, 9, 0)), None);
+        assert_eq!(missed(&daily, Some(at(16, 8, 0)), at(17, 7, 0)), None);
+        // Too late to be of use, or never fired
+        assert_eq!(missed(&daily, Some(at(16, 8, 0)), at(17, 21, 0)), None);
+        assert_eq!(missed(&daily, None, at(17, 9, 0)), None);
+        // Every five minutes: the next one comes soon enough
+        let often = parse_schedule("*/5 * * * *").unwrap();
+        assert_eq!(missed(&often, Some(at(17, 7, 0)), at(17, 9, 0)), None);
     }
 
     #[test]

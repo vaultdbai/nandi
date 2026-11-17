@@ -39,6 +39,7 @@ export function useEmailAction() {
     (
       action:
         | { kind: 'check' }
+        | { kind: 'again' }
         | { kind: 'pause'; provider: MailProvider; paused: boolean }
         | { kind: 'disconnect'; provider: MailProvider }
         | { kind: 'settings'; settings: EmailSettingsInput }
@@ -51,6 +52,8 @@ export function useEmailAction() {
       switch (action.kind) {
         case 'check':
           return client.checkEmailNow()
+        case 'again':
+          return client.readEmailAgain()
         case 'pause':
           return client.setEmailPaused(action.provider, action.paused)
         case 'disconnect':

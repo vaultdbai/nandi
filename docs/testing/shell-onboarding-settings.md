@@ -452,13 +452,14 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 
 ### SH-08 — Sidebar: the eight pages
 
-- **What:** The sidebar is a tree with eight top items: Home, Ask, Notes, Agents, Automations, Library, Network, Settings. Home has two children: Inbox (with the same count as Home) and All activity. Home's count is its own button and opens the Inbox page; the rest of the row opens Home. Each opens its page. The current page is highlighted, and a parent stays bold while a child is open. Views without their own node (a run, a request, a member profile) light their page.
+- **What:** The sidebar is a tree with eight top items: Home, Nandi, Ask, Agents, Automations, Library, Network, Settings. Home has two children: Inbox (with the same count as Home) and All activity. Nandi has one: My notes, since Nandi keeps them; a note's page lights My notes under Nandi. Home's count is its own button and opens the Inbox page; the rest of the row opens Home. Each opens its page. The current page is highlighted, and a parent stays bold while a child is open. Views without their own node (a run, a request, a member profile) light their page.
 - **Where:** `src/components/layout/Sidebar.tsx`, `nav-tree.ts` (`buildNavTree`, `activePath`), `src/store/navigation-store.ts` (`NAV_SECTIONS`, `SECTION_VIEWS`, `navSection`).
 - **Preconditions:** None.
 - **Steps:**
   1. Click each top item.
   2. Open a run detail from Agents.
-- **Expected:** (1) Each page opens with `aria-current="page"`. (2) Agents stays highlighted.
+  3. Click Nandi, then My notes.
+- **Expected:** (1) Each page opens with `aria-current="page"`. (2) Agents stays highlighted. (3) Nandi opens to show My notes, which opens the notes page.
 - **Edge / negative cases:** Onboarding and other views with no section light nothing.
 - **Automation:** Covered by: `src/components/layout/Sidebar.test.tsx`, `nav-tree.test.ts`, `src/store/navigation-store.test.ts`, `AppShell.test.tsx` ('has the seven pages…') | Layer: unit | Gap: none.
 - **Needs relay:** no

@@ -68,6 +68,30 @@ Fires are processed one at a time (the dispatcher task and manual test fires sha
 
 Workflow targets start `run_workflow` and record the workflow run's ID. Workflows don't take input yet, so the template is ignored for them.
 
+## When a Run Fails or a Time Is Missed
+
+Nandi's own work heals itself. The rules are code (state and trust); what to do differently on the next attempt is the model's job, from the note the retry carries.
+
+| Case                                        | What happens                                                                                                                                        | Where                                    |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| A trigger's agent run fails                 | Tried again 2 min later, then 10 min after that (3 attempts), within 6 h. A new run, same conversation, first input plus "(Nandi: Attempt 2 of 3…)" | `services::run_retry`                    |
+| The app was closed while it ran             | Failed at the next start ("Interrupted: …"), then tried again the same way                                                                          | `EventBus::fail_interrupted_runs`, above |
+| A cost, token or turn cap or read-only stop | Never tried again on its own: the abort is in `run_events` (`agent://turn_aborted`)                                                                 | `executor::abort_run`                    |
+| The user's own chat, a workflow step        | Never tried again on its own (workflows resume, the user sees the chat)                                                                             | `run_retry::RETRIED`                     |
+| The user presses Retry                      | `retry_run`: the next attempt now, whatever the count                                                                                               | `Inbox.tsx` `FailedRow`                  |
+| A cron time came while the app was closed   | Fires once at start (`caught_up: true`): the latest missed time, within 12 h, schedules an hour or more apart, first schedule per start only        | `cron::missed`, `Sources::caught_up`     |
+| The laptop slept through the time           | Fires within a minute of waking: the job sleeps a minute at a time on the wall clock                                                                | `cron::spawn`                            |
+
+- **The database is the schedule.** `runs.retry_of` names the run a retry tries again and `runs.attempt` counts (migration 007). The sweep (every minute, `run_retry::start_sweeper`) asks `store::open_failures` what failed, isn't tried again yet and isn't stopped by a policy, and starts what `due_at` says is due. Nothing is held in memory, so a retry due while the app was closed starts at the next start.
+- **One line of attempts.** `run_waiter::newest_run` follows retries as it follows compactions, so Work, the Inbox and the overlap check above see the latest attempt. A fire whose retry succeeded is done, not failed. A failed run Nandi will try again is a `waiting` Work item with an `auto` next action, so the Inbox shows it only once Nandi gives up.
+- **Retry never forks a line.** It refuses a run that already has a retry: act on the latest attempt.
+
+| ✅ Do                                                          | ❌ Don't                                                  |
+| -------------------------------------------------------------- | --------------------------------------------------------- |
+| Tell the model what failed and let it work around it           | Parse the error to decide whether it's worth a retry      |
+| Leave a run the user's limit stopped alone                     | Retry a cost or turn cap, or a run the user cancelled     |
+| Keep the retry in the run's conversation, from the same source | Start a fresh conversation the model can't see the try in |
+
 ## Nandi's Default Triggers
 
 Nandi, the default agent, ships with two ordinary cron triggers that target it (owner decision N-4). The files are in `src-tauri/resources/builtin-agents/nandi/triggers/`; `builtin_agents::DEFAULT_TRIGGERS` lists them.

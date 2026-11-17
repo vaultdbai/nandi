@@ -88,6 +88,17 @@ export function useCompleteManualStep() {
   )
 }
 
+/**
+ * Tries a failed run again now: a trigger's, or Nandi's own email or
+ * calendar check (`run_retry`). Nandi already tries these again on its
+ * own a few times; this is the user's Retry once it has given up.
+ */
+export function useRetryRun() {
+  return useClientMutation((runId: string) => client.retryRun(runId), {
+    invalidates: workKeys.all,
+  })
+}
+
 /** Pause, resume, cancel, or rate a work item */
 export function useWorkAction() {
   return useClientMutation(

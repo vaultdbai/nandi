@@ -32,6 +32,9 @@ pub struct Batch<'a> {
     pub window_days: i64,
     /// Older mail from the background read, not new mail
     pub backfill: bool,
+    /// Recent mail read again at the user's request (Read again): Nandi
+    /// may have it already
+    pub again: bool,
 }
 
 impl Batch<'_> {
@@ -62,6 +65,10 @@ impl Batch<'_> {
             out.push_str(
                 "This is older mail (backfill), read in the background: past items, newest first. Record owners, responsibilities and decisions. A deadline that has already passed is past: note it as history, never as a to-do. Don't repeat what the notes already have. Don't start work from older mail: notes only.
 ",
+            );
+        } else if self.again {
+            out.push_str(
+                "The user asked to read this recent mail again: some of it may already be in My notes or done. Update what changed, add what is missing, and don't repeat what the notes already have or redo work that is done.\n",
             );
         } else if self.first_read {
             out.push_str(&format!(
@@ -187,6 +194,7 @@ mod tests {
             first_read: true,
             window_days: 14,
             backfill: false,
+            again: false,
         }
         .prompt();
         assert!(prompt.contains("for Dev Chechi <dev@company.com> (the user"));
@@ -219,6 +227,7 @@ mod tests {
             first_read: false,
             window_days: 14,
             backfill: false,
+            again: false,
         }
         .prompt();
         assert!(prompt.contains(
@@ -246,6 +255,7 @@ mod tests {
             first_read: false,
             window_days: 14,
             backfill: false,
+            again: false,
         }
         .prompt();
         assert_eq!(prompt.matches("</email-data>").count(), 1, "only ours");
@@ -253,6 +263,26 @@ mod tests {
         assert!(prompt.contains("3 older new emails were left out"));
         // The preview is a short line, never the whole text
         assert!(prompt.len() < 2_000, "{}", prompt.len());
+        assert!(!prompt.contains("first read"));
+    }
+
+    #[test]
+    fn mail_read_again_says_nandi_may_have_it_already() {
+        let me = me();
+        let headers = [header("Q3 evidence", "Could you send the list by Friday?")];
+        let prompt = Batch {
+            me: &me,
+            headers: &headers,
+            omitted: 0,
+            first_read: false,
+            window_days: 14,
+            backfill: false,
+            again: true,
+        }
+        .prompt();
+        assert!(prompt.starts_with("Email check: 1 new email"));
+        assert!(prompt.contains("asked to read this recent mail again"));
+        assert!(prompt.contains("don't repeat what the notes already have"));
         assert!(!prompt.contains("first read"));
     }
 }

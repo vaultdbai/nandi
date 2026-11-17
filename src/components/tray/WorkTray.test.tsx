@@ -54,6 +54,7 @@ const running: HomeRow = {
   view: { kind: 'work-item', id: 'w1' },
   rating: null,
   retry: null,
+  retryAt: null,
 }
 
 describe('WorkTray', () => {

@@ -338,6 +338,18 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **Needs relay:** no
 - **Status:** Shipped (live test pending)
 
+### CP-37 — Email: read again, and failed checks tried again
+
+- **What:** Settings › Email › **Read again** reads the last 3 days of each connected mailbox again and hands it to Nandi in one run ("Email: N emails read again"), saying some of it may already be in My notes or done, so Nandi updates and doesn't repeat. The change cursors and the background read don't move: new mail still comes by the cursor. It waits for a check that is going. An email check whose Nandi run fails is tried again like any of Nandi's own runs (TR-29): the same emails, in the same conversation, so no mail is lost when the model is down. Once Nandi gives up, the check is red in the Inbox with **Retry**.
+- **Where:** `services/email/mod.rs` (`read_again`, `CheckMode`, `run_check`), `batch.rs` (`again`); command `read_email_again`; `EmailSection.tsx`; `services/run_retry/`.
+- **Preconditions:** CP-03 done.
+- **Steps:** 1. Delete a note Nandi made from mail this week. 2. **Read again**. 3. Open Nandi's runs and My notes. 4. Remove every model, send yourself an email, **Check now**; add the model back within 10 minutes.
+- **Expected:** (3) One "read again" run; the note comes back once, the others aren't doubled. (4) The check's run fails, then a retry with the same emails completes; the email is in My notes.
+- **Edge / negative cases:** No mailbox connected: the button isn't shown. **Read again** during a check runs after it.
+- **Automation:** Covered by: `mail_read_again_says_nandi_may_have_it_already` (`batch.rs`), `run_retry/tests.rs` | Layer: unit | Gap: the mailbox side is by hand.
+- **Needs relay:** no
+- **Status:** Shipped (live test pending)
+
 ### CP-29 — Email: reading older mail in the background
 
 - **What:** After the first 14-day read, Nandi reads older Inbox and Sent mail in the background, newest first, a batch of up to 60 emails every 10 minutes, each one Nandi run marked "older mail (backfill)". It uses the same filter as new mail; each line says `unread`, `list:` or `auto-submitted:` where the mailbox reports it, and Nandi passes over what the user never opened, machines' updates and phishing itself. Choice at setup and in Settings › Email: Last 3 months (default), Last year, Everything, Don't, with "About N emails, about M Nandi runs". The card shows "Reading older mail: back to <month year>, N emails so far" with Pause / Resume / Stop, then "Older mail read".

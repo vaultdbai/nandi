@@ -41,9 +41,10 @@ pub mod webhook;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 
+use chrono::{Local, TimeZone};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use specta::Type;
@@ -136,6 +137,9 @@ event!(TriggersChanged, "trigger://changed");
 struct Sources {
     /// Cron and calendar jobs
     schedules: HashMap<String, AbortHandle>,
+    /// Cron triggers already scheduled once since the app started: only the
+    /// first time catches up a missed fire (`cron::missed`), never a reload
+    caught_up: HashSet<String>,
     files: HashMap<String, FileWatch>,
     /// The dispatcher and event-bus subscriber
     tasks: Vec<AbortHandle>,
@@ -284,11 +288,20 @@ impl TriggerEngine {
                         .and_then(|c| cron::parse_schedule(&c.schedule));
                     match job {
                         Ok(schedule) => {
+                            let catch_up = if sources.caught_up.insert(trigger.id.clone()) {
+                                let last = trigger
+                                    .last_fired_at
+                                    .and_then(|ms| Local.timestamp_millis_opt(ms as i64).single());
+                                cron::missed(&schedule, last, Local::now())
+                            } else {
+                                None
+                            };
                             let handle = cron::spawn(
                                 &self.runtime,
                                 trigger.id.clone(),
                                 schedule,
                                 self.tx.clone(),
+                                catch_up,
                             );
                             sources.schedules.insert(trigger.id.clone(), handle);
                         }

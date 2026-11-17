@@ -164,6 +164,18 @@ function MailboxCardView({
             {checking ? t('email.checking') : t('email.checkNow')}
           </Button>
         )}
+        {/* The resync: the last few days again, the cursors where they are */}
+        {card.canCheck && (
+          <Button
+            size="sm"
+            variant="ghost"
+            title={t('email.readAgainHint')}
+            disabled={checking || action.isPending}
+            onClick={() => action.mutate({ kind: 'again' })}
+          >
+            {t('email.readAgain')}
+          </Button>
+        )}
         {card.canPause && (
           <Button
             size="sm"

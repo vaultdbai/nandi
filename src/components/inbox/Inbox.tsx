@@ -42,6 +42,7 @@ import {
   useDismissRequestReturn,
 } from '@/hooks/useInbox'
 import { useRetryRequest } from '@/hooks/useRequests'
+import { useRetryRun } from '@/hooks/useWork'
 import { requesterName, useRespondTrustRequest } from '@/hooks/useTrustRequests'
 import type { TrustRequest } from '@/lib/bindings'
 import { decideApproval } from '@/lib/agent-actions'
@@ -725,6 +726,7 @@ function FailedRow({ item }: { item: Extract<InboxItem, { kind: 'failed' }> }) {
   const { t } = useTranslation()
   const { open } = useViewOpener()
   const retry = useRetryRequest()
+  const retryRun = useRetryRun()
   const dismiss = useDismissWork()
   const [confirming, setConfirming] = useState(false)
   const work = item.item
@@ -733,6 +735,16 @@ function FailedRow({ item }: { item: Extract<InboxItem, { kind: 'failed' }> }) {
   const runAgain = () => {
     if (isWorkflow && work.workflowId) {
       void runWorkflow(work.workflowId)
+      return
+    }
+    // A run Nandi started (a trigger's, the mail check): the next attempt,
+    // in the same conversation. Its tools still ask for approval.
+    if (work.kind === 'trigger') {
+      retryRun.mutate(work.id, {
+        onSuccess: () =>
+          toast.success(t('inbox.retrying', { title: work.title })),
+        onError: error => toast.error(error.message),
+      })
       return
     }
     // A new attempt of the delegation (the provider still gates it)
@@ -764,7 +776,7 @@ function FailedRow({ item }: { item: Extract<InboxItem, { kind: 'failed' }> }) {
       <Button
         size="sm"
         variant="outline"
-        disabled={retry.isPending}
+        disabled={retry.isPending || retryRun.isPending}
         onClick={onRetry}
       >
         {t('inbox.retry')}

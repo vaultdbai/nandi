@@ -14,17 +14,24 @@ use tokio::sync::broadcast::{error::RecvError, Receiver};
 use crate::db::{self, role, Db};
 use crate::model::{RunStatus, RunSummary};
 use crate::services::events::{AgentTurnDone, NandiEvent, WireEvent};
+use crate::services::run_retry;
 
-/// The newest run in `run_id`'s line: the run itself, or the latest child a
-/// compaction left it going on in. `None` when there is no such run.
+/// The newest run in `run_id`'s line: the run itself, the latest child a
+/// compaction left it going on in, or the latest retry of a failed one
+/// (`run_retry`). `None` when there is no such run.
 pub fn newest_run(conn: &Connection, run_id: &str) -> rusqlite::Result<Option<RunSummary>> {
     let Some(mut run) = db::get_run(conn, run_id)? else {
         return Ok(None);
     };
-    while run.status == RunStatus::Compacted {
-        match db::child_runs(conn, &run.id)?.pop() {
-            Some(child) => run = child,
+    loop {
+        let next = match run.status {
             // The child starts in the same transaction; none yet is a race
+            RunStatus::Compacted => db::child_runs(conn, &run.id)?.pop(),
+            RunStatus::Failed => run_retry::store::retry_for(conn, &run.id)?,
+            _ => None,
+        };
+        match next {
+            Some(next) => run = next,
             None => break,
         }
     }

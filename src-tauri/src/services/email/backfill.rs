@@ -290,6 +290,7 @@ pub async fn pass(state: &AppState) -> Option<String> {
             first_read: false,
             window_days: READ_WINDOW_DAYS,
             backfill: true,
+            again: false,
         }
         .prompt();
         let title = format!("Email: older mail, {} emails", headers.len());

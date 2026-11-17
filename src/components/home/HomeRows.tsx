@@ -21,8 +21,12 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { useRetryRequest } from '@/hooks/useRequests'
-import { useWorkAction } from '@/hooks/useWork'
-import { formatDuration, formatRelativeTime } from '@/lib/format-time'
+import { useRetryRun, useWorkAction } from '@/hooks/useWork'
+import {
+  formatClockTime,
+  formatDuration,
+  formatRelativeTime,
+} from '@/lib/format-time'
 import { useViewOpener } from '@/hooks/useViewOpener'
 import { runWorkflow } from '@/lib/workflow-actions'
 import { cn } from '@/lib/utils'
@@ -57,7 +61,7 @@ export function SourceChip({ source }: { source: HomeSource }) {
 
 /** One running Request: title, where it came from, step n of m, elapsed */
 export function RunningRow({ row, now }: { row: HomeRow; now: number }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { open } = useViewOpener()
   const stale = isStale(row, now)
   return (
@@ -90,11 +94,15 @@ export function RunningRow({ row, now }: { row: HomeRow; now: number }) {
             ? t('home.running.stale', {
                 duration: formatDuration(now - row.updatedAt),
               })
-            : row.status === 'waiting'
-              ? t('home.running.waiting')
-              : row.agent
-                ? t('home.running.on', { agent: row.agent })
-                : t('home.running.working')}
+            : row.retryAt !== null
+              ? t('home.running.retrying', {
+                  time: formatClockTime(row.retryAt, i18n.language),
+                })
+              : row.status === 'waiting'
+                ? t('home.running.waiting')
+                : row.agent
+                  ? t('home.running.on', { agent: row.agent })
+                  : t('home.running.working')}
         </span>
         <span className={cn('shrink-0 tabular-nums', stale && 'text-warning')}>
           {formatDuration(Math.max(0, now - row.startedAt))}
@@ -185,9 +193,19 @@ function RetryButton({ retry, title }: { retry: HomeRetry; title: string }) {
   const { t } = useTranslation()
   const { open } = useViewOpener()
   const retryRequest = useRetryRequest()
+  const retryRun = useRetryRun()
   const [confirming, setConfirming] = useState(false)
 
   const run = async () => {
+    if (retry.kind === 'run') {
+      try {
+        await retryRun.mutateAsync(retry.runId)
+        toast.success(t('home.retried'))
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e))
+      }
+      return
+    }
     if (retry.kind === 'request') {
       try {
         const request = await retryRequest.mutateAsync(retry.requestId)
@@ -206,7 +224,7 @@ function RetryButton({ retry, title }: { retry: HomeRetry; title: string }) {
         size="sm"
         variant="outline"
         className="h-7 shrink-0"
-        disabled={retryRequest.isPending}
+        disabled={retryRequest.isPending || retryRun.isPending}
         onClick={() =>
           retry.kind === 'workflow' ? setConfirming(true) : void run()
         }

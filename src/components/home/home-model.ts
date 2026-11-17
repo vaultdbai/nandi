@@ -23,6 +23,8 @@ export type HomeSource =
 export type HomeRetry =
   | { kind: 'request'; requestId: string }
   | { kind: 'workflow'; workflowId: string }
+  /** A run Nandi started (a trigger's, the mail check): its next attempt */
+  | { kind: 'run'; runId: string }
 
 export interface HomeRow {
   id: string
@@ -41,6 +43,8 @@ export interface HomeRow {
   /** Delegations I sent: rate once done */
   rating: { workId: string; value: number | null } | null
   retry: HomeRetry | null
+  /** When Nandi tries a failed run again on its own (epoch ms) */
+  retryAt: number | null
 }
 
 const WORK_STATUS: Record<WorkState, ActivityStatus> = {
@@ -95,9 +99,15 @@ export function workRow(item: WorkItem): HomeRow {
         ? null
         : item.kind === 'task'
           ? { kind: 'request', requestId: item.id }
-          : item.workflowId
-            ? { kind: 'workflow', workflowId: item.workflowId }
-            : null,
+          : item.kind === 'trigger'
+            ? { kind: 'run', runId: item.id }
+            : item.workflowId
+              ? { kind: 'workflow', workflowId: item.workflowId }
+              : null,
+    retryAt:
+      item.state === 'waiting' && item.nextAction?.kind === 'auto'
+        ? item.nextAction.deadline
+        : null,
   }
 }
 
@@ -123,6 +133,7 @@ export function activityHomeRow(row: ActivityRow): HomeRow {
       row.status === 'failed' && row.direction === 'outgoing'
         ? { kind: 'request', requestId: row.id.replace(/^task:/, '') }
         : null,
+    retryAt: null,
   }
 }
 

@@ -732,13 +732,37 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 
 ### TR-26 — Trigger firings as Work items
 
-- **What:** Agent runs started by trigger firings (last 24 h, up to 100 fires) appear as Work items of kind `trigger` in their run's state; a workflow firing appears as its workflow run.
-- **Where:** `src-tauri/src/services/work/mod.rs` (`trigger_items`, `from_trigger_fire`); shown on Home Running/Recent.
+- **What:** Agent runs started by trigger firings (last 24 h, up to 100 fires) appear as Work items of kind `trigger` in the state of the run's latest attempt (TR-29); a workflow firing appears as its workflow run. A failed run Nandi will try again is `waiting` with an `auto` next action due at the retry, not `failed`. A failed email or calendar check appears the same way (kind `trigger`, titled "Email: N new emails"), but only once it failed.
+- **Where:** `src-tauri/src/services/work/mod.rs` (`trigger_items`, `failed_check_items`, `from_trigger_fire`); shown on Home Running/Recent.
 - **Preconditions:** An agent-target trigger that fired.
-- **Steps:** Fire it; call `POST /api/rpc/list_work`.
-- **Expected:** An item with kind `trigger`, the trigger name as title, state matching the agent run.
-- **Edge / negative cases:** Fires without a run id are skipped.
-- **Automation:** Covered by: `a_trigger_firing_is_a_work_item_in_its_runs_state` (`work/tests.rs`) | Layer: unit | Gap: none.
+- **Steps:** Fire it; call `POST /api/rpc/list_work`. Make its run fail (no model), call it again.
+- **Expected:** An item with kind `trigger`, the trigger name as title, state matching the latest attempt. After the failure: `waiting`, `nextAction.kind` `auto`, `deadline` about 2 minutes later.
+- **Edge / negative cases:** Fires without a run id are skipped. A run a cost or turn cap stopped is `failed` at once (never tried again on its own).
+- **Automation:** Covered by: `a_trigger_firing_is_a_work_item_in_its_runs_state`, `a_failed_firing_nandi_will_try_again_waits_on_that` (`work/tests.rs`), `work_waits_on_a_retry_only_while_nandi_will_make_one` (`run_retry/tests.rs`) | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### TR-29 — Nandi tries its own failed runs again
+
+- **What:** A run Nandi started on its own (a cron, calendar, file, webhook, device or event trigger, the email check, the calendar check) that failed is tried again 2 minutes later, then 10 minutes after that: three attempts in all, only within 6 hours of the failure. The retry is a new run in the same conversation with the first input and a note: "(Nandi: Attempt 2 of 3. The last attempt failed: <error>. If it got partway, check what was already done before you repeat anything.)". A run the app was closed in is failed at the next start ("Interrupted: …") and tried again the same way. Never tried again on their own: the user's own chats, workflow steps (workflows resume), delegations, Request steps, cancelled runs, and runs a middleware stopped (turn, cost or token cap, read-only). Once a retry succeeds, the failure is gone from the Inbox.
+- **Where:** `src-tauri/src/services/run_retry/` (`sweep`, `next_try`, `retry_input`, `store.rs`); `run_waiter::newest_run`; `runs.retry_of` and `runs.attempt` (migration 007); the sweep starts in `services/mod.rs`.
+- **Preconditions:** The morning digest (or any cron trigger on Nandi) and a way to make a run fail: no model set, or quit the app while it runs.
+- **Steps:** 1. Remove every model, fire the morning digest (**Test** on its trigger). 2. Watch Home and the Inbox. 3. Add a model back within 10 minutes. 4. Separately: start the digest and quit Nandi while it runs; start Nandi again.
+- **Expected:** (2) The digest is not red: Home's Running says "Nandi tries again at <time>". After about 2 minutes a second run starts in Nandi's chat with the note. (3) The next attempt completes; the Inbox shows nothing. (4) The interrupted run is failed, and about 2 minutes after the start Nandi tries it again.
+- **Edge / negative cases:** A third failure leaves it red in the Inbox with **Retry** (RQ-24). A run stopped by a cost cap is red at once and never tried again on its own. A retry that can't start (the agent was deleted) waits 10 minutes before the next try.
+- **Automation:** Covered by: `run_retry/tests.rs` (`retries_wait_longer_each_time_and_stop_after_the_last`, `only_nandis_own_failures_nothing_retries_yet_are_open`, `the_sweep_tries_a_failed_digest_again_once_it_is_due`, `the_newest_run_of_a_line_is_its_latest_attempt`) | Layer: unit / api | Gap: the wait for the sweep is by hand.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### TR-30 — A schedule missed while the app was closed fires at the next start
+
+- **What:** When Nandi starts, a cron trigger whose time came while the app was closed fires once (payload `caught_up: true`): only the latest missed time, only if it was in the last 12 hours, and only for schedules an hour or more apart. A trigger that never fired catches nothing up, and editing a trigger never fires a missed time. A laptop that slept through the time fires within a minute of waking: the cron job waits on the wall clock a minute at a time.
+- **Where:** `src-tauri/src/services/triggers/cron.rs` (`missed`, `spawn`); `triggers/mod.rs` (`Sources::caught_up`).
+- **Preconditions:** The morning digest fired at least once.
+- **Steps:** 1. Quit Nandi before 8:00. 2. Start it after 8:00 (before 20:00). 3. Separately: put the laptop to sleep before 8:00 with Nandi open, wake it after.
+- **Expected:** (2) The digest runs within seconds of the start. (3) It runs within a minute of waking.
+- **Edge / negative cases:** Started after 20:00: no catch-up, the next one is tomorrow. Closed for three days: one digest, not three. A `*/5 * * * *` schedule never catches up.
+- **Automation:** Covered by: `a_time_missed_while_closed_is_caught_up_once` (`cron.rs`) | Layer: unit | Gap: the sleep and wake are by hand.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -1049,13 +1073,13 @@ Navigation notes (true today): workflows and triggers are tabs of **Automations*
 
 ### RQ-24 — Failed items: Retry and Dismiss
 
-- **What:** Failures from the last 24 h appear after waiting items (not counted in the badge) with **Dismiss** (hidden from the Inbox, kept in history; remembered in `work_preferences`) and **Retry** (a workflow run asks first, "Run <title> again?", since every step runs again; a delegation retries as a new attempt). The title opens the item.
-- **Where:** `Inbox.tsx` (`FailedRow`); commands `dismiss_work`, `list_dismissed_work`, `run_workflow`, `retry_task`; HTTP `POST /api/rpc/dismiss_work`, `list_dismissed_work`.
-- **Preconditions:** A failed workflow run and a failed delegation.
-- **Steps:** Dismiss one; Retry the other (confirm for workflow).
-- **Expected:** Dismissed row gone and stays gone after restart; retry starts new work.
+- **What:** Failures from the last 24 h appear after waiting items (not counted in the badge) with **Dismiss** (hidden from the Inbox, kept in history; remembered in `work_preferences`) and **Retry** (a workflow run asks first, "Run <title> again?", since every step runs again; a delegation retries as a new attempt; a trigger run or a failed email check runs again at once in the same conversation, with the toast "Nandi is trying <title> again"). The title opens the item. A trigger run shows here only after Nandi's own retries (TR-29) are spent.
+- **Where:** `Inbox.tsx` (`FailedRow`), `hooks/useWork.ts` (`useRetryRun`); commands `dismiss_work`, `list_dismissed_work`, `run_workflow`, `retry_task`, `retry_run`; HTTP `POST /api/rpc/dismiss_work`, `list_dismissed_work`, `retry_run`.
+- **Preconditions:** A failed workflow run, a failed delegation and a failed trigger run (TR-29 with no model for 15 minutes).
+- **Steps:** Dismiss one; Retry the others (confirm for workflow).
+- **Expected:** Dismissed row gone and stays gone after restart; retry starts new work. The trigger's retry shows in Nandi's chat with "The user asked to try this again"; once it completes the row is gone.
 - **Edge / negative cases:** Dismissing an empty id → "Nothing to dismiss"; dismissals older than 7 days are pruned.
-- **Automation:** Covered by: `dismissed_failures_are_remembered` (`work/tests.rs`), `inbox-model.test.ts` ("offers failures from the last day that were not dismissed") | Layer: unit / api | Gap: none.
+- **Automation:** Covered by: `dismissed_failures_are_remembered` (`work/tests.rs`), `inbox-model.test.ts` ("offers failures from the last day that were not dismissed"), `retry_tries_any_failed_run_again_but_nothing_else` (`run_retry/tests.rs`) | Layer: unit / api | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 

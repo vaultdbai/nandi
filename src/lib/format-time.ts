@@ -33,6 +33,14 @@ export function formatDuration(ms: number): string {
   return `${seconds}s`
 }
 
+/** A time today in the user's own clock: "08:12" / "8:12 AM" */
+export function formatClockTime(time: number, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(time))
+}
+
 /**
  * When a daily count resets (00:00 UTC), in the user's own clock: "Wed
  * 01:00" / "mer. 01:00"

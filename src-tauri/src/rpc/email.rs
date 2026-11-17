@@ -20,6 +20,10 @@ super::commands! {
     /// Checks every connected mailbox now, in the background
     fn check_email_now(state) -> EmailStatus => Ok(email::check_now(&state).await);
 
+    /// Reads the last few days of mail again, in the background (the
+    /// user's resync); the change cursors stay where they are
+    fn read_email_again(state) -> EmailStatus => Ok(email::read_again(&state).await);
+
     fn set_email_paused(state, provider: MailProvider, paused: bool) -> EmailStatus => email::set_paused(&state, provider, paused).await;
 
     /// Signs out: deletes the sign-in, the cursor and Nandi's access

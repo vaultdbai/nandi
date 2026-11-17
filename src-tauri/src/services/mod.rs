@@ -66,6 +66,7 @@ pub mod repo_store;
 pub mod repos;
 pub mod run_analysis;
 pub mod run_plan;
+pub mod run_retry;
 pub mod run_trail;
 pub mod run_waiter;
 pub mod runs;
@@ -343,6 +344,8 @@ impl AppState {
                 log::error!("Failed to start triggers: {e}");
             }
         });
+        // Nandi tries its own failed work again (`run_retry`)
+        run_retry::start_sweeper(&state);
         // Approvals nobody decided in time expire, so runs don't stall
         let weak = state.downgrade();
         state.runtime().spawn(async move {

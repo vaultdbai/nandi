@@ -1,13 +1,17 @@
 //! Global run commands (Tauri adapter for `services::runs`).
 
-use crate::services::runs;
 use crate::services::runs::{DateRange, RunFilters, RunPage, RunStats};
+use crate::services::{run_retry, runs};
 
 super::commands! {
     /// Runs across every agent, newest first
     fn list_all_runs(state, filters: RunFilters, limit: u32, offset: u32) -> RunPage => runs::list_all_runs(state.db(), filters, limit, offset).await;
 
     fn get_run_stats(state, range: DateRange) -> RunStats => runs::get_run_stats(state.db(), range).await;
+
+    /// Tries a failed run again now, whatever its attempt (the Inbox's
+    /// Retry); returns the new run's ID
+    fn retry_run(state, run_id: String) -> String => run_retry::retry_run(&state, run_id).await;
 }
 
 #[cfg(test)]
