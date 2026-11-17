@@ -178,11 +178,11 @@ export function buildNavTree(input: NavTreeInput): NavNode[] {
         tab: 'triggers',
       }),
     ],
+    // Nandi keeps My notes
+    nandi: [tab('nandi:notes', 'nav.notes', { kind: 'notes' })],
     // Their pages' own tabs and sections are enough
-    nandi: undefined,
     library: undefined,
     network: undefined,
-    notes: undefined,
     settings: undefined,
   }
   const nandi = input.agents.find(isDefaultAgent)

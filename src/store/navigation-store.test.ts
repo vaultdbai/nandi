@@ -110,6 +110,8 @@ describe('the seven pages', () => {
       // Nandi's page and runs are its own item, not Agents'
       [{ kind: 'agent', agentId: DEFAULT_AGENT, tab: 'settings' }, 'nandi'],
       [{ kind: 'run', agentId: DEFAULT_AGENT, runId: 'r' }, 'nandi'],
+      // Nandi keeps My notes
+      [{ kind: 'notes', note: 'n' }, 'nandi'],
       [{ kind: 'workflow', workflowId: 'w' }, 'automations'],
       [{ kind: 'workflow-builder', workflowId: 'w' }, 'automations'],
       [{ kind: 'trigger', triggerId: 't' }, 'automations'],

@@ -8,7 +8,6 @@ import {
   Library,
   MessageSquare,
   Network,
-  NotebookPen,
   Settings,
   Sparkles,
   Workflow,
@@ -46,7 +45,6 @@ const ICONS: Record<NavSection, React.ReactNode> = {
   library: <Library />,
   network: <Network />,
   studio: <MessageSquare />,
-  notes: <NotebookPen />,
   settings: <Settings />,
 }
 
@@ -59,9 +57,10 @@ const DOT_COLORS: Record<NavDot, string> = {
 }
 
 /**
- * Nandi on top, then the eight pages, as a tree (`nav-tree.ts`): under Home
- * its Inbox and All activity, under Ask the latest chats, under Agents the
- * person's agents, under the rest their tabs and sections. Clicking a name opens it and its branch;
+ * The eight pages as a tree (`nav-tree.ts`): under Home its Inbox and All
+ * activity, under Nandi My notes, under Ask the latest chats, under Agents
+ * the person's agents, under the rest their tabs and sections. Clicking a
+ * name opens it and its branch;
  * the chevron only opens or closes. The arrow keys move through what's
  * open, Right and Left open and close, Enter opens. The branches leading
  * to the current page open by themselves, and the rest stay as you left

@@ -9,9 +9,9 @@ import type { SettingsSection } from '@/lib/settings-nav'
  * Everything the main pane can show. Navigation is plain state (no router):
  * a desktop app has no URLs to keep in sync.
  *
- * The sidebar has nine pages (`NAV_SECTIONS`); every other view is a
+ * The sidebar has eight pages (`NAV_SECTIONS`); every other view is a
  * detail page that belongs to one of them (`navSection`). Nandi's page is
- * its agent page.
+ * its agent page, and My notes sits under it: Nandi keeps them.
  */
 export type View =
   // The sidebar pages
@@ -133,12 +133,11 @@ export type SharingTab =
 /** Who may call you, as a list or the trust graph */
 export type CallersView = 'list' | 'graph'
 
-/** The sidebar items, in order: Nandi, the default agent, on top */
+/** The sidebar items, in order: Home, then Nandi, the default agent */
 export const NAV_SECTIONS = [
-  'nandi',
   'home',
+  'nandi',
   'studio',
-  'notes',
   'agents',
   'automations',
   'library',
@@ -185,7 +184,7 @@ export function navSection(view: View): NavSection | null {
     case 'studio':
       return 'studio'
     case 'notes':
-      return 'notes'
+      return 'nandi'
     case 'settings':
       return 'settings'
     default:
@@ -202,7 +201,6 @@ export const SECTION_VIEWS: Record<NavSection, View> = {
   library: { kind: 'library' },
   network: { kind: 'network' },
   studio: { kind: 'studio', conversationId: null },
-  notes: { kind: 'notes' },
   settings: { kind: 'settings' },
 }
 

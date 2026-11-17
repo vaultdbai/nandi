@@ -28,10 +28,9 @@ const relay = (relayUrl: string | null, connected: boolean): RelayStatus => ({
 })
 
 const ITEMS = [
-  'Nandi',
   'Home',
+  'Nandi',
   'Ask',
-  'My notes',
   'Agents',
   'Automations',
   'Library',
@@ -54,7 +53,7 @@ describe('Sidebar', () => {
     })
   })
 
-  it('has Nandi on top of the eight items, in order, closed at first', () => {
+  it('has Home, then Nandi, of the eight items, in order, closed at first', () => {
     render(<Sidebar />)
     const buttons = within(screen.getByRole('navigation')).getAllByRole(
       'button'
@@ -64,7 +63,8 @@ describe('Sidebar', () => {
     expect(navButton('Home')).toHaveAttribute('aria-expanded', 'false')
     expect(navButton('Automations')).toHaveAttribute('aria-expanded', 'false')
     expect(navButton('Settings')).not.toHaveAttribute('aria-expanded')
-    expect(navButton('Nandi')).not.toHaveAttribute('aria-expanded')
+    // Nandi opens to My notes
+    expect(navButton('Nandi')).toHaveAttribute('aria-expanded', 'false')
   })
 
   it.each<[string, View]>([
@@ -75,7 +75,6 @@ describe('Sidebar', () => {
     ['Library', { kind: 'library' }],
     ['Network', { kind: 'network' }],
     ['Ask', { kind: 'studio', conversationId: null }],
-    ['My notes', { kind: 'notes' }],
     ['Settings', { kind: 'settings' }],
   ])('%s opens its page', async (label, view) => {
     const user = userEvent.setup()
@@ -83,6 +82,16 @@ describe('Sidebar', () => {
     await user.click(navButton(label))
     expect(current()).toEqual(view)
     expect(navButton(label)).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('keeps My notes under Nandi', async () => {
+    const user = userEvent.setup()
+    render(<Sidebar />)
+    await user.click(navButton('Nandi'))
+    expect(navButton('Nandi')).toHaveAttribute('aria-expanded', 'true')
+    await user.click(navButton('My notes'))
+    expect(current()).toEqual({ kind: 'notes' })
+    expect(navButton('My notes')).toHaveAttribute('aria-current', 'page')
   })
 
   it('opens a page’s branch, with its live list', async () => {
@@ -196,11 +205,11 @@ describe('Sidebar', () => {
     render(<Sidebar />)
     navButton('Home').focus()
     await user.keyboard('{ArrowDown}')
-    expect(navButton('Ask')).toHaveFocus()
-    await user.keyboard('{ArrowUp}{ArrowUp}{ArrowUp}')
+    expect(navButton('Nandi')).toHaveFocus()
+    await user.keyboard('{ArrowUp}{ArrowUp}')
     expect(navButton('Settings')).toHaveFocus()
     await user.keyboard('{Home}')
-    expect(navButton('Nandi')).toHaveFocus()
+    expect(navButton('Home')).toHaveFocus()
     await user.keyboard('{End}{Enter}')
     expect(current()).toEqual({ kind: 'settings' })
   })

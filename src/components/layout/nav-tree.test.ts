@@ -50,13 +50,12 @@ const input = (overrides: Partial<NavTreeInput> = {}): NavTreeInput => ({
 const ids = (nodes: NavNode[] | undefined) => nodes?.map(n => n.id)
 
 describe('buildNavTree', () => {
-  it('keeps Nandi on top of the eight pages, with Inbox and All activity under Home', () => {
+  it('puts Home, then Nandi, on top of the eight pages, with Inbox and All activity under Home', () => {
     const tree = buildNavTree(input({ inboxCount: 3 }))
     expect(ids(tree)).toEqual([
-      'nandi',
       'home',
+      'nandi',
       'studio',
-      'notes',
       'agents',
       'automations',
       'library',
@@ -130,13 +129,14 @@ describe('buildNavTree', () => {
       ...Array.from({ length: LIST_LIMIT }, (_, i) => agent(`x${i}`)),
     ]
     const tree = buildNavTree(input({ agents }))
-    expect(tree[0]).toMatchObject({
+    expect(findNode(tree, 'nandi')).toMatchObject({
       id: 'nandi',
       label: { text: 'My Nandi' },
       view: { kind: 'agent', agentId: DEFAULT_AGENT },
       dot: 'busy',
     })
-    expect(tree[0]?.children).toBeUndefined()
+    // Nandi keeps My notes
+    expect(ids(findNode(tree, 'nandi')?.children)).toEqual(['nandi:notes'])
     const list = findNode(tree, 'agents')?.children ?? []
     expect(ids(list)).not.toContain(`agent:${DEFAULT_AGENT}`)
     expect(list).toHaveLength(LIST_LIMIT + 1)
@@ -146,7 +146,9 @@ describe('buildNavTree', () => {
       values: { count: LIST_LIMIT + 1 },
     })
     // Before the agents load, the item still reads Nandi
-    expect(buildNavTree(input())[0]?.label).toEqual({ text: 'Nandi' })
+    expect(findNode(buildNavTree(input()), 'nandi')?.label).toEqual({
+      text: 'Nandi',
+    })
   })
 
   it('has Workflows and Triggers under Automations; Library, Network and Settings stand alone', () => {
@@ -208,6 +210,11 @@ describe('the active node', () => {
         tab: 'settings',
       })
     ).toEqual(['nandi'])
+    // My notes is under Nandi
+    expect(activePath(tree, { kind: 'notes' })).toEqual([
+      'nandi',
+      'nandi:notes',
+    ])
     // The chat list is Ask itself, not its All chats row
     expect(activePath(tree, { kind: 'studio', conversationId: null })).toEqual([
       'studio',
@@ -244,8 +251,8 @@ describe('keyboard order', () => {
   const tree = buildNavTree(input({ agents: [agent('amy')] }))
 
   it('walks open branches only', () => {
-    expect(visibleIds(tree, new Set())).toHaveLength(9)
-    expect(visibleIds(tree, new Set(['agents'])).slice(4, 7)).toEqual([
+    expect(visibleIds(tree, new Set())).toHaveLength(8)
+    expect(visibleIds(tree, new Set(['agents'])).slice(3, 6)).toEqual([
       'agents',
       'agent:amy',
       'automations',
