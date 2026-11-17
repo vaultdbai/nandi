@@ -27,10 +27,19 @@ use serde_json::Value;
 
 use crate::runtime::{self, ProxyTokens};
 use crate::services::agents::SkillConfig;
+use crate::services::config::repo_config::HarnessDefaults;
 use crate::services::connectors::folders::{Access, SharedFolder};
+use crate::services::domain::{Agent, AgentId};
 use crate::services::egress::relay::{self, RelayImage, AGENT_NETWORK, RELAY_NAME};
 use crate::services::egress::tests::{allow_hosts, serve_on, set_proxy_port};
 use crate::services::egress::EgressState;
+use crate::services::harness::adapter::{CliProfile, HarnessConfig, HarnessRuntime};
+use crate::services::harness::claude_code::ClaudeCodeAdapter;
+use crate::services::harness::codex::CodexAdapter;
+use crate::services::harness::detection::DetectEnv;
+use crate::services::orchestrator::runtime_router::{
+    self, ModelAccess, RouterInputs, RuntimeDecision, Sandbox,
+};
 use crate::services::secrets::Secrets;
 
 /// What the planted credentials carry. Searched for as `LEAK[M]ARK`, so the
@@ -491,116 +500,200 @@ async fn the_native_container_is_locked_down() {
     .await;
 }
 
-/// SB-01, SB-13, SB-15: a coding agent's container, planned the way a run
-/// plans it (`runtime_router::plan`) with the CLI's environment
-/// (`claude_code::env`) from a home full of credentials, and a real CLI
-/// (`git`) going through the relay to a site outside `network.allow`
+/// The built-in harnesses that run in the container. Each one is held to the
+/// same lockdown checks; `every_built_in_harness_is_checked_or_refused`
+/// keeps a new harness from skipping them
+const CONTAINER_HARNESSES: [HarnessRuntime; 2] =
+    [HarnessRuntime::ClaudeCode, HarnessRuntime::Codex];
+
+/// The built-in harnesses the router refuses to run in the container
+const REFUSED_HARNESSES: [HarnessRuntime; 1] = [HarnessRuntime::GeminiCli];
+
+/// The host's model access for `runtime`, its key marked so a leak into the
+/// container shows
+fn host_model_access(runtime: &HarnessRuntime, env: &DetectEnv) -> Option<ModelAccess> {
+    match runtime {
+        HarnessRuntime::ClaudeCode => {
+            runtime_router::claude_code_access(None, &HarnessDefaults::default(), env, || {
+                Some(format!("sk-ant-{MARK}-nandi"))
+            })
+        }
+        HarnessRuntime::Codex => {
+            runtime_router::codex_access(env, || Some(format!("sk-{MARK}-openai")))
+        }
+        other => panic!("{} doesn't run in the container", other.id()),
+    }
+}
+
+/// What `runtime`'s CLI profile puts in its container's environment
+fn container_env(
+    runtime: &HarnessRuntime,
+    env: DetectEnv,
+    config: &HarnessConfig,
+) -> Vec<(String, String)> {
+    match runtime {
+        HarnessRuntime::ClaudeCode => ClaudeCodeAdapter::with_env(env).profile().env(config),
+        HarnessRuntime::Codex => CodexAdapter::create().profile().env(config),
+        other => panic!("{} doesn't run in the container", other.id()),
+    }
+}
+
+fn coding_agent(runtime: &HarnessRuntime) -> Agent {
+    let id = runtime.id();
+    Agent::from_skill_md(
+        AgentId::parse(format!("sandbox-e2e-{id}")).unwrap(),
+        &format!("---\nname: Coder\nruntime: {id}\n---\n\nYou code.\n"),
+    )
+    .unwrap()
+}
+
+/// A new built-in harness either passes the lockdown checks or is refused
+#[test]
+fn every_built_in_harness_is_checked_or_refused() {
+    for runtime in HarnessRuntime::BUILT_IN {
+        assert!(
+            CONTAINER_HARNESSES.contains(&runtime) != REFUSED_HARNESSES.contains(&runtime),
+            "{}: add it to CONTAINER_HARNESSES or REFUSED_HARNESSES",
+            runtime.id()
+        );
+    }
+    for runtime in REFUSED_HARNESSES {
+        let decision = runtime_router::plan(
+            &coding_agent(&runtime),
+            RouterInputs {
+                sandbox: Sandbox::Ready(Vec::new()),
+                ..RouterInputs::default()
+            },
+        );
+        assert!(
+            !matches!(decision, RuntimeDecision::Harness(_)),
+            "{} runs in the container: move it to CONTAINER_HARNESSES",
+            runtime.id()
+        );
+    }
+}
+
+/// SB-01, SB-13, SB-15: each coding agent's container, planned the way a run
+/// plans it (`runtime_router::plan`) with its CLI's environment and model
+/// access from a home full of credentials, and a real CLI (`git`) going
+/// through the relay to a site outside `network.allow`
 #[tokio::test]
 #[ignore = "needs Docker and the sandbox images (pnpm run test:sandbox)"]
 async fn the_coding_agent_container_is_locked_down() {
-    use crate::services::domain::{Agent, AgentId};
-    use crate::services::harness::adapter::{spawn_in_container, CliProfile, Invocation};
-    use crate::services::harness::claude_code::ClaudeCodeAdapter;
-    use crate::services::harness::detection::DetectEnv;
-    use crate::services::orchestrator::runtime_router::{
-        self, RouterInputs, RuntimeDecision, Sandbox,
-    };
+    use crate::services::harness::adapter::{spawn_in_container, Invocation};
 
     with_relay(|proxy| async move {
         crate::services::images::ensure(crate::services::images::SandboxImage::Harness)
             .await
             .unwrap();
-        let home = tempfile::tempdir().unwrap();
-        plant_credentials(home.path());
-        let workdir = home.path().join("work");
-        std::fs::create_dir_all(&workdir).unwrap();
-        let agent = Agent::from_skill_md(
-            AgentId::parse("sandbox-e2e-coder").unwrap(),
-            "---\nname: Coder\nruntime: claude-code\n---\n\nYou code.\n",
-        )
-        .unwrap();
-        let token = proxy.tokens.issue("sandbox-e2e-coder");
-        let RuntimeDecision::Harness(plan) = runtime_router::plan(
-            &agent,
-            RouterInputs {
-                sandbox: Sandbox::Ready(Vec::new()),
-                workdir: workdir.clone(),
-                proxy_token: token,
-                ..RouterInputs::default()
-            },
-        ) else {
-            panic!("a harness plan");
-        };
-        let name = plan.config.placement.name.clone();
-        let adapter = ClaudeCodeAdapter::with_env(DetectEnv {
-            home: home.path().to_path_buf(),
-            path: None,
-            vars: HashMap::from([
-                ("GITHUB_TOKEN".to_string(), format!("ghp_{MARK}-env")),
-                ("NPM_TOKEN".to_string(), format!("{MARK}-npm-env")),
-            ]),
-        });
-        let env = adapter.profile().env(&plan.config);
         // The relay a coding agent gets is the Node one
         docker(&["rm", "-f", RELAY_NAME]).await;
         relay::ensure_ready(RelayImage::Harness).await.unwrap();
-        let _remove = Remove(vec![name.clone()]);
-        let mut sleeper = spawn_in_container(
-            &Invocation::new("sleep", &["300"]),
-            &env,
-            &plan.config.placement,
-        )
-        .unwrap();
-        let deadline = Instant::now() + Duration::from_secs(60);
-        let info = loop {
-            if let Some(info) = inspect(&name)
-                .await
-                .filter(|i| i["State"]["Running"] == true)
-            {
-                break info;
+        for runtime in CONTAINER_HARNESSES {
+            let id = runtime.id();
+            let home = tempfile::tempdir().unwrap();
+            plant_credentials(home.path());
+            let workdir = home.path().join("work");
+            std::fs::create_dir_all(&workdir).unwrap();
+            let detect = DetectEnv {
+                home: home.path().to_path_buf(),
+                path: None,
+                vars: HashMap::from([
+                    ("GITHUB_TOKEN".to_string(), format!("ghp_{MARK}-env")),
+                    ("NPM_TOKEN".to_string(), format!("{MARK}-npm-env")),
+                    ("OPENAI_API_KEY".to_string(), format!("sk-{MARK}-env")),
+                ]),
+            };
+            let agent = coding_agent(&runtime);
+            let token = proxy.tokens.issue(agent.id().as_str());
+            let RuntimeDecision::Harness(plan) = runtime_router::plan(
+                &agent,
+                RouterInputs {
+                    sandbox: Sandbox::Ready(Vec::new()),
+                    workdir: workdir.clone(),
+                    model_access: host_model_access(&runtime, &detect),
+                    proxy_token: token,
+                    ..RouterInputs::default()
+                },
+            ) else {
+                panic!("{id}: a harness plan");
+            };
+            assert!(
+                plan.config.model_route.is_some(),
+                "{id}: its model through the proxy"
+            );
+            let name = plan.config.placement.name.clone();
+            let env = container_env(&runtime, detect, &plan.config);
+            let _remove = Remove(vec![name.clone()]);
+            let mut sleeper = spawn_in_container(
+                &Invocation::new("sleep", &["300"]),
+                &env,
+                &plan.config.placement,
+            )
+            .unwrap();
+            let deadline = Instant::now() + Duration::from_secs(60);
+            let info = loop {
+                if let Some(info) = inspect(&name)
+                    .await
+                    .filter(|i| i["State"]["Running"] == true)
+                {
+                    break info;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "{id}: the harness container never ran"
+                );
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            };
+
+            assert_hardened(&info, 512, "/home/node");
+            assert_eq!(info["HostConfig"]["AutoRemove"], true, "{id}");
+            assert_eq!(
+                mounts(&info),
+                HashMap::from([("/agent/workdir".to_string(), true)]),
+                "{id}: only the workdir of the host's"
+            );
+            let container_env = strings(&info["Config"]["Env"]);
+            for var in &container_env {
+                assert!(
+                    !var.contains(MARK),
+                    "{id}: a host credential in the env: {var}"
+                );
             }
-            assert!(Instant::now() < deadline, "the harness container never ran");
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        };
+            assert!(
+                container_env
+                    .iter()
+                    .any(|v| v.starts_with("HTTPS_PROXY=") && v.contains(RELAY_NAME)),
+                "{id}: {container_env:?}"
+            );
+            let found = files_with_the_mark(&name).await;
+            assert!(
+                found.trim().is_empty(),
+                "{id}: host credentials inside: {found}"
+            );
 
-        assert_hardened(&info, 512, "/home/node");
-        assert_eq!(info["HostConfig"]["AutoRemove"], true);
-        assert_eq!(
-            mounts(&info),
-            HashMap::from([("/agent/workdir".to_string(), true)]),
-            "only the workdir of the host's"
-        );
-        let container_env = strings(&info["Config"]["Env"]);
-        for var in &container_env {
-            assert!(!var.contains(MARK), "a host credential in the env: {var}");
+            only_the_proxy_gets_out(&name, proxy).await;
+            // SB-15: a CLI honouring HTTPS_PROXY is refused by the proxy
+            let (code, _, stderr) = exec(
+                &name,
+                &[
+                    "git",
+                    "ls-remote",
+                    &format!(
+                        "https://{}/nandi.git",
+                        REFUSED_SITE.trim_end_matches(":443")
+                    ),
+                ],
+            )
+            .await;
+            assert_ne!(code, 0, "{id}");
+            assert!(
+                stderr.contains("403"),
+                "{id}: refused by the proxy: {stderr}"
+            );
+
+            let _ = sleeper.child.start_kill();
         }
-        assert!(
-            container_env
-                .iter()
-                .any(|v| v.starts_with("HTTPS_PROXY=") && v.contains(RELAY_NAME)),
-            "{container_env:?}"
-        );
-        let found = files_with_the_mark(&name).await;
-        assert!(found.trim().is_empty(), "host credentials inside: {found}");
-
-        only_the_proxy_gets_out(&name, proxy).await;
-        // SB-15: a CLI honouring HTTPS_PROXY is refused by the proxy
-        let (code, _, stderr) = exec(
-            &name,
-            &[
-                "git",
-                "ls-remote",
-                &format!(
-                    "https://{}/nandi.git",
-                    REFUSED_SITE.trim_end_matches(":443")
-                ),
-            ],
-        )
-        .await;
-        assert_ne!(code, 0);
-        assert!(stderr.contains("403"), "refused by the proxy: {stderr}");
-
-        let _ = sleeper.child.start_kill();
     })
     .await;
 }
