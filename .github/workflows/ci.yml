@@ -23,6 +23,8 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # Usually about 11 minutes. A hang fails here, not after GitHub's 6 hours
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -70,6 +72,7 @@ jobs:
       # the app's test binary needs more memory than that, so add swap, and
       # free disk the target dir needs
       - name: Make room for the Rust build
+        timeout-minutes: 10
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo swapoff -a
@@ -141,6 +144,8 @@ jobs:
   # ghcr.io/vaultdbai/nandi-runtime and nandi-harness (public) themselves
   sandbox:
     runs-on: ubuntu-latest
+    # Usually about 6 minutes
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -182,6 +187,7 @@ jobs:
       # As in `check`: swap for linking the test binary, disk for the
       # target dir and the images
       - name: Make room for the Rust build
+        timeout-minutes: 10
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo swapoff -a

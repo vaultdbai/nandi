@@ -37,6 +37,8 @@ jobs:
             installers: 'appimage/AppImage=VaultDB-Nandi-linux-x64.AppImage'
 
     runs-on: ${{ matrix.platform }}
+    # Signed builds per platform; a hang fails here, not after 6 hours
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
