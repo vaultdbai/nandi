@@ -9,7 +9,14 @@ Please report it privately, not in a public issue:
 - **GitHub:** [Report a vulnerability](https://github.com/vaultdbai/nandi/security/advisories/new) (a private advisory only the maintainers see), or
 - **Email:** hello@vaultdb.ai, with "Security" in the subject.
 
-Include the Nandi version (Settings or the installer name), your OS, and the steps to reproduce. We answer within 3 working days, keep you posted while we fix it, and credit you in the release notes unless you'd rather we didn't.
+Include the Nandi version (Settings or the installer name), your OS, and the steps to reproduce. We credit you in the release notes unless you'd rather we didn't.
+
+### Response Timeline
+
+- **Initial Response**: Within 48 hours
+- **Assessment**: Within 7 days
+- **Fix**: Timeline depends on severity
+- **Disclosure**: After fix is available
 
 ## In Scope
 
@@ -35,3 +42,44 @@ What Nandi promises, and so what we most want to hear about:
 ## Supported Versions
 
 The latest release on [Releases](https://github.com/vaultdbai/nandi/releases/latest). Fixes ship in a new release; the app updates itself.
+
+## The App's Own Security Measures
+
+This app uses Tauri's security model:
+
+- **Permissions**: Minimal system permissions via `capabilities/`
+- **IPC**: Type-safe commands via tauri-specta
+- **File Access**: Scoped to app directories by default
+- **CSP**: Configured in `index.html`
+
+## For Developers
+
+### File Operations
+
+```rust
+// ✅ Validate paths - prevent traversal attacks
+if filename.contains("..") {
+    return Err("Invalid filename".into());
+}
+
+// ❌ Never trust raw user input for paths
+std::fs::write(user_input, data)
+```
+
+### Secrets
+
+- Never commit secrets to version control
+- Use `.env.local` (gitignored) for local secrets
+- Use GitHub Secrets for CI/CD
+
+### Dependency Audits
+
+```bash
+pnpm audit
+cargo audit
+```
+
+## Resources
+
+- [Tauri Security Guide](https://tauri.app/security/)
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)

@@ -32,7 +32,7 @@ pnpm run check:all
 
 - **Bug Reports**: Use the bug report template
 - **Feature Requests**: Use the feature request template
-- **Security Issues**: See [SECURITY.md](SECURITY.md)
+- **Security Issues**: See [SECURITY.md](../SECURITY.md)
 
 ### Pull Requests
 
