@@ -2,23 +2,26 @@
 
 Agents act only inside Docker containers. Without Docker, Nandi still works as a chat assistant, but agents get no tools. This feature checks, read-only, whether this computer is ready, and tells the user what to do, step by step, on Windows, macOS and Linux. Nothing else in Nandi waits on it.
 
-Phase 1 (built): detection, the checklist UI, the no-admin **Start Docker** action and links to official pages. Phase 2 (planned, `docs/tasks-todo/task-x-get-ready-requirements.md`): approved installs and fixes (winget, Homebrew, `wsl --update`, `pkexec` on Linux), each with an approval card and elevation only inside its own process.
+Phase 1 (built): detection, the checklist UI, the no-admin **Start Docker** action and links to official pages. Phase 2 (built for Windows and macOS, 2026-11-18): one go-ahead that runs the installs (`wsl --update` or `wsl --install`, winget or Homebrew or Docker's `.dmg`, Start Docker), and "Start Docker when Nandi opens". Linux stays phase 1 (`pkexec` installs are planned in `docs/tasks-todo/task-x-get-ready-requirements.md`).
 
 ## Rules
 
 - Detection is read-only and makes no network call except the image check.
-- Commands run with fixed arguments, no shell, no window (`CREATE_NO_WINDOW`), a timeout (5 s, 15 s for WSL/PowerShell/systeminfo), and are never elevated.
+- Commands run with fixed arguments, no shell, no window (`CREATE_NO_WINDOW`), a timeout (5 s, 15 s for WSL/PowerShell/systeminfo; 30 min for an install step), and are never elevated.
+- Installs run only after the one go-ahead. The elevated part is the installer's own process (`winget`, `wsl`, Docker's installer), which asks the OS for admin rights (UAC, the macOS password prompt). Nandi never runs elevated and never sees a password.
 - Nandi never runs as admin or root. On Linux, `sudo` commands are shown to copy, never run.
 - Plain words in the UI; the core's `detail` is "what Nandi saw" (a path, a version, an error line).
 
 ## Core: `services/machine/`
 
-| File        | What it does                                                                                                                                                                                                         |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mod.rs`    | Types (`MachineReport`, `MachineCheck`, `CheckId`, `CheckState`, `CheckReason`, `MachineAction`), `check(fresh)`, `start_docker()`                                                                                   |
-| `probe.rs`  | Runs the probes and the registry check; caches the slow ones for 60 s                                                                                                                                                |
-| `parse.rs`  | Pure parsers: UTF-16 output, `wsl --version`/`--status`, PowerShell `key=value`, systeminfo, `df -Pk`, `reg query`, `docker desktop status`, `tasklist`, Docker CLI errors, `systemctl is-active`, `/etc/os-release` |
-| `assess.rs` | Pure: what the probes saw (`Observations`) → the report. A fixture test for every state on each OS                                                                                                                   |
+| File         | What it does                                                                                                                                                                                                         |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`     | Types (`MachineReport`, `MachineCheck`, `CheckId`, `CheckState`, `CheckReason`, `MachineAction`), `check(fresh)`, `start_docker()`                                                                                   |
+| `probe.rs`   | Runs the probes and the registry check; caches the slow ones for 60 s                                                                                                                                                |
+| `parse.rs`   | Pure parsers: UTF-16 output, `wsl --version`/`--status`, PowerShell `key=value`, systeminfo, `df -Pk`, `reg query`, `docker desktop status`, `tasklist`, Docker CLI errors, `systemctl is-active`, `/etc/os-release` |
+| `assess.rs`  | Pure: what the probes saw (`Observations`) → the report. A fixture test for every state on each OS                                                                                                                   |
+| `ready.rs`   | Phase 2, pure: `plan(report)` (the steps, in order), `command(step)` (program and fixed arguments per OS), `approved`, and `run` (the loop over a `Runner`, checking again after each step)                          |
+| `install.rs` | Phase 2: the real `Runner` (streams output lines, downloads the `.dmg`), one plan at a time, progress on `machine://ready`, the go-ahead in the decision record                                                      |
 
 ### Checks
 
@@ -56,14 +59,43 @@ Phase 1 (built): detection, the checklist UI, the no-admin **Start Docker** acti
 
 ### Actions (phase 1)
 
-`MachineAction` is tagged by `kind`: `startDocker` (Windows: launches `Docker Desktop.exe`; macOS: `open -a Docker`; Linux Docker Desktop: `systemctl --user start docker-desktop`; Linux Engine: an error, the UI shows `sudo systemctl start docker`), `openLink { url }` (official Docker, Microsoft and Arch pages, per OS, chip and distribution), `checkAgain`. **Phase 2 adds kinds here** (install Docker, `wsl --update`, `wsl --shutdown`, `wsl --install`, restart Docker Desktop), each recorded in the decision record after approval.
+`MachineAction` is tagged by `kind`: `startDocker` (Windows: launches `Docker Desktop.exe`; macOS: `open -a Docker`; Linux Docker Desktop: `systemctl --user start docker-desktop`; Linux Engine: an error, the UI shows `sudo systemctl start docker`), `openLink { url }` (official Docker, Microsoft and Arch pages, per OS, chip and distribution), `checkAgain`. The fixes for "unable to start" (`wsl --shutdown`, restart Docker Desktop) stay manual steps.
+
+### Get your computer ready (phase 2, Windows and macOS)
+
+`MachineReport.plan` is `ready::plan(report)`, a list of `ReadyStep`:
+
+| Report                                                 | Plan                                                                                |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Windows, WSL missing                                   | `wslInstall`, `installDocker` if missing, then `restart`                            |
+| Windows, WSL `needsUpdate`                             | `wslUpdate`, `installDocker` if missing, `startDocker` if stopped or just installed |
+| Windows, WSL ok, Docker missing                        | `wslUpdate` first (owner, 2026-11-18), `installDocker`, `startDocker`               |
+| macOS, Docker missing                                  | `installDocker`, `startDocker`                                                      |
+| Only Docker stopped, unable to start, or starting      | empty: the Start Docker button and the manual steps                                 |
+| Linux; WSL `unknown`; the Intel build on Apple silicon | nothing for that check                                                              |
+
+| Step            | Command (no shell)                                                                                                                                                                                                                                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wslUpdate`     | `wsl --update`                                                                                                                                                                                                                                                                                                                    |
+| `wslInstall`    | `wsl --install --no-distribution`                                                                                                                                                                                                                                                                                                 |
+| `installDocker` | Windows: `winget install -e --id Docker.DockerDesktop --accept-package-agreements --accept-source-agreements`; no winget: hands over Docker's download page. macOS: `brew install --cask docker` (`/opt/homebrew/bin/brew` or `/usr/local/bin/brew`), else the chip's `Docker.dmg` downloaded to Downloads and opened with `open` |
+| `startDocker`   | `start_docker()` (phase 1)                                                                                                                                                                                                                                                                                                        |
+| `restart`       | nothing: the user restarts when ready                                                                                                                                                                                                                                                                                             |
+
+`get_computer_ready(steps)` checks fresh, refuses unless `steps` equals the plan now (the user approved what they saw), records a `computerSetup` decision and runs in the background. After each step it checks again (`check(true)`). `wslUpdate` and `installDocker` are judged by that check, not the exit code (winget exits non-zero when Docker is already there). A failure stops the plan with `ReadyFailure { step, detail, link }`; the `.dmg`, the download page and the restart stop it with a `ReadyHandover`. `ReadyProgress` (step statuses, the last 200 output lines, the latest report) is the `machine://ready` payload and what `computer_ready_status()` returns.
+
+**Start Docker when Nandi opens:** `settings.yaml` `start_docker_on_open` (absent until answered). At launch, `machine::start_docker_on_open` spawns a check and starts Docker only when the answer is yes and Docker is `notRunning`. Startup never waits for it.
 
 ### API
 
-| Tauri command                | HTTP                          | Returns         |
-| ---------------------------- | ----------------------------- | --------------- |
-| `check_machine(fresh: bool)` | `POST /api/rpc/check_machine` | `MachineReport` |
-| `start_docker()`             | `POST /api/rpc/start_docker`  | `()`            |
+| Tauri command                     | HTTP                                     | Returns                             |
+| --------------------------------- | ---------------------------------------- | ----------------------------------- |
+| `check_machine(fresh: bool)`      | `POST /api/rpc/check_machine`            | `MachineReport`                     |
+| `start_docker()`                  | `POST /api/rpc/start_docker`             | `()`                                |
+| `get_computer_ready(steps)`       | `POST /api/rpc/get_computer_ready`       | `()`, progress on `machine://ready` |
+| `computer_ready_status()`         | `POST /api/rpc/computer_ready_status`    | `ReadyProgress`                     |
+| `machine_settings()`              | `POST /api/rpc/machine_settings`         | `MachineSettings`                   |
+| `set_start_docker_on_open(start)` | `POST /api/rpc/set_start_docker_on_open` | `()`                                |
 
 `fresh` re-runs the slow probes (WSL, virtualization, disk, registry); without it they come from the last minute and a check takes about 50 ms. A fresh check takes 2 to 3 s on Windows.
 
@@ -76,7 +108,9 @@ Phase 1 (built): detection, the checklist UI, the no-admin **Start Docker** acti
 | Home                        | `machine/MachineHomeItem.tsx` until `dockerReady`                                                                                                           |
 | Agent page                  | `AgentWarningBanner` renders `machine/DockerSetupPrompt.tsx` for the core's "Tool execution unavailable" warning (the `agent://warning` event is unchanged) |
 
-`machine/machine-model.ts` is pure: the steps for each check, reason, OS and Linux family (`stepsFor`), the why sentence (`machine.why.<checkId>`), link labels, and `isToolsUnavailable`. `MachineChecklist.tsx` renders rows, steps (commands copyable and `dir="ltr"`) and `MachineActions`, where phase 2's install buttons go. Data comes from `hooks/useMachine.ts` (one TanStack Query key, `['machine','report']`).
+`machine/machine-model.ts` is pure: the steps for each check, reason, OS and Linux family (`stepsFor`), the why sentence (`machine.why.<checkId>`), link labels, and `isToolsUnavailable`. `MachineChecklist.tsx` renders `GetReadyCard`, then rows, steps (commands copyable and `dir="ltr"`) and `MachineActions`. Data comes from `hooks/useMachine.ts` (`['machine','report']`; `['machine','ready']`, kept live by `machine://ready`; `['machine','settings']`).
+
+`machine/ready-model.ts` is pure: when the card asks (`goAheadPlan`: the plan installs or updates something), its title, the admin and licence lines, the card's state (`readyView`: running, failed, handed over, done, ask) and when to ask "Start Docker automatically when Nandi opens?" (`asksStartOnOpen`). `GetReadyCard.tsx` renders the card and the question; `ThisComputerSection` has the switch.
 
 ## With no model: the built-in help guide
 
@@ -111,5 +145,6 @@ when a model exists, the model answers.
 
 - Rust: `services::machine::parse::tests`, `services::machine::assess::tests` (Windows, macOS, Linux fixtures for every state, including "unable to start", WSL not installed and old WSL, socket permission denied), `probe::tests::an_unreachable_registry_says_so_quickly`, and the offline suite's `with_no_relay_the_computer_checklist_answers`.
 - Live: `cargo test --lib live_machine_report -- --ignored --nocapture` prints this computer's report; `live_registry_reach` checks ghcr.io.
-- Vitest: `machine-model.test.ts`, `MachineChecklist.test.tsx` (checklist, Settings section, onboarding step, Home item, the agent prompt), `OnboardingView.test.tsx`.
-- Catalog: ON-16, ST-33, SH-37, SH-38 in `docs/testing/shell-onboarding-settings.md`.
+- Rust, phase 2: `services::machine::ready::tests` (the plan for every combination, the commands per OS, the run loop with a fake `Runner`, so `cargo test` never runs `wsl` or an installer), `parse::tests::line_splitter_*`, `machine::tests` (start on open, the setting).
+- Vitest: `machine-model.test.ts`, `ready-model.test.ts`, `MachineChecklist.test.tsx` (checklist, Settings section, onboarding step, Home item, the agent prompt), `GetReadyCard.test.tsx`, `OnboardingView.test.tsx`.
+- Catalog: ON-16, ST-33, ST-35, SH-37, SH-38 in `docs/testing/shell-onboarding-settings.md`.

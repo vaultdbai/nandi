@@ -18,14 +18,18 @@
 //! [`MachineCheck`]s: pure, with a fixture test for every state. The only
 //! network call is the image check.
 //!
-//! Phase 1 actions are [`MachineAction::StartDocker`] (launches Docker
-//! Desktop; no admin), links to official pages, and check again. Phase 2's
-//! approved installs and fixes (winget, brew, `wsl --update`, pkexec) add
-//! variants to [`MachineAction`]; the UI already leaves their place.
+//! Each check's actions are [`MachineAction::StartDocker`] (launches
+//! Docker Desktop; no admin), links to official pages, and check again.
+//! Phase 2 (Windows and macOS): [`ready::plan`] is the report's `plan`,
+//! the steps that get the computer ready (`wsl --update` or `wsl
+//! --install`, install Docker Desktop, start it). The user approves them
+//! once; [`install`] runs them. Linux stays phase 1.
 
 pub mod assess;
+pub mod install;
 pub mod parse;
 mod probe;
+pub mod ready;
 
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
@@ -34,6 +38,9 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 pub use parse::LinuxDistro;
+pub use ready::ReadyStep;
+
+use crate::services::AppState;
 
 /// About this much free space is needed for Nandi's images
 pub const DISK_NEEDED_BYTES: u64 = 15 * 1024 * 1024 * 1024;
@@ -164,6 +171,8 @@ pub struct MachineReport {
     pub ready: bool,
     /// RFC 3339
     pub checked_at: String,
+    /// What "Get your computer ready" would run, in order (Windows, macOS)
+    pub plan: Vec<ReadyStep>,
 }
 
 /// The slow, rarely-changing observations (WSL, virtualization, disk, the
@@ -204,11 +213,127 @@ pub async fn start_docker() -> Result<(), String> {
     probe::start_docker(MachineOs::current()).await
 }
 
+/// The machine's portable settings (in `settings.yaml`)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineSettings {
+    /// Start Docker when Nandi opens; `None`: not asked yet
+    pub start_docker_on_open: Option<bool>,
+}
+
+pub fn settings(state: &AppState) -> MachineSettings {
+    MachineSettings {
+        start_docker_on_open: state
+            .store()
+            .read(|repo| repo.settings().start_docker_on_open()),
+    }
+}
+
+/// The answer to "Start Docker automatically when Nandi opens?"
+pub async fn set_start_docker_on_open(state: &AppState, start: bool) -> Result<(), String> {
+    use crate::services::domain::EntityKind;
+    use crate::services::repos::SingletonRepository;
+
+    let mut settings = state.store().read(|repo| repo.settings().clone());
+    if settings.start_docker_on_open() == Some(start) {
+        return Ok(());
+    }
+    settings.set_start_docker_on_open(start);
+    let store = state.store().clone();
+    tokio::task::spawn_blocking(move || {
+        store.repos().settings.save(&settings)?;
+        store.commit(EntityKind::Settings, "settings")?;
+        Ok::<_, String>(())
+    })
+    .await
+    .map_err(|e| format!("Settings write failed: {e}"))?
+}
+
+/// Whether Nandi starts Docker now, as it opens
+fn starts_on_open(setting: Option<bool>, report: &MachineReport) -> bool {
+    setting == Some(true)
+        && report
+            .checks
+            .iter()
+            .any(|c| c.id == CheckId::DockerRunning && c.reason == CheckReason::NotRunning)
+}
+
+/// At launch, when the user said yes: starts Docker Desktop in the
+/// background if it's stopped. Nothing waits for it.
+pub fn start_docker_on_open(state: &AppState) {
+    let setting = settings(state).start_docker_on_open;
+    if setting != Some(true) {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        let report = check(false).await;
+        if !starts_on_open(setting, &report) {
+            return;
+        }
+        match start_docker().await {
+            Ok(()) => log::info!("Started Docker, as Nandi opened"),
+            Err(e) => log::warn!("Docker didn't start as Nandi opened: {e}"),
+        }
+    });
+}
+
 #[cfg(test)]
 pub(crate) use probe::use_registry_for_tests;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn running(reason: CheckReason) -> MachineReport {
+        MachineReport {
+            os: MachineOs::Windows,
+            arch: "x86_64".into(),
+            apple_silicon: false,
+            distro: None,
+            checks: vec![MachineCheck {
+                id: CheckId::DockerRunning,
+                state: CheckState::Stopped,
+                reason,
+                detail: String::new(),
+                actions: vec![],
+            }],
+            docker_ready: false,
+            ready: false,
+            checked_at: String::new(),
+            plan: vec![],
+        }
+    }
+
+    #[test]
+    fn docker_starts_on_open_only_when_asked_and_stopped() {
+        let stopped = running(CheckReason::NotRunning);
+        assert!(starts_on_open(Some(true), &stopped));
+        assert!(!starts_on_open(Some(false), &stopped));
+        assert!(!starts_on_open(None, &stopped));
+        // Starting, failed or not installed: nothing to start
+        for reason in [
+            CheckReason::Starting,
+            CheckReason::DesktopFailed,
+            CheckReason::NeedsDocker,
+            CheckReason::Ready,
+        ] {
+            assert!(!starts_on_open(Some(true), &running(reason)), "{reason:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_start_docker_answer_is_a_portable_setting() {
+        let state = AppState::for_tests(vec![]);
+        assert_eq!(settings(&state).start_docker_on_open, None);
+        set_start_docker_on_open(&state, true).await.unwrap();
+        assert_eq!(settings(&state).start_docker_on_open, Some(true));
+        let yaml = std::fs::read_to_string(state.store().layout().settings_path()).unwrap();
+        assert!(yaml.contains("start_docker_on_open: true"), "{yaml}");
+        set_start_docker_on_open(&state, false).await.unwrap();
+        assert_eq!(settings(&state).start_docker_on_open, Some(false));
+        state.shutdown();
+    }
+
     /// `cargo test --lib live_machine_report -- --ignored --nocapture`:
     /// what this computer reports, for manual checks
     #[tokio::test]

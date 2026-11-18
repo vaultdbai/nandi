@@ -14,6 +14,7 @@ import { useStartDocker } from '@/hooks/useMachine'
 import type { MachineAction, MachineCheck, MachineReport } from '@/lib/bindings'
 import { client } from '@/lib/client'
 import { cn } from '@/lib/utils'
+import { GetReadyCard, StartOnOpenQuestion } from './GetReadyCard'
 import {
   actionKey,
   rowActions,
@@ -32,7 +33,9 @@ const ICONS = {
 /**
  * The "Get your computer ready" checklist: one row per check, and for each
  * one that isn't ready, why it matters, numbered steps for this computer,
- * and its actions. Used by Settings › This computer and the onboarding step.
+ * and its actions. Above it, the one go-ahead to get the computer ready
+ * and the "start Docker when Nandi opens" question. Used by Settings ›
+ * This computer and the onboarding step.
  */
 export function MachineChecklist({
   report,
@@ -50,14 +53,18 @@ export function MachineChecklist({
       </div>
     )
   return (
-    <ol
-      className={cn('flex flex-col divide-y rounded-md border', className)}
-      data-testid="machine-checklist"
-    >
-      {report.checks.map(check => (
-        <CheckRow key={check.id} check={check} report={report} />
-      ))}
-    </ol>
+    <>
+      <GetReadyCard report={report} />
+      <StartOnOpenQuestion report={report} />
+      <ol
+        className={cn('flex flex-col divide-y rounded-md border', className)}
+        data-testid="machine-checklist"
+      >
+        {report.checks.map(check => (
+          <CheckRow key={check.id} check={check} report={report} />
+        ))}
+      </ol>
+    </>
   )
 }
 
@@ -105,7 +112,6 @@ function CheckRow({
           <>
             <p className="text-sm">{t(whyKey(check.id))}</p>
             {steps.length > 0 && <Steps steps={steps} />}
-            {/* Phase 2: approved "Install for me" / fix actions join these */}
             {actions.length > 0 && <MachineActions actions={actions} />}
           </>
         )}
@@ -153,8 +159,8 @@ function Command({ command }: { command: string }) {
 }
 
 /**
- * A check's buttons. Phase 1: Start Docker and official links. Phase 2's
- * approved installs and fixes are new `MachineAction` kinds rendered here.
+ * A check's buttons: Start Docker and official links. The approved
+ * installs run from the one go-ahead (`GetReadyCard`), not per row.
  */
 export function MachineActions({ actions }: { actions: MachineAction[] }) {
   const { t } = useTranslation()

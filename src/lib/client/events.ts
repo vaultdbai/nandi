@@ -75,6 +75,7 @@ import type {
   KnowMeChanged,
   RepoRebuildStarted,
   RepoRebuildCompleted,
+  ReadyProgress,
 } from '@/lib/bindings'
 
 interface NandiEventMap {
@@ -147,6 +148,8 @@ interface NandiEventMap {
     finished: boolean | null
     error: string | null
   }
+  /** "Get your computer ready": how the approved plan is going */
+  'machine://ready': ReadyProgress
   /** A first-use tool bundle's install (Claude Code): a line, or its end */
   'images://tools': {
     bundle: ToolBundle
@@ -311,6 +314,7 @@ const CORE_EVENTS: Record<CoreEventName, true> = {
   'workspace://changed': true,
   'images://pull': true,
   'images://tools': true,
+  'machine://ready': true,
   'relay://status': true,
   'relay://agent_online': true,
   'relay://agent_offline': true,

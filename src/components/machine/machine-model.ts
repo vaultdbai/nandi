@@ -4,10 +4,9 @@
  * state and reason; this picks the plain sentence (why it matters) and the
  * numbered steps for this computer's OS (and Linux distribution).
  *
- * Phase 1 steps are instructions, copyable commands, official links and
- * Start Docker. Phase 2 adds approved "Install for me" actions to the
- * core's `MachineAction`; `MachineActions` renders them, and the steps
- * here stay as the manual way.
+ * The steps are instructions, copyable commands, official links and
+ * Start Docker: the manual way. On Windows and macOS the one go-ahead
+ * (`ready-model.ts`, `GetReadyCard`) runs the installs for the user.
  */
 import type {
   CheckId,

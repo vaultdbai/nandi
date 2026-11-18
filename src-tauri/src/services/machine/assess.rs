@@ -200,7 +200,7 @@ pub fn report(o: &Observations, checked_at: String) -> MachineReport {
     let docker_ready = checks
         .iter()
         .any(|c| c.id == CheckId::DockerRunning && c.state == CheckState::Ok);
-    MachineReport {
+    let mut report = MachineReport {
         os: o.os,
         arch: o.arch.clone(),
         apple_silicon: o.apple_silicon,
@@ -209,7 +209,10 @@ pub fn report(o: &Observations, checked_at: String) -> MachineReport {
         checks,
         docker_ready,
         checked_at,
-    }
+        plan: Vec::new(),
+    };
+    report.plan = super::ready::plan(&report);
+    report
 }
 
 fn download_actions(o: &Observations, distro: Option<&LinuxDistro>) -> Vec<MachineAction> {

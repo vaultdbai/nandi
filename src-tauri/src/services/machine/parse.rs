@@ -309,9 +309,113 @@ pub fn os_release(text: &str) -> LinuxDistro {
     }
 }
 
+/// Splits a long-running command's output into lines as it arrives:
+/// UTF-8 or UTF-16LE (`wsl.exe`), lines ending in `\n` or `\r` (progress
+/// bars redraw with `\r`). Blank lines, spinner frames and a line repeated
+/// right after itself are dropped.
+#[derive(Debug, Default)]
+pub struct LineSplitter {
+    utf16: Option<bool>,
+    pending: Vec<u8>,
+    last: Option<String>,
+}
+
+impl LineSplitter {
+    /// The complete lines in `bytes` (with what was left from before)
+    pub fn push(&mut self, bytes: &[u8]) -> Vec<String> {
+        self.pending.extend_from_slice(bytes);
+        let utf16 = match self.utf16 {
+            Some(utf16) => utf16,
+            None if self.pending.len() >= 4 => {
+                let zeros = self.pending.iter().skip(1).step_by(2).filter(|b| **b == 0);
+                let utf16 = self.pending.starts_with(&[0xFF, 0xFE])
+                    || zeros.count() * 2 >= self.pending.len() / 2;
+                self.utf16 = Some(utf16);
+                utf16
+            }
+            None => return Vec::new(),
+        };
+        let unit = if utf16 { 2 } else { 1 };
+        let mut end = None;
+        let mut at = 0;
+        while at + unit <= self.pending.len() {
+            let breaks = matches!(self.pending[at], b'\n' | b'\r')
+                && (unit == 1 || self.pending[at + 1] == 0);
+            if breaks {
+                end = Some(at + unit);
+            }
+            at += unit;
+        }
+        let Some(end) = end else {
+            return Vec::new();
+        };
+        let complete: Vec<u8> = self.pending.drain(..end).collect();
+        self.lines(&complete)
+    }
+
+    /// What's left when the command ends
+    pub fn finish(&mut self) -> Vec<String> {
+        let rest = std::mem::take(&mut self.pending);
+        self.lines(&rest)
+    }
+
+    fn lines(&mut self, bytes: &[u8]) -> Vec<String> {
+        let text = if self.utf16 == Some(true) {
+            let body = bytes.strip_prefix(&[0xFF, 0xFE]).unwrap_or(bytes);
+            let units: Vec<u16> = body
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_le_bytes(*pair))
+                .collect();
+            String::from_utf16_lossy(&units)
+        } else {
+            String::from_utf8_lossy(bytes).into_owned()
+        };
+        let mut lines = Vec::new();
+        for line in text.replace('\0', "").split(['\n', '\r']) {
+            let line = line.trim();
+            if line.chars().count() <= 1 || self.last.as_deref() == Some(line) {
+                continue;
+            }
+            self.last = Some(line.to_string());
+            lines.push(line.to_string());
+        }
+        lines
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn line_splitter_handles_utf8_progress_and_spinners() {
+        let mut lines = LineSplitter::default();
+        assert!(lines
+            .push(b"Found Docker Desktop [Docker.Docker")
+            .is_empty());
+        assert_eq!(
+            lines.push(b"Desktop]\r\n  -\r  \\\r  |\r  10 MB / 500 MB\r  10 MB / 500 MB\r"),
+            [
+                "Found Docker Desktop [Docker.DockerDesktop]",
+                "10 MB / 500 MB"
+            ]
+        );
+        assert!(lines.push(b"Successfully installed").is_empty());
+        assert_eq!(lines.finish(), ["Successfully installed"]);
+    }
+
+    #[test]
+    fn line_splitter_reads_utf16_from_wsl() {
+        let text = utf16("Installing: Windows Subsystem for Linux\r\nDone\r\n", false);
+        let mut lines = LineSplitter::default();
+        // Split in the middle of a character
+        let mut got = lines.push(&text[..7]);
+        got.extend(lines.push(&text[7..]));
+        got.extend(lines.finish());
+        assert_eq!(got, ["Installing: Windows Subsystem for Linux", "Done"]);
+    }
 
     fn utf16(text: &str, bom: bool) -> Vec<u8> {
         let mut bytes = if bom { vec![0xFF, 0xFE] } else { Vec::new() };

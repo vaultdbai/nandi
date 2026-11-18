@@ -83,6 +83,16 @@ vi.mock('@/lib/tauri-bindings', async importOriginal => {
       getLlmKeyStatus: ok([]),
       testLlmKey: ok({ ok: true, latencyMs: 5, failure: null, detail: null }),
       detectOllama: ok({ running: false, models: [] }),
+      computerReadyStatus: ok({
+        running: false,
+        steps: [],
+        log: [],
+        handover: null,
+        handoverLink: null,
+        failure: null,
+        report: null,
+      }),
+      machineSettings: ok({ startDockerOnOpen: null }),
       // Streams the way Rust does: the reply, then ask://completed
       askStreaming: vi.fn(async (request: unknown) => {
         const { commands } = await import('@/lib/tauri-bindings')

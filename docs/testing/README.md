@@ -121,37 +121,37 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-550 features to test: all 613 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 20 removed features.
+555 features to test: all 618 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 20 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
-| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 67       |
-| Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 79       |
+| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 68       |
+| Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 80       |
 | Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
-| Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 92       |
-| Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 74       |
+| Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 94       |
+| Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 75       |
 | Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 77       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
 | Data, platform and quality gates            | [data-platform-quality.md](./data-platform-quality.md)             | 63       |
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 532   |
+| Shipped     | 537   |
 | Removed     | 20    |
 | Partial     | 16    |
 | Known issue | 2     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 308   |
+| `unit`                | 313   |
 | `api`                 | 186   |
 | `manual`              | 32    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 465   |
+| no          | 470   |
 | yes         | 85    |
 
 ## Master index
@@ -243,6 +243,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-24 | Sources (registries)                                                     | Shipped                                              | unit       | no          |                                        |
 | ST-25 | Logs                                                                     | Shipped                                              | unit       | no          |                                        |
 | ST-33 | Settings › This computer (get your computer ready)                       | Shipped                                              | api + unit | no          |                                        |
+| ST-35 | Get your computer ready with one go-ahead (Windows, macOS)               | Shipped                                              | unit       | no          |                                        |
 | ST-26 | Language and right-to-left layout                                        | Shipped                                              | unit       | no          |                                        |
 | ST-27 | Light, dark and system mode                                              | Shipped                                              | unit       | no          |                                        |
 | ST-28 | Color palettes and window icon                                           | Shipped                                              | unit       | no          |                                        |
@@ -497,10 +498,10 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | TR-24 | Trigger events and live UI                                                       | Shipped                                                                                    | api                         | no          |                 |
 | TR-25 | Trigger management HTTP API                                                      | Shipped                                                                                    | api                         | no          |                 |
 | TR-26 | Trigger firings as Work items                                                    | Shipped                                                                                    | unit                        | no          |                 |
+| TR-29 | Nandi tries its own failed runs again                                            | Shipped                                                                                    | unit                        | no          | 2026-10-30 pass |
+| TR-30 | A schedule missed while the app was closed fires at the next start               | Shipped                                                                                    | unit                        | no          | 2026-10-30 pass |
 | TR-27 | Calendar source: times, days and who is responsible                              | Shipped                                                                                    | unit                        | no          | 2026-11-01 pass |
 | TR-28 | Calendar backup takes over                                                       | Shipped                                                                                    | api                         | yes         | 2026-10-30 pass |
-| TR-29 | Nandi tries its own failed runs again                                            | Shipped                                                                                    | unit / api                  | yes         | 2026-10-30 pass |
-| TR-30 | A schedule missed while closed fires at the next start                           | Shipped                                                                                    | unit                        | yes         | 2026-10-30 pass |
 | RQ-01 | Request page header and states                                                   | Shipped                                                                                    | unit                        | no          |                 |
 | RQ-02 | Steps tab (system steps, plan steps, attempts)                                   | Shipped                                                                                    | unit                        | no          |                 |
 | RQ-03 | Stuck banner with blocker and fix buttons                                        | Shipped                                                                                    | unit                        | no          |                 |

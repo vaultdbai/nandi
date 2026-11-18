@@ -21,7 +21,7 @@ On every start, `services::migration::bootstrap` opens `~/.nandi/repo`, or creat
 | Agent-scoped workflows                                                                                     | `~/.nandi/repo/.nandi/agents/<id>/workflows/<w>.yaml` | ✅     | source                    |
 | Global workflows                                                                                           | `~/.nandi/repo/.nandi/workflows/<w>.yaml`             | ✅     | source                    |
 | Triggers                                                                                                   | `~/.nandi/repo/.nandi/triggers/<t>.yaml`              | ✅     | source                    |
-| Portable settings (theme, language, default model, provider pins)                                          | `~/.nandi/repo/.nandi/settings.yaml`                  | ✅     | source                    |
+| Portable settings (theme, language, default model, provider pins, start Docker on open)                    | `~/.nandi/repo/.nandi/settings.yaml`                  | ✅     | source                    |
 | Connector declarations                                                                                     | `~/.nandi/repo/.nandi/connectors.yaml`                | ✅     | source                    |
 | Groups I'm in: each group's signed policy and members ([groups](./groups.md))                              | `~/.nandi/repo/.nandi/groups/<group-id>.md`           | ✅     | refreshed from the relay  |
 | My access level per group                                                                                  | `~/.nandi/repo/.nandi/groups/access.yaml`             | ✅     | source                    |

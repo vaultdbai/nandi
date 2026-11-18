@@ -56,6 +56,20 @@ Without Docker, Nandi still opens and works as a chat assistant: agents can talk
 
 Each row that isn't ready says in one sentence why it matters, then numbered steps for your computer, with commands you can copy and links to Docker's and Microsoft's official pages. **Start Docker** opens Docker Desktop (no admin rights). On Linux, Nandi shows the commands for your distribution (Debian/Ubuntu, Fedora/RHEL, Arch) to run in a terminal; it never runs `sudo` itself. For "Docker Desktop is unable to start", the steps go in order: quit Docker Desktop, `wsl --update`, `wsl --shutdown`, start it again, check virtualization, and as a last resort Docker's own reset. The page checks again every few seconds while it's open; **Check again** re-runs everything now. Until Docker is ready, Home shows a calm "Agents can talk, but need Docker to act. Set up", and an agent page shows "Agents need Docker to act. Set up" instead of a warning.
 
+**Let Nandi do it (Windows and macOS).** When Docker or WSL is missing or out of date, a card at the top asks once: "Get your computer ready? Nandi will update WSL and install Docker." It lists the steps for your computer, in order:
+
+| Step           | Windows                                                         | macOS                                                                                                               |
+| -------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| WSL            | `wsl --update` (or `wsl --install`, then restart when you like) | —                                                                                                                   |
+| Install Docker | `winget install Docker.DockerDesktop`                           | Homebrew (`brew install --cask docker`) when you have it, else Docker's `.dmg` for your chip, opened from Downloads |
+| Start Docker   | opens Docker Desktop                                            | opens Docker Desktop                                                                                                |
+
+One **Go ahead** runs them. Windows asks for admin rights for each installer (macOS may ask for your password); Nandi itself never runs as admin and never sees the password. After each step Nandi checks again. If a step fails, Nandi stops there and shows what it saw, with **Do it yourself** (the official page) and **Try again**. Without `winget`, Nandi sends you to Docker's download page instead. **Not now** keeps the checklist. The go-ahead is kept in your decisions record.
+
+The card also says: "Docker Desktop is free for personal use and small companies. Companies with more than 250 employees or $10M in revenue need a Docker subscription, so check with your IT. Rancher Desktop is a free alternative." Nandi never bundles Docker Desktop: it downloads it from Docker.
+
+**Start Docker when Nandi opens.** The first time Nandi finds Docker stopped, it asks "Start Docker automatically when Nandi opens?" Your answer is kept with your settings (it travels with your repo); change it under **Settings › This computer**. With yes, Nandi starts Docker in the background as it opens. Nothing waits for it.
+
 You don't need to build anything. Nandi downloads the two images it needs from GitHub's container registry, the version that matches your Nandi:
 
 | Image                             | What it is for                                           |
@@ -92,6 +106,8 @@ msiexec /i VaultDB-Nandi-windows-x64.msi /qn
 ```
 
 Updating a per-machine install needs admin rights too. Update it with your own tooling when a new version is out. Users without admin rights still see **Update** in the title bar; clicking it asks Windows for permission, and if they can't give it nothing changes and Nandi keeps working (**Retry update** stays until IT updates it). Individuals should use the `-setup.exe`, which updates itself without admin rights.
+
+Nandi never bundles Docker Desktop: it downloads it from Docker when a user says **Go ahead**. Docker Desktop is free for personal use and small companies. Companies with more than 250 employees or $10M in revenue need a Docker subscription, so check your licensing before you deploy. Rancher Desktop is a free alternative.
 
 **From source** (any platform), you need Node.js 20+, pnpm, Rust, and the [Tauri prerequisites](https://tauri.app/start/prerequisites/):
 

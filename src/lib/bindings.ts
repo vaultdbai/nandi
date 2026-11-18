@@ -3392,6 +3392,52 @@ async startDocker() : Promise<Result<null, string>> {
 }
 },
 /**
+ * The one go-ahead: runs the report's `plan` (`steps`, as the user saw
+ * them) in the background; progress arrives as `machine://ready`. The
+ * installers ask the OS for admin rights themselves
+ */
+async getComputerReady(steps: ReadyStep[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_computer_ready", { steps }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * How the last (or running) "Get your computer ready" is going
+ */
+async computerReadyStatus() : Promise<Result<ReadyProgress, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("computer_ready_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The machine's portable settings (start Docker when Nandi opens)
+ */
+async machineSettings() : Promise<Result<MachineSettings, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("machine_settings") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The answer to "Start Docker automatically when Nandi opens?"
+ */
+async setStartDockerOnOpen(start: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_start_docker_on_open", { start }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Probes the machine again (PATH, `--version`, config folders)
  */
 async detectHarnesses() : Promise<Result<HarnessInfo[], string>> {
@@ -6849,7 +6895,19 @@ ready: boolean;
 /**
  * RFC 3339
  */
-checkedAt: string }
+checkedAt: string; 
+/**
+ * What "Get your computer ready" would run, in order (Windows, macOS)
+ */
+plan: ReadyStep[] }
+/**
+ * The machine's portable settings (in `settings.yaml`)
+ */
+export type MachineSettings = { 
+/**
+ * Start Docker when Nandi opens; `None`: not asked yet
+ */
+startDockerOnOpen: boolean | null }
 export type MailProvider = 
 /**
  * Outlook and Microsoft 365, through Microsoft Graph
@@ -7676,6 +7734,78 @@ threadId: string;
  * For `start`: who does it, planned when it was queued
  */
 plan: ActionPlan | null }
+export type ReadyFailure = { step: ReadyStep; 
+/**
+ * What Nandi saw
+ */
+detail: string; 
+/**
+ * The official page to do it by hand
+ */
+link: string }
+/**
+ * What the user finishes, when the plan hands over
+ */
+export type ReadyHandover = 
+/**
+ * macOS: Docker's `.dmg` is open: drag Docker to Applications
+ */
+"dmg" | 
+/**
+ * Windows without winget: download Docker Desktop from docker.com
+ */
+"downloadPage" | 
+/**
+ * WSL is installed: restart the computer
+ */
+"restart"
+/**
+ * How "Get your computer ready" is going (`machine://ready`)
+ */
+export type ReadyProgress = { running: boolean; steps: ReadyStepProgress[]; 
+/**
+ * The commands' output, last lines
+ */
+log: string[]; handover: ReadyHandover | null; 
+/**
+ * A link that goes with the handover (the download page)
+ */
+handoverLink: string | null; failure: ReadyFailure | null; 
+/**
+ * The check after the last step
+ */
+report: MachineReport | null }
+/**
+ * One step of the plan
+ */
+export type ReadyStep = 
+/**
+ * `wsl --update` (Windows asks for admin rights)
+ */
+"wslUpdate" | 
+/**
+ * `wsl --install --no-distribution` (Windows asks for admin rights)
+ */
+"wslInstall" | 
+/**
+ * winget on Windows; Homebrew or Docker's `.dmg` on macOS
+ */
+"installDocker" | 
+/**
+ * Launches Docker Desktop (no admin rights)
+ */
+"startDocker" | 
+/**
+ * After installing WSL: the user restarts the computer when ready
+ */
+"restart"
+export type ReadyStepProgress = { step: ReadyStep; status: ReadyStepStatus }
+export type ReadyStepStatus = "waiting" | "running" | "done" | 
+/**
+ * Nandi did its part; the user finishes it (the `.dmg`, the download
+ * page, the restart)
+ */
+"handedOver" | "failed"
 /**
  * Why a task waits or was refused: the Blocker kinds of work-model §2.3,
  * plus `declined` (the owner said no to a held request). Set where the

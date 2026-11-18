@@ -1221,6 +1221,32 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
+### ST-35 — Get your computer ready with one go-ahead (Windows, macOS)
+
+- **What:** When Docker or WSL is missing or old, a card above the checklist (Settings › This computer and the onboarding Computer step) asks once: "Get your computer ready? Nandi will update WSL and install Docker." (the title names the actual steps). It lists the steps in order: Update WSL (`wsl --update`) or Install WSL (`wsl --install --no-distribution`, then restart), Install Docker Desktop (Windows: `winget install -e --id Docker.DockerDesktop`; macOS: `brew install --cask docker` when Homebrew is there, else Docker's `.dmg` for the chip, downloaded to Downloads and opened), Start Docker. It says Windows (or macOS) asks for admin rights for each installer, and shows Docker's licence line ("…more than 250 employees or $10M in revenue need a Docker subscription… Rancher Desktop is a free alternative."). **Go ahead** runs the steps in the core, one at a time, checking again after each; the card shows each step's progress and the last lines of output. A failed step stops the plan and shows what Nandi saw, **Do it yourself** (the official page) and **Try again**. **Not now** hides the card and keeps the checklist. The go-ahead is recorded in the decision record (`computerSetup`, approved). The first time Docker is found stopped, the checklist asks "Start Docker automatically when Nandi opens?"; **Yes, start it** saves the answer in `settings.yaml` (`start_docker_on_open`) and starts Docker now. Settings › This computer has the switch "Start Docker when Nandi opens". With it on, launch starts Docker in the background when it's stopped; nothing waits for it. Linux has no card (phase 1 steps only).
+- **Where:** `src/components/machine/GetReadyCard.tsx`, `ready-model.ts`, `hooks/useMachine.ts`, `ThisComputerSection.tsx`; Rust `services/machine/ready.rs` (plan, commands, run loop), `install.rs` (the real runner, `machine://ready`), `mod.rs` (`start_docker_on_open`); RPC `get_computer_ready`, `computer_ready_status`, `machine_settings`, `set_start_docker_on_open`. See `docs/developer/machine-readiness.md`.
+- **Preconditions:** A Windows machine without Docker (and one with WSL older than 2.1.5 or not installed); a Mac without Docker, with and without Homebrew.
+- **Steps:**
+  1. Open Settings › This computer on Windows without Docker.
+  2. Click Go ahead and accept each UAC prompt.
+  3. Repeat on a machine where winget is missing, or refuse the UAC prompt.
+  4. On a Mac without Homebrew, click Go ahead.
+  5. Quit Docker Desktop, open the page, answer Yes to "Start Docker automatically when Nandi opens?", then quit and reopen Nandi.
+- **Expected:**
+  - (1) The card lists Update WSL, Install Docker Desktop, Start Docker, the admin line and the licence line.
+  - (2) Each step shows running then done; Windows asks for admin rights per installer; Nandi never runs elevated. The checklist turns Ready.
+  - (3) No winget: the plan stops after WSL with Docker's download page. A refused prompt: the step fails with what Nandi saw and the manual link.
+  - (4) `Docker.dmg` for the chip is saved in Downloads and opens; the card says to drag Docker to Applications.
+  - (5) Docker starts on launch without delaying the window; the question isn't asked again.
+- **Edge / negative cases:**
+  - The computer changed between showing the card and Go ahead: the core refuses ("This computer changed… Check again") and runs nothing.
+  - A second Go ahead while one runs is refused.
+  - winget exits non-zero but Docker is now installed: the re-check decides and the step is done.
+  - WSL not installed: Install WSL, Install Docker, then "Restart your computer when you're ready".
+- **Automation:** Covered by: Rust `services::machine::ready::tests` (the plan for every Windows, macOS and Linux combination, fixed commands per OS, the run loop with a fake runner: order, re-check, failure, handovers), `parse::tests::line_splitter_*`, `machine::tests::docker_starts_on_open_only_when_asked_and_stopped`, `the_start_docker_answer_is_a_portable_setting`, `domain::settings::tests::start_docker_on_open_is_unasked_until_answered`; Vitest `ready-model.test.ts`, `GetReadyCard.test.tsx` | Layer: unit | Gap: real installs on Windows and macOS by hand.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## 1.9 Appearance, language and preferences
 
 ### ST-26 — Language and right-to-left layout

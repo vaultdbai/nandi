@@ -20,5 +20,6 @@ export const report = (over: Partial<MachineReport> = {}): MachineReport => ({
   dockerReady: true,
   ready: true,
   checkedAt: '2026-11-09T12:00:00Z',
+  plan: [],
   ...over,
 })

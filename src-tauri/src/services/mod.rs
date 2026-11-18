@@ -297,6 +297,8 @@ impl AppState {
         state.watch_repo();
         images::init(state.bus());
         state.start_background_services();
+        // When the user said yes: Docker starts in the background
+        machine::start_docker_on_open(&state);
 
         let workflows = state.workflows().clone();
         state.runtime().spawn(async move {

@@ -65,7 +65,8 @@ Installs through the distribution's package manager run only after approval, ele
 ## Phases
 
 - **Phase 1 (built 2026-11-09):** Steps 1 and 3, plus the no-admin **Start Docker** action and links to official download and docs pages. Windows, macOS and Linux.
-- **Phase 2:** Step 2 (the approved install and fix actions, with elevation in their own process), then Step 5.
+- **Phase 2, Windows and macOS (built 2026-11-18):** Step 2 as one go-ahead: `wsl --update` or `wsl --install`, Docker Desktop (winget; Homebrew or the `.dmg`), Start Docker, checking again after each step, the Docker licence line, the go-ahead in the decision record, and "Start Docker when Nandi opens" (a portable setting). See `docs/developer/machine-readiness.md`.
+- **Still to do:** Linux phase 2 (`pkexec`); `wsl --shutdown` and restart Docker Desktop as actions for "unable to start"; the note for IT; then Step 5.
 
 ## Rules
 
