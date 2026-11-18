@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in Nandi doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. For a security problem (a way out of the container, a leaked key, a site reached that should be refused), please don't open a public issue: see [SECURITY.md](https://github.com/vaultdbai/nandi/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Nandi version
+      description: Shown in Settings, or in the installer's name
+      placeholder: '0.2.0'
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, macOS (Apple silicon), macOS (Intel), Linux]
+    validations:
+      required: true
+  - type: input
+    id: docker
+    attributes:
+      label: Docker
+      description: Docker Desktop, Docker Engine or Rancher Desktop, and its version
+      placeholder: 'Docker Desktop 4.50'
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Which agent ran
+      options:
+        [
+          Nandi (the default agent),
+          Claude Code,
+          Codex,
+          A pack agent,
+          Not about an agent,
+        ]
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: The steps, and the error message as Nandi showed it
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Error details (optional)
+      description: Remove anything private first. Never paste keys, tokens, prompts or file contents you don't want public.
+      render: text

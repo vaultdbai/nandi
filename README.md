@@ -4,38 +4,52 @@
 
 <h1 align="center">Nandi</h1>
 
-<p align="center"><strong>Connect every team through AI agents you can trust.</strong><br />by <a href="https://www.vaultdb.ai">VaultDB.ai</a></p>
+<p align="center"><strong>Give AI agents the job, not the keys.</strong><br />by <a href="https://vaultdb.ai">VaultDB.ai</a></p>
 
-A local-first desktop app for managing a team of AI agents. You act as the manager: each agent runs in its own Docker container, is defined by a `skill.md` file, and reports back to you through the **Agent Console**.
+<p align="center">
+  <a href="https://github.com/vaultdbai/nandi/releases/latest">Download</a> ·
+  <a href="https://vaultdb.ai/">Nandi Business</a> ·
+  <a href="https://vaultdb.ai/personal.html">Nandi Personal</a> ·
+  <a href="SECURITY.md">Security</a>
+</p>
 
-> **Status:** 0.1.0, the first release. Download it from [Releases](https://github.com/vaultdbai/nandi/releases/latest) (Windows `-setup.exe`, no admin rights needed, or `.msi` for IT deployment; macOS `.dmg`; Linux `.AppImage`; requires Docker).
+Nandi is a free, open source desktop app that runs AI agents in a locked box on your own machine. It runs Claude Code, Codex and its own agents in a hardened container. Your model keys and sign-ins stay outside, the agent reaches only the sites you allow, tools that write files or run commands wait for your approval by default, and every run is on record.
 
-## Why it runs on your machine
+> **Download** the latest release from [Releases](https://github.com/vaultdbai/nandi/releases/latest): Windows `-setup.exe` (no admin rights needed) or `.msi` for IT deployment, macOS `.dmg`, Linux `.AppImage`. Nandi needs Docker.
+
+## Why
+
+An AI agent is useful when it can act: run commands, edit files, call APIs. On a normal laptop that means it can reach everything the laptop can: cloud keys, tokens, customer data and the whole internet. This year an AI coding agent on a staging task found a broadly scoped token and deleted a company's production database and its backups in one call.
+
+Nandi gives the agent the job without the keys.
+
+## How Nandi Keeps Agents in the Box
+
+| Area            | What Nandi does                                                                                                                                                                                                                                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The box**     | Every agent runs in a Docker container: read-only root, all capabilities dropped, `no-new-privileges`, a non-root user, memory and process limits. Only the project folder and the folders you share with the agent are mounted                                                                                            |
+| **Keys**        | Model keys and sign-ins never enter the container. Model calls go through Nandi's proxy on the host, which adds the real credential: Claude Team or Enterprise, AWS SSO through Bedrock, Azure Foundry, or a key from the OS keyring. An agent you grant AWS access gets temporary keys limited to the actions you granted |
+| **The network** | The container has no route out except Nandi's egress proxy. Sites not on the agent's allow list are refused. The exceptions are the search engine, for web search, and the agent's model provider while a run lasts                                                                                                        |
+| **Approvals**   | By default, tools that write files or run commands wait for your approval in the Inbox. You can relax that per agent, and the change is in its file                                                                                                                                                                        |
+| **The record**  | Run history and every tool call are kept on your machine. The audit logs are hash-chained, so an edited line shows                                                                                                                                                                                                         |
+| **Any agent**   | Claude Code and Codex run in the same container behind the same proxy. A test on every change checks each one's container for leaked keys and blocked sites ([`sandbox_suite.rs`](src-tauri/src/sandbox_suite.rs)). Google's Antigravity is next                                                                           |
+
+**What Nandi doesn't protect against:** what you approve (an approved command does what it says, inside the container), a compromised host, and your model provider, since prompts go to the provider you choose. See [SECURITY.md](SECURITY.md).
+
+## One App, Two Editions
+
+- **Nandi Business:** for teams. An optional relay that your company hosts connects teammates' Nandis, so people can ask or assign work and share an inbox. The relay sees who asked whom, when, which job and its status. It never sees the request or the answer, which are sealed end to end. Free for up to 20 users.
+- **Nandi Personal:** an AI assistant that asks first. It runs on your computer and keeps your notes. Its Gmail and Outlook connection is read-only: it can't send, move, delete or mark mail as read.
+
+Both work without any server. Nandi also checks GitHub for updates and pulls its container images from ghcr.io.
+
+## Why It Runs on Your Machine
 
 Model calls are the cost that grows. Running every agent, tool and coding CLI in a hosted service on top of them makes it grow faster: hosted compute is billed per minute, and a team of agents runs all day. Most people already have a desktop or laptop powerful enough to run agents in containers, and it sits idle much of the time. Nandi uses that machine:
 
 - **Cost:** you pay only for model calls. Agents, tools, containers and storage run on hardware you already own. Local models through Ollama are an option for work that doesn't need a hosted model.
 - **Your setup:** agents use the tools, packages, registries and settings already on your machine, so there's nothing to rebuild in someone else's cloud.
-- **Your data:** files, history and definitions stay on your disk (`~/.nandi`). Only the model calls you allow leave it, through the egress proxy.
-- **Safety:** "local" doesn't mean "on the host". Agent code runs only in hardened containers (read-only root, no network except the proxy), and credentials are passed per session, never baked in.
-
-## Features
-
-### Agent Console
-
-A three-panel workspace for supervising agents:
-
-- **Agent list** — every agent with its status (running, needs approval, idle) and current task
-- **Conversation** — an activity feed of messages between you and the selected agent, including **approval requests** the agent needs you to approve or reject before it acts (e.g. running a shell command)
-- **Context panel** — tabs for the agent's **Workflow**, **Permissions** (what its container may do), **Connectors** (external services), and **Git** state
-
-### Local Docker runtime
-
-Nandi talks to the local Docker daemon via [bollard](https://github.com/fussybeaver/bollard). Currently available:
-
-| Command          | Description                                |
-| ---------------- | ------------------------------------------ |
-| `listContainers` | Lists all containers (running and stopped) |
+- **Your data:** files, history and definitions stay on your disk (`~/.nandi`).
 
 ## Stack
 
@@ -48,7 +62,7 @@ Nandi talks to the local Docker daemon via [bollard](https://github.com/fussybea
 | Testing  | Vitest, Testing Library, cargo test             |
 | Quality  | ESLint, Prettier, ast-grep, knip, jscpd, clippy |
 
-## Getting Started
+## Build From Source
 
 ### Prerequisites
 
@@ -107,8 +121,8 @@ See [docs/developer/tauri-commands.md](docs/developer/tauri-commands.md) for det
 
 ## Documentation
 
-- **[Developer Docs](docs/developer/)** — architecture, patterns, and detailed guides
-- **[AGENTS.md](AGENTS.md)** — instructions for AI coding agents working in this repo
+- **[Developer Docs](docs/developer/)**: architecture, patterns, and detailed guides
+- **[AGENTS.md](AGENTS.md)**: instructions for AI coding agents working in this repo
 
 ## License
 

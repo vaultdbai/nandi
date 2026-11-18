@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/vaultdbai/nandi/security/advisories/new
+    about: Privately, so it's fixed before anyone else knows
+  - name: Email us
+    url: mailto:hello@vaultdb.ai
+    about: For questions, or if you don't use GitHub
