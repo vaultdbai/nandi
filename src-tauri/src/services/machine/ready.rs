@@ -160,7 +160,7 @@ pub fn command(
                 url: links::WINDOWS_INSTALL,
             },
             _ => match &tools.brew {
-                Some(brew) => program(brew, &["install", "--cask", "docker"]),
+                Some(brew) => program(brew, &["install", "--cask", "docker-desktop"]),
                 None => StepCommand::DownloadAndOpen {
                     url: if report.apple_silicon {
                         links::MAC_ARM_DMG
@@ -625,7 +625,9 @@ mod tests {
             args(command(InstallDocker, &mac, &brew, downloads)),
             (
                 "/opt/homebrew/bin/brew".to_string(),
-                ["install", "--cask", "docker"].map(String::from).to_vec()
+                ["install", "--cask", "docker-desktop"]
+                    .map(String::from)
+                    .to_vec()
             )
         );
         assert_eq!(

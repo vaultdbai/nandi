@@ -24,6 +24,7 @@ export type HandWrittenCommands = Pick<
   Commands,
   | 'pickAttachments'
   | 'openRunFile'
+  | 'getComputerReady'
   | 'toggleCompanionWindow'
   | 'quitNandi'
   | 'placeCompanion'

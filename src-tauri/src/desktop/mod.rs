@@ -9,6 +9,7 @@
 //! | `attachments`   | `pick_attachments` opens the native file picker on this computer   |
 //! | `companion`     | Shows, places and pins the companion window; the global hotkey     |
 //! | `events`        | Not a command: emits core events to the webview (`TauriSink`)      |
+//! | `machine`       | `get_computer_ready` starts installers that raise an OS admin prompt; only from the desktop window |
 //! | `notifications` | `send_native_notification` shows an OS notification                |
 //! | `recovery`      | Typed errors (`RecoveryError`); the browser has `http/recovery.rs` |
 //! | `run_files`     | `open_run_file` opens a run's file with its app on this computer   |
@@ -19,6 +20,7 @@
 pub mod attachments;
 pub mod companion;
 pub mod events;
+pub mod machine;
 pub mod notifications;
 pub mod recovery;
 pub mod run_files;
@@ -39,4 +41,5 @@ pub const COMMANDS: &[&str] = &[
     "load_emergency_data",
     "cleanup_old_recovery_files",
     "open_run_file",
+    "get_computer_ready",
 ];

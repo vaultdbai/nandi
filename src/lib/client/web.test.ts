@@ -80,6 +80,10 @@ describe('webClient', () => {
       'error'
     )
     expect(webClient.supports.attachments).toBe(false)
+    expect(await webClient.getComputerReady(['installDocker'])).toEqual({
+      status: 'error',
+      error: 'Open Nandi on this computer to install Docker.',
+    })
   })
 
   it('streams WebSocket events and resyncs after reconnecting', async () => {

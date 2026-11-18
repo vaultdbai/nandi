@@ -17,7 +17,7 @@ Without Docker, Nandi opens and works as a chat assistant, but agents get **no t
   - The approval card says why admin rights are needed, before the operating system's own prompt (UAC on Windows, the password prompt on macOS).
 - **Docker's licence (owner, 2026-11-18).** The **Install Docker** card shows one line to everyone, since the installer can't tell a business user from a personal one: "Docker Desktop is free for personal use and small companies. Companies with more than 250 employees or $10M in revenue need a Docker subscription, so check with your IT. Rancher Desktop is a free alternative." The user guide's `.msi` section (`docs/userguide/userguide.md`, IT deployment) says the same. Nandi never bundles Docker Desktop: it downloads it from Docker.
 - **One "go ahead" (owner, 2026-11-18).** When Docker or WSL is missing, Nandi asks once: "Get your computer ready? Nandi will update WSL and install Docker." One **Go ahead** runs the steps in order (`wsl --update` or `wsl --install`, then Docker). The OS still asks for admin rights for each installer, and Nandi checks again after each step.
-- **Start Docker when Nandi opens (owner, 2026-11-18).** The first time Docker is found stopped, Nandi asks "Start Docker automatically when Nandi opens?" and remembers the answer (a portable setting). When yes, it starts Docker in the background at launch: startup never waits for it.
+- **Start Docker when Nandi opens (owner, 2026-11-18).** The first time Docker is found stopped, Nandi asks "Start Docker automatically when Nandi opens?" and remembers the answer on this computer (owner's brief said portable; corrected 2026-11-18: Docker is installed per computer, so it lives in `state.db` `local_settings`). When yes, it starts Docker in the background at launch: startup never waits for it.
 - **`wsl --update` (owner, 2026-11-18)** runs as the first step before installing Docker, and whenever the check finds WSL older than 2.1.5. Never on every launch: it needs the network and can restart WSL, which stops a running Docker.
 - **Onboarding:** the check is a strongly recommended step that can be skipped, with the honest line "Without Docker, agents can only talk, not act". Until it's done, it shows again as a calm item on Home.
 
@@ -65,7 +65,7 @@ Installs through the distribution's package manager run only after approval, ele
 ## Phases
 
 - **Phase 1 (built 2026-11-09):** Steps 1 and 3, plus the no-admin **Start Docker** action and links to official download and docs pages. Windows, macOS and Linux.
-- **Phase 2, Windows and macOS (built 2026-11-18):** Step 2 as one go-ahead: `wsl --update` or `wsl --install`, Docker Desktop (winget; Homebrew or the `.dmg`), Start Docker, checking again after each step, the Docker licence line, the go-ahead in the decision record, and "Start Docker when Nandi opens" (a portable setting). See `docs/developer/machine-readiness.md`.
+- **Phase 2, Windows and macOS (built 2026-11-18):** Step 2 as one go-ahead: `wsl --update` or `wsl --install`, Docker Desktop (winget; Homebrew or the `.dmg`), Start Docker, checking again after each step, the Docker licence line, the go-ahead in the decision record, and "Start Docker when Nandi opens" (remembered on this computer). The go-ahead is desktop-only. See `docs/developer/machine-readiness.md`.
 - **Still to do:** Linux phase 2 (`pkexec`); `wsl --shutdown` and restart Docker Desktop as actions for "unable to start"; the note for IT; then Step 5.
 
 ## Rules

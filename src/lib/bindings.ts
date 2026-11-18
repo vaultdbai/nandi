@@ -503,6 +503,19 @@ async openRunFile(runId: string, path: string, reveal: boolean) : Promise<Result
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * The one go-ahead: runs the report's `plan` (`steps`, as the user saw
+ * them) in the background; progress arrives as `machine://ready`. The
+ * installers ask the OS for admin rights themselves
+ */
+async getComputerReady(steps: ReadyStep[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_computer_ready", { steps }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getWorkflows() : Promise<Result<WorkflowSummary[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_workflows") };
@@ -3392,19 +3405,6 @@ async startDocker() : Promise<Result<null, string>> {
 }
 },
 /**
- * The one go-ahead: runs the report's `plan` (`steps`, as the user saw
- * them) in the background; progress arrives as `machine://ready`. The
- * installers ask the OS for admin rights themselves
- */
-async getComputerReady(steps: ReadyStep[]) : Promise<Result<null, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("get_computer_ready", { steps }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
  * How the last (or running) "Get your computer ready" is going
  */
 async computerReadyStatus() : Promise<Result<ReadyProgress, string>> {
@@ -3416,7 +3416,7 @@ async computerReadyStatus() : Promise<Result<ReadyProgress, string>> {
 }
 },
 /**
- * The machine's portable settings (start Docker when Nandi opens)
+ * This computer's settings (start Docker when Nandi opens)
  */
 async machineSettings() : Promise<Result<MachineSettings, string>> {
     try {
@@ -3427,7 +3427,8 @@ async machineSettings() : Promise<Result<MachineSettings, string>> {
 }
 },
 /**
- * The answer to "Start Docker automatically when Nandi opens?"
+ * The answer to "Start Docker automatically when Nandi opens?",
+ * remembered on this computer
  */
 async setStartDockerOnOpen(start: boolean) : Promise<Result<null, string>> {
     try {
@@ -6901,7 +6902,8 @@ checkedAt: string;
  */
 plan: ReadyStep[] }
 /**
- * The machine's portable settings (in `settings.yaml`)
+ * This computer's own settings (`local_settings` in `state.db`): Docker
+ * is installed per computer, so they never go in the gold copy
  */
 export type MachineSettings = { 
 /**

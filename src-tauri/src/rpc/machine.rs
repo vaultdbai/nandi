@@ -1,7 +1,8 @@
 //! "Get your computer ready" (Tauri adapter for `services::machine`).
+//! Starting the installs is desktop-only (`desktop::machine`).
 
 use crate::services::machine::ready::ReadyProgress;
-use crate::services::machine::{self, install, MachineReport, MachineSettings, ReadyStep};
+use crate::services::machine::{self, install, MachineReport, MachineSettings};
 
 super::commands! {
     /// Is this computer ready for agents to act: Docker, WSL, virtualization,
@@ -13,17 +14,13 @@ super::commands! {
     /// `sudo systemctl start docker`, which the app shows instead.
     fn start_docker() -> () => machine::start_docker().await;
 
-    /// The one go-ahead: runs the report's `plan` (`steps`, as the user saw
-    /// them) in the background; progress arrives as `machine://ready`. The
-    /// installers ask the OS for admin rights themselves
-    fn get_computer_ready(state, steps: Vec<ReadyStep>) -> () => install::start(&state, steps).await;
-
     /// How the last (or running) "Get your computer ready" is going
     fn computer_ready_status() -> ReadyProgress => Ok(install::status());
 
-    /// The machine's portable settings (start Docker when Nandi opens)
-    fn machine_settings(state) -> MachineSettings => Ok(machine::settings(&state));
+    /// This computer's settings (start Docker when Nandi opens)
+    fn machine_settings(state) -> MachineSettings => machine::settings(&state).await;
 
-    /// The answer to "Start Docker automatically when Nandi opens?"
+    /// The answer to "Start Docker automatically when Nandi opens?",
+    /// remembered on this computer
     fn set_start_docker_on_open(state, start: bool) -> () => machine::set_start_docker_on_open(&state, start).await;
 }

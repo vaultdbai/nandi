@@ -213,7 +213,11 @@ pub async fn start_docker() -> Result<(), String> {
     probe::start_docker(MachineOs::current()).await
 }
 
-/// The machine's portable settings (in `settings.yaml`)
+/// `local_settings` key: start Docker when Nandi opens (absent: not asked)
+pub const START_DOCKER_ON_OPEN_KEY: &str = "machine.start_docker_on_open";
+
+/// This computer's own settings (`local_settings` in `state.db`): Docker
+/// is installed per computer, so they never go in the gold copy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct MachineSettings {
@@ -221,32 +225,29 @@ pub struct MachineSettings {
     pub start_docker_on_open: Option<bool>,
 }
 
-pub fn settings(state: &AppState) -> MachineSettings {
-    MachineSettings {
-        start_docker_on_open: state
-            .store()
-            .read(|repo| repo.settings().start_docker_on_open()),
-    }
+pub async fn settings(state: &AppState) -> Result<MachineSettings, String> {
+    settings_in(state.db()).await
 }
 
-/// The answer to "Start Docker automatically when Nandi opens?"
-pub async fn set_start_docker_on_open(state: &AppState, start: bool) -> Result<(), String> {
-    use crate::services::domain::EntityKind;
-    use crate::services::repos::SingletonRepository;
-
-    let mut settings = state.store().read(|repo| repo.settings().clone());
-    if settings.start_docker_on_open() == Some(start) {
-        return Ok(());
-    }
-    settings.set_start_docker_on_open(start);
-    let store = state.store().clone();
-    tokio::task::spawn_blocking(move || {
-        store.repos().settings.save(&settings)?;
-        store.commit(EntityKind::Settings, "settings")?;
-        Ok::<_, String>(())
+async fn settings_in(db: &crate::db::Db) -> Result<MachineSettings, String> {
+    db.call(|conn| {
+        Ok(MachineSettings {
+            start_docker_on_open: crate::db::get_setting(conn, START_DOCKER_ON_OPEN_KEY)?
+                .and_then(|v| v.as_bool()),
+        })
     })
     .await
-    .map_err(|e| format!("Settings write failed: {e}"))?
+}
+
+/// The answer to "Start Docker automatically when Nandi opens?",
+/// remembered on this computer
+pub async fn set_start_docker_on_open(state: &AppState, start: bool) -> Result<(), String> {
+    state
+        .db()
+        .call(move |conn| {
+            crate::db::set_setting(conn, START_DOCKER_ON_OPEN_KEY, &serde_json::json!(start))
+        })
+        .await
 }
 
 /// Whether Nandi starts Docker now, as it opens
@@ -261,11 +262,15 @@ fn starts_on_open(setting: Option<bool>, report: &MachineReport) -> bool {
 /// At launch, when the user said yes: starts Docker Desktop in the
 /// background if it's stopped. Nothing waits for it.
 pub fn start_docker_on_open(state: &AppState) {
-    let setting = settings(state).start_docker_on_open;
-    if setting != Some(true) {
-        return;
-    }
+    let db = state.db().clone();
     tauri::async_runtime::spawn(async move {
+        let setting = match settings_in(&db).await {
+            Ok(settings) => settings.start_docker_on_open,
+            Err(e) => return log::warn!("Couldn't read start Docker on open: {e}"),
+        };
+        if setting != Some(true) {
+            return;
+        }
         let report = check(false).await;
         if !starts_on_open(setting, &report) {
             return;
@@ -322,15 +327,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_start_docker_answer_is_a_portable_setting() {
+    async fn the_start_docker_answer_is_remembered_on_this_computer() {
         let state = AppState::for_tests(vec![]);
-        assert_eq!(settings(&state).start_docker_on_open, None);
+        let asked =
+            |state: AppState| async move { settings(&state).await.unwrap().start_docker_on_open };
+        assert_eq!(asked(state.clone()).await, None);
         set_start_docker_on_open(&state, true).await.unwrap();
-        assert_eq!(settings(&state).start_docker_on_open, Some(true));
-        let yaml = std::fs::read_to_string(state.store().layout().settings_path()).unwrap();
-        assert!(yaml.contains("start_docker_on_open: true"), "{yaml}");
+        assert_eq!(asked(state.clone()).await, Some(true));
+        // This computer's, never the gold copy's
+        let yaml =
+            std::fs::read_to_string(state.store().layout().settings_path()).unwrap_or_default();
+        assert!(!yaml.contains("docker"), "{yaml}");
         set_start_docker_on_open(&state, false).await.unwrap();
-        assert_eq!(settings(&state).start_docker_on_open, Some(false));
+        assert_eq!(asked(state.clone()).await, Some(false));
         state.shutdown();
     }
 

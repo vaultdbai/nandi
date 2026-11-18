@@ -21,7 +21,7 @@ On every start, `services::migration::bootstrap` opens `~/.nandi/repo`, or creat
 | Agent-scoped workflows                                                                                     | `~/.nandi/repo/.nandi/agents/<id>/workflows/<w>.yaml` | ✅     | source                    |
 | Global workflows                                                                                           | `~/.nandi/repo/.nandi/workflows/<w>.yaml`             | ✅     | source                    |
 | Triggers                                                                                                   | `~/.nandi/repo/.nandi/triggers/<t>.yaml`              | ✅     | source                    |
-| Portable settings (theme, language, default model, provider pins, start Docker on open)                    | `~/.nandi/repo/.nandi/settings.yaml`                  | ✅     | source                    |
+| Portable settings (theme, language, default model, provider pins)                                          | `~/.nandi/repo/.nandi/settings.yaml`                  | ✅     | source                    |
 | Connector declarations                                                                                     | `~/.nandi/repo/.nandi/connectors.yaml`                | ✅     | source                    |
 | Groups I'm in: each group's signed policy and members ([groups](./groups.md))                              | `~/.nandi/repo/.nandi/groups/<group-id>.md`           | ✅     | refreshed from the relay  |
 | My access level per group                                                                                  | `~/.nandi/repo/.nandi/groups/access.yaml`             | ✅     | source                    |
@@ -38,6 +38,7 @@ On every start, `services::migration::bootstrap` opens `~/.nandi/repo`, or creat
 | Inbox Ask chats (`inbox:<kind>:<id>`, `intake:<id>`): their messages                                       | `state.db` → `conversations`, `messages`              | ❌     | ❌ stays on this computer |
 | Engine choice, canned script                                                                               | `state.db` → `local_settings`                         | ❌     | ❌ machine-local          |
 | First-run step reached (`onboarding.step`), per Nandi home                                                 | `state.db` → `local_settings`                         | ❌     | ❌ machine-local          |
+| Start Docker when Nandi opens (`machine.start_docker_on_open`)                                             | `state.db` → `local_settings`                         | ❌     | ❌ machine-local          |
 | Dismissed hints (Get started, backup nudge)                                                                | webview `localStorage` (`lib/dismissals.ts`)          | ❌     | ❌ hint comes back        |
 | Audit logs (llm, egress, triggers)                                                                         | `~/.nandi/local/logs/`                                | ❌     | ❌                        |
 | Agent workdirs                                                                                             | `~/.nandi/local/work/<id>/`                           | ❌     | ephemeral                 |

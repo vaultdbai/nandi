@@ -12,6 +12,8 @@ import type { HandWrittenCommands, NandiClient } from './types'
 import { withCommands } from './with-commands'
 
 const NOT_SUPPORTED = 'Not supported in the browser. Use the Nandi desktop app.'
+const INSTALL_ON_THIS_COMPUTER =
+  'Open Nandi on this computer to install Docker.'
 const RECONNECT_MIN_MS = 1_000
 const RECONNECT_MAX_MS = 30_000
 /** Boot proceeds after this even if the socket can't connect yet; the
@@ -115,6 +117,9 @@ const handWritten: HandWrittenCommands = {
   pickAttachments: () => notSupported(),
   // It would open on the host, not in this browser
   openRunFile: () => notSupported(),
+  // Installers raise an admin prompt on the host: only from its own window
+  getComputerReady: () =>
+    Promise.resolve({ status: 'error', error: INSTALL_ON_THIS_COMPUTER }),
 
   // Typed errors, so these have their own routes (`http/recovery.rs`)
   saveEmergencyData: (filename, data) =>

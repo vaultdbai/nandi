@@ -420,8 +420,6 @@ pub struct Settings {
     delegation: DelegationPrefs,
     /// Saved connector grants: they travel with the repo
     connector_grants: Grants,
-    /// Start Docker when Nandi opens: `None` until the user answers
-    start_docker_on_open: Option<bool>,
 }
 
 impl Default for Settings {
@@ -439,7 +437,6 @@ impl Default for Settings {
             consent: BTreeMap::new(),
             delegation: DelegationPrefs::default(),
             connector_grants: Grants::default(),
-            start_docker_on_open: None,
         }
     }
 }
@@ -469,8 +466,6 @@ struct SettingsFile {
     delegation: DelegationPrefs,
     #[serde(default, skip_serializing_if = "Grants::is_empty")]
     connector_grants: Grants,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    start_docker_on_open: Option<bool>,
 }
 
 fn is_default_delegation(value: &DelegationPrefs) -> bool {
@@ -508,7 +503,6 @@ impl Settings {
             consent: file.consent,
             delegation: file.delegation,
             connector_grants: Grants::new(file.connector_grants.iter().cloned().collect())?,
-            start_docker_on_open: file.start_docker_on_open,
         };
         settings.check()?;
         Ok(settings)
@@ -582,7 +576,6 @@ impl Settings {
             consent: self.consent.clone(),
             delegation: self.delegation.clone(),
             connector_grants: self.connector_grants.clone(),
-            start_docker_on_open: self.start_docker_on_open,
         };
         serde_yaml::to_string(&file).unwrap_or_default()
     }
@@ -599,15 +592,6 @@ impl Settings {
     pub fn set_language(&mut self, language: Option<String>) -> DomainResult<()> {
         let previous = std::mem::replace(&mut self.language, language);
         self.check().inspect_err(|_| self.language = previous)
-    }
-
-    /// Whether Nandi starts Docker when it opens; `None`: not asked yet
-    pub fn start_docker_on_open(&self) -> Option<bool> {
-        self.start_docker_on_open
-    }
-
-    pub fn set_start_docker_on_open(&mut self, start: bool) {
-        self.start_docker_on_open = Some(start);
     }
 
     pub fn set_default_model(&mut self, model: ModelRef) {
@@ -792,21 +776,6 @@ secret_refs:
   aws_access_key: nandi.aws.access_key
   aws_secret_key: nandi.aws.secret_key
 "#;
-
-    #[test]
-    fn start_docker_on_open_is_unasked_until_answered() {
-        let mut settings = Settings::from_yaml(DOCUMENTED).unwrap();
-        assert_eq!(settings.start_docker_on_open(), None);
-        assert!(!settings.to_yaml().contains("start_docker_on_open"));
-        settings.set_start_docker_on_open(false);
-        let yaml = settings.to_yaml();
-        assert!(yaml.contains("start_docker_on_open: false"), "{yaml}");
-        let back = Settings::from_yaml(&yaml).unwrap();
-        assert_eq!(back.start_docker_on_open(), Some(false));
-        settings.set_start_docker_on_open(true);
-        let back = Settings::from_yaml(&settings.to_yaml()).unwrap();
-        assert_eq!(back.start_docker_on_open(), Some(true));
-    }
 
     #[test]
     fn provider_pins_round_trip_and_are_validated() {
