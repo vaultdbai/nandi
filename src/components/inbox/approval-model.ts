@@ -140,13 +140,19 @@ const PAUSE_TOOL = 'continue_run'
 /** Longest argument shown in the sentence; the JSON has the rest */
 const MAX_VALUE_CHARS = 120
 
+/**
+ * The first non-empty string among `names`. A coding CLI's tool call
+ * (Claude Code, Codex over ACP) arrives as `{title, input: {command}}`,
+ * so its `input` is read when the top level has none of them.
+ */
 function field(args: Args, ...names: string[]): string | null {
   if (typeof args !== 'object' || args === null) return null
+  const record = args as Record<string, unknown>
   for (const name of names) {
-    const value = (args as Record<string, unknown>)[name]
+    const value = record[name]
     if (typeof value === 'string' && value.trim()) return value.trim()
   }
-  return null
+  return 'input' in record ? field(record.input as Args, ...names) : null
 }
 
 function short(text: string): string {
@@ -165,9 +171,9 @@ export function approvalSummary(tool: string, args: Args): ApprovalSummary {
     case 'shell':
       return { key: 'shell', values: { cmd: value('cmd', 'command') } }
     case 'write_file':
-      return { key: 'writeFile', values: { path: value('path') } }
+      return { key: 'writeFile', values: { path: value('path', 'file_path') } }
     case 'read_file':
-      return { key: 'readFile', values: { path: value('path') } }
+      return { key: 'readFile', values: { path: value('path', 'file_path') } }
     case 'list_dir':
       return { key: 'listDir', values: { path: value('path') || '.' } }
     case 'delegate_to_agent':

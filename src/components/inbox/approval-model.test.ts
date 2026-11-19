@@ -14,6 +14,25 @@ describe('approvalSummary', () => {
       'shell',
       { cmd: 'git push origin main' },
     ],
+    // A coding CLI's call over ACP: the command sits under `input`
+    [
+      'shell',
+      {
+        title: 'Run staging cleanup script',
+        input: {
+          command: 'bash scripts/cleanup-staging.sh',
+          description: 'Run staging cleanup script',
+        },
+      },
+      'shell',
+      { cmd: 'bash scripts/cleanup-staging.sh' },
+    ],
+    [
+      'write_file',
+      { input: { file_path: '/agent/workdir/a.ts', content: 'x' } },
+      'writeFile',
+      { path: '/agent/workdir/a.ts' },
+    ],
     ['write_file', { path: 'notes.md' }, 'writeFile', { path: 'notes.md' }],
     ['read_file', { path: 'a.txt' }, 'readFile', { path: 'a.txt' }],
     ['list_dir', {}, 'listDir', { path: '.' }],
