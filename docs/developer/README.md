@@ -72,6 +72,7 @@ Technical documentation for building and extending this app. These docs describe
 | ----------------------------------------------------- | ------------------------------------------------------- |
 | [Feature Test Catalog](../testing/README.md)          | Every shipped feature with test steps; keep it current  |
 | [Static Analysis](./static-analysis.md)               | ESLint, Prettier, ast-grep, knip, jscpd, React Compiler |
+| [Dependency Alerts](./dependency-alerts.md)           | Open Dependabot alerts, pins, why each is there         |
 | [Writing ast-grep Rules](./writing-ast-grep-rules.md) | AI reference for creating custom rules                  |
 | [Testing](./testing.md)                               | Test patterns, Tauri mocking                            |
 | [Bundle Optimization](./bundle-optimization.md)       | Bundle size management                                  |
