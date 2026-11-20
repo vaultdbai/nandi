@@ -53,6 +53,9 @@ What changed in each Nandi release, grouped by what you notice. The release note
 - The companion stays on the monitor you drop it on.
 - Every screen shows the calm "connect to your relay" notice when there is no relay.
 - An approval card for Claude Code or Codex shows the command it asks to run. It showed only "Run a command:".
+- A renewed Claude sign-in on this computer clears "Can't sign in" at the next check, and an agent's page checks again when it opens.
+- An agent's status follows its live turn, so "Running" ends when the answer does.
+- A relay that refuses this Nandi's token says calmly to get a join code and join again.
 
 ### Security
 
@@ -61,6 +64,7 @@ What changed in each Nandi release, grouped by what you notice. The release note
 - The default registry wins its IDs, and a pack's workflows can't drive agents outside it.
 - **Consent covers more.** First-use consent now covers connectors, shared folders and their access, and taking tasks from others. An update that adds or widens any of them, or widens a host's methods, asks again. Approving grants only what the dialog showed.
 - **The relay instance token lives in the OS keyring**, not in `state.db`.
+- **Relays start closed.** A relay refuses registration without a valid token; `--open` is for development only and says so loudly when it starts.
 - **Signing keys in the OS keychain.** `nandi keygen` and `nandi sign` take `--key keyring:<NAME>`, and `nandi keygen --import` moves a key file in, so publisher keys never have to sit on disk.
 - **The same lockdown for every coding agent.** One test holds Claude Code and Codex to the same container checks on every change: no host credentials inside, and sites off the allow list refused.
 - **Dependency fixes.** Every open Dependabot alert is fixed except `glib`, which moves with Tauri and is not reachable from Nandi.
