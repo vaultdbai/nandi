@@ -72,11 +72,21 @@ nandi sign --kind pack --id research-pack --release 1.0.0 \
 
 The first-party key lives at `~/.nandi/keys/publisher.key` on the machine that signed v1.0.0. Losing it means publishing a new public key, and every entry has to be re-signed.
 
+**Keep the key in the OS keychain, not in a file.** `--key keyring:<NAME>` reads and writes the key as the keychain entry `nandi.signing.<NAME>` (Windows Credential Manager, the macOS Keychain or the Secret Service), so it never has to sit on disk where malware that harvests key files would find it:
+
+```bash
+nandi keygen --import ~/.nandi/keys/publisher.key --key keyring:publisher   # move an existing key in
+# back the file up offline (an encrypted drive), then delete it from the computer
+nandi sign --kind pack --id research-pack --release 1.0.0 --repo github.com/vaultdbai/nandi-research-pack --key keyring:publisher
+```
+
+`nandi keygen --key keyring:<NAME>` creates a new key straight in the keychain. Neither command ever overwrites a key that is already there.
+
 ### Rotating the first-party key
 
 The app trusts only the key it ships, so a new key needs an app release. Old apps keep trusting the old key until they update.
 
-1. `nandi keygen --key <new path>` on the signing machine. Keep the old key until step 5.
+1. `nandi keygen --key keyring:<new name>` on the signing machine. Keep the old key until step 5.
 2. Re-sign every current entry in `packs/` and `agents/` with the new key, and put the new public key in `publishers/vaultdbai.json`. Don't push the registry yet.
 3. Change `FIRST_PARTY_PUBLIC_KEY` in `src-tauri/src/services/marketplace/trust.rs` and the release table in `the_shipped_key_verifies_every_published_first_party_release` to the new key and signatures.
 4. Release the app.

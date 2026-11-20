@@ -23,11 +23,11 @@ use crate::http::DEFAULT_SERVER_PORT;
 pub const USAGE: &str = "Usage: nandi [OPTIONS]
        nandi verify --agent <ID>
        nandi rebuild [--force]
-       nandi keygen [--key <PATH>]
+       nandi keygen [--key <PATH>|keyring:<NAME>] [--import <PATH>]
        nandi name
        nandi rename <NAME> | --reset
        nandi sign --kind <agent|pack|connector> --id <ID> --release <VERSION>
-                 (--commit <SHA> | --repo <REPO>) [--key <PATH>]
+                 (--commit <SHA> | --repo <REPO>) [--key <PATH>|keyring:<NAME>]
 
 Options:
   --server      Expose the web UI on all interfaces (port 17463 unless --port)
@@ -47,7 +47,9 @@ Commands:
                        Run history is kept. Best run with the app closed
   keygen              Create a marketplace publisher key (default
                        ~/.nandi/keys/publisher.key) and print its public key
-                       for publishers/<handle>.json
+                       for publishers/<handle>.json. --key keyring:<NAME>
+                       keeps it in the OS keychain instead of a file;
+                       --import <PATH> moves an existing key file there
   name                 Print the bull's name (Nandi unless renamed)
   rename <NAME>        Rename the bull; --reset goes back to Nandi
   sign                 Sign a release for a registry entry and print its
@@ -84,6 +86,8 @@ pub struct CliOptions {
 pub enum PublisherCommand {
     Keygen {
         key: Option<String>,
+        /// An existing key file to store at `key` (a keychain entry)
+        import: Option<String>,
     },
     Sign {
         kind: String,
@@ -109,7 +113,7 @@ fn parse_publisher(
             None => (arg.clone(), None),
         };
         let allowed: &[&str] = if command == "keygen" {
-            &["--key"]
+            &["--key", "--import"]
         } else {
             &["--kind", "--id", "--release", "--commit", "--repo", "--key"]
         };
@@ -126,7 +130,10 @@ fn parse_publisher(
     }
     let mut take = |name: &str| values.remove(name);
     if command == "keygen" {
-        return Ok(PublisherCommand::Keygen { key: take("--key") });
+        return Ok(PublisherCommand::Keygen {
+            key: take("--key"),
+            import: take("--import"),
+        });
     }
     let kind = take("--kind").ok_or("sign needs --kind agent|pack|connector")?;
     if !matches!(kind.as_str(), "agent" | "pack" | "connector") {
@@ -330,7 +337,17 @@ mod tests {
     fn parses_publisher_commands() {
         assert_eq!(
             parse(&["keygen"]).publisher,
-            Some(PublisherCommand::Keygen { key: None })
+            Some(PublisherCommand::Keygen {
+                key: None,
+                import: None
+            })
+        );
+        assert_eq!(
+            parse(&["keygen", "--import", "old.key", "--key=keyring:publisher"]).publisher,
+            Some(PublisherCommand::Keygen {
+                key: Some("keyring:publisher".into()),
+                import: Some("old.key".into())
+            })
         );
         assert_eq!(
             parse(&[

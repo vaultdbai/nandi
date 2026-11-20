@@ -698,7 +698,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 
 ### PL-05 — Other CLI commands (cross-references)
 
-- **What:** `nandi verify --agent <id>` (prerequisite check, writes `verify.log`; see Agents/Runtime section), `nandi keygen [--key]` and `nandi sign --kind agent|pack --id --release (--commit|--repo) [--key]` (see Marketplace), `nandi name` / `nandi rename <NAME>|--reset` (see Appearance/mascot). Each runs and exits without opening a window.
+- **What:** `nandi verify --agent <id>` (prerequisite check, writes `verify.log`; see Agents/Runtime section), `nandi keygen [--key <path>|keyring:<name>] [--import <path>]` and `nandi sign --kind agent|pack --id --release (--commit|--repo) [--key]` (see Marketplace), `nandi name` / `nandi rename <NAME>|--reset` (see Appearance/mascot). Each runs and exits without opening a window.
 - **Where:** `cli.rs`, `lib.rs`, `verify.rs`, `services/marketplace/signature.rs`, `cli_mascot.rs`. (The relay is `nandi-relay` from vaultdbai/nandi-relay, RL-07; the app has no `relay` command.)
 - **Preconditions:** Per command.
 - **Steps:** `nandi verify` (no agent), `nandi --agent a`, `nandi sign --kind tool`.
