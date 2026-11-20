@@ -2,7 +2,9 @@
 
 What changed in each Nandi release, grouped by what you notice. The release notes for each version are in [docs/release-notes/](docs/release-notes/).
 
-## 0.2.0 (2026-11-20)
+## 0.2.1 (2026-11-20)
+
+The first release after 0.1.0. The `v0.2.0` tag was never released: its installer build stopped on a mismatched updater package, fixed here.
 
 ### New
 

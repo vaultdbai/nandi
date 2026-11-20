@@ -37,7 +37,7 @@ Two features exist in a build only when their address is set when it's built (`o
 | `NANDI_TRIAL_GATEWAY_URL` | The free tokens (`llm_trial::offered`, docs: `sign-in.md` "The free tokens") | `https://trial.vaultdb.ai`     |
 | `NANDI_PUBLIC_RELAY_URL`  | "Join the public relay" (`relay::public::offered`, `relay-defaults.md`)      | `wss://relay.vaultdb.ai/relay` |
 
-0.2.0 ships with both unset, because neither server is live yet. Set them for 0.2.1 once `trial.vaultdb.ai` and `relay.vaultdb.ai` answer. The same names at run time turn a feature on for one run (staging, a local gateway or relay, tests) and win over the built value.
+0.2.1 ships with both unset, because neither server is live yet. Set them for 0.2.2 once `trial.vaultdb.ai` and `relay.vaultdb.ai` answer. The same names at run time turn a feature on for one run (staging, a local gateway or relay, tests) and win over the built value.
 
 ### 3. Update Configuration
 
