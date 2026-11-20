@@ -42,7 +42,7 @@ import { ownAgents } from '@/lib/agent-identity'
 import { formatRelativeTime } from '@/lib/format-time'
 import type { AgentOverview } from '@/lib/bindings'
 import { cn } from '@/lib/utils'
-import { useAgentStore, useCurrentRun } from '@/store/agent-store'
+import { useAgentStore, useCurrentTurn } from '@/store/agent-store'
 import { useNavigationStore, type View } from '@/store/navigation-store'
 import type { AgentInfo } from '@/types/agent'
 import { ViewHeader } from './ViewHeader'
@@ -259,7 +259,7 @@ function AgentRow({
 }) {
   const { t, i18n } = useTranslation()
   const { agent, overview, problem } = row
-  const run = useCurrentRun(agent.id)
+  const turn = useCurrentTurn(agent.id)
   const byMe = useSharedByMe()
   const [menuOpen, setMenuOpen] = useState(false)
   const [sharingOpen, setSharingOpen] = useState(false)
@@ -295,7 +295,7 @@ function AgentRow({
           <span className="min-w-0">
             <span className="flex items-center gap-2">
               <span className="truncate font-medium">{agent.name}</span>
-              <AgentStatusPill status={effectiveStatus(agent, run)} />
+              <AgentStatusPill status={effectiveStatus(agent, turn)} />
             </span>
             <span className="block truncate text-xs text-muted-foreground">
               {agent.status === 'error'

@@ -61,6 +61,7 @@ Shared preconditions used below:
 - **Edge / negative cases:**
   - A pending approval outranks every other problem.
   - A CLI-runtime agent never shows noModel.
+  - Signed in to Claude Code on the host with an expired session: the problem shows; once Claude Code renews it (using it on the host, or Nandi's own Claude calls), the problem clears at the next health check (within five minutes) or when Overview is opened again (`a_renewed_host_sign_in_is_reported_at_the_next_check` in `services/harness/mod.rs`).
 - **Automation:** Covered by: `src/components/agents/agent-page-model.test.ts` | Layer: unit | Gap: none for the rules; UI rendering untested.
 - **Needs relay:** no
 - **Status:** Shipped
@@ -188,6 +189,7 @@ Shared preconditions used below:
 - **Edge / negative cases:**
   - Installed agents: no Edit in Ask, Publish or Delete.
   - Publish and Sharing dialogs are covered in the marketplace and sharing sections.
+  - The status pill follows the agent's live turn: it turns Idle as soon as the run ends, also when the page loaded mid-run (e.g. its tool container started) (`agent-status.test.ts`).
 - **Automation:** Covered by: `src/components/layout/AppShell.test.tsx` (navigation) | Layer: ui-e2e | Gap: no direct test of `AgentView.tsx`.
 - **Needs relay:** no
 - **Status:** Shipped

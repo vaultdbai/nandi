@@ -34,15 +34,16 @@ export const AGENT_STATUS_STYLES: Record<AgentStatus, AgentStatusStyle> = {
 }
 
 /**
- * An agent's status with its live run applied: the store's current run is
- * newer than the status `list_agents` reported.
+ * An agent's status from its live turn (`useCurrentTurn`, kept by run
+ * events). `agent.status` says running only as of when it was read (a
+ * snapshot or `list_agents`), so it decides only `error`: a snapshot
+ * loaded mid-run would otherwise keep "Running" after the run ended.
  */
 export function effectiveStatus(
   agent: AgentInfo,
-  run: RunSummary | null
+  turn: RunSummary | null
 ): AgentStatus {
   if (agent.status === 'error') return 'error'
-  if (run?.status === 'awaitingApproval') return 'waitingApproval'
-  if (run) return 'running'
-  return agent.status === 'running' ? 'running' : 'idle'
+  if (turn?.status === 'awaitingApproval') return 'waitingApproval'
+  return turn ? 'running' : 'idle'
 }

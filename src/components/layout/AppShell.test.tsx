@@ -63,7 +63,11 @@ describe('AppShell', () => {
         status: 'ok',
         data: agentSnapshot(
           AGENTS.find(a => a.id === agentId) ?? null,
-          agentId
+          agentId,
+          // The running agent has a live turn (the status pill follows it)
+          agentId === 'personal'
+            ? { currentTurn: run('r0', 'personal', { conversationId: 'c0' }) }
+            : {}
         ),
       })
     )

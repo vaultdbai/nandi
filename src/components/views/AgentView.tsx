@@ -82,6 +82,7 @@ import type { ContainerState } from '@/lib/tauri-bindings'
 import {
   useAgent,
   useCurrentRun,
+  useCurrentTurn,
   useMessages,
   usePendingApprovals,
 } from '@/store/agent-store'
@@ -186,7 +187,7 @@ function AgentPage({
   initialTab: AgentTab
 }) {
   const { t } = useTranslation()
-  const run = useCurrentRun(agent.id)
+  const turn = useCurrentTurn(agent.id)
   const pending = usePendingApprovals(agent.id)
   const overviews = useAgentOverviews()
   const { data: defaultModel } = useDefaultModel()
@@ -250,7 +251,7 @@ function AgentPage({
         }
         title={agent.name}
         titleAdornment={
-          <AgentStatusPill status={effectiveStatus(agent, run)} />
+          <AgentStatusPill status={effectiveStatus(agent, turn)} />
         }
         subtitle={subtitle || t('agentPage.list.noDescription')}
         actions={
