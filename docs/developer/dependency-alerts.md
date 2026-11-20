@@ -14,8 +14,8 @@ Pins live in `pnpm-workspace.yaml` (`overrides`). Remove one when the parent pac
 
 | Package           | Pin                                                      | Why                                                                                                                                                           |
 | ----------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `seroval`         | 1.6.10                                                   | `solid-js` (pulled in by the TanStack Query devtools) asks for `~1.5.4`. The pin crosses that range. The devtools are dev-only, and the tests and build pass. |
-| `seroval-plugins` | 1.6.10                                                   | Must match `seroval`.                                                                                                                                         |
+| `seroval`         | 1.6.11                                                   | `solid-js` (pulled in by the TanStack Query devtools) asks for `~1.5.4`. The pin crosses that range. The devtools are dev-only, and the tests and build pass. |
+| `seroval-plugins` | 1.6.11                                                   | Must match `seroval`.                                                                                                                                         |
 | `source-map-js`   | 1.2.2                                                    | `css-tree` asks for 1.2.1.                                                                                                                                    |
 | `minimatch`       | 11.0.1 (for `@typescript-eslint/typescript-estree` only) | `typescript-estree` asks for 9 or 10. Lint-time only, and lint passes.                                                                                        |
 

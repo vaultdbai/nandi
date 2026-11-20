@@ -1,7 +1,7 @@
 allowBuilds:
   '@ast-grep/cli': true
 overrides:
-  seroval: 1.6.10
-  seroval-plugins: 1.6.10
+  seroval: 1.6.11
+  seroval-plugins: 1.6.11
   source-map-js: 1.2.2
   '@typescript-eslint/typescript-estree>minimatch': 11.0.1
