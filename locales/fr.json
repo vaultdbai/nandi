@@ -4072,6 +4072,7 @@
   "network.connection.versionMismatchNandi": "Ce Nandi est plus ancien que ce qu’accepte votre relais. Mettez Nandi à jour pour réactiver les fonctions entre personnes.",
   "network.connection.versionMismatchRelay": "Votre relais est plus ancien que ce Nandi. Demandez à la personne qui gère le relais de le mettre à jour. Les fonctions entre personnes sont coupées en attendant.",
   "network.connection.keyMismatch": "Le relais a d’autres clés pour cet appareil. Si vous avez réinstallé Nandi, demandez à l’opérateur du relais de le réinitialiser (rekey).",
+  "network.connection.joinNeeded": "Ce relais n’accepte que les Nandi qui l’ont rejoint. Demandez son code d’accès à la personne qui le gère, puis choisissez Modifier… et rejoignez-le avec ce code. Tout ce qui est sur cet ordinateur continue de fonctionner.",
   "network.people.lastSeenNote": "Tout le monde est affiché tel que vu la dernière fois. Connectez-vous au relais de votre entreprise pour voir qui est là maintenant.",
   "relay.join.title": "Rejoindre le relais de l'entreprise",
   "relay.join.join": "Rejoindre",

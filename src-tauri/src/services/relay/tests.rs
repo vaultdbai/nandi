@@ -893,12 +893,11 @@ async fn the_app_connects_to_an_open_relay_and_lists_its_instances() {
 async fn agents_turned_on_while_connected_reach_the_relay() {
     use crate::services::domain::{Agent, AgentId, EntityKind};
     use crate::services::repos::Repository;
-    let addr = serve_open(local()).await.unwrap();
+    let addr = serve(local(), SECRET.to_vec()).await.unwrap();
     let peer = registered(addr, "peer", Vec::new()).await;
     let state = AppState::for_tests(vec![]);
-    set_relay_url(&state, &format!("ws://{addr}/relay"))
-        .await
-        .unwrap();
+    let me = network::local_instance_id(state.db()).unwrap();
+    set_relay_url(&state, &url(addr, &me)).await.unwrap();
     assert!(eventually(async || get_relay_status(&state).await.unwrap().connected).await);
     share(&state, true);
 
@@ -939,12 +938,11 @@ fn share(state: &AppState, enabled: bool) {
 async fn agents_stay_off_the_relay_while_sharing_is_off() {
     use crate::services::domain::{Agent, AgentId, EntityKind};
     use crate::services::repos::Repository;
-    let addr = serve_open(local()).await.unwrap();
+    let addr = serve(local(), SECRET.to_vec()).await.unwrap();
     let peer = registered(addr, "peer", Vec::new()).await;
     let state = AppState::for_tests(vec![]);
-    set_relay_url(&state, &format!("ws://{addr}/relay"))
-        .await
-        .unwrap();
+    let me = network::local_instance_id(state.db()).unwrap();
+    set_relay_url(&state, &url(addr, &me)).await.unwrap();
     assert!(eventually(async || get_relay_status(&state).await.unwrap().connected).await);
     share(&state, false);
 
@@ -966,13 +964,10 @@ async fn agents_stay_off_the_relay_while_sharing_is_off() {
 
 #[tokio::test]
 async fn queries_sent_before_registration_wait_for_it() {
-    let addr = serve_open(local()).await.unwrap();
+    let addr = serve(local(), SECRET.to_vec()).await.unwrap();
     let _peer = registered(addr, "peer", vec![card("peer", "papers", "find-papers")]).await;
     let client = Arc::new(WsRelayClient::new(None, "me"));
-    client
-        .connect(&format!("ws://{addr}/relay"), "me")
-        .await
-        .unwrap();
+    client.connect(&url(addr, "me"), "me").await.unwrap();
     // Startup: presence and the directory ask before `register` is done
     let asking = client.clone();
     let early = tokio::spawn(async move {
@@ -1251,10 +1246,10 @@ async fn a_relay_that_refuses_our_token_or_keys_is_not_retried() {
     use nandi_protocol::KEY_MISMATCH;
     use std::sync::atomic::Ordering;
     let ours = PROTOCOL_VERSION;
-    // (code, whether the status says the keys)
-    let cases = [("unauthorized", false), (KEY_MISMATCH, true)];
+    // (code, whether the status says the keys, whether it says the token)
+    let cases = [("unauthorized", false, true), (KEY_MISMATCH, true, false)];
     let mut refused = Vec::new();
-    for (code, key_mismatch) in cases {
+    for (code, key_mismatch, token_refused) in cases {
         let (url, sockets) = refusing_relay(code, "Not you", ours, ours).await;
         let client: Arc<dyn RelayClient> = Arc::new(WsRelayClient::new(None, "me"));
         client.connect(&url, "me").await.unwrap();
@@ -1267,6 +1262,7 @@ async fn a_relay_that_refuses_our_token_or_keys_is_not_retried() {
         let status = client.status();
         assert_eq!(status.state, RelayConnectionState::Error, "{code}");
         assert_eq!(status.key_mismatch, key_mismatch, "{code}");
+        assert_eq!(status.token_refused, token_refused, "{code}");
         assert!(!status.version_mismatch, "{code}");
         assert_eq!(status.update_needed, None, "{code}");
         refused.push((code, client, sockets));

@@ -32,7 +32,10 @@ import { PublicRelayAccountCard } from '@/components/network/PublicRelayAccountC
 import { PublicRelayJoin } from '@/components/network/PublicRelayJoin'
 import { onPublicRelay } from '@/components/network/public-relay-model'
 import { HealthDot, Term } from '@/components/network/NetworkHelp'
-import { relayErrorKey } from '@/components/network/reachability-model'
+import {
+  relayErrorKey,
+  relayRefusalIsCalm,
+} from '@/components/network/reachability-model'
 import {
   isRelayUrl,
   isUnencryptedRemoteRelay,
@@ -193,7 +196,15 @@ function RelayCard({
       </div>
 
       {status?.state === 'error' && (
-        <p className="text-sm text-destructive" data-testid="relay-error">
+        <p
+          className={cn(
+            'text-sm',
+            relayRefusalIsCalm(status)
+              ? 'text-muted-foreground'
+              : 'text-destructive'
+          )}
+          data-testid="relay-error"
+        >
           {t(relayErrorKey(status))}
         </p>
       )}

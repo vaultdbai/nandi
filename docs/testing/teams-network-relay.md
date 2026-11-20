@@ -585,7 +585,7 @@ Notes that apply to the whole section:
 - **Steps:** 1. Run `nandi-relay --host 0.0.0.0 --port 8787` with no secret. 2. Run it again with `--open`. 3. Connect two instances. 4. Kill one instance.
 - **Expected:**
   - Step 1: "Refusing to start: NANDI_RELAY_SECRET isn't set…", exit code 2.
-  - Step 2: the log shows `relay started on ws://0.0.0.0:8787/relay (auth: open)` and that auth is off (`--open`).
+  - Step 2: the log shows `relay started on ws://0.0.0.0:8787/relay (auth: open)` and a line starting `WARNING: auth is OFF (--open, for development only)`.
   - Steps 3–4: a `+ connection … agents=N` line per instance, then `- connection closed … reason=client_disconnect`.
 - **Edge / negative cases:**
   - Unknown flags and bad port values are rejected with usage.
@@ -617,18 +617,21 @@ Notes that apply to the whole section:
 
 ### RL-09 — Relay token auth (`NANDI_RELAY_SECRET`)
 
-- **What:** When the relay has `NANDI_RELAY_SECRET` set, registering needs an instance token. The operator gets it with `GET /relay/token?instanceId=<id>` and `Authorization: Bearer <secret>`. The user adds it to the URL as `?token=…`.
-- **Where:** nandi-relay `src/server.rs` (`SECRET_ENV`, the `/relay/token` route). Client: `relay/client.rs`.
-- **Preconditions:** A relay started with the secret set.
-- **Steps:** 1. Connect without a token. 2. Fetch a token for the instance ID. 3. Save the URL with `?token=`.
-- **Expected:** Without a token the relay logs `! registration refused` and checklist row 3 is not confirmed. With the token, the instance registers.
+- **What:** A relay starts closed. `nandi-relay` refuses to start without `NANDI_RELAY_SECRET` unless it's given `--open` (development only, logged as `WARNING: auth is OFF`). With the secret, registering needs an instance token. A Nandi gets one by joining with the relay's join code (`NANDI_RELAY_JOIN_CODE`, `POST /relay/enroll`, RL-38), or the operator issues one with `GET /relay/token?instanceId=<id>` and `Authorization: Bearer <secret>` and the user adds it to the URL as `?token=…`.
+- **Where:** nandi-relay `src/standalone.rs` (`NO_SECRET`, `open_warning`), `src/server.rs` (`SECRET_ENV`, `/relay/enroll`, `/relay/token`). Client: `relay/client.rs` (`token_refused`), `relay/join.rs`. UI: `ConnectionView.tsx`, `reachability-model.ts` (`relayErrorKey`, `relayRefusalIsCalm`).
+- **Preconditions:** A relay started with the secret and a join code.
+- **Steps:** 1. Save the relay's address without a token (or start Nandi with `NANDI_RELAY_URL` set to it). 2. Open Network › Connection. 3. Choose **Change…**, enter the join code and click **Join**.
+- **Expected:**
+  - Step 1: the relay logs `! registration refused`; Nandi isn't connected and doesn't retry. Everything local keeps working, and person-to-person places show "Connect to your company's relay".
+  - Step 2: a calm, muted line (not red text): "This relay lets in only Nandis that joined it…" (`network.connection.joinNeeded`).
+  - Step 3: Nandi enrolls, keeps its token in the keychain and connects.
 - **Edge / negative cases:**
-  - A token issued for another instance is refused.
+  - A token issued for another instance, or signed with another secret, is refused.
   - An empty secret is refused.
   - `/relay/token` without the secret is refused.
-- **Automation:** Covered by: nandi-relay `src/server.rs` (`tokens_verify_only_for_their_instance_and_secret`, `an_empty_secret_is_refused`, `the_token_endpoint_needs_the_secret`), `relay/tests.rs` (`registration_needs_a_valid_token`) | Layer: api | Gap: there is no UX for issuing tokens.
+- **Automation:** Covered by: nandi-relay `tests/relay.rs` (`a_closed_relay_admits_only_an_enrolled_token`: enroll with the join code, register, connect; no token, someone else's or a forged one refused), `src/standalone.rs` (`refuses_to_start_open_without_the_flag`, `an_open_relay_warns_loudly_and_says_how_to_close_it`), `src/server.rs` (`tokens_verify_only_for_their_instance_and_secret`, `an_empty_secret_is_refused`, `the_token_endpoint_needs_the_secret`); `relay/join_tests.rs` (`a_closed_relay_without_our_token_asks_us_to_join_it`), `relay/tests.rs` (`registration_needs_a_valid_token`, `a_relay_that_refuses_our_token_or_keys_is_not_retried`), `reachability-model.test.ts` | Layer: api | Gap: none.
 - **Needs relay:** yes
-- **Status:** Partial (the token flow works, but there is no end-to-end UX; relays are open by default)
+- **Status:** Shipped
 
 ### RL-10 — Presence: heartbeats, eviction, capability presence
 

@@ -805,7 +805,7 @@ NANDI_RELAY_SECRET=<long random value> NANDI_RELAY_JOIN_CODE=<code for staff> \
   nandi-relay --host 0.0.0.0 --port 8787 --tls-cert relay.pem --tls-key relay-key.pem
 ```
 
-Allow port 8787 through that machine's firewall. Without a certificate it serves plain `ws://`; put it behind your TLS proxy, or keep it on a LAN you trust. To try it on one machine: `nandi-relay --host 127.0.0.1 --open`. A relay serves up to 20 people free; a licence file from VaultDB.ai (`--licence`) adds more, and past the limit a new person's Connection view says why they can't join. When someone leaves, the relay's operator revokes their device (`/relay/revoke`, see `docs/relay-testing.md` in nandi-relay), and it's off the relay at once and frees their seat.
+Allow port 8787 through that machine's firewall. Without a certificate it serves plain `ws://`; put it behind your TLS proxy, or keep it on a LAN you trust. A relay starts closed: without `NANDI_RELAY_SECRET` it refuses to start and says how to set one. To try it on one machine: `nandi-relay --host 127.0.0.1 --open` (development only; it logs a warning that auth is off). A relay serves up to 20 people free; a licence file from VaultDB.ai (`--licence`) adds more, and past the limit a new person's Connection view says why they can't join. When someone leaves, the relay's operator revokes their device (`/relay/revoke`, see `docs/relay-testing.md` in nandi-relay), and it's off the relay at once and frees their seat.
 
 ### Join a company relay
 
@@ -820,14 +820,15 @@ Nandi joins once: the relay checks the code and gives this Nandi its own key, wh
 
 If joining doesn't work, Nandi says why, and everything else keeps working:
 
-| What you see                        | What to do                                                                      |
-| ----------------------------------- | ------------------------------------------------------------------------------- |
-| Couldn't reach a relay at …         | Check the address, your network or VPN, or try later                            |
-| This relay needs a join code        | Ask whoever runs it                                                             |
-| That join code wasn't accepted      | Check the code with whoever runs the relay                                      |
-| … has no free seat. The relay says: | The relay's own words follow (a free relay serves 20 people). Tell its operator |
-| … speaks relay version …            | Update Nandi, or ask the operator to update the relay                           |
-| This Nandi joined … before          | Ask the operator to issue this Nandi's key again                                |
+| What you see                                  | What to do                                                                      |
+| --------------------------------------------- | ------------------------------------------------------------------------------- |
+| Couldn't reach a relay at …                   | Check the address, your network or VPN, or try later                            |
+| This relay needs a join code                  | Ask whoever runs it                                                             |
+| That join code wasn't accepted                | Check the code with whoever runs the relay                                      |
+| … has no free seat. The relay says:           | The relay's own words follow (a free relay serves 20 people). Tell its operator |
+| … speaks relay version …                      | Update Nandi, or ask the operator to update the relay                           |
+| This Nandi joined … before                    | Ask the operator to issue this Nandi's key again                                |
+| This relay lets in only Nandis that joined it | Ask whoever runs it for the join code, then **Change…** and join with it        |
 
 **Invite a teammate.** **Copy invite message** (on Network › Connection, and on People while you're alone on the relay) copies a short message with the relay's address and, if you typed one, its join code. Share it only with teammates. It never holds your own key.
 

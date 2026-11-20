@@ -8,6 +8,7 @@ import {
   healthLabel,
   networkHealth,
   relayErrorKey,
+  relayRefusalIsCalm,
   type ReachabilityInput,
   type RowKey,
 } from './reachability-model'
@@ -215,6 +216,7 @@ describe('relayErrorKey', () => {
     [{ versionMismatch: true, updateNeeded: 'relay' }, 'versionMismatchRelay'],
     [{ versionMismatch: true, updateNeeded: null }, 'versionMismatch'],
     [{ keyMismatch: true }, 'keyMismatch'],
+    [{ tokenRefused: true }, 'joinNeeded'],
     [{}, 'errorSummary'],
   ] satisfies [Partial<RelayStatus>, string][])(
     'says why the relay refused us: %o',
@@ -223,4 +225,14 @@ describe('relayErrorKey', () => {
       expect(relayErrorKey(status)).toBe(`network.connection.${key}`)
     }
   )
+})
+
+describe('relayRefusalIsCalm', () => {
+  it('is calm only when a closed relay needs joining', () => {
+    const refused = (overrides: Partial<RelayStatus>) =>
+      relay({ connected: false, state: 'error', ...overrides })
+    expect(relayRefusalIsCalm(refused({ tokenRefused: true }))).toBe(true)
+    expect(relayRefusalIsCalm(refused({}))).toBe(false)
+    expect(relayRefusalIsCalm(refused({ keyMismatch: true }))).toBe(false)
+  })
 })

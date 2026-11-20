@@ -153,6 +153,32 @@ async fn joining_a_company_relay_with_a_typed_code() {
     state.shutdown();
 }
 
+/// A closed relay (the default) saved without a token, as from
+/// `NANDI_RELAY_URL`: refused calmly (`token_refused`, not connected,
+/// person-to-person calls answer `RelayUnavailable`), and joining with
+/// the code lets this Nandi in
+#[tokio::test]
+async fn a_closed_relay_without_our_token_asks_us_to_join_it() {
+    let data = tempfile::tempdir().unwrap();
+    let relay = company_relay(data.path()).await;
+    let state = AppState::for_tests(vec![]);
+    set_relay_url(&state, &relay).await.unwrap();
+    assert!(
+        eventually(async || get_relay_status(&state).await.unwrap().token_refused).await,
+        "the refusal never reached the status"
+    );
+    let status = get_relay_status(&state).await.unwrap();
+    assert!(!status.connected && !status.key_mismatch && !status.version_mismatch);
+    let unavailable = super::super::unavailable::connected(state.relay_client());
+    assert!(unavailable.is_err());
+
+    let joined = join_relay(&state, &relay, Some(CODE)).await.unwrap();
+    assert!(matches!(joined, JoinOutcome::Joined { .. }), "{joined:?}");
+    assert!(connected(&state).await, "never connected");
+    assert!(!get_relay_status(&state).await.unwrap().token_refused);
+    state.shutdown();
+}
+
 fn read_token(state: &AppState) -> Option<String> {
     super::super::saved_token_for(
         state,

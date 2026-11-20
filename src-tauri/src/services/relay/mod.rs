@@ -238,6 +238,10 @@ pub struct RelayStatus {
     /// reinstalled, or the keyring was reset): its operator must rekey it
     #[serde(default)]
     pub key_mismatch: bool,
+    /// The relay is closed and didn't take this Nandi's token (none, or
+    /// not issued for it): join it again with a join code
+    #[serde(default)]
+    pub token_refused: bool,
     pub state: RelayConnectionState,
     /// Why `state` last changed (an error, or "…; retrying in 4s")
     pub reason: Option<String>,

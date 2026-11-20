@@ -4072,6 +4072,7 @@
   "network.connection.versionMismatchNandi": "この Nandi はリレーが受け付けるバージョンより古いです。Nandi を更新すると、メンバー間の機能が再び使えます。",
   "network.connection.versionMismatchRelay": "リレーがこの Nandi より古いです。リレーの管理者に更新を依頼してください。それまでメンバー間の機能は使えません。",
   "network.connection.keyMismatch": "リレーにはこのデバイスの別の鍵があります。Nandi を再インストールした場合は、リレーの運用者に鍵の再設定 (rekey) を依頼してください。",
+  "network.connection.joinNeeded": "このリレーは参加済みの Nandi だけを受け入れます。運営者に参加コードを聞き、「変更…」を選んでそのコードで参加してください。このコンピューター上の作業はそのまま使えます。",
   "network.people.lastSeenNote": "最後に確認した時点の情報を表示しています。今いる人を見るには会社のリレーに接続してください。",
   "relay.join.title": "会社のリレーに参加",
   "relay.join.join": "参加",

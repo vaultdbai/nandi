@@ -40,7 +40,8 @@
 //! ([`ClientOptions::device_keys`], read on the first `connect`). A relay
 //! that has other keys pinned for this instance ID refuses it
 //! (`key_mismatch`): the status turns to `Error` with `key_mismatch` set.
-//! A bad token is refused as `unauthorized`. Either way the client closes
+//! A missing or bad token is refused as `unauthorized` (`token_refused`:
+//! the relay is closed, join it with a join code). Either way the client closes
 //! the socket and stops retrying like after a `version_mismatch`: only a
 //! new `connect` (a new token or URL, or after the operator's rekey) can
 //! succeed. A refusal about one task (`Error.taskId`) never ends the
@@ -143,9 +144,12 @@ pub fn told(code: Option<&str>, message: &str) -> String {
     }
 }
 
+/// The relay's code for a registration without a valid token
+const UNAUTHORIZED: &str = "unauthorized";
+
 /// The codes of an `Error` (not about a task) that refuses this connection
 /// until a new `connect`: a bad token, other keys pinned, another protocol
-const REFUSES_THE_CONNECTION: [&str; 3] = ["unauthorized", KEY_MISMATCH, VERSION_MISMATCH];
+const REFUSES_THE_CONNECTION: [&str; 3] = [UNAUTHORIZED, KEY_MISMATCH, VERSION_MISMATCH];
 
 /// The codes whose `Error` comes before a refusal that carries no code of
 /// its own (a `ReassignResult`)
@@ -322,6 +326,8 @@ struct Shared {
     protocol: Option<u32>,
     /// The refusal was for our keys (the relay pinned others)
     key_mismatch: bool,
+    /// The refusal was for our token (missing, or not ours): join again
+    token_refused: bool,
     /// This device's public keys, read on the first `connect`
     public_keys: Option<PublicKeys>,
     /// Key queries by instance ID
@@ -526,6 +532,7 @@ impl Inner {
             version_mismatch: shared.version_mismatch,
             update_needed: shared.update_needed,
             key_mismatch: shared.key_mismatch,
+            token_refused: shared.token_refused,
             state: shared.state,
             reason: shared.reason.clone(),
             instance_id: shared.instance_id.clone(),
@@ -1157,6 +1164,7 @@ impl Inner {
             shared.version_mismatch = false;
             shared.update_needed = None;
             shared.key_mismatch = false;
+            shared.token_refused = false;
             shared.state = RelayConnectionState::Connected;
             shared.reason = None;
             shared.last_connected_at = Some(now);
@@ -1326,6 +1334,7 @@ impl Inner {
                     shared.refused = true;
                     shared.version_mismatch = code == VERSION_MISMATCH;
                     shared.key_mismatch = code == KEY_MISMATCH;
+                    shared.token_refused = code == UNAUTHORIZED;
                     shared.state = RelayConnectionState::Error;
                     shared.reason = Some(refused);
                     drop(shared);

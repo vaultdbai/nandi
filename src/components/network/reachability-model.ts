@@ -179,7 +179,18 @@ export function relayErrorKey(relay: RelayStatus): string {
     }
   }
   if (relay.keyMismatch) return 'network.connection.keyMismatch'
+  if (relay.tokenRefused) return 'network.connection.joinNeeded'
   return 'network.connection.errorSummary'
+}
+
+/**
+ * Whether the refusal is said calmly: a closed relay that didn't take our
+ * token only needs joining with its code, which is no fault (never a nag)
+ */
+export function relayRefusalIsCalm(relay: RelayStatus): boolean {
+  return (
+    Boolean(relay.tokenRefused) && !relay.versionMismatch && !relay.keyMismatch
+  )
 }
 
 /** The dot in words (`network.health.*`): amber says if it's still connecting */

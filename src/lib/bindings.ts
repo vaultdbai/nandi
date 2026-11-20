@@ -8140,7 +8140,12 @@ updateNeeded?: UpdateNeeded | null;
  * The relay has other keys pinned for this device (Nandi was
  * reinstalled, or the keyring was reset): its operator must rekey it
  */
-keyMismatch?: boolean; state: RelayConnectionState; 
+keyMismatch?: boolean; 
+/**
+ * The relay is closed and didn't take this Nandi's token (none, or
+ * not issued for it): join it again with a join code
+ */
+tokenRefused?: boolean; state: RelayConnectionState; 
 /**
  * Why `state` last changed (an error, or "…; retrying in 4s")
  */

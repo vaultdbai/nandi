@@ -4072,6 +4072,7 @@
   "network.connection.versionMismatchNandi": "This Nandi is older than your relay accepts. Update Nandi to turn people features back on.",
   "network.connection.versionMismatchRelay": "Your relay is older than this Nandi. Ask whoever runs the relay to update it. People features are off until then.",
   "network.connection.keyMismatch": "The relay has other keys for this device. If you reinstalled Nandi, ask your relay’s operator to rekey it.",
+  "network.connection.joinNeeded": "This relay lets in only Nandis that joined it. Ask the person who runs it for its join code, then choose Change… and join with the code. Everything on this computer keeps working.",
   "network.people.lastSeenNote": "Showing everyone as last seen. Connect to your company's relay to see who's around now.",
   "relay.join.title": "Join a company relay",
   "relay.join.join": "Join",
