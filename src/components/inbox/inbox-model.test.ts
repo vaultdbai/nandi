@@ -122,7 +122,7 @@ describe('buildInbox: trust requests (task 12)', () => {
       'trust-desktop-old',
       'trust-desktop-new',
     ])
-    expect(inboxBadgeCount(items)).toBe(2)
+    expect(inboxBadgeCount(items, NOW)).toBe(2)
   })
 })
 
@@ -149,7 +149,7 @@ describe('buildInbox: held requests (task 5)', () => {
       })
     )
     expect(items.map(i => i.id)).toEqual(['hold-soon', 'hold-late'])
-    expect(inboxBadgeCount(items)).toBe(2)
+    expect(inboxBadgeCount(items, NOW)).toBe(2)
   })
 
   it('leaves out decided and expired holds', () => {
@@ -180,6 +180,13 @@ const assignment = (
   dueAt,
   closedAt: null,
   links: [],
+  kind: 'do' as const,
+  source: null,
+  sourceRef: null,
+  relatedRef: null,
+  runId: null,
+  assignedAgent: null,
+  runStatus: null,
 })
 
 describe('buildInbox: assignments', () => {
@@ -201,7 +208,7 @@ describe('buildInbox: assignments', () => {
       'assignment-later',
       'assignment-undated',
     ])
-    expect(inboxBadgeCount(items)).toBe(4)
+    expect(inboxBadgeCount(items, NOW)).toBe(4)
   })
 })
 
@@ -329,7 +336,7 @@ describe('buildInbox: requests that came back', () => {
       })
     )
     expect(items.map(item => item.id)).toEqual(['approval-a1', 'return-t1'])
-    expect(inboxBadgeCount(items)).toBe(1)
+    expect(inboxBadgeCount(items, NOW)).toBe(1)
   })
 
   it('shows a request that came back failed once, as the return', () => {
@@ -353,7 +360,7 @@ describe('inboxBadgeCount', () => {
       })
     )
     expect(items).toHaveLength(3)
-    expect(inboxBadgeCount(items)).toBe(2)
+    expect(inboxBadgeCount(items, NOW)).toBe(2)
   })
 })
 
@@ -396,7 +403,7 @@ describe('the intake queue in the Inbox', () => {
       'intake-intake:q1',
       'intake-intake:q4',
     ])
-    expect(inboxBadgeCount(items)).toBe(2)
+    expect(inboxBadgeCount(items, NOW)).toBe(2)
     const [first] = items
     if (!first) throw new Error('no item')
     expect(inboxRowLabel(first)).toEqual({
@@ -522,7 +529,7 @@ describe('buildInbox: getting to know you', () => {
       })
     )
     expect(items.map(item => item.id)).toEqual(['approval-a1', 'know-me'])
-    expect(inboxBadgeCount(items)).toBe(1)
+    expect(inboxBadgeCount(items, NOW)).toBe(1)
     const todo = items[1] as InboxItem
     expect(inboxThreadId(todo)).toBe('inbox:knowMe:you')
     expect(inboxItemView(todo)).toEqual({

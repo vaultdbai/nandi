@@ -181,6 +181,10 @@ vi.mock('@/lib/tauri-bindings', async importOriginal => {
       listDelegationHistory: ok([]),
       listGatewayHolds: ok([]),
       listGatewayAssignments: ok([]),
+      listTodos: ok([]),
+      addTodo: ok(null),
+      reopenTodo: ok(null),
+      handTodoToAgent: ok(null),
       getMyNotes: ok({
         path: '',
         managed: true,

@@ -45,6 +45,13 @@ const assignment = {
   dueAt: NOW - 120 * MIN,
   closedAt: null,
   links: [{ name: 'Evidence folder', url: 'https://drive.example.com/soc1' }],
+  kind: 'do' as const,
+  source: null,
+  sourceRef: null,
+  relatedRef: null,
+  runId: null,
+  assignedAgent: null,
+  runStatus: null,
 }
 
 const failed: WorkItem = {

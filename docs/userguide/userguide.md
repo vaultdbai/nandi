@@ -311,6 +311,18 @@ When nothing needs you and nothing runs, Home says so in one line. On a fresh in
 
 **All activity** (from Recent) lists every run and delegation, both ways, in one table. Filter by search, date, status, source (you, a trigger, a schedule, a workflow, another Nandi), direction, agent and member; the filters stay put when you open a row and come back. **Export CSV** saves exactly what the filters show.
 
+### To-dos and reminders
+
+Nandi keeps your to-do list. When it reads your mail, your calendar or a chat, it adds one to-do for each thing you must do, check or remember, in one plain sentence with the deadline ("Reply to the landlord about the deposit. Deadline Friday."). Reading the same email again never adds it twice. Add your own with **Add a to-do** above the Inbox: the text, Do, Check or Reminder, and a date if you like.
+
+On Home, your to-dos sit in three groups: **Do now**, **Check and close** and **Reminders**, soonest first. Red is overdue, amber is due within two days. A reminder has a bell and its date first; it rings in the last three days and only then counts in the Home badge. Each card says where it came from, and links to what Nandi already prepared for it, such as a payment waiting for your approval.
+
+- **Done** marks it done (add a note if you like). **Done recently** keeps the last week, with **Undo**.
+- **Hand to an agent** gives it to Nandi or one of your agents: its chat opens with "Please do this: …". While it works, the to-do shows under Working in the tray; when it's finished, it comes back with "finished: mark done?" so you check the result.
+- The tray on the right lists the same to-dos one line each, with a small due chip.
+
+Every add, hand-off, done and undo is in **Decisions**. To-dos need no relay.
+
 ### Approvals
 
 <!-- studio-guide: approvals-and-policies -->

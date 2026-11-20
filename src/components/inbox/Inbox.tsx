@@ -40,6 +40,7 @@ import {
   useDismissWork,
   useInbox,
   useDismissRequestReturn,
+  useTodos,
 } from '@/hooks/useInbox'
 import { useRetryRequest } from '@/hooks/useRequests'
 import { useRetryRun } from '@/hooks/useWork'
@@ -52,7 +53,27 @@ import { useViewOpener } from '@/hooks/useViewOpener'
 import { workItemView } from '@/lib/work'
 import { approveWorkflowStep, runWorkflow } from '@/lib/workflow-actions'
 import { cn } from '@/lib/utils'
-import { inboxItemView, inboxRowLabel, type InboxItem } from './inbox-model'
+import {
+  assignmentItem,
+  inboxItemView,
+  inboxRowLabel,
+  type InboxItem,
+} from './inbox-model'
+import {
+  doneSince,
+  groupTodos,
+  isTodo,
+  sourceKey,
+  todoState,
+  todoTone,
+} from './todo-model'
+import {
+  AddTodo,
+  DoneRecently,
+  HandToAgent,
+  TodoMarker,
+  TodoProgress,
+} from './TodoParts'
 
 /**
  * Everything waiting on the user, one calm line each; opening one opens its
@@ -63,38 +84,69 @@ import { inboxItemView, inboxRowLabel, type InboxItem } from './inbox-model'
 export function Inbox() {
   const { t } = useTranslation()
   const { items, count, isPending } = useInbox()
+  const todos = useTodos().data ?? []
   const { open } = useViewOpener()
+  // To-dos have their own grouped cards below
+  const others = items.filter(
+    item => !(item.kind === 'assignment' && isTodo(item.assignment))
+  )
+  const groups = groupTodos(todos)
 
   return (
     <section aria-label={t('inbox.title')} className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           {count > 0 ? t('inbox.titleCount', { count }) : t('inbox.title')}
         </h2>
-        <Button
-          variant="link"
-          size="sm"
-          className="h-auto p-0 text-xs"
-          onClick={() => open({ kind: 'decisions' })}
-        >
-          {t('inbox.pastDecisions')}
-        </Button>
+        <div className="flex items-center gap-3">
+          <AddTodo />
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            onClick={() => open({ kind: 'decisions' })}
+          >
+            {t('inbox.pastDecisions')}
+          </Button>
+        </div>
       </div>
       {isPending ? (
         <Skeleton className="h-20 w-full" />
-      ) : items.length === 0 ? (
+      ) : others.length === 0 && groups.length === 0 ? (
         <p className="text-sm text-muted-foreground" data-testid="inbox-empty">
           {t('inbox.empty')}
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {items.map(item => (
-            <li key={item.id}>
-              <InboxRow item={item} />
-            </li>
-          ))}
-        </ul>
+        others.length > 0 && (
+          <ul className="flex flex-col gap-2">
+            {others.map(item => (
+              <li key={item.id}>
+                <InboxRow item={item} />
+              </li>
+            ))}
+          </ul>
+        )
       )}
+      {groups.map(group => (
+        <section
+          key={group.id}
+          aria-label={t(`inbox.todo.group.${group.id}`)}
+          data-testid={`todo-group-${group.id}`}
+          className="flex flex-col gap-2 pt-2"
+        >
+          <h3 className="text-xs font-medium text-muted-foreground">
+            {t(`inbox.todo.group.${group.id}`)}
+          </h3>
+          <ul className="flex flex-col gap-2">
+            {group.todos.map(todo => (
+              <li key={todo.taskId}>
+                <AssignmentRow item={assignmentItem(todo)} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      <DoneRecently todos={doneSince(todos, 0)} />
     </section>
   )
 }
@@ -446,7 +498,11 @@ function GatewayHoldRow({
 /**
  * Work someone assigned to me: what they asked, the links they attached,
  * when it's due (or how overdue), and Done / Decline (asks first), each
- * with an optional note that goes back to them
+ * with an optional note that goes back to them.
+ *
+ * One of my to-dos (`todo-model`) is the same card: its sentence, coloured
+ * by kind and urgency (a reminder has its bell), where it came from, what
+ * Nandi prepared for it, who is on it, and Done or Hand to an agent.
  */
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -464,16 +520,22 @@ function AssignmentRow({
   const [confirming, setConfirming] = useState(false)
   const member = assignment.callerName
   const overdue = assignment.dueAt !== null && assignment.dueAt <= now
+  const todo = isTodo(assignment)
+  const state = todoState(assignment)
   const finish = (done: boolean) =>
     close.mutate(
       { taskId: assignment.taskId, done, note: note.trim() || null },
       {
         onSuccess: () =>
           toast.success(
-            t(
-              done ? 'inbox.assignment.doneToast' : 'inbox.assignment.declined',
-              { member }
-            )
+            todo
+              ? t('inbox.todo.doneToast')
+              : t(
+                  done
+                    ? 'inbox.assignment.doneToast'
+                    : 'inbox.assignment.declined',
+                  { member }
+                )
           ),
         onError: toastRelayActionError,
       }
@@ -482,30 +544,53 @@ function AssignmentRow({
   return (
     <Card
       className="flex-col gap-2 px-4 py-3 shadow-none"
-      data-testid="inbox-assignment"
+      data-testid={todo ? 'inbox-todo' : 'inbox-assignment'}
+      data-tone={todo ? todoTone(assignment, now) : undefined}
     >
       <div className="flex items-start gap-3">
-        <ClipboardList
-          aria-hidden
-          className={
-            overdue
-              ? 'mt-0.5 size-4 shrink-0 text-destructive'
-              : 'mt-0.5 size-4 shrink-0 text-warning'
-          }
-        />
+        {todo ? (
+          <TodoMarker todo={assignment} now={now} />
+        ) : (
+          <ClipboardList
+            aria-hidden
+            className={
+              overdue
+                ? 'mt-0.5 size-4 shrink-0 text-destructive'
+                : 'mt-0.5 size-4 shrink-0 text-warning'
+            }
+          />
+        )}
         <button
           type="button"
           className="min-w-0 flex-1 text-start hover:underline"
           onClick={() =>
-            open({ kind: 'request', requestId: assignment.taskId })
+            open(
+              todo
+                ? inboxItemView(item)
+                : { kind: 'request', requestId: assignment.taskId }
+            )
           }
         >
-          <span className="block text-sm break-words">
-            {t('inbox.assignment.title', { member })}
-          </span>
-          <span className="line-clamp-4 block text-xs whitespace-pre-wrap text-muted-foreground">
-            {assignment.request}
-          </span>
+          {todo ? (
+            <span className="block text-sm break-words whitespace-pre-wrap">
+              {/* A reminder leads with its date */}
+              {assignment.kind === 'reminder' && assignment.dueAt !== null
+                ? `${new Date(assignment.dueAt).toLocaleDateString(
+                    i18n.language,
+                    { month: 'short', day: 'numeric' }
+                  )} · ${assignment.request}`
+                : assignment.request}
+            </span>
+          ) : (
+            <>
+              <span className="block text-sm break-words">
+                {t('inbox.assignment.title', { member })}
+              </span>
+              <span className="line-clamp-4 block text-xs whitespace-pre-wrap text-muted-foreground">
+                {assignment.request}
+              </span>
+            </>
+          )}
           {assignment.dueAt !== null && (
             <span
               className={
@@ -530,8 +615,14 @@ function AssignmentRow({
                     })}
             </span>
           )}
+          {todo && assignment.source && (
+            <span className="block text-xs text-muted-foreground">
+              {t(sourceKey(assignment.source))}
+            </span>
+          )}
         </button>
       </div>
+      {todo && <TodoProgress todo={assignment} state={state} />}
       {assignment.links.length > 0 && (
         <ul
           className="flex flex-wrap gap-1.5 ps-7"
@@ -567,18 +658,30 @@ function AssignmentRow({
         <Input
           value={note}
           onChange={event => setNote(event.target.value)}
-          placeholder={t('inbox.assignment.notePlaceholder')}
-          aria-label={t('inbox.assignment.notePlaceholder')}
+          placeholder={t(
+            todo
+              ? 'inbox.todo.notePlaceholder'
+              : 'inbox.assignment.notePlaceholder'
+          )}
+          aria-label={t(
+            todo
+              ? 'inbox.todo.notePlaceholder'
+              : 'inbox.assignment.notePlaceholder'
+          )}
           className="h-8 min-w-0 flex-1 text-sm"
         />
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={close.isPending}
-          onClick={() => setConfirming(true)}
-        >
-          {t('inbox.assignment.decline')}
-        </Button>
+        {todo ? (
+          state !== 'working' && <HandToAgent todo={assignment} />
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={close.isPending}
+            onClick={() => setConfirming(true)}
+          >
+            {t('inbox.assignment.decline')}
+          </Button>
+        )}
         <Button
           size="sm"
           disabled={close.isPending}

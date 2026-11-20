@@ -272,6 +272,13 @@ describe('Home, with activity', () => {
       dueAt: Date.now() - 2 * 3_600_000,
       closedAt: null,
       links: [],
+      kind: 'do' as const,
+      source: null,
+      sourceRef: null,
+      relatedRef: null,
+      runId: null,
+      assignedAgent: null,
+      runStatus: null,
     }
     Object.assign(commands, {
       listGatewayAssignments: ok([assignment]),

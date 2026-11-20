@@ -41,6 +41,9 @@ export const DECISION_WORDS = [
   'blocked',
   'granted',
   'removed',
+  'added',
+  'reopened',
+  'handed',
 ] as const
 
 /** An empty field means "any" */

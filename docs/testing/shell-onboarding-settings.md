@@ -686,6 +686,36 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
+### SH-42 — To-dos and reminders (Home, the Inbox and the tray)
+
+- **What:** The user's to-dos are assignments to the user (`gateway_assignments` with a `source`, no remote caller). Nandi adds them from mail, events and chats (`todo_add`, no approval, one per email: the same `source_ref` returns the one already there); the user adds them with **Add a to-do** (text, kind Do / Check / Reminder, optional date) in the Inbox header, or next to "Nothing needs you." on Home.
+  - **Home / Inbox:** to-dos are grouped **Do now**, **Check and close** and **Reminders**, each soonest due first (overdue on top), as full cards: the sentence (a reminder leads with its date, "Dec 8 · …"), the due time, where it came from ("From an email"), "Nandi has it queued for your approval" / "Nandi prepared something: open it" when it links an item (`related_ref`), a note field, **Hand to an agent** and **Done** (no Decline). Opening the sentence opens its Ask chat (`inbox:assignment:<id>`, Done only). **Done recently (n)** lists the last 7 days, collapsed, each with **Undo**.
+  - **Colours:** overdue red (destructive), due within 2 days amber (warning), other Do the primary accent, Check the info tone; a reminder has a bell and its own violet accent (highlight), and rings (`BellRing`) within 3 days of its date or past it, then takes the urgency colours.
+  - **Hand to an agent:** a menu with Nandi first, then the user's agents that loaded (not broken). The agent gets "Please do this: <text>" in its chat, which opens (Nandi: the to-do's Ask chat). While its run goes, the card says "<agent> is on it" and the to-do leaves Needs you for the tray's Working; once the run ends it comes back with "<agent> finished: mark done?". Only Nandi may close it itself (`todo_done`).
+  - **Tray:** Needs you shows each to-do as one line: truncated text, a due chip ("today", "tomorrow", "4d", "overdue 3d") and a marker by kind and urgency (a small bell for a reminder). Working shows a handed one ("<agent> is on it") in place of its run's row; Done shows those done today. Rows open the Ask chat (Working: the agent's chat); no buttons.
+  - **Badge:** to-dos count like other Inbox items, except a reminder more than 3 days from its date (listed, not counted) and one an agent is working on.
+  - **Record:** every add, hand-off, done and Undo is in Decisions (kind Assigned work: Added, Handed to an agent, Done, Reopened), Nandi's under its name.
+- **Where:** `src-tauri/src/services/gateway/todos.rs` (`add`, `list`, `done`, `reopen`, `hand_off`), `todos/tool.rs` (`todo_add`, `todo_list`, `todo_done`), `gateway/assignments.rs` (`by_source`, `reopen`, `hand_off`, `done_todos_since`), `domain/todo.rs`, migration `008_todos.sql`; `src/components/inbox/todo-model.ts`, `TodoParts.tsx`, `Inbox.tsx` (`AssignmentRow`), `src/components/tray/tray-model.ts`. Commands: `list_todos`, `add_todo`, `reopen_todo`, `hand_todo_to_agent`, and `close_gateway_assignment` for Done.
+- **Preconditions:** None. A mailbox for Nandi's to-dos from mail.
+- **Steps:**
+  1. On Home, click **Add a to-do**, type "Renew the passport", pick Reminder and a date next month, Add.
+  2. Add a Do to-do due yesterday, and a Check one with no date.
+  3. Click **Hand to an agent** on the Do one and pick an agent.
+  4. Wait for its run to end; click **Done**, then open **Done recently** and click **Undo**.
+  5. With mail connected, run the mail check on a mail that asks something of you, twice.
+- **Expected:**
+  - (1, 2) Three groups; the Do card is red with "Overdue …", the reminder violet with a bell and its date first. The badge counts the Do and Check ones, not the far reminder.
+  - (3) The agent's chat opens with "Please do this: …"; the card says "<agent> is on it" and the tray shows it under Working.
+  - (4) "<agent> finished: mark done?"; Done moves it to Done recently (and today's Done in the tray); Undo brings it back.
+  - (5) One to-do from that mail, "From an email", however many times the check reads it.
+- **Edge / negative cases:**
+  - A due text Nandi can't read is refused with the accepted forms; text over 400 characters is refused.
+  - Work a person assigned keeps its own card (Decline, the note goes back to them); a to-do never reaches the relay, and closing one sends nothing.
+  - With no relay, everything here works the same.
+- **Automation:** Covered by: `todo-model.test.ts` (states, tones, badge, chip, groups, links), `Todos.test.tsx` (groups and card, Done and Undo, hand-off menu and chat, working and finished, Add), `tray-model.test.ts` ('to-dos in the tray'), Rust `gateway::todos::tests` (idempotent add, ordering, hand-off through the run to Done and Undo, records, tools), `domain::todo::tests`, `db::migrations::tests` (`assignments_from_0_2_0_read_as_work_to_do…`), `inbox::item` | Layer: unit | Gap: no live-model test of the mail check adding to-dos.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ### SH-37 — Home: "Agents can talk, but need Docker to act"
 
 - **What:** Until Docker answers, Home shows a calm line "Agents can talk, but need Docker to act." with **Set up**, which opens Settings › This computer. It disappears once Docker runs. Nothing else on Home waits on it.

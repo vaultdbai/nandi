@@ -2804,6 +2804,51 @@ async closeGatewayAssignment(taskId: string, done: boolean, note: string | null)
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * The user's to-dos (assignments opened here for them): open ones, then
+ * those done in the last 7 days
+ */
+async listTodos() : Promise<Result<GatewayAssignment[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_todos") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The user adds a to-do; `due` is `YYYY-MM-DD`, `N days` or an RFC 3339 time
+ */
+async addTodo(text: string, kind: TodoKind, due: string | null) : Promise<Result<GatewayAssignment, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_todo", { text, kind, due }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Undo: opens a done to-do again
+ */
+async reopenTodo(taskId: string) : Promise<Result<GatewayAssignment, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reopen_todo", { taskId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Hands an open to-do to an agent: a turn in its chat, "Please do this: …"
+ */
+async handTodoToAgent(taskId: string, agentId: string) : Promise<Result<HandedTodo, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("hand_todo_to_agent", { taskId, agentId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async makeGatewayReachable() : Promise<Result<GatewayStatus, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("make_gateway_reachable") };
@@ -5934,7 +5979,7 @@ agents: string[] }
  */
 export type ForkedAgent = { agent: AgentInfo; warnings: string[] }
 /**
- * Work someone assigned to the owner, as the Inbox shows it
+ * Work someone assigned to the owner, or a to-do, as the Inbox shows it
  */
 export type GatewayAssignment = { 
 /**
@@ -5960,7 +6005,31 @@ note: string | null; createdAt: number; dueAt: number | null; closedAt: number |
 /**
  * What the requester attached
  */
-links: AssignmentLink[] }
+links: AssignmentLink[]; 
+/**
+ * Do, check or remember (work from a person is `do`)
+ */
+kind: TodoKind; 
+/**
+ * Where a to-do came from; `None` for work a person assigned
+ */
+source: TodoSource | null; 
+/**
+ * Where it was read (an email's message ID)
+ */
+sourceRef: string | null; 
+/**
+ * An Inbox item Nandi prepared for it (`inbox:<kind>:<id>`)
+ */
+relatedRef: string | null; 
+/**
+ * The run of the agent the user handed it to, and that agent
+ */
+runId: string | null; assignedAgent: string | null; 
+/**
+ * How that run stands (read from `runs`, never stored here)
+ */
+runStatus: RunStatus | null }
 /**
  * What the relay knows of an instance: its gateway, not its agents.
  */
@@ -6299,6 +6368,10 @@ export type HandOverOutcome =
  * They changed it, then published it
  */
 "changed"
+/**
+ * A to-do handed to an agent: the chat its run is in
+ */
+export type HandedTodo = { todo: GatewayAssignment; agentId: string; conversationId: string }
 /**
  * What a harness CLI signs in with, from its own config and environment.
  * Never holds a secret.
@@ -9068,6 +9141,42 @@ export type TestedStatus =
  * Can't drive an agent (no tool use, embeddings, image-only)
  */
 "unsupported"
+/**
+ * What kind of to-do it is
+ */
+export type TodoKind = 
+/**
+ * An action, usually with a deadline (all work a person assigns)
+ */
+"do" | 
+/**
+ * Something to verify and close, usually without a deadline
+ */
+"check" | 
+/**
+ * A date to remember
+ */
+"reminder"
+/**
+ * Where a to-do came from
+ */
+export type TodoSource = 
+/**
+ * An email (`source_ref`: its message ID)
+ */
+"email" | 
+/**
+ * A calendar event (`source_ref`: its ID)
+ */
+"event" | 
+/**
+ * A chat with Nandi
+ */
+"chat" | 
+/**
+ * The user added it by hand
+ */
+"manual"
 export type ToolBundle = "claudeCode"
 export type ToolCallStatus = "running" | "done"
 export type ToolDefinition = { id: string; name: string; description: string; source: ToolSource; inputSchema: JsonValue | null; requiresApproval: boolean; costEstimate: CostSpec | null; latencyClass: LatencyClass; tags: string[] }

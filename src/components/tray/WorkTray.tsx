@@ -1,9 +1,19 @@
 import { useTranslation } from 'react-i18next'
-import { ArrowRight, Check, PanelRightClose, X } from 'lucide-react'
+import {
+  ArrowRight,
+  Bell,
+  BellRing,
+  Check,
+  PanelRightClose,
+  X,
+} from 'lucide-react'
+import { TODO_TONE_DOT, TODO_TONE_TEXT } from '@/components/inbox/todo-model'
 import type { NavLabel } from '@/components/layout/nav-tree'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useAgents } from '@/hooks/useAgents'
 import { useHomeFeed } from '@/hooks/useHome'
+import { useTodos } from '@/hooks/useInbox'
 import { decideApproval } from '@/lib/agent-actions'
 import { cn } from '@/lib/utils'
 import { useNavigationStore, type View } from '@/store/navigation-store'
@@ -43,11 +53,18 @@ const GROUP_TEXT: Record<TrayGroupId, string> = {
 export function WorkTray() {
   const { t } = useTranslation()
   const home = useHomeFeed()
+  const todos = useTodos().data ?? []
+  const { data: agents = [] } = useAgents()
+  const names = new Map(agents.map(agent => [agent.id, agent.name]))
+  const agentName = (id: string) => names.get(id) ?? id
   const current = useNavigationStore(state => state.current)
   const groups = buildTray({
     inbox: home.inbox.items,
     running: home.running,
     recent: home.recent,
+    todos,
+    now: home.now,
+    agentName,
   })
 
   return (
@@ -162,11 +179,12 @@ function Row({
         onClick={() => navigate(row.view)}
         className="flex min-w-0 flex-1 items-center gap-2 px-1.5 py-1 text-start"
       >
-        <span
-          aria-hidden
-          className={cn('size-1.5 shrink-0 rounded-full', TONE_DOTS[row.tone])}
-        />
-        <span className="sr-only">{t(`tray.tone.${row.tone}`)}</span>
+        <Marker row={row} />
+        <span className="sr-only">
+          {row.todo
+            ? t(`inbox.todo.tone.${row.todo.tone}`)
+            : t(`tray.tone.${row.tone}`)}
+        </span>
         <span
           className={cn(
             'min-w-0 flex-1 truncate text-xs',
@@ -177,13 +195,44 @@ function Row({
           {text}
         </span>
         {row.meta && (
-          <span className="max-w-[40%] shrink-0 truncate text-[11px] text-muted-foreground tabular-nums">
+          <span
+            className={cn(
+              'max-w-[40%] shrink-0 truncate text-[11px] text-muted-foreground tabular-nums',
+              // An urgent to-do's chip takes its colour
+              (row.todo?.tone === 'overdue' || row.todo?.tone === 'soon') &&
+                TODO_TONE_TEXT[row.todo.tone]
+            )}
+          >
             {label(row.meta)}
           </span>
         )}
       </button>
       {row.approval && <ApprovalButtons approval={row.approval} />}
     </div>
+  )
+}
+
+/**
+ * The row's colour: its state's dot, or a to-do's by kind and urgency (a
+ * small bell for a reminder, ringing near its date)
+ */
+function Marker({ row }: { row: TrayRow }) {
+  if (row.todo && row.todo.bell !== 'none') {
+    const classes = cn('size-3 shrink-0', TODO_TONE_TEXT[row.todo.tone])
+    return row.todo.bell === 'ringing' ? (
+      <BellRing aria-hidden className={classes} />
+    ) : (
+      <Bell aria-hidden className={classes} />
+    )
+  }
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'size-1.5 shrink-0 rounded-full',
+        row.todo ? TODO_TONE_DOT[row.todo.tone] : TONE_DOTS[row.tone]
+      )}
+    />
   )
 }
 

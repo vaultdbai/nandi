@@ -14,6 +14,7 @@ import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
 import { useTrustRequests } from '@/hooks/useTrustRequests'
 import { useManualSteps, useWork, workKeys } from '@/hooks/useWork'
 import { client, type NandiEventName } from '@/lib/client'
+import type { TodoKind } from '@/lib/bindings'
 import { useInvalidateOn } from '@/hooks/useInvalidateOn'
 import { useAgents } from '@/hooks/useAgents'
 import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
@@ -22,6 +23,8 @@ export const inboxKeys = {
   approvals: ['approvals', 'pending'] as const,
   holds: ['gateway', 'holds'] as const,
   assignments: ['gateway', 'assignments'] as const,
+  /** Under `assignments`, so closing one refreshes both */
+  todos: ['gateway', 'assignments', 'todos'] as const,
   dismissed: [...workKeys.all, 'dismissed'] as const,
   returns: ['delegation', 'returns'] as const,
 }
@@ -72,6 +75,8 @@ export function useDecideGatewayHold() {
 const ASSIGNMENT_EVENTS: readonly NandiEventName[] = [
   'gateway://assignment_changed',
   'task://state_changed',
+  // A to-do handed to an agent follows its run
+  'agent://run',
 ]
 
 /** Work other people assigned to the owner, open until Done or Decline */
@@ -95,6 +100,46 @@ export function useCloseGatewayAssignment() {
       done: boolean
       note: string | null
     }) => client.closeGatewayAssignment(taskId, done, note),
+    { invalidates: inboxKeys.assignments }
+  )
+}
+
+/** The user's to-dos: open ones, then those done in the last 7 days */
+export function useTodos() {
+  useInvalidateOn(ASSIGNMENT_EVENTS, inboxKeys.todos)
+
+  return useClientQuery(inboxKeys.todos, () => client.listTodos())
+}
+
+/** The user adds a to-do by hand */
+export function useAddTodo() {
+  return useClientMutation(
+    ({
+      text,
+      kind,
+      due,
+    }: {
+      text: string
+      kind: TodoKind
+      /** `YYYY-MM-DD` */
+      due: string | null
+    }) => client.addTodo(text, kind, due),
+    { invalidates: inboxKeys.assignments }
+  )
+}
+
+/** Undo: opens a done to-do again */
+export function useReopenTodo() {
+  return useClientMutation((taskId: string) => client.reopenTodo(taskId), {
+    invalidates: inboxKeys.assignments,
+  })
+}
+
+/** Hands a to-do to an agent: a turn in its chat, "Please do this: …" */
+export function useHandTodo() {
+  return useClientMutation(
+    ({ taskId, agentId }: { taskId: string; agentId: string }) =>
+      client.handTodoToAgent(taskId, agentId),
     { invalidates: inboxKeys.assignments }
   )
 }
@@ -167,7 +212,7 @@ export function useInbox() {
 
   return {
     items,
-    count: inboxBadgeCount(items),
+    count: inboxBadgeCount(items, now),
     isPending: approvals.isPending || work.isPending,
   }
 }

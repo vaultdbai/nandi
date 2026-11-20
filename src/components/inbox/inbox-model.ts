@@ -23,6 +23,7 @@ import type { NavLabel } from '@/components/layout/nav-tree'
 import { workItemView } from '@/lib/work'
 import type { View } from '@/store/navigation-store'
 import { approvalSummary } from './approval-model'
+import { countsInBadge, isTodo, todoState } from './todo-model'
 
 /** Failures stay offered this long */
 const FAILED_WINDOW_MS = 24 * 60 * 60 * 1000
@@ -46,7 +47,10 @@ export type InboxItem =
   | (Base & { kind: 'workflowApproval'; item: WorkItem })
   /** Another Nandi's request held for the owner (task 5) */
   | (Base & { kind: 'gatewayHold'; hold: GatewayHold })
-  /** Work another Nandi assigned to the owner, open until Done or Decline */
+  /**
+   * Work another Nandi assigned to the owner, open until Done or Decline,
+   * or one of the user's to-dos (`todo-model`), open until Done
+   */
   | (Base & { kind: 'assignment'; assignment: GatewayAssignment })
   | (Base & { kind: 'clarification'; clarification: PendingClarification })
   | (Base & { kind: 'manualStep'; step: PendingManualStep })
@@ -95,6 +99,19 @@ function byUrgency(a: InboxItem, b: InboxItem): number {
   if (a.deadline !== null) return -1
   if (b.deadline !== null) return 1
   return a.createdAt - b.createdAt
+}
+
+/** An assignment (or a to-do) as an Inbox item, due when it's due */
+export function assignmentItem(
+  assignment: GatewayAssignment
+): Extract<InboxItem, { kind: 'assignment' }> {
+  return {
+    kind: 'assignment',
+    id: `assignment-${assignment.taskId}`,
+    assignment,
+    createdAt: assignment.createdAt,
+    deadline: assignment.dueAt,
+  }
 }
 
 export function buildInbox(sources: InboxSources): InboxItem[] {
@@ -168,16 +185,12 @@ export function buildInbox(sources: InboxSources): InboxItem[] {
     })
   }
 
-  // Overdue ones stay: they're the most urgent
+  // Overdue ones stay: they're the most urgent. A to-do an agent is
+  // working on is the tray's Working, not waiting on the user.
   for (const assignment of sources.assignments) {
     if (assignment.status !== 'open') continue
-    items.push({
-      kind: 'assignment',
-      id: `assignment-${assignment.taskId}`,
-      assignment,
-      createdAt: assignment.createdAt,
-      deadline: assignment.dueAt,
-    })
+    if (isTodo(assignment) && todoState(assignment) === 'working') continue
+    items.push(assignmentItem(assignment))
   }
 
   for (const request of sources.trustRequests) {
@@ -273,10 +286,20 @@ function isOffered(item: InboxItem): boolean {
   )
 }
 
-/** The nav badge: what waits on the user now (failures aren't counted) */
-
-export function inboxBadgeCount(items: InboxItem[]): number {
-  return items.filter(item => !isOffered(item)).length
+/**
+ * The nav badge: what waits on the user now. Failures aren't counted, nor
+ * a reminder that doesn't ring yet (`countsInBadge`).
+ */
+export function inboxBadgeCount(items: InboxItem[], now: number): number {
+  return items.filter(
+    item =>
+      !isOffered(item) &&
+      !(
+        item.kind === 'assignment' &&
+        isTodo(item.assignment) &&
+        !countsInBadge(item.assignment, now)
+      )
+  ).length
 }
 
 /** An ID inside a thread's ID: `/` and `%` escaped (as `inbox::item` does) */
@@ -367,9 +390,11 @@ export function inboxRowLabel(item: InboxItem): NavLabel {
         : label('inbox.hold.title', { member })
     }
     case 'assignment':
-      return label('inbox.assignment.title', {
-        member: item.assignment.callerName,
-      })
+      return isTodo(item.assignment)
+        ? { text: firstLine(item.assignment.request) }
+        : label('inbox.assignment.title', {
+            member: item.assignment.callerName,
+          })
     case 'clarification':
       return label('inbox.question', {
         question: item.clarification.question.question,

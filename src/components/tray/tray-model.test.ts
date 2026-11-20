@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { HomeRow } from '@/components/home/home-model'
 import type { InboxItem } from '@/components/inbox/inbox-model'
-import type { WorkItem } from '@/lib/bindings'
+import type { GatewayAssignment, WorkItem } from '@/lib/bindings'
+import { assignmentItem } from '@/components/inbox/inbox-model'
 import { buildTray, homeTrayRow, inboxTrayRow, TRAY_LIMITS } from './tray-model'
 
 const NOW = 1_000_000_000
@@ -239,5 +240,85 @@ describe('buildTray', () => {
       'noModel',
       'approval:a1',
     ])
+  })
+})
+
+const DAY = 24 * 60 * 60 * 1000
+
+const todo = (
+  overrides: Partial<GatewayAssignment> = {}
+): GatewayAssignment => ({
+  taskId: 'todo-1',
+  callerInstance: '',
+  callerName: 'Nandi',
+  request: 'Reply to the landlord\nabout the deposit',
+  status: 'open',
+  note: null,
+  createdAt: NOW - DAY,
+  dueAt: null,
+  closedAt: null,
+  links: [],
+  kind: 'do',
+  source: 'email',
+  sourceRef: null,
+  relatedRef: null,
+  runId: null,
+  assignedAgent: null,
+  runStatus: null,
+  ...overrides,
+})
+
+describe('to-dos in the tray', () => {
+  it('is one line with a due chip and a marker by kind and urgency', () => {
+    const late = inboxTrayRow(
+      assignmentItem(todo({ dueAt: NOW - 3 * DAY })),
+      NOW
+    )
+    expect(late.label).toEqual({ text: 'Reply to the landlord' })
+    expect(late.meta).toEqual({ key: 'tray.due.overdue', values: { days: 3 } })
+    expect(late.todo).toEqual({ tone: 'overdue', bell: 'none' })
+    expect(late.view).toEqual({
+      kind: 'inbox-thread',
+      conversationId: 'inbox:assignment:todo-1',
+    })
+    const far = inboxTrayRow(
+      assignmentItem(todo({ kind: 'reminder', dueAt: NOW + 20 * DAY })),
+      NOW
+    )
+    expect(far.todo).toEqual({ tone: 'reminder', bell: 'quiet' })
+    const near = inboxTrayRow(
+      assignmentItem(todo({ kind: 'reminder', dueAt: NOW + DAY })),
+      NOW
+    )
+    expect(near.todo).toEqual({ tone: 'soon', bell: 'ringing' })
+    expect(
+      inboxTrayRow(assignmentItem(todo({ kind: 'check' })), NOW).todo
+    ).toEqual({ tone: 'check', bell: 'none' })
+  })
+
+  it('puts a handed one in Working in place of its run, and a done one in Done', () => {
+    const working = todo({
+      runId: 'r1',
+      assignedAgent: 'writer',
+      runStatus: 'running',
+    })
+    const done = todo({ taskId: 'todo-2', status: 'done', closedAt: NOW })
+    const [, workingGroup, doneGroup] = buildTray({
+      inbox: [],
+      running: [homeRow({ id: 'run:r1' }), homeRow({ id: 'run:r2' })],
+      recent: [],
+      todos: [working, done],
+      now: NOW,
+      agentName: id => (id === 'writer' ? 'Writer' : id),
+    })
+    expect(workingGroup?.rows.map(row => row.id)).toEqual([
+      'todo-working-todo-1',
+      'run:r2',
+    ])
+    expect(workingGroup?.rows[0]?.meta).toEqual({
+      key: 'tray.todoWorking',
+      values: { agent: 'Writer' },
+    })
+    expect(doneGroup?.rows.map(row => row.id)).toEqual(['todo-done-todo-2'])
   })
 })

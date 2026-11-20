@@ -8,6 +8,8 @@ import {
 } from '@/components/dashboard/FirstRunHints'
 import { isFreshDashboard } from '@/components/dashboard/dashboard-model'
 import { Inbox } from '@/components/inbox/Inbox'
+import { AddTodo } from '@/components/inbox/TodoParts'
+import { useTodos } from '@/hooks/useInbox'
 import { LlmKeyNotice } from '@/components/layout/LlmKeyNotice'
 import { MachineHomeItem } from '@/components/machine/MachineHomeItem'
 import { RecentChanges } from '@/components/live/RecentChanges'
@@ -28,7 +30,8 @@ const navigate = (view: View) => useNavigationStore.getState().navigate(view)
 
 /**
  * Home: does anything need me? Ask Nandi, Nandi's digest and
- * email to-do, then the Inbox (fix it here). Until Docker answers, a calm
+ * email to-do, then the Inbox (fix it here) with my to-dos in full,
+ * grouped Do now, Check and close, Reminders. Until Docker answers, a calm
  * line says agents can talk but not act, with Set up. Running and finished
  * work live in the work tray on every page, and All activity in the
  * sidebar. A fresh install shows what to do first instead of empty
@@ -44,6 +47,8 @@ export function HomeView({
   const dashboard = useDashboard()
   const home = useHomeFeed()
   const inboxItems = home.inbox.items.length
+  // Open or recently done to-dos: the Inbox shows them, working ones too
+  const todos = useTodos().data?.length ?? 0
   // "No model" is an Inbox item; on a fresh install it's the banner instead
   const waitingOnYou = home.inbox.items.filter(
     item => item.kind !== 'noModel'
@@ -76,13 +81,16 @@ export function HomeView({
           ) : (
             <>
               <NetworkLine />
-              {inboxItems > 0 ? (
+              {inboxItems > 0 || todos > 0 ? (
                 <Inbox />
               ) : (
-                <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <CircleCheck aria-hidden className="size-4 text-success" />
-                  {t('home.quiet')}
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CircleCheck aria-hidden className="size-4 text-success" />
+                    {t('home.quiet')}
+                  </p>
+                  <AddTodo />
+                </div>
               )}
               <RecentChanges />
             </>
