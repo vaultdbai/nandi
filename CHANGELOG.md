@@ -2,7 +2,7 @@
 
 What changed in each Nandi release, grouped by what you notice. The release notes for each version are in [docs/release-notes/](docs/release-notes/).
 
-## 0.2.0 (2026-11-16)
+## 0.2.0 (2026-11-20)
 
 ### New
 
