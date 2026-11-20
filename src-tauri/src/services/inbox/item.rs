@@ -377,6 +377,31 @@ declines it, and they get the reason)",
             if assignment.status != crate::services::gateway::assignments::AssignmentStatus::Open {
                 return Ok(gone(title, "Work someone assigned to the user"));
             }
+            // A to-do: nobody to answer, so Done only
+            if assignment.is_local() {
+                let mut facts = vec![
+                    format!(
+                        "To-do ({}): {}",
+                        assignment.kind.as_str(),
+                        cut(&assignment.request)
+                    ),
+                    format!("Added by: {}", assignment.caller_name),
+                ];
+                if let Some(due) = assignment.due_at {
+                    facts.push(format!("Due: {}", when(due)));
+                }
+                if let Some(related) = &assignment.related_ref {
+                    facts.push(format!("Prepared for it: {related}"));
+                }
+                return Ok(ItemFacts {
+                    title: short_title(&assignment.request),
+                    deciding: "nothing yet: the user wants help doing this to-do (plan it, do what you can, hand them the rest). Done marks it done once it's finished"
+                        .to_string(),
+                    facts,
+                    tools: vec![Done],
+                    requester: None,
+                });
+            }
             let mut facts = vec![
                 format!("From: {}", assignment.caller_name),
                 format!("What they asked:\n{}", cut(&assignment.request)),

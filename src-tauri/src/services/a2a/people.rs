@@ -704,6 +704,7 @@ Help the user.
             due_at: Some(2.0),
             closed_at: None,
             links: Vec::new(),
+            ..GatewayAssignment::default()
         };
         // Yours (no task row), and one from Lena (has a task row elsewhere)
         let list = [assignment("g1", "i-me"), assignment("g2", "i-lena")];

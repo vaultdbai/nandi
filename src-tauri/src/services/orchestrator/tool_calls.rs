@@ -151,6 +151,18 @@ pub(super) async fn run_call(
                 },
             }
         }
+        // Nandi's to-do tools: on the host, no approval (like the notes)
+        _ if ctx.agent_id == DEFAULT_AGENT && todos::tool::is_todo_tool(&call.tool) => {
+            match app_state(deps) {
+                Some(state) => {
+                    todos::tool::call(&state, &ctx.agent_id, &call.tool, &call.args).await
+                }
+                None => ToolOutcome {
+                    result: format!("Tool '{}' is not available right now", call.tool),
+                    is_error: true,
+                },
+            }
+        }
         // Mail (read-only): on the host, for an agent the user let read it
         _ if ctx.agent_id != STUDIO_AGENT_ID && email::tool::is_mail_tool(&call.tool) => {
             match app_state(deps) {

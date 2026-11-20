@@ -158,6 +158,7 @@ async fn done_on_an_assignment_sends_the_note_back_and_is_recorded() {
         due_at: None,
         closed_at: None,
         links: Vec::new(),
+        ..GatewayAssignment::default()
     };
     state
         .db()

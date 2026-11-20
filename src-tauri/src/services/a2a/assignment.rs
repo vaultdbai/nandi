@@ -18,7 +18,7 @@
 
 use std::time::Duration;
 
-use chrono::{Local, NaiveDate, TimeZone};
+use chrono::Local;
 use serde_json::Value;
 
 /// The capability of work assigned to a person
@@ -81,30 +81,15 @@ pub fn request_due_at(capability: &str, input: &Value, now: i64) -> i64 {
         .max(now + 60 * 60 * 1000)
 }
 
+/// [`crate::services::domain::todo::parse_due`] in local time
 fn parse_due(due: &str, now: i64) -> Option<i64> {
-    if let Ok(date) = NaiveDate::parse_from_str(due, "%Y-%m-%d") {
-        let end = date.and_hms_opt(23, 59, 59)?;
-        return Local
-            .from_local_datetime(&end)
-            .earliest()
-            .map(|t| t.timestamp_millis());
-    }
-    if let Ok(time) = chrono::DateTime::parse_from_rfc3339(due) {
-        return Some(time.timestamp_millis());
-    }
-    let days = due
-        .strip_suffix("days")
-        .or_else(|| due.strip_suffix("day"))
-        .or_else(|| due.strip_suffix('d'))?
-        .trim()
-        .parse::<i64>()
-        .ok()?;
-    Some(now + days * DAY_MS)
+    crate::services::domain::todo::parse_due(due, now, &Local)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
     use serde_json::json;
 
     const NOW: i64 = 1_800_000_000_000;

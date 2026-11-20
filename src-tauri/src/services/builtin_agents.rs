@@ -766,6 +766,11 @@ target:
         let arguments: Vec<String> = requests::tool::offered(DEFAULT_AGENT)
             .into_iter()
             .chain(
+                ["todo_add", "todo_list", "todo_done"]
+                    .iter()
+                    .filter_map(|n| crate::services::gateway::todos::tool::spec(n)),
+            )
+            .chain(
                 [a2a::people::FIND_PEOPLE, a2a::people::MY_REQUESTS]
                     .iter()
                     .filter_map(|n| a2a::people::spec(n)),
@@ -779,6 +784,7 @@ target:
                 || email::tool::is_mail_tool(name)
                 || workspace::tool::is_workspace_tool(name)
                 || requests::tool::is_work_tool(name)
+                || crate::services::gateway::todos::tool::is_todo_tool(name)
                 || a2a::people::is_people_tool(name)
                 || name == a2a::clarification::ASK_REQUESTER_TOOL
                 || crate::services::inbox::tool::is_decision_tool(name)

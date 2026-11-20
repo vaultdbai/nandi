@@ -19,6 +19,7 @@ pub mod manifest;
 pub mod policy;
 pub mod registration;
 pub mod router;
+pub mod todos;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -1064,6 +1065,18 @@ pub async fn close_gateway_assignment(
     done: bool,
     note: Option<String>,
 ) -> Result<assignments::GatewayAssignment, GatewayError> {
+    close_assignment_as(state, task_id, done, note, None).await
+}
+
+/// [`close_gateway_assignment`], decided by `by` (an agent's name) when
+/// it wasn't this Nandi's user
+pub(crate) async fn close_assignment_as(
+    state: &AppState,
+    task_id: String,
+    done: bool,
+    note: Option<String>,
+    by: Option<String>,
+) -> Result<assignments::GatewayAssignment, GatewayError> {
     let status = if done {
         assignments::AssignmentStatus::Done
     } else {
@@ -1075,23 +1088,27 @@ pub async fn close_gateway_assignment(
         .call(move |conn| assignments::close(conn, &id, status, note.as_deref(), now_ms()))
         .await?
         .ok_or_else(|| "This assignment was already closed, or it ended".to_string())?;
-    if let Some(service) = state.gateway() {
-        service.assignments().wake(&task_id, status);
+    // A to-do has no gateway task: nothing to wake, nothing to send
+    if !closed.is_local() {
+        if let Some(service) = state.gateway() {
+            service.assignments().wake(&task_id, status);
+        }
     }
-    crate::services::inbox::audit::record(
-        state,
-        Decided::new(
-            "assignment",
-            &task_id,
-            if done { "done" } else { "declined" },
-        )
-        .subject(format!(
-            "{}: {}",
-            closed.caller_name,
-            closed.request.lines().next().unwrap_or_default()
-        ))
-        .note(closed.note.as_deref()),
-    );
+    let mut decided = Decided::new(
+        "assignment",
+        &task_id,
+        if done { "done" } else { "declined" },
+    )
+    .subject(format!(
+        "{}: {}",
+        closed.caller_name,
+        closed.request.lines().next().unwrap_or_default()
+    ))
+    .note(closed.note.as_deref());
+    if let Some(by) = by {
+        decided = decided.by(by);
+    }
+    crate::services::inbox::audit::record(state, decided);
     events::emit(
         state.bus(),
         &assignments::GatewayAssignmentChanged {

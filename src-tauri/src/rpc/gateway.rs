@@ -1,5 +1,6 @@
 //! Gateway commands (Tauri adapter for `services::gateway`).
 
+use crate::services::domain::todo::TodoKind;
 use crate::services::gateway;
 use crate::services::gateway::{
     CallerPolicy, GatewayConfig, GatewayManifest, GatewayStatus, GatewayUsage,
@@ -21,6 +22,19 @@ super::commands! {
 
     /// Mark an assignment Done (the requester gets the note) or Decline it
     fn close_gateway_assignment(state, task_id: String, done: bool, note: Option<String>) -> gateway::assignments::GatewayAssignment => gateway::close_gateway_assignment(&state, task_id, done, note).await;
+
+    /// The user's to-dos (assignments opened here for them): open ones, then
+    /// those done in the last 7 days
+    fn list_todos(state) -> Vec<gateway::assignments::GatewayAssignment> => gateway::todos::list(&state).await;
+
+    /// The user adds a to-do; `due` is `YYYY-MM-DD`, `N days` or an RFC 3339 time
+    fn add_todo(state, text: String, kind: TodoKind, due: Option<String>) -> gateway::assignments::GatewayAssignment => gateway::todos::add_manual(&state, text, kind, due).await;
+
+    /// Undo: opens a done to-do again
+    fn reopen_todo(state, task_id: String) -> gateway::assignments::GatewayAssignment => gateway::todos::reopen(&state, task_id).await;
+
+    /// Hands an open to-do to an agent: a turn in its chat, "Please do this: …"
+    fn hand_todo_to_agent(state, task_id: String, agent_id: String) -> gateway::todos::HandedTodo => gateway::todos::hand_off(&state, task_id, agent_id).await;
 
     fn make_gateway_reachable(state) -> GatewayStatus => gateway::make_gateway_reachable(&state).await;
 

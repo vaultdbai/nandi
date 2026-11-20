@@ -79,6 +79,7 @@ use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::connectors::{self, ConnectorRegistry};
 use crate::services::email;
 use crate::services::events::{self, AgentWarning, EventBus, RunContext};
+use crate::services::gateway::todos;
 use crate::services::history;
 use crate::services::inbox;
 use crate::services::intake;

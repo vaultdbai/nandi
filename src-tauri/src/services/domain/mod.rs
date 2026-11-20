@@ -36,6 +36,7 @@ pub mod playbook;
 pub mod policy;
 pub mod repo;
 pub mod settings;
+pub mod todo;
 pub mod trigger;
 pub mod workflow;
 
@@ -150,6 +151,7 @@ mod tests {
             ("playbook.rs", include_str!("playbook.rs")),
             ("repo.rs", include_str!("repo.rs")),
             ("settings.rs", include_str!("settings.rs")),
+            ("todo.rs", include_str!("todo.rs")),
             ("trigger.rs", include_str!("trigger.rs")),
             ("workflow.rs", include_str!("workflow.rs")),
         ];

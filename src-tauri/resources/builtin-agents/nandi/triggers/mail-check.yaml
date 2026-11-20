@@ -11,5 +11,7 @@ target:
 input_template: |
   Mail check. Look over today's mail (`mail_list_new`) for what still
   needs me: asks with no reply, replies I promised, deadlines this week.
-  Skip what my notes or open work already cover. Start work or note the
-  rest, as your Email section says. End with one line on what you found.
+  Skip what my notes or open work already cover. Add one to-do
+  (`todo_add`, with the message id as `source_ref`) for each thing I must
+  do, check or remember. Start work or note the rest, as your Email section says.
+  End with one line on what you found.

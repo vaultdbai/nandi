@@ -197,8 +197,11 @@ pub(super) async fn llm_step(
                 }
                 tools
             };
-            // Nandi's work tools (on the host)
-            for spec in requests::tool::offered(&skill.id) {
+            // Nandi's work tools and to-do tools (on the host)
+            for spec in requests::tool::offered(&skill.id)
+                .into_iter()
+                .chain(todos::tool::offered(&deps.store, &skill.id))
+            {
                 if !tools.iter().any(|t| t.name == spec.name) {
                     tools.push(spec);
                 }
@@ -560,9 +563,9 @@ pub(super) async fn request_step(deps: &RunDeps, run_id: &str) -> Option<String>
 }
 
 /// The tools a check-started run may call: that check's, the notes, and
-/// Nandi's work tools (it acts on what arrived)
+/// Nandi's work and to-do tools (it acts on what arrived)
 pub(super) fn data_run_allows(source: SourceType, name: &str) -> bool {
-    if requests::tool::is_work_tool(name) {
+    if requests::tool::is_work_tool(name) || todos::tool::is_todo_tool(name) {
         return true;
     }
     match source {

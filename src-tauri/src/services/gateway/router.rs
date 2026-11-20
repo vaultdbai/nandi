@@ -966,6 +966,7 @@ async fn assign(
             due_at: task.deadline,
             closed_at: None,
             links: assignments::links_of(&task.input),
+            ..GatewayAssignment::default()
         };
         state
             .db()

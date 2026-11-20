@@ -21,6 +21,10 @@ const SHIPPED: &[(&str, &str)] = &[
         "007_run_retries.sql",
         "44e5336244bf01effcf19c94dde51b8d0eb03e787a4039dd3d548f8cdf8724cf",
     ),
+    (
+        "008_todos.sql",
+        "ac8509d299913e2c779ceb9df344e8aea75c46fa778e847e1008d1aaa5966ce2",
+    ),
 ];
 
 /// A person's rows as Nandi 0.1.0 wrote them
@@ -39,11 +43,18 @@ const REMOVED_TABLES: &[&str] = &[
     "capability_registries",
     "circuit_breakers",
 ];
-/// Columns 007 adds to every existing run: a first attempt
-fn added_columns() -> [(&'static str, &'static str, Value); 2] {
+/// Columns 007 adds to every existing run (a first attempt), and 008 to
+/// every assignment (work to do, from no to-do source)
+fn added_columns() -> [(&'static str, &'static str, Value); 8] {
     [
         ("runs", "retry_of", Value::Null),
         ("runs", "attempt", Value::Integer(1)),
+        ("gateway_assignments", "kind", Value::Text("do".into())),
+        ("gateway_assignments", "source", Value::Null),
+        ("gateway_assignments", "source_ref", Value::Null),
+        ("gateway_assignments", "related_ref", Value::Null),
+        ("gateway_assignments", "run_id", Value::Null),
+        ("gateway_assignments", "assigned_agent", Value::Null),
     ]
 }
 /// Columns nothing reads: dropped
@@ -89,13 +100,13 @@ const AGENT_ID_COLUMNS: &[(&str, &str)] = &[
 
 /// Test-only steps after the shipped chain, the way a real one would look
 const ADD_A_COLUMN: Migration = Migration {
-    version: 8,
-    file: "008_runs_label.sql",
+    version: 9,
+    file: "009_runs_label.sql",
     sql: "ALTER TABLE runs ADD COLUMN label TEXT NOT NULL DEFAULT '';",
 };
 const REBUILD_CONVERSATIONS: Migration = Migration {
-    version: 9,
-    file: "009_rebuild_conversations.sql",
+    version: 10,
+    file: "010_rebuild_conversations.sql",
     sql: "CREATE TABLE conversations_new (
               id         TEXT PRIMARY KEY,
               agent_id   TEXT NOT NULL,
@@ -289,8 +300,9 @@ fn each_version_has_its_standing() {
         (4, Standing::Unreleased),
         (5, Standing::Unreleased),
         (6, Standing::Behind),
-        (7, Standing::Current),
-        (8, Standing::Newer),
+        (7, Standing::Behind),
+        (8, Standing::Current),
+        (9, Standing::Newer),
     ];
     for (version, expected) in cases {
         assert_eq!(standing(version, MIGRATIONS), expected, "version {version}");
@@ -455,18 +467,18 @@ fn a_new_database_gets_the_whole_schema_and_no_copy() {
 #[test]
 fn a_failed_migration_rolls_every_step_back() {
     let broken_sql = Migration {
-        version: 8,
-        file: "008_broken.sql",
+        version: 10,
+        file: "010_broken.sql",
         sql: "ALTER TABLE no_such_table ADD COLUMN x TEXT;",
     };
     // Deletes a conversation its messages and runs still point to
     let breaks_a_key = Migration {
-        version: 8,
-        file: "008_breaks_a_key.sql",
+        version: 10,
+        file: "010_breaks_a_key.sql",
         sql: "DELETE FROM conversations WHERE id = 'conv-cos';",
     };
     let cases = [
-        (broken_sql, "migration 008_broken.sql failed"),
+        (broken_sql, "migration 010_broken.sql failed"),
         (breaks_a_key, "lost the row they refer to"),
     ];
     for (failing, reason) in cases {
@@ -476,11 +488,11 @@ fn a_failed_migration_rolls_every_step_back() {
         let schema_before = schema(&conn);
 
         let error = upgrade(&conn, &chain(&[ADD_A_COLUMN, failing]), Some(&path)).unwrap_err();
-        assert!(error.contains("from version 2 to 8"), "{error}");
+        assert!(error.contains("from version 2 to 10"), "{error}");
         assert!(error.contains(reason), "{error}");
         assert!(error.contains("Nothing was changed"), "{error}");
         assert!(error.contains("state.db.bak-v2"), "{error}");
-        // 006 and 007 went back too
+        // 006 to 008 went back too
         assert_eq!(user_version(&conn), V0_1_0);
         assert_eq!(schema(&conn), schema_before);
         assert_eq!(rows(&conn), before);
@@ -515,4 +527,50 @@ fn a_database_from_a_newer_nandi_is_refused_untouched() {
     assert!(error.contains("Nothing was changed"), "{error}");
     assert!(schema(&conn).is_empty());
     assert_eq!(user_version(&conn), SCHEMA_VERSION + 1);
+}
+
+#[test]
+fn assignments_from_0_2_0_read_as_work_to_do_and_to_dos_are_one_per_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let (conn, path) = v0_1_0_file(dir.path());
+    // Where 0.2.0 with run retries left it, with an assignment from Lena
+    let at_007 = MIGRATIONS.iter().position(|m| m.version == 7).unwrap();
+    upgrade(&conn, &MIGRATIONS[..=at_007], Some(&path)).unwrap();
+    conn.execute(
+        "INSERT INTO gateway_assignments (task_id, caller_instance, caller_name, request,
+                                          status, created_at)
+         VALUES ('g1', 'desktop-lena', 'Lena', 'Send the evidence', 'open', 1)",
+        [],
+    )
+    .unwrap();
+    let before = rows(&conn);
+
+    let done = upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
+    assert!(matches!(done, Upgrade::Upgraded { from: 7, to: 8, .. }));
+    assert!(dir.path().join("state.db.bak-v7").exists());
+    assert_rows_survived(&before, &rows(&conn));
+    let (kind, source): (String, Option<String>) = conn
+        .query_row(
+            "SELECT kind, source FROM gateway_assignments WHERE task_id = 'g1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((kind.as_str(), source), ("do", None));
+
+    let add = |id: &str, source_ref: Option<&str>| {
+        conn.execute(
+            "INSERT INTO gateway_assignments (task_id, caller_instance, caller_name, request,
+                                              status, created_at, source, source_ref)
+             VALUES (?1, '', 'Nandi', 'Reply to the landlord', 'open', 1, 'email', ?2)",
+            rusqlite::params![id, source_ref],
+        )
+    };
+    add("t1", Some("msg-1")).unwrap();
+    assert!(
+        add("t2", Some("msg-1")).is_err(),
+        "one to-do per source_ref"
+    );
+    add("t3", None).unwrap();
+    add("t4", None).unwrap();
 }

@@ -8,6 +8,11 @@
 //!
 //! The requester may attach links (`input.links`: URLs, or `{url, name}`).
 //! The relay carries no files, so a file goes as a link to where it lives.
+//!
+//! A to-do (`gateway::todos`) is an assignment too: a local one, opened by
+//! Nandi or the user for the user, with a `source` and no remote caller
+//! (`caller_instance` empty, no gateway task). Closing it wakes nothing and
+//! sends nothing.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -19,8 +24,9 @@ use specta::Type;
 use strum::{EnumString, IntoStaticStr};
 use tokio::sync::oneshot;
 
-use crate::db::text_enum;
+use crate::db::{opt_text_enum, text_enum};
 use crate::model::Timestamp;
+use crate::services::domain::todo::{TodoKind, TodoSource};
 use crate::services::events::NandiEvent;
 
 /// `gateway://assignment_changed`
@@ -35,11 +41,22 @@ const MAX_LINK_NAME_CHARS: usize = 200;
 
 /// Where an assignment is
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, EnumString, IntoStaticStr,
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Type,
+    EnumString,
+    IntoStaticStr,
 )]
 #[serde(rename_all = "camelCase")]
 #[strum(serialize_all = "snake_case")]
 pub enum AssignmentStatus {
+    #[default]
     Open,
     Done,
     Declined,
@@ -54,8 +71,8 @@ impl AssignmentStatus {
     }
 }
 
-/// Work someone assigned to the owner, as the Inbox shows it
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+/// Work someone assigned to the owner, or a to-do, as the Inbox shows it
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct GatewayAssignment {
     /// The gateway task (its Request page)
@@ -74,6 +91,26 @@ pub struct GatewayAssignment {
     pub closed_at: Option<Timestamp>,
     /// What the requester attached
     pub links: Vec<AssignmentLink>,
+    /// Do, check or remember (work from a person is `do`)
+    pub kind: TodoKind,
+    /// Where a to-do came from; `None` for work a person assigned
+    pub source: Option<TodoSource>,
+    /// Where it was read (an email's message ID)
+    pub source_ref: Option<String>,
+    /// An Inbox item Nandi prepared for it (`inbox:<kind>:<id>`)
+    pub related_ref: Option<String>,
+    /// The run of the agent the user handed it to, and that agent
+    pub run_id: Option<String>,
+    pub assigned_agent: Option<String>,
+    /// How that run stands (read from `runs`, never stored here)
+    pub run_status: Option<crate::model::RunStatus>,
+}
+
+impl GatewayAssignment {
+    /// A to-do: opened here for the user, no remote caller to answer
+    pub fn is_local(&self) -> bool {
+        self.source.is_some()
+    }
 }
 
 /// A link attached to an assignment
@@ -143,8 +180,10 @@ pub fn links_of(input: &Value) -> Vec<AssignmentLink> {
 
 // -- Rows ---------------------------------------------------------------------
 
-const COLUMNS: &str =
-    "task_id, caller_instance, caller_name, request, status, note, created_at, due_at, closed_at";
+const COLUMNS: &str = "task_id, caller_instance, caller_name, request, status, note, created_at, \
+                       due_at, closed_at, kind, source, source_ref, related_ref, run_id, \
+                       assigned_agent, \
+                       (SELECT status FROM runs WHERE runs.id = gateway_assignments.run_id)";
 
 fn from_row(row: &Row<'_>) -> rusqlite::Result<GatewayAssignment> {
     Ok(GatewayAssignment {
@@ -158,6 +197,13 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<GatewayAssignment> {
         due_at: row.get::<_, Option<i64>>(7)?.map(|t| t as f64),
         closed_at: row.get::<_, Option<i64>>(8)?.map(|t| t as f64),
         links: Vec::new(),
+        kind: text_enum(row, 9)?,
+        source: opt_text_enum(row, 10)?,
+        source_ref: row.get(11)?,
+        related_ref: row.get(12)?,
+        run_id: row.get(13)?,
+        assigned_agent: row.get(14)?,
+        run_status: opt_text_enum(row, 15)?,
     })
 }
 
@@ -197,10 +243,10 @@ pub fn open(
     assignment: &GatewayAssignment,
 ) -> rusqlite::Result<GatewayAssignment> {
     let inserted = conn.execute(
-        &format!(
-            "INSERT OR IGNORE INTO gateway_assignments ({COLUMNS})
-             VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, NULL)"
-        ),
+        "INSERT OR IGNORE INTO gateway_assignments
+             (task_id, caller_instance, caller_name, request, status, created_at, due_at, kind,
+              source, source_ref, related_ref)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             assignment.task_id,
             assignment.caller_instance,
@@ -209,8 +255,20 @@ pub fn open(
             AssignmentStatus::Open.as_str(),
             assignment.created_at as i64,
             assignment.due_at.map(|t| t as i64),
+            assignment.kind.as_str(),
+            assignment.source.map(TodoSource::as_str),
+            assignment.source_ref,
+            assignment.related_ref,
         ],
     )?;
+    // A to-do read from the same place again: the one already there
+    if inserted == 0 {
+        if let (Some(source), Some(source_ref)) = (assignment.source, &assignment.source_ref) {
+            if let Some(existing) = by_source(conn, source, source_ref)? {
+                return Ok(existing);
+            }
+        }
+    }
     // A resumed task keeps the links it was opened with
     if inserted > 0 {
         for (position, link) in assignment.links.iter().enumerate() {
@@ -242,6 +300,66 @@ pub fn close(
         return Ok(None);
     }
     get(conn, task_id)
+}
+
+/// The to-do read from `source_ref` in `source`, if there is one
+pub fn by_source(
+    conn: &Connection,
+    source: TodoSource,
+    source_ref: &str,
+) -> rusqlite::Result<Option<GatewayAssignment>> {
+    conn.query_row(
+        &format!("SELECT {COLUMNS} FROM gateway_assignments WHERE source = ?1 AND source_ref = ?2"),
+        params![source.as_str(), source_ref],
+        from_row,
+    )
+    .optional()?
+    .map(|assignment| with_links(conn, assignment))
+    .transpose()
+}
+
+/// Opens a done to-do again (Undo); `None` when it isn't a done to-do
+pub fn reopen(conn: &Connection, task_id: &str) -> rusqlite::Result<Option<GatewayAssignment>> {
+    let updated = conn.execute(
+        "UPDATE gateway_assignments
+            SET status = 'open', note = NULL, closed_at = NULL, run_id = NULL,
+                assigned_agent = NULL
+          WHERE task_id = ?1 AND status = 'done' AND source IS NOT NULL",
+        [task_id],
+    )?;
+    if updated == 0 {
+        return Ok(None);
+    }
+    get(conn, task_id)
+}
+
+/// Hands an open to-do to `agent`'s run; `None` when it isn't an open to-do
+pub fn hand_off(
+    conn: &Connection,
+    task_id: &str,
+    agent: &str,
+    run_id: &str,
+) -> rusqlite::Result<Option<GatewayAssignment>> {
+    let updated = conn.execute(
+        "UPDATE gateway_assignments SET assigned_agent = ?1, run_id = ?2
+          WHERE task_id = ?3 AND status = 'open' AND source IS NOT NULL",
+        params![agent, run_id, task_id],
+    )?;
+    if updated == 0 {
+        return Ok(None);
+    }
+    get(conn, task_id)
+}
+
+/// To-dos done since `since` (epoch ms), the latest first
+pub fn done_todos_since(conn: &Connection, since: i64) -> rusqlite::Result<Vec<GatewayAssignment>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM gateway_assignments
+          WHERE status = 'done' AND source IS NOT NULL AND closed_at >= ?1
+          ORDER BY closed_at DESC"
+    ))?;
+    let rows = stmt.query_map([since], from_row)?;
+    rows.map(|row| with_links(conn, row?)).collect()
 }
 
 /// Open assignments, soonest due first (then the oldest)
@@ -301,6 +419,7 @@ mod tests {
             due_at: due_at.map(|t| t as f64),
             closed_at: None,
             links: Vec::new(),
+            ..GatewayAssignment::default()
         }
     }
 

@@ -6,6 +6,7 @@
 //! | Call                                                   | Effect                   |
 //! | ------------------------------------------------------ | ------------------------ |
 //! | plan and playbook tools, reads, mail, people, search   | none                     |
+//! | to-do tools (the user's list, like the notes)          | none                     |
 //! | `skill_propose` (it always asks the user itself)       | none                     |
 //! | browser reading or moving between pages                | none                     |
 //! | browser clicking, typing, files                         | changes                  |
@@ -223,6 +224,8 @@ mod tests {
             ("mail_search", none.clone(), None, Effect::None),
             ("mail_get_message", none.clone(), None, Effect::None),
             ("work_open", none.clone(), None, Effect::None),
+            ("todo_add", none.clone(), None, Effect::None),
+            ("todo_done", none.clone(), None, Effect::None),
             ("find_people", none.clone(), None, Effect::None),
             ("tool_search", none.clone(), None, Effect::None),
             ("work_update", none.clone(), None, Effect::Changes),
