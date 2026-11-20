@@ -217,6 +217,28 @@ describe('ConnectionView', () => {
 
   const PUBLIC = 'wss://relay.vaultdb.ai/relay'
 
+  it('shows no public relay in a build without one', async () => {
+    disconnected({
+      getRelayStatus: ok(
+        relayStatusFixture({
+          connected: false,
+          state: 'disconnected',
+          relayUrl: null,
+          relayUrlSource: null,
+          publicRelayUrl: null,
+        })
+      ),
+      getPublicRelayOffer: ok({ kind: 'none' }),
+    })
+    render(<ConnectionView />)
+    expect(await screen.findByLabelText('Relay URL')).toBeInTheDocument()
+    expect(screen.queryByTestId('public-relay-card')).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Join the public relay' })
+    ).toBeNull()
+    expect(commands.getPublicRelayOffer).not.toHaveBeenCalled()
+  })
+
   it('offers the public relay to people who skipped it', async () => {
     disconnected({
       getRelayStatus: ok(

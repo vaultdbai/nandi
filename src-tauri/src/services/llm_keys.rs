@@ -628,6 +628,25 @@ mod tests {
         llm_trial::use_test_trial(None);
     }
 
+    /// A build with no trial gateway: nothing of the user's means no model,
+    /// never the trial, even with a trial switch an earlier version left on
+    #[test]
+    fn without_a_trial_in_the_build_the_model_never_falls_back_to_it() {
+        llm_trial::use_test_trial(None);
+        crate::services::harness::claude_sdk::set_usable_for_tests(false);
+        let secrets = Secrets::in_memory();
+        secrets.set("nandi.trial.deepseek.mode", "on").unwrap();
+        for preferred in [llm_trial::TRIAL_MODEL, "claude:claude-opus-5"] {
+            assert_eq!(source_for(&secrets, preferred), Source::Nothing);
+        }
+        assert_eq!(resolve_model(&secrets, "gpt:gpt-4o").unwrap_err(), NO_KEY);
+        // The user's own model is unchanged
+        secrets
+            .set(KeyedProvider::OpenAi.keyring_user(), "sk-own")
+            .unwrap();
+        assert_eq!(source_for(&secrets, "gpt:gpt-4o"), own("gpt:gpt-4o"));
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn the_default_model_is_set_in_settings() {
         let state = AppState::for_tests(vec![]);

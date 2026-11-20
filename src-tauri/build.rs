@@ -22,13 +22,16 @@ fn main() {
     tauri_build::try_build(attributes).expect("failed to run tauri-build");
 }
 
-/// Rebuilds when a client ID read with `option_env!` changes (email
-/// sign-in, `services::email::provider`)
+/// Rebuilds when a value read with `option_env!` changes: the email
+/// sign-in client IDs (`services::email::provider`) and the addresses that
+/// turn on the free trial and the public relay (`utils::env::feature_url`)
 fn watch_build_env() {
     for name in [
         "NANDI_MICROSOFT_CLIENT_ID",
         "NANDI_GOOGLE_CLIENT_ID",
         "NANDI_GOOGLE_CLIENT_SECRET",
+        "NANDI_TRIAL_GATEWAY_URL",
+        "NANDI_PUBLIC_RELAY_URL",
     ] {
         println!("cargo:rerun-if-env-changed={name}");
     }

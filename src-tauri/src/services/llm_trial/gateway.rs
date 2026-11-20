@@ -1,6 +1,8 @@
-//! The client for Nandi's trial gateway (`trial.vaultdb.ai`, private repo
+//! The client for Nandi's trial gateway (private repo
 //! `nandi-cloud/trial-gateway`), which holds the free trial's DeepSeek key
-//! and counts each person's tokens. The app holds no key.
+//! and counts each person's tokens. The app holds no key, and no gateway
+//! address either: a build has the trial only when `NANDI_TRIAL_GATEWAY_URL`
+//! is set ([`configured_url`]).
 //!
 //! Every request is signed with this instance's device key
 //! (`relay::device_keys`, the same pair the relay pins): five headers,
@@ -35,9 +37,9 @@ use tokio::sync::mpsc;
 
 use crate::llm::{deepseek, LlmRequest, LlmResponse};
 
-/// Where the gateway runs unless `NANDI_TRIAL_GATEWAY_URL` says otherwise
-pub const DEFAULT_GATEWAY_URL: &str = "https://trial.vaultdb.ai";
-/// Points the app at another gateway (staging, a local one in tests)
+/// The gateway's address: set when the app is built (the release workflow's
+/// repository variable) or at run time (staging, a local gateway). Unset:
+/// this build has no free trial.
 pub const GATEWAY_URL_ENV: &str = "NANDI_TRIAL_GATEWAY_URL";
 
 pub const INSTANCE_HEADER: &str = "x-nandi-instance";
@@ -58,15 +60,13 @@ pub const LINK_PATH: &str = "/v1/link";
 /// What to do instead of the trial
 pub const OWN_MODEL_HINT: &str = "Add your own key (Anthropic, OpenAI, or DeepSeek) in Settings › Models & runtimes, sign in to Claude Code (`claude`), or run a local model with Ollama.";
 
-/// The gateway's base URL: `override_url` (from `NANDI_TRIAL_GATEWAY_URL`)
-/// when set, else [`DEFAULT_GATEWAY_URL`]. No trailing slash.
-pub fn gateway_url(override_url: Option<&str>) -> String {
-    override_url
-        .map(str::trim)
-        .filter(|url| !url.is_empty())
-        .unwrap_or(DEFAULT_GATEWAY_URL)
-        .trim_end_matches('/')
-        .to_string()
+/// The gateway this build or run uses: `NANDI_TRIAL_GATEWAY_URL` at run
+/// time, else at build time. `None`: no free trial. No trailing slash.
+pub fn configured_url() -> Option<String> {
+    crate::utils::env::feature_url(
+        crate::utils::env::var(GATEWAY_URL_ENV),
+        option_env!("NANDI_TRIAL_GATEWAY_URL"),
+    )
 }
 
 /// Lowercase hex SHA-256 of `body`

@@ -186,6 +186,7 @@
     },
     {
       "id": "free-trial",
+      "needs": "freeTrial",
       "keywords": {
         "en": [
           "trial",
@@ -220,8 +221,7 @@
           "network",
           "colleagues",
           "teammates",
-          "connection",
-          "public relay"
+          "connection"
         ],
         "fr": [
           "relais",
@@ -230,8 +230,7 @@
           "mon équipe",
           "réseau",
           "collègues",
-          "connexion",
-          "relais public"
+          "connexion"
         ],
         "ar": [
           "مرحّل",
@@ -242,8 +241,7 @@
           "فريقي",
           "الشبكة",
           "زملاء",
-          "الاتصال",
-          "المرحّل العام"
+          "الاتصال"
         ],
         "ja": [
           "リレー",
@@ -252,9 +250,19 @@
           "チーム",
           "ネットワーク",
           "同僚",
-          "接続",
-          "公開リレー"
+          "接続"
         ]
+      },
+      "links": [{ "target": "network:connection", "label": "connection" }]
+    },
+    {
+      "id": "public-relay",
+      "needs": "publicRelay",
+      "keywords": {
+        "en": ["public relay", "no company relay", "join the public relay"],
+        "fr": ["relais public", "rejoindre le relais public"],
+        "ar": ["المرحّل العام", "الانضمام إلى المرحّل العام"],
+        "ja": ["公開リレー", "公開リレーに参加"]
       },
       "links": [{ "target": "network:connection", "label": "connection" }]
     },

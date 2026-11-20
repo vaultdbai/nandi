@@ -130,7 +130,8 @@ pub const DEFAULT_RELAY_URL: &str = "ws://127.0.0.1:8787/relay";
 /// joins it, so an install that never joins takes no seat.
 ///
 /// It also carries the public relay the app offers as "Join the public
-/// relay" ([`public::public_relay_url`]); tests set their own, or none.
+/// relay" ([`public::public_relay_url`]), if this build has one; tests set
+/// their own, or none.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BuiltInRelay {
     url: Option<String>,
@@ -145,7 +146,7 @@ impl BuiltInRelay {
             option_env!("NANDI_DEFAULT_RELAY_URL"),
             option_env!("NANDI_RELAY_JOIN_CODE"),
         )
-        .with_public(Some(&public::public_relay_url()))
+        .with_public(public::public_relay_url().as_deref())
     }
 
     /// The public relay to offer (`None` or blank: none)

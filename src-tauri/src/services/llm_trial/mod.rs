@@ -179,11 +179,23 @@ thread_local! {
 }
 
 /// Sets up the trial for this instance, on the gateway from
-/// `NANDI_TRIAL_GATEWAY_URL` or the default one
+/// `NANDI_TRIAL_GATEWAY_URL` ([`gateway::configured_url`]). Without one
+/// this build has no trial: [`offered`] is false and nothing below reaches
+/// a gateway.
 pub fn init(instance_id: String) {
-    let url = gateway::gateway_url(crate::utils::env::var(gateway::GATEWAY_URL_ENV).as_deref());
+    let Some(url) = gateway::configured_url() else {
+        log::info!("No free trial in this build");
+        return;
+    };
     log::info!("Free trial gateway: {url}");
     let _ = TRIAL.set(Arc::new(Trial::new(url, instance_id)));
+}
+
+/// This build or run has the free trial (a gateway URL was set). When it
+/// hasn't, the trial doesn't exist for anyone: no status for Settings, no
+/// fallback model, whatever an earlier version left in the keychain.
+pub fn offered() -> bool {
+    trial().is_some()
 }
 
 /// The trial, once `init` ran. Tests never reach the real gateway: they

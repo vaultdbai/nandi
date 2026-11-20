@@ -28,6 +28,17 @@ Add these secrets (Settings → Secrets and variables → Actions):
 - `TAURI_PRIVATE_KEY`: Content of `~/.tauri/myapp.key`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: Password you set (if any)
 
+### Features a build turns on
+
+Two features exist in a build only when their address is set when it's built (`option_env!`, through `utils::env::feature_url`). The release workflow passes each from a repository **variable** (Settings → Secrets and variables → Actions → Variables). Unset or blank: the feature isn't in that build, and the app reads as if it never had it (no option in onboarding or Settings, no help topic, no "coming soon").
+
+| Repository variable       | Turns on                                                                     | Value                          |
+| ------------------------- | ---------------------------------------------------------------------------- | ------------------------------ |
+| `NANDI_TRIAL_GATEWAY_URL` | The free tokens (`llm_trial::offered`, docs: `sign-in.md` "The free tokens") | `https://trial.vaultdb.ai`     |
+| `NANDI_PUBLIC_RELAY_URL`  | "Join the public relay" (`relay::public::offered`, `relay-defaults.md`)      | `wss://relay.vaultdb.ai/relay` |
+
+0.2.0 ships with both unset, because neither server is live yet. Set them for 0.2.1 once `trial.vaultdb.ai` and `relay.vaultdb.ai` answer. The same names at run time turn a feature on for one run (staging, a local gateway or relay, tests) and win over the built value.
+
 ### 3. Update Configuration
 
 **`src-tauri/tauri.conf.json`:**
@@ -182,4 +193,4 @@ All updates are cryptographically signed:
 
 ### A local installer build
 
-`pnpm tauri build --bundles nsis,msi` (Windows) builds both installers, `src-tauri/target/release/bundle/nsis/Nandi_<version>_x64-setup.exe` and `bundle/msi/Nandi_<version>_x64_en-US.msi`, then fails with "A public key has been found, but no private key" unless `TAURI_SIGNING_PRIVATE_KEY` is set: `createUpdaterArtifacts` is on, so Tauri also signs the updater bundle. Both installers are complete at that point. To build without the updater artifacts (and a clean exit), add `--config '{"bundle":{"createUpdaterArtifacts":false}}'`. Such a build has no default relay or join code unless `NANDI_DEFAULT_RELAY_URL` and `NANDI_RELAY_JOIN_CODE` are set when it's built.
+`pnpm tauri build --bundles nsis,msi` (Windows) builds both installers, `src-tauri/target/release/bundle/nsis/Nandi_<version>_x64-setup.exe` and `bundle/msi/Nandi_<version>_x64_en-US.msi`, then fails with "A public key has been found, but no private key" unless `TAURI_SIGNING_PRIVATE_KEY` is set: `createUpdaterArtifacts` is on, so Tauri also signs the updater bundle. Both installers are complete at that point. To build without the updater artifacts (and a clean exit), add `--config '{"bundle":{"createUpdaterArtifacts":false}}'`. Such a build has no default relay or join code unless `NANDI_DEFAULT_RELAY_URL` and `NANDI_RELAY_JOIN_CODE` are set when it's built, and no free tokens or public relay unless `NANDI_TRIAL_GATEWAY_URL` and `NANDI_PUBLIC_RELAY_URL` are (see "Features a build turns on").

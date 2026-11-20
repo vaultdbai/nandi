@@ -492,6 +492,36 @@ describe('OnboardingView', () => {
       expect(mocks().setDefaultModel).toHaveBeenCalledWith('ollama:llama3.2')
     })
 
+    it('offers no free tokens in a build without the trial', async () => {
+      Object.assign(commands, { getDefaultModel: ok(noModel) })
+      render(<OnboardingView />)
+      await fillName(userEvent.setup())
+      expect(await screen.findByText('Choose a provider')).toBeInTheDocument()
+      expect(screen.queryByText(/free tokens/i)).toBeNull()
+      expect(screen.queryByTestId('model-in-use')).toBeNull()
+    })
+
+    it('says the free tokens are in use in a build with the trial', async () => {
+      Object.assign(commands, {
+        getDefaultModel: ok({
+          ...noModel,
+          effectiveModel: 'deepseek:deepseek-flash',
+          trial: {
+            enabled: true,
+            active: true,
+            usedUp: false,
+            paused: false,
+            unreachable: false,
+          },
+        }),
+      })
+      render(<OnboardingView />)
+      await fillName(userEvent.setup())
+      expect(await screen.findByTestId('model-in-use')).toHaveTextContent(
+        /Nandi comes with free tokens/
+      )
+    })
+
     it('asks twice before skipping without a model', async () => {
       const user = userEvent.setup()
       Object.assign(commands, { getDefaultModel: ok(noModel) })
@@ -708,6 +738,20 @@ describe('OnboardingView', () => {
       await screen.findByText('Pick some agents to start with')
       expect(mocks().joinRelay).toHaveBeenCalledTimes(1)
       expect(mocks().makeGatewayReachable).toHaveBeenCalledTimes(1)
+    })
+
+    it('offers no public relay when the build has none', async () => {
+      const user = userEvent.setup()
+      Object.assign(commands, {
+        getRelayStatus: ok({ ...relayStatus(null), publicRelayUrl: null }),
+        getPublicRelayOffer: ok({ kind: 'none' }),
+      })
+      render(<OnboardingView />)
+      await toNetwork(user)
+      expect(screen.queryByLabelText('Join the public relay')).toBeNull()
+      expect(screen.queryByText(/public relay/i)).toBeNull()
+      expect(screen.getByLabelText('Not now')).toBeChecked()
+      expect(mocks().getPublicRelayOffer).not.toHaveBeenCalled()
     })
 
     it('offers no Nandi network when the build has none', async () => {

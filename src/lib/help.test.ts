@@ -14,6 +14,7 @@ const TOPICS = [
   'ollama',
   'free-trial',
   'join-relay',
+  'public-relay',
   'agents',
   'groups',
   'inbox',

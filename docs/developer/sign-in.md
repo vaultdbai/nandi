@@ -75,8 +75,7 @@ set up, every call uses Claude Code (`llm_keys::usable_model`).
 ## The free tokens (trial)
 
 A new user can try Nandi before setting up a model: Nandi's trial
-gateway (`https://trial.vaultdb.ai`, private repo
-`nandi-cloud/trial-gateway`) holds the DeepSeek key and counts tokens
+gateway (private repo `nandi-cloud/trial-gateway`) holds the DeepSeek key and counts tokens
 (`services::llm_trial`). **The app holds no key**: nothing is baked into
 builds, no CI secret, no fallback.
 
@@ -97,9 +96,17 @@ builds, no CI secret, no fallback.
   tokens** (`set_free_trial`) works unless the gateway said the tokens are
   used up. It leaves the default model alone and stays the last resort:
   the user's own key or sign-in still wins (owner decision 8, 2026-11-14).
-- **Gateway URL:** `llm_trial::gateway::DEFAULT_GATEWAY_URL`;
-  `NANDI_TRIAL_GATEWAY_URL` overrides it (staging, a local gateway). The
-  trial is set up at start (`llm_trial::init`) with the instance ID.
+- **Only in a build that has it:** there is no gateway URL in code.
+  `NANDI_TRIAL_GATEWAY_URL` at build time (the release workflow's
+  repository variable, `releases.md` "Features a build turns on") or at
+  run time (staging, a local gateway) turns the trial on
+  (`llm_trial::gateway::configured_url`). Without it `llm_trial::init`
+  sets up nothing and `llm_trial::offered()` is false: `DefaultModelStatus.trial`
+  is `null`, so onboarding and Settings › Models show no free tokens, the
+  model never falls back to the trial, and the help guide hides its topic
+  (`"needs": "freeTrial"` in `help/guide.json`). A trial switch an earlier
+  version left in the keychain changes nothing. With a URL the trial is
+  set up at start with the instance ID.
   Tests never reach it: they see only a trial they set on their thread
   (`llm_trial::use_test_trial`, usually a fake axum gateway).
 

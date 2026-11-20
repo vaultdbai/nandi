@@ -12,6 +12,11 @@
 //! words live with the UI's other strings (`locales/*.json`,
 //! `help.topics.<id>`), so they're translated like everything else.
 //!
+//! A topic about a feature a build may leave out names it in `needs`
+//! (`freeTrial`, `publicRelay`): without that feature ([`Offered`]) the
+//! topic is never listed or matched, so the guide never sends anyone to
+//! something this Nandi doesn't have.
+//!
 //! Matching: the question is lowercased and French accents folded; each
 //! keyword found adds its length to its topic's score (Latin keywords must
 //! stand as words, an optional plural `s` allowed; Arabic and Japanese
@@ -75,9 +80,46 @@ struct GuideFile {
     topics: Vec<GuideTopic>,
 }
 
+/// A feature a build may leave out
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum Feature {
+    /// The free trial (`llm_trial::offered`)
+    FreeTrial,
+    /// VaultDB.ai's public relay (`relay::public::offered`)
+    PublicRelay,
+}
+
+/// Which of the features a build may leave out this Nandi has
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Offered {
+    pub free_trial: bool,
+    pub public_relay: bool,
+}
+
+impl Offered {
+    /// What this build or run has
+    pub fn here() -> Self {
+        Self {
+            free_trial: crate::services::llm_trial::offered(),
+            public_relay: crate::services::relay::public::offered(),
+        }
+    }
+
+    fn has(self, feature: Feature) -> bool {
+        match feature {
+            Feature::FreeTrial => self.free_trial,
+            Feature::PublicRelay => self.public_relay,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct GuideTopic {
     id: String,
+    /// The feature the topic is about, when a build may leave it out
+    #[serde(default)]
+    needs: Option<Feature>,
     /// Keywords per language (`en`, `fr`, `ar`, `ja`)
     keywords: std::collections::BTreeMap<String, Vec<String>>,
     links: Vec<HelpLink>,
@@ -91,6 +133,10 @@ fn full_weight() -> f32 {
 }
 
 impl GuideTopic {
+    fn shown(&self, offered: Offered) -> bool {
+        self.needs.is_none_or(|feature| offered.has(feature))
+    }
+
     fn topic(&self) -> HelpTopic {
         HelpTopic {
             id: self.id.clone(),
@@ -119,9 +165,18 @@ fn guide() -> &'static GuideFile {
     })
 }
 
-/// Every topic, in the guide's order
+/// Every topic this Nandi has, in the guide's order
 pub fn topics() -> Vec<HelpTopic> {
-    guide().topics.iter().map(GuideTopic::topic).collect()
+    topics_for(Offered::here())
+}
+
+fn topics_for(offered: Offered) -> Vec<HelpTopic> {
+    guide()
+        .topics
+        .iter()
+        .filter(|topic| topic.shown(offered))
+        .map(GuideTopic::topic)
+        .collect()
 }
 
 /// Lowercase, French accents folded, typographic apostrophes plain
@@ -161,12 +216,13 @@ fn contains_keyword(text: &str, keyword: &str) -> bool {
 }
 
 /// The topics that match `question`, best first
-fn ranked(question: &str) -> Vec<&'static GuideTopic> {
+fn ranked(question: &str, offered: Offered) -> Vec<&'static GuideTopic> {
     let text = fold(question);
     let mut scored: Vec<(usize, f32, &GuideTopic)> = guide()
         .topics
         .iter()
         .enumerate()
+        .filter(|(_, topic)| topic.shown(offered))
         .map(|(order, topic)| (order, topic.score(&text), topic))
         .filter(|(_, score, _)| *score > 0.0)
         .collect();
@@ -177,13 +233,22 @@ fn ranked(question: &str) -> Vec<&'static GuideTopic> {
 /// The guide's answer to `question`: the best topic and a few others, or
 /// every topic when nothing matches
 pub fn answer(question: &str, reason: HelpReason, detail: Option<String>) -> HelpAnswer {
-    let ranked = ranked(question);
+    answer_for(question, reason, detail, Offered::here())
+}
+
+fn answer_for(
+    question: &str,
+    reason: HelpReason,
+    detail: Option<String>,
+    offered: Offered,
+) -> HelpAnswer {
+    let ranked = ranked(question, offered);
     let (topic, related) = match ranked.split_first() {
         Some((best, rest)) => (
             Some(best.topic()),
             rest.iter().take(MAX_RELATED).map(|t| t.topic()).collect(),
         ),
-        None => (None, topics()),
+        None => (None, topics_for(offered)),
     };
     HelpAnswer {
         topic,

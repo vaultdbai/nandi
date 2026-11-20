@@ -15,8 +15,10 @@
 //! | Join | [`join`] | `POST /relay/public/join` with this instance's ID, public keys, the ID token and the machine hash (`identity::machine_id`, the relay's salt) → the token, kept exactly like an enrolled one; the app connects |
 //! | Account | [`account`] | `GET /relay/account?instanceId=` with the token as bearer |
 //!
-//! Which relay: [`super::BuiltInRelay::public_url`], `NANDI_PUBLIC_RELAY_URL`
-//! when set (staging, tests), else [`PUBLIC_RELAY_URL`]. Nothing here runs
+//! Which relay: [`super::BuiltInRelay::public_url`], from
+//! `NANDI_PUBLIC_RELAY_URL` at run time (staging, tests) or when the app was
+//! built ([`public_relay_url`]). Unset: this build offers no public relay
+//! ([`PublicRelayOffer::None`]) and the UI shows none. Nothing here runs
 //! at startup or blocks onboarding: an unreachable relay is a calm
 //! [`PublicRelayOffer::Unreachable`], and the rest of Nandi works the same.
 //!
@@ -46,10 +48,8 @@ use crate::services::identity::{self, machine_id, NoIdToken};
 use crate::services::network;
 use crate::services::AppState;
 
-/// VaultDB.ai's public relay
-pub const PUBLIC_RELAY_URL: &str = "wss://relay.vaultdb.ai/relay";
-
-/// Points the app at another public relay (staging, tests)
+/// The public relay's address: set when the app is built (the release
+/// workflow's repository variable) or at run time (staging, tests)
 pub const PUBLIC_RELAY_URL_ENV: &str = "NANDI_PUBLIC_RELAY_URL";
 
 /// `relay_state` key: the account this Nandi joined the relay as
@@ -62,13 +62,18 @@ const JOIN_TIMEOUT: Duration = Duration::from_secs(15);
 /// How long the account may take
 const ACCOUNT_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// The public relay this app offers: `NANDI_PUBLIC_RELAY_URL`, else
-/// VaultDB.ai's
-pub fn public_relay_url() -> String {
-    crate::utils::env::var(PUBLIC_RELAY_URL_ENV)
-        .map(|url| url.trim().to_string())
-        .filter(|url| !url.is_empty())
-        .unwrap_or_else(|| PUBLIC_RELAY_URL.to_string())
+/// The public relay this build or run offers: `NANDI_PUBLIC_RELAY_URL` at
+/// run time, else at build time. `None`: no public relay.
+pub fn public_relay_url() -> Option<String> {
+    crate::utils::env::feature_url(
+        crate::utils::env::var(PUBLIC_RELAY_URL_ENV),
+        option_env!("NANDI_PUBLIC_RELAY_URL"),
+    )
+}
+
+/// This build or run offers the public relay ("Join the public relay")
+pub fn offered() -> bool {
+    public_relay_url().is_some()
 }
 
 /// Whether the public relay can be joined now, and how

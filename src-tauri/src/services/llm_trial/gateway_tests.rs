@@ -272,16 +272,6 @@ fn signed_times_only_go_up() {
     assert!(times.windows(2).all(|pair| pair[1] > pair[0]));
 }
 
-#[test]
-fn the_gateway_url_defaults_and_can_be_overridden() {
-    assert_eq!(gateway_url(None), DEFAULT_GATEWAY_URL);
-    assert_eq!(gateway_url(Some("  ")), DEFAULT_GATEWAY_URL);
-    assert_eq!(
-        gateway_url(Some("http://127.0.0.1:8790/")),
-        "http://127.0.0.1:8790"
-    );
-}
-
 #[tokio::test]
 async fn a_chat_streams_through_the_gateway_with_no_key() {
     let (url, fake) = fake_gateway(vec![sse()]).await;

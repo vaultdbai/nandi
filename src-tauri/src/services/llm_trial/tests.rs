@@ -42,6 +42,28 @@ fn without_a_trial_nothing_is_offered_or_written() {
     assert_eq!(secrets.get(MODE_ENTRY).unwrap(), None);
 }
 
+/// A build with no gateway URL has no trial, even for someone an earlier
+/// version left a trial switch for in the keychain: nothing is offered,
+/// shown or written
+#[test]
+fn a_build_without_a_gateway_has_no_trial_even_for_earlier_users() {
+    use_test_trial(None);
+    assert!(!offered());
+    let secrets = Secrets::in_memory();
+    secrets.set(MODE_ENTRY, "on").unwrap();
+    assert!(!available(&secrets));
+    assert_eq!(why_unavailable(&secrets), None);
+    assert_eq!(status(&secrets, false), None);
+    assert!(set_enabled(&secrets, true).is_err());
+    own_model_set_up(&secrets);
+    assert_eq!(secrets.get(MODE_ENTRY).unwrap().as_deref(), Some("on"));
+    // With a gateway the same switch serves calls again
+    use_test_trial(Some(Arc::new(trial())));
+    assert!(offered());
+    assert!(available(&secrets));
+    use_test_trial(None);
+}
+
 #[test]
 fn an_own_model_turns_the_trial_off_until_the_user_turns_it_on() {
     let secrets = Secrets::in_memory();

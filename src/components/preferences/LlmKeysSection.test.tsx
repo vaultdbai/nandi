@@ -106,6 +106,25 @@ describe('LlmKeysSection', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows no free tokens in a build without the trial', async () => {
+    Object.assign(commands, {
+      getDefaultModel: ok({
+        defaultModel: 'claude:claude-sonnet-5',
+        effectiveModel: 'gpt:gpt-5',
+        claudeSignIn: null,
+        trial: null,
+      }),
+      getFreeTrialAccount: ok(account()),
+    })
+    render(<LlmKeysSection />)
+    expect(await screen.findByTestId('model-reason')).toBeInTheDocument()
+    expect(screen.queryByText('Free tokens')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('switch', { name: 'Use free tokens' })
+    ).not.toBeInTheDocument()
+    expect(mocks().getFreeTrialAccount).not.toHaveBeenCalled()
+  })
+
   it('turns the free tokens back on after the user set up their own model', async () => {
     const user = userEvent.setup()
     Object.assign(commands, {

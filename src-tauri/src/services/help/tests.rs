@@ -1,7 +1,23 @@
 use super::*;
 
+/// A build with every feature (a trial gateway and a public relay set)
+const ALL: Offered = Offered {
+    free_trial: true,
+    public_relay: true,
+};
+
+/// A build with neither (no URLs set, as 0.2.0 ships)
+const NEITHER: Offered = Offered {
+    free_trial: false,
+    public_relay: false,
+};
+
 fn best(question: &str) -> Option<String> {
-    answer(question, HelpReason::NoModel, None)
+    best_in(question, ALL)
+}
+
+fn best_in(question: &str, offered: Offered) -> Option<String> {
+    answer_for(question, HelpReason::NoModel, None, offered)
         .topic
         .map(|topic| topic.id)
 }
@@ -45,6 +61,7 @@ fn common_questions_find_their_topic() {
         ("I want to run a local model with Ollama", "ollama"),
         ("My free tokens are used up", "free-trial"),
         ("How do I join my team's relay?", "join-relay"),
+        ("How do I join the public relay?", "public-relay"),
         ("What is an agent?", "agents"),
         ("What are groups for?", "groups"),
         ("What's in the Inbox?", "inbox"),
@@ -89,10 +106,11 @@ fn keywords_match_whole_words_only() {
 
 #[test]
 fn nothing_matching_offers_every_topic() {
-    let answer = answer(
+    let answer = answer_for(
         "Bake me a cake",
         HelpReason::ModelFailed,
         Some("offline".into()),
+        ALL,
     );
     assert_eq!(answer.topic, None);
     assert_eq!(answer.related.len(), guide().topics.len());
@@ -103,14 +121,44 @@ fn nothing_matching_offers_every_topic() {
 #[test]
 fn an_answer_suggests_the_next_matches() {
     // Docker first; the free trial and models come along
-    let answer = answer(
+    let answer = answer_for(
         "install docker and connect a model with free tokens",
         HelpReason::NoModel,
         None,
+        ALL,
     );
     assert_eq!(answer.topic.unwrap().id, "install-docker");
     let related: Vec<String> = answer.related.into_iter().map(|t| t.id).collect();
     assert!(related.contains(&"connect-model".to_string()));
     assert!(related.contains(&"free-trial".to_string()));
     assert!(related.len() <= MAX_RELATED);
+}
+
+#[test]
+fn a_build_without_a_feature_never_points_to_it() {
+    let ids = |offered| -> Vec<String> { topics_for(offered).into_iter().map(|t| t.id).collect() };
+    assert!(ids(ALL).contains(&"free-trial".to_string()));
+    assert!(ids(ALL).contains(&"public-relay".to_string()));
+    let neither = ids(NEITHER);
+    assert!(!neither.contains(&"free-trial".to_string()));
+    assert!(!neither.contains(&"public-relay".to_string()));
+    assert!(neither.contains(&"join-relay".to_string()));
+    // Asked about them, the guide answers with what this Nandi has
+    assert_ne!(
+        best_in("My free tokens are used up", NEITHER).as_deref(),
+        Some("free-trial")
+    );
+    assert_eq!(
+        best_in("How do I join the public relay?", NEITHER).as_deref(),
+        Some("join-relay")
+    );
+    let cake = answer_for("Bake me a cake", HelpReason::NoModel, None, NEITHER);
+    assert_eq!(cake.related.len(), neither.len());
+    // One feature at a time
+    let trial_only = Offered {
+        free_trial: true,
+        public_relay: false,
+    };
+    assert!(ids(trial_only).contains(&"free-trial".to_string()));
+    assert!(!ids(trial_only).contains(&"public-relay".to_string()));
 }
