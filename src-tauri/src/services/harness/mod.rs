@@ -270,6 +270,11 @@ pub struct HarnessService {
     bus: EventBus,
     detector: Arc<HarnessDetector>,
     live: Mutex<HashMap<String, LiveHandle>>,
+    /// The health `detect` last reported per harness (all of it is new on
+    /// the first check after startup). Not the stored rows: they check the
+    /// container sign-in live, so they can't show it changed between checks,
+    /// and the host renewing its Claude sign-in must still reach the UI.
+    reported: Mutex<HashMap<String, HarnessHealth>>,
 }
 
 /// What a session row starts with besides the adapter's session
@@ -289,6 +294,7 @@ impl HarnessService {
             bus,
             detector,
             live: Mutex::default(),
+            reported: Mutex::default(),
         }
     }
 
@@ -510,12 +516,15 @@ impl HarnessService {
     /// Re-runs detection; emits `harness://health_changed` for every
     /// harness whose health changed, then `harness://detected`
     pub async fn detect(&self) -> Result<Vec<Detection>, String> {
-        let before = self.detector.stored().await.unwrap_or_default();
         let detected = self.detector.detect_all().await?;
         claude_sdk::invalidate();
+        let mut reported = self.reported.lock().unwrap_or_else(|e| e.into_inner());
         for detection in &detected {
-            let previous = before.iter().find(|b| b.harness_id == detection.harness_id);
-            if previous.is_none_or(|p| !same_health(&p.health, &detection.health)) {
+            let changed = reported
+                .get(&detection.harness_id)
+                .is_none_or(|previous| !same_health(previous, &detection.health));
+            reported.insert(detection.harness_id.clone(), detection.health.clone());
+            if changed {
                 events::emit(
                     &self.bus,
                     &HarnessHealthChanged {
@@ -947,15 +956,19 @@ mod tests {
     use crate::services::events::tests::RecordingSink;
 
     fn service() -> (HarnessService, Arc<RecordingSink>) {
+        service_in(tempfile::tempdir().unwrap().keep())
+    }
+
+    /// A service whose machine is `home`, with nothing on its PATH
+    fn service_in(home: std::path::PathBuf) -> (HarnessService, Arc<RecordingSink>) {
         let db = Db::in_memory();
         let sink = Arc::new(RecordingSink::default());
         let bus = EventBus::new(db.clone(), sink.clone());
-        let empty = tempfile::tempdir().unwrap().keep();
         let detector = Arc::new(HarnessDetector::new(
             db.clone(),
             DetectEnv {
-                home: empty.clone(),
-                path: Some(empty.into_os_string()),
+                home: home.clone(),
+                path: Some(home.into_os_string()),
                 vars: HashMap::new(),
             },
         ));
@@ -994,6 +1007,59 @@ mod tests {
         service.detect().await.unwrap();
         let names: Vec<_> = sink.take().into_iter().map(|(n, _)| n).collect();
         assert_eq!(names, vec![HARNESS_DETECTED], "nothing changed");
+    }
+
+    /// Claude Code on the host renews its sign-in between checks (Nandi's
+    /// own Claude calls run it too): the next check tells the UI
+    #[tokio::test]
+    async fn a_renewed_host_sign_in_is_reported_at_the_next_check() {
+        let home = tempfile::tempdir().unwrap();
+        let sign_in = |expires_at: i64| {
+            std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+            std::fs::write(
+                home.path().join(".claude/.credentials.json"),
+                format!(
+                    r#"{{"claudeAiOauth":{{"accessToken":"sk-ant-oat","refreshToken":"r","expiresAt":{expires_at}}}}}"#
+                ),
+            )
+            .unwrap();
+        };
+        let claude_code_changes = |sink: &RecordingSink| -> Vec<bool> {
+            sink.take()
+                .into_iter()
+                .filter(|(name, payload)| {
+                    *name == HARNESS_HEALTH_CHANGED && payload["harnessId"] == "claude-code"
+                })
+                .map(|(_, payload)| payload["health"]["containerAuthenticated"] == true)
+                .collect()
+        };
+        sign_in(now_ms() - 1);
+        let (service, sink) = service_in(home.path().to_path_buf());
+        service.detect().await.unwrap();
+        assert_eq!(
+            claude_code_changes(&sink),
+            vec![false],
+            "expired: no sign-in"
+        );
+        let shown = service.health("claude-code").await.unwrap();
+        assert!(!shown.container_authenticated);
+
+        sign_in(now_ms() + 60 * 60 * 1000);
+        assert!(
+            service
+                .health("claude-code")
+                .await
+                .unwrap()
+                .container_authenticated
+        );
+        service.detect().await.unwrap();
+        assert_eq!(claude_code_changes(&sink), vec![true]);
+        service.detect().await.unwrap();
+        assert!(claude_code_changes(&sink).is_empty(), "nothing changed");
+
+        std::fs::remove_file(home.path().join(".claude/.credentials.json")).unwrap();
+        service.detect().await.unwrap();
+        assert_eq!(claude_code_changes(&sink), vec![false], "signed out");
     }
 
     #[tokio::test]

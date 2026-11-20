@@ -33,10 +33,16 @@ function useHarnessEvents() {
   }, [queryClient])
 }
 
-/** Built-in and custom harnesses with their last detected health */
-export function useHarnesses() {
+/**
+ * Built-in and custom harnesses with their last detected health. The core
+ * checks the container sign-in live on every read, so `recheck` reads it
+ * again whenever the caller mounts (a page that shows a sign-in problem)
+ */
+export function useHarnesses(options?: { recheck?: boolean }) {
   useHarnessEvents()
-  return useClientQuery(harnessQueryKeys.list, () => client.listHarnesses())
+  return useClientQuery(harnessQueryKeys.list, () => client.listHarnesses(), {
+    refetchOnMount: options?.recheck ? 'always' : true,
+  })
 }
 
 /** Probes the machine again */

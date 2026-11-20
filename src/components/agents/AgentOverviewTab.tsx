@@ -186,7 +186,7 @@ function HealthCard({
 }) {
   const { t } = useTranslation()
   const { data: defaultModel } = useDefaultModel()
-  const harnesses = useHarnesses()
+  const harnesses = useHarnesses({ recheck: true })
   const runtime = overview?.runtime ?? 'native'
   const completedShare =
     overview && overview.runs > 0
