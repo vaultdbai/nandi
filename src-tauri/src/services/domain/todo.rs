@@ -110,7 +110,7 @@ impl NewTodo {
     ) -> DomainResult<Self> {
         let due = due.map(str::trim).filter(|d| !d.is_empty());
         let due_at = match due {
-            Some(due) => Some(parse_due(due, now, tz).ok_or_else(|| {
+            Some(due) => Some(parse_todo_due(due, now, tz).ok_or_else(|| {
                 DomainError::Rule(format!(
                     "Couldn't read the due time '{due}': use YYYY-MM-DD, \"N days\" or an RFC 3339 time"
                 ))
@@ -158,6 +158,22 @@ pub fn todo_note(note: Option<&str>) -> Option<String> {
     note.map(str::trim)
         .filter(|n| !n.is_empty())
         .map(|n| n.chars().take(MAX_NOTE_CHARS).collect())
+}
+
+/// A to-do's due time: like [`parse_due`], but `N days` is a day too,
+/// the end of that day in `tz` (as `YYYY-MM-DD` is), so the UI can say
+/// "Due tomorrow" instead of counting hours. Only an RFC 3339 time keeps
+/// its time of day.
+pub fn parse_todo_due<Tz: TimeZone>(due: &str, now: i64, tz: &Tz) -> Option<i64> {
+    let due = due.trim();
+    let at = parse_due(due, now, tz)?;
+    if chrono::DateTime::parse_from_rfc3339(due).is_ok() {
+        return Some(at);
+    }
+    let day = chrono::DateTime::from_timestamp_millis(at)?
+        .with_timezone(tz)
+        .date_naive();
+    parse_due(&day.format("%Y-%m-%d").to_string(), now, tz)
 }
 
 /// A due time (epoch ms) from `YYYY-MM-DD` (the end of that day in `tz`),
@@ -215,6 +231,33 @@ mod tests {
     }
 
     #[test]
+    fn a_todo_due_in_days_is_due_at_the_end_of_that_day() {
+        let end_of = |y, m, d| {
+            Utc.with_ymd_and_hms(y, m, d, 23, 59, 59)
+                .unwrap()
+                .timestamp_millis()
+        };
+        // NOW is 2027-01-15 08:00 UTC
+        assert_eq!(
+            parse_todo_due("2 days", NOW, &Utc),
+            Some(end_of(2027, 1, 17))
+        );
+        assert_eq!(
+            parse_todo_due("2027-01-20", NOW, &Utc),
+            Some(end_of(2027, 1, 20))
+        );
+        let noon = Utc
+            .with_ymd_and_hms(2027, 1, 16, 12, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        assert_eq!(
+            parse_todo_due("2027-01-16T12:00:00Z", NOW, &Utc),
+            Some(noon)
+        );
+        assert_eq!(parse_todo_due("soon", NOW, &Utc), None);
+    }
+
+    #[test]
     fn a_new_todo_is_checked() {
         let refs = TodoRefs {
             source: Some(" msg-1 "),
@@ -223,7 +266,7 @@ mod tests {
         let todo = new("  Reply to the landlord  ", Some("2 days"), refs).unwrap();
         assert_eq!(todo.text, "Reply to the landlord");
         assert_eq!(todo.kind, TodoKind::Do);
-        assert_eq!(todo.due_at, Some(NOW + 2 * DAY_MS));
+        assert_eq!(todo.due_at, parse_todo_due("2 days", NOW, &Utc));
         assert_eq!(todo.source_ref.as_deref(), Some("msg-1"));
         assert_eq!(todo.related_ref.as_deref(), Some("inbox:approval:a1"));
 

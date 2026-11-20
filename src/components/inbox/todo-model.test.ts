@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { GatewayAssignment } from '@/lib/bindings'
-import { buildInbox, inboxBadgeCount, type InboxSources } from './inbox-model'
+import {
+  buildInbox,
+  inboxBadgeCount,
+  waitingOnYou,
+  type InboxSources,
+} from './inbox-model'
 import {
   countsInBadge,
+  daysUntil,
   doneSince,
   dueChip,
+  dueText,
+  isDayDue,
   groupTodos,
   relatedLink,
   reminderRings,
@@ -176,13 +184,91 @@ describe('what the Home badge counts', () => {
     ])
     expect(inboxBadgeCount(items, NOW)).toBe(2)
   })
+
+  it('is one rule for the badge, the Inbox header and the tray', () => {
+    const far = todo({ taskId: 'far', kind: 'reminder', dueAt: NOW + 20 * DAY })
+    const checks = [
+      todo({ taskId: 'c1', kind: 'check' }),
+      todo({ taskId: 'c2', kind: 'check' }),
+    ]
+    const items = buildInbox({
+      now: NOW,
+      noModel: false,
+      approvals: [],
+      clarifications: [],
+      manualSteps: [],
+      holds: [],
+      assignments: [far, ...checks],
+      trustRequests: [],
+      work: [],
+      dismissed: [],
+      returns: [],
+      queue: [],
+      knowMe: { todoOpen: true, recheck: false, shownAt: NOW },
+      agentName: id => id,
+    })
+    // Listed in the Inbox: both checks, the far reminder, know-me
+    expect(items).toHaveLength(4)
+    // Waiting on you (and counted everywhere): the two checks
+    const waiting = waitingOnYou(items, NOW).map(item => item.id)
+    expect(waiting).toEqual(['assignment-c1', 'assignment-c2'])
+    expect(inboxBadgeCount(items, NOW)).toBe(waiting.length)
+  })
 })
 
-describe('dueChip', () => {
-  it('says today, tomorrow, in days, or how overdue', () => {
+/** The end of the day `days` from NOW's, as a date-only due is stored */
+const endOfDay = (days: number) =>
+  new Date(2030, 0, 15 + days, 23, 59, 59).getTime()
+
+describe('date-only dues read by the day', () => {
+  it('knows a day from a time', () => {
+    expect(isDayDue(endOfDay(0))).toBe(true)
+    expect(isDayDue(NOW + DAY)).toBe(false)
+    expect(daysUntil(endOfDay(3), NOW)).toBe(3)
+    expect(daysUntil(endOfDay(-2), NOW)).toBe(-2)
+  })
+
+  it('says Due today, tomorrow, a date, yesterday or how many days late', () => {
+    expect(dueText(null, NOW)).toBeNull()
+    expect(dueText(endOfDay(0), NOW)).toEqual({ key: 'dueToday' })
+    expect(dueText(endOfDay(1), NOW)).toEqual({ key: 'dueTomorrow' })
+    expect(dueText(endOfDay(10), NOW)).toEqual({
+      key: 'dueOn',
+      on: endOfDay(10),
+    })
+    expect(dueText(endOfDay(-1), NOW)).toEqual({ key: 'overdueYesterday' })
+    expect(dueText(endOfDay(-2), NOW)).toEqual({ key: 'overdueDays', days: 2 })
+  })
+
+  it('keeps hours and minutes for a due with a time', () => {
+    expect(dueText(NOW + 5 * HOUR, NOW)).toEqual({
+      key: 'dueIn',
+      duration: 5 * HOUR,
+    })
+    expect(dueText(NOW - 30 * HOUR, NOW)).toEqual({
+      key: 'overdueBy',
+      duration: 30 * HOUR,
+    })
+    expect(dueText(NOW + 3 * DAY, NOW)).toEqual({
+      key: 'dueOn',
+      on: NOW + 3 * DAY,
+    })
+  })
+
+  it('gives the tray chip by the day too', () => {
+    expect(dueChip(endOfDay(0), NOW)).toEqual({ key: 'today' })
+    expect(dueChip(endOfDay(1), NOW)).toEqual({ key: 'tomorrow' })
+    expect(dueChip(endOfDay(5), NOW)).toEqual({ key: 'inDays', days: 5 })
+    expect(dueChip(endOfDay(-2), NOW)).toEqual({ key: 'overdue', days: 2 })
+    expect(dueChip(endOfDay(-1), NOW)).toEqual({ key: 'overdue', days: 1 })
+  })
+})
+
+describe('dueChip with a time', () => {
+  it('says hours today, tomorrow, in days, or how overdue', () => {
     expect(dueChip(null, NOW)).toBeNull()
     expect(dueChip(NOW + 2 * HOUR, NOW)).toEqual({ key: 'inHours', hours: 2 })
-    expect(dueChip(NOW + 8 * HOUR, NOW)).toEqual({ key: 'today' })
+    expect(dueChip(NOW + 8 * HOUR, NOW)).toEqual({ key: 'inHours', hours: 8 })
     expect(dueChip(NOW + DAY, NOW)).toEqual({ key: 'tomorrow' })
     expect(dueChip(NOW + 4 * DAY, NOW)).toEqual({ key: 'inDays', days: 4 })
     expect(dueChip(NOW - 3 * HOUR, NOW)).toEqual({

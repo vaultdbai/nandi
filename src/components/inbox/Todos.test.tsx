@@ -136,6 +136,95 @@ describe('Inbox: the user’s to-dos', () => {
     expect(reopen).toHaveBeenCalledWith('todo-9')
   })
 
+  it('shows no note box until Done with a note', async () => {
+    const user = userEvent.setup()
+    serve([todo()])
+    const close = ok(todo({ status: 'done' }))
+    mocked.closeGatewayAssignment = close
+    render(<Inbox />)
+    const card = await screen.findByTestId('inbox-todo')
+    expect(within(card).queryByRole('textbox')).toBeNull()
+    await user.click(
+      within(card).getByRole('button', { name: 'Done with a note' })
+    )
+    await user.type(within(card).getByRole('textbox'), 'Sent it')
+    await user.click(within(card).getByRole('button', { name: 'Done' }))
+    expect(close).toHaveBeenCalledWith('todo-1', true, 'Sent it')
+  })
+
+  it('says a date-only due by the day', async () => {
+    const end = (days: number) => {
+      const at = new Date()
+      at.setDate(at.getDate() + days)
+      at.setHours(23, 59, 59, 0)
+      return at.getTime()
+    }
+    serve([
+      todo({ taskId: 'a', dueAt: end(-2), relatedRef: null }),
+      todo({ taskId: 'b', dueAt: end(0), relatedRef: null }),
+      todo({ taskId: 'c', dueAt: end(1), relatedRef: null }),
+    ])
+    render(<Inbox />)
+    const cards = await screen.findAllByTestId('inbox-todo')
+    expect(cards[0]).toHaveTextContent('Overdue 2 days')
+    expect(cards[1]).toHaveTextContent('Due today')
+    expect(cards[2]).toHaveTextContent('Due tomorrow')
+    expect(cards[0]).not.toHaveTextContent(/[0-9]+h/)
+  })
+
+  it('renders the Reminders group with bells and dates first, reachable from the top', async () => {
+    const user = userEvent.setup()
+    const day = (days: number) => {
+      const at = new Date()
+      at.setDate(at.getDate() + days)
+      at.setHours(23, 59, 59, 0)
+      return at.getTime()
+    }
+    serve([
+      todo({
+        taskId: 'r1',
+        kind: 'reminder',
+        request: 'Policy renewal',
+        dueAt: day(1),
+        relatedRef: null,
+      }),
+      todo({
+        taskId: 'r2',
+        kind: 'reminder',
+        request: 'Dentist check-up',
+        dueAt: day(40),
+        relatedRef: null,
+      }),
+    ])
+    // A long Inbox above them
+    mocked.listGatewayAssignments = ok([
+      todo({ taskId: 'r1', kind: 'reminder', dueAt: day(1) }),
+      todo({ taskId: 'r2', kind: 'reminder', dueAt: day(40) }),
+      ...Array.from({ length: 6 }, (_, i) =>
+        todo({
+          taskId: `p${i}`,
+          source: null,
+          callerInstance: 'desktop-sam',
+          callerName: 'Sam Lee',
+        })
+      ),
+    ])
+    render(<Inbox />)
+    const group = await screen.findByTestId('todo-group-reminders')
+    expect(group).toHaveTextContent('Reminders')
+    const cards = within(group).getAllByTestId('inbox-todo')
+    expect(cards).toHaveLength(2)
+    // Soonest first; the near one rings, the far one keeps the violet accent
+    expect(cards[0]).toHaveAttribute('data-tone', 'soon')
+    expect(cards[1]).toHaveAttribute('data-tone', 'reminder')
+    expect(cards[1]).toHaveTextContent(/ · Dentist check-up/)
+    expect(within(cards[1] as HTMLElement).getByText('Reminder')).toHaveClass(
+      'sr-only'
+    )
+    const jump = screen.getByTestId('todo-jump')
+    await user.click(within(jump).getByRole('button', { name: /Reminders/ }))
+  })
+
   it('hands one to an agent and opens its chat', async () => {
     const user = userEvent.setup()
     serve([todo()])

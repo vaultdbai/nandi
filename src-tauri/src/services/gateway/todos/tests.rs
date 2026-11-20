@@ -59,7 +59,10 @@ fn a_todo_is_a_local_assignment() {
     assert_eq!(row.caller_name, "Nandi");
     assert_eq!(row.request, "Reply to the landlord");
     assert_eq!(row.kind, TodoKind::Check);
-    assert_eq!(row.due_at, Some((NOW + DAY) as f64));
+    assert_eq!(
+        row.due_at,
+        crate::services::domain::todo::parse_todo_due("1 day", NOW, &Utc).map(|t| t as f64)
+    );
     assert_eq!(row.source_ref.as_deref(), Some("m1"));
     assert_eq!(
         hand_off_text("Call the dentist"),

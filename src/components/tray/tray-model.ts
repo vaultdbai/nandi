@@ -17,6 +17,7 @@ import {
   firstLine,
   inboxItemView,
   inboxRowLabel,
+  waitingOnYou,
   type InboxItem,
 } from '@/components/inbox/inbox-model'
 import {
@@ -32,10 +33,13 @@ import {
 import type { GatewayAssignment } from '@/lib/bindings'
 import type { View } from '@/store/navigation-store'
 
-/** Rows each group shows before its "All" link */
-export const TRAY_LIMITS = { needsYou: 5, working: 6, done: 8 } as const
+/**
+ * Rows Working and Done show before their "All" link. Needs you shows
+ * every item it counts (`waitingOnYou`), so its number is its rows.
+ */
+export const TRAY_LIMITS = { working: 6, done: 8 } as const
 
-export type TrayGroupId = keyof typeof TRAY_LIMITS
+export type TrayGroupId = 'needsYou' | 'working' | 'done'
 
 /** The row's colour: waiting on you, moving, finished well, or not */
 export type TrayTone = 'needsYou' | 'working' | 'done' | 'failed' | 'quiet'
@@ -228,6 +232,7 @@ export function buildTray(input: {
   const now = input.now ?? 0
   const todos = input.todos ?? []
   const agentName = input.agentName ?? ((id: string) => id)
+  const needsYou = waitingOnYou(input.inbox, now)
   const working = workingTodos(todos)
   // A handed to-do stands for its run
   const runs = new Set(working.map(todo => `run:${todo.runId}`))
@@ -242,10 +247,8 @@ export function buildTray(input: {
   return [
     {
       id: 'needsYou',
-      total: input.inbox.length,
-      rows: input.inbox
-        .slice(0, TRAY_LIMITS.needsYou)
-        .map(item => inboxTrayRow(item, now)),
+      total: needsYou.length,
+      rows: needsYou.map(item => inboxTrayRow(item, now)),
       all: INBOX,
     },
     {

@@ -98,7 +98,53 @@ export function countsInBadge(todo: GatewayAssignment, now: number): boolean {
   return todo.kind !== 'reminder' || reminderRings(todo, now)
 }
 
-/** The small due chip: "today", "2d", "overdue 3d" */
+/**
+ * Whether a due is a day, not a time: a date-only due (`YYYY-MM-DD`, `N
+ * days`) is stored as the end of that day, 23:59:59 local
+ */
+export function isDayDue(due: number): boolean {
+  const at = new Date(due)
+  return (
+    at.getHours() === 23 && at.getMinutes() === 59 && at.getSeconds() === 59
+  )
+}
+
+/** Whole local days from `now`'s day to `due`'s (negative: past) */
+export function daysUntil(due: number, now: number): number {
+  return Math.round((startOfDay(due) - startOfDay(now)) / DAY_MS)
+}
+
+/**
+ * When a to-do is due, in words: by the day for a date-only due ("Due
+ * today", "Overdue yesterday", "Due Wed, Nov 25"), by the hour only for one
+ * with a time. The view formats `on` and `duration`.
+ */
+export type DueText =
+  | { key: 'dueToday' }
+  | { key: 'dueTomorrow' }
+  | { key: 'dueOn'; on: number }
+  | { key: 'overdueYesterday' }
+  | { key: 'overdueDays'; days: number }
+  | { key: 'dueIn'; duration: number }
+  | { key: 'overdueBy'; duration: number }
+
+export function dueText(due: number | null, now: number): DueText | null {
+  if (due === null) return null
+  if (!isDayDue(due)) {
+    if (due <= now) return { key: 'overdueBy', duration: now - due }
+    return due - now > DAY_MS
+      ? { key: 'dueOn', on: due }
+      : { key: 'dueIn', duration: due - now }
+  }
+  const days = daysUntil(due, now)
+  if (days < -1) return { key: 'overdueDays', days: -days }
+  if (days === -1) return { key: 'overdueYesterday' }
+  if (days === 0) return { key: 'dueToday' }
+  if (days === 1) return { key: 'dueTomorrow' }
+  return { key: 'dueOn', on: due }
+}
+
+/** The small due chip: "today", "5d", "overdue 2d" (hours only for a time) */
 export type DueChip =
   | { key: 'today' }
   | { key: 'tomorrow' }
@@ -107,32 +153,30 @@ export type DueChip =
   | { key: 'overdue'; days: number }
   | { key: 'overdueHours'; hours: number }
 
-function sameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  )
-}
-
 export function dueChip(due: number | null, now: number): DueChip | null {
   if (due === null) return null
+  if (isDayDue(due)) {
+    const days = daysUntil(due, now)
+    if (days < 0) return { key: 'overdue', days: -days }
+    if (days === 0) return { key: 'today' }
+    if (days === 1) return { key: 'tomorrow' }
+    return { key: 'inDays', days }
+  }
   if (due <= now) {
     const late = now - due
     return late < DAY_MS
       ? { key: 'overdueHours', hours: Math.max(1, Math.floor(late / HOUR_MS)) }
       : { key: 'overdue', days: Math.floor(late / DAY_MS) }
   }
-  const at = new Date(due)
-  const today = new Date(now)
-  if (sameDay(at, today)) {
-    return due - now < 6 * HOUR_MS
-      ? { key: 'inHours', hours: Math.max(1, Math.ceil((due - now) / HOUR_MS)) }
-      : { key: 'today' }
+  const days = daysUntil(due, now)
+  if (days === 0) {
+    return {
+      key: 'inHours',
+      hours: Math.max(1, Math.ceil((due - now) / HOUR_MS)),
+    }
   }
-  const tomorrow = new Date(now + DAY_MS)
-  if (sameDay(at, tomorrow)) return { key: 'tomorrow' }
-  return { key: 'inDays', days: Math.ceil((due - now) / DAY_MS) }
+  if (days === 1) return { key: 'tomorrow' }
+  return { key: 'inDays', days }
 }
 
 /** Home's groups, in order */

@@ -287,10 +287,16 @@ function isOffered(item: InboxItem): boolean {
 }
 
 /**
- * The nav badge: what waits on the user now. Failures aren't counted, nor
- * a reminder that doesn't ring yet (`countsInBadge`).
+ * What waits on the user now, the one rule for every count: the Home
+ * badge, the Inbox header and the tray's Needs you (which lists exactly
+ * these). Left out: what is only offered (failures, returns, know-me) and
+ * a reminder that doesn't ring yet (`countsInBadge`); the Inbox still
+ * lists those.
  */
-export function inboxBadgeCount(items: InboxItem[], now: number): number {
+export function waitingOnYou(
+  items: readonly InboxItem[],
+  now: number
+): InboxItem[] {
   return items.filter(
     item =>
       !isOffered(item) &&
@@ -299,7 +305,12 @@ export function inboxBadgeCount(items: InboxItem[], now: number): number {
         isTodo(item.assignment) &&
         !countsInBadge(item.assignment, now)
       )
-  ).length
+  )
+}
+
+/** The nav badge and the Inbox header's count (`waitingOnYou`) */
+export function inboxBadgeCount(items: InboxItem[], now: number): number {
+  return waitingOnYou(items, now).length
 }
 
 /** An ID inside a thread's ID: `/` and `%` escaped (as `inbox::item` does) */

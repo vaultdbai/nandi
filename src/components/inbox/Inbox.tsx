@@ -61,6 +61,7 @@ import {
 } from './inbox-model'
 import {
   doneSince,
+  dueText,
   groupTodos,
   isTodo,
   sourceKey,
@@ -110,6 +111,33 @@ export function Inbox() {
           </Button>
         </div>
       </div>
+      {groups.length > 0 && others.length > 0 && (
+        // A long Inbox never hides the to-dos: one line to jump to them
+        <nav
+          aria-label={t('inbox.todo.jump')}
+          className="flex flex-wrap items-center gap-2 text-xs"
+          data-testid="todo-jump"
+        >
+          {groups.map(group => (
+            <Button
+              key={group.id}
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() =>
+                document
+                  .getElementById(`todo-group-${group.id}`)
+                  ?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+              }
+            >
+              {t(`inbox.todo.group.${group.id}`)}
+              <span className="text-muted-foreground tabular-nums">
+                {group.todos.length}
+              </span>
+            </Button>
+          ))}
+        </nav>
+      )}
       {isPending ? (
         <Skeleton className="h-20 w-full" />
       ) : others.length === 0 && groups.length === 0 ? (
@@ -130,6 +158,7 @@ export function Inbox() {
       {groups.map(group => (
         <section
           key={group.id}
+          id={`todo-group-${group.id}`}
           aria-label={t(`inbox.todo.group.${group.id}`)}
           data-testid={`todo-group-${group.id}`}
           className="flex flex-col gap-2 pt-2"
@@ -504,8 +533,6 @@ function GatewayHoldRow({
  * by kind and urgency (a reminder has its bell), where it came from, what
  * Nandi prepared for it, who is on it, and Done or Hand to an agent.
  */
-const DAY_MS = 24 * 60 * 60 * 1000
-
 function AssignmentRow({
   item,
 }: {
@@ -518,6 +545,8 @@ function AssignmentRow({
   const now = useNow(assignment.dueAt !== null, 30_000)
   const [note, setNote] = useState('')
   const [confirming, setConfirming] = useState(false)
+  // A to-do's card stays light: the note only when asked for
+  const [noting, setNoting] = useState(false)
   const member = assignment.callerName
   const overdue = assignment.dueAt !== null && assignment.dueAt <= now
   const todo = isTodo(assignment)
@@ -592,28 +621,7 @@ function AssignmentRow({
             </>
           )}
           {assignment.dueAt !== null && (
-            <span
-              className={
-                overdue
-                  ? 'block text-xs text-destructive'
-                  : 'block text-xs text-muted-foreground'
-              }
-            >
-              {overdue
-                ? t('inbox.assignment.overdue', {
-                    duration: formatDuration(now - assignment.dueAt),
-                  })
-                : assignment.dueAt - now > DAY_MS
-                  ? t('inbox.assignment.dueOn', {
-                      date: new Date(assignment.dueAt).toLocaleDateString(
-                        i18n.language,
-                        { weekday: 'short', month: 'short', day: 'numeric' }
-                      ),
-                    })
-                  : t('inbox.assignment.dueIn', {
-                      duration: formatDuration(assignment.dueAt - now),
-                    })}
-            </span>
+            <DueLine due={assignment.dueAt} now={now} overdue={overdue} />
           )}
           {todo && assignment.source && (
             <span className="block text-xs text-muted-foreground">
@@ -654,22 +662,36 @@ function AssignmentRow({
           ))}
         </ul>
       )}
-      <div className="flex items-center gap-2 ps-7">
-        <Input
-          value={note}
-          onChange={event => setNote(event.target.value)}
-          placeholder={t(
-            todo
-              ? 'inbox.todo.notePlaceholder'
-              : 'inbox.assignment.notePlaceholder'
-          )}
-          aria-label={t(
-            todo
-              ? 'inbox.todo.notePlaceholder'
-              : 'inbox.assignment.notePlaceholder'
-          )}
-          className="h-8 min-w-0 flex-1 text-sm"
-        />
+      <div className="flex flex-wrap items-center gap-2 ps-7">
+        {todo && !noting && (
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs text-muted-foreground"
+            onClick={() => setNoting(true)}
+          >
+            {t('inbox.todo.withNote')}
+          </Button>
+        )}
+        {(!todo || noting) && (
+          <Input
+            autoFocus={todo}
+            value={note}
+            onChange={event => setNote(event.target.value)}
+            placeholder={t(
+              todo
+                ? 'inbox.todo.notePlaceholder'
+                : 'inbox.assignment.notePlaceholder'
+            )}
+            aria-label={t(
+              todo
+                ? 'inbox.todo.notePlaceholder'
+                : 'inbox.assignment.notePlaceholder'
+            )}
+            className="h-8 min-w-0 flex-1 text-sm"
+          />
+        )}
+        {todo && !noting && <span className="flex-1" />}
         {todo ? (
           state !== 'working' && <HandToAgent todo={assignment} />
         ) : (
@@ -711,6 +733,63 @@ function AssignmentRow({
         </AlertDialogContent>
       </AlertDialog>
     </Card>
+  )
+}
+
+/**
+ * When an assignment or a to-do is due (`dueText`): by the day for a
+ * date-only due, by the hour for one with a time
+ */
+function DueLine({
+  due,
+  now,
+  overdue,
+}: {
+  due: number
+  now: number
+  overdue: boolean
+}) {
+  const { t, i18n } = useTranslation()
+  const text = dueText(due, now)
+  if (!text) return null
+  const date = (at: number) =>
+    new Date(at).toLocaleDateString(i18n.language, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    })
+  const words = (() => {
+    switch (text.key) {
+      case 'dueToday':
+        return t('inbox.due.today')
+      case 'dueTomorrow':
+        return t('inbox.due.tomorrow')
+      case 'dueOn':
+        return t('inbox.assignment.dueOn', { date: date(text.on) })
+      case 'overdueYesterday':
+        return t('inbox.due.yesterday')
+      case 'overdueDays':
+        return t('inbox.due.overdueDays', { days: text.days })
+      case 'dueIn':
+        return t('inbox.assignment.dueIn', {
+          duration: formatDuration(text.duration),
+        })
+      case 'overdueBy':
+        return t('inbox.assignment.overdue', {
+          duration: formatDuration(text.duration),
+        })
+    }
+  })()
+  return (
+    <span
+      className={
+        overdue
+          ? 'block text-xs text-destructive'
+          : 'block text-xs text-muted-foreground'
+      }
+    >
+      {words}
+    </span>
   )
 }
 

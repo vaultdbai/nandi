@@ -317,7 +317,7 @@ Nandi keeps your to-do list. When it reads your mail, your calendar or a chat, i
 
 On Home, your to-dos sit in three groups: **Do now**, **Check and close** and **Reminders**, soonest first. Red is overdue, amber is due within two days. A reminder has a bell and its date first; it rings in the last three days and only then counts in the Home badge. Each card says where it came from, and links to what Nandi already prepared for it, such as a payment waiting for your approval.
 
-- **Done** marks it done (add a note if you like). **Done recently** keeps the last week, with **Undo**.
+- **Done** marks it done; **Done with a note** lets you say what you did. **Done recently** keeps the last week, with **Undo**.
 - **Hand to an agent** gives it to Nandi or one of your agents: its chat opens with "Please do this: …". While it works, the to-do shows under Working in the tray; when it's finished, it comes back with "finished: mark done?" so you check the result.
 - The tray on the right lists the same to-dos one line each, with a small due chip.
 

@@ -44,4 +44,6 @@ A to-do is a `gateway_assignments` row with a `source` (migration `008_todos.sql
 | Tray rows                                 | `src/components/tray/tray-model.ts` (`todoTrayRow`, Working, Done)       |
 | Data                                      | `useTodos`, `useAddTodo`, `useReopenTodo`, `useHandTodo` (`useInbox.ts`) |
 
-Colours are theme tokens only (`TODO_TONE_TEXT`): overdue `destructive`, due within 2 days `warning`, Do `primary`, Check `info`, a reminder `highlight` with a bell. A reminder counts in the badge only within 3 days of its date or past it; the list always shows it.
+Colours are theme tokens only (`TODO_TONE_TEXT`): overdue `destructive`, due within 2 days `warning`, Do `primary`, Check `info`, a reminder `highlight` with a bell. A reminder counts only within 3 days of its date or past it; the list always shows it. Every count (the Home badge, the Inbox header, the tray's Needs you) is `waitingOnYou` in `inbox-model.ts`, and the tray lists exactly those items.
+
+A date-only due (`YYYY-MM-DD`, or `N days` through `domain::todo::parse_todo_due`) is stored as 23:59:59 local that day, and `isDayDue` reads it back as a day: `dueText` ("Due tomorrow", "Overdue 2 days") and `dueChip` ("tomorrow", "overdue 2d") count days, not hours. An RFC 3339 due keeps its time.

@@ -230,6 +230,26 @@ describe('buildTray', () => {
     expect(working?.rows[0]?.id).toBe('r0')
   })
 
+  it('lists every item Needs you counts, and counts what it lists', () => {
+    const checks = Array.from({ length: 7 }, (_, i) =>
+      assignmentItem(todo({ taskId: `c${i}`, kind: 'check' }))
+    )
+    const knowMe: InboxItem = {
+      ...base('know-me'),
+      kind: 'knowMe',
+      recheck: false,
+    }
+    const [needsYou] = buildTray({
+      inbox: [approval, ...checks, knowMe],
+      running: [],
+      recent: [],
+      now: NOW,
+    })
+    expect(needsYou?.rows).toHaveLength(8)
+    expect(needsYou?.total).toBe(8)
+    expect(needsYou?.rows.map(row => row.id)).not.toContain('know-me')
+  })
+
   it('keeps the Inbox order', () => {
     const [needsYou] = buildTray({
       inbox: [noModel, approval],
