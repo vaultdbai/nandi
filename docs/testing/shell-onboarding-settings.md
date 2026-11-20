@@ -1278,6 +1278,33 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
+### ST-36 — Check GitHub security (findings become to-dos)
+
+- **What:** With the GitHub sign-in, Nandi reads the account's and its owned orgs' settings (read-only `GET` calls to api.github.com, settings and metadata only: never secret values or repository contents; nothing runs in a container) and keeps one `check` to-do per finding, from Nandi, "From the GitHub security check": two-factor sign-in off on the account; the Backup remote is a public github.com repository; for each org the user is an owner of: two-factor not required, public repositories with secret scanning or push protection off, public repositories whose default branch allows force-push or deletion (no classic protection and no rules with both `non_fast_forward` and `deletion`). One sentence each, with the settings link; at most 3 repository names, then "and N more". It runs in the background after a sign-in and from **Check GitHub security** in Settings › Account, under the sign-in, which shows "Checked <when>: nothing to fix." or "…: N things to fix, in your to-dos."
+  - **Stable refs:** `github:user:2fa`, `github:repo:<owner>/<repo>:public-backup`, `github:org:<org>:2fa`, `…:secret-scanning`, `…:branch-protection`, `…:unreadable`, `github:scope:read`. A re-check adds none; a finding still there stays open, unchanged.
+  - **Fixed:** Nandi closes the to-do with "Fixed: checked again on <YYYY-MM-DD>" (recorded in Decisions under Nandi's name). If it comes back, Nandi opens the same to-do again. One the user closed by hand stays closed.
+  - **Hidden fields:** never guessed. A sign-in from before this release (`repo` only) gets one to-do: "Couldn't check your GitHub organization settings: sign in to GitHub again…". An org that hides its settings from the app gets one to approve Nandi under its OAuth app policy. GitHub unreachable or rate-limited: nothing changes.
+- **Where:** `src-tauri/src/services/github_security/` (`mod.rs` service, `reader.rs`), `services/domain/github_security.rs` (rules and the to-do plan), `services/auth/github.rs` (`SCOPES`, the check after sign-in); `src/components/github/GithubSecurityCheck.tsx`, `github-security-model.ts`. Commands: `get_github_security_status`, `check_github_security`.
+- **Preconditions:** Signed in to GitHub. For the org checks, an org you own with a public repository.
+- **Steps:**
+  1. With two-factor off on a test account and a public Backup repo, open Settings › Account and click **Check GitHub security**.
+  2. Click it again.
+  3. Turn on two-factor and make the Backup repo private; check again.
+  4. Sign in with an account signed in before this release (or revoke and re-grant with `repo` only).
+- **Expected:**
+  - (1) Two Check to-dos in the Inbox, "From the GitHub security check", each with its github.com settings link; the line says "2 things to fix". The button never blocks the screen.
+  - (2) No new to-dos.
+  - (3) Both close with "Fixed: checked again on <today>"; Decisions shows Done by Nandi.
+  - (4) One "sign in to GitHub again" to-do; signing in again closes it on the next check.
+- **Edge / negative cases:**
+  - Not signed in: the button isn't shown; the command answers "Sign in to GitHub first".
+  - At most 150 API calls and 30 public repositories per org per check; a rate limit or a rejected token stops reading and changes nothing.
+  - Nandi's `todo_add` can't use the source `security_check`.
+  - With no relay, everything here works the same.
+- **Automation:** Covered by: Rust `domain::github_security::tests` (each rule over GitHub's JSON, hidden fields, remotes, names, the plan: once, fixed, back, dismissed, gone orgs), `github_security::tests` (a fake GitHub: to-dos once, closed with the note, reopened, Decisions; only `GET` with the token to the base; an old sign-in; a rate limit), `marketplace::github` path guard via `the_token_goes_only_to_the_api_and_only_reads`, `auth::github::tests::the_sign_in_adds_only_read_scopes_to_repo`; Vitest `github-security-model.test.ts`, `GithubSecurityCheck.test.tsx` | Layer: unit | Gap: no test against the real api.github.com.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## 1.9 Appearance, language and preferences
 
 ### ST-26 — Language and right-to-left layout

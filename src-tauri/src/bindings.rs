@@ -285,6 +285,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             identity::start_github_sign_in,
             identity::poll_github_sign_in,
             identity::sign_out_github,
+            identity::get_github_security_status,
+            identity::check_github_security,
             remote::get_remote_status,
             remote::configure_remote,
             remote::clear_remote,

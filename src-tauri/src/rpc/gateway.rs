@@ -31,7 +31,7 @@ super::commands! {
     fn add_todo(state, text: String, kind: TodoKind, due: Option<String>) -> gateway::assignments::GatewayAssignment => gateway::todos::add_manual(&state, text, kind, due).await;
 
     /// Undo: opens a done to-do again
-    fn reopen_todo(state, task_id: String) -> gateway::assignments::GatewayAssignment => gateway::todos::reopen(&state, task_id).await;
+    fn reopen_todo(state, task_id: String) -> gateway::assignments::GatewayAssignment => gateway::todos::reopen(&state, task_id, gateway::todos::Actor::User).await;
 
     /// Hands an open to-do to an agent: a turn in its chat, "Please do this: …"
     fn hand_todo_to_agent(state, task_id: String, agent_id: String) -> gateway::todos::HandedTodo => gateway::todos::hand_off(&state, task_id, agent_id).await;

@@ -31,6 +31,7 @@ pub mod events;
 pub mod grants;
 // Protocol 7: groups, their signed policies, my access levels
 pub mod gateway;
+pub mod github_security;
 pub mod groups;
 pub mod harness;
 pub mod help;

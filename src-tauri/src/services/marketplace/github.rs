@@ -61,6 +61,21 @@ impl GitHubApi {
         path: &str,
         body: Option<Value>,
     ) -> Result<(reqwest::StatusCode, Value), String> {
+        let (status, value, _) = self.send_with_headers(method, path, body).await?;
+        Ok((status, value))
+    }
+
+    /// [`Self::send`], with the response's headers (scopes, rate limit).
+    /// `path` starts with `/`, so the token only goes to `base`.
+    pub(crate) async fn send_with_headers(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<(reqwest::StatusCode, Value, reqwest::header::HeaderMap), String> {
+        if !path.starts_with('/') {
+            return Err(format!("Not a GitHub API path: {path}"));
+        }
         let mut request = self
             .http
             .request(method, format!("{}{path}", self.base))
@@ -75,8 +90,9 @@ impl GitHubApi {
             .await
             .map_err(|e| format!("Couldn't reach GitHub: {e}"))?;
         let status = response.status();
+        let headers = response.headers().clone();
         let value = response.json().await.unwrap_or(Value::Null);
-        Ok((status, value))
+        Ok((status, value, headers))
     }
 
     pub(crate) fn failed(what: &str, status: reqwest::StatusCode, body: &Value) -> String {

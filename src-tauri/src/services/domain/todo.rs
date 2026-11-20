@@ -59,6 +59,9 @@ pub enum TodoSource {
     Chat,
     /// The user added it by hand
     Manual,
+    /// Nandi's GitHub security check (`source_ref`: the finding, e.g.
+    /// `github:user:2fa`; see `domain::github_security`)
+    SecurityCheck,
 }
 
 impl TodoKind {

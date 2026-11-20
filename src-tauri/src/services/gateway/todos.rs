@@ -9,7 +9,7 @@
 //! | [`add`]        | Nandi, or the user     | `added`                        |
 //! | [`hand_off`]   | the user               | `handed to <agent>`            |
 //! | [`done`]       | the user, or Nandi     | `done`                         |
-//! | [`reopen`]     | the user (Undo)        | `reopened`                     |
+//! | [`reopen`]     | the user (Undo), Nandi | `reopened`                     |
 //!
 //! Adding from the same place twice (`source` + `source_ref`, an email's
 //! message ID) returns the to-do already there. None of this needs the
@@ -208,8 +208,13 @@ pub async fn done(
     super::close_assignment_as(state, task_id, true, todo_note(note.as_deref()), by_name).await
 }
 
-/// Opens a done to-do again (Undo)
-pub async fn reopen(state: &AppState, task_id: String) -> Result<GatewayAssignment, String> {
+/// Opens a done to-do again: the user's Undo, or Nandi when a finding it
+/// closed as fixed is back (`github_security`)
+pub async fn reopen(
+    state: &AppState,
+    task_id: String,
+    by: Actor,
+) -> Result<GatewayAssignment, String> {
     let todo = state
         .db()
         .call(move |conn| assignments::reopen(conn, &task_id))
@@ -217,7 +222,7 @@ pub async fn reopen(state: &AppState, task_id: String) -> Result<GatewayAssignme
         .ok_or("That to-do isn't done, or it isn't there")?;
     record(
         state,
-        &Actor::User,
+        &by,
         Decided::new(KIND, &todo.task_id, "reopened").subject(&todo.request),
     );
     changed(state, &todo);

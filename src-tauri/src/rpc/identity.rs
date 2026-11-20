@@ -5,6 +5,7 @@ use crate::services::auth;
 use crate::services::auth::github::GithubSignIn;
 use crate::services::auth::oauth::DeviceFlowState;
 use crate::services::auth::IdentityStatus;
+use crate::services::github_security::{self, GithubSecurityStatus};
 use crate::services::identity::VerifiedIdentity;
 
 super::commands! {
@@ -32,4 +33,10 @@ super::commands! {
     fn poll_github_sign_in(state) -> GithubSignIn => auth::github::poll(&state).await;
 
     fn sign_out_github(state) -> GithubSignIn => auth::github::sign_out(&state);
+
+    /// The last GitHub security check: when, and how many findings
+    fn get_github_security_status(state) -> GithubSecurityStatus => Ok(github_security::status(&state));
+
+    /// Checks the GitHub account and owned orgs now; findings become to-dos
+    fn check_github_security(state) -> GithubSecurityStatus => github_security::check(&state).await;
 }

@@ -318,6 +318,15 @@ pub fn by_source(
     .transpose()
 }
 
+/// Every to-do from `source`, open or closed
+pub fn all_from(conn: &Connection, source: TodoSource) -> rusqlite::Result<Vec<GatewayAssignment>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM gateway_assignments WHERE source = ?1 ORDER BY created_at"
+    ))?;
+    let rows = stmt.query_map([source.as_str()], from_row)?;
+    rows.map(|row| with_links(conn, row?)).collect()
+}
+
 /// Opens a done to-do again (Undo); `None` when it isn't a done to-do
 pub fn reopen(conn: &Connection, task_id: &str) -> rusqlite::Result<Option<GatewayAssignment>> {
     let updated = conn.execute(

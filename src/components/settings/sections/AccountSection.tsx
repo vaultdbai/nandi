@@ -2,6 +2,8 @@ import { useTranslation } from 'react-i18next'
 import { Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { GithubSignInPanel } from '@/components/github/GithubSignInPanel'
+import { GithubSecurityCheck } from '@/components/github/GithubSecurityCheck'
+import { useGithubSignIn } from '@/hooks/useGithubSignIn'
 import { useRelay } from '@/hooks/useRelay'
 import { useVerifiedIdentity } from '@/hooks/useIdentity'
 import { PROVIDER_NAMES } from '@/components/settings/email/email-model'
@@ -55,6 +57,7 @@ export function AccountSection() {
   const { t } = useTranslation()
   const { status } = useRelay()
   const deviceId = status?.instanceId ?? ''
+  const { data: github } = useGithubSignIn()
 
   return (
     <SettingsSectionFrame
@@ -71,6 +74,7 @@ export function AccountSection() {
           {t('github.signIn.description')}
         </p>
         <GithubSignInPanel />
+        {github?.signedIn && <GithubSecurityCheck />}
       </section>
       <section className="space-y-2" aria-labelledby="account-setup-again">
         <h3 id="account-setup-again" className="text-sm font-medium">

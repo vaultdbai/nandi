@@ -184,8 +184,8 @@ async fn adds_dones_and_reopens_are_recorded_and_close_without_a_relay() {
     assert!(super::done(&state, id.clone(), Actor::User, None)
         .await
         .is_err());
-    reopen(&state, id.clone()).await.unwrap();
-    assert!(reopen(&state, id.clone()).await.is_err());
+    reopen(&state, id.clone(), Actor::User).await.unwrap();
+    assert!(reopen(&state, id.clone(), Actor::User).await.is_err());
 
     let text = decisions(&state);
     let item = format!("- **Item:** assignment `{id}`");
@@ -346,5 +346,6 @@ fn each_tool_has_a_spec_and_agents_name_only_their_sources() {
     assert!(!tool::is_todo_tool("work_open"));
     assert_eq!(tool::agent_source("email"), Some(TodoSource::Email));
     assert_eq!(tool::agent_source("manual"), None);
+    assert_eq!(tool::agent_source("security_check"), None);
     assert_eq!(tool::agent_source("fax"), None);
 }

@@ -289,6 +289,8 @@ vi.mock('@/lib/tauri-bindings', async importOriginal => {
         currentRun: null,
       }),
       getGithubSignIn: ok({ signedIn: false, login: null }),
+      getGithubSecurityStatus: ok({ checkedAt: null, findings: 0 }),
+      checkGithubSecurity: ok({ checkedAt: null, findings: 0 }),
       // Onboarded by default, so App renders the workspace shell
       getIdentityStatus: ok({
         onboarded: true,

@@ -244,6 +244,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-25 | Logs                                                                     | Shipped                                              | unit       | no          |                                        |
 | ST-33 | Settings › This computer (get your computer ready)                       | Shipped                                              | api + unit | no          |                                        |
 | ST-35 | Get your computer ready with one go-ahead (Windows, macOS)               | Shipped                                              | unit       | no          |                                        |
+| ST-36 | Check GitHub security (findings become to-dos)                           | Shipped                                              | unit       | no          |                                        |
 | ST-26 | Language and right-to-left layout                                        | Shipped                                              | unit       | no          |                                        |
 | ST-27 | Light, dark and system mode                                              | Shipped                                              | unit       | no          |                                        |
 | ST-28 | Color palettes and window icon                                           | Shipped                                              | unit       | no          |                                        |

@@ -32,6 +32,9 @@ pub struct NandiConfig {
     /// keychain; see `services::auth::github`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub github_login: Option<String>,
+    /// The last GitHub security check (`services::github_security`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github_security: Option<crate::services::github_security::GithubSecurityStatus>,
     /// Connected mailboxes and how often to check them (`services::email`;
     /// the tokens are in the keychain)
     #[serde(default, skip_serializing_if = "Option::is_none")]

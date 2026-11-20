@@ -13,7 +13,7 @@ A to-do is a `gateway_assignments` row with a `source` (migration `008_todos.sql
 | `caller_name`              | who added it (Nandi's name, or the user's)                    | who assigned it        |
 | `request`                  | one plain sentence with the deadline                          | what they asked        |
 | `kind`                     | `do`, `check` or `reminder` (`domain::todo::TodoKind`)        | `do`                   |
-| `source`                   | `email`, `event`, `chat` or `manual`                          | `NULL`                 |
+| `source`                   | `email`, `event`, `chat`, `manual` or `security_check`        | `NULL`                 |
 | `source_ref`               | where it was read (an email's message ID); unique per source  | `NULL`                 |
 | `related_ref`              | an Inbox thread Nandi prepared for it (`inbox:approval:<id>`) | `NULL`                 |
 | `run_id`, `assigned_agent` | the run of the agent the user handed it to                    | `NULL`                 |
@@ -28,6 +28,7 @@ A to-do is a `gateway_assignments` row with a `source` (migration `008_todos.sql
 - **Never for someone else:** a run delegated by a teammate or another Nandi (`SourceType::Agent`, the gateway's `ask-me` and `assign-me` included) is offered no to-do tools, and a call from one is refused (`todos::tool::allowed_in`, checked in `llm_step` and `tool_calls`).
 - **Hand-off:** `todos::hand_off` sends "Please do this: <text>" to the agent's chat (Nandi: the to-do's Ask chat) and stores the run. The UI shows it under Working while the run is active (`todo-model.ts` `todoState`), then "finished: mark done?". Only Nandi closes one itself, with `todo_done`.
 - **Reopen (Undo):** `assignments::reopen` works on done to-dos only and clears the note, the close time and the hand-off.
+- **Security check:** `security_check` to-dos are Nandi's GitHub findings ([github-security-check.md](./github-security-check.md)). Nandi closes them when fixed and reopens them when they come back; `todo_add` can't use that source.
 - **Record:** `add` (`added`), `hand_off` (`handed to <agent>`), `done` (`done`) and `reopen` (`reopened`) each write one Decisions entry, kind `assignment`; an agent's under its name (`Decided::by`).
 
 ## Nandi's Tools

@@ -130,10 +130,11 @@ fn text_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
         .filter(|s| !s.is_empty())
 }
 
-/// Where an agent may say it read a to-do (`manual` is the user's own)
+/// Where an agent may say it read a to-do (`manual` is the user's own,
+/// `security_check` the GitHub check's, which closes its own findings)
 pub fn agent_source(source: &str) -> Option<TodoSource> {
     match source.parse::<TodoSource>() {
-        Ok(TodoSource::Manual) | Err(_) => None,
+        Ok(TodoSource::Manual | TodoSource::SecurityCheck) | Err(_) => None,
         Ok(source) => Some(source),
     }
 }

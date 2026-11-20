@@ -27,6 +27,7 @@ pub mod connector_package;
 pub mod decision;
 pub mod error;
 pub mod events;
+pub mod github_security;
 pub mod grant;
 pub mod group;
 pub mod ids;
@@ -144,6 +145,7 @@ mod tests {
             ("connector_package.rs", include_str!("connector_package.rs")),
             ("error.rs", include_str!("error.rs")),
             ("events.rs", include_str!("events.rs")),
+            ("github_security.rs", include_str!("github_security.rs")),
             ("grant.rs", include_str!("grant.rs")),
             ("group.rs", include_str!("group.rs")),
             ("ids.rs", include_str!("ids.rs")),

@@ -2369,6 +2369,28 @@ async signOutGithub() : Promise<Result<GithubSignIn, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * The last GitHub security check: when, and how many findings
+ */
+async getGithubSecurityStatus() : Promise<Result<GithubSecurityStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_github_security_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Checks the GitHub account and owned orgs now; findings become to-dos
+ */
+async checkGithubSecurity() : Promise<Result<GithubSecurityStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_github_security") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getRemoteStatus() : Promise<Result<RemoteStatus, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_remote_status") };
@@ -6162,6 +6184,18 @@ status: string }
  */
 export type GitStatus = { branch: string; ahead: number; behind: number; files: GitFile[] }
 /**
+ * The last check, kept in `config.json` (`githubSecurity`) for Settings
+ */
+export type GithubSecurityStatus = { 
+/**
+ * Epoch ms; `None` before the first check
+ */
+checkedAt: number | null; 
+/**
+ * What it found, open as to-dos
+ */
+findings: number }
+/**
  * Whether this Nandi is signed in to GitHub, and as whom
  */
 export type GithubSignIn = { signedIn: boolean; 
@@ -9176,7 +9210,12 @@ export type TodoSource =
 /**
  * The user added it by hand
  */
-"manual"
+"manual" | 
+/**
+ * Nandi's GitHub security check (`source_ref`: the finding, e.g.
+ * `github:user:2fa`; see `domain::github_security`)
+ */
+"securityCheck"
 export type ToolBundle = "claudeCode"
 export type ToolCallStatus = "running" | "done"
 export type ToolDefinition = { id: string; name: string; description: string; source: ToolSource; inputSchema: JsonValue | null; requiresApproval: boolean; costEstimate: CostSpec | null; latencyClass: LatencyClass; tags: string[] }

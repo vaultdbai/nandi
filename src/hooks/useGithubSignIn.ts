@@ -81,6 +81,29 @@ export function useGithubSignInFlow() {
   return { state, start, cancel }
 }
 
+export const githubSecurityQueryKeys = {
+  status: ['github', 'security'] as const,
+}
+
+/** The last GitHub security check: when, and how many findings */
+export function useGithubSecurityStatus() {
+  return useClientQuery(githubSecurityQueryKeys.status, () =>
+    client.getGithubSecurityStatus()
+  )
+}
+
+/**
+ * Checks the account and owned orgs now. The findings arrive as to-dos
+ * (the Inbox refreshes on their events).
+ */
+export function useCheckGithubSecurity() {
+  const queryClient = useQueryClient()
+  return useClientMutation(() => client.checkGithubSecurity(), {
+    onSuccess: status =>
+      queryClient.setQueryData(githubSecurityQueryKeys.status, status),
+  })
+}
+
 export function useSignOutGithub() {
   const queryClient = useQueryClient()
   return useClientMutation(() => client.signOutGithub(), {

@@ -621,6 +621,7 @@ Built-in tools (Run shell commands, Read files, Write files, List folders, Ask o
 - Lets agents read pull requests and files, and post a review with inline comments. Posting always waits for your approval.
 - Click **Sign in with GitHub** in its Setup (or in Settings › Account): enter the code GitHub shows you and approve. That one sign-in also works for Backup, sources and publishing on github.com. If you'd rather not, paste a fine-grained token (Contents: read; Pull requests: read and write), or sign in with the GitHub CLI (`gh auth login`).
 - The calls run on your computer, so the token never reaches an agent's container.
+- **Check GitHub security.** Right after you sign in, and whenever you click **Check GitHub security** in Settings › Account, Nandi looks for the weak settings attackers use: two-factor sign-in off on your account, a public Backup repository, and, for each organization you own, two-factor not required, public repositories with secret scanning or push protection off, and default branches anyone with push access can force-push or delete. Each finding is a Check to-do with the settings link. Nandi only reads settings, never secrets or code. When you fix something, the next check closes its to-do ("Fixed: checked again on …"). If you signed in before this check existed, Nandi asks you once to sign in again so it can read organization settings.
 
 **AWS.**
 

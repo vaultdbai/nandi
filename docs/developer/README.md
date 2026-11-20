@@ -60,6 +60,7 @@ Technical documentation for building and extending this app. These docs describe
 | [Groups](./groups.md)                                     | Groups, signed group policies, access levels, visibility                    |
 | [Getting to know you](./know-me.md)                       | Know-me to-dos, proposals, personal vs work, group sharing                  |
 | [To-dos and reminders](./todos.md)                        | The user's to-dos as local assignments: kinds, hand-off, the card, the tray |
+| [GitHub security check](./github-security-check.md)       | Read-only checks of the GitHub account and owned orgs; findings as to-dos   |
 | [Harness Container](./harness-container.md)               | Pulling the images, the Claude Code tools volume, sessions                  |
 | [Runtime Routing](./runtime-routing.md)                   | `runtime:` in skill.md, native vs harness runs                              |
 | [Sign-in](./sign-in.md)                                   | Company identity first, keys last; Claude Code for LLMs                     |

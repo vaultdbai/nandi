@@ -29,9 +29,12 @@ const DEFAULT_CLIENT_ID: &str = "Ov23li9pRWYWwxbtygys";
 const TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const DEVICE_URL: &str = "https://github.com/login/device/code";
 const API_URL: &str = "https://api.github.com";
-/// Read and write the user's repositories (Backup pushes, team registries,
-/// pull requests through the connector)
-const SCOPES: &[&str] = &["repo"];
+/// `repo`: read and write the user's repositories (Backup pushes, team
+/// registries, pull requests through the connector). `read:org` and
+/// `read:user` (read-only): the security check reads the account's and its
+/// orgs' settings (`services::github_security`). A sign-in from before
+/// keeps working; the check then asks to sign in again for org settings.
+const SCOPES: &[&str] = &["repo", "read:org", "read:user"];
 
 /// Whether this Nandi is signed in to GitHub, and as whom
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -100,8 +103,9 @@ pub async fn start(state: &AppState) -> Result<DeviceFlowState, String> {
         .await
 }
 
-/// Asks GitHub once; once the user approved, the token is stored and the
-/// account's login looked up.
+/// Asks GitHub once; once the user approved, the token is stored, the
+/// account's login looked up and the security check started in the
+/// background.
 pub async fn poll(state: &AppState) -> Result<GithubSignIn, String> {
     let authorized = state
         .github_sign_in_flows()
@@ -109,6 +113,7 @@ pub async fn poll(state: &AppState) -> Result<GithubSignIn, String> {
         .await?;
     if authorized {
         remember_login(state).await;
+        crate::services::github_security::check_soon(state);
     }
     Ok(status(state))
 }
@@ -164,5 +169,10 @@ mod tests {
         assert!(provider.authorize_url.is_none() && provider.device_url.is_some());
         assert!(provider.client_id.is_some_and(|id| !id.is_empty()));
         assert!(provider.client_secret.is_none());
+    }
+
+    #[test]
+    fn the_sign_in_adds_only_read_scopes_to_repo() {
+        assert_eq!(provider().scopes, ["repo", "read:org", "read:user"]);
     }
 }
