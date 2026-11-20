@@ -263,7 +263,8 @@ async fn my_requests(state: &AppState, args: &Value, limit: usize) -> Result<Val
 }
 
 /// Open assignments the user gave themselves (the caller is this Nandi
-/// and there's no task row), as `my_requests` lists them
+/// and there's no task row), as `my_requests` lists them. The user's
+/// to-dos (`source` set) are never requests: `todo_list` has them.
 pub fn self_assigned(
     assignments: &[crate::services::gateway::assignments::GatewayAssignment],
     tasks: &[TaskRecord],
@@ -275,7 +276,9 @@ pub fn self_assigned(
     }
     assignments
         .iter()
-        .filter(|a| a.caller_instance == local && !tasks.iter().any(|t| t.id == a.task_id))
+        .filter(|a| {
+            !a.is_local() && a.caller_instance == local && !tasks.iter().any(|t| t.id == a.task_id)
+        })
         .map(|a| {
             let mut entry = json!({
                 "id": a.task_id,
@@ -715,5 +718,24 @@ Help the user.
         assert_eq!(mine[0]["status"], "on your list");
         assert_eq!(mine[0]["overdue"], true);
         assert!(self_assigned(&list, &[], "i-me", "asked_by_me").is_empty());
+    }
+
+    #[test]
+    fn to_dos_are_never_requests() {
+        use crate::services::domain::todo::TodoSource;
+        use crate::services::gateway::assignments::GatewayAssignment;
+        let todo = |caller: &str| GatewayAssignment {
+            task_id: "todo-1".into(),
+            caller_instance: caller.into(),
+            caller_name: "Nandi".into(),
+            request: "Reply to the landlord".into(),
+            source: Some(TodoSource::Email),
+            ..GatewayAssignment::default()
+        };
+        // Not even one that names this Nandi as its caller
+        for caller in ["", "i-me"] {
+            assert!(self_assigned(&[todo(caller)], &[], "i-me", "all").is_empty());
+            assert!(self_assigned(&[todo(caller)], &[], "", "all").is_empty());
+        }
     }
 }

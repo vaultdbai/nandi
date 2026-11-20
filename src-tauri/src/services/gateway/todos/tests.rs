@@ -197,6 +197,62 @@ async fn adds_dones_and_reopens_are_recorded_and_close_without_a_relay() {
 }
 
 #[tokio::test]
+async fn each_ask_in_one_email_is_its_own_todo_and_a_reread_adds_none() {
+    let state = AppState::for_tests(Vec::new());
+    let read = || async {
+        let mut added = Vec::new();
+        for (n, text) in [
+            (1, "Send the signed lease"),
+            (2, "Book the move-out inspection"),
+        ] {
+            let todo = new(text, TodoKind::Do, None, Some(&format!("msg-7#{n}")));
+            added.push(
+                add(&state, todo, Actor::Agent(DEFAULT_AGENT.into()))
+                    .await
+                    .unwrap(),
+            );
+        }
+        added
+    };
+    let first = read().await;
+    assert!(first.iter().all(|a| !a.existing));
+    assert_ne!(first[0].todo.task_id, first[1].todo.task_id);
+    let again = read().await;
+    assert!(
+        again.iter().all(|a| a.existing),
+        "the same numbers: no new ones"
+    );
+    assert_eq!(list(&state).await.unwrap().len(), 2);
+}
+
+#[test]
+fn a_run_for_someone_else_gets_no_todo_tools() {
+    use crate::model::SourceType;
+    let store = crate::services::repo_store::RepoStore::for_tests(crate::db::Db::in_memory());
+    crate::services::builtin_agents::seed(store.layout()).unwrap();
+    let names = |source: Option<SourceType>| -> Vec<String> {
+        tool::offered(&store, DEFAULT_AGENT, source)
+            .into_iter()
+            .map(|spec| spec.name)
+            .collect()
+    };
+    // The user's own chat and the mail check keep the list
+    for source in [Some(SourceType::User), Some(SourceType::Email), None] {
+        assert_eq!(
+            names(source),
+            ["todo_add", "todo_list", "todo_done"],
+            "{source:?}"
+        );
+    }
+    // A task from a teammate or another Nandi (the gateway's ask-me and
+    // assign-me run as delegations) never sees it
+    assert!(names(Some(SourceType::Agent)).is_empty());
+    assert!(!tool::allowed_in(Some(SourceType::Agent)));
+    // Nor does any other agent
+    assert!(tool::offered(&store, "writer", Some(SourceType::User)).is_empty());
+}
+
+#[tokio::test]
 async fn the_user_adds_with_a_date_or_not_at_all() {
     let state = AppState::for_tests(Vec::new());
     let todo = add_manual(

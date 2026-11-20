@@ -154,6 +154,13 @@ pub(super) async fn run_call(
         // Nandi's to-do tools: on the host, no approval (like the notes)
         _ if ctx.agent_id == DEFAULT_AGENT && todos::tool::is_todo_tool(&call.tool) => {
             match app_state(deps) {
+                // A run for someone else never reaches the user's list
+                Some(_) if !todos::tool::allowed_in(run_source(deps, &ctx.run_id).await) => {
+                    ToolOutcome {
+                        result: todos::tool::REFUSED_FOR_OTHERS.to_string(),
+                        is_error: true,
+                    }
+                }
                 Some(state) => {
                     todos::tool::call(&state, &ctx.agent_id, &call.tool, &call.args).await
                 }

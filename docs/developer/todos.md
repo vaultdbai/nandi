@@ -22,8 +22,10 @@ A to-do is a `gateway_assignments` row with a `source` (migration `008_todos.sql
 
 ## Rules
 
-- **Idempotent add:** `assignments::open` returns the row already there for the same `source` + `source_ref` (`by_source`), so a mail read twice is one to-do.
+- **Idempotent add:** `assignments::open` returns the row already there for the same `source` + `source_ref` (`by_source`), so a mail read twice is one to-do. Several asks in one email are numbered in the order they appear: `<message-id>#1`, `#2`; a re-read reuses the numbers.
 - **Nothing reaches the relay:** closing a local one skips the gateway waiter (`close_assignment_as`); there is no gateway task to answer. Reassign is never offered in its Ask chat (`inbox::item`, Done only).
+- **Never a request:** `my_requests` leaves out every row with a `source` (`people::self_assigned`), whatever its caller instance.
+- **Never for someone else:** a run delegated by a teammate or another Nandi (`SourceType::Agent`, the gateway's `ask-me` and `assign-me` included) is offered no to-do tools, and a call from one is refused (`todos::tool::allowed_in`, checked in `llm_step` and `tool_calls`).
 - **Hand-off:** `todos::hand_off` sends "Please do this: <text>" to the agent's chat (Nandi: the to-do's Ask chat) and stores the run. The UI shows it under Working while the run is active (`todo-model.ts` `todoState`), then "finished: mark done?". Only Nandi closes one itself, with `todo_done`.
 - **Reopen (Undo):** `assignments::reopen` works on done to-dos only and clears the note, the close time and the hand-off.
 - **Record:** `add` (`added`), `hand_off` (`handed to <agent>`), `done` (`done`) and `reopen` (`reopened`) each write one Decisions entry, kind `assignment`; an agent's under its name (`Decided::by`).

@@ -44,7 +44,7 @@ Nandi leaves out only the newsletters the mailbox marks and notes to self. The r
 Keep the notes current as you go, like the email check does:
 
 - Asks of the user, promises in sent mail, deadlines, decisions, owners: in the right notes file, with sender, date and subject.
-- For each "Needs you" item, `todo_add` one to-do: one plain sentence of what to do with its deadline, kind `do` or `check` (a bill or renewal for later: `reminder`), source `email`, the `message_id` as `source_ref`, and `related_ref` for a draft or approval you prepared. Say when the notes show it came up before.
+- For each "Needs you" item, `todo_add` one to-do: one plain sentence of what to do with its deadline, kind `do` or `check` (a bill or renewal for later: `reminder`), source `email`, `<message_id>#1`, `#2`, … as `source_ref` (numbered in the order the asks appear, the same numbers when you read it again), and `related_ref` for a draft or approval you prepared. Say when the notes show it came up before.
 - Update an item that's there; don't add it twice.
 
 ## Act

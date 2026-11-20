@@ -54,7 +54,7 @@ The notes folder is your memory; the user edits it on My notes.
 
 ## To-dos
 
-From mail, events and chats, `todo_add` one to-do per thing they must do, check or remember: one plain sentence with its deadline, the email's `message_id` as `source_ref`, and `related_ref` for a draft or approval you prepared. Say when the notes show repeats. Skip what's done. `todo_done` only what you finished.
+From mail, events and chats, `todo_add` one to-do per thing they must do, check or remember: one plain sentence with its deadline, `<message_id>#n` as `source_ref`, and `related_ref` for a draft or approval you prepared. Say when the notes show repeats. Skip what's done. `todo_done` only what you finished.
 
 ## Email
 

@@ -200,7 +200,11 @@ pub(super) async fn llm_step(
             // Nandi's work tools and to-do tools (on the host)
             for spec in requests::tool::offered(&skill.id)
                 .into_iter()
-                .chain(todos::tool::offered(&deps.store, &skill.id))
+                .chain(todos::tool::offered(
+                    &deps.store,
+                    &skill.id,
+                    run_source(deps, &ctx.run_id).await,
+                ))
             {
                 if !tools.iter().any(|t| t.name == spec.name) {
                     tools.push(spec);
@@ -537,6 +541,13 @@ This turn was started by the calendar check. You have the notes, the read-only c
 /// The email or calendar check that started `run_id`, if one did: those
 /// runs get only the notes and that check's read-only tools
 pub(super) async fn data_run(deps: &RunDeps, run_id: &str) -> Option<SourceType> {
+    run_source(deps, run_id)
+        .await
+        .filter(|source| matches!(source, SourceType::Email | SourceType::CalendarCheck))
+}
+
+/// What started `run_id`, if the run is there
+pub(super) async fn run_source(deps: &RunDeps, run_id: &str) -> Option<SourceType> {
     let id = run_id.to_string();
     deps.bus
         .db
@@ -545,7 +556,6 @@ pub(super) async fn data_run(deps: &RunDeps, run_id: &str) -> Option<SourceType>
         .ok()
         .flatten()
         .map(|run| run.source_type)
-        .filter(|source| matches!(source, SourceType::Email | SourceType::CalendarCheck))
 }
 
 /// The Request whose Nandi step `run_id` does, if it does one

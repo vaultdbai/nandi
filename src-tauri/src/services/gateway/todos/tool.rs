@@ -4,6 +4,11 @@
 //! and calendar checks' runs. They need no approval: like the notes, the
 //! list is Nandi's to keep, and every add and done is in Decisions.
 //!
+//! Never in a run for someone else: a task delegated by a teammate or
+//! another Nandi (`SourceType::Agent`, the gateway's `ask-me` and
+//! `assign-me` included) gets none of them ([`allowed_in`]), and a call
+//! from one is refused, so nobody else reads or changes the user's list.
+//!
 //! | Tool        | Arguments                                         | Does                                   |
 //! | ----------- | ------------------------------------------------- | -------------------------------------- |
 //! | `todo_add`  | `{text, kind, due?, source, source_ref?, related_ref?}` | adds one (same source_ref: no new) |
@@ -16,6 +21,7 @@ use super::Actor;
 use crate::db::now_ms;
 use crate::engine::ToolOutcome;
 use crate::llm::ToolSpec;
+use crate::model::SourceType;
 use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::domain::todo::{NewTodo, TodoKind, TodoRefs, TodoSource, MAX_TEXT_CHARS};
 use crate::services::gateway::assignments::{AssignmentStatus, GatewayAssignment};
@@ -31,10 +37,21 @@ pub fn is_todo_tool(name: &str) -> bool {
     TOOLS.contains(&name)
 }
 
-/// The to-do tools `agent_id` may call: Nandi's, those its `skill.md`
-/// lists in `allowed-tools`
-pub fn offered(store: &RepoStore, agent_id: &str) -> Vec<ToolSpec> {
-    if agent_id != DEFAULT_AGENT {
+/// Whether a run started from `source` may keep the user's to-dos: never
+/// one delegated by someone else. Pure, for tests.
+pub fn allowed_in(source: Option<SourceType>) -> bool {
+    source != Some(SourceType::Agent)
+}
+
+/// What a run for someone else is told when it calls a to-do tool
+pub const REFUSED_FOR_OTHERS: &str =
+    "The user's to-dos aren't available while you answer for someone else";
+
+/// The to-do tools `agent_id` may call in a run started from `source`:
+/// Nandi's, those its `skill.md` lists in `allowed-tools`, and none in a
+/// run for someone else
+pub fn offered(store: &RepoStore, agent_id: &str, source: Option<SourceType>) -> Vec<ToolSpec> {
+    if agent_id != DEFAULT_AGENT || !allowed_in(source) {
         return Vec::new();
     }
     let Ok(agent) = store.agent(agent_id) else {
@@ -55,9 +72,10 @@ pub fn spec(name: &str) -> Option<ToolSpec> {
 sentence of what to do with its deadline (\"Reply to the landlord about the deposit: ask for the \
 inspection result. Deadline 2026-12-07.\"). `kind`: `do` (an action), `check` (verify and close) \
 or `reminder` (a date to remember; give the date as `due`). `due`: YYYY-MM-DD, \"N days\" or an \
-RFC 3339 time. `source` is where you read it; for mail put the email's message id in \
-`source_ref` (for an event, its id): adding from the same source_ref again returns the to-do \
-already there (`existing: true`), so put everything one email asks in one to-do. \
+RFC 3339 time. `source` is where you read it. `source_ref` names the thing within it: the \
+email's message id (an event's id) and its number in the order the asks appear, \
+`<message-id>#1`, `<message-id>#2`. Read the same email again and use the same numbers: a \
+source_ref already used returns the to-do already there (`existing: true`). \
 `related_ref`: the Inbox thread of what you prepared for it (`inbox:approval:<id>`, a Request's \
 id). Don't add what is already done.",
             json!({"type": "object", "required": ["text", "kind", "source"], "properties": {
