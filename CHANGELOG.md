@@ -23,6 +23,10 @@ What changed in each Nandi release, grouped by what you notice. The release note
 - **Sandbox images are pulled.** Nandi downloads its signed images with size and progress instead of building them. Claude Code is fetched on first use.
 - **Free trial.** Trial calls go through Nandi's trial gateway, 100,000 tokens per person. When no model answers, a built-in help guide does.
 - **Get your computer ready.** A checklist checks Docker and the rest of what Nandi needs.
+- **Install Docker for me.** When Docker or WSL is missing, one Go ahead updates WSL and installs Docker (winget on Windows, Homebrew or the official download on macOS). Windows or macOS asks for admin rights for each installer; Nandi itself never runs as admin. Nandi can also start Docker whenever it opens, if you say so once.
+- **To-dos and reminders.** Nandi turns what you're asked to do, what you promised and what to remember into to-dos, from each email check, chats and events. They sit in the Inbox and the work tray in three groups (Do now, Check and close, Reminders), with due dates, overdue in red, and a bell for reminders. Mark one Done, or hand it to Nandi or any of your agents.
+- **GitHub security check.** When you connect GitHub, Nandi checks your account and the organizations you own for two-factor sign-in, a public Backup repository, secret scanning and unprotected default branches, and turns each finding into a to-do with the fix. It reads settings only, never code or secrets.
+- **Nandi tries its own failed work again.** A failed digest or mail check retries and cleans up after itself, and a missed schedule catches up. Email has a Read again.
 - **Windows installers.** A per-user `setup.exe` that needs no admin rights, and an `.msi` for IT deployment.
 - **Live screens.** Screens follow file changes in your gold copy, say who made them and refresh from disk.
 - **Work tray.** A work tray on every page, and a slimmer Home.
@@ -50,6 +54,7 @@ What changed in each Nandi release, grouped by what you notice. The release note
 - A `uvx` connector starts in its container.
 - The companion stays on the monitor you drop it on.
 - Every screen shows the calm "connect to your relay" notice when there is no relay.
+- An approval card for Claude Code or Codex shows the command it asks to run. It showed only "Run a command:".
 
 ### Security
 
@@ -58,6 +63,9 @@ What changed in each Nandi release, grouped by what you notice. The release note
 - The default registry wins its IDs, and a pack's workflows can't drive agents outside it.
 - **Consent covers more.** First-use consent now covers connectors, shared folders and their access, and taking tasks from others. An update that adds or widens any of them, or widens a host's methods, asks again. Approving grants only what the dialog showed.
 - **The relay instance token lives in the OS keyring**, not in `state.db`.
+- **Signing keys in the OS keychain.** `nandi keygen` and `nandi sign` take `--key keyring:<NAME>`, and `nandi keygen --import` moves a key file in, so publisher keys never have to sit on disk.
+- **The same lockdown for every coding agent.** One test holds Claude Code and Codex to the same container checks on every change: no host credentials inside, and sites off the allow list refused.
+- **Dependency fixes.** Every open Dependabot alert is fixed except `glib`, which moves with Tauri and is not reachable from Nandi.
 - **Credentials stay on the host.** Bedrock calls are signed on the host, Claude Code keys stay on the host through an Anthropic passthrough, and the LiteLLM master key stays behind the proxy.
 - The egress proxy refuses internal addresses after resolving a name.
 - Audit logs are hash-chained and synced to disk, and Settings › Logs shows when one is degraded. Run events and approval decisions survive a `state.db` reset.
