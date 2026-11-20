@@ -9,7 +9,7 @@ What changed in each Nandi release, grouped by what you notice. The release note
 - **Nandi, the default agent.** The Chief of Staff is now called Nandi. It has its own page, apart from your own agents, with Reset to defaults. Its morning digest and mail check ship as its own triggers.
 - **Nandi's instructions stay current.** A new build updates Nandi's shipped files you never edited. A file you edited is kept, and Nandi's page offers the update with a diff: Take update or Keep mine.
 - **Email first.** Setup asks for Outlook or Gmail. Nandi keeps My notes from your mail, reads older mail slowly in the background, and acts on what arrives through one screened queue, with a thread for every task, planned before you approve it.
-- **Your email is your identity.** The connected email names this Nandi to your relay and the free trial. There are no separate sign-in screens.
+- **Your email is your identity.** The connected email names this Nandi to your relay. There are no separate sign-in screens.
 - **Inbox chats.** Every Inbox item opens a chat with Nandi. The Inbox is one calm line per item.
 - **Decisions.** A Decisions page under Home keeps one record of what you decided, with filters and a Past decisions link in the Inbox.
 - **Runs plan and keep evidence.** Every run plans first, finishes its plan and keeps the evidence. A run's Summary tab has an ask box.
@@ -17,11 +17,10 @@ What changed in each Nandi release, grouped by what you notice. The release note
 - **Work with teammates through your relay.** Requests and results are sealed end to end with per-device keys. The relay picks who gets a request, stores and forwards work, fails over, reassigns and hands over by calendar. The relay reads metadata only.
 - **Groups.** Make groups with signed policies and access levels. The relay enforces each group's request rules: allowed capabilities, hours, daily limits and first-time approval. People can be filtered by group.
 - **Sharing.** Choose which agents and capabilities your teammates see, and set your availability.
-- **The public relay.** Join VaultDB.ai's public relay with your connected email, from setup or Network › Connection.
 - **Connectors.** Install connector packages, grant access while an agent works, and use calendars and files. Studio can scaffold and publish a connector.
 - **Browser.** A built-in Browser agent, "allow this site?" prompts, auto-approve rules, and handing the browser over to you.
 - **Sandbox images are pulled.** Nandi downloads its signed images with size and progress instead of building them. Claude Code is fetched on first use.
-- **Free trial.** Trial calls go through Nandi's trial gateway, 100,000 tokens per person. When no model answers, a built-in help guide does.
+- **Help without a model.** When no model answers, a built-in help guide covers the basics: installing Docker, connecting a model, joining a relay.
 - **Get your computer ready.** A checklist checks Docker and the rest of what Nandi needs.
 - **Install Docker for me.** When Docker or WSL is missing, one Go ahead updates WSL and installs Docker (winget on Windows, Homebrew or the official download on macOS). Windows or macOS asks for admin rights for each installer; Nandi itself never runs as admin. Nandi can also start Docker whenever it opens, if you say so once.
 - **To-dos and reminders.** Nandi turns what you're asked to do, what you promised and what to remember into to-dos, from each email check, chats and events. They sit in the Inbox and the work tray in three groups (Do now, Check and close, Reminders), with due dates, overdue in red, and a bell for reminders. Mark one Done, or hand it to Nandi or any of your agents.
@@ -37,7 +36,6 @@ What changed in each Nandi release, grouped by what you notice. The release note
 - **Codex needs an OpenAI API key.** Codex runs in the container through Nandi's proxy, with Nandi's OpenAI key, or `CODEX_API_KEY` or `OPENAI_API_KEY`. A ChatGPT login and Azure OpenAI can't be used there.
 - **Gemini CLI is refused in the container** until it has a proxy route. Each of its sign-ins would put a credential in the container.
 - **Every harness session runs in the container**, with the same memory and CPU limits as native runs.
-- **The free trial is the last resort**, after your own sign-ins and keys.
 - **Relay groups replace git-registry teams.**
 - **Capability definitions are local files only.**
 
