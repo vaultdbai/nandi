@@ -18,10 +18,10 @@ Each slice lands on its own.
 
 ### 1. One key per mailbox (state)
 
-- [ ] An account is found by provider **and** email. Keyring entries and the cursor, state and backfill keys include the mailbox (for example `email.gmail.<hash of the address>.cursor`).
-- [ ] **Upgrade in place:** existing keys move to the new names on first start, with an upgrade test. Nobody connects again, and no mail is read twice.
-- [ ] Connecting a second Gmail adds it. Connecting the same address again refreshes its sign-in, as now.
-- [ ] Sign out, Pause, Resume and the background read act on one mailbox.
+- [x] An account is found by provider **and** email. Keyring entries and the cursor, state and backfill keys include the mailbox (for example `email.gmail.<hash of the address>.cursor`).
+- [x] **Upgrade in place:** existing keys move to the new names on first start, with an upgrade test. Nobody connects again, and no mail is read twice.
+- [x] Connecting a second Gmail adds it. Connecting the same address again refreshes its sign-in, as now.
+- [x] Sign out, Pause, Resume and the background read act on one mailbox.
 
 ### 2. Settings › Email shows them all (UI)
 

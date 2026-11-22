@@ -15,6 +15,7 @@ import type {
   DeviceFlowState,
   EmailSignInPoll,
   EmailSettingsInput,
+  MailboxId,
   MailProvider,
   Result,
   SignInProblem,
@@ -40,12 +41,12 @@ export function useEmailAction() {
       action:
         | { kind: 'check' }
         | { kind: 'again' }
-        | { kind: 'pause'; provider: MailProvider; paused: boolean }
-        | { kind: 'disconnect'; provider: MailProvider }
+        | { kind: 'pause'; mailbox: MailboxId; paused: boolean }
+        | { kind: 'disconnect'; mailbox: MailboxId }
         | { kind: 'settings'; settings: EmailSettingsInput }
         | {
             kind: 'backfill'
-            provider: MailProvider
+            mailbox: MailboxId
             action: BackfillAction
           }
     ) => {
@@ -55,13 +56,13 @@ export function useEmailAction() {
         case 'again':
           return client.readEmailAgain()
         case 'pause':
-          return client.setEmailPaused(action.provider, action.paused)
+          return client.setEmailPaused(action.mailbox, action.paused)
         case 'disconnect':
-          return client.disconnectEmail(action.provider)
+          return client.disconnectEmail(action.mailbox)
         case 'settings':
           return client.setEmailSettings(action.settings)
         case 'backfill':
-          return client.setEmailBackfill(action.provider, action.action)
+          return client.setEmailBackfill(action.mailbox, action.action)
       }
     },
     {

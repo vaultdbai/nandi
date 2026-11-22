@@ -81,11 +81,17 @@ pub struct MailApi {
 }
 
 impl MailApi {
-    pub fn new(provider: MailProvider, setup: &ProviderSetup, secrets: &Secrets) -> Self {
+    /// A mailbox whose sign-in is at keyring `entry`
+    pub fn new(
+        provider: MailProvider,
+        entry: String,
+        setup: &ProviderSetup,
+        secrets: &Secrets,
+    ) -> Self {
         Self::for_account(
             provider.name(),
             setup.oauth(provider),
-            provider.token_entry(),
+            entry,
             setup.api_bases(provider),
             secrets,
         )

@@ -28,7 +28,7 @@ use specta::Type;
 
 use crate::model::Timestamp;
 use crate::services::auth::oauth::{self, TokenError};
-use crate::services::email::MailProvider;
+use crate::services::email::{MailProvider, MailboxId};
 use crate::services::AppState;
 use crate::utils::nandi_config;
 
@@ -102,13 +102,14 @@ pub fn identity(state: &AppState) -> Option<VerifiedIdentity> {
 /// token unless one is locked already. The identity now, if any.
 pub fn lock_from_mail(
     state: &AppState,
-    provider: MailProvider,
+    mailbox: &MailboxId,
     now: Timestamp,
 ) -> Result<Option<VerifiedIdentity>, String> {
     if let Some(locked) = identity(state) {
         return Ok(Some(locked));
     }
-    let Some(token) = oauth::stored_id_token(&provider.token_entry(), state.secrets()) else {
+    let provider = mailbox.provider;
+    let Some(token) = oauth::stored_id_token(&mailbox.token_entry(), state.secrets()) else {
         log::warn!(
             "{} connected without an ID token: no identity",
             provider.name()
@@ -170,16 +171,15 @@ impl NoIdToken {
 pub async fn fresh_id_token(state: &AppState) -> Result<(String, VerifiedIdentity), NoIdToken> {
     let locked = identity(state).ok_or(NoIdToken::NoEmail)?;
     let provider = locked.provider;
-    let connected = crate::services::email::connected_account(state, provider)
-        .is_some_and(|email| email.eq_ignore_ascii_case(&locked.email));
-    if !connected {
+    let mailbox = MailboxId::new(provider, &locked.email);
+    if !crate::services::email::is_connected(state, &mailbox) {
         return Err(NoIdToken::Disconnected {
             email: locked.email,
         });
     }
     let setup = state.email().setup();
     let token = oauth::fresh_id_token(
-        &provider.token_entry(),
+        &mailbox.token_entry(),
         &setup.oauth(provider),
         state.secrets(),
     )

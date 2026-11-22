@@ -7,6 +7,7 @@ import type {
   BackfillRange,
   BackfillStatus,
   EmailProviderStatus,
+  MailboxId,
   MailProvider,
   SignInProblemKind,
 } from '@/lib/tauri-bindings'
@@ -35,6 +36,13 @@ export interface MailboxCard {
   canResume: boolean
   canDisconnect: boolean
   error: string | null
+}
+
+/** The mailbox a card's Pause, Sign out and older-mail controls act on */
+export function mailboxOf(status: EmailProviderStatus): MailboxId | null {
+  return status.connected && status.accountEmail
+    ? { provider: status.provider, email: status.accountEmail }
+    : null
 }
 
 export function mailboxCard(status: EmailProviderStatus): MailboxCard {

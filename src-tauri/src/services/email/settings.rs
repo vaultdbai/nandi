@@ -1,20 +1,21 @@
 //! What the email feature keeps, outside the repo (it belongs to this
 //! computer, like the sign-in in its keyring):
 //!
-//! | What                                   | Where                                   |
-//! | -------------------------------------- | --------------------------------------- |
-//! | Sign-in tokens                         | keyring `nandi.email.<provider>.oauth`  |
-//! | Accounts, interval, watch list         | `~/.nandi/config.json` `email`          |
-//! | Which agent may read which mailbox     | grants (`services::grants`)             |
-//! | Change cursor, last check              | `local_settings` (`email.<provider>.*`) |
+//! | What                                | Where                                         |
+//! | ----------------------------------- | --------------------------------------------- |
+//! | Sign-in tokens                      | keyring `nandi.email.<provider>.<hash>.oauth` |
+//! | Accounts, interval, watch list      | `~/.nandi/config.json` `email`                |
+//! | Which agent may read which mailbox  | grants (`services::grants`)                   |
+//! | Change cursor, last check, backfill | `local_settings` `email.<provider>.<hash>.*`  |
 //!
-//! No mail is kept anywhere.
+//! `<hash>` names the mailbox without its address ([`MailboxId`]), so a
+//! person can connect several of each provider. No mail is kept anywhere.
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use super::profile::Profile;
-use super::provider::MailProvider;
+use super::provider::{MailProvider, MailboxId};
 use crate::model::Timestamp;
 
 pub const DEFAULT_INTERVAL_MINUTES: u32 = 30;
@@ -66,7 +67,7 @@ impl BackfillRange {
 }
 
 /// One mailbox's background read of older mail (`local_settings`
-/// `email.<provider>.backfill`), apart from the change cursor
+/// `email.<provider>.<hash>.backfill`), apart from the change cursor
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackfillState {
@@ -96,12 +97,17 @@ impl Default for EmailSettings {
 }
 
 impl EmailSettings {
-    pub fn account(&self, provider: MailProvider) -> Option<&EmailAccount> {
-        self.accounts.iter().find(|a| a.provider == provider)
+    pub fn account(&self, mailbox: &MailboxId) -> Option<&EmailAccount> {
+        self.accounts.iter().find(|a| a.is(mailbox))
     }
 
-    pub fn account_mut(&mut self, provider: MailProvider) -> Option<&mut EmailAccount> {
-        self.accounts.iter_mut().find(|a| a.provider == provider)
+    pub fn account_mut(&mut self, mailbox: &MailboxId) -> Option<&mut EmailAccount> {
+        self.accounts.iter_mut().find(|a| a.is(mailbox))
+    }
+
+    /// The first-connected mailbox of `provider`
+    pub fn first_of(&self, provider: MailProvider) -> Option<&EmailAccount> {
+        self.accounts.iter().find(|a| a.provider == provider)
     }
 }
 
@@ -117,6 +123,16 @@ pub struct EmailAccount {
     pub profile: Profile,
     #[serde(default)]
     pub paused: bool,
+}
+
+impl EmailAccount {
+    pub fn id(&self) -> MailboxId {
+        MailboxId::new(self.provider, &self.email)
+    }
+
+    pub fn is(&self, mailbox: &MailboxId) -> bool {
+        mailbox.is(self.provider, &self.email)
+    }
 }
 
 /// Checks the interval and watch list a client sends

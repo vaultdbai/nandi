@@ -2111,20 +2111,24 @@ async readEmailAgain() : Promise<Result<EmailStatus, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async setEmailPaused(provider: MailProvider, paused: boolean) : Promise<Result<EmailStatus, string>> {
+/**
+ * Pauses or resumes reading one mailbox
+ */
+async setEmailPaused(mailbox: MailboxId, paused: boolean) : Promise<Result<EmailStatus, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("set_email_paused", { provider, paused }) };
+    return { status: "ok", data: await TAURI_INVOKE("set_email_paused", { mailbox, paused }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
 /**
- * Signs out: deletes the sign-in, the cursor and Nandi's access
+ * Signs one mailbox out: deletes its sign-in and cursor, and Nandi's
+ * access with the provider's last mailbox
  */
-async disconnectEmail(provider: MailProvider) : Promise<Result<EmailStatus, string>> {
+async disconnectEmail(mailbox: MailboxId) : Promise<Result<EmailStatus, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("disconnect_email", { provider }) };
+    return { status: "ok", data: await TAURI_INVOKE("disconnect_email", { mailbox }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2141,9 +2145,9 @@ async setEmailSettings(settings: EmailSettingsInput) : Promise<Result<EmailStatu
 /**
  * Pause, Resume, Stop or Restart one mailbox's background read of older mail
  */
-async setEmailBackfill(provider: MailProvider, action: BackfillAction) : Promise<Result<EmailStatus, string>> {
+async setEmailBackfill(mailbox: MailboxId, action: BackfillAction) : Promise<Result<EmailStatus, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("set_email_backfill", { provider, action }) };
+    return { status: "ok", data: await TAURI_INVOKE("set_email_backfill", { mailbox, action }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -7022,6 +7026,12 @@ export type MailProvider =
  * Outlook and Microsoft 365, through Microsoft Graph
  */
 "outlook" | "gmail"
+/**
+ * One connected mailbox: its provider and its address. Connecting a
+ * second address of the same provider adds a mailbox; each keeps its own
+ * sign-in, cursor, last check and background read.
+ */
+export type MailboxId = { provider: MailProvider; email: string }
 /**
  * The mailbox owner's manager
  */

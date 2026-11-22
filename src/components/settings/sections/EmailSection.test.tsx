@@ -113,7 +113,12 @@ describe('EmailSection', () => {
     await user.click(screen.getByRole('button', { name: 'Check now' }))
     await waitFor(() => expect(check).toHaveBeenCalled())
     await user.click(screen.getByRole('button', { name: 'Pause' }))
-    await waitFor(() => expect(pause).toHaveBeenCalledWith('outlook', true))
+    await waitFor(() =>
+      expect(pause).toHaveBeenCalledWith(
+        { provider: 'outlook', email: 'dev@company.com' },
+        true
+      )
+    )
     await user.click(
       screen.getByRole('button', { name: 'Stop reading my email' })
     )
@@ -121,7 +126,12 @@ describe('EmailSection', () => {
     await user.click(
       within(dialog).getByRole('button', { name: 'Stop reading my email' })
     )
-    await waitFor(() => expect(disconnect).toHaveBeenCalledWith('outlook'))
+    await waitFor(() =>
+      expect(disconnect).toHaveBeenCalledWith({
+        provider: 'outlook',
+        email: 'dev@company.com',
+      })
+    )
   })
 
   it('explains an admin approval and offers the link', async () => {

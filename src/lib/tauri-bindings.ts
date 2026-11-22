@@ -112,6 +112,7 @@ export type {
   EmailSignInPoll,
   EmailStatus,
   MailProvider,
+  MailboxId,
   SignInPhase,
   SignInProblem,
   SignInProblemKind,

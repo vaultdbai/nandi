@@ -8,7 +8,7 @@ use super::gmail::Gmail;
 use super::mail::{Changes, Header, Identity, Message};
 use super::outlook::Outlook;
 use super::profile::Profile;
-use super::provider::{MailProvider, ProviderSetup};
+use super::provider::{MailProvider, MailboxId, ProviderSetup};
 use crate::services::secrets::Secrets;
 
 pub struct Mailbox {
@@ -18,10 +18,20 @@ pub struct Mailbox {
 }
 
 impl Mailbox {
-    pub fn new(provider: MailProvider, setup: &ProviderSetup, secrets: &Secrets) -> Self {
+    pub fn new(mailbox: &MailboxId, setup: &ProviderSetup, secrets: &Secrets) -> Self {
+        Self::at(mailbox.provider, mailbox.token_entry(), setup, secrets)
+    }
+
+    /// The mailbox a sign-in in progress is for, before Nandi knows its
+    /// address
+    pub fn signing_in(provider: MailProvider, setup: &ProviderSetup, secrets: &Secrets) -> Self {
+        Self::at(provider, provider.sign_in_entry(), setup, secrets)
+    }
+
+    fn at(provider: MailProvider, entry: String, setup: &ProviderSetup, secrets: &Secrets) -> Self {
         Self {
             provider,
-            api: MailApi::new(provider, setup, secrets),
+            api: MailApi::new(provider, entry, setup, secrets),
             endpoints: setup.endpoints.clone(),
         }
     }

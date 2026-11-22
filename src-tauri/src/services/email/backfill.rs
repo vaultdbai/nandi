@@ -6,7 +6,7 @@
 //!   every [`BACKFILL_EVERY`]. It only builds the profile: the same filter
 //!   as new mail ([`MailFilter::keep`]), and Nandi passes over
 //!   what the user never opened and machines' updates itself.
-//! - Its position is its own (`local_settings` `email.<provider>.backfill`:
+//! - Its position is its own (`local_settings` `email.<provider>.<hash>.backfill`:
 //!   the oldest time reached); it never touches the change cursor.
 //! - A pass runs only when no email check and no other Nandi run
 //!   is going, so it never competes with new mail.
@@ -25,8 +25,8 @@ use super::mail::Identity;
 use super::mailbox::Mailbox;
 use super::settings::{BackfillRange, BackfillState};
 use super::{
-    email_settings, emit_changed, granted, load_setting, save_setting, status, EmailStatus,
-    MailProvider, READ_WINDOW_DAYS,
+    email_settings, emit_changed, granted, load_setting, not_connected, save_setting, status,
+    EmailStatus, MailProvider, MailboxId, READ_WINDOW_DAYS,
 };
 use crate::db;
 use crate::model::Timestamp;
@@ -82,16 +82,16 @@ pub struct BackfillEstimate {
     pub runs: u32,
 }
 
-pub(super) async fn load(state: &AppState, provider: MailProvider) -> BackfillState {
-    load_setting(state, provider.backfill_key()).await
+pub(super) async fn load(state: &AppState, mailbox: &MailboxId) -> BackfillState {
+    load_setting(state, mailbox.backfill_key()).await
 }
 
-async fn save(state: &AppState, provider: MailProvider, backfill: &BackfillState) {
+async fn save(state: &AppState, mailbox: &MailboxId, backfill: &BackfillState) {
     let value = serde_json::to_value(backfill).unwrap_or_default();
-    if let Err(e) = save_setting(state, provider.backfill_key(), value).await {
+    if let Err(e) = save_setting(state, mailbox.backfill_key(), value).await {
         log::warn!(
             "Couldn't save the {} older-mail position: {e}",
-            provider.name()
+            mailbox.provider.name()
         );
     }
 }
@@ -124,20 +124,20 @@ pub(super) fn status_of(
 /// Pause, Resume, Stop or Restart one mailbox's background read
 pub async fn set_backfill(
     state: &AppState,
-    provider: MailProvider,
+    mailbox: MailboxId,
     action: BackfillAction,
 ) -> Result<EmailStatus, String> {
-    if email_settings(state).account(provider).is_none() {
-        return Err(format!("{} isn't connected", provider.name()));
+    if email_settings(state).account(&mailbox).is_none() {
+        return Err(not_connected(&mailbox));
     }
-    let mut backfill = load(state, provider).await;
+    let mut backfill = load(state, &mailbox).await;
     match action {
         BackfillAction::Pause => backfill.paused = true,
         BackfillAction::Resume => backfill.paused = false,
         BackfillAction::Stop => backfill.done = true,
         BackfillAction::Restart => backfill = BackfillState::default(),
     }
-    save(state, provider, &backfill).await;
+    save(state, &mailbox, &backfill).await;
     emit_changed(state);
     Ok(status(state).await)
 }
@@ -148,11 +148,11 @@ fn unix_now() -> i64 {
 
 /// Sets where the background read starts: the oldest point the first read
 /// covered (its list is capped, and a batch can leave the oldest out)
-pub(super) async fn begin(state: &AppState, provider: MailProvider, before: i64) {
-    let mut backfill = load(state, provider).await;
+pub(super) async fn begin(state: &AppState, mailbox: &MailboxId, before: i64) {
+    let mut backfill = load(state, mailbox).await;
     if backfill.before.is_none() {
         backfill.before = Some(before);
-        save(state, provider, &backfill).await;
+        save(state, mailbox, &backfill).await;
     }
 }
 
@@ -173,8 +173,9 @@ pub async fn estimate(state: &AppState, range: BackfillRange) -> Vec<BackfillEst
     let now = unix_now();
     let mut out = Vec::new();
     for account in email_settings(state).accounts {
-        let backfill = load(state, account.provider).await;
-        let mailbox = Mailbox::new(account.provider, &setup, state.secrets());
+        let id = account.id();
+        let backfill = load(state, &id).await;
+        let mailbox = Mailbox::new(&id, &setup, state.secrets());
         match mailbox
             .count(start_of(&backfill, now), range.floor(now))
             .await
@@ -234,8 +235,9 @@ pub async fn pass(state: &AppState) -> Option<String> {
     let filter = MailFilter::new(&addresses, &settings.watch);
     for account in granted(state, DEFAULT_AGENT).iter().filter(|a| !a.paused) {
         let provider = account.provider;
-        let mut backfill = load(state, provider).await;
-        let cursor: Value = load_setting(state, provider.cursor_key()).await;
+        let id = account.id();
+        let mut backfill = load(state, &id).await;
+        let cursor: Value = load_setting(state, id.cursor_key()).await;
         // After the first read only
         if backfill.done || backfill.paused || cursor.is_null() {
             continue;
@@ -243,11 +245,11 @@ pub async fn pass(state: &AppState) -> Option<String> {
         let before = start_of(&backfill, now);
         if floor.is_some_and(|floor| before <= floor) {
             backfill.done = true;
-            save(state, provider, &backfill).await;
+            save(state, &id, &backfill).await;
             emit_changed(state);
             continue;
         }
-        let mailbox = Mailbox::new(provider, &setup, state.secrets());
+        let mailbox = Mailbox::new(&id, &setup, state.secrets());
         let mut headers = match mailbox.older(before, floor, BATCH).await {
             Ok(headers) => headers,
             Err(e) => {
@@ -264,12 +266,12 @@ pub async fn pass(state: &AppState) -> Option<String> {
             if listed > 0 {
                 // Only the boundary came back: step past it
                 backfill.before = Some(before - 1);
-                save(state, provider, &backfill).await;
+                save(state, &id, &backfill).await;
                 return None;
             }
             log::info!("Read all older {} mail", provider.name());
             backfill.done = true;
-            save(state, provider, &backfill).await;
+            save(state, &id, &backfill).await;
             emit_changed(state);
             continue;
         };
@@ -279,7 +281,7 @@ pub async fn pass(state: &AppState) -> Option<String> {
         if headers.is_empty() {
             // Nothing worth reading in this stretch: move on without a run
             backfill.before = Some(oldest);
-            save(state, provider, &backfill).await;
+            save(state, &id, &backfill).await;
             emit_changed(state);
             return None;
         }
@@ -300,7 +302,7 @@ pub async fn pass(state: &AppState) -> Option<String> {
                 backfill.read = backfill
                     .read
                     .saturating_add(u32::try_from(headers.len()).unwrap_or(u32::MAX));
-                save(state, provider, &backfill).await;
+                save(state, &id, &backfill).await;
                 emit_changed(state);
                 Some(run_id)
             }

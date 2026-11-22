@@ -14,12 +14,13 @@
 
 use serde_json::{json, Value};
 
+use super::api::MailError;
 use super::filter::MailFilter;
 use super::mail::Header;
 use super::mailbox::Mailbox;
 use super::settings::EmailAccount;
 use super::text::{neutralize, DATA_TAG};
-use super::{email_settings, granted, MailProvider};
+use super::{email_settings, granted, MailProvider, MailboxId};
 use crate::engine::ToolOutcome;
 use crate::llm::ToolSpec;
 use crate::services::AppState;
@@ -57,7 +58,7 @@ pub fn offered(state: &AppState, agent_id: &str, declared: &[String]) -> Vec<Too
     let wanted = !granted(state, agent_id).is_empty()
         || connected
             .iter()
-            .any(|p| declared.iter().any(|d| d == p.id()));
+            .any(|m| declared.iter().any(|d| d == m.provider.id()));
     if connected.is_empty() || !wanted {
         return Vec::new();
     }
@@ -73,10 +74,13 @@ pub fn access_need(state: &AppState, tool: &str, args: &Value) -> crate::service
         .find_map(|key| args.get(*key).and_then(Value::as_str))
         .and_then(MailProvider::of_message_id)
         .map(|(provider, _)| provider);
+    // Grants are per provider: one connector however many of its mailboxes
+    let connected = super::connected(state);
     crate::services::access::Need {
         family: crate::services::access::AccessFamily::Email,
-        connectors: super::connected(state)
+        connectors: MailProvider::ALL
             .into_iter()
+            .filter(|p| connected.iter().any(|m| m.provider == *p))
             .filter(|p| named.is_none_or(|n| n == *p))
             .map(|p| crate::services::access::AccessConnector {
                 id: p.id().to_string(),
@@ -176,14 +180,26 @@ pub fn own_addresses(state: &AppState) -> Vec<String> {
 pub async fn message_by_id(state: &AppState, id: &str) -> Result<super::mail::Message, String> {
     let (provider, raw) =
         MailProvider::of_message_id(id).ok_or_else(|| format!("'{id}' isn't an email id"))?;
-    if !super::connected(state).contains(&provider) {
+    let mailboxes: Vec<MailboxId> = super::connected(state)
+        .into_iter()
+        .filter(|m| m.provider == provider)
+        .collect();
+    if mailboxes.is_empty() {
         return Err(format!("{} isn't connected", provider.name()));
     }
     let setup = state.email().setup();
-    Mailbox::new(provider, &setup, state.secrets())
-        .message(raw)
-        .await
-        .map_err(|e| e.to_string())
+    // The id names the provider, not which of its mailboxes holds it
+    let mut failure = String::new();
+    for mailbox in &mailboxes {
+        match Mailbox::new(mailbox, &setup, state.secrets())
+            .message(raw)
+            .await
+        {
+            Ok(message) => return Ok(message),
+            Err(e) => failure = e.to_string(),
+        }
+    }
+    Err(failure)
 }
 
 /// Runs a mail tool on the mailboxes in `allowed` (what `services::access`
@@ -200,32 +216,48 @@ pub async fn call(state: &AppState, allowed: &[String], tool: &str, args: &Value
         ));
     }
     let setup = state.email().setup();
-    let mailbox = |provider: MailProvider| Mailbox::new(provider, &setup, state.secrets());
-    let by_id = |key: &str| -> Result<(&EmailAccount, String), ToolOutcome> {
+    let mailbox = |account: &EmailAccount| Mailbox::new(&account.id(), &setup, state.secrets());
+    // An id names its provider, not which of its mailboxes holds it: each
+    // allowed mailbox of that provider is asked in turn
+    let by_id = |key: &str| -> Result<(Vec<&EmailAccount>, String), ToolOutcome> {
         let id = args.get(key).and_then(Value::as_str).unwrap_or_default();
         let (provider, raw) = MailProvider::of_message_id(id)
             .ok_or_else(|| error(format!("'{key}' must be an id from a mail tool")))?;
-        let account = accounts
-            .iter()
-            .find(|a| a.provider == provider)
-            .ok_or_else(|| error(format!("{} isn't connected", provider.name())))?;
-        Ok((account, raw.to_string()))
+        let holders: Vec<&EmailAccount> =
+            accounts.iter().filter(|a| a.provider == provider).collect();
+        if holders.is_empty() {
+            return Err(error(format!("{} isn't connected", provider.name())));
+        }
+        Ok((holders, raw.to_string()))
     };
     let result = match tool {
-        GET_MESSAGE => match by_id("id") {
-            Ok((account, id)) => mailbox(account.provider)
-                .message(&id)
-                .await
-                .map(|m| json!(m)),
-            Err(outcome) => return outcome,
-        },
-        GET_THREAD => match by_id("thread_id") {
-            Ok((account, id)) => mailbox(account.provider)
-                .thread(&id, MAX_LIMIT)
-                .await
-                .map(|h| headers_value(&h)),
-            Err(outcome) => return outcome,
-        },
+        GET_MESSAGE | GET_THREAD => {
+            let key = if tool == GET_MESSAGE {
+                "id"
+            } else {
+                "thread_id"
+            };
+            let (holders, id) = match by_id(key) {
+                Ok(found) => found,
+                Err(outcome) => return outcome,
+            };
+            let mut found = Err(MailError::NotFound);
+            for account in holders {
+                let mailbox = mailbox(account);
+                found = if tool == GET_MESSAGE {
+                    mailbox.message(&id).await.map(|m| json!(m))
+                } else {
+                    mailbox
+                        .thread(&id, MAX_LIMIT)
+                        .await
+                        .map(|h| headers_value(&h))
+                };
+                if found.is_ok() {
+                    break;
+                }
+            }
+            found
+        }
         LIST_NEW | SEARCH => {
             let limit = limit_of(args);
             let query = args
@@ -250,9 +282,9 @@ pub async fn call(state: &AppState, allowed: &[String], tool: &str, args: &Value
             let mut failure = None;
             for account in &accounts {
                 let found = if tool == SEARCH {
-                    mailbox(account.provider).search(&query, limit).await
+                    mailbox(account).search(&query, limit).await
                 } else {
-                    mailbox(account.provider).recent(since, limit).await
+                    mailbox(account).recent(since, limit).await
                 };
                 match found {
                     Ok(headers) => all.extend(headers),

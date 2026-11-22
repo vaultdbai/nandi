@@ -4,6 +4,7 @@
 //! without one can't connect that provider and says so.
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use specta::Type;
 
 use crate::services::auth::oauth::{build_env, LoopbackRedirect, OAuthProvider};
@@ -69,22 +70,62 @@ impl MailProvider {
         })
     }
 
+    /// The keyring entry a sign-in lands in before Nandi knows whose
+    /// mailbox it is; connecting moves it to the mailbox's own entry
+    pub fn sign_in_entry(self) -> String {
+        format!("nandi.email.{}.sign-in", self.id())
+    }
+}
+
+/// One connected mailbox: its provider and its address. Connecting a
+/// second address of the same provider adds a mailbox; each keeps its own
+/// sign-in, cursor, last check and background read.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MailboxId {
+    pub provider: MailProvider,
+    pub email: String,
+}
+
+impl MailboxId {
+    pub fn new(provider: MailProvider, email: &str) -> Self {
+        Self {
+            provider,
+            email: email.trim().to_ascii_lowercase(),
+        }
+    }
+
+    /// Whether `provider` and `email` name this mailbox (addresses match
+    /// whatever their case)
+    pub fn is(&self, provider: MailProvider, email: &str) -> bool {
+        self.provider == provider && self.email.trim().eq_ignore_ascii_case(email.trim())
+    }
+
+    /// `<provider>.<hash>`: a stable name for keys, without the address
+    /// itself (keyring user names and `local_settings` keys can be listed)
+    fn key(&self) -> String {
+        let digest = Sha256::digest(self.email.trim().to_ascii_lowercase().as_bytes());
+        let hash: String = digest[..6].iter().map(|b| format!("{b:02x}")).collect();
+        format!("{}.{hash}", self.provider.id())
+    }
+
     /// The keyring entry of its sign-in
-    pub fn token_entry(self) -> String {
-        format!("nandi.email.{}.oauth", self.id())
+    pub fn token_entry(&self) -> String {
+        format!("nandi.email.{}.oauth", self.key())
     }
 
-    /// `local_settings` keys of its change cursor and its last check
-    pub fn cursor_key(self) -> String {
-        format!("email.{}.cursor", self.id())
+    /// `local_settings` keys of its change cursor, its last check and its
+    /// background read
+    pub fn cursor_key(&self) -> String {
+        format!("email.{}.cursor", self.key())
     }
 
-    pub fn state_key(self) -> String {
-        format!("email.{}.state", self.id())
+    pub fn state_key(&self) -> String {
+        format!("email.{}.state", self.key())
     }
 
-    pub fn backfill_key(self) -> String {
-        format!("email.{}.backfill", self.id())
+    pub fn backfill_key(&self) -> String {
+        format!("email.{}.backfill", self.key())
     }
 }
 
@@ -244,6 +285,31 @@ mod tests {
         );
         assert_eq!(MailProvider::of_message_id("gmail:"), None);
         assert_eq!(MailProvider::of_message_id("imap:1"), None);
+    }
+
+    #[test]
+    fn each_mailbox_has_its_own_keys_without_its_address() {
+        let work = MailboxId::new(MailProvider::Gmail, " Dev@Gmail.com ");
+        assert_eq!(work.email, "dev@gmail.com");
+        assert_eq!(work, MailboxId::new(MailProvider::Gmail, "dev@gmail.com"));
+        assert!(work.is(MailProvider::Gmail, "DEV@gmail.com"));
+        assert!(!work.is(MailProvider::Outlook, "dev@gmail.com"));
+        let home = MailboxId::new(MailProvider::Gmail, "dev.home@gmail.com");
+        let keys = |m: &MailboxId| {
+            [
+                m.token_entry(),
+                m.cursor_key(),
+                m.state_key(),
+                m.backfill_key(),
+            ]
+        };
+        for (mine, theirs) in keys(&work).iter().zip(keys(&home)) {
+            assert_ne!(*mine, theirs);
+            assert!(!mine.contains("dev"), "{mine}");
+        }
+        // Stable: the same address always has the same names
+        assert_eq!(work.cursor_key(), "email.gmail.d0f676a9b2ab.cursor");
+        assert_eq!(work.token_entry(), "nandi.email.gmail.d0f676a9b2ab.oauth");
     }
 
     #[test]

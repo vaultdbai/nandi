@@ -33,6 +33,7 @@ import {
   intervalLabel,
   intervalOptions,
   mailboxCard,
+  mailboxOf,
   parseWatchList,
   type CardTone,
 } from '../email/email-model'
@@ -104,6 +105,7 @@ function MailboxCardView({
 }) {
   const { t, i18n } = useTranslation()
   const card = mailboxCard(status)
+  const mailbox = mailboxOf(status)
   const action = useEmailAction()
   const signIn = useEmailSignIn(status.provider)
   const waiting = signIn.state.phase === 'waiting'
@@ -176,7 +178,7 @@ function MailboxCardView({
             {t('email.readAgain')}
           </Button>
         )}
-        {card.canPause && (
+        {card.canPause && mailbox && (
           <Button
             size="sm"
             variant="outline"
@@ -184,7 +186,7 @@ function MailboxCardView({
             onClick={() =>
               action.mutate({
                 kind: 'pause',
-                provider: status.provider,
+                mailbox,
                 paused: true,
               })
             }
@@ -192,7 +194,7 @@ function MailboxCardView({
             {t('email.pause')}
           </Button>
         )}
-        {card.canResume && (
+        {card.canResume && mailbox && (
           <Button
             size="sm"
             variant="outline"
@@ -200,7 +202,7 @@ function MailboxCardView({
             onClick={() =>
               action.mutate({
                 kind: 'pause',
-                provider: status.provider,
+                mailbox,
                 paused: false,
               })
             }
@@ -208,7 +210,7 @@ function MailboxCardView({
             {t('email.resume')}
           </Button>
         )}
-        {card.canDisconnect && (
+        {card.canDisconnect && mailbox && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button size="sm" variant="ghost" disabled={action.isPending}>
@@ -227,12 +229,7 @@ function MailboxCardView({
               <AlertDialogFooter>
                 <AlertDialogCancel>{t('email.cancel')}</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() =>
-                    action.mutate({
-                      kind: 'disconnect',
-                      provider: status.provider,
-                    })
-                  }
+                  onClick={() => action.mutate({ kind: 'disconnect', mailbox })}
                 >
                   {t('email.disconnect')}
                 </AlertDialogAction>
@@ -329,7 +326,8 @@ function BackfillLineView({ status }: { status: EmailProviderStatus }) {
   const { t, i18n } = useTranslation()
   const action = useEmailAction()
   const line = backfillLine(status.backfill)
-  if (line.key === null) return null
+  const mailbox = mailboxOf(status)
+  if (line.key === null || mailbox === null) return null
   const when =
     line.when === null
       ? ''
@@ -338,7 +336,7 @@ function BackfillLineView({ status }: { status: EmailProviderStatus }) {
           year: 'numeric',
         }).format(new Date(line.when))
   const act = (kind: 'pause' | 'resume' | 'stop') =>
-    action.mutate({ kind: 'backfill', provider: status.provider, action: kind })
+    action.mutate({ kind: 'backfill', mailbox, action: kind })
   return (
     <div
       className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"

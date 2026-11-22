@@ -3,7 +3,7 @@
 use crate::services::auth::oauth::DeviceFlowState;
 use crate::services::email::{
     self, BackfillAction, BackfillEstimate, BackfillRange, EmailSettingsInput, EmailSignInPoll,
-    EmailStatus, MailProvider,
+    EmailStatus, MailProvider, MailboxId,
 };
 
 super::commands! {
@@ -24,15 +24,17 @@ super::commands! {
     /// user's resync); the change cursors stay where they are
     fn read_email_again(state) -> EmailStatus => Ok(email::read_again(&state).await);
 
-    fn set_email_paused(state, provider: MailProvider, paused: bool) -> EmailStatus => email::set_paused(&state, provider, paused).await;
+    /// Pauses or resumes reading one mailbox
+    fn set_email_paused(state, mailbox: MailboxId, paused: bool) -> EmailStatus => email::set_paused(&state, mailbox, paused).await;
 
-    /// Signs out: deletes the sign-in, the cursor and Nandi's access
-    fn disconnect_email(state, provider: MailProvider) -> EmailStatus => email::disconnect(&state, provider).await;
+    /// Signs one mailbox out: deletes its sign-in and cursor, and Nandi's
+    /// access with the provider's last mailbox
+    fn disconnect_email(state, mailbox: MailboxId) -> EmailStatus => email::disconnect(&state, mailbox).await;
 
     fn set_email_settings(state, settings: EmailSettingsInput) -> EmailStatus => email::set_settings(&state, settings).await;
 
     /// Pause, Resume, Stop or Restart one mailbox's background read of older mail
-    fn set_email_backfill(state, provider: MailProvider, action: BackfillAction) -> EmailStatus => email::backfill::set_backfill(&state, provider, action).await;
+    fn set_email_backfill(state, mailbox: MailboxId, action: BackfillAction) -> EmailStatus => email::backfill::set_backfill(&state, mailbox, action).await;
 
     /// About how much older mail `range` covers, per connected mailbox
     fn estimate_email_backfill(state, range: BackfillRange) -> Vec<BackfillEstimate> => Ok(email::backfill::estimate(&state, range).await);

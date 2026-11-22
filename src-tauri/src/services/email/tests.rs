@@ -144,10 +144,21 @@ fn unix_now() -> i64 {
     db::now_ms() / 1000
 }
 
-fn token(secrets: &crate::services::secrets::Secrets, provider: MailProvider, expires_in: i64) {
+/// The mock's Outlook mailbox (Graph says `Dev@Company.com`)
+fn outlook() -> MailboxId {
+    MailboxId::new(MailProvider::Outlook, "dev@company.com")
+}
+
+/// The mock's Gmail mailbox
+fn gmail() -> MailboxId {
+    MailboxId::new(MailProvider::Gmail, "dev@gmail.com")
+}
+
+/// A sign-in at keyring `entry`
+fn token(secrets: &crate::services::secrets::Secrets, entry: &str, expires_in: i64) {
     secrets
         .set(
-            &provider.token_entry(),
+            entry,
             &json!({
                 "access_token": "tok-1",
                 "refresh_token": "ref-1",
@@ -170,7 +181,7 @@ async fn state_with(mock: &Mock) -> (AppState, Arc<Recorder>) {
 
 /// Signs in to `provider` as far as the browser would, then connects
 async fn connected(state: &AppState, provider: MailProvider) {
-    token(state.secrets(), provider, 3600);
+    token(state.secrets(), &provider.sign_in_entry(), 3600);
     connect(state, provider).await.unwrap();
 }
 
@@ -360,7 +371,7 @@ async fn an_expired_delta_link_reads_the_window_again() {
     let graph = format!("{}/graph", mock.base.lock().unwrap());
     save_setting(
         &state,
-        MailProvider::Outlook.cursor_key(),
+        outlook().cursor_key(),
         json!({
             "inbox": format!("{graph}/me/mailFolders/inbox/messages/delta?$deltatoken=expired"),
             "sentitems": format!("{graph}/me/mailFolders/sentitems/messages/delta?$deltatoken=sent-1"),
@@ -371,7 +382,7 @@ async fn an_expired_delta_link_reads_the_window_again() {
     let outcome = check_all(&state).await;
     assert_eq!(outcome.found, 1, "Lena again, from the window");
     assert!(!recorder.runs()[0].1.contains("first read"));
-    let cursor: Value = load_setting(&state, MailProvider::Outlook.cursor_key()).await;
+    let cursor: Value = load_setting(&state, outlook().cursor_key()).await;
     assert!(cursor["inbox"].as_str().unwrap().ends_with("inbox-1"));
     state.shutdown();
 }
@@ -469,14 +480,14 @@ async fn an_expired_token_is_refreshed_before_the_check() {
     .await;
     let (state, _recorder) = state_with(&mock).await;
     connected(&state, MailProvider::Outlook).await;
-    token(state.secrets(), MailProvider::Outlook, -10);
+    token(state.secrets(), &outlook().token_entry(), -10);
     assert_eq!(check_all(&state).await.found, 2);
     assert!(mock
         .requests()
         .contains(&("POST".into(), "/ms/token".into())));
     let stored = state
         .secrets()
-        .get(&MailProvider::Outlook.token_entry())
+        .get(&outlook().token_entry())
         .unwrap()
         .unwrap();
     assert!(stored.contains("tok-2") && stored.contains("ref-1"));
@@ -523,17 +534,17 @@ async fn a_refused_refresh_asks_for_a_new_sign_in_and_keeps_the_cursor() {
     let (state, recorder) = state_with(&mock).await;
     connected(&state, MailProvider::Gmail).await;
     check_all(&state).await;
-    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    let cursor: Value = load_setting(&state, gmail().cursor_key()).await;
     // Google's Testing mode: the sign-in ends after 7 days
-    token(state.secrets(), MailProvider::Gmail, -10);
+    token(state.secrets(), &gmail().token_entry(), -10);
     let outcome = check_all(&state).await;
     assert_eq!(outcome, CheckOutcome::default());
     assert_eq!(recorder.runs().len(), 1, "no run without mail");
     let status = super::status(&state).await;
-    let gmail = &status.providers[1];
-    assert_eq!(gmail.state, EmailAccountState::NeedsSignIn);
-    assert!(gmail.error.as_deref().unwrap().contains("invalid_grant"));
-    let after: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    let card = &status.providers[1];
+    assert_eq!(card.state, EmailAccountState::NeedsSignIn);
+    assert!(card.error.as_deref().unwrap().contains("invalid_grant"));
+    let after: Value = load_setting(&state, gmail().cursor_key()).await;
     assert_eq!(cursor, after, "the cursor waits for the new sign-in");
 
     // Signing in again clears it and carries on from the same cursor
@@ -542,7 +553,7 @@ async fn a_refused_refresh_asks_for_a_new_sign_in_and_keeps_the_cursor() {
         super::status(&state).await.providers[1].state,
         EmailAccountState::Ready
     );
-    let resumed: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    let resumed: Value = load_setting(&state, gmail().cursor_key()).await;
     assert_eq!(cursor, resumed);
     state.shutdown();
 }
@@ -553,20 +564,14 @@ async fn disconnecting_wipes_the_sign_in_the_cursor_and_the_grant() {
     let (state, _recorder) = state_with(&mock).await;
     connected(&state, MailProvider::Outlook).await;
     check_all(&state).await;
-    let cursor_key = MailProvider::Outlook.cursor_key();
+    let cursor_key = outlook().cursor_key();
     let cursor: Value = load_setting(&state, cursor_key.clone()).await;
     assert!(!cursor.is_null());
 
-    let status = disconnect(&state, MailProvider::Outlook).await.unwrap();
+    let status = disconnect(&state, outlook()).await.unwrap();
     assert!(!status.providers[0].connected);
     assert_eq!(status.providers[0].state, EmailAccountState::NotConnected);
-    assert_eq!(
-        state
-            .secrets()
-            .get(&MailProvider::Outlook.token_entry())
-            .unwrap(),
-        None
-    );
+    assert_eq!(state.secrets().get(&outlook().token_entry()).unwrap(), None);
     let cursor: Value = load_setting(&state, cursor_key).await;
     assert!(cursor.is_null());
     assert!(state.grants().list().is_empty());
@@ -603,15 +608,13 @@ async fn paused_mailboxes_are_not_read() {
     let mock = mock(outlook_api).await;
     let (state, recorder) = state_with(&mock).await;
     connected(&state, MailProvider::Outlook).await;
-    let status = set_paused(&state, MailProvider::Outlook, true)
-        .await
-        .unwrap();
+    let status = set_paused(&state, outlook(), true).await.unwrap();
     assert_eq!(status.providers[0].state, EmailAccountState::Paused);
     assert_eq!(status.next_check_at, None);
     mock.clear();
     assert_eq!(check_all(&state).await, CheckOutcome::default());
     assert!(mock.requests().is_empty() && recorder.runs().is_empty());
-    assert!(set_paused(&state, MailProvider::Gmail, true).await.is_err());
+    assert!(set_paused(&state, gmail(), true).await.is_err());
     state.shutdown();
 }
 
@@ -714,12 +717,12 @@ async fn gmail_reads_the_window_then_the_history() {
         "the promotion is left out"
     );
     assert!(recorder.runs()[0].1.contains("Vendor contract due"));
-    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    let cursor: Value = load_setting(&state, gmail().cursor_key()).await;
     assert_eq!(cursor, json!({"historyId": "100"}));
 
     assert_eq!(check_all(&state).await.found, 1);
     assert!(recorder.runs()[1].1.contains("Can you own the rota?"));
-    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    let cursor: Value = load_setting(&state, gmail().cursor_key()).await;
     assert_eq!(cursor, json!({"historyId": "120"}));
     // The draft was never read
     assert!(!mock.requests().iter().any(|(_, p)| p.ends_with("/g4")));
@@ -731,19 +734,15 @@ async fn gmail_history_too_old_reads_the_window_again() {
     let mock = mock(gmail_api).await;
     let (state, recorder) = state_with(&mock).await;
     connected(&state, MailProvider::Gmail).await;
-    save_setting(
-        &state,
-        MailProvider::Gmail.cursor_key(),
-        json!({"historyId": "1"}),
-    )
-    .await
-    .unwrap();
+    save_setting(&state, gmail().cursor_key(), json!({"historyId": "1"}))
+        .await
+        .unwrap();
     assert_eq!(check_all(&state).await.found, 1);
     assert!(
         !recorder.runs()[0].1.contains("first read"),
         "only a new cursor is"
     );
-    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    let cursor: Value = load_setting(&state, gmail().cursor_key()).await;
     assert_eq!(cursor, json!({"historyId": "100"}));
     state.shutdown();
 }
@@ -773,16 +772,12 @@ async fn a_gmail_history_too_long_for_one_read_moves_the_cursor_only_as_far_as_r
     .await;
     let (state, _) = state_with(&mock).await;
     connected(&state, MailProvider::Gmail).await;
-    save_setting(
-        &state,
-        MailProvider::Gmail.cursor_key(),
-        json!({"historyId": "200"}),
-    )
-    .await
-    .unwrap();
+    save_setting(&state, gmail().cursor_key(), json!({"historyId": "200"}))
+        .await
+        .unwrap();
 
     assert_eq!(check_all(&state).await.found, 1);
-    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    let cursor: Value = load_setting(&state, gmail().cursor_key()).await;
     // Ten pages read: up to the tenth record, not the mailbox's newest
     assert_eq!(cursor, json!({"historyId": "210"}));
     state.shutdown();
@@ -816,6 +811,188 @@ async fn both_mailboxes_go_to_nandi_in_one_run() {
     state.shutdown();
 }
 
+// ---------------------------------------------------------------------------
+// Several mailboxes of one provider
+// ---------------------------------------------------------------------------
+
+/// The person's second Gmail
+fn home() -> MailboxId {
+    MailboxId::new(MailProvider::Gmail, "dev.home@gmail.com")
+}
+
+/// The mock Gmail, signed in as `address`
+fn gmail_as(mock: &Mock, address: &'static str) {
+    *mock.respond.lock().unwrap() = Arc::new(move |req| {
+        if req.path == "/gmail/users/me/profile" {
+            return (200, json!({"emailAddress": address, "historyId": "100"}));
+        }
+        gmail_api(req)
+    });
+}
+
+/// Signs in to Gmail with an ID token that names `address`, then connects
+async fn connected_gmail_with_id(state: &AppState, address: &str) {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine as _;
+    let claims = json!({"email": address, "email_verified": true});
+    let id_token = format!("h.{}.s", URL_SAFE_NO_PAD.encode(claims.to_string()));
+    state
+        .secrets()
+        .set(
+            &MailProvider::Gmail.sign_in_entry(),
+            &json!({
+                "access_token": "tok-1",
+                "refresh_token": "ref-1",
+                "expires_at": unix_now() + 3600,
+                "id_token": id_token,
+            })
+            .to_string(),
+        )
+        .unwrap();
+    connect(state, MailProvider::Gmail).await.unwrap();
+}
+
+fn addresses(state: &AppState) -> Vec<String> {
+    email_settings(state)
+        .accounts
+        .into_iter()
+        .map(|a| a.email)
+        .collect()
+}
+
+#[tokio::test]
+async fn a_second_gmail_is_added_and_the_first_stays_the_identity() {
+    let mock = mock(gmail_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected_gmail_with_id(&state, "dev@gmail.com").await;
+    check_all(&state).await;
+    let work_cursor: Value = load_setting(&state, gmail().cursor_key()).await;
+    assert!(!work_cursor.is_null());
+
+    gmail_as(&mock, "dev.home@gmail.com");
+    connected_gmail_with_id(&state, "dev.home@gmail.com").await;
+    assert_eq!(addresses(&state), ["dev@gmail.com", "dev.home@gmail.com"]);
+    // Each sign-in in its own entry; nothing left at the sign-in entry
+    for mailbox in [gmail(), home()] {
+        assert!(state
+            .secrets()
+            .get(&mailbox.token_entry())
+            .unwrap()
+            .is_some());
+    }
+    assert_eq!(
+        state
+            .secrets()
+            .get(&MailProvider::Gmail.sign_in_entry())
+            .unwrap(),
+        None
+    );
+    let identity = crate::services::identity::identity(&state).unwrap();
+    assert_eq!(identity.email, "dev@gmail.com");
+    // The settings card still shows the first one
+    assert_eq!(
+        super::status(&state).await.providers[1]
+            .account_email
+            .as_deref(),
+        Some("dev@gmail.com")
+    );
+
+    // Both are read; the first kept its cursor, the new one got its own
+    check_all(&state).await;
+    let home_cursor: Value = load_setting(&state, home().cursor_key()).await;
+    assert_eq!(home_cursor, json!({"historyId": "100"}));
+    assert!(check_state(&state, &gmail())
+        .await
+        .last_checked_at
+        .is_some());
+    assert!(check_state(&state, &home()).await.last_checked_at.is_some());
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn reconnecting_the_same_address_keeps_its_place_and_cursor() {
+    let mock = mock(gmail_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Gmail).await;
+    gmail_as(&mock, "dev.home@gmail.com");
+    connected(&state, MailProvider::Gmail).await;
+    check_all(&state).await;
+    let cursor: Value = load_setting(&state, gmail().cursor_key()).await;
+    assert!(!cursor.is_null());
+
+    // The first mailbox again, in another case
+    gmail_as(&mock, "Dev@Gmail.com");
+    connected(&state, MailProvider::Gmail).await;
+    assert_eq!(addresses(&state), ["dev@gmail.com", "dev.home@gmail.com"]);
+    let kept: Value = load_setting(&state, gmail().cursor_key()).await;
+    assert_eq!(cursor, kept);
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn signing_out_one_of_two_keeps_the_other_and_nandis_access() {
+    let mock = mock(gmail_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Gmail).await;
+    gmail_as(&mock, "dev.home@gmail.com");
+    connected(&state, MailProvider::Gmail).await;
+    check_all(&state).await;
+
+    disconnect(&state, gmail()).await.unwrap();
+    assert_eq!(addresses(&state), ["dev.home@gmail.com"]);
+    assert_eq!(state.secrets().get(&gmail().token_entry()).unwrap(), None);
+    let gone: Value = load_setting(&state, gmail().cursor_key()).await;
+    assert!(gone.is_null());
+    assert!(state
+        .secrets()
+        .get(&home().token_entry())
+        .unwrap()
+        .is_some());
+    let kept: Value = load_setting(&state, home().cursor_key()).await;
+    assert!(!kept.is_null());
+    assert_eq!(allowed(&state, DEFAULT_AGENT), ["gmail"]);
+    // The other one is now what Settings shows
+    assert_eq!(
+        super::status(&state).await.providers[1]
+            .account_email
+            .as_deref(),
+        Some("dev.home@gmail.com")
+    );
+
+    // Nandi's access goes with the last Gmail
+    disconnect(&state, home()).await.unwrap();
+    assert!(addresses(&state).is_empty());
+    assert!(state.grants().list().is_empty());
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn pausing_one_of_two_reads_only_the_other() {
+    let mock = mock(gmail_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Gmail).await;
+    gmail_as(&mock, "dev.home@gmail.com");
+    connected(&state, MailProvider::Gmail).await;
+
+    set_paused(&state, gmail(), true).await.unwrap();
+    check_all(&state).await;
+    assert_eq!(check_state(&state, &gmail()).await.last_checked_at, None);
+    assert!(check_state(&state, &home()).await.last_checked_at.is_some());
+    let paused: Value = load_setting(&state, gmail().cursor_key()).await;
+    assert!(paused.is_null());
+
+    // Resuming reads it again; an address that isn't connected is refused
+    set_paused(&state, gmail(), false).await.unwrap();
+    check_all(&state).await;
+    assert!(check_state(&state, &gmail())
+        .await
+        .last_checked_at
+        .is_some());
+    let other = MailboxId::new(MailProvider::Gmail, "someone@gmail.com");
+    assert!(set_paused(&state, other, true).await.is_err());
+    state.shutdown();
+}
+
 #[tokio::test]
 async fn a_failed_hand_over_keeps_the_cursor_so_no_mail_is_skipped() {
     struct Refuses;
@@ -834,7 +1011,7 @@ async fn a_failed_hand_over_keeps_the_cursor_so_no_mail_is_skipped() {
     state.email().set_sink(Arc::new(Refuses));
     connected(&state, MailProvider::Gmail).await;
     assert_eq!(check_all(&state).await.found, 0);
-    let cursor: Value = load_setting(&state, MailProvider::Gmail.cursor_key()).await;
+    let cursor: Value = load_setting(&state, gmail().cursor_key()).await;
     assert!(cursor.is_null());
     let gmail = &super::status(&state).await.providers[1];
     assert_eq!(gmail.state, EmailAccountState::Error);
@@ -1066,7 +1243,7 @@ fn outlook_with_old_mail(req: &Req) -> (u16, Value) {
 }
 
 async fn backfill_of(state: &AppState) -> super::settings::BackfillState {
-    backfill::load(state, MailProvider::Outlook).await
+    backfill::load(state, &outlook()).await
 }
 
 #[tokio::test]
@@ -1087,7 +1264,7 @@ async fn older_mail_is_read_oldest_ward_one_batch_a_pass_and_resumes() {
     // Not before the first read
     assert_eq!(backfill::pass(&state).await, None);
     check_all(&state).await;
-    let cursor: Value = load_setting(&state, MailProvider::Outlook.cursor_key()).await;
+    let cursor: Value = load_setting(&state, outlook().cursor_key()).await;
 
     for (index, (id, _)) in OLD_MAIL.iter().enumerate() {
         let run = backfill::pass(&state).await;
@@ -1117,7 +1294,7 @@ async fn older_mail_is_read_oldest_ward_one_batch_a_pass_and_resumes() {
         backfill::BackfillPhase::Done
     );
     // The change cursor never moved; only GETs reached Graph
-    let after: Value = load_setting(&state, MailProvider::Outlook.cursor_key()).await;
+    let after: Value = load_setting(&state, outlook().cursor_key()).await;
     assert_eq!(cursor, after);
     assert!(mock
         .api_requests()
@@ -1175,7 +1352,7 @@ async fn an_expired_cursor_after_a_hand_over_sends_no_old_mail() {
     let graph = format!("{}/graph", mock.base.lock().unwrap());
     save_setting(
         &state,
-        MailProvider::Outlook.cursor_key(),
+        outlook().cursor_key(),
         json!({
             "inbox": format!("{graph}/me/mailFolders/inbox/messages/delta?$deltatoken=expired"),
             "sentitems": format!("{graph}/me/mailFolders/sentitems/messages/delta?$deltatoken=sent-1"),
@@ -1184,11 +1361,9 @@ async fn an_expired_cursor_after_a_hand_over_sends_no_old_mail() {
     .await
     .unwrap();
     // Pretend the hand-over was long ago enough for Lena to be before it
-    let mut check = check_state(&state, MailProvider::Outlook).await;
+    let mut check = check_state(&state, &outlook()).await;
     check.caught_up_to = Some(unix_now() + 2 * CATCH_UP_SLACK_SECS);
-    save_check_state(&state, MailProvider::Outlook, &check)
-        .await
-        .unwrap();
+    save_check_state(&state, &outlook(), &check).await.unwrap();
     assert_eq!(check_all(&state).await.found, 0, "Lena was handed over");
     assert_eq!(recorder.runs().len(), 1);
     state.shutdown();
@@ -1267,7 +1442,7 @@ async fn older_mail_pauses_stops_and_is_forgotten_on_disconnect() {
     check_all(&state).await;
     assert!(backfill::pass(&state).await.is_some());
 
-    let status = backfill::set_backfill(&state, MailProvider::Outlook, BackfillAction::Pause)
+    let status = backfill::set_backfill(&state, outlook(), BackfillAction::Pause)
         .await
         .unwrap();
     assert_eq!(
@@ -1275,17 +1450,17 @@ async fn older_mail_pauses_stops_and_is_forgotten_on_disconnect() {
         backfill::BackfillPhase::Paused
     );
     assert_eq!(backfill::pass(&state).await, None);
-    backfill::set_backfill(&state, MailProvider::Outlook, BackfillAction::Resume)
+    backfill::set_backfill(&state, outlook(), BackfillAction::Resume)
         .await
         .unwrap();
     assert!(backfill::pass(&state).await.is_some());
-    backfill::set_backfill(&state, MailProvider::Outlook, BackfillAction::Stop)
+    backfill::set_backfill(&state, outlook(), BackfillAction::Stop)
         .await
         .unwrap();
     assert_eq!(backfill::pass(&state).await, None);
 
-    disconnect(&state, MailProvider::Outlook).await.unwrap();
-    let position: Value = load_setting(&state, MailProvider::Outlook.backfill_key()).await;
+    disconnect(&state, outlook()).await.unwrap();
+    let position: Value = load_setting(&state, outlook().backfill_key()).await;
     assert!(position.is_null());
     state.shutdown();
 }

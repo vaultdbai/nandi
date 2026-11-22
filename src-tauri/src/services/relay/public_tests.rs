@@ -14,7 +14,7 @@ use serde_json::json;
 use super::*;
 use crate::services::domain::group::POLICY_TEMPLATE;
 use crate::services::email::settings::EmailAccount;
-use crate::services::email::{EmailSettings, MailProvider};
+use crate::services::email::{EmailSettings, MailProvider, MailboxId};
 use crate::services::groups::Groups;
 use crate::services::identity::VerifiedIdentity;
 use crate::services::network::member_trust as trust;
@@ -73,7 +73,10 @@ fn connect_gmail(state: &AppState, email: &str, id_token: &str) {
     let token = json!({ "access_token": "ya29", "refresh_token": "r", "id_token": id_token });
     state
         .secrets()
-        .set(&MailProvider::Gmail.token_entry(), &token.to_string())
+        .set(
+            &MailboxId::new(MailProvider::Gmail, email).token_entry(),
+            &token.to_string(),
+        )
         .unwrap();
 }
 

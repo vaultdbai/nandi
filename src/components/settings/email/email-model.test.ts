@@ -9,6 +9,7 @@ import {
   intervalLabel,
   intervalOptions,
   mailboxCard,
+  mailboxOf,
   parseWatchList,
   problemKey,
 } from './email-model'
@@ -32,6 +33,22 @@ function status(
     ...overrides,
   }
 }
+
+describe('mailboxOf', () => {
+  it('names the connected mailbox by provider and address', () => {
+    expect(mailboxOf(status())).toBeNull()
+    expect(
+      mailboxOf(
+        status({
+          provider: 'gmail',
+          connected: true,
+          state: 'ready',
+          accountEmail: 'dev@gmail.com',
+        })
+      )
+    ).toEqual({ provider: 'gmail', email: 'dev@gmail.com' })
+  })
+})
 
 describe('mailboxCard', () => {
   it('offers Connect only when the build can sign in', () => {

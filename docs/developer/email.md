@@ -5,7 +5,7 @@ Nandi reads the user's Outlook or Gmail and keeps My notes up to date. The code 
 **Read-only.** Nandi reads mail and writes notes. Nothing is sent, moved, deleted or marked read: the scopes are `Mail.Read` and `gmail.readonly`, and the only HTTP method the mail client has is `GET` (`email/api.rs`).
 
 ```text
-Settings › Email › Connect ─ PKCE sign-in ─▶ keyring nandi.email.<provider>.oauth
+Settings › Email › Connect ─ PKCE sign-in ─▶ keyring nandi.email.<provider>.<hash>.oauth
                                             + config.json email.accounts + a saved grant (nandi, read)
 scheduler (every N minutes) or Check now:
   each connected, unpaused mailbox ─ changes since cursor ─▶ filter ─┐
@@ -38,7 +38,7 @@ the run: mail_* tools (host) + filesystem__* notes tools, no container, nothing 
 
 `email/backfill.rs`. After the first read (14 days), a background pass walks older Inbox and Sent mail, newest first, with the same filters, one batch of at most 60 emails per pass every 10 minutes (`BACKFILL_EVERY`).
 
-- **Its own position:** `local_settings` `email.<provider>.backfill` (`before`: the oldest time reached, `read`, `paused`, `done`). It never touches the change cursor. Outlook asks `GET /me/mailFolders/{inbox,sentitems}/messages?$filter=receivedDateTime lt <before> [and ge <floor>]&$orderby=receivedDateTime desc&$top=60`; Gmail `messages.list` with `q=before:<before> (in:inbox OR in:sent) -category:… [after:<floor>]`. A time cursor instead of page tokens: it survives restarts and needs nothing else.
+- **Its own position:** `local_settings` `email.<provider>.<hash>.backfill` (`before`: the oldest time reached, `read`, `paused`, `done`). It never touches the change cursor. Outlook asks `GET /me/mailFolders/{inbox,sentitems}/messages?$filter=receivedDateTime lt <before> [and ge <floor>]&$orderby=receivedDateTime desc&$top=60`; Gmail `messages.list` with `q=before:<before> (in:inbox OR in:sent) -category:… [after:<floor>]`. A time cursor instead of page tokens: it survives restarts and needs nothing else.
 - **Never competes:** a pass is skipped while an email check runs or Nandi has a run going or queued. A 429 or an outage skips the pass.
 - **Range:** `EmailSettings.backfill` (`threeMonths`, `year`, `everything` by default, `off`), a floor in the queries. It's done when a batch comes back empty or the floor is reached.
 - **Estimate:** `estimate_email_backfill(range)`: Graph `$count=true` with `ConsistencyLevel: eventual` per folder, Gmail `resultSizeEstimate`. Bulk isn't left out of the count, so it says "about".
@@ -47,15 +47,20 @@ the run: mail_* tools (host) + filesystem__* notes tools, no container, nothing 
 
 ## Where things live
 
-| What                                                 | Where                                                          |
-| ---------------------------------------------------- | -------------------------------------------------------------- |
-| Sign-in tokens (access, refresh, expiry)             | Keyring `nandi.email.outlook.oauth`, `nandi.email.gmail.oauth` |
-| Accounts (email, name, paused), interval, watch list | `~/.nandi/config.json` `email`                                 |
-| Which agent may read which mailbox                   | grants: `settings.yaml` or `~/.nandi/settings.local.yaml`      |
-| Change cursor                                        | `local_settings` `email.<provider>.cursor`                     |
-| Last check (time, count, run, error, needs sign-in)  | `local_settings` `email.<provider>.state`                      |
+A mailbox is its provider and its address (`MailboxId` in `email/provider.rs`). Its keys name it by `<provider>.<hash>`: the first 12 hex digits of the SHA-256 of the lowercased address, so keyring user names and `local_settings` keys never hold the address. Connecting a second address of the same provider adds a mailbox.
 
-**Disconnect** (`email::disconnect`) deletes the keyring entry, both `local_settings` rows, the account and its grants. **Reconnect** of the same address (after a sign-in ended) keeps the cursor; another address starts over with the 14-day window.
+| What                                                 | Where                                                                              |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| A sign-in in progress (before the address is known)  | Keyring `nandi.email.<provider>.sign-in`; connecting moves it to the mailbox entry |
+| Sign-in tokens (access, refresh, expiry)             | Keyring `nandi.email.<provider>.<hash>.oauth`                                      |
+| Accounts (email, name, paused), interval, watch list | `~/.nandi/config.json` `email`, in the order they were connected                   |
+| Which agent may read which mailbox                   | grants: `settings.yaml` or `~/.nandi/settings.local.yaml`, per provider for now    |
+| Change cursor                                        | `local_settings` `email.<provider>.<hash>.cursor`                                  |
+| Last check (time, count, run, error, needs sign-in)  | `local_settings` `email.<provider>.<hash>.state`                                   |
+
+**Disconnect** (`email::disconnect`) takes one mailbox: it deletes its keyring entry, its `local_settings` rows and its account. The provider's grants go with its last mailbox. **Reconnect** of the same address (after a sign-in ended) keeps the cursor and the mailbox's place in the list; another address is added and starts with the 14-day window. Pause, Resume and the background read act on one mailbox too. The first mailbox stays this Nandi's identity (`services::identity`).
+
+**From Nandi 0.2** (`email/keys_from_0_2.rs`): 0.2 kept one mailbox per provider under `nandi.email.<provider>.oauth` and `email.<provider>.{cursor,state,backfill}`. At start, before anything reads a mailbox, each moves to the name of the account `config.json` holds for that provider: new name written first, old one deleted after, so an interrupted start finishes the next time. `state.db`'s schema doesn't change, so there is no migration.
 
 ## Providers
 
