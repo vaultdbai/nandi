@@ -2,6 +2,12 @@
 
 What changed in each Nandi release, grouped by what you notice. The release notes for each version are in [docs/release-notes/](docs/release-notes/).
 
+## 0.2.3 (2026-11-22)
+
+### New
+
+- **Free tokens to start.** A computer with no model of its own gets 100,000 free tokens on DeepSeek Flash, so Nandi works on day one without a key. Your own key or sign-in always comes first, and the free tokens switch off once your own model works. Connect Outlook or Gmail and all your computers share one allowance. The key stays on VaultDB.ai's server, never in the app.
+
 ## 0.2.2 (2026-11-22)
 
 ### New
