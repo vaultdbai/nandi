@@ -588,12 +588,12 @@ describe('OnboardingView', () => {
       })
       render(<OnboardingView />)
       await toNetwork(user)
-      // Next to the company relay and Not now
-      expect(screen.getByLabelText('Not now')).toBeChecked()
+      // Chosen to start with, next to the company relay and Not now
+      expect(screen.getByLabelText('Join the public relay')).toBeChecked()
+      expect(screen.getByLabelText('Not now')).not.toBeChecked()
       expect(
         screen.getByLabelText("Join my team's network")
       ).toBeInTheDocument()
-      await user.click(screen.getByLabelText('Join the public relay'))
       expect(
         await screen.findByText(/You join as ada@example.com/)
       ).toBeInTheDocument()

@@ -129,11 +129,12 @@ export function relayUrlFor(
 
 /**
  * The draft the network step starts from while nothing (or nothing yet) is
- * configured: "Not now", so joining a network is always a choice
+ * configured: the public relay when the build offers one, else "Not now".
+ * Either way nothing joins until the user clicks: choosing the public relay
+ * only shows its Join button, and Continue goes on without it
  */
-export const DEFAULT_RELAY_DRAFT: RelayDraft = {
-  choice: 'skip',
-  customUrl: '',
+export function defaultRelayDraft(publicUrl: string | null): RelayDraft {
+  return { choice: publicUrl ? 'public' : 'skip', customUrl: '' }
 }
 
 /** `relay.example.com` from `wss://relay.example.com/relay`, for plain copy */

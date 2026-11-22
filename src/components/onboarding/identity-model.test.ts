@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { EmailProviderStatus, IdentityStatus } from '@/lib/bindings'
 import {
   branchFor,
-  DEFAULT_RELAY_DRAFT,
+  defaultRelayDraft,
   draftFromMailbox,
   mailboxIdentity,
   isRelayUrl,
@@ -199,8 +199,20 @@ describe('gateway publishing', () => {
     ).toBe(false)
   })
 
-  it('starts the network step on Not now', () => {
-    expect(DEFAULT_RELAY_DRAFT.choice).toBe('skip')
+  it('starts the network step on the public relay when the build offers one', () => {
+    expect(defaultRelayDraft('wss://relay.example.org/relay').choice).toBe(
+      'public'
+    )
+  })
+
+  it('starts the network step on Not now without a public relay', () => {
+    expect(defaultRelayDraft(null).choice).toBe('skip')
+  })
+
+  it('joins nothing by default, even on the public relay', () => {
+    expect(
+      relayUrlFor(defaultRelayDraft('wss://relay.example.org/relay'))
+    ).toBe(null)
   })
 })
 

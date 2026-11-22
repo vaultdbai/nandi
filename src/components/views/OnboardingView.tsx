@@ -15,7 +15,7 @@ import { Step3Network } from '@/components/onboarding/Step3_Network'
 import { StepComputer } from '@/components/onboarding/StepComputer'
 import { StepEmail } from '@/components/onboarding/StepEmail'
 import {
-  DEFAULT_RELAY_DRAFT,
+  defaultRelayDraft,
   draftFromMailbox,
   mailboxIdentity,
   needsOnboarding,
@@ -95,7 +95,7 @@ export function OnboardingView({
     queryFn: async () => unwrapResult(await client.getRelayStatus()),
     retry: false,
   })
-  // `null` until the user picks: the configured relay, else "Not now"
+  // `null` until the user picks: the configured relay, else the default
   const [relayEdit, setRelay] = useState<RelayDraft | null>(null)
   const configuredRelayUrl = relayStatus.data?.relayUrl ?? null
   const builtInRelayUrl = relayStatus.data?.builtInUrl ?? null
@@ -103,7 +103,7 @@ export function OnboardingView({
   const relay =
     relayEdit ??
     relayDraftFrom(configuredRelayUrl, builtInRelayUrl, publicRelayUrl) ??
-    DEFAULT_RELAY_DRAFT
+    defaultRelayDraft(publicRelayUrl)
   const [savingName, setSavingName] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const published = useRef(false)
