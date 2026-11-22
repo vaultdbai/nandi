@@ -2,6 +2,13 @@
 
 What changed in each Nandi release, grouped by what you notice. The release notes for each version are in [docs/release-notes/](docs/release-notes/).
 
+## 0.2.2 (2026-11-22)
+
+### New
+
+- **VaultDB.ai's public relay.** No company relay? Join VaultDB.ai's public relay in setup or in Network › Connection, with the Outlook or Gmail you connected. No sign-in and no join code. Free for up to 10 groups, 50 people per group and 500 messages a day. Requests stay sealed end to end; the relay sees who asked whom, never what was said.
+- **Setup starts on the public relay.** The network step has **Join the public relay** chosen. Nothing joins until you click it; **Continue** goes on without a network.
+
 ## 0.2.1 (2026-11-20)
 
 The first release after 0.1.0. The `v0.2.0` tag was never released: its installer build stopped on a mismatched updater package, fixed here.

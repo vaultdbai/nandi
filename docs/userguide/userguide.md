@@ -157,7 +157,7 @@ Pick the mailboxes Nandi should read, **Outlook**, **Gmail** or both, and connec
 
 ### 4. Work with other people? (optional)
 
-**Not now** keeps everything on this computer, and nothing connects. **Join the public relay** (not in this release) joins VaultDB.ai's relay with the email you connected in the Email step (see [Join the public relay](#join-the-public-relay)); if it can't be reached right now, Nandi says so and you can join later. **Join the Nandi network** (when your Nandi comes with one) or **Join my team's network** (the relay's address and its join code, or **Paste invite**) joins a relay when you click **Join** or **Continue**; nothing joins, and no seat is taken, before that. If joining doesn't work, Nandi says why and **Continue anyway** goes on without a network. **Let others send requests to my Nandi** is off until you tick it; even then, a request only gets through once an agent accepts requests and you trust the person asking. You can do all of this later in **Network**.
+**Join the public relay** is chosen to start with, but nothing joins until you click its button. **Not now** keeps everything on this computer, and nothing connects. **Join the public relay** joins VaultDB.ai's relay with the email you connected in the Email step (see [Join the public relay](#join-the-public-relay)); if it can't be reached right now, Nandi says so and you can join later. **Join the Nandi network** (when your Nandi comes with one) or **Join my team's network** (the relay's address and its join code, or **Paste invite**) joins a relay when you click **Join** or **Continue**; nothing joins, and no seat is taken, before that. If joining doesn't work, Nandi says why and **Continue anyway** goes on without a network. **Let others send requests to my Nandi** is off until you tick it; even then, a request only gets through once an agent accepts requests and you trust the person asking. You can do all of this later in **Network**.
 
 ### 5. Starter packs
 
@@ -835,8 +835,6 @@ If joining doesn't work, Nandi says why, and everything else keeps working:
 A relay with no sign-in (`--open`) needs no join code: leave the field empty.
 
 ### Join the public relay
-
-Not in this release (Nandi 0.2.0): setup and Network › Connection don't offer it. Join your company's relay instead, or keep working on your own.
 
 No company relay? VaultDB.ai runs a public relay. There's no sign-in and no join code: you join with the Outlook or Gmail you connected (**Settings › Email**), in setup or in **Network › Connection › Join the public relay**. Nandi shows the email you'll join as; click **Join the public relay** and it connects. Without a connected email, it says "Connect your Outlook or Gmail in Settings › Email to join groups on the public relay", with a button there.
 
