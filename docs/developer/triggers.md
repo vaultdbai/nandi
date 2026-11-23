@@ -59,7 +59,7 @@ So one trigger file can sit in everyone's repo, and whoever is on duty runs it.
 
 Fires are processed one at a time (the dispatcher task and manual test fires share a lock):
 
-1. **Fire guard.** A `FireGuard` set at startup may hold a fire back for a reason outside the engine. The fire is recorded as `skipped` with the reason and starts nothing. Test fires are never held. Today the one guard is `email::MailCheckGuard`: Nandi's mail check waits for a connected mailbox.
+1. **Fire guard.** A `FireGuard` set at startup may hold a fire back for a reason outside the engine. The fire is recorded as `skipped` with the reason and starts nothing. Test fires are never held. Startup sets `FireGuards` with two: `email::MailCheckGuard` (Nandi's mail check waits for a connected mailbox) and `retro::guard::RetroGuard` (the weekly retro runs at most once in six days).
 2. **Storm guard.** More than 5 fires in 10 seconds disables the trigger and emits `trigger://error`. Cron, calendar and test fires are exempt, so an every-second schedule is allowed.
 3. **Rate limit.** If `rate_limit_seconds` hasn't passed since the last dispatched fire, the fire is recorded as `rate_limited` and `trigger://rate_limited {nextAllowedAt}` is emitted.
 4. **Template.** `input_template` is rendered: `{{payload.a.b}}` (array indices allowed), `{{trigger.name}}`, `{{trigger.id}}`, `{{fired_at}}` (ISO 8601), `{{last_run.output}}` (the latest completed run's reply). Missing keys become empty strings and are logged. With no template, the agent gets the event as JSON.
@@ -94,16 +94,38 @@ Nandi's own work heals itself. The rules are code (state and trust); what to do 
 
 ## Nandi's Default Triggers
 
-Nandi, the default agent, ships with two ordinary cron triggers that target it (owner decision N-4). The files are in `src-tauri/resources/builtin-agents/nandi/triggers/`; `builtin_agents::DEFAULT_TRIGGERS` lists them.
+Nandi, the default agent, ships with three ordinary cron triggers that target it (owner decision N-4). The files are in `src-tauri/resources/builtin-agents/nandi/triggers/`; `builtin_agents::DEFAULT_TRIGGERS` lists them.
 
-| ID               | Schedule                           | What it asks Nandi                                             |
-| ---------------- | ---------------------------------- | -------------------------------------------------------------- |
-| `morning-digest` | `0 8 * * *` (08:00 daily)          | A short brief for the day                                      |
-| `mail-check`     | `0 16 * * 1-5` (16:00, Mon to Fri) | A look over the day's mail. Held while no mailbox is connected |
+| ID               | Schedule                           | What it asks Nandi                                                              |
+| ---------------- | ---------------------------------- | ------------------------------------------------------------------------------- |
+| `morning-digest` | `0 8 * * *` (08:00 daily)          | A short brief for the day                                                       |
+| `mail-check`     | `0 16 * * 1-5` (16:00, Mon to Fri) | A look over the day's mail. Held while no mailbox is connected                  |
+| `weekly-retro`   | `0 17 * * 5` (17:00, Fridays)      | The weekly retro ([below](#the-weekly-retro)). Held within six days of the last |
 
 - `repo_bootstrap::bootstrap` writes them into a **fresh** gold copy only (`seed_triggers`), in its first commit. A trigger the person removes is never added again.
 - `builtin_agents::reset_default` writes both back as they ship, through the trigger repository, and commits them with Nandi's other files.
 - They are not the email check. That one hands new mail to Nandi every few minutes ([email.md](./email.md)).
+- An existing install gets a newly shipped one through `shipped_files` ("new in this build"), like the weekly retro in 0.3.0.
+
+### The Weekly Retro
+
+`services::retro` (task "Weekly retro"). The model reads and proposes; the code keeps the record, the limits and the check.
+
+| Part        | Where                    | What it does                                                                                                 |
+| ----------- | ------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| The prompt  | `skills/weekly-retro.md` | Nandi's playbook: find patterns in the week's corrections, propose the smallest change                       |
+| The tools   | `retro/tool.rs`          | `retro_runs`, `retro_read`, `retro_propose`, offered only in the run whose `source_id` is `weekly-retro`     |
+| The record  | `retro/records.rs`       | Runs, refusals, hand-overs answered "Changed it" (`handover::CHANGED_RESULT`), failures, retries             |
+| The limits  | `domain/retro.rs`        | `check_agent`, `check_workflow`, `check_trigger`: narrowing only. Run at propose and again at apply          |
+| The store   | `retro/proposals.rs`     | `retro_proposals` in `state.db` (migration 009): pending, applied, refused, undone, kept                     |
+| Apply, undo | `retro/mod.rs`           | `Repos::write_definition_text` then `GitService::commit_files`: one commit each, refused if the file changed |
+| The check   | `retro/check.rs`         | Corrections per decision, 4 weeks before vs since; a verdict once after 5 decisions; a note when no better   |
+
+| ✅ Do                                                  | ❌ Don't                                        |
+| ------------------------------------------------------ | ----------------------------------------------- |
+| Add a widening case to `domain/retro.rs` with its test | Rely on the playbook to keep a change narrow    |
+| Measure from approvals and runs in `state.db`          | Ask the model whether its change helped         |
+| Write the file the person saw in the diff, or refuse   | Merge a proposal into a file that changed since |
 
 ## Storage
 

@@ -408,13 +408,14 @@ Shared preconditions used below:
 
 ### AG-37 — Nandi's default schedule
 
-- **What:** Nandi ships with two triggers of its own, on by default (owner decision N-4). They are ordinary cron triggers that target Nandi: the person edits, turns off or removes them like any trigger.
+- **What:** Nandi ships with three triggers of its own, on by default (owner decision N-4). They are ordinary cron triggers that target Nandi: the person edits, turns off or removes them like any trigger.
 
   | Trigger                           | When               | What Nandi does                                                                |
   | --------------------------------- | ------------------ | ------------------------------------------------------------------------------ |
   | Morning digest (`morning-digest`) | Every day at 08:00 | A short brief for the day: meetings, work waiting, work in progress, deadlines |
   | Mail check (`mail-check`)         | Weekdays at 16:00  | Looks over the day's mail for asks with no reply and promised replies          |
-  - They are written once, into a fresh install, in its first commit. A trigger the person removes stays removed. **Reset to defaults** (AG-36) puts both back as they ship.
+  | Weekly retro (`weekly-retro`)     | Fridays at 17:00   | Learns from the week's corrections and proposes changes (AG-40)                |
+  - They are written once, into a fresh install, in its first commit. An existing install gets a new one with the update that ships it (AG-38). A trigger the person removes stays removed. **Reset to defaults** (AG-36) puts them back as they ship.
   - The mail check runs only while a mailbox is connected. Without one, each fire is recorded as skipped ("no mailbox is connected") and starts no run. A test fire always runs.
   - The email check that hands new mail to Nandi every few minutes is separate (Settings › Email).
 
@@ -656,6 +657,41 @@ Shared preconditions used below:
   - An email or calendar check never proposes a playbook.
   - Dismissing the suggestion line: it's never added again.
 - **Automation:** Covered by: Rust `playbooks.rs` (`a_proposal_is_checked_by_the_domain_rules`, `the_card_sees_what_a_proposal_replaces_from_the_files`, `the_prompt_says_how_to_propose_when_the_agent_can`, `every_proposal_waits_for_the_user`, `an_approved_proposal_is_written_and_committed`, `a_broken_file_of_that_name_is_never_overwritten`, `an_installed_agent_cant_propose`), `orchestrator/middleware_tests.rs` (`a_proposed_playbook_is_written_once_approved`, `a_rejected_proposal_writes_nothing`, `a_proposal_for_an_existing_name_shows_what_it_replaces`, `a_proposal_that_breaks_the_rules_never_reaches_the_user`), `run_plan/classify.rs` (`effects_table`), `requests/recurrence.rs` (`work_nandi_repeats_itself_hints_a_playbook`), `builtin_agents.rs` (shipped playbooks name only real tools), Vitest `playbook-proposal-model.test.ts`, `PlaybookProposalPreview.test.tsx`, `approval-model.test.ts` | Layer: unit, integration | Gap: no check that a model writes the suggestion line only once, or proposes when asked.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### AG-40 — Weekly retro: Nandi gets better from your corrections
+
+- **What:** Once a week Nandi reads what the person corrected and proposes at most three small changes. The person says yes or no; Nandi then checks whether a change helped. Nandi's code never changes: only gold copy files do.
+  - The `weekly-retro` trigger (Fridays at 17:00, on by default, AG-37) runs Nandi with the `weekly-retro` playbook. Its fires are held within six days of the last retro run ("the weekly retro already ran this week").
+  - Only that run gets three host tools: `retro_runs` (last week's run records per agent: refused calls, hand-over drafts the person changed, failed and retried runs, each with its run ID, within a budget, quotes marked untrusted), `retro_read` (a local agent's file as it is) and `retro_propose` (agent, target, the whole new file, reason, runs). No other run has them.
+  - A proposal targets one agent's `skill`, `playbook:<name>`, `workflow:<id>` or `trigger:<id>`. It must cite real runs from the last week, and there are at most three a week. It is checked when proposed and again when applied: it may edit text and narrow access, and is refused when it adds a tool, a site or more methods, a secret, a connector or folder, a pilot or a pilot action, drops an approval, changes the sandbox, runtime or AWS, widens delegation, adds a workflow step, changes who does one, drops a step's approval, or changes what starts a trigger. An agent from a signed pack is never changed (the refusal suggests a local copy).
+  - The Inbox item (counted, it waits a week): "Nandi suggests a change to <agent>: <reason>", what changes, **Show the change** (the diff), the runs it learned from (each opens Run detail), **Apply** and **No thanks**. It has its own chat (`inbox:retro:<id>`).
+  - **Apply** writes the file and makes one gold copy commit "Weekly retro: <reason>" naming the target, the agent and the runs. The file must still be as it was when proposed. Uncommitted edits to it are committed first.
+  - After Apply, the item stays a week (not counted) with **Undo**. Undo puts the file back in one more commit ("Undo the weekly retro's change"). A file edited since is never overwritten.
+  - The check: the agent's share of decisions that were corrections (a refusal, or a hand-over answered **Changed it**) in the four weeks before the change, against those since. After five decisions since, the verdict is set once. When it is no better and corrections remain, one calm note: "This change to <agent> didn't help", the two rates, **Undo** and **Keep it**.
+- **Where:** `src-tauri/src/services/retro/` (`mod.rs`, `records.rs`, `target.rs`, `check.rs`, `tool.rs`, `guard.rs`, `proposals.rs`), `services/domain/retro.rs` (the limits), `services/repos/mod.rs` (`write_definition_text`), `db/migrations/009_retro.sql`, `services/inbox/item.rs` and `tool.rs` (the chat), `services/orchestrator/llm_step.rs` and `tool_calls.rs` (offer, call), `resources/builtin-agents/nandi/skills/weekly-retro.md`, `triggers/weekly-retro.yaml`, `rpc/retro.rs`, `src/components/inbox/RetroCard.tsx`, `retro-model.ts`, `inbox-model.ts`, `src/hooks/useRetro.ts`.
+- **Preconditions:** A model. An agent with a week of runs where the person refused calls or changed drafts (for example the Social Manager's hand-overs).
+- **Steps:**
+  1. Open Triggers and test-fire **Weekly retro**.
+  2. Open the Inbox item, then **Show the change** and a run link.
+  3. Press **Apply**. Open the agent's file and the gold copy history (Settings › Backup).
+  4. Press **Undo**.
+  5. Test-fire **Weekly retro** again.
+  6. Apply a proposal, then answer five more of that agent's approvals, refusing most.
+- **Expected:**
+  - Step 1: a Nandi run that reads the week and ends with one line; at most three Inbox items, each for one local agent.
+  - Step 2: the diff and the runs it cites.
+  - Step 3: the file has the change; one commit with the reason and the run IDs.
+  - Step 4: the file is as before, in one more commit; the item leaves the Inbox.
+  - Step 5: a test fire runs; the scheduled fire within six days is skipped.
+  - Step 6: the note "didn't help" with the rates before and after, **Undo** and **Keep it**.
+- **Edge / negative cases:**
+  - A proposal that adds a tool, a site or a secret, or targets a pack agent, never reaches the Inbox; one made anyway is refused at Apply and nothing is written.
+  - The file changed after the proposal: Apply refuses and writes nothing.
+  - A fourth proposal in a week is refused.
+  - A morning digest or chat run has no retro tools.
+- **Automation:** Covered by: Rust `domain/retro.rs` (`the_text_and_narrowing_are_allowed`, `a_tool_a_site_or_a_secret_is_refused`, `an_approval_a_connector_a_pilot_or_the_sandbox_is_refused`, workflow and trigger tests), `retro/tests.rs` (`a_proposal_that_adds_a_tool_a_site_or_a_secret_is_refused`, `a_signed_pack_agent_is_never_changed`, `apply_then_undo_leaves_the_gold_copy_as_it_was`, `a_new_playbook_goes_on_apply_and_away_on_undo`, `an_edit_since_is_never_overwritten`, `the_check_compares_rates_from_run_records_and_offers_the_undo`, `a_proposal_is_recorded_with_its_diff_and_changes_nothing`, `the_tools_are_only_in_the_weekly_retro_run`), `retro/check.rs`, `retro/records.rs`, `retro/guard.rs`, `db/migrations_tests.rs` (`a_0_2_database_gains_the_retro_proposals_and_keeps_every_row`), `inbox/item.rs` (round trip), Vitest `retro-model.test.ts`, `RetroCard.test.tsx`, `inbox-model.test.ts` | Layer: unit, ui | Gap: no end-to-end run of the trigger with a model.
 - **Needs relay:** no
 - **Status:** Shipped
 

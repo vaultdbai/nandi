@@ -47,6 +47,18 @@ The model does the reading and the proposing. Nandi builds the record, the appro
 - Apply then undo leaves the gold copy as it was.
 - The before and after rate is computed from run records alone.
 
+## Status (2026-11-23)
+
+The Chief of Staff is now Nandi, the default agent. Its `skill.md` is at the word limit, so the retro's instructions are the playbook `skills/weekly-retro.md` and the trigger `triggers/weekly-retro.yaml` (Fridays at 17:00). Nandi could read no run or approval records, so the retro got three host tools, offered only in that trigger's run: `retro_runs` and `retro_read` (read-only) and `retro_propose` (records a proposal, changes nothing). Developer notes: [triggers.md](../developer/triggers.md#the-weekly-retro). Test catalog: AG-40.
+
+- [x] Slice 1: the playbook, the weekly trigger (at most once in six days, `RetroGuard`), the week's records within a budget, at most three proposals a week, each an Inbox item with its diff and its runs
+- [x] Slice 2: Apply is one gold copy commit with the reason and the run IDs; Undo is one more commit. The ❌ column is checked in code at propose and at apply (`domain/retro.rs`); signed pack agents are refused
+- [x] Slice 3: corrections per decision, four weeks before against since, from `state.db` alone; one note with Undo and Keep it when a change didn't help
+- [x] Tests: widening refused at apply, signed pack refused, apply then undo leaves the gold copy as it was, rates from run records alone, the Inbox item's shape
+- [ ] Notes in `my-notes/` aren't a target: they aren't in the gold copy, and Nandi already writes them itself
+- [ ] "Suggest an agent take on an action you always approve" is only a line in the summary; there is no proposal kind for it
+- [ ] Commit messages name run IDs, not links: the app has no run deep link yet
+
 ## Not in This Task
 
 - Reviewing all agents together (merge, retire, split). Later, once there is enough history.
