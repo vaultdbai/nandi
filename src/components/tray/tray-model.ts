@@ -134,6 +134,11 @@ export function inboxTrayRow(item: InboxItem, now = 0): TrayRow {
       return row(key('tray.intake', { text: firstLine(item.work.text) }))
     case 'knowMe':
       return row(inboxRowLabel(item), 'quiet')
+    case 'retro':
+      return row(
+        inboxRowLabel(item),
+        item.retro.status === 'pending' ? 'needsYou' : 'quiet'
+      )
   }
 }
 

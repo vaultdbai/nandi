@@ -4,7 +4,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { cn } from '@/lib/utils'
+import { DiffLines } from './DiffLines'
 import {
   changedLines,
   lineDiff,
@@ -60,24 +60,13 @@ export function PlaybookProposalPreview({
             data-testid="playbook-proposal-body"
             className="mt-2 max-h-72 overflow-auto rounded-md border bg-muted/60 px-3 py-2 text-start font-mono text-xs whitespace-pre-wrap break-words text-foreground"
           >
-            {proposal.current
-              ? lineDiff(proposal.current.body, proposal.body).map(
-                  (line, index) => (
-                    <span
-                      key={index}
-                      data-kind={line.kind}
-                      className={cn(
-                        'block',
-                        line.kind === 'added' && 'bg-success/10 text-success',
-                        line.kind === 'removed' &&
-                          'bg-destructive/10 text-destructive line-through'
-                      )}
-                    >
-                      {`${line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '- ' : '  '}${line.text}`}
-                    </span>
-                  )
-                )
-              : proposal.body}
+            {proposal.current ? (
+              <DiffLines
+                lines={lineDiff(proposal.current.body, proposal.body)}
+              />
+            ) : (
+              proposal.body
+            )}
           </pre>
         </CollapsibleContent>
       </Collapsible>

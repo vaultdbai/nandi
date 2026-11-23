@@ -10,6 +10,7 @@ import { buildInbox, inboxBadgeCount } from '@/components/inbox/inbox-model'
 import { useNandiDigest } from '@/hooks/useNandiDigest'
 import { usePendingClarifications } from '@/hooks/useClarifications'
 import { useKnowMe } from '@/hooks/useKnowMe'
+import { useRetroItems } from '@/hooks/useRetro'
 import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
 import { useTrustRequests } from '@/hooks/useTrustRequests'
 import { useManualSteps, useWork, workKeys } from '@/hooks/useWork'
@@ -189,6 +190,7 @@ export function useInbox() {
   const digest = useNandiDigest()
   const model = useDefaultModel()
   const knowMe = useKnowMe()
+  const retro = useRetroItems()
   // A query, not the agent store: the companion's webview has no store sync
   const { data: agents = [] } = useAgents()
   const names = new Map(agents.map(agent => [agent.id, agent.name]))
@@ -207,6 +209,7 @@ export function useInbox() {
     returns: returns.data ?? [],
     queue: digest.data?.queue ?? [],
     knowMe: knowMe.data ?? null,
+    retro: retro.data ?? [],
     agentName: id => names.get(id) ?? id,
   })
 

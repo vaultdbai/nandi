@@ -16,6 +16,7 @@ import type {
   PendingManualStep,
   QueuedWork,
   RequestReturn,
+  RetroItem,
   TrustRequest,
   WorkItem,
 } from '@/lib/bindings'
@@ -23,6 +24,7 @@ import type { NavLabel } from '@/components/layout/nav-tree'
 import { workItemView } from '@/lib/work'
 import type { View } from '@/store/navigation-store'
 import { approvalSummary } from './approval-model'
+import { isRetroWaiting } from './retro-model'
 import { countsInBadge, isTodo, todoState } from './todo-model'
 
 /** Failures stay offered this long */
@@ -66,6 +68,11 @@ export type InboxItem =
    * `recheck` once the person answered before ("is this still right?")
    */
   | (Base & { kind: 'knowMe'; recheck: boolean })
+  /**
+   * The weekly retro (`services::retro`): a proposed change waits on the
+   * user; one applied this week, or one that didn't help, is offered
+   */
+  | (Base & { kind: 'retro'; retro: RetroItem })
 
 export interface InboxSources {
   now: number
@@ -88,6 +95,8 @@ export interface InboxSources {
   queue: QueuedWork[]
   /** The know-me to-do (`get_know_me`), when loaded */
   knowMe?: Pick<KnowMeStatus, 'todoOpen' | 'recheck' | 'shownAt'> | null
+  /** The weekly retro's items (`list_retro_items`), when loaded */
+  retro?: RetroItem[]
   agentName: (agentId: string) => string
 }
 
@@ -247,6 +256,16 @@ export function buildInbox(sources: InboxSources): InboxItem[] {
     })
   }
 
+  for (const retro of sources.retro ?? []) {
+    items.push({
+      kind: 'retro',
+      id: `retro-${retro.id}`,
+      retro,
+      createdAt: retro.decidedAt ?? retro.createdAt,
+      deadline: isRetroWaiting(retro) ? retro.expiresAt : null,
+    })
+  }
+
   const dismissed = new Set(sources.dismissed)
   // A request that came back failed is already a return: not twice
   const returned = new Set(sources.returns.map(ret => ret.taskId))
@@ -282,7 +301,8 @@ function isOffered(item: InboxItem): boolean {
   return (
     item.kind === 'failed' ||
     item.kind === 'requestReturn' ||
-    item.kind === 'knowMe'
+    item.kind === 'knowMe' ||
+    (item.kind === 'retro' && !isRetroWaiting(item.retro))
   )
 }
 
@@ -356,6 +376,8 @@ export function inboxThreadId(item: InboxItem): string | null {
       return item.work.threadId
     case 'knowMe':
       return 'inbox:knowMe:you'
+    case 'retro':
+      return thread(part(item.retro.id))
   }
 }
 
@@ -432,5 +454,14 @@ export function inboxRowLabel(item: InboxItem): NavLabel {
       return label('inbox.intake', { text: firstLine(item.work.text) })
     case 'knowMe':
       return label(item.recheck ? 'inbox.knowMe.recheck' : 'inbox.knowMe.first')
+    case 'retro': {
+      const values = { agent: item.retro.agentName, reason: item.retro.reason }
+      if (isRetroWaiting(item.retro))
+        return label('inbox.retro.proposal', values)
+      return label(
+        item.retro.needsNote ? 'inbox.retro.didntHelp' : 'inbox.retro.applied',
+        values
+      )
+    }
   }
 }

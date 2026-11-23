@@ -83,7 +83,7 @@ export function InboxItemThreadView({
           data-testid="inbox-thread-top"
           className="flex max-h-[45%] shrink-0 flex-col gap-3 overflow-y-auto border-b p-4"
         >
-          {item && thread.data.waiting ? (
+          {item && (thread.data.waiting || item.kind === 'retro') ? (
             <InboxItemCard item={item} />
           ) : (
             <p

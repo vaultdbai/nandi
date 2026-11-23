@@ -7,6 +7,7 @@ import type {
   PendingManualStep,
   QueuedWork,
   RequestReturn,
+  RetroItem,
   TrustRequest,
   WorkItem,
 } from '@/lib/bindings'
@@ -546,5 +547,72 @@ describe('buildInbox: getting to know you', () => {
     })
     expect(buildInbox(sources({ knowMe: knowMe(false) }))).toEqual([])
     expect(buildInbox(sources({ knowMe: null }))).toEqual([])
+  })
+})
+
+describe('buildInbox: the weekly retro', () => {
+  const retro = (overrides: Partial<RetroItem>): RetroItem => ({
+    id: 'p1',
+    agentId: 'writer',
+    agentName: 'Writer',
+    target: 'skill',
+    path: '.nandi/agents/writer/skill.md',
+    reason: 'You shortened 4 of 5 drafts',
+    runs: ['r1'],
+    diff: '',
+    status: 'pending',
+    createdAt: NOW - 1000,
+    decidedAt: null,
+    expiresAt: NOW + 60_000,
+    commitId: null,
+    verdict: null,
+    rates: null,
+    needsNote: false,
+    ...overrides,
+  })
+
+  it('counts a proposal as waiting, with its deadline and its own chat', () => {
+    const items = buildInbox(sources({ retro: [retro({})] }))
+    const item = items[0] as InboxItem
+    expect(item).toMatchObject({
+      kind: 'retro',
+      id: 'retro-p1',
+      deadline: NOW + 60_000,
+    })
+    expect(inboxBadgeCount(items, NOW)).toBe(1)
+    expect(inboxThreadId(item)).toBe('inbox:retro:p1')
+    expect(inboxRowLabel(item)).toEqual({
+      key: 'inbox.retro.proposal',
+      values: { agent: 'Writer', reason: 'You shortened 4 of 5 drafts' },
+    })
+  })
+
+  it('offers an applied change and a note outside the badge', () => {
+    const items = buildInbox(
+      sources({
+        approvals: [approval('a1', NOW - 5000, NOW + 60_000)],
+        retro: [
+          retro({ id: 'p2', status: 'applied', decidedAt: NOW - 500 }),
+          retro({
+            id: 'p3',
+            status: 'applied',
+            decidedAt: NOW - 400,
+            needsNote: true,
+          }),
+        ],
+      })
+    )
+    expect(items.map(item => item.id)).toEqual([
+      'approval-a1',
+      'retro-p2',
+      'retro-p3',
+    ])
+    expect(inboxBadgeCount(items, NOW)).toBe(1)
+    expect(inboxRowLabel(items[1] as InboxItem)).toMatchObject({
+      key: 'inbox.retro.applied',
+    })
+    expect(inboxRowLabel(items[2] as InboxItem)).toMatchObject({
+      key: 'inbox.retro.didntHelp',
+    })
   })
 })
