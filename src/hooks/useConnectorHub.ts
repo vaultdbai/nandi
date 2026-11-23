@@ -1,18 +1,17 @@
 /**
  * The connector hub (`docs/developer/connector-hub.md`): grants, connectors
- * from the registries, and the read-only calendars and drives. Grants
- * refetch on `grants://changed`, accounts on `workspace://changed`, and
+ * from the registries, and the calendar check (each account's drive and
+ * calendar connect with it, in `useEmail`). Grants refetch on
+ * `grants://changed`, the calendar check on `workspace://changed`, and
  * registry connectors on `connectors://changed`.
  */
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { connectorsQueryKeys } from '@/hooks/useConnectors'
-import { useSignInFlow } from '@/hooks/useEmail'
 import { client } from '@/lib/client'
 import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
 import type { Result } from '@/lib/tauri-bindings'
 import type {
-  AccountKind,
   GrantAccess,
   GrantInfo,
   GrantScope,
@@ -76,7 +75,7 @@ export function useChangeGrant() {
   )
 }
 
-/** Calendars and drives, and the calendar check */
+/** The drives and calendars an account reads, and the calendar check */
 export function useWorkspaceStatus() {
   useHubEvents()
   return useClientQuery(hubKeys.workspace, () => client.getWorkspaceStatus())
@@ -86,35 +85,18 @@ export function useWorkspaceAction() {
   const queryClient = useQueryClient()
   return useClientMutation(
     (
-      action:
-        | { kind: 'check' }
-        | { kind: 'interval'; minutes: number }
-        | { kind: 'disconnect'; account: AccountKind }
+      action: { kind: 'check' } | { kind: 'interval'; minutes: number }
     ): Promise<Result<WorkspaceStatus, string>> => {
       switch (action.kind) {
         case 'check':
           return client.checkCalendarNow()
         case 'interval':
           return client.setCalendarInterval(action.minutes)
-        case 'disconnect':
-          return client.disconnectWorkspace(action.account)
       }
     },
     {
-      onSuccess: status => {
-        queryClient.setQueryData(hubKeys.workspace, status)
-        void queryClient.invalidateQueries({ queryKey: hubKeys.grants })
-      },
+      onSuccess: status => queryClient.setQueryData(hubKeys.workspace, status),
     }
-  )
-}
-
-export function useWorkspaceSignIn(account: AccountKind) {
-  return useSignInFlow(
-    account,
-    () => client.startWorkspaceSignIn(account),
-    () => client.pollWorkspaceSignIn(account),
-    hubKeys.workspace
   )
 }
 

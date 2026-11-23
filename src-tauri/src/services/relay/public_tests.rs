@@ -48,13 +48,8 @@ async fn public_relay(idp: &FakeIdp, limits: Limits) -> String {
 /// As if Gmail `email` were connected: the account, its sign-in (with
 /// `id_token`) in the keychain, and the locked identity
 fn connect_gmail(state: &AppState, email: &str, id_token: &str) {
-    let account = EmailAccount {
-        provider: MailProvider::Gmail,
-        email: email.to_string(),
-        name: Some("Ada".into()),
-        profile: Default::default(),
-        paused: false,
-    };
+    let mut account = EmailAccount::mailbox(MailProvider::Gmail, email);
+    account.name = Some("Ada".into());
     let identity = VerifiedIdentity {
         provider: MailProvider::Gmail,
         email: email.to_string(),

@@ -114,6 +114,8 @@ export type {
   MailProvider,
   MailboxId,
   MailboxStatus,
+  Reads,
+  CalendarCheckStatus,
   SignInPhase,
   SignInProblem,
   SignInProblemKind,

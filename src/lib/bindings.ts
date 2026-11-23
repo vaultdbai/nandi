@@ -2077,12 +2077,24 @@ async getEmailStatus() : Promise<Result<EmailStatus, string>> {
 }
 },
 /**
- * Starts connecting a mailbox: open `verificationUri` (PKCE), or show
- * `userCode` (device flow)
+ * Starts connecting an account, asking for what `reads` ticks (mail,
+ * files, calendar): open `verificationUri` (PKCE), or show `userCode`
+ * (device flow)
  */
-async startEmailSignIn(provider: MailProvider) : Promise<Result<DeviceFlowState, string>> {
+async startEmailSignIn(provider: MailProvider, reads: Reads) : Promise<Result<DeviceFlowState, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("start_email_sign_in", { provider }) };
+    return { status: "ok", data: await TAURI_INVOKE("start_email_sign_in", { provider, reads }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Stops reading an account's files or calendar (adding one is a sign-in)
+ */
+async setEmailReads(mailbox: MailboxId, reads: Reads) : Promise<Result<EmailStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_email_reads", { mailbox, reads }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2178,33 +2190,6 @@ async estimateEmailBackfill(range: BackfillRange) : Promise<Result<BackfillEstim
 async getWorkspaceStatus() : Promise<Result<WorkspaceStatus, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_workspace_status") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Starts connecting a calendar or drive: only its own scopes are asked for
- */
-async startWorkspaceSignIn(kind: AccountKind) : Promise<Result<DeviceFlowState, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("start_workspace_sign_in", { kind }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async pollWorkspaceSignIn(kind: AccountKind) : Promise<Result<EmailSignInPoll, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("poll_workspace_sign_in", { kind }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async disconnectWorkspace(kind: AccountKind) : Promise<Result<WorkspaceStatus, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("disconnect_workspace", { kind }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -4228,27 +4213,6 @@ export type AccessLevel =
  * Nothing
  */
 "none"
-/**
- * What kind of data an account holds
- */
-export type AccountFamily = "calendar" | "files"
-export type AccountKind = 
-/**
- * Outlook and Microsoft 365 calendars, through Graph (`Calendars.Read`)
- */
-"outlookCalendar" | 
-/**
- * `calendar.readonly`
- */
-"googleCalendar" | 
-/**
- * OneDrive and files shared with the person (`Files.Read`, `Files.Read.All`)
- */
-"oneDrive" | 
-/**
- * `drive.readonly`
- */
-"googleDrive"
 export type ActionPlan = { steps: PlanStep[]; estimatedDurationSeconds: number | null; estimatedCostUsd: number | null; warnings: string[]; 
 /**
  * Set when the ask is out of scope: why nothing can be planned
@@ -5106,6 +5070,14 @@ export type BlockerKind = "needsMyApproval" | "needsTheirApproval" | "needsMyAns
  */
 export type BlockerWho = "me" | "them" | "nobody"
 /**
+ * One account's calendar check, for its row in Settings › Email
+ */
+export type CalendarCheckStatus = { needsSignIn: boolean; error: string | null; lastCheckedAt: number | null; 
+/**
+ * Events the last check handed to Nandi
+ */
+lastFound: number; lastRunId: string | null }
+/**
  * A calendar checked as the user edits it: whether it's valid and its
  * next runs with who is on duty. Uses the scheduler's own rules.
  */
@@ -5962,7 +5934,7 @@ export type EmailStatus = {
  */
 providers: EmailProviderStatus[]; 
 /**
- * Every connected mailbox, in the order they were connected
+ * Every connected account, in the order they were connected
  */
 mailboxes: MailboxStatus[]; intervalMinutes: number; watch: string[]; nextCheckAt: number | null; checking: boolean; 
 /**
@@ -7059,7 +7031,20 @@ lastFound: number; lastRunId: string | null;
 /**
  * The background read of older mail
  */
-backfill: BackfillStatus }
+backfill: BackfillStatus; 
+/**
+ * What Nandi reads of the account: its mail, files and calendar
+ */
+reads: Reads; 
+/**
+ * Files or calendar read on a sign-in of their own (connected apart
+ * before 0.3): the account's next sign-in takes them over
+ */
+readsApart: Reads; 
+/**
+ * Its calendar's last check, while Nandi reads its calendar
+ */
+calendar: CalendarCheckStatus | null }
 /**
  * The mailbox owner's manager
  */
@@ -7881,6 +7866,16 @@ threadId: string;
  * For `start`: who does it, planned when it was queued
  */
 plan: ActionPlan | null }
+/**
+ * What an account's sign-in lets Nandi read, each read-only. The sign-in
+ * asks for exactly these scopes (incremental consent: files and calendar
+ * only when the person ticks them)
+ */
+export type Reads = { mail: boolean; 
+/**
+ * OneDrive or Google Drive
+ */
+files: boolean; calendar: boolean }
 export type ReadyFailure = { step: ReadyStep; 
 /**
  * What Nandi saw
@@ -9797,20 +9792,15 @@ name: string; steps: TemplateStep[] }
  * Workflows were added, changed, or removed; reload the list.
  */
 export type WorkflowsChanged = Record<string, never>
-export type WorkspaceAccountStatus = { kind: AccountKind; id: string; family: AccountFamily; 
-/**
- * This build can sign in to its cloud
- */
-available: boolean; connected: boolean; accountEmail: string | null; needsSignIn: boolean; error: string | null; lastCheckedAt: number | null; 
-/**
- * Calendar: events the last check handed to Nandi
- */
-lastFound: number; lastRunId: string | null }
 /**
  * `workspace://changed`
  */
 export type WorkspaceChanged = Record<string, never>
-export type WorkspaceStatus = { accounts: WorkspaceAccountStatus[]; calendarIntervalMinutes: number; nextCalendarCheckAt: number | null; checking: boolean }
+export type WorkspaceStatus = { 
+/**
+ * Connector IDs of the drives and calendars an account reads
+ */
+connected: string[]; calendarIntervalMinutes: number; nextCalendarCheckAt: number | null; checking: boolean }
 
 /** tauri-specta globals **/
 

@@ -30,6 +30,9 @@ pub struct FileItem {
     pub modified: Option<String>,
     pub modified_by: Option<String>,
     pub size: Option<u64>,
+    /// The account's address, when several accounts' files are read
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
     pub link: Option<String>,
     pub folder: bool,
     /// Gone (deleted or unshared), in a change feed
@@ -61,6 +64,7 @@ pub fn onedrive_item(item: &Value) -> Option<FileItem> {
         modified: str_at(item, &["lastModifiedDateTime"]).map(str::to_string),
         modified_by: str_at(item, &["lastModifiedBy", "user", "displayName"]).map(str::to_string),
         size: real.get("size").and_then(Value::as_u64),
+        account: None,
         link: str_at(item, &["webUrl"]).map(str::to_string),
         folder: real.get("folder").is_some(),
         removed: item.get("deleted").is_some(),
@@ -77,6 +81,7 @@ pub fn drive_item(item: &Value) -> Option<FileItem> {
         modified: str_at(item, &["modifiedTime"]).map(str::to_string),
         modified_by: str_at(item, &["lastModifyingUser", "displayName"]).map(str::to_string),
         size: str_at(item, &["size"]).and_then(|s| s.parse().ok()),
+        account: None,
         link: str_at(item, &["webViewLink"]).map(str::to_string),
         folder: mime == Some("application/vnd.google-apps.folder"),
         removed: item
@@ -301,6 +306,7 @@ impl Drive<'_> {
                             modified: None,
                             modified_by: None,
                             size: None,
+                            account: None,
                             link: None,
                             folder: false,
                             removed,

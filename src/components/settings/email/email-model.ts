@@ -66,10 +66,15 @@ export function mailboxCard(status: MailboxStatus): MailboxCard {
     provider: status.provider,
     name: PROVIDER_NAMES[status.provider],
     account: accountLabel(status),
-    reconnect: false,
+    // A calendar whose sign-in ended reconnects with the account
+    reconnect: status.calendar?.needsSignIn === true,
     canPause: false,
     canResume: false,
     error: null as string | null,
+  }
+  // Files and calendar only (a 0.2 drive or calendar without its mailbox)
+  if (!status.reads.mail) {
+    return { ...base, statusKey: 'email.status.noMail', tone: 'muted' }
   }
   switch (status.state) {
     case 'ready':
@@ -107,7 +112,9 @@ export function mailboxCard(status: MailboxStatus): MailboxCard {
 
 /** Check now and Read again need a mailbox that is being read */
 export function canCheckNow(mailboxes: readonly MailboxStatus[]): boolean {
-  return mailboxes.some(m => m.state === 'ready' || m.state === 'error')
+  return mailboxes.some(
+    m => m.reads.mail && (m.state === 'ready' || m.state === 'error')
+  )
 }
 
 /** The i18n key that explains a sign-in problem */

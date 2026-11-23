@@ -42,6 +42,9 @@ function mailbox(overrides: Partial<MailboxStatus> = {}): MailboxStatus {
     lastFound: 0,
     lastRunId: null,
     backfill: { phase: 'off', backTo: null, read: 0 },
+    reads: { mail: true, files: false, calendar: false },
+    readsApart: { mail: false, files: false, calendar: false },
+    calendar: null,
     ...overrides,
   }
 }
@@ -87,6 +90,38 @@ describe('providers a mailbox can be added from', () => {
 })
 
 describe('mailboxCard', () => {
+  it('an account without mail reads only its files and calendar', () => {
+    const card = mailboxCard(
+      mailbox({ reads: { mail: false, files: true, calendar: false } })
+    )
+    expect(card).toMatchObject({
+      statusKey: 'email.status.noMail',
+      canPause: false,
+      reconnect: false,
+    })
+    expect(
+      canCheckNow([
+        mailbox({ reads: { mail: false, files: true, calendar: false } }),
+      ])
+    ).toBe(false)
+  })
+
+  it('a calendar whose sign-in ended offers Reconnect', () => {
+    const card = mailboxCard(
+      mailbox({
+        reads: { mail: true, files: false, calendar: true },
+        calendar: {
+          needsSignIn: true,
+          error: 'expired',
+          lastCheckedAt: null,
+          lastFound: 0,
+          lastRunId: null,
+        },
+      })
+    )
+    expect(card.reconnect).toBe(true)
+  })
+
   it('shows who is connected and what can be done', () => {
     const card = mailboxCard(
       mailbox({ name: 'Dev Chechi', email: 'dev@company.com' })

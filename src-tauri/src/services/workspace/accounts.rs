@@ -1,20 +1,31 @@
-//! The account connectors beside mail: Outlook calendar, Google Calendar,
-//! OneDrive and Google Drive. Each has its own sign-in with only its own
-//! read-only scopes (incremental consent: calendar and files scopes are
-//! asked for only when the person connects them), kept in the keyring as
-//! `nandi.<id>.oauth`.
+//! What an account reads beside mail: Outlook calendar, Google Calendar,
+//! OneDrive and Google Drive. They read through the account's own sign-in
+//! (`email::Reads` says which read-only scopes it asked for), so each of
+//! several accounts has its own drive and calendar.
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::services::email::{Cloud, ProviderSetup};
+use crate::services::email::{MailProvider, ProviderSetup};
 
-/// What kind of data an account holds
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+/// What kind of data an account holds beside mail
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum AccountFamily {
     Calendar,
     Files,
+}
+
+impl AccountFamily {
+    pub const ALL: [Self; 2] = [Self::Files, Self::Calendar];
+
+    /// The family's part of key names: `files`, `calendar`
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Calendar => "calendar",
+            Self::Files => "files",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
@@ -30,38 +41,6 @@ pub enum AccountKind {
     GoogleDrive,
 }
 
-/// Read-only Graph calendars, and who the user is
-const OUTLOOK_CALENDAR_SCOPES: &[&str] = &[
-    "openid",
-    "profile",
-    "email",
-    "offline_access",
-    "User.Read",
-    "Calendars.Read",
-];
-/// Read-only OneDrive: the person's files and files shared with them
-const ONEDRIVE_SCOPES: &[&str] = &[
-    "openid",
-    "profile",
-    "email",
-    "offline_access",
-    "User.Read",
-    "Files.Read",
-    "Files.Read.All",
-];
-const GOOGLE_CALENDAR_SCOPES: &[&str] = &[
-    "openid",
-    "email",
-    "profile",
-    "https://www.googleapis.com/auth/calendar.readonly",
-];
-const GOOGLE_DRIVE_SCOPES: &[&str] = &[
-    "openid",
-    "email",
-    "profile",
-    "https://www.googleapis.com/auth/drive.readonly",
-];
-
 impl AccountKind {
     pub const ALL: [Self; 4] = [
         Self::OutlookCalendar,
@@ -69,6 +48,16 @@ impl AccountKind {
         Self::OneDrive,
         Self::GoogleDrive,
     ];
+
+    /// The files or calendar of a `provider` account
+    pub fn of(provider: MailProvider, family: AccountFamily) -> Self {
+        match (provider, family) {
+            (MailProvider::Outlook, AccountFamily::Calendar) => Self::OutlookCalendar,
+            (MailProvider::Gmail, AccountFamily::Calendar) => Self::GoogleCalendar,
+            (MailProvider::Outlook, AccountFamily::Files) => Self::OneDrive,
+            (MailProvider::Gmail, AccountFamily::Files) => Self::GoogleDrive,
+        }
+    }
 
     /// The connector ID grants and skill.md use
     pub fn id(self) -> &'static str {
@@ -96,19 +85,11 @@ impl AccountKind {
         }
     }
 
-    pub fn cloud(self) -> Cloud {
+    /// The account provider whose sign-in it reads with
+    pub fn provider(self) -> MailProvider {
         match self {
-            Self::OutlookCalendar | Self::OneDrive => Cloud::Microsoft,
-            Self::GoogleCalendar | Self::GoogleDrive => Cloud::Google,
-        }
-    }
-
-    pub fn scopes(self) -> &'static [&'static str] {
-        match self {
-            Self::OutlookCalendar => OUTLOOK_CALENDAR_SCOPES,
-            Self::GoogleCalendar => GOOGLE_CALENDAR_SCOPES,
-            Self::OneDrive => ONEDRIVE_SCOPES,
-            Self::GoogleDrive => GOOGLE_DRIVE_SCOPES,
+            Self::OutlookCalendar | Self::OneDrive => MailProvider::Outlook,
+            Self::GoogleCalendar | Self::GoogleDrive => MailProvider::Gmail,
         }
     }
 
@@ -120,15 +101,6 @@ impl AccountKind {
                 .filter(|rest| !rest.is_empty())
                 .map(|rest| (kind, rest))
         })
-    }
-
-    pub fn token_entry(self) -> String {
-        format!("nandi.{}.oauth", self.id())
-    }
-
-    /// `local_settings` key of its change cursor
-    pub fn cursor_key(self) -> String {
-        format!("workspace.{}.cursor", self.id())
     }
 
     /// The only API addresses its token is sent to
@@ -147,27 +119,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn each_account_asks_only_for_its_own_read_scopes() {
+    fn each_provider_has_one_drive_and_one_calendar() {
         for kind in AccountKind::ALL {
-            let scopes = kind.scopes();
-            assert!(scopes.iter().all(|s| !s.contains("Mail")), "{kind:?}");
-            assert!(
-                scopes.iter().all(|s| !s.contains("ReadWrite")
-                    && !s.ends_with("/calendar")
-                    && !s.ends_with("/drive")),
-                "{kind:?} is read-only"
-            );
+            assert_eq!(AccountKind::of(kind.provider(), kind.family()), kind);
         }
-        assert!(AccountKind::OutlookCalendar
-            .scopes()
-            .contains(&"Calendars.Read"));
-        assert!(AccountKind::OneDrive.scopes().contains(&"Files.Read.All"));
-        assert!(AccountKind::GoogleCalendar
-            .scopes()
-            .contains(&"https://www.googleapis.com/auth/calendar.readonly"));
-        assert!(AccountKind::GoogleDrive
-            .scopes()
-            .contains(&"https://www.googleapis.com/auth/drive.readonly"));
+        assert_eq!(
+            AccountKind::of(MailProvider::Gmail, AccountFamily::Files),
+            AccountKind::GoogleDrive
+        );
+        assert_eq!(AccountKind::OneDrive.provider(), MailProvider::Outlook);
     }
 
     #[test]

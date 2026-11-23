@@ -8,24 +8,96 @@ use sha2::{Digest, Sha256};
 use specta::Type;
 
 use crate::services::auth::oauth::{build_env, LoopbackRedirect, OAuthProvider};
+use crate::services::workspace::AccountFamily;
 
-/// Read-only Microsoft Graph scopes: mail, and who the user is
-const MICROSOFT_SCOPES: &[&str] = &[
-    "openid",
-    "profile",
-    "email",
-    "offline_access",
-    "User.Read",
-    "Mail.Read",
-];
+/// Who the user is, and a sign-in that renews: every Microsoft sign-in
+const MICROSOFT_SIGN_IN: &[&str] = &["openid", "profile", "email", "offline_access", "User.Read"];
+/// Who the user is: every Google sign-in
+const GOOGLE_SIGN_IN: &[&str] = &["openid", "email", "profile"];
 
-/// Read-only Gmail, and who the user is
-const GOOGLE_SCOPES: &[&str] = &[
-    "openid",
-    "email",
-    "profile",
-    "https://www.googleapis.com/auth/gmail.readonly",
-];
+const MICROSOFT_MAIL: &[&str] = &["Mail.Read"];
+/// The person's files and files shared with them
+const MICROSOFT_FILES: &[&str] = &["Files.Read", "Files.Read.All"];
+const MICROSOFT_CALENDAR: &[&str] = &["Calendars.Read"];
+const GOOGLE_MAIL: &[&str] = &["https://www.googleapis.com/auth/gmail.readonly"];
+const GOOGLE_FILES: &[&str] = &["https://www.googleapis.com/auth/drive.readonly"];
+const GOOGLE_CALENDAR: &[&str] = &["https://www.googleapis.com/auth/calendar.readonly"];
+
+/// What an account's sign-in lets Nandi read, each read-only. The sign-in
+/// asks for exactly these scopes (incremental consent: files and calendar
+/// only when the person ticks them)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct Reads {
+    pub mail: bool,
+    /// OneDrive or Google Drive
+    pub files: bool,
+    pub calendar: bool,
+}
+
+impl Reads {
+    #[cfg(test)]
+    pub const MAIL: Self = Self {
+        mail: true,
+        files: false,
+        calendar: false,
+    };
+
+    /// Only files, or only the calendar
+    pub fn only(family: AccountFamily) -> Self {
+        Self::default().with(family, true)
+    }
+
+    pub fn has(self, family: AccountFamily) -> bool {
+        match family {
+            AccountFamily::Files => self.files,
+            AccountFamily::Calendar => self.calendar,
+        }
+    }
+
+    pub fn with(mut self, family: AccountFamily, on: bool) -> Self {
+        match family {
+            AccountFamily::Files => self.files = on,
+            AccountFamily::Calendar => self.calendar = on,
+        }
+        self
+    }
+
+    pub fn is_empty(self) -> bool {
+        !self.mail && !self.files && !self.calendar
+    }
+
+    /// Everything `other` reads, this reads too
+    pub fn covers(self, other: Self) -> bool {
+        (self.mail || !other.mail)
+            && (self.files || !other.files)
+            && (self.calendar || !other.calendar)
+    }
+
+    /// The read-only scopes a sign-in to `cloud` asks for
+    pub fn scopes(self, cloud: Cloud) -> Vec<&'static str> {
+        let (sign_in, mail, files, calendar) = match cloud {
+            Cloud::Microsoft => (
+                MICROSOFT_SIGN_IN,
+                MICROSOFT_MAIL,
+                MICROSOFT_FILES,
+                MICROSOFT_CALENDAR,
+            ),
+            Cloud::Google => (GOOGLE_SIGN_IN, GOOGLE_MAIL, GOOGLE_FILES, GOOGLE_CALENDAR),
+        };
+        let mut scopes = sign_in.to_vec();
+        for (on, more) in [
+            (self.mail, mail),
+            (self.files, files),
+            (self.calendar, calendar),
+        ] {
+            if on {
+                scopes.extend_from_slice(more);
+            }
+        }
+        scopes
+    }
+}
 
 /// Whose sign-in an account uses
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
@@ -57,6 +129,13 @@ impl MailProvider {
         match self {
             Self::Outlook => "Outlook",
             Self::Gmail => "Gmail",
+        }
+    }
+
+    pub fn cloud(self) -> Cloud {
+        match self {
+            Self::Outlook => Cloud::Microsoft,
+            Self::Gmail => Cloud::Google,
         }
     }
 
@@ -127,6 +206,18 @@ impl MailboxId {
     pub fn backfill_key(&self) -> String {
         format!("email.{}.backfill", self.key())
     }
+
+    /// The keyring entry of a sign-in its files or calendar have apart
+    /// from the account's ([`super::settings::ReadSignIn::Apart`])
+    pub fn read_token_entry(&self, family: AccountFamily) -> String {
+        format!("nandi.email.{}.{}.oauth", self.key(), family.id())
+    }
+
+    /// `local_settings` key of its files' or calendar's `what` (`cursor`,
+    /// `state`, `seen`): `<files|calendar>.<provider>.<hash>.<what>`
+    pub fn read_key(&self, family: AccountFamily, what: &str) -> String {
+        format!("{}.{}.{what}", family.id(), self.key())
+    }
 }
 
 /// The APIs' addresses; tests point them at a local mock
@@ -189,21 +280,10 @@ impl ProviderSetup {
         }
     }
 
-    pub fn oauth(&self, provider: MailProvider) -> OAuthProvider {
-        match provider {
-            MailProvider::Outlook => {
-                self.account_oauth(Cloud::Microsoft, provider.id(), MICROSOFT_SCOPES)
-            }
-            MailProvider::Gmail => self.account_oauth(Cloud::Google, provider.id(), GOOGLE_SCOPES),
-        }
-    }
-
-    /// Whether this build can sign in to `cloud`
-    pub fn cloud_available(&self, cloud: Cloud) -> bool {
-        match cloud {
-            Cloud::Microsoft => self.available(MailProvider::Outlook),
-            Cloud::Google => self.available(MailProvider::Gmail),
-        }
+    /// An account's sign-in, asking for exactly what it `reads`
+    pub fn oauth(&self, provider: MailProvider, reads: Reads) -> OAuthProvider {
+        let cloud = provider.cloud();
+        self.account_oauth(cloud, provider.id(), &reads.scopes(cloud))
     }
 
     /// The sign-in of one account connector (`id`) with exactly `scopes`:
@@ -301,6 +381,9 @@ mod tests {
                 m.cursor_key(),
                 m.state_key(),
                 m.backfill_key(),
+                m.read_token_entry(AccountFamily::Files),
+                m.read_key(AccountFamily::Files, "cursor"),
+                m.read_key(AccountFamily::Calendar, "cursor"),
             ]
         };
         for (mine, theirs) in keys(&work).iter().zip(keys(&home)) {
@@ -310,30 +393,94 @@ mod tests {
         // Stable: the same address always has the same names
         assert_eq!(work.cursor_key(), "email.gmail.d0f676a9b2ab.cursor");
         assert_eq!(work.token_entry(), "nandi.email.gmail.d0f676a9b2ab.oauth");
+        assert_eq!(
+            work.read_key(AccountFamily::Files, "cursor"),
+            "files.gmail.d0f676a9b2ab.cursor"
+        );
+        assert_eq!(
+            work.read_key(AccountFamily::Calendar, "seen"),
+            "calendar.gmail.d0f676a9b2ab.seen"
+        );
+        assert_eq!(
+            work.read_token_entry(AccountFamily::Calendar),
+            "nandi.email.gmail.d0f676a9b2ab.calendar.oauth"
+        );
     }
 
     #[test]
     fn scopes_are_read_only() {
         let setup = ProviderSetup::default();
+        let all = Reads {
+            mail: true,
+            files: true,
+            calendar: true,
+        };
         for provider in MailProvider::ALL {
-            for scope in setup.oauth(provider).scopes {
+            for scope in setup.oauth(provider, all).scopes {
                 let lower = scope.to_ascii_lowercase();
                 assert!(
                     !lower.contains("send")
                         && !lower.contains("readwrite")
-                        && !lower.contains("modify"),
+                        && !lower.contains("modify")
+                        && !lower.ends_with("/drive")
+                        && !lower.ends_with("/calendar"),
                     "{scope}"
                 );
             }
         }
         assert!(setup
-            .oauth(MailProvider::Gmail)
+            .oauth(MailProvider::Gmail, Reads::MAIL)
             .scopes
             .contains(&"https://www.googleapis.com/auth/gmail.readonly".to_string()));
         assert!(setup
-            .oauth(MailProvider::Outlook)
+            .oauth(MailProvider::Outlook, Reads::MAIL)
             .scopes
             .contains(&"Mail.Read".to_string()));
+    }
+
+    #[test]
+    fn a_sign_in_asks_only_for_what_the_person_ticked() {
+        let setup = ProviderSetup::default();
+        let mail_only = setup.oauth(MailProvider::Outlook, Reads::MAIL).scopes;
+        assert!(!mail_only
+            .iter()
+            .any(|s| s.starts_with("Files") || s.starts_with("Calendars")));
+        let with_files = setup
+            .oauth(
+                MailProvider::Outlook,
+                Reads::MAIL.with(AccountFamily::Files, true),
+            )
+            .scopes;
+        assert!(with_files.contains(&"Files.Read.All".to_string()));
+        assert!(!with_files.contains(&"Calendars.Read".to_string()));
+        // A drive on its own: no mail at all
+        let drive = Reads::only(AccountFamily::Files).scopes(Cloud::Google);
+        assert_eq!(
+            drive,
+            [
+                "openid",
+                "email",
+                "profile",
+                "https://www.googleapis.com/auth/drive.readonly"
+            ]
+        );
+        let calendar = Reads::only(AccountFamily::Calendar).scopes(Cloud::Microsoft);
+        assert!(calendar.contains(&"Calendars.Read") && !calendar.contains(&"Mail.Read"));
+    }
+
+    #[test]
+    fn reads_cover_what_they_include() {
+        let all = Reads {
+            mail: true,
+            files: true,
+            calendar: true,
+        };
+        assert!(all.covers(Reads::MAIL));
+        assert!(!Reads::MAIL.covers(all));
+        assert!(Reads::MAIL.covers(Reads::default()));
+        assert!(Reads::default().is_empty());
+        assert!(Reads::only(AccountFamily::Files).has(AccountFamily::Files));
+        assert!(!Reads::only(AccountFamily::Files).has(AccountFamily::Calendar));
     }
 
     #[test]
@@ -360,16 +507,16 @@ mod tests {
     fn microsoft_comes_back_to_localhost_and_google_to_the_loopback_address() {
         let setup = ProviderSetup::default();
         assert_eq!(
-            setup.oauth(MailProvider::Outlook).redirect,
+            setup.oauth(MailProvider::Outlook, Reads::MAIL).redirect,
             LoopbackRedirect::LOCALHOST
         );
         assert!(setup
-            .oauth(MailProvider::Outlook)
+            .oauth(MailProvider::Outlook, Reads::MAIL)
             .authorize_url
             .unwrap()
             .contains("/common/"));
         assert_eq!(
-            setup.oauth(MailProvider::Gmail).redirect,
+            setup.oauth(MailProvider::Gmail, Reads::MAIL).redirect,
             LoopbackRedirect::CALLBACK
         );
     }

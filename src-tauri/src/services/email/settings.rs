@@ -4,19 +4,23 @@
 //! | What                                | Where                                         |
 //! | ----------------------------------- | --------------------------------------------- |
 //! | Sign-in tokens                      | keyring `nandi.email.<provider>.<hash>.oauth` |
-//! | Accounts, interval, watch list      | `~/.nandi/config.json` `email`                |
+//! | Accounts, what each reads, interval | `~/.nandi/config.json` `email`                |
 //! | Which agent may read which mailbox  | grants (`services::grants`)                   |
 //! | Change cursor, last check, backfill | `local_settings` `email.<provider>.<hash>.*`  |
+//! | Its files' and calendar's cursors   | `local_settings` `files.<provider>.<hash>.*`, `calendar.<provider>.<hash>.*` |
 //!
 //! `<hash>` names the mailbox without its address ([`MailboxId`]), so a
 //! person can connect several of each provider. No mail is kept anywhere.
+//! An account can also read its files and calendar (`services::workspace`),
+//! on the same sign-in.
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use super::profile::Profile;
-use super::provider::{MailProvider, MailboxId};
+use super::provider::{MailProvider, MailboxId, Reads};
 use crate::model::Timestamp;
+use crate::services::workspace::AccountFamily;
 
 pub const DEFAULT_INTERVAL_MINUTES: u32 = 30;
 pub const MIN_INTERVAL_MINUTES: u32 = 1;
@@ -105,13 +109,40 @@ impl EmailSettings {
         self.accounts.iter_mut().find(|a| a.is(mailbox))
     }
 
+    /// The accounts whose mail Nandi reads
+    pub fn mailboxes(&self) -> impl Iterator<Item = &EmailAccount> {
+        self.accounts.iter().filter(|a| a.mail)
+    }
+
     /// The first-connected mailbox of `provider`
     pub fn first_of(&self, provider: MailProvider) -> Option<&EmailAccount> {
-        self.accounts.iter().find(|a| a.provider == provider)
+        self.mailboxes().find(|a| a.provider == provider)
     }
 }
 
-/// A connected mailbox (no secrets)
+/// Whose sign-in an account's files or calendar use
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReadSignIn {
+    /// The account's sign-in asked for it
+    Account,
+    /// A sign-in of its own, at keyring
+    /// [`MailboxId::read_token_entry`]: a calendar or drive connected on
+    /// its own before 0.3 (`services::workspace::keys_from_0_2`). The
+    /// account's next sign-in that asks for it takes it over.
+    Apart,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_yes(on: &bool) -> bool {
+    *on
+}
+
+/// A connected account (no secrets): its mail, and its files and calendar
+/// when the person ticked them
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EmailAccount {
     pub provider: MailProvider,
@@ -123,15 +154,79 @@ pub struct EmailAccount {
     pub profile: Profile,
     #[serde(default)]
     pub paused: bool,
+    /// Nandi reads its mail. Off only for a calendar or drive whose address
+    /// had no mailbox when it moved under its account (0.2's own connections)
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub mail: bool,
+    /// Its OneDrive or Google Drive
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<ReadSignIn>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calendar: Option<ReadSignIn>,
 }
 
 impl EmailAccount {
+    /// A new account that reads mail only
+    pub fn mailbox(provider: MailProvider, email: &str) -> Self {
+        Self {
+            provider,
+            email: email.to_string(),
+            name: None,
+            profile: Profile::default(),
+            paused: false,
+            mail: true,
+            files: None,
+            calendar: None,
+        }
+    }
+
     pub fn id(&self) -> MailboxId {
         MailboxId::new(self.provider, &self.email)
     }
 
     pub fn is(&self, mailbox: &MailboxId) -> bool {
         mailbox.is(self.provider, &self.email)
+    }
+
+    /// Its files' or calendar's sign-in, while Nandi reads them
+    pub fn read(&self, family: AccountFamily) -> Option<ReadSignIn> {
+        match family {
+            AccountFamily::Files => self.files,
+            AccountFamily::Calendar => self.calendar,
+        }
+    }
+
+    pub fn set_read(&mut self, family: AccountFamily, sign_in: Option<ReadSignIn>) {
+        match family {
+            AccountFamily::Files => self.files = sign_in,
+            AccountFamily::Calendar => self.calendar = sign_in,
+        }
+    }
+
+    /// What the account's own sign-in asked for: the scopes it renews with
+    pub fn reads(&self) -> Reads {
+        Reads {
+            mail: self.mail,
+            files: self.files == Some(ReadSignIn::Account),
+            calendar: self.calendar == Some(ReadSignIn::Account),
+        }
+    }
+
+    /// Everything Nandi reads of it, whichever sign-in
+    pub fn wants(&self) -> Reads {
+        Reads {
+            mail: self.mail,
+            files: self.files.is_some(),
+            calendar: self.calendar.is_some(),
+        }
+    }
+
+    /// The keyring entry and scopes its files or calendar are read with
+    pub fn read_sign_in(&self, family: AccountFamily) -> Option<(String, Reads)> {
+        match self.read(family)? {
+            ReadSignIn::Account => Some((self.id().token_entry(), self.reads())),
+            ReadSignIn::Apart => Some((self.id().read_token_entry(family), Reads::only(family))),
+        }
     }
 }
 
@@ -209,6 +304,48 @@ mod tests {
         assert!(validate(241, &[]).is_err());
         assert!(validate(5, &["not a domain".into()]).is_err());
         assert!(validate(5, &["localhost".into()]).is_err());
+    }
+
+    #[test]
+    fn an_account_reads_mail_and_only_what_was_ticked() {
+        let old: EmailAccount =
+            serde_json::from_str(r#"{"provider":"gmail","email":"dev@gmail.com"}"#).unwrap();
+        assert!(old.mail);
+        assert_eq!(old.wants(), Reads::MAIL);
+        assert_eq!(
+            serde_json::to_value(&old).unwrap(),
+            serde_json::json!({"provider": "gmail", "email": "dev@gmail.com", "paused": false})
+        );
+        let mut drive = old.clone();
+        drive.set_read(AccountFamily::Files, Some(ReadSignIn::Apart));
+        drive.set_read(AccountFamily::Calendar, Some(ReadSignIn::Account));
+        // The account's sign-in renews with what it asked for; the drive
+        // connected apart keeps its own sign-in and scopes
+        assert_eq!(
+            drive.reads(),
+            Reads::MAIL.with(AccountFamily::Calendar, true)
+        );
+        assert!(drive.wants().files);
+        assert_eq!(
+            drive.read_sign_in(AccountFamily::Files),
+            Some((
+                drive.id().read_token_entry(AccountFamily::Files),
+                Reads::only(AccountFamily::Files)
+            ))
+        );
+        assert_eq!(
+            drive.read_sign_in(AccountFamily::Calendar).unwrap().0,
+            drive.id().token_entry()
+        );
+        let mut settings = EmailSettings::default();
+        let mut no_mail = EmailAccount::mailbox(MailProvider::Gmail, "x@gmail.com");
+        no_mail.mail = false;
+        settings.accounts = vec![no_mail, old];
+        assert_eq!(
+            settings.first_of(MailProvider::Gmail).unwrap().email,
+            "dev@gmail.com",
+            "an account without mail isn't a mailbox"
+        );
     }
 
     #[test]

@@ -29,7 +29,7 @@ export function AgentConnectorGrants({ agentId }: { agentId: string }) {
     ...(email.data?.providers ?? [])
       .filter(p => p.connected)
       .map(p => p.provider as string),
-    ...(workspace.data?.accounts ?? []).filter(a => a.connected).map(a => a.id),
+    ...(workspace.data?.connected ?? []),
   ]
   const shown = grantableConnectors(connectors.data ?? [], connected)
   if (shown.length === 0 || !grants.data) return null

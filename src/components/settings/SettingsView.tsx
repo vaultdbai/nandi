@@ -30,7 +30,6 @@ import { InternetAccessSection } from './sections/InternetAccessSection'
 import { ModelsSection } from './sections/ModelsSection'
 import { SourcesSection } from './sections/SourcesSection'
 import { ThisComputerSection } from './sections/ThisComputerSection'
-import { WorkspaceSection } from './sections/WorkspaceSection'
 
 /**
  * Settings: one full page with a section rail (a select below 900 px).
@@ -113,7 +112,6 @@ export function SettingsView({
           {section === 'computer' && <ThisComputerSection />}
           {section === 'account' && <AccountSection />}
           {section === 'email' && <EmailSection />}
-          {section === 'workspace' && <WorkspaceSection />}
           {section === 'access' && <ConnectorAccessSection />}
           {section === 'autoApprove' && <AutoApproveSection />}
           {section === 'cloud' && <CloudCredentialsSection />}

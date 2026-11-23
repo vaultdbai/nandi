@@ -17,7 +17,6 @@ export const SETTINGS_SECTIONS = [
   'computer',
   'account',
   'email',
-  'workspace',
   'access',
   'autoApprove',
   'cloud',

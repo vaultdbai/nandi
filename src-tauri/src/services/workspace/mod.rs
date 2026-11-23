@@ -1,27 +1,30 @@
 //! Calendars and files: Outlook calendar, Google Calendar, OneDrive and
-//! Google Drive, read-only, on the shared sign-in layer
-//! (`services::auth::oauth`) and the mail API's GET-only client
-//! (`email::api`). Like mail, these are our own connectors: tokens stay in
-//! the host's keyring and the tools run on the host, never in a container.
+//! Google Drive, read-only, with each connected account (`services::email`)
+//! and the mail API's GET-only client (`email::api`). Like mail, these are
+//! our own connectors: tokens stay in the host's keyring and the tools run
+//! on the host, never in a container.
 //!
 //! ```text
-//! Settings › Calendar & files › Connect ─ sign-in (only that account's scopes)
-//!     ─▶ keyring nandi.<id>.oauth + config.json workspace.accounts + a saved
-//!        read grant for Nandi
+//! Settings › Email › Connect, Also read my files / my calendar (ticked)
+//!     ─▶ ONE sign-in for mail + the ticked read-only scopes
+//!     ─▶ config.json email.accounts[].files / .calendar + a saved read
+//!        grant for Nandi on the account's drive and calendar connectors
 //! every hour (or Check now), batched:
-//!   each granted calendar ─ change feed since cursor ─▶ ONE Nandi
-//!   run (source calendar_check, untrusted <calendar-data>) ─▶ cursors saved
-//! tools: calendar_* and files_* for agents with a grant (or that name the
-//! connector in skill.md, asking first)
+//!   each account's granted calendar ─ change feed since its cursor ─▶ ONE
+//!   Nandi run (source calendar_check, untrusted <calendar-data>) ─▶ cursors saved
+//! tools: calendar_* and files_* over every granted account, each result
+//! naming its account when there are several
 //! ```
 //!
-//! Nothing is kept but the cursors, fingerprints of the events already sent
+//! Nothing is kept but each account's cursors (`files.<provider>.<hash>.*`,
+//! `calendar.<provider>.<hash>.*`), fingerprints of the events already sent
 //! (`seen`) and the notes Nandi writes.
 
 pub mod accounts;
 pub mod batch;
 pub mod calendar;
 pub mod files;
+pub mod keys_from_0_2;
 mod seen;
 pub mod tool;
 
@@ -41,11 +44,11 @@ pub use accounts::{AccountFamily, AccountKind};
 
 use crate::db;
 use crate::model::{SourceType, Timestamp};
-use crate::services::auth::oauth::{self, DeviceFlowState, OAuthFlows};
 use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::domain::grant::{ConnectorGrant, GrantAccess, GrantScope};
 use crate::services::email::api::{MailApi, MailError};
-use crate::services::email::{classify_sign_in_error, EmailSignInPoll, ProviderSetup, SignInPhase};
+use crate::services::email::settings::EmailAccount;
+use crate::services::email::{EmailSettings, MailboxId, ProviderSetup, Reads};
 use crate::services::events::{self, NandiEvent};
 use crate::services::grants::{self, GrantInfo, GrantsChanged};
 use crate::services::orchestrator::{RunSource, PRIORITY_SCHEDULED};
@@ -61,20 +64,11 @@ const FIRST_CHECK_AFTER: Duration = Duration::from_secs(90);
 // Settings (config.json `workspace`, this computer)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkspaceAccount {
-    pub kind: AccountKind,
-    pub email: String,
-    #[serde(default)]
-    pub name: Option<String>,
-}
-
+/// How often the calendars are checked. Which accounts read files and
+/// calendars lives with each account (`email.accounts`)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
-    #[serde(default)]
-    pub accounts: Vec<WorkspaceAccount>,
     #[serde(default = "default_minutes")]
     pub calendar_interval_minutes: u32,
 }
@@ -86,15 +80,8 @@ fn default_minutes() -> u32 {
 impl Default for WorkspaceSettings {
     fn default() -> Self {
         Self {
-            accounts: Vec::new(),
             calendar_interval_minutes: DEFAULT_CALENDAR_MINUTES,
         }
-    }
-}
-
-impl WorkspaceSettings {
-    pub fn account(&self, kind: AccountKind) -> Option<&WorkspaceAccount> {
-        self.accounts.iter().find(|a| a.kind == kind)
     }
 }
 
@@ -115,9 +102,76 @@ fn update(state: &AppState, change: impl FnOnce(&mut WorkspaceSettings)) -> Resu
     })
 }
 
-/// The connected accounts (granted or not)
+// ---------------------------------------------------------------------------
+// Sources: one account's drive or calendar
+// ---------------------------------------------------------------------------
+
+/// One account's drive or calendar, and the sign-in it reads with
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Source {
+    pub mailbox: MailboxId,
+    pub kind: AccountKind,
+    pub name: Option<String>,
+    entry: String,
+    reads: Reads,
+}
+
+impl Source {
+    /// `account`'s drive or calendar, while Nandi reads it
+    pub fn of(account: &EmailAccount, family: AccountFamily) -> Option<Self> {
+        let (entry, reads) = account.read_sign_in(family)?;
+        Some(Self {
+            mailbox: account.id(),
+            kind: AccountKind::of(account.provider, family),
+            name: account.name.clone(),
+            entry,
+            reads,
+        })
+    }
+
+    /// The account's address, as results name it
+    pub fn account(&self) -> &str {
+        &self.mailbox.email
+    }
+
+    pub fn cursor_key(&self) -> String {
+        self.mailbox.read_key(self.kind.family(), "cursor")
+    }
+
+    fn state_key(&self) -> String {
+        self.mailbox.read_key(self.kind.family(), "state")
+    }
+
+    fn seen_key(&self) -> String {
+        self.mailbox.read_key(self.kind.family(), "seen")
+    }
+}
+
+/// Every account's drive or calendar, in the order the accounts were
+/// connected
+pub fn sources_of(settings: &EmailSettings, family: AccountFamily) -> Vec<Source> {
+    settings
+        .accounts
+        .iter()
+        .filter_map(|account| Source::of(account, family))
+        .collect()
+}
+
+pub fn sources(state: &AppState, family: AccountFamily) -> Vec<Source> {
+    sources_of(&crate::services::email::email_settings(state), family)
+}
+
+/// The drives and calendars at least one account reads (granted or not)
 pub fn connected(state: &AppState) -> Vec<AccountKind> {
-    settings(state).accounts.iter().map(|a| a.kind).collect()
+    let settings = crate::services::email::email_settings(state);
+    AccountKind::ALL
+        .into_iter()
+        .filter(|kind| {
+            sources_of(&settings, kind.family())
+                .iter()
+                .any(|s| s.kind == *kind)
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -126,29 +180,24 @@ pub fn connected(state: &AppState) -> Vec<AccountKind> {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceAccountStatus {
-    pub kind: AccountKind,
-    pub id: String,
-    pub family: AccountFamily,
-    /// This build can sign in to its cloud
-    pub available: bool,
-    pub connected: bool,
-    pub account_email: Option<String>,
-    pub needs_sign_in: bool,
-    pub error: Option<String>,
-    pub last_checked_at: Option<Timestamp>,
-    /// Calendar: events the last check handed to Nandi
-    pub last_found: u32,
-    pub last_run_id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
 pub struct WorkspaceStatus {
-    pub accounts: Vec<WorkspaceAccountStatus>,
+    /// Connector IDs of the drives and calendars an account reads
+    pub connected: Vec<String>,
     pub calendar_interval_minutes: u32,
     pub next_calendar_check_at: Option<Timestamp>,
     pub checking: bool,
+}
+
+/// One account's calendar check, for its row in Settings › Email
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarCheckStatus {
+    pub needs_sign_in: bool,
+    pub error: Option<String>,
+    pub last_checked_at: Option<Timestamp>,
+    /// Events the last check handed to Nandi
+    pub last_found: u32,
+    pub last_run_id: Option<String>,
 }
 
 /// `workspace://changed`
@@ -173,14 +222,6 @@ struct CheckState {
     needs_sign_in: bool,
     #[serde(default)]
     error: Option<String>,
-}
-
-fn state_key(kind: AccountKind) -> String {
-    format!("workspace.{}.state", kind.id())
-}
-
-fn seen_key(kind: AccountKind) -> String {
-    format!("workspace.{}.seen", kind.id())
 }
 
 // ---------------------------------------------------------------------------
@@ -240,7 +281,6 @@ impl CalendarSink for Nandi {
 pub struct WorkspaceService {
     setup: RwLock<ProviderSetup>,
     sink: RwLock<Arc<dyn CalendarSink>>,
-    flows: OAuthFlows,
     check_lock: tokio::sync::Mutex<()>,
     checking: AtomicBool,
     auto_check: AtomicBool,
@@ -267,7 +307,6 @@ impl WorkspaceService {
         Self {
             setup: RwLock::new(setup),
             sink: RwLock::new(Arc::new(Nandi)),
-            flows: OAuthFlows::default(),
             check_lock: tokio::sync::Mutex::new(()),
             checking: AtomicBool::new(false),
             auto_check: AtomicBool::new(true),
@@ -303,14 +342,15 @@ impl WorkspaceService {
         *lock(&self.next_check) = Some(now() + f64::from(minutes) * 60_000.0);
     }
 
-    /// The account's GET-only API
-    pub fn api(&self, kind: AccountKind, secrets: &crate::services::secrets::Secrets) -> MailApi {
+    /// The source's GET-only API, on its account's sign-in
+    pub fn api(&self, source: &Source, secrets: &crate::services::secrets::Secrets) -> MailApi {
         let setup = self.setup();
+        let provider = source.kind.provider();
         MailApi::for_account(
-            kind.name(),
-            setup.account_oauth(kind.cloud(), kind.id(), kind.scopes()),
-            kind.token_entry(),
-            kind.api_bases(&setup),
+            source.kind.name(),
+            setup.oauth(provider, source.reads),
+            source.entry.clone(),
+            source.kind.api_bases(&setup),
             secrets,
         )
     }
@@ -351,8 +391,8 @@ pub(crate) async fn save_setting(
         .await
 }
 
-pub(crate) async fn load_cursor(state: &AppState, kind: AccountKind) -> Value {
-    load_setting(state, kind.cursor_key()).await
+pub(crate) async fn load_cursor(state: &AppState, source: &Source) -> Value {
+    load_setting(state, source.cursor_key()).await
 }
 
 fn emit_changed(state: &AppState) {
@@ -361,32 +401,13 @@ fn emit_changed(state: &AppState) {
 
 pub async fn status(state: &AppState) -> WorkspaceStatus {
     let service = state.workspace();
-    let setup = service.setup();
     let settings = settings(state);
-    let mut accounts = Vec::new();
-    for kind in AccountKind::ALL {
-        let account = settings.account(kind);
-        let check: CheckState = load_setting(state, state_key(kind)).await;
-        accounts.push(WorkspaceAccountStatus {
-            kind,
-            id: kind.id().to_string(),
-            family: kind.family(),
-            available: setup.cloud_available(kind.cloud()),
-            connected: account.is_some(),
-            account_email: account.map(|a| a.email.clone()),
-            needs_sign_in: account.is_some() && check.needs_sign_in,
-            error: account.and(check.error),
-            last_checked_at: check.last_checked_at,
-            last_found: check.last_found,
-            last_run_id: check.last_run_id,
-        });
-    }
-    let any_calendar = settings
-        .accounts
+    let connected = connected(state);
+    let any_calendar = connected
         .iter()
-        .any(|a| a.kind.family() == AccountFamily::Calendar);
+        .any(|k| k.family() == AccountFamily::Calendar);
     WorkspaceStatus {
-        accounts,
+        connected: connected.iter().map(|k| k.id().to_string()).collect(),
         calendar_interval_minutes: settings.calendar_interval_minutes,
         next_calendar_check_at: if any_calendar {
             *lock(&service.next_check)
@@ -397,116 +418,27 @@ pub async fn status(state: &AppState) -> WorkspaceStatus {
     }
 }
 
-/// Starts connecting one account: only its own scopes are asked for
-pub async fn start_sign_in(state: &AppState, kind: AccountKind) -> Result<DeviceFlowState, String> {
-    let service = state.workspace();
-    let setup = service.setup();
-    if !setup.cloud_available(kind.cloud()) {
-        return Err(format!(
-            "{} isn't available in this build of Nandi",
-            kind.name()
-        ));
-    }
-    service
-        .flows
-        .start(
-            &kind.token_entry(),
-            setup.account_oauth(kind.cloud(), kind.id(), kind.scopes()),
-            state.secrets().clone(),
-        )
-        .await
-}
-
-pub async fn poll_sign_in(state: &AppState, kind: AccountKind) -> EmailSignInPoll {
-    let setup = state.workspace().setup();
-    let failed = |error: String| EmailSignInPoll {
-        phase: SignInPhase::Failed,
-        problem: Some(classify_sign_in_error(&error, &setup)),
-    };
-    match state
-        .workspace()
-        .flows
-        .poll(&kind.token_entry(), state.secrets())
-        .await
-    {
-        Ok(false) => EmailSignInPoll {
-            phase: SignInPhase::Waiting,
-            problem: None,
-        },
-        Err(error) => failed(error),
-        Ok(true) => match connect(state, kind).await {
-            Ok(()) => EmailSignInPoll {
-                phase: SignInPhase::Connected,
-                problem: None,
-            },
-            Err(error) => {
-                let _ = oauth::forget(&kind.token_entry(), state.secrets());
-                failed(error)
-            }
-        },
+/// `mailbox`'s last calendar check
+pub async fn calendar_check(state: &AppState, mailbox: &MailboxId) -> CalendarCheckStatus {
+    let check: CheckState =
+        load_setting(state, mailbox.read_key(AccountFamily::Calendar, "state")).await;
+    CalendarCheckStatus {
+        needs_sign_in: check.needs_sign_in,
+        error: check.error,
+        last_checked_at: check.last_checked_at,
+        last_found: check.last_found,
+        last_run_id: check.last_run_id,
     }
 }
 
-/// Who signed in: Graph `/me`, or Google's userinfo
-async fn identity(
-    state: &AppState,
-    kind: AccountKind,
-) -> Result<(String, Option<String>), MailError> {
-    let service = state.workspace();
-    let api = service.api(kind, state.secrets());
-    let setup = service.setup();
-    let (url, mail, name) = match kind.cloud() {
-        crate::services::email::Cloud::Microsoft => (
-            api.url(
-                &setup.endpoints.graph,
-                &["me"],
-                &[("$select", "mail,userPrincipalName,displayName")],
-            ),
-            ["mail", "userPrincipalName"],
-            "displayName",
-        ),
-        crate::services::email::Cloud::Google => (
-            setup.endpoints.google_userinfo.clone(),
-            ["email", "email"],
-            "name",
-        ),
-    };
-    let me = api.get(&url, &[]).await?;
-    let email = mail
-        .iter()
-        .find_map(|key| {
-            me.get(*key)
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-        })
-        .ok_or_else(|| MailError::Failed("no address in the profile".into()))?
-        .to_lowercase();
-    let name = me.get(name).and_then(Value::as_str).map(str::to_string);
-    Ok((email, name))
-}
+// ---------------------------------------------------------------------------
+// An account starts or stops reading its files or calendar
+// (`email::connect`, `email::set_reads`, `email::disconnect`)
+// ---------------------------------------------------------------------------
 
-async fn connect(state: &AppState, kind: AccountKind) -> Result<(), String> {
-    let (email, name) = identity(state, kind).await.map_err(|e| {
-        log::warn!(
-            "{} signed in, but reading the profile failed: {e}",
-            kind.name()
-        );
-        format!("Signed in, but Nandi couldn't read whose account this is: {e}")
-    })?;
-    let same = settings(state)
-        .account(kind)
-        .is_some_and(|a| a.email == email);
-    update(state, |s| {
-        s.accounts.retain(|a| a.kind != kind);
-        s.accounts.push(WorkspaceAccount { kind, email, name });
-    })?;
-    if !same {
-        save_setting(state, kind.cursor_key(), Value::Null).await?;
-        save_setting(state, seen_key(kind), Value::Null).await?;
-    }
-    save_setting(state, state_key(kind), Value::Null).await?;
-    // Connecting is the person's say-so for Nandi (saved, like
-    // mail; removable in Settings › Connectors › Access)
+/// The account now reads `kind`: Nandi gets a saved read grant on it (the
+/// person ticked it), and a calendar is checked soon
+pub(crate) fn started(state: &AppState, kind: AccountKind) -> Result<(), String> {
     let grant = ConnectorGrant::new(DEFAULT_AGENT, kind.id(), GrantAccess::Read)
         .map_err(|e| e.to_string())?;
     if state.grants().grant(grant, GrantScope::Saved)? {
@@ -519,7 +451,7 @@ async fn connect(state: &AppState, kind: AccountKind) -> Result<(), String> {
         grants::record(state, "granted", &info, Some("The account was connected"));
         events::emit(state.bus(), &GrantsChanged {});
     }
-    log::info!("Connected {}", kind.name());
+    log::info!("An account reads its {}", kind.name());
     emit_changed(state);
     if kind.family() == AccountFamily::Calendar {
         check_soon(state);
@@ -527,24 +459,42 @@ async fn connect(state: &AppState, kind: AccountKind) -> Result<(), String> {
     Ok(())
 }
 
-/// Signs out: the keyring entry, the cursor, the events seen, the account
-/// and its grants
-pub async fn disconnect(state: &AppState, kind: AccountKind) -> Result<WorkspaceStatus, String> {
-    state.workspace().flows.cancel(&kind.token_entry());
-    oauth::forget(&kind.token_entry(), state.secrets())?;
-    for key in [kind.cursor_key(), state_key(kind), seen_key(kind)] {
-        state
-            .db()
-            .call(move |conn| db::delete_setting(conn, &key))
-            .await?;
+/// Forgets what `mailbox` kept for `family`: its cursor, last check, the
+/// events seen, and a sign-in it had apart
+pub(crate) async fn forget(
+    state: &AppState,
+    mailbox: &MailboxId,
+    family: AccountFamily,
+) -> Result<(), String> {
+    crate::services::auth::oauth::forget(&mailbox.read_token_entry(family), state.secrets())?;
+    let keys = ["cursor", "state", "seen"].map(|what| mailbox.read_key(family, what));
+    state
+        .db()
+        .call(move |conn| {
+            for key in &keys {
+                db::delete_setting(conn, key)?;
+            }
+            Ok(())
+        })
+        .await
+}
+
+/// An account stopped reading `kind`: the grants on it go with the last
+/// account that read it
+pub(crate) fn stopped(state: &AppState, kind: AccountKind) -> Result<(), String> {
+    if !connected(state).contains(&kind) {
+        for gone in state.grants().revoke_connector(kind.id())? {
+            grants::record(
+                state,
+                "removed",
+                &gone,
+                Some("No account reads it any more"),
+            );
+        }
+        events::emit(state.bus(), &GrantsChanged {});
     }
-    update(state, |s| s.accounts.retain(|a| a.kind != kind))?;
-    for gone in state.grants().revoke_connector(kind.id())? {
-        grants::record(state, "removed", &gone, Some("The account was signed out"));
-    }
-    events::emit(state.bus(), &GrantsChanged {});
     emit_changed(state);
-    Ok(status(state).await)
+    Ok(())
 }
 
 pub async fn set_calendar_interval(
@@ -586,7 +536,7 @@ pub struct CheckOutcome {
     pub run_id: Option<String>,
 }
 
-/// Reads the change feed of every calendar Nandi may read and
+/// Reads the change feed of every account's calendar Nandi may read and
 /// hands what changed to it in ONE run. Cursors move only once the run is
 /// queued, so nothing is skipped.
 pub async fn check_calendars(state: &AppState) -> CheckOutcome {
@@ -597,30 +547,28 @@ pub async fn check_calendars(state: &AppState) -> CheckOutcome {
     let settings = settings(state);
     service.schedule_next(settings.calendar_interval_minutes);
     let grants = state.grants();
-    let accounts: Vec<WorkspaceAccount> = settings
-        .accounts
-        .iter()
-        .filter(|a| a.kind.family() == AccountFamily::Calendar)
-        .filter(|a| grants.allows(DEFAULT_AGENT, a.kind.id(), GrantAccess::Read))
-        .cloned()
+    let sources: Vec<Source> = sources(state, AccountFamily::Calendar)
+        .into_iter()
+        .filter(|s| grants.allows(DEFAULT_AGENT, s.kind.id(), GrantAccess::Read))
         .collect();
-    if accounts.is_empty() {
+    if sources.is_empty() {
         return CheckOutcome::default();
     }
     service.checking.store(true, Ordering::SeqCst);
     emit_changed(state);
     let now_secs = db::now_ms() / 1000;
+    let several = sources.len() > 1;
     let mut events = Vec::new();
     let mut cursors = Vec::new();
     let mut seens = Vec::new();
     let mut checked = Vec::new();
     let mut first_read = false;
-    for account in &accounts {
-        let kind = account.kind;
-        let mut check: CheckState = load_setting(state, state_key(kind)).await;
-        let cursor = load_cursor(state, kind).await;
-        let mut seen: seen::Seen = load_setting(state, seen_key(kind)).await;
-        let api = service.api(kind, state.secrets());
+    for source in &sources {
+        let kind = source.kind;
+        let mut check: CheckState = load_setting(state, source.state_key()).await;
+        let cursor = load_cursor(state, source).await;
+        let mut seen: seen::Seen = load_setting(state, source.seen_key()).await;
+        let api = service.api(source, state.secrets());
         let base = service.base(kind);
         let calendar = calendar::Calendar {
             kind,
@@ -637,6 +585,12 @@ pub async fn check_calendars(state: &AppState) -> CheckOutcome {
                     .iter()
                     .filter(|e| !seen.knows(e))
                     .cloned()
+                    .map(|mut e| {
+                        if several {
+                            e.account = Some(source.account().to_string());
+                        }
+                        e
+                    })
                     .collect();
                 seen.record(&changes.events, changes.restarted);
                 let found = fresh.len();
@@ -647,8 +601,8 @@ pub async fn check_calendars(state: &AppState) -> CheckOutcome {
                 } else {
                     changes.cursor
                 };
-                cursors.push((kind, next));
-                seens.push((kind, seen));
+                cursors.push((source, next));
+                seens.push((source, seen));
                 check.needs_sign_in = false;
                 check.error = None;
                 check.last_found = u32::try_from(found).unwrap_or(u32::MAX);
@@ -658,14 +612,14 @@ pub async fn check_calendars(state: &AppState) -> CheckOutcome {
                 check.error = Some(reason);
             }
             Err(e) => {
-                log::warn!("Checking {} failed: {e}", kind.name());
+                log::warn!("Checking a {} failed: {e}", kind.name());
                 check.error = Some(e.to_string());
             }
         }
         check.last_checked_at = Some(now());
-        checked.push((kind, check));
+        checked.push((source, check));
     }
-    let batch = batch::CalendarBatch::new(&accounts, events, first_read, now_secs);
+    let batch = batch::CalendarBatch::new(&sources, events, first_read, now_secs);
     let mut outcome = CheckOutcome {
         found: batch.len(),
         run_id: None,
@@ -693,25 +647,25 @@ pub async fn check_calendars(state: &AppState) -> CheckOutcome {
         }
     };
     if handed_over {
-        for (kind, cursor) in cursors {
-            if let Err(e) = save_setting(state, kind.cursor_key(), cursor).await {
-                log::warn!("Couldn't save the {} cursor: {e}", kind.name());
+        for (source, cursor) in cursors {
+            if let Err(e) = save_setting(state, source.cursor_key(), cursor).await {
+                log::warn!("Couldn't save a {} cursor: {e}", source.kind.name());
             }
         }
-        for (kind, seen) in seens {
+        for (source, seen) in seens {
             let value = serde_json::to_value(&seen).unwrap_or_default();
-            if let Err(e) = save_setting(state, seen_key(kind), value).await {
-                log::warn!("Couldn't save the {} events seen: {e}", kind.name());
+            if let Err(e) = save_setting(state, source.seen_key(), value).await {
+                log::warn!("Couldn't save a {}'s events seen: {e}", source.kind.name());
             }
         }
     }
-    for (kind, mut check) in checked {
+    for (source, mut check) in checked {
         if outcome.run_id.is_some() && check.last_found > 0 {
             check.last_run_id = outcome.run_id.clone();
         }
         let value = serde_json::to_value(&check).unwrap_or_default();
-        if let Err(e) = save_setting(state, state_key(kind), value).await {
-            log::warn!("Couldn't save the {} check: {e}", kind.name());
+        if let Err(e) = save_setting(state, source.state_key(), value).await {
+            log::warn!("Couldn't save a {} check: {e}", source.kind.name());
         }
     }
     service.checking.store(false, Ordering::SeqCst);

@@ -17,6 +17,7 @@ import type {
   EmailSettingsInput,
   MailboxId,
   MailProvider,
+  Reads,
   Result,
   SignInProblem,
 } from '@/lib/tauri-bindings'
@@ -43,6 +44,7 @@ export function useEmailAction() {
         | { kind: 'again' }
         | { kind: 'pause'; mailbox: MailboxId; paused: boolean }
         | { kind: 'disconnect'; mailbox: MailboxId }
+        | { kind: 'reads'; mailbox: MailboxId; reads: Reads }
         | { kind: 'settings'; settings: EmailSettingsInput }
         | {
             kind: 'backfill'
@@ -59,6 +61,8 @@ export function useEmailAction() {
           return client.setEmailPaused(action.mailbox, action.paused)
         case 'disconnect':
           return client.disconnectEmail(action.mailbox)
+        case 'reads':
+          return client.setEmailReads(action.mailbox, action.reads)
         case 'settings':
           return client.setEmailSettings(action.settings)
         case 'backfill':
@@ -89,27 +93,27 @@ export type EmailSignInState =
 const POLL_MS = 1500
 
 /**
- * Connecting one mailbox: `start()` opens the provider's sign-in page in
- * the browser, then the core is polled until the sign-in ends.
+ * Connecting one account: `start(reads)` opens the provider's sign-in page
+ * in the browser, asking for what `reads` ticks (mail, files, calendar),
+ * then the core is polled until the sign-in ends.
  */
 export function useEmailSignIn(provider: MailProvider) {
   return useSignInFlow(
     provider,
-    () => client.startEmailSignIn(provider),
+    (reads: Reads) => client.startEmailSignIn(provider, reads),
     () => client.pollEmailSignIn(provider),
     emailKeys.status
   )
 }
 
 /**
- * One device or browser sign-in (a mailbox, a calendar, a drive): `start()`
- * opens the sign-in page, then `poll` runs until the sign-in ends and
- * `queryKey` is refetched. `id` names the account; the flow restarts when
- * it changes.
+ * One device or browser sign-in: `start(reads)` opens the sign-in page,
+ * then `poll` runs until the sign-in ends and `queryKey` is refetched.
+ * `id` names the provider; the flow restarts when it changes.
  */
-export function useSignInFlow(
+function useSignInFlow(
   id: string,
-  startSignIn: () => Promise<Result<DeviceFlowState, string>>,
+  startSignIn: (reads: Reads) => Promise<Result<DeviceFlowState, string>>,
   poll: () => Promise<Result<EmailSignInPoll, string>>,
   queryKey: readonly unknown[]
 ) {
@@ -156,8 +160,8 @@ export function useSignInFlow(
     },
   })
 
-  const start = async () => {
-    const result = await startSignIn()
+  const start = async (reads: Reads) => {
+    const result = await startSignIn(reads)
     if (result.status === 'error') {
       setState({
         phase: 'failed',

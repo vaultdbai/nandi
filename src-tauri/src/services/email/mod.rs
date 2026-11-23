@@ -49,7 +49,7 @@ use serde_json::Value;
 use specta::Type;
 
 pub use backfill::{BackfillAction, BackfillEstimate, BackfillStatus};
-pub use provider::{Cloud, MailProvider, MailboxId, ProviderSetup};
+pub use provider::{MailProvider, MailboxId, ProviderSetup, Reads};
 pub use settings::{BackfillRange, EmailSettings};
 
 use crate::db;
@@ -60,13 +60,14 @@ use crate::services::domain::grant::{ConnectorGrant, GrantAccess, GrantScope};
 use crate::services::events::{self, NandiEvent};
 use crate::services::orchestrator::{RunSource, PRIORITY_SCHEDULED};
 use crate::services::triggers::FireGuard;
+use crate::services::workspace::{AccountFamily, AccountKind};
 use crate::services::{AppState, WeakAppState};
 use crate::utils::nandi_config::{self, NandiConfig};
 use api::MailError;
 use mail::Identity;
 use mailbox::Mailbox;
 use profile::Profile;
-use settings::{CheckState, EmailAccount};
+use settings::{CheckState, EmailAccount, ReadSignIn};
 
 /// The first read (and a restart after an expired cursor) goes back this far
 pub const READ_WINDOW_DAYS: i64 = 14;
@@ -125,6 +126,13 @@ pub struct MailboxStatus {
     pub last_run_id: Option<String>,
     /// The background read of older mail
     pub backfill: BackfillStatus,
+    /// What Nandi reads of the account: its mail, files and calendar
+    pub reads: Reads,
+    /// Files or calendar read on a sign-in of their own (connected apart
+    /// before 0.3): the account's next sign-in takes them over
+    pub reads_apart: Reads,
+    /// Its calendar's last check, while Nandi reads its calendar
+    pub calendar: Option<crate::services::workspace::CalendarCheckStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -132,7 +140,7 @@ pub struct MailboxStatus {
 pub struct EmailStatus {
     /// Outlook, then Gmail
     pub providers: Vec<EmailProviderStatus>,
-    /// Every connected mailbox, in the order they were connected
+    /// Every connected account, in the order they were connected
     pub mailboxes: Vec<MailboxStatus>,
     pub interval_minutes: u32,
     pub watch: Vec<String>,
@@ -311,13 +319,20 @@ impl BatchSink for Nandi {
 // The service
 // ---------------------------------------------------------------------------
 
+/// One sign-in in progress: where its token lands, and what it asked for
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SignInAttempt {
+    entry: String,
+    reads: Reads,
+}
+
 pub struct EmailService {
     setup: RwLock<ProviderSetup>,
     sink: RwLock<Arc<dyn BatchSink>>,
     flows: OAuthFlows,
-    /// The keyring entry of each provider's sign-in in progress: one per
-    /// attempt, so two sign-ins never share a token
-    sign_ins: Mutex<HashMap<MailProvider, String>>,
+    /// Each provider's sign-in in progress: one keyring entry per attempt,
+    /// so two sign-ins never share a token
+    sign_ins: Mutex<HashMap<MailProvider, SignInAttempt>>,
     /// One check at a time
     check_lock: tokio::sync::Mutex<()>,
     checking: AtomicBool,
@@ -396,7 +411,7 @@ fn config(state: &AppState) -> NandiConfig {
     })
 }
 
-fn email_settings(state: &AppState) -> EmailSettings {
+pub(crate) fn email_settings(state: &AppState) -> EmailSettings {
     config(state).email.unwrap_or_default()
 }
 
@@ -450,17 +465,16 @@ fn emit_changed(state: &AppState) {
 fn granted(state: &AppState, agent: &str) -> Vec<EmailAccount> {
     let grants = state.grants();
     email_settings(state)
-        .accounts
-        .into_iter()
+        .mailboxes()
         .filter(|a| grants.allows(agent, a.provider.id(), GrantAccess::Read))
+        .cloned()
         .collect()
 }
 
 /// The connected mailboxes (granted or not)
 pub fn connected(state: &AppState) -> Vec<MailboxId> {
     email_settings(state)
-        .accounts
-        .iter()
+        .mailboxes()
         .map(EmailAccount::id)
         .collect()
 }
@@ -485,11 +499,6 @@ impl FireGuard for MailCheckGuard {
             .is_empty()
             .then(|| "Skipped: no mailbox is connected".to_string())
     }
-}
-
-/// Whether `mailbox` is connected
-pub fn is_connected(state: &AppState, mailbox: &MailboxId) -> bool {
-    email_settings(state).account(mailbox).is_some()
 }
 
 pub async fn status(state: &AppState) -> EmailStatus {
@@ -534,9 +543,19 @@ pub async fn status(state: &AppState) -> EmailStatus {
             last_found: check.last_found,
             last_run_id: check.last_run_id,
             backfill: backfill::status_of(settings.backfill, true, !cursor.is_null(), &backfill),
+            reads: account.wants(),
+            reads_apart: Reads {
+                mail: false,
+                files: account.files == Some(ReadSignIn::Apart),
+                calendar: account.calendar == Some(ReadSignIn::Apart),
+            },
+            calendar: match account.calendar {
+                Some(_) => Some(crate::services::workspace::calendar_check(state, &mailbox).await),
+                None => None,
+            },
         });
     }
-    let any_active = settings.accounts.iter().any(|a| !a.paused);
+    let any_active = settings.mailboxes().any(|a| !a.paused);
     EmailStatus {
         providers,
         mailboxes,
@@ -552,10 +571,12 @@ pub async fn status(state: &AppState) -> EmailStatus {
     }
 }
 
-/// Starts the sign-in: open `verificationUri` (or show `userCode`)
+/// Starts the sign-in: open `verificationUri` (or show `userCode`). It asks
+/// for exactly what `reads` says: mail, and files and calendar when ticked
 pub async fn start_sign_in(
     state: &AppState,
     provider: MailProvider,
+    reads: Reads,
 ) -> Result<DeviceFlowState, String> {
     let setup = state.email().setup();
     if !setup.available(provider) {
@@ -564,18 +585,25 @@ pub async fn start_sign_in(
             provider.name()
         ));
     }
+    if reads.is_empty() {
+        return Err("Choose what Nandi may read: mail, files or calendar".into());
+    }
     // Each attempt has its own entry, so a sign-in never lands on another's
     // token. Starting again replaces the provider's attempt in progress.
     let email = state.email();
     let entry = provider.sign_in_entry(&uuid::Uuid::new_v4().to_string());
     let flow = email
         .flows
-        .start(&entry, setup.oauth(provider), state.secrets().clone())
+        .start(
+            &entry,
+            setup.oauth(provider, reads),
+            state.secrets().clone(),
+        )
         .await?;
-    let replaced = lock(&email.sign_ins).insert(provider, entry);
+    let replaced = lock(&email.sign_ins).insert(provider, SignInAttempt { entry, reads });
     if let Some(old) = replaced {
-        email.flows.cancel(&old);
-        let _ = oauth::forget(&old, state.secrets());
+        email.flows.cancel(&old.entry);
+        let _ = oauth::forget(&old.entry, state.secrets());
     }
     Ok(flow)
 }
@@ -588,9 +616,10 @@ pub async fn poll_sign_in(state: &AppState, provider: MailProvider) -> EmailSign
         phase: SignInPhase::Failed,
         problem: Some(classify_sign_in_error(&error, &setup)),
     };
-    let Some(entry) = lock(&state.email().sign_ins).get(&provider).cloned() else {
+    let Some(attempt) = lock(&state.email().sign_ins).get(&provider).cloned() else {
         return failed("No sign-in is in progress; start again".to_string());
     };
+    let entry = attempt.entry.clone();
     let result = match state.email().flows.poll(&entry, state.secrets()).await {
         Ok(false) => {
             return EmailSignInPoll {
@@ -599,12 +628,12 @@ pub async fn poll_sign_in(state: &AppState, provider: MailProvider) -> EmailSign
             }
         }
         Err(error) => Err(error),
-        Ok(true) => connect(state, provider, &entry).await,
+        Ok(true) => connect(state, provider, &entry, attempt.reads).await,
     };
     // The attempt is over, connected or not: its entry never outlives it
     {
         let mut attempts = lock(&state.email().sign_ins);
-        if attempts.get(&provider) == Some(&entry) {
+        if attempts.get(&provider) == Some(&attempt) {
             attempts.remove(&provider);
         }
     }
@@ -620,48 +649,100 @@ pub async fn poll_sign_in(state: &AppState, provider: MailProvider) -> EmailSign
     }
 }
 
-/// Sets up the mailbox a finished sign-in belongs to: a new address adds
-/// a mailbox, a connected one gets the new sign-in and carries on from its
-/// cursor. The sign-in is at keyring `entry`.
-async fn connect(state: &AppState, provider: MailProvider, entry: &str) -> Result<(), String> {
+/// What an account reads of `family` after a sign-in that asked for
+/// `asked`: what it asked for, or a sign-in it already had apart
+fn read_after_sign_in(
+    asked: Reads,
+    family: AccountFamily,
+    before: Option<ReadSignIn>,
+) -> Option<ReadSignIn> {
+    if asked.has(family) {
+        Some(ReadSignIn::Account)
+    } else if before == Some(ReadSignIn::Apart) {
+        before
+    } else {
+        None
+    }
+}
+
+/// Sets up the account a finished sign-in belongs to: a new address adds
+/// an account, a connected one gets the new sign-in and carries on from its
+/// cursors. It reads what the sign-in asked for (`reads`). The sign-in is
+/// at keyring `entry`.
+async fn connect(
+    state: &AppState,
+    provider: MailProvider,
+    entry: &str,
+    reads: Reads,
+) -> Result<(), String> {
     let setup = state.email().setup();
-    let signing_in = Mailbox::signing_in(provider, entry.to_string(), &setup, state.secrets());
+    let signing_in =
+        Mailbox::signing_in(provider, entry.to_string(), reads, &setup, state.secrets());
     let identity = signing_in.identity().await.map_err(|e| {
         log::warn!(
-            "{} signed in, but reading the mailbox owner failed: {e}",
+            "{} signed in, but reading the account owner failed: {e}",
             provider.name()
         );
-        format!("Signed in, but Nandi couldn't read whose mailbox this is: {e}")
+        format!("Signed in, but Nandi couldn't read whose account this is: {e}")
     })?;
     let mailbox = MailboxId::new(provider, &identity.email);
-    // Reconnecting the same mailbox (after a sign-in ended) carries on from
-    // its cursor; a new one starts with the window
-    let same_mailbox = is_connected(state, &mailbox);
+    // Reconnecting the same account (after a sign-in ended, or to add files
+    // or the calendar) carries on from its cursors; a new one starts fresh
+    let known = email_settings(state).account(&mailbox).cloned();
+    let had_mail = known.as_ref().is_some_and(|a| a.mail);
     // Title, department and manager: best effort, empty on a miss
     let profile = signing_in.profile().await;
     move_sign_in(state, entry, &mailbox)?;
+    let mut account = known
+        .clone()
+        .unwrap_or_else(|| EmailAccount::mailbox(provider, &identity.email));
+    account.email = identity.email.clone();
+    account.name = identity.name.clone();
+    account.profile = profile.clone();
+    account.paused = false;
+    account.mail = reads.mail;
+    for family in AccountFamily::ALL {
+        let after = read_after_sign_in(reads, family, account.read(family));
+        account.set_read(family, after);
+    }
     let saved = update_config(state, |config| {
         let email = config.email.get_or_insert_with(EmailSettings::default);
-        let account = EmailAccount {
-            provider,
-            email: identity.email.clone(),
-            name: identity.name.clone(),
-            profile: profile.clone(),
-            paused: false,
-        };
-        // A reconnected mailbox keeps its place: the first stays first
+        // A reconnected account keeps its place: the first stays first
         match email.account_mut(&mailbox) {
-            Some(known) => *known = account,
-            None => email.accounts.push(account),
+            Some(known) => *known = account.clone(),
+            None => email.accounts.push(account.clone()),
         }
     });
     if let Err(error) = saved {
-        // No account was saved: a new mailbox's sign-in would be a secret
-        // nothing points to. A known mailbox keeps its new one.
-        if !same_mailbox {
+        // No account was saved: a new account's sign-in would be a secret
+        // nothing points to. A known account keeps its new one.
+        if known.is_none() {
             let _ = oauth::forget(&mailbox.token_entry(), state.secrets());
         }
         return Err(error);
+    }
+    for family in AccountFamily::ALL {
+        let kind = AccountKind::of(provider, family);
+        let before = known.as_ref().and_then(|a| a.read(family));
+        if reads.has(family) {
+            // The account's sign-in takes over one its files or calendar had apart
+            if before == Some(ReadSignIn::Apart) {
+                oauth::forget(&mailbox.read_token_entry(family), state.secrets())?;
+            }
+            crate::services::workspace::started(state, kind)?;
+        } else if before == Some(ReadSignIn::Account) {
+            crate::services::workspace::forget(state, &mailbox, family).await?;
+            crate::services::workspace::stopped(state, kind)?;
+        }
+    }
+    if !reads.mail {
+        if had_mail {
+            forget_progress(state, &mailbox).await?;
+            revoke_if_last(state, provider, "No mailbox of it is connected")?;
+        }
+        log::info!("Connected a {} account without its mail", provider.name());
+        emit_changed(state);
+        return Ok(());
     }
     // Connecting is the person's say-so for Nandi: a saved
     // read grant, removable in Settings › Connectors › Access
@@ -677,7 +758,7 @@ async fn connect(state: &AppState, provider: MailProvider, entry: &str) -> Resul
         crate::services::grants::record(state, "granted", &info, Some("The mailbox was connected"));
         events::emit(state.bus(), &crate::services::grants::GrantsChanged {});
     }
-    if same_mailbox {
+    if had_mail {
         let mut check = check_state(state, &mailbox).await;
         check.needs_sign_in = false;
         check.error = None;
@@ -744,31 +825,83 @@ async fn forget_progress(state: &AppState, mailbox: &MailboxId) -> Result<(), St
         .await
 }
 
-/// Signs one mailbox out: its keyring entry, cursor and account. The
-/// provider's grants go with its last mailbox.
+/// The provider's mail grants go with its last mailbox
+fn revoke_if_last(state: &AppState, provider: MailProvider, why: &str) -> Result<(), String> {
+    if email_settings(state).first_of(provider).is_some() {
+        return Ok(());
+    }
+    for gone in state.grants().revoke_connector(provider.id())? {
+        crate::services::grants::record(state, "removed", &gone, Some(why));
+    }
+    events::emit(state.bus(), &crate::services::grants::GrantsChanged {});
+    Ok(())
+}
+
+/// Signs one account out: its keyring entries, cursors and the account.
+/// The provider's grants go with its last mailbox, a drive's or calendar's
+/// with the last account that reads it.
 pub async fn disconnect(state: &AppState, mailbox: MailboxId) -> Result<EmailStatus, String> {
     let provider = mailbox.provider;
+    let known = email_settings(state).account(&mailbox).cloned();
     oauth::forget(&mailbox.token_entry(), state.secrets())?;
     forget_progress(state, &mailbox).await?;
-    let mut others = false;
+    for family in AccountFamily::ALL {
+        crate::services::workspace::forget(state, &mailbox, family).await?;
+    }
     update_config(state, |config| {
         if let Some(email) = config.email.as_mut() {
             email.accounts.retain(|a| !a.is(&mailbox));
-            others = email.first_of(provider).is_some();
         }
     })?;
-    if !others {
-        for gone in state.grants().revoke_connector(provider.id())? {
-            crate::services::grants::record(
-                state,
-                "removed",
-                &gone,
-                Some("The mailbox was disconnected"),
-            );
+    revoke_if_last(state, provider, "The mailbox was disconnected")?;
+    for family in AccountFamily::ALL {
+        if known.as_ref().is_some_and(|a| a.read(family).is_some()) {
+            crate::services::workspace::stopped(state, AccountKind::of(provider, family))?;
         }
-        events::emit(state.bus(), &crate::services::grants::GrantsChanged {});
     }
-    log::info!("Disconnected a {} mailbox", provider.name());
+    log::info!("Disconnected a {} account", provider.name());
+    emit_changed(state);
+    Ok(status(state).await)
+}
+
+/// Stops reading an account's files or calendar (adding one is a sign-in:
+/// [`start_sign_in`] with everything the account reads, plus it). Its
+/// cursors go, and the drive's or calendar's grants with the last account
+/// that reads it.
+pub async fn set_reads(
+    state: &AppState,
+    mailbox: MailboxId,
+    reads: Reads,
+) -> Result<EmailStatus, String> {
+    let account = email_settings(state)
+        .account(&mailbox)
+        .cloned()
+        .ok_or_else(|| not_connected(&mailbox))?;
+    let wants = account.wants();
+    if !wants.covers(reads) {
+        return Err("Sign in to the account to let Nandi read more of it".into());
+    }
+    if wants.mail != reads.mail || reads.is_empty() {
+        return Err("To stop reading this account's mail, sign the account out".into());
+    }
+    let dropped: Vec<AccountFamily> = AccountFamily::ALL
+        .into_iter()
+        .filter(|family| wants.has(*family) && !reads.has(*family))
+        .collect();
+    if dropped.is_empty() {
+        return Ok(status(state).await);
+    }
+    update_config(state, |config| {
+        if let Some(known) = config.email.as_mut().and_then(|e| e.account_mut(&mailbox)) {
+            for family in &dropped {
+                known.set_read(*family, None);
+            }
+        }
+    })?;
+    for family in dropped {
+        crate::services::workspace::forget(state, &mailbox, family).await?;
+        crate::services::workspace::stopped(state, AccountKind::of(mailbox.provider, family))?;
+    }
     emit_changed(state);
     Ok(status(state).await)
 }
@@ -955,7 +1088,7 @@ async fn run_check(
         } else {
             load_setting(state, id.cursor_key()).await
         };
-        let mailbox = Mailbox::new(&id, &setup, state.secrets());
+        let mailbox = Mailbox::new(account, &setup, state.secrets());
         match mailbox.changes(&cursor, window_start).await {
             Ok(changes) => {
                 if cursor.is_null() && !again {

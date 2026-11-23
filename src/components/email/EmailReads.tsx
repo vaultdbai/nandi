@@ -11,6 +11,7 @@ export function EmailReads() {
         <li>{t('email.reads.never')}</li>
         <li>{t('email.reads.kept')}</li>
         <li>{t('email.reads.cited')}</li>
+        <li>{t('email.reads.files')}</li>
       </ul>
     </div>
   )

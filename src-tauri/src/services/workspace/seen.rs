@@ -63,6 +63,7 @@ mod tests {
             cancelled: false,
             busy: true,
             location: None,
+            account: None,
             link: None,
         }
     }

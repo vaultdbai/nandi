@@ -20,7 +20,7 @@ use super::mail::Header;
 use super::mailbox::Mailbox;
 use super::settings::EmailAccount;
 use super::text::{neutralize, DATA_TAG};
-use super::{email_settings, granted, MailProvider, MailboxId};
+use super::{email_settings, granted, MailProvider};
 use crate::engine::ToolOutcome;
 use crate::llm::ToolSpec;
 use crate::services::AppState;
@@ -196,8 +196,9 @@ pub fn own_addresses(state: &AppState) -> Vec<String> {
 pub async fn message_by_id(state: &AppState, id: &str) -> Result<super::mail::Message, String> {
     let (provider, raw) =
         MailProvider::of_message_id(id).ok_or_else(|| format!("'{id}' isn't an email id"))?;
-    let mailboxes: Vec<MailboxId> = super::connected(state)
-        .into_iter()
+    let settings = email_settings(state);
+    let mailboxes: Vec<&EmailAccount> = settings
+        .mailboxes()
         .filter(|m| m.provider == provider)
         .collect();
     if mailboxes.is_empty() {
@@ -206,7 +207,7 @@ pub async fn message_by_id(state: &AppState, id: &str) -> Result<super::mail::Me
     let setup = state.email().setup();
     // The id names the provider, not which of its mailboxes holds it
     let mut failure = String::new();
-    for mailbox in &mailboxes {
+    for mailbox in mailboxes {
         match Mailbox::new(mailbox, &setup, state.secrets())
             .message(raw)
             .await
@@ -222,9 +223,9 @@ pub async fn message_by_id(state: &AppState, id: &str) -> Result<super::mail::Me
 /// let this call use)
 pub async fn call(state: &AppState, allowed: &[String], tool: &str, args: &Value) -> ToolOutcome {
     let accounts: Vec<EmailAccount> = email_settings(state)
-        .accounts
-        .into_iter()
+        .mailboxes()
         .filter(|a| allowed.iter().any(|id| id == a.provider.id()))
+        .cloned()
         .collect();
     if accounts.is_empty() {
         return error(format!(
@@ -232,7 +233,7 @@ pub async fn call(state: &AppState, allowed: &[String], tool: &str, args: &Value
         ));
     }
     let setup = state.email().setup();
-    let mailbox = |account: &EmailAccount| Mailbox::new(&account.id(), &setup, state.secrets());
+    let mailbox = |account: &EmailAccount| Mailbox::new(account, &setup, state.secrets());
     // An id names its provider, not which of its mailboxes holds it: each
     // allowed mailbox of that provider is asked in turn
     let by_id = |key: &str| -> Result<(Vec<&EmailAccount>, String), ToolOutcome> {

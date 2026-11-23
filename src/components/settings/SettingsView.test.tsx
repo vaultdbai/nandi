@@ -32,7 +32,6 @@ describe('SettingsView', () => {
       'This computer',
       'Account',
       'Email',
-      'Calendar & files',
       'Connector access',
       'Auto-approve',
       'Cloud credentials',

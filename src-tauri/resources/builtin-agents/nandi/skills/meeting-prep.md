@@ -19,7 +19,7 @@ Only what helps this meeting:
 - **The people.** For each attendee: their role and what they own (`find_people` with their name or topic, and the notes). Mark who is new to the user.
 - **The history.** The last email thread about the topic (`mail_search` with the title or the organiser, then `mail_get_thread`), the last meeting's notes, decisions made, promises the user made or is owed.
 - **Open items.** `my_requests` for requests between the user and the attendees; `work_open` for work in progress on the topic.
-- **Documents.** Files linked in the invite or found with `files_search`; read them with `files_read_text` when the brief needs what's inside.
+- **Documents.** Files linked in the invite or found with `files_search`; read them with `files_read_text` when the brief needs what's inside. Link each file and, with several accounts, name its `account`.
 
 If the meeting has no description and nothing in mail or notes, say so and ask the user what it's for instead of guessing.
 

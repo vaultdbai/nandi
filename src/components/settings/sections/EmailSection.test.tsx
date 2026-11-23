@@ -37,6 +37,9 @@ function mailbox(overrides: Partial<MailboxStatus> = {}): MailboxStatus {
     lastFound: 0,
     lastRunId: null,
     backfill: { phase: 'off', backTo: null, read: 0 },
+    reads: { mail: true, files: false, calendar: false },
+    readsApart: { mail: false, files: false, calendar: false },
+    calendar: null,
     ...overrides,
   }
 }
@@ -64,6 +67,7 @@ const NAMES = [
   'setEmailPaused',
   'disconnectEmail',
   'setEmailSettings',
+  'setEmailReads',
 ]
 
 function row(email: string): HTMLElement {
@@ -286,5 +290,76 @@ describe('EmailSection', () => {
     expect(
       screen.getByText('Sign in again to keep reading')
     ).toBeInTheDocument()
+  })
+
+  const flow = {
+    deviceCode: 'x',
+    userCode: '',
+    verificationUri: 'https://login.example/authorize',
+    interval: 1,
+    expiresAt: 0,
+  }
+
+  it('asks for mail and only the ticked files and calendar on one sign-in', async () => {
+    mocked.getEmailStatus = vi.fn(async () => ok(status([provider()])))
+    const start = vi.fn(async () => ok(flow))
+    mocked.startEmailSignIn = start
+    mocked.pollEmailSignIn = vi.fn(async () =>
+      ok({ phase: 'waiting', problem: null })
+    )
+    const user = userEvent.setup()
+    render(<EmailSection />)
+    const calendar = await screen.findByRole('checkbox', {
+      name: 'Also read my calendar (Outlook calendar)',
+    })
+    expect(
+      screen.getByRole('checkbox', { name: 'Also read my files (OneDrive)' })
+    ).toBeChecked()
+    expect(calendar).toBeChecked()
+    await user.click(calendar)
+    await user.click(screen.getByRole('button', { name: 'Connect Outlook' }))
+    expect(start).toHaveBeenCalledWith('outlook', {
+      mail: true,
+      files: true,
+      calendar: false,
+    })
+  })
+
+  it('drops files at once and signs in to add the calendar', async () => {
+    const reading = mailbox({
+      reads: { mail: true, files: true, calendar: false },
+    })
+    const connected = status([provider({ connected: true })], [reading])
+    mocked.getEmailStatus = vi.fn(async () => ok(connected))
+    const setReads = vi.fn(async () => ok(connected))
+    mocked.setEmailReads = setReads
+    const start = vi.fn(async () => ok(flow))
+    mocked.startEmailSignIn = start
+    mocked.pollEmailSignIn = vi.fn(async () =>
+      ok({ phase: 'waiting', problem: null })
+    )
+    const user = userEvent.setup()
+    render(<EmailSection />)
+    await screen.findByText('dev@company.com')
+    const account = row('dev@company.com')
+    await user.click(
+      within(account).getByRole('switch', {
+        name: 'Also read my files (OneDrive)',
+      })
+    )
+    expect(setReads).toHaveBeenCalledWith(
+      { provider: 'outlook', email: 'dev@company.com' },
+      { mail: true, files: false, calendar: false }
+    )
+    await user.click(
+      within(account).getByRole('switch', {
+        name: 'Also read my calendar (Outlook calendar)',
+      })
+    )
+    expect(start).toHaveBeenCalledWith('outlook', {
+      mail: true,
+      files: true,
+      calendar: true,
+    })
   })
 })

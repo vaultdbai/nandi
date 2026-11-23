@@ -174,6 +174,7 @@ async fn state_with(mock: &Mock) -> (AppState, Arc<Recorder>) {
     let base = mock.base.lock().unwrap().clone();
     state.email().set_setup(setup(&base));
     state.email().set_auto_check(false);
+    state.workspace().set_auto_check(false);
     let recorder = Arc::new(Recorder::default());
     state.email().set_sink(recorder.clone());
     (state, recorder)
@@ -183,7 +184,7 @@ async fn state_with(mock: &Mock) -> (AppState, Arc<Recorder>) {
 async fn connected(state: &AppState, provider: MailProvider) {
     let entry = provider.sign_in_entry("test");
     token(state.secrets(), &entry, 3600);
-    connect(state, provider, &entry).await.unwrap();
+    connect(state, provider, &entry, Reads::MAIL).await.unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -849,7 +850,9 @@ async fn connected_gmail_with_id(state: &AppState, address: &str) {
             .to_string(),
         )
         .unwrap();
-    connect(state, MailProvider::Gmail, &entry).await.unwrap();
+    connect(state, MailProvider::Gmail, &entry, Reads::MAIL)
+        .await
+        .unwrap();
 }
 
 fn addresses(state: &AppState) -> Vec<String> {
@@ -971,7 +974,9 @@ async fn a_sign_in_that_cant_be_saved_leaves_no_secret_behind() {
     std::fs::create_dir_all(state.nandi_dir()).unwrap();
     std::fs::write(state.nandi_dir().join("config.json"), "{ not json").unwrap();
 
-    assert!(connect(&state, MailProvider::Gmail, &entry).await.is_err());
+    assert!(connect(&state, MailProvider::Gmail, &entry, Reads::MAIL)
+        .await
+        .is_err());
     assert_eq!(state.secrets().get(&entry).unwrap(), None);
     assert_eq!(state.secrets().get(&gmail().token_entry()).unwrap(), None);
     assert!(super::connected(&state).is_empty());
@@ -982,13 +987,21 @@ async fn a_sign_in_that_cant_be_saved_leaves_no_secret_behind() {
 async fn each_sign_in_attempt_has_its_own_entry() {
     let mock = mock(outlook_api).await;
     let (state, _recorder) = state_with(&mock).await;
-    start_sign_in(&state, MailProvider::Outlook).await.unwrap();
-    let first = lock(&state.email().sign_ins)[&MailProvider::Outlook].clone();
+    start_sign_in(&state, MailProvider::Outlook, Reads::MAIL)
+        .await
+        .unwrap();
+    let first = lock(&state.email().sign_ins)[&MailProvider::Outlook]
+        .entry
+        .clone();
     // Something half-way in the first attempt's entry
     token(state.secrets(), &first, 3600);
 
-    start_sign_in(&state, MailProvider::Outlook).await.unwrap();
-    let second = lock(&state.email().sign_ins)[&MailProvider::Outlook].clone();
+    start_sign_in(&state, MailProvider::Outlook, Reads::MAIL)
+        .await
+        .unwrap();
+    let second = lock(&state.email().sign_ins)[&MailProvider::Outlook]
+        .entry
+        .clone();
     assert_ne!(first, second, "a new attempt never shares an entry");
     assert_eq!(
         state.secrets().get(&first).unwrap(),
@@ -1249,7 +1262,7 @@ async fn a_build_without_client_ids_cant_connect() {
     state.email().set_setup(ProviderSetup::default());
     let status = super::status(&state).await;
     assert!(status.providers.iter().all(|p| !p.available));
-    let error = start_sign_in(&state, MailProvider::Outlook)
+    let error = start_sign_in(&state, MailProvider::Outlook, Reads::MAIL)
         .await
         .unwrap_err();
     assert!(error.contains("isn't available in this build"));
@@ -1260,7 +1273,9 @@ async fn a_build_without_client_ids_cant_connect() {
 async fn sign_in_opens_microsoft_with_read_only_scopes() {
     let mock = mock(outlook_api).await;
     let (state, _recorder) = state_with(&mock).await;
-    let flow = start_sign_in(&state, MailProvider::Outlook).await.unwrap();
+    let flow = start_sign_in(&state, MailProvider::Outlook, Reads::MAIL)
+        .await
+        .unwrap();
     assert!(flow.user_code.is_empty(), "PKCE");
     let url = reqwest::Url::parse(&flow.verification_uri).unwrap();
     let params: HashMap<String, String> = url.query_pairs().into_owned().collect();
@@ -1584,4 +1599,168 @@ fn dmarc_passes_only_from_the_users_provider_for_the_from_domain() {
         ("Subject", "Statement"),
     ];
     assert_eq!(authentication_results(headers), vec![gmail]);
+}
+
+// ---------------------------------------------------------------------------
+// Files and calendar with each account
+// ---------------------------------------------------------------------------
+
+fn everything() -> Reads {
+    Reads {
+        mail: true,
+        files: true,
+        calendar: true,
+    }
+}
+
+/// Signs in to `provider` asking for `reads`, then connects
+async fn connected_reading(state: &AppState, provider: MailProvider, reads: Reads) {
+    let entry = provider.sign_in_entry("test");
+    token(state.secrets(), &entry, 3600);
+    connect(state, provider, &entry, reads).await.unwrap();
+}
+
+fn granted_to_nandi(state: &AppState, connector: &str) -> bool {
+    state
+        .grants()
+        .allows(DEFAULT_AGENT, connector, GrantAccess::Read)
+}
+
+#[tokio::test]
+async fn connecting_asks_only_for_the_ticked_reads_on_one_sign_in() {
+    let mock = mock(outlook_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    let scope_of = |flow: DeviceFlowState| -> String {
+        let url = reqwest::Url::parse(&flow.verification_uri).unwrap();
+        let params: HashMap<String, String> = url.query_pairs().into_owned().collect();
+        params["scope"].clone()
+    };
+    let mail = scope_of(
+        start_sign_in(&state, MailProvider::Outlook, Reads::MAIL)
+            .await
+            .unwrap(),
+    );
+    assert!(
+        !mail.contains("Files.") && !mail.contains("Calendars."),
+        "{mail}"
+    );
+    let all = scope_of(
+        start_sign_in(&state, MailProvider::Outlook, everything())
+            .await
+            .unwrap(),
+    );
+    assert!(
+        all.contains("Mail.Read")
+            && all.contains("Files.Read.All")
+            && all.contains("Calendars.Read"),
+        "{all}"
+    );
+    assert!(
+        start_sign_in(&state, MailProvider::Outlook, Reads::default())
+            .await
+            .is_err()
+    );
+
+    connected_reading(&state, MailProvider::Outlook, everything()).await;
+    let status = status(&state).await;
+    assert_eq!(status.mailboxes[0].reads, everything());
+    assert_eq!(status.mailboxes[0].reads_apart, Reads::default());
+    assert!(status.mailboxes[0].calendar.is_some());
+    for connector in ["outlook", "onedrive", "outlook-calendar"] {
+        assert!(granted_to_nandi(&state, connector), "{connector}");
+    }
+    // The drive and calendar read with the mailbox's own sign-in
+    let drive = &crate::services::workspace::sources(&state, AccountFamily::Files)[0];
+    assert_eq!(drive.mailbox, outlook());
+    assert_eq!(drive.account(), "dev@company.com");
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn an_account_drops_its_files_and_keeps_its_mail() {
+    let mock = mock(outlook_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected_reading(&state, MailProvider::Outlook, everything()).await;
+    let files_cursor = outlook().read_key(AccountFamily::Files, "cursor");
+    save_setting(&state, files_cursor.clone(), json!("t-1"))
+        .await
+        .unwrap();
+
+    // Adding takes a sign-in; mail stops only by signing out
+    assert!(set_reads(&state, outlook(), everything()).await.is_ok());
+    let none = Reads::default();
+    assert!(set_reads(&state, outlook(), none).await.is_err());
+    let calendar_only = Reads::only(AccountFamily::Calendar);
+    assert!(set_reads(&state, outlook(), calendar_only).await.is_err());
+
+    let status = set_reads(
+        &state,
+        outlook(),
+        Reads::MAIL.with(AccountFamily::Calendar, true),
+    )
+    .await
+    .unwrap();
+    assert!(!status.mailboxes[0].reads.files);
+    assert!(status.mailboxes[0].reads.calendar);
+    assert_eq!(
+        load_setting::<Value>(&state, files_cursor).await,
+        Value::Null
+    );
+    assert!(!granted_to_nandi(&state, "onedrive"), "no account reads it");
+    assert!(granted_to_nandi(&state, "outlook"));
+    assert!(granted_to_nandi(&state, "outlook-calendar"));
+    assert!(set_reads(&state, gmail(), Reads::MAIL).await.is_err());
+
+    // Signing out takes the calendar's grant and keys with it
+    let calendar_cursor = outlook().read_key(AccountFamily::Calendar, "cursor");
+    save_setting(&state, calendar_cursor.clone(), json!("d-1"))
+        .await
+        .unwrap();
+    disconnect(&state, outlook()).await.unwrap();
+    assert!(!granted_to_nandi(&state, "outlook-calendar"));
+    assert_eq!(
+        load_setting::<Value>(&state, calendar_cursor).await,
+        Value::Null
+    );
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn a_new_sign_in_takes_over_a_calendar_connected_apart() {
+    let mock = mock(outlook_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Outlook).await;
+    // As the upgrade from 0.2 leaves a calendar connected on its own
+    let apart = outlook().read_token_entry(AccountFamily::Calendar);
+    token(state.secrets(), &apart, 3600);
+    update_config(&state, |config| {
+        let email = config.email.as_mut().unwrap();
+        let account = email.account_mut(&outlook()).unwrap();
+        account.calendar = Some(ReadSignIn::Apart);
+    })
+    .unwrap();
+    let cursor = outlook().read_key(AccountFamily::Calendar, "cursor");
+    save_setting(&state, cursor.clone(), json!("d-1"))
+        .await
+        .unwrap();
+    assert!(status(&state).await.mailboxes[0].reads_apart.calendar);
+
+    // Reconnecting without the calendar ticked keeps it on its own sign-in
+    connected_reading(&state, MailProvider::Outlook, Reads::MAIL).await;
+    assert!(state.secrets().get(&apart).unwrap().is_some());
+    assert!(status(&state).await.mailboxes[0].reads.calendar);
+
+    // Ticking it: the account's sign-in takes over, the cursor stays
+    connected_reading(
+        &state,
+        MailProvider::Outlook,
+        Reads::MAIL.with(AccountFamily::Calendar, true),
+    )
+    .await;
+    let account = email_settings(&state).account(&outlook()).cloned().unwrap();
+    assert_eq!(account.calendar, Some(ReadSignIn::Account));
+    assert_eq!(state.secrets().get(&apart).unwrap(), None);
+    assert_eq!(load_setting::<Value>(&state, cursor).await, json!("d-1"));
+    assert!(status(&state).await.mailboxes[0].reads_apart.is_empty());
+    state.shutdown();
 }

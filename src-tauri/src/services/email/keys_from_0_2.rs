@@ -116,13 +116,7 @@ mod tests {
     use crate::services::email::settings::{EmailAccount, EmailSettings};
 
     fn account(provider: MailProvider, email: &str) -> EmailAccount {
-        EmailAccount {
-            provider,
-            email: email.into(),
-            name: None,
-            profile: Default::default(),
-            paused: false,
-        }
+        EmailAccount::mailbox(provider, email)
     }
 
     /// A `config.json` with 0.2's two mailboxes, and their keys under 0.2's

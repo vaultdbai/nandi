@@ -259,6 +259,15 @@ impl AppState {
         if let Err(e) = moved {
             log::error!("{e}");
         }
+        // Then 0.2's calendars and drives, connected on their own, move
+        // under the account with the same address
+        let moved = nandi_config::nandi_dir().and_then(|dir| {
+            let conn = db.conn()?;
+            workspace::keys_from_0_2::upgrade(&dir, &conn, &config.secrets)
+        });
+        if let Err(e) = moved {
+            log::error!("{e}");
+        }
         let local = nandi_config::local_dir()?;
         // Logs Nandi 0.1.0 wrote without the hash chain are kept aside, so
         // the Logs view shows them as older entries, not a broken chain

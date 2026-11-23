@@ -9,9 +9,11 @@ import { ConnectMailbox } from '@/components/email/ConnectMailbox'
 import { BackfillChoice } from '@/components/email/BackfillChoice'
 import { EmailReads } from '@/components/email/EmailReads'
 import { MailboxRow } from '@/components/email/MailboxRow'
+import { useWorkspaceAction, useWorkspaceStatus } from '@/hooks/useConnectorHub'
 import { useEmailAction, useEmailStatus } from '@/hooks/useEmail'
 import { formatRelativeTime } from '@/lib/format-time'
 import type { EmailStatus } from '@/lib/tauri-bindings'
+import { anyCalendar, calendarIntervalOptions } from '../email/reads-model'
 import {
   addableProviders,
   canCheckNow,
@@ -26,9 +28,11 @@ import { SettingsGroup, SettingsSectionFrame } from '../SettingsFrame'
 
 /**
  * Settings › Email: connect Outlook or Gmail so Nandi keeps
- * My notes from it, as many mailboxes as the person has. Says what's read
- * and what never happens, then one row per mailbox (status and its own
- * actions) with Add another account, then how often and whom to watch.
+ * My notes from it, as many accounts as the person has, each with its
+ * files and calendar when ticked. Says what's read and what never happens,
+ * then one row per account (status, what it reads, its own actions) with
+ * Add another account, then how often and whom to watch, then the calendar
+ * check once an account reads its calendar.
  */
 export function EmailSection() {
   const { t } = useTranslation()
@@ -120,7 +124,66 @@ function EmailBody({ status }: { status: EmailStatus }) {
         )}
       </SettingsGroup>
       <ScheduleSettings status={status} />
+      {anyCalendar(status.mailboxes) && <CalendarSchedule />}
     </>
+  )
+}
+
+/** How often each account's calendar is checked, and Check now */
+function CalendarSchedule() {
+  const { t, i18n } = useTranslation()
+  const workspace = useWorkspaceStatus()
+  const action = useWorkspaceAction()
+  const status = workspace.data
+  if (!status) return null
+  const options = calendarIntervalOptions(status.calendarIntervalMinutes)
+  return (
+    <SettingsGroup title={t('workspace.schedule')}>
+      <label className="flex flex-wrap items-center gap-2 text-sm">
+        {t('workspace.every')}
+        <NativeSelect
+          value={String(status.calendarIntervalMinutes)}
+          onChange={event =>
+            action.mutate({
+              kind: 'interval',
+              minutes: Number(event.target.value),
+            })
+          }
+          aria-label={t('workspace.every')}
+        >
+          {options.map(minutes => (
+            <NativeSelectOption key={minutes} value={String(minutes)}>
+              {intervalLabel(t, minutes)}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </label>
+      <p className="text-xs text-muted-foreground">{t('workspace.oneRun')}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={status.checking || action.isPending}
+          onClick={() => action.mutate({ kind: 'check' })}
+        >
+          {status.checking ? <Spinner /> : <RefreshCw />}
+          {status.checking ? t('email.checking') : t('workspace.checkNow')}
+        </Button>
+        {status.nextCalendarCheckAt !== null && !status.checking && (
+          <span className="text-xs text-muted-foreground">
+            {t('workspace.nextCheck', {
+              when: formatRelativeTime(
+                status.nextCalendarCheckAt,
+                i18n.language
+              ),
+            })}
+          </span>
+        )}
+      </div>
+      {action.error && (
+        <p className="text-sm text-destructive">{String(action.error)}</p>
+      )}
+    </SettingsGroup>
   )
 }
 

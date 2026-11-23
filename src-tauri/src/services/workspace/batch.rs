@@ -4,7 +4,7 @@
 //! Never a description: `calendar_get_event` reads one when it's worth it.
 
 use super::calendar::Event;
-use super::WorkspaceAccount;
+use super::Source;
 use crate::services::email::text::neutralize_tag;
 
 pub const DATA_TAG: &str = "calendar-data";
@@ -29,12 +29,7 @@ fn clean(text: &str) -> String {
 }
 
 impl CalendarBatch {
-    pub fn new(
-        accounts: &[WorkspaceAccount],
-        mut events: Vec<Event>,
-        first_read: bool,
-        now: i64,
-    ) -> Self {
+    pub fn new(accounts: &[Source], mut events: Vec<Event>, first_read: bool, now: i64) -> Self {
         events.sort_by(|a, b| a.start.cmp(&b.start));
         events.dedup_by(|a, b| a.id == b.id);
         let omitted = events.len().saturating_sub(MAX_BATCH);
@@ -43,8 +38,8 @@ impl CalendarBatch {
             owners: accounts
                 .iter()
                 .map(|a| match &a.name {
-                    Some(name) => format!("{name} <{}>", a.email),
-                    None => a.email.clone(),
+                    Some(name) => format!("{name} <{}>", a.account()),
+                    None => a.account().to_string(),
                 })
                 .collect(),
             events,
@@ -105,9 +100,14 @@ ever accepted, declined, moved or deleted.\n\n<{DATA_TAG}>\n"
                 format!(" [{}]", flags.join(", "))
             };
             out.push_str(&format!(
-                "{}. id {} | {} to {}{} | organizer {} | {} attendee{} | \"{}\"{}\n",
+                "{}. id {}{} | {} to {}{} | organizer {} | {} attendee{} | \"{}\"{}\n",
                 index + 1,
                 event.id,
+                event
+                    .account
+                    .as_deref()
+                    .map(|a| format!(" | account {a}"))
+                    .unwrap_or_default(),
                 event.start,
                 event.end,
                 flags,
@@ -136,7 +136,35 @@ ever accepted, declined, moved or deleted.\n\n<{DATA_TAG}>\n"
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::workspace::AccountKind;
+    use crate::services::email::settings::{EmailAccount, ReadSignIn};
+    use crate::services::email::MailProvider;
+    use crate::services::workspace::AccountFamily;
+
+    fn calendar_of(email: &str, name: Option<&str>) -> Source {
+        let mut account = EmailAccount::mailbox(MailProvider::Outlook, email);
+        account.name = name.map(str::to_string);
+        account.calendar = Some(ReadSignIn::Account);
+        Source::of(&account, AccountFamily::Calendar).unwrap()
+    }
+
+    #[test]
+    fn several_accounts_name_each_event_s_account() {
+        let accounts = [
+            calendar_of("me@contoso.com", None),
+            calendar_of("me@fabrikam.com", None),
+        ];
+        let mut work = event("w", "2026-11-10T10:00:00Z", "Planning");
+        work.account = Some("me@fabrikam.com".into());
+        let prompt = CalendarBatch::new(&accounts, vec![work], false, 1_762_000_000).prompt();
+        assert!(
+            prompt.contains("me@contoso.com and me@fabrikam.com"),
+            "{prompt}"
+        );
+        assert!(
+            prompt.contains("outlook-calendar:w | account me@fabrikam.com |"),
+            "{prompt}"
+        );
+    }
 
     fn event(id: &str, start: &str, title: &str) -> Event {
         Event {
@@ -152,17 +180,14 @@ mod tests {
             cancelled: false,
             busy: true,
             location: None,
+            account: None,
             link: None,
         }
     }
 
     #[test]
     fn one_line_per_event_soonest_first_and_untrusted() {
-        let accounts = [WorkspaceAccount {
-            kind: AccountKind::OutlookCalendar,
-            email: "me@contoso.com".into(),
-            name: Some("Dev".into()),
-        }];
+        let accounts = [calendar_of("me@contoso.com", Some("Dev"))];
         let batch = CalendarBatch::new(
             &accounts,
             vec![

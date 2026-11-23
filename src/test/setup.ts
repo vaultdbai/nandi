@@ -73,7 +73,7 @@ vi.mock('@/lib/tauri-bindings', async importOriginal => {
       listNoteSuggestions: ok([]),
       answerNoteSuggestion: ok(''),
       getWorkspaceStatus: ok({
-        accounts: [],
+        connected: [],
         calendarIntervalMinutes: 60,
         nextCalendarCheckAt: null,
         checking: false,

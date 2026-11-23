@@ -3,16 +3,20 @@
 use crate::services::auth::oauth::DeviceFlowState;
 use crate::services::email::{
     self, BackfillAction, BackfillEstimate, BackfillRange, EmailSettingsInput, EmailSignInPoll,
-    EmailStatus, MailProvider, MailboxId,
+    EmailStatus, MailProvider, MailboxId, Reads,
 };
 
 super::commands! {
     /// The mailboxes, what this build can connect, and when the next check is
     fn get_email_status(state) -> EmailStatus => Ok(email::status(&state).await);
 
-    /// Starts connecting a mailbox: open `verificationUri` (PKCE), or show
-    /// `userCode` (device flow)
-    fn start_email_sign_in(state, provider: MailProvider) -> DeviceFlowState => email::start_sign_in(&state, provider).await;
+    /// Starts connecting an account, asking for what `reads` ticks (mail,
+    /// files, calendar): open `verificationUri` (PKCE), or show `userCode`
+    /// (device flow)
+    fn start_email_sign_in(state, provider: MailProvider, reads: Reads) -> DeviceFlowState => email::start_sign_in(&state, provider, reads).await;
+
+    /// Stops reading an account's files or calendar (adding one is a sign-in)
+    fn set_email_reads(state, mailbox: MailboxId, reads: Reads) -> EmailStatus => email::set_reads(&state, mailbox, reads).await;
 
     /// Checks the sign-in once; `connected` once the mailbox is set up
     fn poll_email_sign_in(state, provider: MailProvider) -> EmailSignInPoll => Ok(email::poll_sign_in(&state, provider).await);

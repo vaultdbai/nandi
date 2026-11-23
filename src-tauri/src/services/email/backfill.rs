@@ -173,10 +173,11 @@ pub async fn estimate(state: &AppState, range: BackfillRange) -> Vec<BackfillEst
     let setup = state.email().setup();
     let now = unix_now();
     let mut out = Vec::new();
-    for account in email_settings(state).accounts {
+    let settings = email_settings(state);
+    for account in settings.mailboxes() {
         let id = account.id();
         let backfill = load(state, &id).await;
-        let mailbox = Mailbox::new(&id, &setup, state.secrets());
+        let mailbox = Mailbox::new(account, &setup, state.secrets());
         match mailbox
             .count(start_of(&backfill, now), range.floor(now))
             .await
@@ -250,7 +251,7 @@ pub async fn pass(state: &AppState) -> Option<String> {
             emit_changed(state);
             continue;
         }
-        let mailbox = Mailbox::new(&id, &setup, state.secrets());
+        let mailbox = Mailbox::new(account, &setup, state.secrets());
         let mut headers = match mailbox.older(before, floor, BATCH).await {
             Ok(headers) => headers,
             Err(e) => {

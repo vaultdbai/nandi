@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use super::provider::{MailProvider, ProviderSetup};
+use super::provider::{MailProvider, ProviderSetup, Reads};
 use crate::services::auth::oauth::{self, OAuthProvider, TokenError};
 use crate::services::secrets::Secrets;
 
@@ -81,16 +81,18 @@ pub struct MailApi {
 }
 
 impl MailApi {
-    /// A mailbox whose sign-in is at keyring `entry`
+    /// A mailbox whose sign-in is at keyring `entry`, renewed with the
+    /// scopes of everything it `reads`
     pub fn new(
         provider: MailProvider,
         entry: String,
+        reads: Reads,
         setup: &ProviderSetup,
         secrets: &Secrets,
     ) -> Self {
         Self::for_account(
             provider.name(),
-            setup.oauth(provider),
+            setup.oauth(provider, reads),
             entry,
             setup.api_bases(provider),
             secrets,

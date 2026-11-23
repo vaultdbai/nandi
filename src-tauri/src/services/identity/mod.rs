@@ -172,15 +172,20 @@ pub async fn fresh_id_token(state: &AppState) -> Result<(String, VerifiedIdentit
     let locked = identity(state).ok_or(NoIdToken::NoEmail)?;
     let provider = locked.provider;
     let mailbox = MailboxId::new(provider, &locked.email);
-    if !crate::services::email::is_connected(state, &mailbox) {
+    // Its sign-in renews with everything it asked for (mail, and files and
+    // calendar when ticked)
+    let Some(account) = crate::services::email::email_settings(state)
+        .account(&mailbox)
+        .cloned()
+    else {
         return Err(NoIdToken::Disconnected {
             email: locked.email,
         });
-    }
+    };
     let setup = state.email().setup();
     let token = oauth::fresh_id_token(
         &mailbox.token_entry(),
-        &setup.oauth(provider),
+        &setup.oauth(provider, account.reads()),
         state.secrets(),
     )
     .await

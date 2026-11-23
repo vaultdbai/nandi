@@ -112,6 +112,9 @@ describe('StepEmail', () => {
               lastFound: 0,
               lastRunId: null,
               backfill: { phase: 'off', backTo: null, read: 0 },
+              reads: { mail: true, files: false, calendar: false },
+              readsApart: { mail: false, files: false, calendar: false },
+              calendar: null,
             },
           ]
         )

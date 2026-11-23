@@ -43,6 +43,9 @@ pub struct Event {
     /// Shows as busy (free/busy)
     pub busy: bool,
     pub location: Option<String>,
+    /// The account's address, when several accounts' calendars are read
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
     pub link: Option<String>,
 }
 
@@ -114,6 +117,7 @@ pub fn outlook_event(kind: AccountKind, item: &Value) -> Option<Event> {
                 .unwrap_or(false),
         busy: matches!(show_as, "busy" | "oof" | "tentative" | "workingElsewhere"),
         location: str_at(item, &["location", "displayName"]).map(str::to_string),
+        account: None,
         link: str_at(item, &["webLink"]).map(str::to_string),
     })
 }
@@ -149,6 +153,7 @@ pub fn google_event(kind: AccountKind, item: &Value) -> Option<Event> {
         cancelled: str_at(item, &["status"]) == Some("cancelled"),
         busy: str_at(item, &["transparency"]) != Some("transparent"),
         location: str_at(item, &["location"]).map(str::to_string),
+        account: None,
         link: str_at(item, &["htmlLink"]).map(str::to_string),
     })
 }

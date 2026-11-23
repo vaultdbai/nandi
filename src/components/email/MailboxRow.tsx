@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { EmailSignInStatus } from '@/components/email/EmailSignInStatus'
 import {
   backfillLine,
@@ -20,6 +21,13 @@ import {
   mailboxOf,
   type CardTone,
 } from '@/components/settings/email/email-model'
+import {
+  addMailReads,
+  calendarLine,
+  readChange,
+  readSwitches,
+  reconnectReads,
+} from '@/components/settings/email/reads-model'
 import { useEmailAction, useEmailSignIn } from '@/hooks/useEmail'
 import { formatRelativeTime } from '@/lib/format-time'
 import type { MailboxStatus } from '@/lib/tauri-bindings'
@@ -33,10 +41,11 @@ const TONE: Record<CardTone, string> = {
 }
 
 /**
- * One connected mailbox in Settings › Email: its provider, address and
- * status, when it was last read, the background read of older mail, and
- * its own Pause or Resume, Reconnect and Sign out. The identity mailbox is
- * marked, and signing it out says what that does.
+ * One connected account in Settings › Email: its provider, address and
+ * status, when its mail was last read, the background read of older mail,
+ * whether Nandi also reads its files and calendar (turning one on signs in
+ * for it), and its own Pause or Resume, Reconnect and Sign out. The
+ * identity mailbox is marked, and signing it out says what that does.
  */
 export function MailboxRow({ status }: { status: MailboxStatus }) {
   const { t, i18n } = useTranslation()
@@ -45,6 +54,7 @@ export function MailboxRow({ status }: { status: MailboxStatus }) {
   const action = useEmailAction()
   const signIn = useEmailSignIn(status.provider)
   const waiting = signIn.state.phase === 'waiting'
+  const mail = status.reads.mail
 
   return (
     <div
@@ -65,23 +75,42 @@ export function MailboxRow({ status }: { status: MailboxStatus }) {
         )}
       </div>
       <p className="text-sm">{card.account}</p>
-      <p className="text-xs text-muted-foreground">
-        {status.lastCheckedAt !== null
-          ? t('email.lastChecked', {
-              when: formatRelativeTime(status.lastCheckedAt, i18n.language),
-              count: status.lastFound,
-            })
-          : t('email.notCheckedYet')}
-      </p>
-      <BackfillLineView status={status} />
+      {mail && (
+        <p className="text-xs text-muted-foreground">
+          {status.lastCheckedAt !== null
+            ? t('email.lastChecked', {
+                when: formatRelativeTime(status.lastCheckedAt, i18n.language),
+                count: status.lastFound,
+              })
+            : t('email.notCheckedYet')}
+        </p>
+      )}
+      {mail && <BackfillLineView status={status} />}
       {card.error && (
         <p className="text-xs text-muted-foreground">{card.error}</p>
       )}
+      <AccountReads
+        status={status}
+        busy={waiting || action.isPending}
+        onSignIn={reads => void signIn.start(reads)}
+      />
       <EmailSignInStatus state={signIn.state} />
       <div className="flex flex-wrap gap-2">
         {card.reconnect && !waiting && (
-          <Button size="sm" onClick={() => void signIn.start()}>
+          <Button
+            size="sm"
+            onClick={() => void signIn.start(reconnectReads(status))}
+          >
             {t('email.reconnect')}
+          </Button>
+        )}
+        {!mail && !waiting && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void signIn.start(addMailReads(status))}
+          >
+            {t('email.reads.addMail')}
           </Button>
         )}
         {waiting && (
@@ -142,6 +171,67 @@ export function MailboxRow({ status }: { status: MailboxStatus }) {
       </div>
       {action.error && (
         <p className="text-sm text-destructive">{String(action.error)}</p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Also read my files and my calendar: one switch each. On signs in for it
+ * (the one sign-in asks for everything the account reads); off stops
+ * reading it right away.
+ */
+function AccountReads({
+  status,
+  busy,
+  onSignIn,
+}: {
+  status: MailboxStatus
+  busy: boolean
+  onSignIn: (reads: MailboxStatus['reads']) => void
+}) {
+  const { t, i18n } = useTranslation()
+  const action = useEmailAction()
+  const mailbox = mailboxOf(status)
+  const line = calendarLine(status.calendar)
+  const toggle = (family: 'files' | 'calendar', on: boolean) => {
+    const change = readChange(status, family, on)
+    if (change.kind === 'signIn') onSignIn(change.reads)
+    else action.mutate({ kind: 'reads', mailbox, reads: change.reads })
+  }
+  return (
+    <div className="space-y-2" data-testid="account-reads">
+      {readSwitches(status).map(read => (
+        <div key={read.family} className="space-y-1">
+          <label className="flex items-center gap-2 text-sm">
+            <Switch
+              checked={read.on}
+              disabled={busy}
+              onCheckedChange={on => toggle(read.family, on)}
+              aria-label={t(`email.reads.alsoRead.${read.family}`, {
+                name: read.name,
+              })}
+            />
+            {t(`email.reads.alsoRead.${read.family}`, { name: read.name })}
+          </label>
+          {read.apart && (
+            <p className="text-xs text-muted-foreground">
+              {t('email.reads.apart')}
+            </p>
+          )}
+        </div>
+      ))}
+      {line && (
+        <p className="text-xs text-muted-foreground">
+          {line.key === 'workspace.lastChecked'
+            ? t(line.key, {
+                when: formatRelativeTime(line.when, i18n.language),
+                count: line.count,
+              })
+            : line.key === 'email.reads.calendarError'
+              ? t(line.key, { error: line.error })
+              : t(line.key)}
+        </p>
       )}
     </div>
   )
