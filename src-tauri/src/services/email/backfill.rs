@@ -13,6 +13,7 @@
 //! - It stops at the start of the mailbox or the chosen range
 //!   ([`BackfillRange`]); a 429 or an outage just waits for the next pass.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -285,6 +286,14 @@ pub async fn pass(state: &AppState) -> Option<String> {
             emit_changed(state);
             return None;
         }
+        let inboxes: HashMap<String, String> = if me.len() > 1 {
+            headers
+                .iter()
+                .map(|h| (h.id.clone(), id.email.clone()))
+                .collect()
+        } else {
+            HashMap::new()
+        };
         let text = Batch {
             me: &me,
             headers: &headers,
@@ -293,6 +302,7 @@ pub async fn pass(state: &AppState) -> Option<String> {
             window_days: READ_WINDOW_DAYS,
             backfill: true,
             again: false,
+            inboxes: &inboxes,
         }
         .prompt();
         let title = format!("Email: older mail, {} emails", headers.len());

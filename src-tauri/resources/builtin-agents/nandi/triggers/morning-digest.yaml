@@ -14,4 +14,6 @@ input_template: |
   reminder due within 3 days, then my meetings (if a calendar is
   connected), work waiting on me, work in
   progress, what finished since yesterday, and the asks and deadlines in
-  my notes. Plain words. Say "Nothing new" if there is nothing.
+  my notes. With more than one mailbox connected, group what came from
+  email by mailbox, named by its address. Plain words. Say "Nothing new"
+  if there is nothing.

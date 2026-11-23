@@ -971,6 +971,15 @@ async fn run_check(
     let handed_over = if headers.is_empty() {
         true
     } else {
+        // Each line names its inbox only when there are several
+        let inboxes: HashMap<String, String> = if accounts.len() > 1 {
+            came_from
+                .iter()
+                .map(|(id, mailbox)| (id.clone(), mailbox.email.clone()))
+                .collect()
+        } else {
+            HashMap::new()
+        };
         let text = batch::Batch {
             me: &me,
             headers: &headers,
@@ -979,6 +988,7 @@ async fn run_check(
             window_days: READ_WINDOW_DAYS,
             backfill: false,
             again,
+            inboxes: &inboxes,
         }
         .prompt();
         let plural = if headers.len() == 1 { "" } else { "s" };

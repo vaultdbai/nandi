@@ -166,6 +166,22 @@ fn headers_value(headers: &[Header]) -> Value {
     json!({ "messages": headers })
 }
 
+/// [`headers_value`], each message naming the mailbox it's in when there
+/// are several (`mailbox`), so the model can say where an ask came from
+fn headers_with_mailbox(found: &[(String, Header)], several: bool) -> Value {
+    let messages: Vec<Value> = found
+        .iter()
+        .map(|(mailbox, header)| {
+            let mut message = json!(header);
+            if several {
+                message["mailbox"] = json!(mailbox);
+            }
+            message
+        })
+        .collect();
+    json!({ "messages": messages })
+}
+
 /// The user's connected addresses
 pub fn own_addresses(state: &AppState) -> Vec<String> {
     email_settings(state)
@@ -287,7 +303,9 @@ pub async fn call(state: &AppState, allowed: &[String], tool: &str, args: &Value
                     mailbox(account).recent(since, limit).await
                 };
                 match found {
-                    Ok(headers) => all.extend(headers),
+                    Ok(headers) => {
+                        all.extend(headers.into_iter().map(|h| (account.email.clone(), h)))
+                    }
                     Err(e) => failure = Some(e),
                 }
             }
@@ -297,16 +315,49 @@ pub async fn call(state: &AppState, allowed: &[String], tool: &str, args: &Value
                 }
             }
             if tool == LIST_NEW {
-                all.retain(|h| filter.keep(h));
+                all.retain(|(_, h)| filter.keep(h));
             }
-            all.sort_by_key(|h| std::cmp::Reverse(h.at));
+            all.sort_by_key(|(_, h)| std::cmp::Reverse(h.at));
             all.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
-            Ok(headers_value(&all))
+            Ok(headers_with_mailbox(&all, accounts.len() > 1))
         }
         _ => return error(format!("Unknown mail tool '{tool}'")),
     };
     match result {
         Ok(value) => untrusted(&value),
         Err(e) => error(e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod mailbox_tests {
+    use super::*;
+
+    fn found(mailbox: &str) -> (String, Header) {
+        let header = Header {
+            id: "gmail:1".into(),
+            thread_id: "gmail:t1".into(),
+            folder: super::super::mail::Folder::Inbox,
+            from: None,
+            to: vec![],
+            cc: vec![],
+            subject: "Hi".into(),
+            date: "2026-11-22T08:00:00Z".into(),
+            preview: String::new(),
+            bulk: false,
+            unread: false,
+            list_id: None,
+            auto_submitted: None,
+            at: 0,
+        };
+        (mailbox.to_string(), header)
+    }
+
+    #[test]
+    fn names_the_mailbox_only_when_there_are_several() {
+        let one = headers_with_mailbox(&[found("me@home.com")], false);
+        assert!(one["messages"][0].get("mailbox").is_none());
+        let several = headers_with_mailbox(&[found("me@work.com")], true);
+        assert_eq!(several["messages"][0]["mailbox"], "me@work.com");
     }
 }
