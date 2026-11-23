@@ -3,6 +3,7 @@ import type { AgentOverview, HarnessInfo, LlmKeyStatus } from '@/lib/bindings'
 import { agentInfo, run } from '@/test/fixtures'
 import {
   agentIdFrom,
+  agentModelLine,
   agentProblem,
   dayTone,
   hasModelFormatError,
@@ -11,6 +12,7 @@ import {
   resourceError,
   runOrigin,
   runtimeAuthMissing,
+  ownModel,
   runtimeDetail,
   runtimeName,
   sharedLabel,
@@ -52,6 +54,30 @@ describe('runtime in plain words', () => {
     expect(runtimeDetail(overview({ runtime: 'codex' }), null)).toEqual({
       kind: 'container',
     })
+  })
+})
+
+describe('ownModel and agentModelLine', () => {
+  it('is the agent’s own model on Nandi’s runtime only', () => {
+    expect(ownModel(overview({ model: 'claude:claude-sonnet-5' }))).toBe(
+      'claude:claude-sonnet-5'
+    )
+    expect(ownModel(overview())).toBeNull()
+    expect(
+      ownModel(overview({ runtime: 'codex', model: 'gpt-5-codex' }))
+    ).toBeNull()
+    expect(ownModel(undefined)).toBeNull()
+  })
+
+  it('says when another model answers, but leaves no model to the health card', () => {
+    const noKey = {
+      key: 'noKeyFor',
+      provider: 'anthropic',
+      model: 'gpt:gpt-5',
+    } as const
+    expect(agentModelLine(noKey)).toEqual(noKey)
+    expect(agentModelLine({ key: 'noModel' })).toBeNull()
+    expect(agentModelLine(null)).toBeNull()
   })
 })
 

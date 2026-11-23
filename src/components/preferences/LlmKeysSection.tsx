@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, TriangleAlert } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   llmKeyStatusQueryKey,
@@ -12,6 +12,7 @@ import {
   useProviderModels,
 } from '@/hooks/useLlmKeyStatus'
 import { KeyTestResult } from '@/components/models/KeyTestResult'
+import { ModelReasonLine } from '@/components/models/ModelReasonLine'
 import { ProviderKeyForm } from '@/components/models/ProviderKeyForm'
 import {
   AlertDialog,
@@ -37,7 +38,6 @@ import {
   joinModel,
   KEYED_PROVIDERS,
   MODEL_PROVIDERS,
-  modelLabel,
   modelReason,
   modelSuggestions,
   providerNeedsKey,
@@ -45,7 +45,6 @@ import {
   splitModel,
   type ModelProvider,
 } from '@/lib/models'
-import { cn } from '@/lib/utils'
 import { authSummary } from '@/components/harness/runtime-options'
 import type {
   HarnessAuth,
@@ -455,7 +454,7 @@ function DefaultModelField() {
     : modelSuggestions(provider, installed)
   const reason = status
     ? modelReason({
-        defaultModel: status.defaultModel,
+        chosenModel: status.defaultModel,
         effectiveModel: status.effectiveModel,
         onFreeTokens: status.trial?.active === true,
       })
@@ -533,30 +532,7 @@ function DefaultModelField() {
           })}
         </p>
       )}
-      {reason && (
-        <p
-          role={reason.key === 'noModel' ? 'note' : undefined}
-          className={cn(
-            'flex items-center gap-1.5 text-sm',
-            reason.key === 'noModel' ? 'text-warning' : 'text-muted-foreground'
-          )}
-          data-testid="model-reason"
-        >
-          {reason.key === 'noModel' && (
-            <TriangleAlert aria-hidden className="size-4 shrink-0" />
-          )}
-          {reason.key === 'noModel'
-            ? t('models.noModel')
-            : reason.key === 'noKeyFor'
-              ? t('models.using.noKeyFor', {
-                  provider: t(`models.provider.${reason.provider}.name`),
-                  model: modelLabel(reason.model),
-                })
-              : t(`models.using.${reason.key}`, {
-                  model: modelLabel(reason.model),
-                })}
-        </p>
-      )}
+      <ModelReasonLine reason={reason} />
     </SettingsField>
   )
 }

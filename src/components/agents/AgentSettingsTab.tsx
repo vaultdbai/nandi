@@ -44,6 +44,7 @@ import { useHarnesses } from '@/hooks/useHarnesses'
 import {
   useDefaultModel,
   useLlmKeyStatus,
+  useModelReason,
   useOllama,
 } from '@/hooks/useLlmKeyStatus'
 import type { AgentConnectorChoice, HostRule } from '@/lib/bindings'
@@ -56,6 +57,7 @@ import { DeleteAgentDialog } from './DeleteAgentDialog'
 import { ResetNandiDialog } from './ResetNandiDialog'
 import { NetworkAccess } from './NetworkAccess'
 import {
+  agentModelLine,
   hasModelFormatError,
   isCliRuntime,
   modelOptions,
@@ -64,6 +66,7 @@ import {
   runtimeName,
 } from './agent-page-model'
 import { AgentConnectorGrants } from '@/components/connectors/AgentConnectorGrants'
+import { ModelReasonLine } from '@/components/models/ModelReasonLine'
 
 const sameDraft = (a: EditorDraft, b: EditorDraft) =>
   JSON.stringify(a) === JSON.stringify(b)
@@ -438,6 +441,11 @@ function ModelSection({
   const defaultName = defaultModel?.defaultModel
     ? modelLabel(defaultModel.defaultModel)
     : ''
+  const chosen =
+    !cli && draft.modelProvider && draft.modelName.trim()
+      ? `${draft.modelProvider}:${draft.modelName.trim()}`
+      : null
+  const reason = agentModelLine(useModelReason(chosen))
 
   return (
     <Section title={t('agentPage.settings.model')}>
@@ -583,6 +591,7 @@ function ModelSection({
               })}
             </Note>
           )}
+          <ModelReasonLine reason={reason} className="sm:col-span-2" />
           {!draft.modelProvider && (
             <p className="text-xs text-muted-foreground sm:col-span-2">
               {t('agentPage.settings.defaultHint')}

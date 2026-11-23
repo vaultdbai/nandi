@@ -3,6 +3,7 @@ import { client } from '@/lib/client'
 import type { KeyedProvider } from '@/lib/bindings'
 import { unwrapResult } from '@/lib/tauri-bindings'
 import { useClientQuery } from '@/hooks/useClientQuery'
+import { modelReason } from '@/lib/models'
 
 /** Shared key so saving a key in Preferences refreshes every consumer */
 export const llmKeyStatusQueryKey = ['llmKeyStatus'] as const
@@ -21,6 +22,26 @@ export function useDefaultModel() {
   return useClientQuery([...llmKeyStatusQueryKey, 'defaultModel'], () =>
     client.getDefaultModel()
   )
+}
+
+/**
+ * Which model answers a call set to `model` (an agent's own) with the keys
+ * set now, and why when it's another one (`modelReason`). Nothing for no
+ * model (the default applies: Settings › Models says it). Under the
+ * key-status key, so saving a key refreshes it.
+ */
+export function useModelReason(model: string | null) {
+  const effective = useClientQuery(
+    [...llmKeyStatusQueryKey, 'effective', model],
+    () => client.effectiveModel(model ?? ''),
+    { enabled: Boolean(model), retry: false }
+  )
+  if (!model || !effective.data) return null
+  return modelReason({
+    chosenModel: model,
+    effectiveModel: effective.data.model,
+    onFreeTokens: effective.data.onTrial,
+  })
 }
 
 /**

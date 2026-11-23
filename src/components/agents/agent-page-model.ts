@@ -13,7 +13,12 @@ import type {
   RunSummary,
 } from '@/lib/bindings'
 import { runtimeUsable } from '@/components/harness/runtime-options'
-import { KEYED_PROVIDERS, modelLabel, providersWithKeys } from '@/lib/models'
+import {
+  KEYED_PROVIDERS,
+  modelLabel,
+  providersWithKeys,
+  type ModelReason,
+} from '@/lib/models'
 import type { AgentInfo } from '@/types/agent'
 
 /** The agent page's tabs */
@@ -52,6 +57,26 @@ export function runtimeDetail(
   if (isCliRuntime(overview.runtime)) return { kind: 'container' }
   const model = overview.model ?? defaultModel
   return { kind: 'model', label: model ? modelLabel(model) : '' }
+}
+
+/**
+ * The model the agent is set to on Nandi's own runtime, if it has one of
+ * its own (a CLI's model belongs to the CLI; no model means the default)
+ */
+export function ownModel(
+  overview: Pick<AgentOverview, 'runtime' | 'model'> | undefined
+): string | null {
+  if (!overview || isCliRuntime(overview.runtime)) return null
+  return overview.model ?? null
+}
+
+/**
+ * The line on the agent's page and in its chat when another model
+ * answers: no key for its model, or the free tokens. No model at all is
+ * the health card's line, not this one.
+ */
+export function agentModelLine(reason: ModelReason | null): ModelReason | null {
+  return reason?.key === 'noModel' ? null : reason
 }
 
 /** How a day cell looks */

@@ -204,18 +204,18 @@ export type ModelReason =
  * provider, or no model at all)
  */
 export function modelReason({
-  defaultModel,
+  chosenModel,
   effectiveModel,
   onFreeTokens,
 }: {
-  defaultModel: string
+  chosenModel: string
   effectiveModel: string | null
   onFreeTokens: boolean
 }): ModelReason | null {
   if (effectiveModel === null) return { key: 'noModel' }
   if (onFreeTokens) return { key: 'freeTokens', model: effectiveModel }
-  if (effectiveModel === defaultModel) return null
-  const provider = providerOf(defaultModel)
+  if (effectiveModel === chosenModel) return null
+  const provider = providerOf(chosenModel)
   return provider && provider !== 'ollama'
     ? { key: 'noKeyFor', provider, model: effectiveModel }
     : { key: 'instead', model: effectiveModel }

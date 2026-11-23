@@ -415,6 +415,16 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - **Needs relay:** no
 - **Status:** Shipped
 
+### MD-24 — The same line for an agent set to its own model
+
+- **What:** An agent (and so its chat) set to a model whose provider has no key is answered by another model. The agent's page says so under its header on every tab, Chat included ("No Anthropic key yet, so calls use GPT-5."), and the Settings tab says it under the model being chosen. Nothing shows when its own model answers, for an agent on the default model, or for a CLI runtime. No model at all stays the health card's line.
+- **Where:** `AgentView.tsx`, `AgentSettingsTab.tsx` (`ModelSection`), `components/models/ModelReasonLine.tsx`, `useModelReason` (`hooks/useLlmKeyStatus.ts`), `agent-page-model.ts` (`ownModel`, `agentModelLine`); command `effective_model` (`POST /api/rpc/effective_model`, `llm_keys::effective_model` on `usable_model`).
+- **Steps:** 1. Only an OpenAI key. 2. Set an agent's model to `claude:claude-sonnet-5`, save. 3. Open its Overview and Chat tabs. 4. Add an Anthropic key.
+- **Expected:** Step 3: "No Anthropic key yet, so calls use GPT-5." under the header. Step 4: the line goes.
+- **Automation:** Covered by: `llm_keys.rs` (`an_agents_model_says_which_model_answers_it`), `agent-page-model.test.ts`, `models.choices.test.ts` | Layer: unit | Gap: the page itself is manual.
+- **Needs relay:** no
+- **Status:** Shipped (live test pending)
+
 ### MD-07 — Model resolution and fallback order for every call
 
 - **What:** Every model call uses the requested model when its provider is usable (key, Ollama needs none, Claude Code sign-in counts for `claude:`), else the first usable of `claude:claude-sonnet-5`, `gpt:gpt-5`, `deepseek:deepseek-flash`, else the free trial while tokens remain, else an error naming what to add. Default comes from `NANDI_LLM_MODEL`, else the team's `.nandi/llm.yaml` default provider (native kinds), else settings.

@@ -65,6 +65,8 @@ import { NandiUpdateCard } from '@/components/agents/NandiUpdateCard'
 import { ResetNandiDialog } from '@/components/agents/ResetNandiDialog'
 import {
   AGENT_TABS,
+  agentModelLine,
+  ownModel,
   runtimeDetail,
   runtimeName,
   type AgentTab,
@@ -73,7 +75,8 @@ import { PublishDialog } from '@/components/marketplace/PublishDialog'
 import { SharedAgentBanner } from '@/components/marketplace/SharedAgentBanner'
 import { AgentSharingDialog } from '@/components/sharing/AgentSharingDialog'
 import { useAgentOverviews } from '@/hooks/useAgents'
-import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
+import { useDefaultModel, useModelReason } from '@/hooks/useLlmKeyStatus'
+import { ModelReasonLine } from '@/components/models/ModelReasonLine'
 import { decideApproval } from '@/lib/agent-actions'
 import { isDefaultAgent } from '@/lib/agent-identity'
 import { loadAgent } from '@/lib/agent-sync'
@@ -203,6 +206,8 @@ function AgentPage({
   }
 
   const overview = overviews.data?.find(o => o.agentId === agent.id)
+  // Its own model with no key: say which one answers, on every tab
+  const modelLine = agentModelLine(useModelReason(ownModel(overview)))
   const detail = overview
     ? runtimeDetail(
         overview,
@@ -286,6 +291,9 @@ function AgentPage({
         onOpenRules={() => changeTab('settings')}
       />
       {warning && <AgentWarningBanner agentId={agent.id} warning={warning} />}
+      {modelLine && (
+        <ModelReasonLine reason={modelLine} className="border-b px-4 py-1.5" />
+      )}
       {isDefaultAgent(agent) && <NandiUpdateCard agent={agent} />}
       {pending[0] && (
         <div className="border-b bg-warning/5 px-4 py-2">

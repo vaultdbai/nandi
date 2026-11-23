@@ -62,7 +62,7 @@ describe('modelReason', () => {
   it('says nothing when calls use the chosen model', () => {
     expect(
       modelReason({
-        defaultModel: 'gpt:gpt-5',
+        chosenModel: 'gpt:gpt-5',
         effectiveModel: 'gpt:gpt-5',
         onFreeTokens: false,
       })
@@ -72,21 +72,21 @@ describe('modelReason', () => {
   it('names the free tokens, a missing key, or no model at all', () => {
     expect(
       modelReason({
-        defaultModel: 'claude:claude-sonnet-5',
+        chosenModel: 'claude:claude-sonnet-5',
         effectiveModel: 'deepseek:deepseek-flash',
         onFreeTokens: true,
       })
     ).toEqual({ key: 'freeTokens', model: 'deepseek:deepseek-flash' })
     expect(
       modelReason({
-        defaultModel: 'claude:claude-sonnet-5',
+        chosenModel: 'claude:claude-sonnet-5',
         effectiveModel: 'gpt:gpt-5',
         onFreeTokens: false,
       })
     ).toEqual({ key: 'noKeyFor', provider: 'anthropic', model: 'gpt:gpt-5' })
     expect(
       modelReason({
-        defaultModel: 'claude:claude-sonnet-5',
+        chosenModel: 'claude:claude-sonnet-5',
         effectiveModel: null,
         onFreeTokens: false,
       })
