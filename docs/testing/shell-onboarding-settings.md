@@ -1305,6 +1305,36 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
+### ST-37 — Settings › Browser: My Nandi browser
+
+- **What:** One shared browser profile per installed browser type (Chrome, Edge), where the person signs in to sites themselves. Settings › Browser has a card per installed browser:
+  - **Open my Nandi browser** opens a normal Chrome or Edge window on `~/.nandi/local/browser/profiles/<chrome|edge>/profile`, with no agent attached. It's the person's own browsing: it doesn't go through the egress proxy, and no agent's allowed sites limit it. Opening it again while it's open adds a window.
+  - The card says: "Sign in to Chrome (or Edge) in this window to bring your saved passwords through the browser's own sync. Nandi never copies passwords or cookies from your everyday browser."
+  - A line says whether sites remember sign-ins, whether the window is open, or which agent has it open right now, and which agents may use it (their grants, AG-39).
+  - **Sign out everywhere** asks first, then closes the window and deletes that profile. Refused calmly while an agent's browser has it open ("in use by <agent> right now").
+  - Without Chrome or Edge: "Nandi didn't find Chrome or Edge on this computer."
+  - The profile is never under the repo, never mounted into a container, and never backed up (the S3 backup leaves out `local/browser/*/*/profile`).
+- **Where:** `src/components/settings/sections/BrowserSection.tsx`, `src/lib/browser-profile.ts`, `src/hooks/usePilots.ts` (`useNandiBrowsers`, `useOpenNandiBrowser`, `useSignOutNandiBrowser`); `src-tauri/src/services/pilots/profiles.rs` (`profile_dir`, `open_window`, `window_args`, `begin_wipe`), `services/pilots/browser.rs` (`sign_out_shared`), `services/pilots.rs` (`nandi_browsers`, `open_nandi_browser`, `sign_out_nandi_browser`); commands `nandi_browsers`, `open_nandi_browser`, `sign_out_nandi_browser`.
+- **Preconditions:** Chrome or Edge installed.
+- **Steps:**
+  1. Open Settings › Browser.
+  2. Press **Open my Nandi browser** under Chrome. Sign in to a site, and to Chrome itself. Close the window.
+  3. Visit a site no agent is allowed in that window.
+  4. Give an agent My Nandi browser (AG-39) and start a run that browses; while it runs, press **Open my Nandi browser** and **Sign out everywhere**.
+  5. After the run, press **Sign out everywhere** and confirm.
+- **Expected:**
+  - Step 1: one card per installed browser, with the sync note.
+  - Step 2: a normal window opens (no "controlled by automated software" bar); after closing, the card says sites remember your sign-ins.
+  - Step 3: the site loads; nothing about it is in `egress.log`.
+  - Step 4: "In use by <agent> right now"; both buttons are disabled.
+  - Step 5: "Signed out everywhere"; the profile folder is gone; the button is disabled.
+- **Edge / negative cases:**
+  - The person's everyday Chrome or Edge profile is never read or changed.
+  - The window stays open after Nandi quits; an agent asking for the profile then is told it's open in another window (Chromium's own lock).
+- **Automation:** Covered by: Rust `pilots/profiles.rs` (`shared_profiles_live_under_local_browser_profiles`, `the_person_s_window_has_no_proxy_and_its_own_profile`, `a_second_agent_is_told_the_profile_is_in_use_until_the_first_lets_go`, `a_browser_this_app_did_not_start_still_counts`, `no_code_reads_the_everyday_browser_profile`), `pilots/browser.rs` (`backups_leave_out_every_browser_profile`), Vitest `BrowserSection.test.tsx`, `browser-profile.test.ts`, `SettingsView.test.tsx` | Layer: unit | Gap: no test launches a real browser; opening, signing in and Chrome sync are manual.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## 1.9 Appearance, language and preferences
 
 ### ST-26 — Language and right-to-left layout

@@ -245,6 +245,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ST-33 | Settings › This computer (get your computer ready)                       | Shipped                                              | api + unit | no          |                                        |
 | ST-35 | Get your computer ready with one go-ahead (Windows, macOS)               | Shipped                                              | unit       | no          |                                        |
 | ST-36 | Check GitHub security (findings become to-dos)                           | Shipped                                              | unit       | no          |                                        |
+| ST-37 | Settings › Browser: My Nandi browser                                     | Shipped                                              | unit       | no          |                                        |
 | ST-26 | Language and right-to-left layout                                        | Shipped                                              | unit       | no          |                                        |
 | ST-27 | Light, dark and system mode                                              | Shipped                                              | unit       | no          |                                        |
 | ST-28 | Color palettes and window icon                                           | Shipped                                              | unit       | no          |                                        |
@@ -287,6 +288,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | AG-32 | Run plans: plan first, live checklist, finish check                     | Shipped            | unit          | no          |                                             |
 | AG-33 | Playbooks: skill files an agent reads on demand                         | Shipped            | unit          | no          |                                             |
 | AG-34 | Sites and accounts: site secrets, site profiles, sign out everywhere    | Shipped            | unit          | no          |                                             |
+| AG-39 | An agent's browser uses My Nandi browser (a grant)                      | Shipped            | unit + ui     | no          |                                             |
 | AG-35 | "Remember how I do this": an agent proposes a playbook                  | Shipped            | unit          | no          |                                             |
 | AG-29 | Settings tab: Internet access (allowed sites)                           | Shipped            | unit          | no          |                                             |
 | AG-17 | Settings tab: Permissions panel                                         | Shipped            | unit          | no          |                                             |

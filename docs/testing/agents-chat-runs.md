@@ -570,7 +570,8 @@ Shared preconditions used below:
   - Each secret the browser types, with **Secret saved** or **Not set** (never the value). Type a value and **Save** to set or replace it, **Clear** to remove it.
   - **Add secret** (agents made on this computer, Nandi too): a name (typed in capitals, `ACME_PASSWORD`) and a value. The name goes into skill.md (`secrets: {ACME_PASSWORD: nandi.pilot.<agent>.acme-password}`), the value into the keychain. A taken or badly formed name keeps Add disabled with the reason. Pack agents show no Add; their values can still be set.
   - **Sign out everywhere** asks first, then stops that agent's browser and deletes its profile (cookies, sign-ins). Disabled with "No sign-ins saved" when there is none. Secrets stay.
-  - Browser profiles are never backed up (S3 Backup leaves out `local/browser/*/*/profile`) and live under `~/.nandi/local`, not the repo.
+  - Browser profiles are never backed up (S3 Backup leaves out `local/browser/*/*/profile`, My Nandi browser's too) and live under `~/.nandi/local`, not the repo.
+  - **Sign out everywhere** here clears the agent's own profile only. My Nandi browser (AG-39) is signed out in Settings › Browser (ST-37).
   - Site profiles: Nandi keeps non-secret details in `my-notes/private/sites/<site>.md` (its `sign-in-and-accounts` and `web-task` playbooks). A note with a card number (a Luhn-valid 13 to 19 digit run) or a `password:` line is refused with a message saying what to keep instead.
 - **Where:** `src/components/agent-console/PermissionsPanel.tsx`, `site-secrets-model.ts`, `src/hooks/usePilots.ts`; `src-tauri/src/services/pilots.rs` (`add_pilot_secret`, `set_pilot_secret`, `clear_browser_profile`), `services/pilots/browser.rs` (`sign_out`, `mask_secrets`, `profile_backup_exclude`), `services/domain/capability.rs` (`pilot_secret_ref`), `services/domain/note_guard.rs`, `services/connectors/filesystem.rs`, `services/connectors/s3_backup.rs`.
 - **Preconditions:** The Browser pilot installed; Nandi allowed to use it.
@@ -591,6 +592,35 @@ Shared preconditions used below:
   - A value is never shown again, in the panel, the chat, Run Detail or the logs.
   - `Secret name: ACME_PASSWORD` in a site profile is written.
 - **Automation:** Covered by: Rust `pilots::tests::a_site_secret_s_value_stays_in_the_keychain` (skill.md, keychain, Permissions view, events, prompt note, log lines), `domain/agent.rs` (`a_site_secret_added_by_the_user_round_trips_by_name`), `domain/note_guard.rs`, `connectors/filesystem.rs` (`the_notes_keep_site_profiles_but_never_cards_or_passwords`), `pilots/browser.rs` (`signing_out_clears_only_that_profile`, `secret_values_never_reach_a_reply`, `backups_leave_out_every_browser_profile`, `profiles_live_under_local_never_the_repo`), Vitest `site-secrets-model.test.ts`, `PermissionsPanel.test.tsx` | Layer: unit, integration | Gap: no end-to-end run against a real site.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### AG-39 — An agent's browser uses My Nandi browser (a grant)
+
+- **What:** The visible **Browser** pilot signs in with its own profile (the default) or with **My Nandi browser (Chrome|Edge)**, the shared profile the person signs in to in Settings › Browser (ST-37).
+  - The agent's **Permissions** tab shows **Signs in with** under Browser: **Its own profile** or **My Nandi browser (Chrome)** / **(Edge)**, one per installed browser. Choosing one is a grant the person gives this agent: kept on this computer (`consent.<agent>.browser.profile` in `state.db`), recorded in the decisions file (kind `browserProfileGrant`, granted or removed), and listed on the Settings › Browser card. Choosing **Its own profile** takes it back.
+  - Everything else stays: allowed sites, per-call approvals, the visible window, the egress proxy as `browser:<agent>`.
+  - The headless browser never gets it: Browser (headless) shows no choice and always uses its own profile.
+  - One browser per profile: if the person's window or another agent has it open, the agent's browser call answers "My Nandi browser (Chrome) is in use by <agent> right now. Try again when its run ends." (or "is open in another window"). It doesn't wait. The profile is free again when the holder's run ends or its browser closes.
+  - A granted browser that was uninstalled stays listed; the agent's browser then says to choose another.
+- **Where:** `src/components/agent-console/PermissionsPanel.tsx`, `BrowserProfileSelect.tsx`, `src/lib/browser-profile.ts`, `src/hooks/usePilots.ts` (`useSetAgentBrowserProfile`); `src-tauri/src/services/pilots.rs` (`set_agent_browser_profile`, `agent_pilot_permissions` `sharedProfile`), `services/pilots/store.rs` (`browser_profile`, `set_browser_profile`, `browser_profiles`), `services/pilots/profiles.rs` (`for_pilot`, `claim_for_agent`, `release_agent`), `services/pilots/browser.rs` (`ensure`, `call`, `close_pages`); command `set_agent_browser_profile`.
+- **Preconditions:** The Browser pilot installed and allowed for two agents; Chrome installed; signed in to a site in My Nandi browser (Chrome).
+- **Steps:**
+  1. On agent A's Permissions, set **Signs in with** to **My Nandi browser (Chrome)**.
+  2. Ask agent A to open the site you signed in to.
+  3. While A's run is open, ask agent B (also granted Chrome) to browse.
+  4. Open Settings › Logs › Decisions (or `.nandi/decisions/<yyyy-mm>.md`).
+  5. Set A back to **Its own profile** and ask it to open the site again.
+- **Expected:**
+  - Step 1: the hint says it uses your sign-ins from My Nandi browser; Settings › Browser lists A under Chrome.
+  - Step 2: the window opens signed in; the site still has to be in A's allowed sites, and clicks still ask.
+  - Step 3: B says My Nandi browser (Chrome) is in use by A right now; nothing else is harmed.
+  - Step 4: `browserProfileGrant` granted for A.
+  - Step 5: the window opens on A's own profile, signed out of that site; a `removed` decision.
+- **Edge / negative cases:**
+  - An agent with no grant never opens the shared profile.
+  - A grant for a browser that isn't installed is refused.
+- **Automation:** Covered by: Rust `pilots/store.rs` (`the_shared_profile_grant_is_per_agent_and_apart_from_capabilities`), `pilots/profiles.rs` (`only_the_visible_browser_gets_the_shared_profile`, `whoever_opens_it_first_holds_it`, `in_use_is_said_calmly`, `a_second_agent_is_told_the_profile_is_in_use_until_the_first_lets_go`), Vitest `PermissionsPanel.test.tsx` ('lets the person give the agent My Nandi browser and take it back', 'offers no shared profile to the headless browser'), `browser-profile.test.ts` | Layer: unit | Gap: no end-to-end run with two agents and a real browser.
 - **Needs relay:** no
 - **Status:** Shipped
 
