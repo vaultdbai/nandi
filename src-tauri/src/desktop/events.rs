@@ -27,6 +27,7 @@ use crate::services::relay::{
 };
 use crate::services::repo_service::{RepoRebuildCompleted, RepoRebuildStarted};
 use crate::services::requests::local::RequestUpdated;
+use crate::services::retro::RetroChanged;
 use crate::services::run_plan::RunPlanUpdated;
 use crate::services::studio::{StudioArtifactLoaded, StudioArtifactSaved, StudioEditPreviewed};
 use crate::services::triggers::{TriggerError, TriggerFired, TriggerRateLimited, TriggersChanged};
@@ -109,6 +110,7 @@ tauri_events!(
     MemberKeyChanged,
     GroupsChanged,
     KnowMeChanged,
+    RetroChanged,
     DelegationTaskStarted,
     DelegationTaskCompleted,
     DelegationTaskFailed,

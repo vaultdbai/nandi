@@ -36,6 +36,7 @@ pub mod note_guard;
 pub mod playbook;
 pub mod policy;
 pub mod repo;
+pub mod retro;
 pub mod settings;
 pub mod todo;
 pub mod trigger;

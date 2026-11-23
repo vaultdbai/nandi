@@ -163,6 +163,7 @@ pub mod relay_capabilities;
 pub mod remote;
 pub mod repo;
 pub mod requests;
+pub mod retro;
 pub mod runs;
 pub mod shared;
 pub mod snapshots;
@@ -231,6 +232,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     remote::RPC,
     repo::RPC,
     requests::RPC,
+    retro::RPC,
     runs::RPC,
     shared::RPC,
     snapshots::RPC,

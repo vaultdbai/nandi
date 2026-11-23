@@ -8,7 +8,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         delegation_clarification, egress, email, gateway, groups, harness_sessions, harnesses,
         help, identity, images, knowme, live, llm_keys, machine, manual_steps, marketplace,
         marketplace_search, mascot, memory, network, notes, palette, pilots, policies, preferences,
-        queue, reassign, relay, relay_capabilities, remote, repo, requests, runs, shared,
+        queue, reassign, relay, relay_capabilities, remote, repo, requests, retro, runs, shared,
         snapshots, studio, tasks, tools, triggers, work, workflow_builder, workflows, workspace,
     };
     use crate::services::a2a::reassign::TaskReassigned;
@@ -35,6 +35,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     };
     use crate::services::repo_service::{RepoRebuildCompleted, RepoRebuildStarted};
     use crate::services::requests::local::RequestUpdated;
+    use crate::services::retro::RetroChanged;
     use crate::services::run_plan::RunPlanUpdated;
     use crate::services::studio::{StudioArtifactLoaded, StudioArtifactSaved, StudioEditPreviewed};
     use crate::services::triggers::{
@@ -184,6 +185,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             knowme::get_know_me,
             knowme::know_me_todo,
             knowme::confirm_know_me_proposal,
+            retro::list_retro_items,
+            retro::act_on_retro_proposal,
             connectors::list_connectors,
             connectors::install_connector,
             connectors::start_connector,
@@ -509,6 +512,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             MemberKeyChanged,
             GroupsChanged,
             KnowMeChanged,
+            RetroChanged,
             DelegationTaskStarted,
             DelegationTaskCompleted,
             DelegationTaskFailed,

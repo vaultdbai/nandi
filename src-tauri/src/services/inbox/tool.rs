@@ -331,6 +331,16 @@ async fn decide(
             Ok("retried".to_string())
         }
         (InboxItemRef::KnowMe, Propose) => crate::services::knowme::apply(state, args).await,
+        (InboxItemRef::Retro { proposal_id }, Approve | Refuse) => {
+            use crate::services::retro::{act, RetroAction};
+            let action = if approve {
+                RetroAction::Apply
+            } else {
+                RetroAction::Refuse
+            };
+            act(state, proposal_id.clone(), action).await?;
+            Ok(if approve { "applied" } else { "refused" }.to_string())
+        }
         (InboxItemRef::Failed { work_id }, Done) => {
             crate::services::work::dismiss_work(state, work_id.clone()).await?;
             Ok("dismissed".to_string())

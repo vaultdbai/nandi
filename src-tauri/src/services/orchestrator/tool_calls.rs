@@ -170,6 +170,40 @@ pub(super) async fn run_call(
                 },
             }
         }
+        // The weekly retro's tools: on the host, in that run only
+        _ if ctx.agent_id == DEFAULT_AGENT
+            && crate::services::retro::tool::is_retro_tool(&call.tool) =>
+        {
+            match app_state(deps) {
+                Some(state) if is_retro_run(deps, &ctx.run_id).await => {
+                    let retro = crate::services::retro::Retro::of(&state);
+                    let (run_id, tool, args) =
+                        (ctx.run_id.clone(), call.tool.clone(), call.args.clone());
+                    let outcome = tokio::task::spawn_blocking(move || {
+                        crate::services::retro::tool::call(
+                            &retro,
+                            &run_id,
+                            &tool,
+                            &args,
+                            crate::db::now_ms(),
+                        )
+                    })
+                    .await
+                    .unwrap_or_else(|e| ToolOutcome {
+                        result: format!("The retro stopped: {e}"),
+                        is_error: true,
+                    });
+                    if call.tool == crate::services::retro::tool::PROPOSE && !outcome.is_error {
+                        events::emit(state.bus(), &crate::services::retro::RetroChanged {});
+                    }
+                    outcome
+                }
+                _ => ToolOutcome {
+                    result: format!("Tool '{}' is not available in this run", call.tool),
+                    is_error: true,
+                },
+            }
+        }
         // Mail (read-only): on the host, for an agent the user let read it
         _ if ctx.agent_id != STUDIO_AGENT_ID && email::tool::is_mail_tool(&call.tool) => {
             match app_state(deps) {

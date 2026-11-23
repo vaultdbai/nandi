@@ -207,6 +207,7 @@ pub struct Repos {
     pub policies: PolicyRepository,
     pub groups: GroupRepository,
     pub decisions: DecisionRepository,
+    git: git::GitIndex,
 }
 
 impl Repos {
@@ -222,13 +223,50 @@ impl Repos {
             vendor: VendorRepository::new(layout.clone(), git.clone()),
             policies: PolicyRepository::new(layout.clone(), git.clone()),
             groups: GroupRepository::new(layout.clone(), git.clone()),
-            decisions: DecisionRepository::new(layout.clone(), git),
+            decisions: DecisionRepository::new(layout.clone(), git.clone()),
+            git,
             layout,
         }
     }
 
     pub fn layout(&self) -> &RepoLayout {
         &self.layout
+    }
+
+    /// Writes `text` over the definition file at `path`, or removes it for
+    /// `None`, and stages it. For a whole file the person approved as it
+    /// stands (a weekly retro proposal, or its undo): the caller has checked
+    /// it with the domain rules, and reloads it after. Only under
+    /// `.nandi/`, never in an installed agent or pack. Returns whether the
+    /// file changed.
+    pub fn write_definition_text(&self, path: &Path, text: Option<&str>) -> RepoResult<bool> {
+        let refuse = |why: &str| {
+            Err(RepoError::Domain(
+                crate::services::domain::DomainError::Rule(format!("{}: {why}", path.display())),
+            ))
+        };
+        if !path.starts_with(&self.layout.meta_dir) {
+            return refuse("not a definition in the gold copy");
+        }
+        if self.layout.is_vendored(path) {
+            return refuse("installed from a pack, so it's read-only");
+        }
+        let changed = match text {
+            Some(text) => {
+                if let Some(dir) = path.parent() {
+                    std::fs::create_dir_all(dir).map_err(|e| RepoError::io(dir, e))?;
+                }
+                fs_atomic::write_if_changed(path, text.as_bytes())
+                    .map_err(|e| RepoError::io(path, e))?
+            }
+            None => fs_atomic::remove_if_exists(path).map_err(|e| RepoError::io(path, e))?,
+        };
+        if changed && text.is_some() {
+            self.git.stage_add(path);
+        } else if changed {
+            self.git.stage_remove(path);
+        }
+        Ok(changed)
     }
 
     /// Loads one entity from its file(s).

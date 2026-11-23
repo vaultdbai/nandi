@@ -74,6 +74,7 @@ pub mod runs;
 pub mod runtimes;
 // v1: Requests and their Steps, projected from the task tables (task 3)
 pub mod requests;
+pub mod retro;
 pub mod secrets;
 pub mod selection;
 pub mod shared;
@@ -367,7 +368,10 @@ impl AppState {
         email::start_scheduler(&state);
         workspace::start_scheduler(&state);
         let triggers = state.triggers().clone();
-        triggers.set_fire_guard(Arc::new(email::MailCheckGuard::new(&state)));
+        triggers.set_fire_guard(Arc::new(crate::services::triggers::FireGuards(vec![
+            Arc::new(email::MailCheckGuard::new(&state)),
+            Arc::new(retro::guard::RetroGuard::new(state.db().clone())),
+        ])));
         state.runtime().spawn(async move {
             if let Err(e) = triggers.start().await {
                 log::error!("Failed to start triggers: {e}");

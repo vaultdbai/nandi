@@ -34,6 +34,9 @@ pub const TOOL: &str = "browser_hand_over";
 /// How long a hand-over waits for the person
 pub const TTL_MS: i64 = 24 * 60 * 60 * 1000;
 const MAX_TEXT_CHARS: usize = 20_000;
+/// How the result of a hand-over the person changed before posting
+/// starts: the weekly retro counts these as drafts edited (`services::retro`)
+pub const CHANGED_RESULT: &str = "The person changed it";
 
 /// What the person did
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -141,7 +144,7 @@ pub fn result(answer: Option<HandOverAnswer>, args: &Value) -> String {
             outcome: HandOverOutcome::Changed,
             final_text: Some(text),
         }) => format!(
-            "The person changed it and published it on {site} themselves. What went out:\n\n{text}"
+            "{CHANGED_RESULT} and published it on {site} themselves. What went out:\n\n{text}"
         ),
         Some(HandOverAnswer {
             outcome: HandOverOutcome::Skipped,

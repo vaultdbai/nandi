@@ -179,6 +179,15 @@ pub trait FireGuard: Send + Sync {
     fn hold(&self, trigger_id: &str) -> Option<String>;
 }
 
+/// Several guards as one: the first that holds a fire says why
+pub struct FireGuards(pub Vec<Arc<dyn FireGuard>>);
+
+impl FireGuard for FireGuards {
+    fn hold(&self, trigger_id: &str) -> Option<String> {
+        self.0.iter().find_map(|guard| guard.hold(trigger_id))
+    }
+}
+
 impl TriggerEngine {
     #[allow(clippy::too_many_arguments)]
     pub fn new(

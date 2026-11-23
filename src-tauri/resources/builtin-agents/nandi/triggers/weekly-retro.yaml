@@ -1,0 +1,14 @@
+id: weekly-retro
+name: Weekly retro
+enabled: true
+source:
+  type: cron
+  config:
+    schedule: '0 17 * * 5'
+target:
+  type: agent
+  id: nandi
+input_template: |
+  Weekly retro. Follow your `weekly-retro` playbook (`skill_get`): read
+  last week's corrections (`retro_runs`), propose at most three changes
+  (`retro_propose`), then end with one line on what you proposed.

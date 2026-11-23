@@ -16,6 +16,7 @@
 //! | `failed`           | work item ID           | approve (retry), done      |
 //! | intake             | `intake:<id>` (its own)| approve, refuse            |
 //! | `knowMe`           | `you` (one chat)       | propose (`knowme_propose`) |
+//! | `retro`            | retro proposal ID      | approve (apply), refuse    |
 //!
 //! A browser hand-over can only be skipped from a chat (the person
 //! finishes it in the browser), and a failed workflow run is run again from
@@ -72,6 +73,10 @@ pub enum InboxItemRef {
     },
     /// Getting to know you (`services::knowme`): one standing chat
     KnowMe,
+    /// A weekly retro proposal (`services::retro`)
+    Retro {
+        proposal_id: String,
+    },
 }
 
 /// The know-me chat's ID inside its kind
@@ -128,6 +133,7 @@ impl InboxItemRef {
             "requestReturn" => Self::RequestReturn { task_id: one() },
             "failed" => Self::Failed { work_id: one() },
             "knowMe" if id == KNOW_ME_ID => Self::KnowMe,
+            "retro" => Self::Retro { proposal_id: one() },
             _ => return None,
         })
     }
@@ -146,6 +152,7 @@ impl InboxItemRef {
             Self::Failed { .. } => "failed",
             Self::Intake { .. } => "intake",
             Self::KnowMe => crate::services::knowme::KIND,
+            Self::Retro { .. } => "retro",
         }
     }
 
@@ -158,6 +165,7 @@ impl InboxItemRef {
             | Self::TrustRequest { instance_id: id }
             | Self::RequestReturn { task_id: id }
             | Self::Failed { work_id: id }
+            | Self::Retro { proposal_id: id }
             | Self::Intake {
                 conversation_id: id,
             } => encode(id),
@@ -559,6 +567,7 @@ dismisses it)"
             })
         }
         InboxItemRef::KnowMe => Ok(know_me(state)),
+        InboxItemRef::Retro { proposal_id } => retro(state, proposal_id),
         InboxItemRef::Intake { conversation_id } => {
             let id = conversation_id.clone();
             let items = state
@@ -587,6 +596,41 @@ Refuse dismisses it)"
             })
         }
     }
+}
+
+/// What a retro proposal's thread is told: the change and why
+fn retro(state: &AppState, proposal_id: &str) -> Result<ItemFacts, String> {
+    use crate::services::retro::proposals::{self, ProposalStatus};
+    let conn = state.db().conn()?;
+    let proposal = proposals::get(&conn, proposal_id)
+        .map_err(|e| e.to_string())?
+        .ok_or("That proposal wasn't found")?;
+    let title = short_title(&proposal.reason);
+    let mut facts = vec![
+        format!("Agent: {}", proposal.agent_id),
+        format!("What changes: {} ({})", proposal.target, proposal.path),
+        format!("Why: {}", proposal.reason),
+        format!("Runs it learned from: {}", proposal.runs.join(", ")),
+        format!("The change:\n{}", cut(&proposal.diff)),
+    ];
+    if proposal.status != ProposalStatus::Pending {
+        facts.push(format!("Status: {}", proposal.status.as_str()));
+        return Ok(ItemFacts {
+            title,
+            deciding: "nothing: this change was already decided; Undo is on its card".to_string(),
+            facts,
+            ..ItemFacts::default()
+        });
+    }
+    Ok(ItemFacts {
+        title,
+        deciding: "whether to apply a change Nandi's weekly retro proposes (Approve writes it to \
+the gold copy, and the person can undo it; Refuse drops it)"
+            .to_string(),
+        facts,
+        tools: vec![DecisionTool::Approve, DecisionTool::Refuse],
+        requester: None,
+    })
 }
 
 /// What the know-me chat is told: the person's card and groups now. The
@@ -706,6 +750,9 @@ mod tests {
                 conversation_id: "intake:q1".into(),
             },
             InboxItemRef::KnowMe,
+            InboxItemRef::Retro {
+                proposal_id: "p/1".into(),
+            },
         ];
         for item in items {
             let id = item.conversation_id();

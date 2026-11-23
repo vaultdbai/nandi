@@ -73,6 +73,7 @@ import type {
   RepoLlmConfigStatus,
   RunPlanUpdated,
   KnowMeChanged,
+  RetroChanged,
   RepoRebuildStarted,
   RepoRebuildCompleted,
   ReadyProgress,
@@ -131,6 +132,8 @@ interface NandiEventMap {
   'email://changed': EmailChanged
   /** The know-me to-do or the answers changed */
   'knowme://changed': KnowMeChanged
+  /** A weekly retro proposal was made, decided or checked */
+  'retro://changed': RetroChanged
   /** A connector grant was given or removed */
   'grants://changed': unknown
   /** A calendar or drive connected, disconnected or was checked */
@@ -389,6 +392,7 @@ const CORE_EVENTS: Record<CoreEventName, true> = {
   'run://plan_updated': true,
   'email://changed': true,
   'knowme://changed': true,
+  'retro://changed': true,
   'repo://rebuild_started': true,
   'repo://rebuild_completed': true,
 }

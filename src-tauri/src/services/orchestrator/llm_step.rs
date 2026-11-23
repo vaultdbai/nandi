@@ -241,6 +241,18 @@ pub(super) async fn llm_step(
             let mut tools = tool_search::step_tools(&ctx.run_id, tools);
             // After deferral: never hidden behind `tool_search`
             offer_ask_requester(slots, &ctx.run_id, &ctx.agent_id, &mut tools).await;
+            // The weekly retro's tools (on the host), in that run only,
+            // never hidden behind `tool_search`
+            if skill.id == DEFAULT_AGENT && is_retro_run(deps, &ctx.run_id).await {
+                for spec in crate::services::retro::tool::offered(
+                    &skill.id,
+                    Some(crate::services::retro::WEEKLY_RETRO),
+                ) {
+                    if !tools.iter().any(|t| t.name == spec.name) {
+                        tools.push(spec);
+                    }
+                }
+            }
             // The run plan's tools, for every run with tools but the checks'
             if data_run.is_none() && !tools.is_empty() {
                 for spec in crate::services::run_plan::tool::specs() {
@@ -556,6 +568,21 @@ pub(super) async fn run_source(deps: &RunDeps, run_id: &str) -> Option<SourceTyp
         .ok()
         .flatten()
         .map(|run| run.source_type)
+}
+
+/// Whether `run_id` is Nandi's weekly retro (`services::retro`): only that
+/// run gets the retro's tools
+pub(super) async fn is_retro_run(deps: &RunDeps, run_id: &str) -> bool {
+    let id = run_id.to_string();
+    deps.bus
+        .db
+        .call(move |conn| db::get_run(conn, &id))
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|run| {
+            crate::services::retro::tool::is_retro_run(&run.agent_id, run.source_id.as_deref())
+        })
 }
 
 /// The Request whose Nandi step `run_id` does, if it does one

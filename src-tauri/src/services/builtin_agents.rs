@@ -14,8 +14,8 @@
 //! agent has no `skills/` folder. Playbooks the user edits or removes stay
 //! as they left them.
 //!
-//! Its default schedule, the morning digest and the mail check, is a pair
-//! of ordinary triggers ([`DEFAULT_TRIGGERS`]), written once into a fresh
+//! Its default schedule, the morning digest, the mail check and the weekly
+//! retro, is ordinary triggers ([`DEFAULT_TRIGGERS`]), written once into a fresh
 //! install. The user edits or removes them like any trigger; a removed one
 //! stays removed until a reset to defaults.
 //!
@@ -83,6 +83,7 @@ pub const BUILTIN_AGENTS: &[BuiltinAgent] = &[BuiltinAgent {
         nandi_playbook!("meeting-prep"),
         nandi_playbook!("occasions"),
         nandi_playbook!("know-me"),
+        nandi_playbook!("weekly-retro"),
     ],
 }];
 
@@ -92,6 +93,9 @@ pub const MORNING_DIGEST: &str = "morning-digest";
 /// weekdays. It runs only while a mailbox is connected
 /// (`email::MailCheckGuard`)
 pub const MAIL_CHECK: &str = "mail-check";
+/// The trigger that has Nandi run the weekly retro, on Friday afternoons:
+/// at most once a week (`retro::guard::RetroGuard`)
+pub const WEEKLY_RETRO: &str = "weekly-retro";
 
 /// Nandi's default schedule (owner decision N-4): `(id, trigger YAML)`.
 /// Each targets [`DEFAULT_AGENT`] and is on by default.
@@ -103,6 +107,10 @@ pub const DEFAULT_TRIGGERS: &[(&str, &str)] = &[
     (
         MAIL_CHECK,
         include_str!("../../resources/builtin-agents/nandi/triggers/mail-check.yaml"),
+    ),
+    (
+        WEEKLY_RETRO,
+        include_str!("../../resources/builtin-agents/nandi/triggers/weekly-retro.yaml"),
     ),
 ];
 
@@ -532,7 +540,7 @@ mod tests {
     fn the_default_triggers_are_nandis_and_on() {
         let triggers = shipped_triggers().unwrap();
         let ids: Vec<&str> = triggers.iter().map(|t| t.id().as_str()).collect();
-        assert_eq!(ids, [MORNING_DIGEST, MAIL_CHECK]);
+        assert_eq!(ids, [MORNING_DIGEST, MAIL_CHECK, WEEKLY_RETRO]);
         for trigger in &triggers {
             assert_eq!(trigger.target(), &Target::Agent(nandi_id()));
             assert!(trigger.enabled(), "{} is on by default", trigger.id());
@@ -728,7 +736,7 @@ target:
     #[test]
     fn the_shipped_playbooks_parse_and_stay_short() {
         let playbooks = shipped_playbooks();
-        assert_eq!(playbooks.len(), 9);
+        assert_eq!(playbooks.len(), 10);
         crate::services::domain::playbook::check_unique(&playbooks).unwrap();
         for playbook in &playbooks {
             // The domain caps them at 900; these aim for a short read
@@ -788,6 +796,7 @@ target:
                 || a2a::people::is_people_tool(name)
                 || name == a2a::clarification::ASK_REQUESTER_TOOL
                 || crate::services::inbox::tool::is_decision_tool(name)
+                || crate::services::retro::tool::is_retro_tool(name)
         };
         let names =
             regex::Regex::new(r"`([a-z][a-z0-9]*(?:__?[a-z0-9]+)+)(?:\.[a-z_]+)?:?`").unwrap();

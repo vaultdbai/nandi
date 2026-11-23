@@ -1321,6 +1321,29 @@ async confirmKnowMeProposal(approvalId: string, proposal: KnowMeProposal) : Prom
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Proposals waiting, changes applied this week, and changes the
+ * check says didn't help (after running the check)
+ */
+async listRetroItems() : Promise<Result<RetroItem[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_retro_items") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Apply (one gold copy commit), refuse, undo or keep a proposal
+ */
+async actOnRetroProposal(id: string, action: RetroAction) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("act_on_retro_proposal", { id, action }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async listConnectors() : Promise<Result<ConnectorInfo[], string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("list_connectors") };
@@ -4126,6 +4149,7 @@ repoRebuildStarted: RepoRebuildStarted,
 repoValidationFailed: RepoValidationFailed,
 requestReturned: RequestReturned,
 requestUpdated: RequestUpdated,
+retroChanged: RetroChanged,
 runPlanUpdated: RunPlanUpdated,
 studioArtifactLoaded: StudioArtifactLoaded,
 studioArtifactSaved: StudioArtifactSaved,
@@ -4197,6 +4221,7 @@ repoRebuildStarted: "repo://rebuild_started",
 repoValidationFailed: "repo://validation_failed",
 requestReturned: "request://returned",
 requestUpdated: "request://updated",
+retroChanged: "retro://changed",
 runPlanUpdated: "run://plan_updated",
 studioArtifactLoaded: "studio://artifact_loaded",
 studioArtifactSaved: "studio://artifact_saved",
@@ -7637,6 +7662,30 @@ export type ProjectionStats = { agents: number; workflows: number; triggers: num
  * Files that couldn't be loaded and were left out
  */
 skipped: number }
+/**
+ * Where a proposal stands
+ */
+export type ProposalStatus = 
+/**
+ * Waits in the Inbox for a yes or a no
+ */
+"pending" | 
+/**
+ * The person said yes: committed to the gold copy
+ */
+"applied" | 
+/**
+ * The person said no
+ */
+"refused" | 
+/**
+ * Applied, then undone
+ */
+"undone" | 
+/**
+ * Applied, and the person kept it after the check said it didn't help
+ */
+"kept"
 export type ProposedNote = { text: string; 
 /**
  * For the person only (`private/about-me.md`)
@@ -8610,6 +8659,82 @@ export type ResponsibilityKind = "work" |
  * Family, home, caring for someone
  */
 "personal"
+/**
+ * One of the actions on a proposal, from its Inbox card or chat
+ */
+export type RetroAction = "apply" | "refuse" | "undo" | "keep"
+/**
+ * `retro://changed`: a proposal was made, decided or checked
+ */
+export type RetroChanged = Record<string, never>
+/**
+ * A proposal as the Inbox shows it
+ */
+export type RetroItem = { id: string; agentId: string; agentName: string; 
+/**
+ * `skill`, `playbook:<name>`, `workflow:<id>` or `trigger:<id>`
+ */
+target: string; 
+/**
+ * Its file in the gold copy
+ */
+path: string; reason: string; 
+/**
+ * The runs it learned from
+ */
+runs: string[]; 
+/**
+ * What changes, as a unified diff
+ */
+diff: string; status: ProposalStatus; createdAt: number; 
+/**
+ * When the person said yes (or no)
+ */
+decidedAt: number | null; 
+/**
+ * When a pending proposal stops waiting
+ */
+expiresAt: number | null; 
+/**
+ * The gold copy commit of the change
+ */
+commitId: string | null; 
+/**
+ * The check's verdict, once there is one
+ */
+verdict: RetroVerdict | null; rates: RetroRates | null; 
+/**
+ * The change didn't help: the note offering the undo
+ */
+needsNote: boolean }
+/**
+ * Decisions and how many were corrections
+ */
+export type RetroRate = { decisions: number; corrections: number }
+/**
+ * The agent's rate before a change and after it
+ */
+export type RetroRates = { before: RetroRate; after: RetroRate }
+/**
+ * What the check found
+ */
+export type RetroVerdict = 
+/**
+ * Fewer corrections than before
+ */
+"helped" | 
+/**
+ * No fewer
+ */
+"same" | 
+/**
+ * More
+ */
+"worse" | 
+/**
+ * Not enough decisions in four weeks to tell
+ */
+"unclear"
 /**
  * How a request came back
  */
