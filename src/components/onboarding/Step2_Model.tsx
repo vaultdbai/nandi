@@ -24,6 +24,7 @@ import {
 } from '@/lib/models'
 import type { KeyedProvider } from '@/lib/tauri-bindings'
 import { cn } from '@/lib/utils'
+import { PlansChooser } from './PlansChooser'
 
 export interface Step2ModelProps {
   onNext: () => void
@@ -162,6 +163,12 @@ export function Step2Model({ onNext, onBack }: Step2ModelProps) {
           </div>
         </div>
       </div>
+
+      <PlansChooser
+        trialOffered={defaultModel.data?.trial != null}
+        onPickProvider={setChoice}
+        onPickOllama={() => setChoice('ollama')}
+      />
 
       {choice !== null && choice !== 'ollama' && (
         <KeyedProviderSetup
