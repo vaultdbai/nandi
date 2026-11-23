@@ -2937,7 +2937,6 @@
   "onboarding.plans.claude.name": "Claude Pro、Max、Team、Enterprise",
   "onboarding.plans.claude.step1": "Claude Code をインストールし、Claude アカウントでサインインします。",
   "onboarding.plans.claude.step2": "Nandi の Claude Code エージェントはそのサインインを使うので、追加費用はかかりません。",
-  "onboarding.plans.claude.step3": "Nandi 自身の返答にはプランは使われません。そちらはキーを追加するか、無料トークンか Ollama を使ってください。",
   "onboarding.plans.cloud.name": "会社の AWS または Azure",
   "onboarding.plans.cloud.step1": "Amazon Bedrock は AWS SSO で使えます。セットアップ後に「設定 › モデルとランタイム」と「設定 › クラウド認証情報」を開きます。",
   "onboarding.plans.cloud.step2": "Azure AI Foundry や LiteLLM ゲートウェイは、チームがエージェントのリポジトリに一度設定します（.nandi/llm.yaml）。費用は会社の通常どおりです。",

@@ -44,7 +44,7 @@ const step = (id: PlanId, n: number, needsTrial = false): PlanStep => ({
 export const PLANS: readonly Plan[] = [
   {
     id: 'claude',
-    steps: [step('claude', 1), step('claude', 2), step('claude', 3)],
+    steps: [step('claude', 1), step('claude', 2)],
     actions: [
       {
         kind: 'link',

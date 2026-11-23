@@ -2937,7 +2937,6 @@
   "onboarding.plans.claude.name": "Claude Pro أو Max أو Team أو Enterprise",
   "onboarding.plans.claude.step1": "ثبّت Claude Code وسجّل الدخول بحساب Claude الخاص بك.",
   "onboarding.plans.claude.step2": "وكلاء Claude Code في Nandi يستخدمون تسجيل الدخول هذا، فلا تكلفة إضافية.",
-  "onboarding.plans.claude.step3": "ردود Nandi نفسه لا تستخدم خطتك. لها أضف مفتاحًا أو استخدم الرموز المجانية أو Ollama.",
   "onboarding.plans.cloud.name": "AWS أو Azure الخاص بالشركة",
   "onboarding.plans.cloud.step1": "يعمل Amazon Bedrock عبر AWS SSO. بعد الإعداد افتح الإعدادات › النماذج وبيئات التشغيل والإعدادات › بيانات اعتماد السحابة.",
   "onboarding.plans.cloud.step2": "بالنسبة إلى Azure AI Foundry أو بوابة LiteLLM يضع فريقك الإعداد مرة واحدة في مستودع الوكلاء (.nandi/llm.yaml). وتدفع الشركة كالمعتاد.",

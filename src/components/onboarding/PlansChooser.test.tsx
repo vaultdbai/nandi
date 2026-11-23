@@ -53,7 +53,8 @@ describe('PlansChooser', () => {
     await userEvent.click(screen.getByRole('radio', { name: /Claude Pro/ }))
     const steps = screen.getByTestId('plan-steps')
     expect(steps).toHaveTextContent(/Claude Code agents/)
-    expect(steps).toHaveTextContent(/own replies don’t use your plan/)
+    // Nothing said about Nandi's own replies until that's settled
+    expect(steps).not.toHaveTextContent(/own replies/)
   })
 
   it('offers no Gemini key form, and hides free tokens when not offered', async () => {

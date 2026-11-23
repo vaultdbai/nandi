@@ -2937,7 +2937,6 @@
   "onboarding.plans.claude.name": "Claude Pro, Max, Team ou Enterprise",
   "onboarding.plans.claude.step1": "Installez Claude Code et connectez-vous avec votre compte Claude.",
   "onboarding.plans.claude.step2": "Les agents Claude Code de Nandi utilisent cette connexion, sans coût en plus.",
-  "onboarding.plans.claude.step3": "Les réponses de Nandi lui-même n’utilisent pas votre abonnement. Pour elles, ajoutez une clé, utilisez les jetons gratuits ou Ollama.",
   "onboarding.plans.cloud.name": "AWS ou Azure de l’entreprise",
   "onboarding.plans.cloud.step1": "Amazon Bedrock fonctionne avec AWS SSO. Après l’installation, allez dans Paramètres › Modèles et environnements et Paramètres › Identifiants cloud.",
   "onboarding.plans.cloud.step2": "Pour Azure AI Foundry ou une passerelle LiteLLM, votre équipe met la configuration une fois dans le dépôt des agents (.nandi/llm.yaml). L’entreprise paie comme d’habitude.",
