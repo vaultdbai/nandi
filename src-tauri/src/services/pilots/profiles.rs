@@ -276,18 +276,20 @@ pub fn release_agent(agent: &str) {
     open_profiles().retain(|_, o| o.holder != gone);
 }
 
-/// The person's window's command line: the shared profile, no proxy (it's
-/// the person's own browsing), and the same cookie and password storage
-/// Playwright gives an agent's browser, so agents read the sign-ins
+/// Playwright's defaults that keep a browser's passwords and cookies in a
+/// plain store instead of the system keychain. Every visible browser drops
+/// them (`browser::config`), and the person's window never passes them, so
+/// both read the same sign-ins from the keychain
+pub const PLAIN_STORE_ARGS: [&str; 2] = ["--password-store=basic", "--use-mock-keychain"];
+
+/// The person's window's command line: the shared profile and no proxy
+/// (it's the person's own browsing). Its passwords and cookies stay in the
+/// system keychain, as in an agent's visible browser
 pub fn window_args(kind: BrowserKind, dir: &Path) -> Vec<String> {
     let mut args = vec![
         format!("--user-data-dir={}", dir.display()),
         "--no-first-run".to_string(),
         "--no-default-browser-check".to_string(),
-        // As Playwright launches it: otherwise an agent's browser can't
-        // read what this window saved (macOS and Linux)
-        "--password-store=basic".to_string(),
-        "--use-mock-keychain".to_string(),
     ];
     if kind == BrowserKind::Edge {
         // Edge otherwise restarts itself, and the window looks closed
@@ -502,7 +504,12 @@ mod tests {
             "never the everyday profile"
         );
         assert!(args.iter().all(|a| !a.contains("proxy")), "{args:?}");
-        assert!(args.contains(&"--password-store=basic".to_string()));
+        assert!(
+            PLAIN_STORE_ARGS
+                .iter()
+                .all(|plain| !args.contains(&plain.to_string())),
+            "passwords stay in the system keychain"
+        );
         assert!(args.contains(&"--edge-skip-compat-layer-relaunch".to_string()));
         assert!(!window_args(BrowserKind::Chrome, dir)
             .contains(&"--edge-skip-compat-layer-relaunch".to_string()));

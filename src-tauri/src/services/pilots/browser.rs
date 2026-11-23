@@ -392,6 +392,10 @@ fn config(
         if let Some(args) = launch["args"].as_array_mut() {
             args.push(Value::from("--test-type"));
         }
+        // A visible browser keeps its saved passwords and cookies in the
+        // system keychain (macOS Keychain, the Linux keyring, Windows' own
+        // encryption), not Playwright's plain store
+        launch["ignoreDefaultArgs"] = json!(super::profiles::PLAIN_STORE_ARGS);
     }
     json!({
         "browser": {
@@ -1404,6 +1408,11 @@ mod tests {
             .as_array()
             .unwrap()
             .contains(&Value::from("--test-type")));
+        assert_eq!(
+            window["browser"]["launchOptions"]["ignoreDefaultArgs"],
+            json!(["--password-store=basic", "--use-mock-keychain"]),
+            "saved passwords stay in the system keychain"
+        );
     }
 
     #[test]
