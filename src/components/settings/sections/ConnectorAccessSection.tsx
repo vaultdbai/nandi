@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { KeyRound } from 'lucide-react'
 import { toast } from 'sonner'
@@ -14,6 +15,17 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import {
   Empty,
   EmptyDescription,
@@ -24,9 +36,15 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import {
   groupGrants,
+  isMailConnector,
+  mailboxChoices,
+  mailboxCover,
+  mailboxesToSave,
   type GrantRow,
 } from '@/components/connectors/grants-model'
 import { useAgents } from '@/hooks/useAgents'
+import { useEmailStatus } from '@/hooks/useEmail'
+import type { GrantInfo } from '@/lib/bindings'
 import { useChangeGrant, useConnectorGrants } from '@/hooks/useConnectorHub'
 import { useConnectors } from '@/hooks/useConnectors'
 import { SettingsGroup, SettingsSectionFrame } from '../SettingsFrame'
@@ -91,6 +109,7 @@ function GrantRowView({
 }) {
   const { t } = useTranslation()
   const change = useChangeGrant()
+  const cover = mailboxCover(row.grant)
   const remove = () =>
     change.mutate(
       { kind: 'revoke', grant: row.grant },
@@ -107,7 +126,24 @@ function GrantRowView({
       className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm"
       data-testid="grant-row"
     >
-      <span className="flex-1 font-medium">{row.connectorName}</span>
+      <span className="flex-1 font-medium">
+        {row.connectorName}
+        {isMailConnector(row.grant.connector) && (
+          <span
+            className="block text-xs font-normal break-words text-muted-foreground"
+            data-testid="grant-mailboxes"
+          >
+            {cover.kind === 'every'
+              ? t('grants.mailboxes.every')
+              : t('grants.mailboxes.only', {
+                  list: cover.mailboxes.join(', '),
+                })}
+          </span>
+        )}
+      </span>
+      {isMailConnector(row.grant.connector) && (
+        <MailboxChooser grant={row.grant} agentName={agentName} />
+      )}
       <Badge variant="outline">{t(`grants.access.${row.grant.access}`)}</Badge>
       <Badge variant="secondary">{t(`grants.scope.${row.grant.scope}`)}</Badge>
       <AlertDialog>
@@ -137,5 +173,117 @@ function GrantRowView({
         </AlertDialogContent>
       </AlertDialog>
     </li>
+  )
+}
+
+/**
+ * Which mailboxes a mail grant covers: every one (ones connected later
+ * too), or only the ticked ones
+ */
+function MailboxChooser({
+  grant,
+  agentName,
+}: {
+  grant: GrantInfo
+  agentName: string
+}) {
+  const { t } = useTranslation()
+  const email = useEmailStatus()
+  const change = useChangeGrant()
+  const [open, setOpen] = useState(false)
+  const [every, setEvery] = useState(grant.mailboxes.length === 0)
+  const [ticked, setTicked] = useState<string[]>(grant.mailboxes)
+  const choices = mailboxChoices(grant, email.data?.mailboxes ?? [])
+  const toSave = mailboxesToSave(every, ticked)
+
+  const openWith = (next: boolean) => {
+    if (next) {
+      setEvery(grant.mailboxes.length === 0)
+      setTicked(grant.mailboxes)
+    }
+    setOpen(next)
+  }
+  const save = () => {
+    if (toSave === null) return
+    change.mutate(
+      { kind: 'mailboxes', grant, mailboxes: toSave },
+      {
+        onSuccess: () => setOpen(false),
+        onError: error =>
+          toast.error(t('grants.mailboxes.failed'), {
+            description: String(error),
+          }),
+      }
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={openWith}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="ghost" disabled={choices.length === 0}>
+          {t('grants.mailboxes.choose')}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {t('grants.mailboxes.title', { agent: agentName })}
+          </DialogTitle>
+          <DialogDescription>
+            {t('grants.mailboxes.description')}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id={`${grant.agent}-${grant.connector}-every`}
+              checked={every}
+              onCheckedChange={value => setEvery(value === true)}
+            />
+            <Label
+              htmlFor={`${grant.agent}-${grant.connector}-every`}
+              className="font-normal"
+            >
+              {t('grants.mailboxes.everyLater')}
+            </Label>
+          </div>
+          {choices.map(mailbox => (
+            <div key={mailbox} className="flex items-center gap-2 ps-6">
+              <Checkbox
+                id={`${grant.agent}-${grant.connector}-${mailbox}`}
+                disabled={every}
+                checked={every || ticked.includes(mailbox)}
+                onCheckedChange={value =>
+                  setTicked(current =>
+                    value === true
+                      ? [...current, mailbox]
+                      : current.filter(m => m !== mailbox)
+                  )
+                }
+              />
+              <Label
+                htmlFor={`${grant.agent}-${grant.connector}-${mailbox}`}
+                className="font-normal"
+              >
+                {mailbox}
+              </Label>
+            </div>
+          ))}
+          {toSave === null && (
+            <p className="text-xs text-muted-foreground">
+              {t('grants.mailboxes.pickOne')}
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            {t('grants.keep')}
+          </Button>
+          <Button disabled={toSave === null || change.isPending} onClick={save}>
+            {t('grants.mailboxes.save')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

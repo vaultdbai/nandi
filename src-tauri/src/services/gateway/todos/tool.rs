@@ -77,7 +77,8 @@ email's message id (an event's id) and its number in the order the asks appear, 
 `<message-id>#1`, `<message-id>#2`. Read the same email again and use the same numbers: a \
 source_ref already used returns the to-do already there (`existing: true`). \
 `related_ref`: the Inbox thread of what you prepared for it (`inbox:approval:<id>`, a Request's \
-id). Don't add what is already done.",
+id). When the user has several mailboxes, say in `text` which one an email came to \
+(\"… (to me@work.com)\"). Don't add what is already done.",
             json!({"type": "object", "required": ["text", "kind", "source"], "properties": {
                 "text": {"type": "string", "maxLength": MAX_TEXT_CHARS},
                 "kind": {"type": "string", "enum": ["do", "check", "reminder"]},

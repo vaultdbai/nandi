@@ -407,7 +407,7 @@ pub struct AgentDefaults {
 pub struct Settings {
     default_model: ModelRef,
     theme: Theme,
-    /// Colour palette ID (e.g. "nandi", "aurora"); `None` is the default
+    /// Colour palette ID (e.g. "coordinator", "aurora"); `None` is the default
     palette: Option<String>,
     language: Option<String>,
     notifications: NotificationPrefs,
@@ -776,6 +776,21 @@ secret_refs:
   aws_access_key: nandi.aws.access_key
   aws_secret_key: nandi.aws.secret_key
 "#;
+
+    #[test]
+    fn mail_grants_from_nandi_0_2_cover_every_mailbox() {
+        // settings.yaml as Nandi 0.2 wrote it, before grants named mailboxes
+        let yaml = "default_model: claude:claude-sonnet-4-5\nconnector_grants:\n  - agent: coordinator\n    connector: gmail\n    access: read\n";
+        let settings = Settings::from_yaml(yaml).unwrap();
+        let grants = settings.connector_grants();
+        let read = super::super::grant::GrantAccess::Read;
+        assert!(grants.covers("coordinator", "gmail", read, "first@gmail.com"));
+        assert!(grants.covers("coordinator", "gmail", read, "second@gmail.com"));
+        // Saved again unchanged: the file needs no format step
+        let again = settings.to_yaml();
+        assert!(!again.contains("mailboxes"), "{again}");
+        assert_eq!(Settings::from_yaml(&again).unwrap(), settings);
+    }
 
     #[test]
     fn provider_pins_round_trip_and_are_validated() {

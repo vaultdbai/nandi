@@ -69,6 +69,48 @@ export function groupGrants(
   return sorted
 }
 
+/** Mail connectors: a grant on one can name the mailboxes it covers */
+const MAIL_CONNECTORS = ['outlook', 'gmail']
+
+export function isMailConnector(id: string): boolean {
+  return MAIL_CONNECTORS.includes(id)
+}
+
+/** What a mail grant covers: every mailbox, or only the ones it names */
+export type MailboxCover =
+  { kind: 'every' } | { kind: 'only'; mailboxes: string[] }
+
+export function mailboxCover(grant: GrantInfo): MailboxCover {
+  return grant.mailboxes.length === 0
+    ? { kind: 'every' }
+    : { kind: 'only', mailboxes: grant.mailboxes }
+}
+
+/**
+ * The connected mailboxes of a grant's provider, for choosing which it
+ * covers; ones it names that are no longer connected are left out
+ */
+export function mailboxChoices(
+  grant: GrantInfo,
+  connected: { provider: string; email: string }[]
+): string[] {
+  return connected
+    .filter(m => m.provider === grant.connector)
+    .map(m => m.email.toLowerCase())
+}
+
+/**
+ * What to save from the choice: every mailbox is `[]`; else the ticked
+ * ones, and `null` when none is ticked (nothing to save)
+ */
+export function mailboxesToSave(
+  every: boolean,
+  ticked: string[]
+): string[] | null {
+  if (every) return []
+  return ticked.length > 0 ? ticked : null
+}
+
 /** An agent's grants on one connector, per access (saved first) */
 export function agentGrants(
   grants: GrantInfo[],

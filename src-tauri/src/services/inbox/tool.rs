@@ -379,7 +379,7 @@ async fn decide_approval(
             AccessChoice::Deny
         };
         let who = crate::services::chat::decider(state);
-        access::answer(state, approval_id, choice, false, who).await?;
+        access::answer(state, approval_id, choice, false, None, who).await?;
     } else if crate::services::pilots::handover::is_hand_over(&approval.tool) {
         if approve {
             return Err("A hand-over is finished in the browser, then marked done there".into());

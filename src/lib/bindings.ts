@@ -568,6 +568,17 @@ async getDefaultModel() : Promise<Result<DefaultModelStatus, string>> {
 }
 },
 /**
+ * The model a call set to `model` (an agent's) actually uses with the keys set now
+ */
+async effectiveModel(model: string) : Promise<Result<EffectiveModel, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("effective_model", { model }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * `<provider>:<model>`, e.g. `claude:claude-sonnet-5`
  */
 async setDefaultModel(model: string) : Promise<Result<DefaultModelStatus, string>> {
@@ -2289,12 +2300,24 @@ async revokeConnectorAccess(grant: GrantInfo) : Promise<Result<null, string>> {
 }
 },
 /**
- * The person's answer to a paused run's access request. `subdomains`: a
- * site request's grant covers the site's subdomains too
+ * Lets a mail grant cover only these mailboxes (empty: every mailbox)
  */
-async answerAccessRequest(approvalId: string, choice: AccessChoice, subdomains: boolean) : Promise<Result<null, string>> {
+async setGrantMailboxes(grant: GrantInfo, mailboxes: string[]) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("answer_access_request", { approvalId, choice, subdomains }) };
+    return { status: "ok", data: await TAURI_INVOKE("set_grant_mailboxes", { grant, mailboxes }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The person's answer to a paused run's access request. `subdomains`: a
+ * site request's grant covers the site's subdomains too. `mailboxes`:
+ * the mailboxes an email request's grant covers (`None`: all it showed)
+ */
+async answerAccessRequest(approvalId: string, choice: AccessChoice, subdomains: boolean, mailboxes: string[] | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("answer_access_request", { approvalId, choice, subdomains, mailboxes }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -5930,6 +5953,19 @@ impact: string[];
  * `patch`, `minor`, or `major` (capabilities)
  */
 versionBump: string | null }
+/**
+ * The model a call set to a model actually uses ([`usable_model`]), so a
+ * page can say when a different one answers
+ */
+export type EffectiveModel = { 
+/**
+ * `None`: nothing can answer (no key, no sign-in, no trial)
+ */
+model: string | null; 
+/**
+ * It runs on the free trial's tokens
+ */
+onTrial: boolean }
 export type EffectiveValue = { value: string; source: ConfigSource }
 export type EgressKind = "llm" | "aws" | "fetch" | "tunnel"
 /**
@@ -6246,7 +6282,11 @@ export type GrantAccess = "read" | "write"
 /**
  * One grant, as Settings › Connectors › Access lists it
  */
-export type GrantInfo = { agent: string; connector: string; access: GrantAccess; scope: GrantScope }
+export type GrantInfo = { agent: string; connector: string; access: GrantAccess; scope: GrantScope; 
+/**
+ * The mailboxes it covers; empty: every mailbox of the connector
+ */
+mailboxes: string[] }
 /**
  * Where a grant is kept
  */

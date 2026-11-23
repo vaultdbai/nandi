@@ -262,7 +262,7 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
     let grants = rpc(&b, "list_connector_grants", json!({})).await;
     assert_eq!(
         grants,
-        json!([{ "agent": "triager", "connector": "tracker", "access": "read", "scope": "saved" }])
+        json!([{ "agent": "triager", "connector": "tracker", "access": "read", "scope": "saved", "mailboxes": [] }])
     );
     let settings = std::fs::read_to_string(state_b.store().layout().settings_path()).unwrap();
     assert!(

@@ -175,7 +175,7 @@ pub(super) async fn run_call(
             match app_state(deps) {
                 Some(state) => {
                     let allowed = allowed_connectors.unwrap_or_default();
-                    email::tool::call(&state, &allowed, &call.tool, &call.args).await
+                    email::tool::call(&state, &ctx.agent_id, &allowed, &call.tool, &call.args).await
                 }
                 None => ToolOutcome {
                     result: format!("Tool '{}' is not available right now", call.tool),

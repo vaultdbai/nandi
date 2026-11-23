@@ -4,6 +4,10 @@ import {
   agentGrants,
   grantableConnectors,
   groupGrants,
+  isMailConnector,
+  mailboxChoices,
+  mailboxCover,
+  mailboxesToSave,
   type GrantNames,
 } from './grants-model'
 
@@ -17,7 +21,7 @@ const grant = (
   connector: string,
   access: GrantInfo['access'] = 'read',
   scope: GrantInfo['scope'] = 'saved'
-): GrantInfo => ({ agent, connector, access, scope })
+): GrantInfo => ({ agent, connector, access, scope, mailboxes: [] })
 
 describe('groupGrants', () => {
   it('groups by agent with names, read before write', () => {
@@ -76,5 +80,38 @@ describe('grantableConnectors', () => {
       { id: 'outlook', name: 'Outlook' },
       { id: 'onedrive', name: 'OneDrive' },
     ])
+  })
+})
+
+describe('mailboxes a mail grant covers', () => {
+  it('knows the mail connectors', () => {
+    expect(isMailConnector('gmail')).toBe(true)
+    expect(isMailConnector('outlook')).toBe(true)
+    expect(isMailConnector('google-calendar')).toBe(false)
+  })
+
+  it('covers every mailbox unless it names some', () => {
+    expect(mailboxCover(grant(DEFAULT_AGENT, 'gmail'))).toEqual({
+      kind: 'every',
+    })
+    expect(
+      mailboxCover({ ...grant(DEFAULT_AGENT, 'gmail'), mailboxes: ['a@x.com'] })
+    ).toEqual({ kind: 'only', mailboxes: ['a@x.com'] })
+  })
+
+  it('offers the connected mailboxes of the grant’s provider', () => {
+    const connected = [
+      { provider: 'gmail', email: 'Me@Home.com' },
+      { provider: 'outlook', email: 'me@work.com' },
+    ]
+    expect(mailboxChoices(grant(DEFAULT_AGENT, 'gmail'), connected)).toEqual([
+      'me@home.com',
+    ])
+  })
+
+  it('saves every mailbox as none named, and refuses none ticked', () => {
+    expect(mailboxesToSave(true, ['a@x.com'])).toEqual([])
+    expect(mailboxesToSave(false, ['a@x.com'])).toEqual(['a@x.com'])
+    expect(mailboxesToSave(false, [])).toBeNull()
   })
 })

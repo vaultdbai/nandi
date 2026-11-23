@@ -447,6 +447,7 @@ pub(crate) fn started(state: &AppState, kind: AccountKind) -> Result<(), String>
             connector: kind.id().into(),
             access: GrantAccess::Read,
             scope: GrantScope::Saved,
+            mailboxes: Vec::new(),
         };
         grants::record(state, "granted", &info, Some("The account was connected"));
         events::emit(state.bus(), &GrantsChanged {});

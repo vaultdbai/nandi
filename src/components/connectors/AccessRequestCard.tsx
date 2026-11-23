@@ -17,6 +17,8 @@ import {
   accessChoices,
   accessSentence,
   agentLabel,
+  answerMailboxes,
+  canChooseMailboxes,
   decidedKey,
   DEFAULT_AGENT_SCOPE,
   rawSiteHost,
@@ -57,6 +59,8 @@ export function AccessRequestCard({
   const [submitting, setSubmitting] = useState(false)
   const [scope, setScope] = useState<AccessChoice>(DEFAULT_AGENT_SCOPE)
   const [subdomains, setSubdomains] = useState(false)
+  // The mailboxes the person unticked for "Allow for this agent"
+  const [unticked, setUnticked] = useState<string[]>([])
   // What this card answered, until the run record carries it
   const [answered, setAnswered] = useState<AccessChoice | null>(null)
   const pending = status === 'pending' && !answered
@@ -73,13 +77,17 @@ export function AccessRequestCard({
   const rawHost = site ? rawSiteHost(site) : null
   const forAgent = !site && choices.includes('allowSaved')
   const always = site !== null && choices.includes('allowSaved')
+  const chooseMailboxes = forAgent && canChooseMailboxes(request)
+  const mailboxes = answerMailboxes(request, unticked)
+  const noMailbox = mailboxes !== null && mailboxes.length === 0
 
   const answer = async (choice: AccessChoice) => {
     setSubmitting(true)
     const result = await client.answerAccessRequest(
       approvalId,
       choice,
-      site !== null && subdomains
+      site !== null && subdomains,
+      choice === 'allowSaved' || choice === 'allowLocal' ? mailboxes : null
     )
     if (result.status === 'error') {
       toast.error(t('access.answerFailed'), { description: result.error })
@@ -131,6 +139,14 @@ export function AccessRequestCard({
               {t('access.site.reason', { reason: site.reason })}
             </p>
           )}
+          {request.mailboxes.length > 0 && (
+            <p
+              data-testid="access-mailboxes"
+              className="text-sm break-words text-muted-foreground"
+            >
+              {t('access.mailboxes', { list: request.mailboxes.join(', ') })}
+            </p>
+          )}
           {request.details.length > 0 && (
             <ul className="list-disc space-y-0.5 ps-5 text-sm text-muted-foreground">
               {request.details.map(detail => (
@@ -176,6 +192,14 @@ export function AccessRequestCard({
           {site?.subdomains && decided !== 'deny' && decided !== 'expired' && (
             <span>· {t('access.site.withSubdomains')}</span>
           )}
+          {request.grantedMailboxes && (
+            <span>
+              ·{' '}
+              {t('access.onlyMailboxes', {
+                list: request.grantedMailboxes.join(', '),
+              })}
+            </span>
+          )}
         </p>
       )}
 
@@ -195,6 +219,37 @@ export function AccessRequestCard({
                 {t('access.site.subdomains', { site: site.display })}
               </Label>
             </div>
+          )}
+          {chooseMailboxes && (
+            <fieldset
+              className="space-y-1.5"
+              data-testid="access-choose-mailboxes"
+            >
+              <legend className="text-sm text-muted-foreground">
+                {t('access.chooseMailboxes')}
+              </legend>
+              {request.mailboxes.map(mailbox => (
+                <div key={mailbox} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`${approvalId}-mailbox-${mailbox}`}
+                    checked={!unticked.includes(mailbox)}
+                    onCheckedChange={value =>
+                      setUnticked(current =>
+                        value === true
+                          ? current.filter(m => m !== mailbox)
+                          : [...current, mailbox]
+                      )
+                    }
+                  />
+                  <Label
+                    htmlFor={`${approvalId}-mailbox-${mailbox}`}
+                    className="font-normal"
+                  >
+                    {mailbox}
+                  </Label>
+                </div>
+              ))}
+            </fieldset>
           )}
           {forAgent && (
             <RadioGroup
@@ -238,7 +293,7 @@ export function AccessRequestCard({
             {forAgent && (
               <Button
                 size="sm"
-                disabled={submitting}
+                disabled={submitting || noMailbox}
                 onClick={() => void answer(scope)}
               >
                 <Check />

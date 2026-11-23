@@ -268,6 +268,14 @@ impl AppState {
         if let Err(e) = moved {
             log::error!("{e}");
         }
+        // Before any sign-in can start: entries of sign-ins an exit cut
+        // short leave the keyring
+        let cleaned = db
+            .conn()
+            .and_then(|conn| email::sign_ins::clean_abandoned(&conn, &config.secrets));
+        if let Err(e) = cleaned {
+            log::error!("Couldn't remove unfinished email sign-ins: {e}");
+        }
         let local = nandi_config::local_dir()?;
         // Logs Nandi 0.1.0 wrote without the hash chain are kept aside, so
         // the Logs view shows them as older entries, not a broken chain

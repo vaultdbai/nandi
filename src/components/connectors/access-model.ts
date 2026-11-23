@@ -46,6 +46,10 @@ export interface AccessRequest {
   decidedBy: string | null
   /** For family `site` */
   site: SiteAccess | null
+  /** For family `email`: the mailboxes the call reaches, by address */
+  mailboxes: string[]
+  /** For family `email`, once allowed for the agent: the mailboxes its grant covers (null: every one) */
+  grantedMailboxes: string[] | null
 }
 
 const FAMILIES: readonly AccessFamily[] = [
@@ -112,7 +116,35 @@ export function parseAccessRequest(args: unknown): AccessRequest | null {
     choice,
     decidedBy: text(raw.decidedBy) || null,
     site,
+    mailboxes: addresses(raw.mailboxes),
+    grantedMailboxes: Array.isArray(raw.grantedMailboxes)
+      ? addresses(raw.grantedMailboxes)
+      : null,
   }
+}
+
+function addresses(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(text).filter(Boolean) : []
+}
+
+/**
+ * Whether "Allow for this agent" can cover only some of the mailboxes: an
+ * email request reaching more than one
+ */
+export function canChooseMailboxes(request: AccessRequest): boolean {
+  return request.family === 'email' && request.mailboxes.length > 1
+}
+
+/**
+ * The mailboxes to send with the answer: those ticked for an email request
+ * with a choice; null otherwise (all it showed). Ticking none is no answer
+ */
+export function answerMailboxes(
+  request: AccessRequest,
+  unticked: string[]
+): string[] | null {
+  if (!canChooseMailboxes(request)) return null
+  return request.mailboxes.filter(m => !unticked.includes(m))
 }
 
 /** An i18n key under `access.sentence.` and its values */

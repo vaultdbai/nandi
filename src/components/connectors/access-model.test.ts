@@ -5,6 +5,8 @@ import {
   accessChoices,
   accessSentence,
   agentLabel,
+  answerMailboxes,
+  canChooseMailboxes,
   decidedKey,
   parseAccessRequest,
   rawSiteHost,
@@ -33,7 +35,43 @@ describe('parseAccessRequest', () => {
       choice: null,
       decidedBy: null,
       site: null,
+      mailboxes: [],
+      grantedMailboxes: null,
     })
+  })
+
+  it('reads the mailboxes a request reaches and what its grant covers', () => {
+    const parsed = parseAccessRequest({
+      ...ARGS,
+      mailboxes: ['me@work.com', '', 'me@home.com'],
+      grantedMailboxes: ['me@work.com'],
+    })
+    expect(parsed?.mailboxes).toEqual(['me@work.com', 'me@home.com'])
+    expect(parsed?.grantedMailboxes).toEqual(['me@work.com'])
+  })
+
+  it('lets the person choose mailboxes only when there are several', () => {
+    const one = parseAccessRequest({ ...ARGS, mailboxes: ['me@work.com'] })
+    expect(one && canChooseMailboxes(one)).toBe(false)
+    expect(one && answerMailboxes(one, [])).toBeNull()
+    const two = parseAccessRequest({
+      ...ARGS,
+      mailboxes: ['me@work.com', 'me@home.com'],
+    })
+    expect(two && canChooseMailboxes(two)).toBe(true)
+    expect(two && answerMailboxes(two, [])).toEqual([
+      'me@work.com',
+      'me@home.com',
+    ])
+    expect(two && answerMailboxes(two, ['me@home.com'])).toEqual([
+      'me@work.com',
+    ])
+    const calendar = parseAccessRequest({
+      ...ARGS,
+      family: 'calendar',
+      mailboxes: ['a@x.com', 'b@y.com'],
+    })
+    expect(calendar && canChooseMailboxes(calendar)).toBe(false)
   })
 
   it('refuses args that are not an access request', () => {

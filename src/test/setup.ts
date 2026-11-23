@@ -68,6 +68,8 @@ vi.mock('@/lib/tauri-bindings', async importOriginal => {
       grantConnectorAccess: ok(null),
       revokeConnectorAccess: ok(null),
       answerAccessRequest: ok(null),
+      setGrantMailboxes: ok(null),
+      effectiveModel: ok({ model: 'claude:claude-sonnet-5', onTrial: false }),
       listRegistryConnectors: ok([]),
       removeConnector: ok(null),
       listNoteSuggestions: ok([]),

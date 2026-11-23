@@ -4,10 +4,14 @@
 //!
 //! | Tool               | Arguments                    | Returns                                  |
 //! | ------------------ | ---------------------------- | ---------------------------------------- |
-//! | `mail_list_new`    | `{since_hours?, limit?}`     | recent inbox and sent mail, filtered     |
-//! | `mail_get_message` | `{id}`                       | one message's text, size capped          |
-//! | `mail_get_thread`  | `{thread_id}`                | the thread's headers and previews        |
-//! | `mail_search`      | `{query, limit?}`            | matching headers                         |
+//! | `mail_list_new`    | `{since_hours?, limit?, mailbox?}` | recent inbox and sent mail, filtered |
+//! | `mail_get_message` | `{id, mailbox?}`             | one message's text, size capped          |
+//! | `mail_get_thread`  | `{thread_id, mailbox?}`      | the thread's headers and previews        |
+//! | `mail_search`      | `{query, limit?, mailbox?}`  | matching headers                         |
+//!
+//! `mailbox` (an address) keeps a call to that one mailbox, which the
+//! agent's grant must cover. Without it a call reaches every mailbox the
+//! grant covers.
 //!
 //! Runs started by the email check get only these and the notes tools
 //! ([`allowed_in_email_run`]).
@@ -20,9 +24,10 @@ use super::mail::Header;
 use super::mailbox::Mailbox;
 use super::settings::EmailAccount;
 use super::text::{neutralize, DATA_TAG};
-use super::{email_settings, granted, MailProvider};
+use super::{email_settings, granted, MailProvider, MailboxId};
 use crate::engine::ToolOutcome;
 use crate::llm::ToolSpec;
+use crate::services::domain::grant::GrantAccess;
 use crate::services::AppState;
 
 pub const LIST_NEW: &str = "mail_list_new";
@@ -65,8 +70,16 @@ pub fn offered(state: &AppState, agent_id: &str, declared: &[String]) -> Vec<Too
     TOOLS.iter().filter_map(|name| spec(name)).collect()
 }
 
-/// The mailboxes a call reaches: the one its id names, else every
-/// connected one. Read access only
+/// The mailbox `args.mailbox` names, as given (trimmed)
+fn mailbox_arg(args: &Value) -> Option<&str> {
+    args.get("mailbox")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+}
+
+/// The mailboxes a call reaches: the one `mailbox` names, else those of
+/// the provider its id names, else every connected one. Read access only
 pub fn access_need(state: &AppState, tool: &str, args: &Value) -> crate::services::access::Need {
     let named = ["id", "thread_id"]
         .iter()
@@ -74,14 +87,18 @@ pub fn access_need(state: &AppState, tool: &str, args: &Value) -> crate::service
         .find_map(|key| args.get(*key).and_then(Value::as_str))
         .and_then(MailProvider::of_message_id)
         .map(|(provider, _)| provider);
-    // Grants are per provider: one connector however many of its mailboxes
-    let connected = super::connected(state);
+    let asked = mailbox_arg(args);
+    // A connector per provider; the grant on it may name its mailboxes
+    let reached: Vec<MailboxId> = super::connected(state)
+        .into_iter()
+        .filter(|m| named.is_none_or(|n| n == m.provider))
+        .filter(|m| asked.is_none_or(|a| m.email.eq_ignore_ascii_case(a)))
+        .collect();
     crate::services::access::Need {
         family: crate::services::access::AccessFamily::Email,
         connectors: MailProvider::ALL
             .into_iter()
-            .filter(|p| connected.iter().any(|m| m.provider == *p))
-            .filter(|p| named.is_none_or(|n| n == *p))
+            .filter(|p| reached.iter().any(|m| m.provider == *p))
             .map(|p| crate::services::access::AccessConnector {
                 id: p.id().to_string(),
                 name: p.name().to_string(),
@@ -89,11 +106,15 @@ pub fn access_need(state: &AppState, tool: &str, args: &Value) -> crate::service
             .collect(),
         access: crate::services::domain::grant::GrantAccess::Read,
         details: Vec::new(),
+        mailbox: asked
+            .filter(|_| !reached.is_empty())
+            .map(str::to_ascii_lowercase),
+        mailboxes: reached.into_iter().map(|m| m.email).collect(),
     }
 }
 
 fn spec(name: &str) -> Option<ToolSpec> {
-    let (description, schema) = match name {
+    let (description, mut schema) = match name {
         LIST_NEW => (
             "List the user's recent email (inbox and sent), newest first, without newsletters \
 and notes to self: id, thread_id, from, to, subject, date, a short preview, and unread, list_id \
@@ -128,6 +149,11 @@ Read-only.",
         ),
         _ => return None,
     };
+    schema["properties"]["mailbox"] = json!({
+        "type": "string",
+        "description": "One of the user's addresses: only that mailbox. Leave it out to use every \
+    mailbox you may read; with several, each result says its `mailbox`.",
+    });
     Some(ToolSpec {
         name: name.to_string(),
         description: description.to_string(),
@@ -219,18 +245,52 @@ pub async fn message_by_id(state: &AppState, id: &str) -> Result<super::mail::Me
     Err(failure)
 }
 
-/// Runs a mail tool on the mailboxes in `allowed` (what `services::access`
-/// let this call use)
-pub async fn call(state: &AppState, allowed: &[String], tool: &str, args: &Value) -> ToolOutcome {
+/// Whether a call of `agent` allowed `provider` may read `account`: the
+/// mailbox it names (access checked that one), else what the agent's grant
+/// covers, else every mailbox (allowed once in this run, no grant)
+fn reaches(covered: Option<&[String]>, asked: Option<&str>, account: &EmailAccount) -> bool {
+    match (asked, covered) {
+        (Some(asked), _) => account.email.eq_ignore_ascii_case(asked),
+        (None, Some(covered)) => {
+            covered.is_empty()
+                || covered
+                    .iter()
+                    .any(|m| m.eq_ignore_ascii_case(&account.email))
+        }
+        (None, None) => true,
+    }
+}
+
+/// Runs a mail tool for `agent` on the mailboxes of the providers in
+/// `allowed` (what `services::access` let this call use) that its grant
+/// covers, or the one `mailbox` names
+pub async fn call(
+    state: &AppState,
+    agent: &str,
+    allowed: &[String],
+    tool: &str,
+    args: &Value,
+) -> ToolOutcome {
+    let asked = mailbox_arg(args);
+    let grants = state.grants();
     let accounts: Vec<EmailAccount> = email_settings(state)
         .mailboxes()
         .filter(|a| allowed.iter().any(|id| id == a.provider.id()))
+        .filter(|a| {
+            let covered = grants.mailboxes(agent, a.provider.id(), GrantAccess::Read);
+            reaches(covered.as_deref(), asked, a)
+        })
         .cloned()
         .collect();
     if accounts.is_empty() {
-        return error(format!(
-            "Tool '{tool}' is not available: no mailbox is connected for this agent"
-        ));
+        return error(match asked {
+            Some(asked) => {
+                format!("Tool '{tool}' can't read {asked}: it isn't a mailbox this agent may read")
+            }
+            None => {
+                format!("Tool '{tool}' is not available: no mailbox is connected for this agent")
+            }
+        });
     }
     let setup = state.email().setup();
     let mailbox = |account: &EmailAccount| Mailbox::new(account, &setup, state.secrets());
@@ -352,6 +412,33 @@ mod mailbox_tests {
             at: 0,
         };
         (mailbox.to_string(), header)
+    }
+
+    #[test]
+    fn a_call_reads_the_named_mailbox_or_what_the_grant_covers() {
+        let work = EmailAccount::mailbox(MailProvider::Gmail, "me@work.com");
+        let home = EmailAccount::mailbox(MailProvider::Gmail, "me@home.com");
+        let only_work = ["me@work.com".to_string()];
+        // A grant naming one mailbox
+        assert!(reaches(Some(&only_work), None, &work));
+        assert!(!reaches(Some(&only_work), None, &home));
+        // A grant on every mailbox, and allowed once (no grant)
+        assert!(reaches(Some(&[]), None, &home));
+        assert!(reaches(None, None, &home));
+        // The named one only, whatever its case
+        assert!(reaches(Some(&[]), Some("ME@home.com"), &home));
+        assert!(!reaches(Some(&[]), Some("me@home.com"), &work));
+    }
+
+    #[test]
+    fn every_mail_tool_takes_a_mailbox() {
+        for name in TOOLS {
+            let spec = spec(name).unwrap();
+            assert_eq!(
+                spec.input_schema["properties"]["mailbox"]["type"], "string",
+                "{name}"
+            );
+        }
     }
 
     #[test]

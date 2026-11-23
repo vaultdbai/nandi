@@ -128,6 +128,8 @@ pub fn access_need(state: &AppState, tool: &str, args: &Value) -> Option<Need> {
         connectors,
         access: GrantAccess::Read,
         details,
+        mailboxes: Vec::new(),
+        mailbox: None,
     })
 }
 

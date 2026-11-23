@@ -98,6 +98,14 @@ pub struct AccessRequest {
     /// For family `site`: the site (no connectors)
     #[serde(default)]
     pub site: Option<SiteAccess>,
+    /// For family `email`: the mailboxes the call reaches, by address. The
+    /// person can let a grant cover only some of them
+    #[serde(default)]
+    pub mailboxes: Vec<String>,
+    /// For family `email`, once allowed for the agent: the mailboxes its
+    /// grant covers (`None`: every mailbox)
+    #[serde(default)]
+    pub granted_mailboxes: Option<Vec<String>>,
 }
 
 /// A website a browser pilot asked to open
@@ -129,6 +137,10 @@ pub struct Need {
     pub connectors: Vec<AccessConnector>,
     pub access: GrantAccess,
     pub details: Vec<String>,
+    /// Mail: the mailboxes the call reaches, by address
+    pub mailboxes: Vec<String>,
+    /// Mail: the one mailbox the call names; it needs a grant covering it
+    pub mailbox: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,6 +206,8 @@ fn package_need(state: &AppState, tool: &str) -> Option<Need> {
         }],
         access,
         details,
+        mailboxes: Vec::new(),
+        mailbox: None,
     })
 }
 
@@ -303,7 +317,13 @@ pub async fn decide(
         let key = (connector.id.clone(), need.access);
         let always_ask = policy_hit(ask, &connector.id, need.access).is_some();
         every_time |= always_ask;
-        let granted = !always_ask && grants.allows(agent, &connector.id, need.access);
+        // A call naming one mailbox needs a grant covering it; else any
+        // grant on the connector, which the tool keeps to what it covers
+        let granted = !always_ask
+            && match &need.mailbox {
+                Some(mailbox) => grants.covers(agent, &connector.id, need.access, mailbox),
+                None => grants.allows(agent, &connector.id, need.access),
+            };
         if granted || earlier.once.contains(&key) {
             usable.push(connector.id.clone());
         } else if !earlier.refused.contains(&key) {
@@ -322,6 +342,8 @@ pub async fn decide(
             choice: None,
             decided_by: None,
             site: None,
+            mailboxes: need.mailboxes,
+            granted_mailboxes: None,
         })));
     }
     // The person refused it earlier in this run (recorded then)
@@ -348,6 +370,7 @@ pub async fn answer(
     approval_id: &str,
     choice: AccessChoice,
     subdomains: bool,
+    mailboxes: Option<Vec<String>>,
     who: String,
 ) -> Result<(), String> {
     let id = approval_id.to_string();
@@ -386,16 +409,54 @@ pub async fn answer(
     // (`chat::approve_action`): "approved (allowSaved)", "refused (deny)"
     let mut changed = false;
     if let Some(scope) = scope {
+        let chosen = chosen_mailboxes(&request, mailboxes)?;
+        let mut narrowed = Vec::new();
         for connector in &request.connectors {
-            let grant = ConnectorGrant::new(&request.agent, &connector.id, request.access)
+            let mut grant = ConnectorGrant::new(&request.agent, &connector.id, request.access)
                 .map_err(|e| e.to_string())?;
+            if request.family == AccessFamily::Email {
+                // None of this provider's mailboxes were chosen: no grant
+                let Some(cover) = email::grant_cover(state, &connector.id, &chosen) else {
+                    continue;
+                };
+                grant = grant.for_mailboxes(&cover).map_err(|e| e.to_string())?;
+                narrowed.extend(grant.mailboxes.iter().cloned());
+            }
             changed |= state.grants().grant(grant, scope)?;
+        }
+        if !narrowed.is_empty() {
+            request.granted_mailboxes = Some(narrowed);
         }
     }
     if changed {
         events::emit(state.bus(), &GrantsChanged {});
     }
     resolve(state, &approval, request, choice, who).await
+}
+
+/// The mailboxes an email request's grant may cover: those the person
+/// kept ticked (`None`: all the request showed). Never one it didn't show.
+/// Empty: the request showed none (it covers every mailbox, as before)
+fn chosen_mailboxes(
+    request: &AccessRequest,
+    chosen: Option<Vec<String>>,
+) -> Result<Vec<String>, String> {
+    if request.family != AccessFamily::Email || request.mailboxes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let Some(chosen) = chosen else {
+        return Ok(request.mailboxes.clone());
+    };
+    let kept: Vec<String> = request
+        .mailboxes
+        .iter()
+        .filter(|shown| chosen.iter().any(|c| c.trim().eq_ignore_ascii_case(shown)))
+        .cloned()
+        .collect();
+    if kept.is_empty() {
+        return Err("Choose at least one mailbox this agent may read".to_string());
+    }
+    Ok(kept)
 }
 
 /// Writes the choice into the request and resolves its approval, so the
@@ -575,6 +636,8 @@ async fn site_decision(
             can_save,
             subdomains: false,
         }),
+        mailboxes: Vec::new(),
+        granted_mailboxes: None,
     })))
 }
 
@@ -594,8 +657,38 @@ pub async fn grant_up_front(
             connector: connector.to_string(),
             access,
             scope,
+            mailboxes: Vec::new(),
         };
         grants::record(state, "granted", &info, None);
+        events::emit(state.bus(), &GrantsChanged {});
+    }
+    Ok(())
+}
+
+/// Lets a mail grant cover only `mailboxes` (connected addresses of its
+/// provider), or every mailbox when empty (Settings › Connectors › Access)
+pub async fn set_grant_mailboxes(
+    state: &AppState,
+    grant: GrantInfo,
+    mailboxes: Vec<String>,
+) -> Result<(), String> {
+    let connected = email::addresses_of(state, &grant.connector)
+        .ok_or_else(|| format!("'{}' isn't a mail connector", grant.connector))?;
+    if let Some(unknown) = mailboxes
+        .iter()
+        .find(|m| !connected.iter().any(|c| c.eq_ignore_ascii_case(m.trim())))
+    {
+        return Err(format!(
+            "{unknown} isn't a connected mailbox of {}",
+            grant.connector
+        ));
+    }
+    if state.grants().set_mailboxes(&grant, &mailboxes)? {
+        let info = GrantInfo {
+            mailboxes: crate::services::domain::grant::normalize_mailboxes(&mailboxes),
+            ..grant
+        };
+        grants::record(state, "changed", &info, None);
         events::emit(state.bus(), &GrantsChanged {});
     }
     Ok(())

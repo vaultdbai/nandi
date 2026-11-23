@@ -36,6 +36,15 @@ pub fn set_setting(conn: &Connection, key: &str, value: &Value) -> rusqlite::Res
     Ok(())
 }
 
+/// The keys of the machine-local runtime settings starting with `prefix`.
+pub fn setting_keys_with_prefix(conn: &Connection, prefix: &str) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT key FROM local_settings WHERE substr(key, 1, length(?1)) = ?1 ORDER BY key",
+    )?;
+    let rows = stmt.query_map([prefix], |row| row.get(0))?;
+    rows.collect()
+}
+
 /// Removes a machine-local runtime setting.
 pub fn delete_setting(conn: &Connection, key: &str) -> rusqlite::Result<()> {
     conn.execute("DELETE FROM local_settings WHERE key = ?1", [key])?;

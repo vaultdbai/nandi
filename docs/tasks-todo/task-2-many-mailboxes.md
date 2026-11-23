@@ -30,9 +30,9 @@ Each slice lands on its own.
 
 ### 3. Agents know which mailbox (trust)
 
-- [ ] Mail tools take an optional mailbox; without one they search all granted mailboxes. Results say which mailbox each message came from.
-- [ ] Grants name the mailbox. Connecting is still the person's say-so for Nandi to read that one mailbox, read-only.
-- [ ] Notes and to-dos keep their source mailbox, so "from your work inbox" is on the record.
+- [x] Mail tools take an optional mailbox; without one they search all granted mailboxes. Results say which mailbox each message came from.
+- [x] Grants name the mailbox. Connecting is still the person's say-so for Nandi to read that one mailbox, read-only. A grant covers every mailbox unless the person narrows it (the access request, Settings › Connectors › Access); grants saved before cover every mailbox, as they did.
+- [x] Notes and to-dos keep their source mailbox, so "from your work inbox" is on the record. Notes cite it through Nandi's `skill.md`; the to-do record has no mailbox field (it would need a migration), so `todo_add` asks the model to name the mailbox in the text.
 
 ### 4. Docs and the record
 

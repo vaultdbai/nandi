@@ -317,6 +317,27 @@ fn resolve_model(secrets: &Secrets, preferred: &str) -> Result<(String, bool), S
         .to_string())
 }
 
+/// The model a call set to a model actually uses ([`usable_model`]), so a
+/// page can say when a different one answers
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct EffectiveModel {
+    /// `None`: nothing can answer (no key, no sign-in, no trial)
+    pub model: Option<String>,
+    /// It runs on the free trial's tokens
+    pub on_trial: bool,
+}
+
+/// [`EffectiveModel`] for `preferred` (`<provider>:<model>`). Only reads
+pub fn effective_model(secrets: &Secrets, preferred: &str) -> Result<EffectiveModel, String> {
+    crate::llm::parse_model(preferred)?;
+    let resolved = resolve_model(secrets, preferred).ok();
+    Ok(EffectiveModel {
+        on_trial: resolved.as_ref().is_some_and(|(_, trial)| *trial),
+        model: resolved.map(|(model, _)| model),
+    })
+}
+
 /// Stores `api_key` for `provider` in the keyring (never in the repo;
 /// `settings.yaml` only names the entry). An empty key removes it.
 pub async fn set_llm_api_key(
@@ -475,6 +496,35 @@ mod tests {
         assert!(require_api_key(state.secrets(), Provider::OpenAi)
             .unwrap_err()
             .contains("OpenAI API key not configured"));
+    }
+
+    #[test]
+    fn an_agents_model_says_which_model_answers_it() {
+        let secrets = Secrets::in_memory();
+        // Ollama needs no key: the agent's own model answers
+        assert_eq!(
+            effective_model(&secrets, "ollama:llama3.2").unwrap(),
+            EffectiveModel {
+                model: Some("ollama:llama3.2".into()),
+                on_trial: false
+            }
+        );
+        // Only an OpenAI key: a DeepSeek agent is answered by GPT
+        secrets
+            .set(KeyedProvider::OpenAi.keyring_user(), "sk-o")
+            .unwrap();
+        let fallback = effective_model(&secrets, "deepseek:deepseek-flash").unwrap();
+        assert_eq!(fallback.model.as_deref(), Some("gpt:gpt-5"));
+        assert!(!fallback.on_trial);
+        assert_eq!(
+            effective_model(&secrets, "gpt:gpt-4o")
+                .unwrap()
+                .model
+                .as_deref(),
+            Some("gpt:gpt-4o")
+        );
+        // A model Nandi can't read is an error, not a silent fallback
+        assert!(effective_model(&secrets, "no-provider").is_err());
     }
 
     #[test]

@@ -15,14 +15,14 @@ the run: mail_* tools (host) + filesystem__* notes tools, no container, nothing 
 
 ## Decisions
 
-| Decision                       | What it means in the code                                                                                                                                 |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Our own connector, not MCP     | `email/tool.rs` runs on the host. Tokens never go into a container                                                                                        |
-| Notes, not copies              | Only the change cursor (`local_settings`) and the notes are kept. Headers live for one check or one tool call                                             |
-| One run per check              | `check_all` hands every mailbox's new mail over in one `chat::submit`, only when there is some                                                            |
-| Email is untrusted             | Mail sits inside `<email-data>`; `text::neutralize` stops it closing the block; email runs get only mail and notes tools                                  |
-| Grants per agent and connector | The one grant model ([connector-hub.md](./connector-hub.md)): connecting gives Nandi a saved read grant; disconnecting removes every grant on the mailbox |
-| Not in the Library             | Mailboxes are in Settings › Email, not `connectors.yaml`: the connection belongs to this computer's keyring, not the gold copy                            |
+| Decision                       | What it means in the code                                                                                                                                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Our own connector, not MCP     | `email/tool.rs` runs on the host. Tokens never go into a container                                                                                                                                                       |
+| Notes, not copies              | Only the change cursor (`local_settings`) and the notes are kept. Headers live for one check or one tool call                                                                                                            |
+| One run per check              | `check_all` hands every mailbox's new mail over in one `chat::submit`, only when there is some                                                                                                                           |
+| Email is untrusted             | Mail sits inside `<email-data>`; `text::neutralize` stops it closing the block; email runs get only mail and notes tools                                                                                                 |
+| Grants per agent and connector | The one grant model ([connector-hub.md](./connector-hub.md)): connecting gives Nandi a saved read grant naming that mailbox; a grant covers every mailbox unless it names some; signing one out takes it off every grant |
+| Not in the Library             | Mailboxes are in Settings › Email, not `connectors.yaml`: the connection belongs to this computer's keyring, not the gold copy                                                                                           |
 
 ## At first-run setup and on Home
 
@@ -55,15 +55,15 @@ A mailbox is its provider and its address (`MailboxId` in `email/provider.rs`). 
 | Sign-in tokens (access, refresh, expiry)                              | Keyring `nandi.email.<provider>.<hash>.oauth`                                                                                           |
 | Accounts (email, name, paused, what each reads), interval, watch list | `~/.nandi/config.json` `email`, in the order they were connected                                                                        |
 | An account's drive and calendar cursors                               | `local_settings` `files.<provider>.<hash>.cursor`, `calendar.<provider>.<hash>.{cursor,state,seen}`                                     |
-| Which agent may read which mailbox                                    | grants: `settings.yaml` or `~/.nandi/settings.local.yaml`, per provider for now                                                         |
+| Which agent may read which mailbox                                    | grants: `settings.yaml` or `~/.nandi/settings.local.yaml`, per provider, optionally naming its mailboxes                                |
 | Change cursor                                                         | `local_settings` `email.<provider>.<hash>.cursor`                                                                                       |
 | Last check (time, count, run, error, needs sign-in)                   | `local_settings` `email.<provider>.<hash>.state`                                                                                        |
 
-**Disconnect** (`email::disconnect`) takes one mailbox: it deletes its keyring entry, its `local_settings` rows and its account. The provider's grants go with its last mailbox. **Reconnect** of the same address (after a sign-in ended) keeps the cursor and the mailbox's place in the list; another address is added and starts with the 14-day window. Pause, Resume and the background read act on one mailbox too. The first mailbox stays this Nandi's identity (`services::identity`).
+**Disconnect** (`email::disconnect`) takes one mailbox: it deletes its keyring entry, its `local_settings` rows and its account. Grants naming it lose it (a grant that named only it goes; it never widens to every mailbox), and the provider's grants go with its last mailbox (`revoke_for`). **Reconnect** of the same address (after a sign-in ended) keeps the cursor and the mailbox's place in the list; another address is added and starts with the 14-day window. Pause, Resume and the background read act on one mailbox too. The first mailbox stays this Nandi's identity (`services::identity`).
 
 **The status the UI reads** (`EmailStatus`): `providers` (what this build can connect, and whether any mailbox of it is connected) and `mailboxes`, one `MailboxStatus` per connected mailbox in the order they were connected (provider, address, name, profile, state, last check, background read, `is_identity`). Settings › Email (`MailboxRow`) shows one row per mailbox with its own Pause or Resume, background-read controls and Sign out, and **Add another account** per provider (`ConnectMailbox another`). The first sign-in locks the identity (`config.json` `identity`); it never moves. **Signing out the identity mailbox** is allowed and leaves the identity as it was: the other mailboxes don't inherit it, and the relay and the free trial ask for that address to be connected again (`NoIdToken::Disconnected`). The sign-out dialog says so.
 
-**Sign-ins in progress.** Each `start_email_sign_in` makes its own keyring entry (`MailProvider::sign_in_entry(attempt)`) and `EmailService.sign_ins` remembers the provider's current one. Starting again replaces it (the old flow is cancelled and its entry deleted), so two attempts never share a token. If `connect` fails after moving the token (config.json can't be written), a new mailbox's token entry is deleted again: no secret is left without an account.
+**Sign-ins in progress.** Each `start_email_sign_in` makes its own keyring entry (`MailProvider::sign_in_entry(attempt)`) and `EmailService.sign_ins` remembers the provider's current one. Starting again replaces it (the old flow is cancelled and its entry deleted), so two attempts never share a token. If `connect` fails after moving the token (config.json can't be written), a new mailbox's token entry is deleted again: no secret is left without an account. The keyring can't list its entries, so each attempt's entry name is also on the record in `local_settings` `email.sign-ins.<entry>` from the start of the attempt until it ends (`email/sign_ins.rs`). An exit mid sign-in leaves the record; at the next start, right after the 0.2 key upgrades and before any attempt can begin, `sign_ins::clean_abandoned` deletes each recorded entry (and its pieces) from the keyring, then the record. Only names shaped like `nandi.email.<provider>.sign-in.<attempt>` are ever deleted; a failure is logged and never blocks startup.
 
 **From Nandi 0.2** (`email/keys_from_0_2.rs`): 0.2 kept one mailbox per provider under `nandi.email.<provider>.oauth` and `email.<provider>.{cursor,state,backfill}`. At start, before anything reads a mailbox, each moves to the name of the account `config.json` holds for that provider: new name written first, old one deleted after, so an interrupted start finishes the next time. `state.db`'s schema doesn't change, so there is no migration.
 
@@ -160,14 +160,29 @@ Nandi's behaviour is in its `skill.md` › Email: note asks, promises, deadlines
 
 Offered to any agent with a read grant on a connected mailbox (`email::tool::offered`), in chats too:
 
-| Tool               | Arguments                | Returns                                           |
-| ------------------ | ------------------------ | ------------------------------------------------- |
-| `mail_list_new`    | `since_hours?`, `limit?` | Recent inbox and sent mail, filtered              |
-| `mail_get_message` | `id`                     | Text with its quoted replies, at most 4,000 chars |
-| `mail_get_thread`  | `thread_id`              | The thread's headers and previews                 |
-| `mail_search`      | `query`, `limit?`        | Matching headers                                  |
+| Tool               | Arguments                            | Returns                                           |
+| ------------------ | ------------------------------------ | ------------------------------------------------- |
+| `mail_list_new`    | `since_hours?`, `limit?`, `mailbox?` | Recent inbox and sent mail, filtered              |
+| `mail_get_message` | `id`, `mailbox?`                     | Text with its quoted replies, at most 4,000 chars |
+| `mail_get_thread`  | `thread_id`, `mailbox?`              | The thread's headers and previews                 |
+| `mail_search`      | `query`, `limit?`, `mailbox?`        | Matching headers                                  |
 
 IDs carry their provider: `outlook:<id>`, `gmail:<id>`. Results are wrapped as untrusted data.
+
+### Which mailboxes an agent reads
+
+A grant on `gmail` or `outlook` (`ConnectorGrant.mailboxes`, `domain/grant.rs`) covers every mailbox of the provider, ones connected later too, unless it names some: then only those. Grants saved before mailboxes could be named have none, so they cover every mailbox as before: no format step, the field is simply absent (upgrade tests `grants_saved_before_mailboxes_cover_every_mailbox`, `mail_grants_from_nandi_0_2_cover_every_mailbox`).
+
+| Case                               | What happens                                                                                                                                                         |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A call without `mailbox`           | Reads every mailbox the grant covers (`tool::call`, `reaches`); allowed once with no grant: every mailbox. With several, each result says its `mailbox`              |
+| A call naming `mailbox`            | `access_need` sets `Need.mailbox`; `access::decide` needs a grant covering it, else asks. The request's `mailboxes` lists it                                         |
+| The request with several mailboxes | **Allow for this agent** can cover only the ticked ones (`answer_access_request` `mailboxes`); all of a provider's ticked is every mailbox (`email::grant_cover`)    |
+| Settings › Connectors › Access     | "Every mailbox" or "Only …"; **Mailboxes** sets it (`set_grant_mailboxes`, connected addresses only, `[]` is every mailbox)                                          |
+| Connecting a mailbox               | Nandi's grant gains that address (one on every mailbox stays so)                                                                                                     |
+| Signing a mailbox out              | Grants naming it lose it; one that named only it goes, never widening to every mailbox (`Grants::drop_mailbox`). The last mailbox of a provider takes all its grants |
+
+Allow once and Don't allow stay per provider within a run. Notes cite the mailbox through Nandi's `skill.md`; a to-do's record has no mailbox field, so `todo_add`'s description asks the model to name the mailbox in the text when there are several (the record would need a migration).
 
 ## Commands and routes
 

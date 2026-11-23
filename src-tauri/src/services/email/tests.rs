@@ -429,6 +429,7 @@ async fn only_gets_ever_reach_the_mail_apis() {
     for name in [tool::LIST_NEW, tool::SEARCH] {
         tool::call(
             &state,
+            DEFAULT_AGENT,
             &allowed(&state, DEFAULT_AGENT),
             name,
             &json!({"query": "audit"}),
@@ -437,6 +438,7 @@ async fn only_gets_ever_reach_the_mail_apis() {
     }
     tool::call(
         &state,
+        DEFAULT_AGENT,
         &allowed(&state, DEFAULT_AGENT),
         tool::GET_MESSAGE,
         &json!({"id": "outlook:m1"}),
@@ -444,6 +446,7 @@ async fn only_gets_ever_reach_the_mail_apis() {
     .await;
     tool::call(
         &state,
+        DEFAULT_AGENT,
         &allowed(&state, DEFAULT_AGENT),
         tool::GET_THREAD,
         &json!({"thread_id": "outlook:conv-m1"}),
@@ -1018,6 +1021,68 @@ async fn each_sign_in_attempt_has_its_own_entry() {
         poll_sign_in(&state, MailProvider::Gmail).await.phase,
         SignInPhase::Failed
     );
+    // Only the attempt in progress is on the record
+    assert_eq!(pending_sign_ins(&state).await, [key_of(&second)]);
+
+    // Nandi exits mid sign-in with a token in the entry: the next start
+    // removes it
+    token(state.secrets(), &second, 3600);
+    let conn = state.db().conn().unwrap();
+    assert_eq!(
+        super::sign_ins::clean_abandoned(&conn, state.secrets()).unwrap(),
+        1
+    );
+    drop(conn);
+    assert_eq!(state.secrets().get(&second).unwrap(), None);
+    assert!(pending_sign_ins(&state).await.is_empty());
+    state.shutdown();
+}
+
+fn key_of(entry: &str) -> String {
+    format!("email.sign-ins.{entry}")
+}
+
+async fn pending_sign_ins(state: &AppState) -> Vec<String> {
+    state
+        .db()
+        .call(|conn| crate::db::setting_keys_with_prefix(conn, "email.sign-ins."))
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_finished_sign_in_leaves_no_record() {
+    let mock = mock(gmail_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    start_sign_in(&state, MailProvider::Gmail, Reads::MAIL)
+        .await
+        .unwrap();
+    assert_eq!(pending_sign_ins(&state).await.len(), 1);
+    let entry = lock(&state.email().sign_ins)[&MailProvider::Gmail]
+        .entry
+        .clone();
+    // The sign-in fails (its flow is gone, no token came): the record goes
+    state.email().flows.cancel(&entry);
+    assert_eq!(
+        poll_sign_in(&state, MailProvider::Gmail).await.phase,
+        SignInPhase::Failed
+    );
+    assert!(pending_sign_ins(&state).await.is_empty());
+    // One that connects leaves none either
+    start_sign_in(&state, MailProvider::Gmail, Reads::MAIL)
+        .await
+        .unwrap();
+    let entry = lock(&state.email().sign_ins)[&MailProvider::Gmail]
+        .entry
+        .clone();
+    token(state.secrets(), &entry, 3600);
+    state.email().flows.cancel(&entry);
+    assert_eq!(
+        poll_sign_in(&state, MailProvider::Gmail).await.phase,
+        SignInPhase::Connected
+    );
+    assert_eq!(state.secrets().get(&entry).unwrap(), None);
+    assert!(pending_sign_ins(&state).await.is_empty());
     state.shutdown();
 }
 
@@ -1052,6 +1117,103 @@ async fn signing_out_one_of_two_keeps_the_other_and_nandis_access() {
     disconnect(&state, home()).await.unwrap();
     assert!(addresses(&state).is_empty());
     assert!(state.grants().list().is_empty());
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn an_agent_reads_only_the_mailboxes_its_grant_names() {
+    use crate::services::domain::grant::{ConnectorGrant, GrantAccess, GrantScope};
+    let mock = mock(gmail_api).await;
+    let (state, _recorder) = state_with(&mock).await;
+    connected(&state, MailProvider::Gmail).await;
+    gmail_as(&mock, "dev.home@gmail.com");
+    connected(&state, MailProvider::Gmail).await;
+    let read = GrantAccess::Read;
+    // Each connect let Nandi read that mailbox
+    assert_eq!(
+        state.grants().mailboxes(DEFAULT_AGENT, "gmail", read),
+        Some(vec![
+            "dev.home@gmail.com".to_string(),
+            "dev@gmail.com".to_string()
+        ])
+    );
+    let home_only = ConnectorGrant::new("pr-reviewer", "gmail", read)
+        .and_then(|g| g.for_mailboxes(&["dev.home@gmail.com".to_string()]))
+        .unwrap();
+    state.grants().grant(home_only, GrantScope::Saved).unwrap();
+    let gmail_ids = ["gmail".to_string()];
+
+    // Without a mailbox: only what the grant covers, so no `mailbox` tag
+    let list = tool::call(
+        &state,
+        "pr-reviewer",
+        &gmail_ids,
+        tool::LIST_NEW,
+        &json!({}),
+    )
+    .await;
+    assert!(!list.is_error, "{}", list.result);
+    assert!(!list.result.contains("\"mailbox\""), "{}", list.result);
+    // Naming one it doesn't cover asks the person first, showing that one
+    let work = json!({"mailbox": "Dev@Gmail.com"});
+    use crate::services::access::{self, Decision};
+    let decided = access::decide(&state, None, "pr-reviewer", "run-1", tool::LIST_NEW, &work).await;
+    let Some(Decision::Ask(request)) = decided else {
+        panic!("expected a request: {decided:?}");
+    };
+    assert_eq!(request.mailboxes, ["dev@gmail.com"]);
+    // The one it covers runs at once
+    let home_call = json!({"mailbox": "dev.home@gmail.com"});
+    let decided = access::decide(
+        &state,
+        None,
+        "pr-reviewer",
+        "run-1",
+        tool::LIST_NEW,
+        &home_call,
+    )
+    .await;
+    assert_eq!(decided, Some(Decision::Allowed(vec!["gmail".to_string()])));
+    // A mailbox that isn't connected reaches nothing
+    let elsewhere = json!({"mailbox": "someone@else.com"});
+    let decided = access::decide(
+        &state,
+        None,
+        "pr-reviewer",
+        "run-1",
+        tool::LIST_NEW,
+        &elsewhere,
+    )
+    .await;
+    assert!(matches!(decided, Some(Decision::Refused(_))), "{decided:?}");
+    let need = tool::access_need(&state, tool::LIST_NEW, &work);
+    assert_eq!(need.mailbox.as_deref(), Some("dev@gmail.com"));
+    assert_eq!(need.mailboxes, ["dev@gmail.com"]);
+    assert!(!state
+        .grants()
+        .covers("pr-reviewer", "gmail", read, "dev@gmail.com"));
+    // Nandi reads both, each result saying which
+    let both = tool::call(
+        &state,
+        DEFAULT_AGENT,
+        &gmail_ids,
+        tool::LIST_NEW,
+        &json!({}),
+    )
+    .await;
+    assert!(both.result.contains("\"mailbox\""), "{}", both.result);
+    let everything = tool::access_need(&state, tool::LIST_NEW, &json!({}));
+    assert_eq!(everything.mailboxes.len(), 2);
+    assert_eq!(everything.mailbox, None);
+
+    // Signing the home mailbox out: the reviewer's grant named only it and
+    // goes; Nandi's keeps the other
+    disconnect(&state, home()).await.unwrap();
+    assert!(!state.grants().allows("pr-reviewer", "gmail", read));
+    assert_eq!(
+        state.grants().mailboxes(DEFAULT_AGENT, "gmail", read),
+        Some(vec!["dev@gmail.com".to_string()])
+    );
     state.shutdown();
 }
 
@@ -1134,6 +1296,7 @@ async fn tools_are_only_for_an_agent_with_a_grant() {
     assert!(tool::offered(&state, "pr-reviewer", &[]).is_empty());
     let refused = tool::call(
         &state,
+        "pr-reviewer",
         &allowed(&state, "pr-reviewer"),
         tool::GET_MESSAGE,
         &json!({"id": "outlook:m1"}),
@@ -1150,6 +1313,7 @@ async fn reading_a_message_keeps_its_quote_and_marks_it_untrusted() {
     connected(&state, MailProvider::Outlook).await;
     let outcome = tool::call(
         &state,
+        DEFAULT_AGENT,
         &allowed(&state, DEFAULT_AGENT),
         tool::GET_MESSAGE,
         &json!({"id": "outlook:m1"}),
@@ -1164,6 +1328,7 @@ async fn reading_a_message_keeps_its_quote_and_marks_it_untrusted() {
     // Wrong prefixes and missing mailboxes are refused calmly
     let bad = tool::call(
         &state,
+        DEFAULT_AGENT,
         &allowed(&state, DEFAULT_AGENT),
         tool::GET_MESSAGE,
         &json!({"id": "m1"}),
@@ -1172,6 +1337,7 @@ async fn reading_a_message_keeps_its_quote_and_marks_it_untrusted() {
     assert!(bad.is_error);
     let gmail = tool::call(
         &state,
+        DEFAULT_AGENT,
         &allowed(&state, DEFAULT_AGENT),
         tool::GET_MESSAGE,
         &json!({"id": "gmail:g1"}),
@@ -1180,6 +1346,7 @@ async fn reading_a_message_keeps_its_quote_and_marks_it_untrusted() {
     assert!(gmail.is_error && gmail.result.contains("isn't connected"));
     let list = tool::call(
         &state,
+        DEFAULT_AGENT,
         &allowed(&state, DEFAULT_AGENT),
         tool::LIST_NEW,
         &json!({}),

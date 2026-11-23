@@ -32,6 +32,20 @@ pub struct GrantInfo {
     pub connector: String,
     pub access: GrantAccess,
     pub scope: GrantScope,
+    /// The mailboxes it covers; empty: every mailbox of the connector
+    pub mailboxes: Vec<String>,
+}
+
+impl GrantInfo {
+    fn of(grant: ConnectorGrant, scope: GrantScope) -> Self {
+        Self {
+            agent: grant.agent,
+            connector: grant.connector,
+            access: grant.access,
+            scope,
+            mailboxes: grant.mailboxes,
+        }
+    }
 }
 
 /// `grants://changed`: a grant was given or removed
@@ -102,19 +116,53 @@ impl GrantStore {
         self.scope_of(agent, connector, access).is_some()
     }
 
+    /// The mailboxes `agent`'s grants on `connector` cover, saved and local
+    /// together. `None`: no grant; `Some([])`: every mailbox
+    pub fn mailboxes(
+        &self,
+        agent: &str,
+        connector: &str,
+        access: GrantAccess,
+    ) -> Option<Vec<String>> {
+        let found: Vec<Vec<String>> = self
+            .list()
+            .into_iter()
+            .filter(|g| g.agent == agent && g.connector == connector && g.access == access)
+            .map(|g| g.mailboxes)
+            .collect();
+        if found.is_empty() {
+            return None;
+        }
+        if found.iter().any(Vec::is_empty) {
+            return Some(Vec::new());
+        }
+        Some(crate::services::domain::grant::normalize_mailboxes(
+            &found.concat(),
+        ))
+    }
+
+    /// Whether `agent` may use `mailbox` of `connector` with `access`
+    pub fn covers(&self, agent: &str, connector: &str, access: GrantAccess, mailbox: &str) -> bool {
+        let saved = self.store.read(|repo| {
+            repo.settings()
+                .connector_grants()
+                .covers(agent, connector, access, mailbox)
+        });
+        saved
+            || self.load_local().is_ok_and(|local| {
+                local
+                    .connector_grants
+                    .covers(agent, connector, access, mailbox)
+            })
+    }
+
     /// Every grant, saved then local, each sorted by agent and connector
     pub fn list(&self) -> Vec<GrantInfo> {
-        let info = |grant: &ConnectorGrant, scope| GrantInfo {
-            agent: grant.agent.clone(),
-            connector: grant.connector.clone(),
-            access: grant.access,
-            scope,
-        };
         let mut out: Vec<GrantInfo> = self.store.read(|repo| {
             repo.settings()
                 .connector_grants()
                 .iter()
-                .map(|g| info(g, GrantScope::Saved))
+                .map(|g| GrantInfo::of(g.clone(), GrantScope::Saved))
                 .collect()
         });
         match self.load_local() {
@@ -122,11 +170,74 @@ impl GrantStore {
                 local
                     .connector_grants
                     .iter()
-                    .map(|g| info(g, GrantScope::Local)),
+                    .map(|g| GrantInfo::of(g.clone(), GrantScope::Local)),
             ),
             Err(e) => log::warn!("{e}"),
         }
         out
+    }
+
+    /// Sets which mailboxes `grant` covers (empty: every one). `false` when
+    /// it already covered just those; an error when there is no such grant
+    pub fn set_mailboxes(&self, grant: &GrantInfo, mailboxes: &[String]) -> Result<bool, String> {
+        let missing = || format!("{} has no such grant on {}", grant.agent, grant.connector);
+        let set = |grants: &mut crate::services::domain::grant::Grants| {
+            grants
+                .set_mailboxes(&grant.agent, &grant.connector, grant.access, mailboxes)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(missing)
+        };
+        match grant.scope {
+            GrantScope::Saved => {
+                let mut settings = self.store.read(|repo| repo.settings().clone());
+                if !set(settings.connector_grants_mut())? {
+                    return Ok(false);
+                }
+                self.store.repos().settings.save(&settings)?;
+                self.store.commit(EntityKind::Settings, "settings")?;
+                Ok(true)
+            }
+            GrantScope::Local => {
+                let mut local = self.load_local()?;
+                if !set(&mut local.connector_grants)? {
+                    return Ok(false);
+                }
+                self.save_local(&local)?;
+                Ok(true)
+            }
+        }
+    }
+
+    /// `mailbox` of `connector` was signed out: grants naming it lose it,
+    /// and a grant that named only it goes. Returns the grants removed and
+    /// the grants narrowed, from both places
+    pub fn drop_mailbox(
+        &self,
+        connector: &str,
+        mailbox: &str,
+    ) -> Result<(Vec<GrantInfo>, Vec<GrantInfo>), String> {
+        let mut removed = Vec::new();
+        let mut narrowed = Vec::new();
+        let mut keep = |(gone, less): (Vec<ConnectorGrant>, Vec<ConnectorGrant>), scope| {
+            removed.extend(gone.into_iter().map(|g| GrantInfo::of(g, scope)));
+            narrowed.extend(less.into_iter().map(|g| GrantInfo::of(g, scope)));
+        };
+        let mut settings = self.store.read(|repo| repo.settings().clone());
+        let saved = settings
+            .connector_grants_mut()
+            .drop_mailbox(connector, mailbox);
+        if !saved.0.is_empty() || !saved.1.is_empty() {
+            self.store.repos().settings.save(&settings)?;
+            self.store.commit(EntityKind::Settings, "settings")?;
+        }
+        keep(saved, GrantScope::Saved);
+        let mut local = self.load_local()?;
+        let here = local.connector_grants.drop_mailbox(connector, mailbox);
+        if !here.0.is_empty() || !here.1.is_empty() {
+            self.save_local(&local)?;
+        }
+        keep(here, GrantScope::Local);
+        Ok((removed, narrowed))
     }
 
     /// Gives `grant`, kept in `scope`. `false` when it was already there
@@ -200,12 +311,7 @@ impl GrantStore {
             self.save_local(&local)?;
         }
         for (grants, scope) in [(saved, GrantScope::Saved), (local_gone, GrantScope::Local)] {
-            gone.extend(grants.into_iter().map(|g| GrantInfo {
-                agent: g.agent,
-                connector: g.connector,
-                access: g.access,
-                scope,
-            }));
+            gone.extend(grants.into_iter().map(|g| GrantInfo::of(g, scope)));
         }
         Ok(gone)
     }
@@ -232,10 +338,15 @@ pub fn record(
             decision,
         )
         .subject(format!(
-            "{}: {} with {} ({})",
+            "{}: {} with {}{} ({})",
             grant.agent,
             grant.access.as_str(),
             grant.connector,
+            if grant.mailboxes.is_empty() {
+                String::new()
+            } else {
+                format!(", only {}", grant.mailboxes.join(", "))
+            },
             grant.scope.as_str()
         ))
         .note(why),
@@ -312,6 +423,78 @@ mod tests {
                 GrantScope::Local
             )
             .unwrap());
+    }
+
+    #[test]
+    fn mailboxes_join_both_places_and_go_with_their_sign_out() {
+        let (_tmp, grants) = grant_store();
+        let read = GrantAccess::Read;
+        let named = |agent: &str, list: &[&str]| {
+            let list: Vec<String> = list.iter().map(ToString::to_string).collect();
+            grant(agent, "gmail", read).for_mailboxes(&list).unwrap()
+        };
+        assert_eq!(grants.mailboxes("coordinator", "gmail", read), None);
+        grants
+            .grant(named("coordinator", &["a@x.com"]), GrantScope::Saved)
+            .unwrap();
+        grants
+            .grant(named("coordinator", &["b@y.com"]), GrantScope::Local)
+            .unwrap();
+        assert_eq!(
+            grants.mailboxes("coordinator", "gmail", read),
+            Some(vec!["a@x.com".to_string(), "b@y.com".to_string()])
+        );
+        assert!(grants.covers("coordinator", "gmail", read, "B@y.com"));
+        assert!(!grants.covers("coordinator", "gmail", read, "c@z.com"));
+
+        // Narrowed in Settings, then widened again
+        let saved = grants
+            .list()
+            .into_iter()
+            .find(|g| g.scope == GrantScope::Saved)
+            .unwrap();
+        assert!(grants.set_mailboxes(&saved, &[]).unwrap());
+        assert_eq!(grants.mailboxes("coordinator", "gmail", read), Some(vec![]));
+        assert!(grants
+            .set_mailboxes(&saved, &["a@x.com".to_string()])
+            .unwrap());
+
+        let (removed, narrowed) = grants.drop_mailbox("gmail", "a@x.com").unwrap();
+        assert_eq!(removed.len(), 1);
+        assert_eq!(removed[0].scope, GrantScope::Saved);
+        assert!(narrowed.is_empty());
+        assert_eq!(
+            grants.mailboxes("coordinator", "gmail", read),
+            Some(vec!["b@y.com".to_string()])
+        );
+        let gone = GrantInfo {
+            agent: "coordinator".into(),
+            connector: "outlook".into(),
+            access: read,
+            scope: GrantScope::Saved,
+            mailboxes: vec![],
+        };
+        assert!(grants.set_mailboxes(&gone, &[]).is_err());
+    }
+
+    #[test]
+    fn a_grant_on_every_mailbox_stays_when_one_signs_out() {
+        let (tmp, grants) = grant_store();
+        grants
+            .grant(
+                grant("coordinator", "outlook", GrantAccess::Read),
+                GrantScope::Saved,
+            )
+            .unwrap();
+        let file = tmp.path().join("repo/.nandi/settings.yaml");
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(!text.contains("mailboxes"), "{text}");
+        assert!(grants.covers("coordinator", "outlook", GrantAccess::Read, "a@x.com"));
+        assert!(grants.covers("coordinator", "outlook", GrantAccess::Read, "b@y.com"));
+        // Signing one mailbox out leaves a grant on every mailbox alone
+        let (removed, narrowed) = grants.drop_mailbox("outlook", "a@x.com").unwrap();
+        assert!(removed.is_empty() && narrowed.is_empty());
+        assert!(grants.allows("coordinator", "outlook", GrantAccess::Read));
     }
 
     #[test]

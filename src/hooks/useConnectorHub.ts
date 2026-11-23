@@ -59,18 +59,26 @@ export type GrantChange =
       scope: GrantScope
     }
   | { kind: 'revoke'; grant: GrantInfo }
+  /** Which mailboxes a mail grant covers (`[]`: every mailbox) */
+  | { kind: 'mailboxes'; grant: GrantInfo; mailboxes: string[] }
 
 export function useChangeGrant() {
   return useClientMutation(
-    (change: GrantChange) =>
-      change.kind === 'grant'
-        ? client.grantConnectorAccess(
+    (change: GrantChange) => {
+      switch (change.kind) {
+        case 'grant':
+          return client.grantConnectorAccess(
             change.agentId,
             change.connectorId,
             change.access,
             change.scope
           )
-        : client.revokeConnectorAccess(change.grant),
+        case 'revoke':
+          return client.revokeConnectorAccess(change.grant)
+        case 'mailboxes':
+          return client.setGrantMailboxes(change.grant, change.mailboxes)
+      }
+    },
     { invalidates: hubKeys.grants }
   )
 }

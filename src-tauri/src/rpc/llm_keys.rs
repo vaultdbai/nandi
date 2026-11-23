@@ -14,6 +14,9 @@ super::commands! {
     /// The default model and the model calls actually use with the keys set
     fn get_default_model(state) -> llm_keys::DefaultModelStatus => llm_keys::get_default_model(&state).await;
 
+    /// The model a call set to `model` (an agent's) actually uses with the keys set now
+    fn effective_model(state, model: String) -> llm_keys::EffectiveModel => llm_keys::effective_model(state.secrets(), &model);
+
     /// Checks a key (`None`: the stored one) without storing it
     fn test_llm_key(state, provider: KeyedProvider, api_key: Option<String>) -> llm_keys::LlmKeyTest => llm_keys::test_llm_key(&state, provider, api_key).await;
 

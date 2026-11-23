@@ -32,6 +32,7 @@ mod outlook;
 pub mod profile;
 pub mod provider;
 pub mod settings;
+pub mod sign_ins;
 pub(crate) mod text;
 pub mod tool;
 
@@ -461,14 +462,85 @@ fn emit_changed(state: &AppState) {
     events::emit(state.bus(), &EmailChanged {});
 }
 
-/// The mailboxes Nandi may read
+/// The mailboxes `agent`'s read grants cover
 fn granted(state: &AppState, agent: &str) -> Vec<EmailAccount> {
     let grants = state.grants();
     email_settings(state)
         .mailboxes()
-        .filter(|a| grants.allows(agent, a.provider.id(), GrantAccess::Read))
+        .filter(|a| grants.covers(agent, a.provider.id(), GrantAccess::Read, &a.email))
         .cloned()
         .collect()
+}
+
+/// The connected mailboxes of mail connector `connector` (`gmail`,
+/// `outlook`), by address; `None` when it isn't a mail connector
+pub fn addresses_of(state: &AppState, connector: &str) -> Option<Vec<String>> {
+    let provider = MailProvider::ALL
+        .into_iter()
+        .find(|p| p.id() == connector)?;
+    Some(
+        email_settings(state)
+            .mailboxes()
+            .filter(|a| a.provider == provider)
+            .map(|a| a.email.to_ascii_lowercase())
+            .collect(),
+    )
+}
+
+/// What a grant on `connector` covers when the person chose `chosen` (all
+/// providers' addresses mixed): `None` when none of its mailboxes were
+/// chosen, empty (every mailbox) when nothing was narrowed
+pub fn grant_cover(state: &AppState, connector: &str, chosen: &[String]) -> Option<Vec<String>> {
+    cover(&addresses_of(state, connector).unwrap_or_default(), chosen)
+}
+
+/// [`grant_cover`] on `connected`, the provider's mailboxes. Pure. Choosing
+/// every one of them is every mailbox, ones connected later too
+fn cover(connected: &[String], chosen: &[String]) -> Option<Vec<String>> {
+    if chosen.is_empty() {
+        return Some(Vec::new());
+    }
+    let mine: Vec<String> = connected
+        .iter()
+        .filter(|c| chosen.iter().any(|m| m.trim().eq_ignore_ascii_case(c)))
+        .cloned()
+        .collect();
+    if mine.is_empty() {
+        None
+    } else if mine.len() == connected.len() {
+        Some(Vec::new())
+    } else {
+        Some(mine)
+    }
+}
+
+#[cfg(test)]
+mod cover_tests {
+    use super::cover;
+
+    fn list(items: &[&str]) -> Vec<String> {
+        items.iter().map(ToString::to_string).collect()
+    }
+
+    #[test]
+    fn a_grant_covers_what_was_chosen_and_all_of_them_is_every_mailbox() {
+        let connected = list(&["a@x.com", "b@y.com"]);
+        assert_eq!(cover(&connected, &[]), Some(vec![]));
+        assert_eq!(
+            cover(&connected, &list(&["B@y.com"])),
+            Some(list(&["b@y.com"]))
+        );
+        assert_eq!(
+            cover(&connected, &list(&["a@x.com", "b@y.com"])),
+            Some(vec![])
+        );
+        // Another provider's mailbox only: no grant on this one
+        assert_eq!(cover(&connected, &list(&["me@outlook.com"])), None);
+        assert_eq!(
+            cover(&list(&["a@x.com"]), &list(&["a@x.com"])),
+            Some(vec![])
+        );
+    }
 }
 
 /// The connected mailboxes (granted or not)
@@ -592,18 +664,31 @@ pub async fn start_sign_in(
     // token. Starting again replaces the provider's attempt in progress.
     let email = state.email();
     let entry = provider.sign_in_entry(&uuid::Uuid::new_v4().to_string());
-    let flow = email
+    // On the record first, so an exit mid sign-in leaves nothing behind
+    // (`sign_ins::clean_abandoned` at the next start)
+    sign_ins::begun(state, &entry).await?;
+    let flow = match email
         .flows
         .start(
             &entry,
             setup.oauth(provider, reads),
             state.secrets().clone(),
         )
-        .await?;
+        .await
+    {
+        Ok(flow) => flow,
+        Err(e) => {
+            let _ = oauth::forget(&entry, state.secrets());
+            sign_ins::ended(state, &entry).await;
+            return Err(e);
+        }
+    };
     let replaced = lock(&email.sign_ins).insert(provider, SignInAttempt { entry, reads });
     if let Some(old) = replaced {
         email.flows.cancel(&old.entry);
-        let _ = oauth::forget(&old.entry, state.secrets());
+        if oauth::forget(&old.entry, state.secrets()).is_ok() {
+            sign_ins::ended(state, &old.entry).await;
+        }
     }
     Ok(flow)
 }
@@ -637,15 +722,22 @@ pub async fn poll_sign_in(state: &AppState, provider: MailProvider) -> EmailSign
             attempts.remove(&provider);
         }
     }
+    let gone = match &result {
+        // `connect` moved the token to the mailbox's entry
+        Ok(()) => true,
+        Err(_) => oauth::forget(&entry, state.secrets()).is_ok(),
+    };
+    // Kept on the record when its entry couldn't be deleted: the next
+    // start tries again
+    if gone {
+        sign_ins::ended(state, &entry).await;
+    }
     match result {
         Ok(()) => EmailSignInPoll {
             phase: SignInPhase::Connected,
             problem: None,
         },
-        Err(error) => {
-            let _ = oauth::forget(&entry, state.secrets());
-            failed(error)
-        }
+        Err(error) => failed(error),
     }
 }
 
@@ -738,15 +830,18 @@ async fn connect(
     if !reads.mail {
         if had_mail {
             forget_progress(state, &mailbox).await?;
-            revoke_if_last(state, provider, "No mailbox of it is connected")?;
+            revoke_for(state, &mailbox, "The account stopped reading its mail")?;
         }
         log::info!("Connected a {} account without its mail", provider.name());
         emit_changed(state);
         return Ok(());
     }
-    // Connecting is the person's say-so for Nandi: a saved
-    // read grant, removable in Settings › Connectors › Access
+    // Connecting is the person's say-so for Nandi to read this mailbox: a
+    // saved read grant naming it (a grant on every mailbox stays so),
+    // changeable in Settings › Connectors › Access
+    let address = std::slice::from_ref(&mailbox.email);
     let grant = ConnectorGrant::new(DEFAULT_AGENT, provider.id(), GrantAccess::Read)
+        .and_then(|g| g.for_mailboxes(address))
         .map_err(|e| e.to_string())?;
     if state.grants().grant(grant, GrantScope::Saved)? {
         let info = crate::services::grants::GrantInfo {
@@ -754,6 +849,7 @@ async fn connect(
             connector: provider.id().into(),
             access: GrantAccess::Read,
             scope: GrantScope::Saved,
+            mailboxes: address.to_vec(),
         };
         crate::services::grants::record(state, "granted", &info, Some("The mailbox was connected"));
         events::emit(state.bus(), &crate::services::grants::GrantsChanged {});
@@ -825,15 +921,31 @@ async fn forget_progress(state: &AppState, mailbox: &MailboxId) -> Result<(), St
         .await
 }
 
-/// The provider's mail grants go with its last mailbox
-fn revoke_if_last(state: &AppState, provider: MailProvider, why: &str) -> Result<(), String> {
-    if email_settings(state).first_of(provider).is_some() {
+/// `mailbox` stopped reading mail: grants naming it lose it (one that named
+/// only it goes), and the provider's mail grants go with its last mailbox
+fn revoke_for(state: &AppState, mailbox: &MailboxId, why: &str) -> Result<(), String> {
+    use crate::services::grants::{record, GrantsChanged};
+    let provider = mailbox.provider;
+    let still_reading = email_settings(state)
+        .mailboxes()
+        .any(|a| a.provider == provider && !a.is(mailbox));
+    if still_reading {
+        let (removed, narrowed) = state.grants().drop_mailbox(provider.id(), &mailbox.email)?;
+        for gone in &removed {
+            record(state, "removed", gone, Some(why));
+        }
+        for less in &narrowed {
+            record(state, "changed", less, Some(why));
+        }
+        if !removed.is_empty() || !narrowed.is_empty() {
+            events::emit(state.bus(), &GrantsChanged {});
+        }
         return Ok(());
     }
     for gone in state.grants().revoke_connector(provider.id())? {
-        crate::services::grants::record(state, "removed", &gone, Some(why));
+        record(state, "removed", &gone, Some(why));
     }
-    events::emit(state.bus(), &crate::services::grants::GrantsChanged {});
+    events::emit(state.bus(), &GrantsChanged {});
     Ok(())
 }
 
@@ -853,7 +965,7 @@ pub async fn disconnect(state: &AppState, mailbox: MailboxId) -> Result<EmailSta
             email.accounts.retain(|a| !a.is(&mailbox));
         }
     })?;
-    revoke_if_last(state, provider, "The mailbox was disconnected")?;
+    revoke_for(state, &mailbox, "The mailbox was disconnected")?;
     for family in AccountFamily::ALL {
         if known.as_ref().is_some_and(|a| a.read(family).is_some()) {
             crate::services::workspace::stopped(state, AccountKind::of(provider, family))?;

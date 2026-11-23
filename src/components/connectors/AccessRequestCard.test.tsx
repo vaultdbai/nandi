@@ -50,7 +50,7 @@ const SITE_ARGS = {
   askEveryTime: false,
   site: {
     host: 'xn--bcher-kva.example',
-    display: 'bücher.example',
+    display: 'bÃ¼cher.example',
     pilot: 'browser',
     reason: 'Find the opening hours',
     canSave: true,
@@ -66,7 +66,7 @@ describe('AccessRequestCard for a site', () => {
   it('names the agent, the site decoded and raw, and why', () => {
     render(card(SITE_ARGS))
     expect(
-      screen.getByText('Nandi wants to open bücher.example')
+      screen.getByText('Nandi wants to open bÃ¼cher.example')
     ).toBeInTheDocument()
     expect(screen.getByTestId('access-site-raw')).toHaveTextContent(
       'Address: xn--bcher-kva.example'
@@ -80,11 +80,16 @@ describe('AccessRequestCard for a site', () => {
     mocked.answerAccessRequest = answer
     render(card(SITE_ARGS))
     expect(
-      screen.getByLabelText('Include its subdomains (like www.bücher.example)')
+      screen.getByLabelText('Include its subdomains (like www.bÃ¼cher.example)')
     ).not.toBeChecked()
     await userEvent.click(screen.getByRole('button', { name: 'Allow once' }))
     await waitFor(() =>
-      expect(answer).toHaveBeenCalledWith('call-1#access', 'allowOnce', false)
+      expect(answer).toHaveBeenCalledWith(
+        'call-1#access',
+        'allowOnce',
+        false,
+        null
+      )
     )
   })
 
@@ -93,13 +98,18 @@ describe('AccessRequestCard for a site', () => {
     mocked.answerAccessRequest = answer
     render(card(SITE_ARGS))
     await userEvent.click(
-      screen.getByLabelText('Include its subdomains (like www.bücher.example)')
+      screen.getByLabelText('Include its subdomains (like www.bÃ¼cher.example)')
     )
     await userEvent.click(
       screen.getByRole('button', { name: 'Always allow for Nandi' })
     )
     await waitFor(() =>
-      expect(answer).toHaveBeenCalledWith('call-1#access', 'allowSaved', true)
+      expect(answer).toHaveBeenCalledWith(
+        'call-1#access',
+        'allowSaved',
+        true,
+        null
+      )
     )
     expect(
       await screen.findByText('Always allowed for this agent')
@@ -139,7 +149,12 @@ describe('AccessRequestCard', () => {
       screen.getByRole('button', { name: 'Allow for this agent' })
     )
     await waitFor(() =>
-      expect(answer).toHaveBeenCalledWith('call-1#access', 'allowSaved', false)
+      expect(answer).toHaveBeenCalledWith(
+        'call-1#access',
+        'allowSaved',
+        false,
+        null
+      )
     )
     expect(
       await screen.findByText('Allowed for this agent (saved)')
@@ -155,7 +170,12 @@ describe('AccessRequestCard', () => {
       screen.getByRole('button', { name: 'Allow for this agent' })
     )
     await waitFor(() =>
-      expect(answer).toHaveBeenCalledWith('call-1#access', 'allowLocal', false)
+      expect(answer).toHaveBeenCalledWith(
+        'call-1#access',
+        'allowLocal',
+        false,
+        null
+      )
     )
   })
 
@@ -169,8 +189,54 @@ describe('AccessRequestCard', () => {
     expect(screen.getByText(/A policy asks every time/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: "Don't allow" }))
     await waitFor(() =>
-      expect(answer).toHaveBeenCalledWith('call-1#access', 'deny', false)
+      expect(answer).toHaveBeenCalledWith('call-1#access', 'deny', false, null)
     )
+  })
+
+  it('shows the mailboxes and lets the grant cover only some', async () => {
+    const answer = vi.fn().mockResolvedValue({ status: 'ok', data: null })
+    mocked.answerAccessRequest = answer
+    render(card({ ...ARGS, mailboxes: ['me@work.com', 'me@home.com'] }))
+    expect(screen.getByTestId('access-mailboxes')).toHaveTextContent(
+      'me@work.com, me@home.com'
+    )
+    await userEvent.click(screen.getByLabelText('me@home.com'))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Allow for this agent' })
+    )
+    await waitFor(() =>
+      expect(answer).toHaveBeenCalledWith(
+        'call-1#access',
+        'allowSaved',
+        false,
+        ['me@work.com']
+      )
+    )
+  })
+
+  it("can't allow for the agent with no mailbox ticked", async () => {
+    render(card({ ...ARGS, mailboxes: ['me@work.com', 'me@home.com'] }))
+    await userEvent.click(screen.getByLabelText('me@work.com'))
+    await userEvent.click(screen.getByLabelText('me@home.com'))
+    expect(
+      screen.getByRole('button', { name: 'Allow for this agent' })
+    ).toBeDisabled()
+  })
+
+  it('says which mailboxes a decided grant covers', () => {
+    render(
+      card(
+        {
+          ...ARGS,
+          mailboxes: ['me@work.com', 'me@home.com'],
+          choice: 'allowSaved',
+          grantedMailboxes: ['me@work.com'],
+        },
+        'approved',
+        false
+      )
+    )
+    expect(screen.getByText(/only me@work\.com/)).toBeInTheDocument()
   })
 
   it('shows the decision and who made it, read-only', () => {
