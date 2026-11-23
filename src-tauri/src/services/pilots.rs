@@ -36,6 +36,7 @@ pub mod detect;
 pub mod handover;
 pub mod install;
 mod mcp;
+pub mod profiles;
 pub mod refusal;
 pub mod runtime;
 pub mod sites;
@@ -497,6 +498,10 @@ pub struct AgentPilotPermission {
     /// Its browser has a profile, so sites may remember the agent
     #[serde(default)]
     pub has_profile: bool,
+    /// The visible browser only: My Nandi browser's profile the person
+    /// granted it, else (`None`) its own
+    #[serde(default)]
+    pub shared_profile: Option<profiles::BrowserKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -541,7 +546,17 @@ pub async fn agent_pilot_permissions(
             })
             .unwrap_or_default();
         let browser = browser::is_browser(&pilot_id);
+        let shared_profile = if pilot_id == browser::BROWSER {
+            let agent = agent_id.to_string();
+            state
+                .db()
+                .call(move |conn| store::browser_profile(conn, &agent))
+                .await?
+        } else {
+            None
+        };
         permissions.push(AgentPilotPermission {
+            shared_profile,
             allows: options.map(|o| o.allow.clone()).unwrap_or_default(),
             secrets,
             browser,
@@ -648,6 +663,129 @@ pub async fn clear_browser_profile(
         return Err(format!("{pilot_id} has no browser profile"));
     }
     browser::sign_out(agent_id, pilot_id).await
+}
+
+/// My Nandi browser of one browser type, as Settings › Browser shows it
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct NandiBrowser {
+    pub browser: profiles::BrowserKind,
+    /// Sites may remember the person in it
+    pub has_profile: bool,
+    /// The person's window is open on it
+    pub open_in_window: bool,
+    /// The agent whose browser has it open right now
+    pub in_use_by: Option<String>,
+    /// The agents the person let use it, by ID
+    pub agents: Vec<String>,
+}
+
+/// My Nandi browser for each browser type installed on this computer
+pub async fn nandi_browsers(state: &AppState) -> Result<Vec<NandiBrowser>, String> {
+    let local = crate::utils::nandi_config::local_dir()?;
+    let granted = state
+        .db()
+        .call(|conn| store::browser_profiles(conn))
+        .await?;
+    Ok(profiles::installed()
+        .into_iter()
+        .map(|kind| {
+            let holder = profiles::holder(kind);
+            NandiBrowser {
+                browser: kind,
+                has_profile: profiles::has_profile(&local, kind),
+                open_in_window: holder == Some(profiles::Holder::Person),
+                in_use_by: match holder {
+                    Some(profiles::Holder::Agent(agent)) => Some(agent),
+                    _ => None,
+                },
+                agents: granted
+                    .iter()
+                    .filter(|(_, k)| *k == kind)
+                    .map(|(agent, _)| agent.clone())
+                    .collect(),
+            }
+        })
+        .collect())
+}
+
+/// The calm answer when `holder` has `kind`'s profile open
+fn in_use(state: &AppState, kind: profiles::BrowserKind, holder: &profiles::Holder) -> String {
+    profiles::in_use_message(kind, holder, |id| state.store().display_name(id))
+}
+
+/// Opens the person's own window on My Nandi browser: no agent attached, no
+/// egress proxy (it's the person's own browsing). Refused calmly while an
+/// agent's browser has it open.
+pub async fn open_nandi_browser(
+    state: &AppState,
+    browser: profiles::BrowserKind,
+) -> Result<(), String> {
+    let local = crate::utils::nandi_config::local_dir()?;
+    profiles::open_window(&local, browser)?.map_err(|holder| in_use(state, browser, &holder))
+}
+
+/// "Sign out everywhere" for My Nandi browser: closes its window and wipes
+/// its profile. `false`: it had none
+pub async fn sign_out_nandi_browser(
+    state: &AppState,
+    browser: profiles::BrowserKind,
+) -> Result<bool, String> {
+    let local = crate::utils::nandi_config::local_dir()?;
+    browser::sign_out_shared(&local, browser, |id| state.store().display_name(id)).await
+}
+
+/// The decisions file's kind for a shared browser profile granted or taken
+/// back
+pub const PROFILE_GRANT_KIND: &str = "browserProfileGrant";
+
+/// Lets `agent_id`'s visible browser use My Nandi browser's `browser`
+/// profile, or (`None`) takes that back so it uses its own. A grant the
+/// person gives, recorded in the decisions file. The agent's browser picks
+/// it up the next time it starts a page.
+pub async fn set_agent_browser_profile(
+    state: &AppState,
+    agent_id: &str,
+    browser: Option<profiles::BrowserKind>,
+) -> Result<(), String> {
+    use crate::services::inbox::audit::{self, Decided};
+
+    validate_agent_id(agent_id)?;
+    if state.store().agent_info(agent_id).is_none() {
+        return Err(format!("Agent '{agent_id}' not found"));
+    }
+    if let Some(kind) = browser {
+        if kind.executable().is_none() {
+            return Err(format!("{} isn't on this computer", kind.label()));
+        }
+    }
+    let agent = agent_id.to_string();
+    let before = state
+        .db()
+        .call(move |conn| {
+            let before = store::browser_profile(conn, &agent)?;
+            store::set_browser_profile(conn, &agent, browser)?;
+            Ok(before)
+        })
+        .await?;
+    if before == browser {
+        return Ok(());
+    }
+    let (decision, kind) = match (browser, before) {
+        (Some(kind), _) => ("granted", kind),
+        (None, Some(kind)) => ("removed", kind),
+        (None, None) => return Ok(()),
+    };
+    log::info!(
+        "My Nandi browser ({}) {decision} for '{agent_id}'",
+        kind.label()
+    );
+    audit::record(
+        state,
+        Decided::new(PROFILE_GRANT_KIND, agent_id, decision)
+            .subject(format!("{agent_id}: My Nandi browser ({})", kind.label())),
+    );
+    Ok(())
 }
 
 /// Emits `pilot://changed` with the persisted status.

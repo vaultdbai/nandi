@@ -1123,6 +1123,50 @@ async clearBrowserProfile(agentId: string, pilotId: string) : Promise<Result<boo
 }
 },
 /**
+ * My Nandi browser for each browser type installed here (Settings › Browser)
+ */
+async nandiBrowsers() : Promise<Result<NandiBrowser[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("nandi_browsers") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Opens the person's own window on My Nandi browser (no agent attached)
+ */
+async openNandiBrowser(browser: BrowserKind) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("open_nandi_browser", { browser }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * "Sign out everywhere" for My Nandi browser. `false`: it had no profile
+ */
+async signOutNandiBrowser(browser: BrowserKind) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sign_out_nandi_browser", { browser }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Lets the agent's visible browser use My Nandi browser, or (`null`) its own profile again
+ */
+async setAgentBrowserProfile(agentId: string, browser: BrowserKind | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_agent_browser_profile", { agentId, browser }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * The policies over an agent and what each changed, or why it can't run
  */
 async agentPolicies(agentId: string) : Promise<Result<AgentPolicies, string>> {
@@ -4470,7 +4514,12 @@ browser?: boolean;
 /**
  * Its browser has a profile, so sites may remember the agent
  */
-hasProfile?: boolean }
+hasProfile?: boolean; 
+/**
+ * The visible browser only: My Nandi browser's profile the person
+ * granted it, else (`None`) its own
+ */
+sharedProfile?: BrowserKind | null }
 /**
  * An agent's playbooks: its `skills/` folder, and whether it's read-only
  * (an installed agent's)
@@ -5069,6 +5118,10 @@ export type BlockerKind = "needsMyApproval" | "needsTheirApproval" | "needsMyAns
  * Who has to act: me, the other side, or nobody (it's waiting on time)
  */
 export type BlockerWho = "me" | "them" | "nobody"
+/**
+ * A browser type with its own shared profile
+ */
+export type BrowserKind = "chrome" | "edge"
 /**
  * One account's calendar check, for its row in Settings › Email
  */
@@ -7204,6 +7257,26 @@ agentsCanWrite: boolean;
  * Sorted by name
  */
 notes: NoteFile[] }
+/**
+ * My Nandi browser of one browser type, as Settings › Browser shows it
+ */
+export type NandiBrowser = { browser: BrowserKind; 
+/**
+ * Sites may remember the person in it
+ */
+hasProfile: boolean; 
+/**
+ * The person's window is open on it
+ */
+openInWindow: boolean; 
+/**
+ * The agent whose browser has it open right now
+ */
+inUseBy: string | null; 
+/**
+ * The agents the person let use it, by ID
+ */
+agents: string[] }
 export type NandiDigest = { 
 /**
  * When the user last marked it seen, epoch ms (`None`: never)

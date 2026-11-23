@@ -97,6 +97,7 @@ const SCREEN_COMMANDS: &[&str] = &[
     "list_workflow_templates",
     "load_preferences",
     "mascot_get",
+    "nandi_browsers",
     "repo_git_status",
     "repo_status",
 ];

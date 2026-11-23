@@ -870,6 +870,7 @@ impl AppState {
     fn start_harnesses(&self) {
         harness::start(self);
         pilots::browser::init(pilots::browser::Host {
+            db: self.db().clone(),
             proxy_tokens: self.proxy_tokens().clone(),
             secrets: self.secrets().clone(),
             store: self.store().clone(),

@@ -15,8 +15,9 @@
 //!   security boundary" and has no `*.domain` patterns, so it isn't used.)
 //! - Everything else is Playwright MCP's own: its tools, its persistent
 //!   profile (`~/.nandi/local/browser/<agent>/<pilot>/profile`, never the
-//!   user's own), its secrets (the agent types a secret's name; the server
-//!   types the value and hides it in every reply), and its screenshots
+//!   user's own; or, with the person's grant, My Nandi browser's shared
+//!   profile, [`super::profiles`]), its secrets (the agent types a
+//!   secret's name; the server types the value and hides it in every reply), and its screenshots
 //!   (saved into the agent's work folder, `browser/…`).
 //! - What runs without asking is decided per call ([`action`], [`needs_approval`]):
 //!   reading and moving between allowed pages never ask; clicking and
@@ -44,6 +45,7 @@ use tokio::process::Child;
 
 use super::detect::Probe;
 use super::mcp::PilotTool;
+use super::profiles::{self, BrowserKind};
 use super::{handover, refusal, sites, PilotDefinition};
 use crate::llm::ToolSpec;
 use crate::runtime::ProxyTokens;
@@ -112,6 +114,7 @@ pub fn agent_of_identity(identity: &str) -> Option<&str> {
 
 /// What a browser needs from the app (set once at start-up)
 pub struct Host {
+    pub db: crate::db::Db,
     pub proxy_tokens: ProxyTokens,
     pub secrets: Secrets,
     pub store: RepoStore,
@@ -137,6 +140,8 @@ struct Instance {
     tools: Vec<PilotTool>,
     /// The secrets it types, by name, to mask in its replies (memory only)
     secrets: HashMap<String, String>,
+    /// My Nandi browser's profile it uses, if the person granted one
+    shared: Option<BrowserKind>,
 }
 
 /// `(agent, pilot)` → its browser
@@ -167,6 +172,10 @@ pub(crate) fn set_pages_open(agent: &str, pilot: &str, open: bool) {
         pages.insert(key);
     } else {
         pages.remove(&key);
+        // Its browser closed: a shared profile it held is free
+        if pilot == BROWSER {
+            profiles::release_agent(agent);
+        }
     }
 }
 
@@ -199,6 +208,8 @@ pub async fn close_pages(agent: &str) {
             }
         }
     }
+    // Its run ended: a shared profile it held is free for others
+    profiles::release_agent(agent);
 }
 
 fn last_page(agent: &str, pilot: &str) -> Option<String> {
@@ -396,46 +407,10 @@ fn config(
     })
 }
 
-/// The system browser Playwright drives for the visible window
+/// The system browser Playwright drives for an agent's own visible window:
+/// Chrome, else Edge
 fn window_channel() -> Option<&'static str> {
-    let candidates: &[(&str, &[&str])] = if cfg!(windows) {
-        &[
-            (
-                "chrome",
-                &[
-                    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-                ],
-            ),
-            (
-                "msedge",
-                &[
-                    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-                    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-                ],
-            ),
-        ]
-    } else if cfg!(target_os = "macos") {
-        &[
-            ("chrome", &["/Applications/Google Chrome.app"]),
-            ("msedge", &["/Applications/Microsoft Edge.app"]),
-        ]
-    } else {
-        &[
-            (
-                "chrome",
-                &["/usr/bin/google-chrome", "/opt/google/chrome/chrome"],
-            ),
-            ("msedge", &["/usr/bin/microsoft-edge"]),
-        ]
-    };
-    let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
-    candidates.iter().find_map(|(channel, paths)| {
-        let user_chrome = Path::new(&local).join(r"Google\Chrome\Application\chrome.exe");
-        let found = paths.iter().any(|p| Path::new(p).exists())
-            || (*channel == "chrome" && cfg!(windows) && user_chrome.exists());
-        found.then_some(*channel)
-    })
+    profiles::installed().first().map(|kind| kind.channel())
 }
 
 /// What the pilot needs before it can start: Docker and the image, or npx
@@ -490,9 +465,10 @@ fn read_secrets(
 }
 
 /// The folder under `~/.nandi/local` that holds the browsers' own files
-const BROWSER_DIR: &str = "browser";
-/// Each browser's persistent profile, in its `(agent, pilot)` folder
-const PROFILE_DIR: &str = "profile";
+pub(super) const BROWSER_DIR: &str = "browser";
+/// Each browser's persistent profile, in its `(agent, pilot)` folder (and
+/// in each shared profile's folder)
+pub(super) const PROFILE_DIR: &str = "profile";
 
 /// `agent`'s `pilot` browser folder under `local` (`~/.nandi/local`): never
 /// under the repo, which is the gold copy
@@ -505,17 +481,37 @@ fn profile_dir(local: &Path, agent: &str, pilot: &str) -> PathBuf {
     browser_base(local, agent, pilot).join(PROFILE_DIR)
 }
 
-fn dirs(agent: &str, pilot: &str) -> Result<(PathBuf, PathBuf, PathBuf), String> {
+/// The browser's folder, its profile (its own, or the `shared` one) and the
+/// agent's work folder, created
+fn dirs(
+    agent: &str,
+    pilot: &str,
+    shared: Option<BrowserKind>,
+) -> Result<(PathBuf, PathBuf, PathBuf), String> {
     use crate::utils::nandi_config;
     let local = nandi_config::local_dir()?;
     let base = browser_base(&local, agent, pilot);
-    let profile = profile_dir(&local, agent, pilot);
+    let profile = match shared {
+        Some(kind) => profiles::create(&local, kind)?,
+        None => profile_dir(&local, agent, pilot),
+    };
     let workdir = nandi_config::work_dir()?.join(agent);
     for dir in [&base, &profile, &workdir.join("browser")] {
         std::fs::create_dir_all(dir)
             .map_err(|e| format!("Couldn't create {}: {e}", dir.display()))?;
     }
     Ok((base, profile, workdir))
+}
+
+/// My Nandi browser profile the person granted `agent`, if any
+async fn granted_profile(db: &crate::db::Db, agent: &str) -> Option<BrowserKind> {
+    let agent = agent.to_string();
+    db.call(move |conn| super::store::browser_profile(conn, &agent))
+        .await
+        .unwrap_or_else(|e| {
+            log::warn!("Couldn't read the browser profile grant: {e}");
+            None
+        })
 }
 
 /// The browser for `agent`, started (or restarted, when its settings
@@ -529,12 +525,23 @@ async fn ensure<'a>(
     let agent_id = agent.id().as_str().to_string();
     let options = agent.capabilities().pilot_options(pilot);
     let secrets = read_secrets(&host.secrets, options)?;
-    let mode = if pilot == HEADLESS {
-        Mode::Container
-    } else {
-        Mode::Window(window_channel().ok_or("No Chrome or Edge on this computer")?)
+    let shared = profiles::for_pilot(pilot, granted_profile(&host.db, &agent_id).await);
+    let mode = match (pilot == HEADLESS, shared) {
+        (true, _) => Mode::Container,
+        (false, Some(kind)) => {
+            if kind.executable().is_none() {
+                return Err(format!(
+                    "My Nandi browser ({}) isn't on this computer any more: choose another browser on the agent's page",
+                    kind.label()
+                ));
+            }
+            Mode::Window(kind.channel())
+        }
+        (false, None) => {
+            Mode::Window(window_channel().ok_or("No Chrome or Edge on this computer")?)
+        }
     };
-    let (base, profile, workdir) = dirs(&agent_id, pilot)?;
+    let (base, profile, workdir) = dirs(&agent_id, pilot, shared)?;
     let (proxy, profile_arg, output_arg) = match mode {
         Mode::Container => {
             use crate::services::egress::relay;
@@ -557,6 +564,9 @@ async fn ensure<'a>(
     });
     if stale {
         if let Some(old) = pool.remove(&key) {
+            if old.shared.is_some() {
+                profiles::release_agent(&agent_id);
+            }
             shutdown(old).await;
         }
     }
@@ -610,6 +620,7 @@ async fn ensure<'a>(
                 fingerprint,
                 tools,
                 secrets,
+                shared,
             },
         );
     }
@@ -780,6 +791,20 @@ async fn stop(agent: &str, pilot: &str) {
     }
 }
 
+/// Stops every agent's browser that uses `kind`'s shared profile
+async fn stop_shared(kind: BrowserKind) {
+    let agents: Vec<(String, String)> = POOL
+        .lock()
+        .await
+        .iter()
+        .filter(|(_, instance)| instance.shared == Some(kind))
+        .map(|(key, _)| key.clone())
+        .collect();
+    for (agent, pilot) in agents {
+        stop(&agent, &pilot).await;
+    }
+}
+
 /// Whether `agent`'s `pilot` browser has a profile (sites may remember it)
 pub fn has_profile(agent: &str, pilot: &str) -> bool {
     crate::utils::nandi_config::local_dir()
@@ -796,27 +821,54 @@ pub async fn sign_out(agent: &str, pilot: &str) -> Result<bool, String> {
 
 /// Deletes `agent`'s `pilot` profile under `local`, nothing else
 async fn clear_profile(local: &Path, agent: &str, pilot: &str) -> Result<bool, String> {
-    let profile = profile_dir(local, agent, pilot);
+    let cleared = remove_profile(&profile_dir(local, agent, pilot)).await?;
+    if cleared {
+        log::info!("Signed '{agent}' out everywhere: cleared its {pilot} profile");
+    }
+    Ok(cleared)
+}
+
+/// Deletes the profile folder `profile`. `false`: there was none
+async fn remove_profile(profile: &Path) -> Result<bool, String> {
     if !profile.exists() {
         return Ok(false);
     }
     // The browser lets go of its files a moment after it stops
     let mut last = None;
     for _ in 0..10 {
-        match std::fs::remove_dir_all(&profile) {
-            Ok(()) => {
-                log::info!("Signed '{agent}' out everywhere: cleared its {pilot} profile");
-                return Ok(true);
-            }
+        match std::fs::remove_dir_all(profile) {
+            Ok(()) => return Ok(true),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(true),
             Err(e) => last = Some(e),
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
     }
     Err(format!(
-        "Couldn't clear the browser profile: {}",
+        "Couldn't clear the browser profile: close every window that uses it, then try again ({})",
         last.map(|e| e.to_string()).unwrap_or_default()
     ))
+}
+
+/// "Sign out everywhere" for My Nandi browser: closes the person's window,
+/// stops the agents' browsers that use it and deletes `kind`'s shared
+/// profile under `local`. Refused while an agent has it open. `false`:
+/// there was none
+pub async fn sign_out_shared(
+    local: &Path,
+    kind: BrowserKind,
+    name: impl Fn(&str) -> String,
+) -> Result<bool, String> {
+    profiles::begin_wipe(kind).map_err(|holder| profiles::in_use_message(kind, &holder, name))?;
+    stop_shared(kind).await;
+    let cleared = remove_profile(&profiles::profile_dir(local, kind)).await;
+    profiles::end_wipe(kind);
+    if matches!(cleared, Ok(true)) {
+        log::info!(
+            "Signed out everywhere: cleared My Nandi browser ({})",
+            kind.label()
+        );
+    }
+    cleared
 }
 
 /// `content` with every secret value replaced by its name
@@ -985,6 +1037,14 @@ pub async fn call(
     }
     let mut pool = POOL.lock().await;
     let instance = ensure(&mut pool, agent, pilot).await?;
+    // One browser per shared profile: someone else has it open
+    if let (Some(kind), true) = (instance.shared, tool != "browser_close") {
+        let dir = profiles::profile_dir(&crate::utils::nandi_config::local_dir()?, kind);
+        if let Err(holder) = profiles::claim_for_agent(kind, agent_id, &dir) {
+            let name = |id: &str| host.store.display_name(id);
+            return Ok((profiles::in_use_message(kind, &holder, name), true));
+        }
+    }
     if !skill.browser_refusals.is_empty() && refusal::is_checked(tool) {
         let options = agent.capabilities().pilot_options(pilot);
         let secret_names: Vec<String> = options
@@ -1464,6 +1524,15 @@ Typed hunter2-xyz"
         assert_eq!(
             exclude("/h/.nandi/local/browser/cos/browser/profile/Default").as_deref(),
             Some("*")
+        );
+        assert_eq!(
+            exclude("/h/.nandi/local/browser/profiles").as_deref(),
+            Some("*/profile/*"),
+            "My Nandi browser's profiles stay out too"
+        );
+        assert_eq!(
+            exclude("/h/.nandi/local/browser/profiles/chrome").as_deref(),
+            Some("profile/*")
         );
         assert_eq!(exclude("/h/Documents"), None);
         assert_eq!(exclude("/h/.nandi/repo"), None);

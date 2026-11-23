@@ -1,7 +1,8 @@
 //! Pilot commands (`services::pilots`): install, run, and what each agent may use.
 
 use crate::services::pilots;
-use crate::services::pilots::{AgentPilotPermission, PilotDefinition, PilotStatus};
+use crate::services::pilots::profiles::BrowserKind;
+use crate::services::pilots::{AgentPilotPermission, NandiBrowser, PilotDefinition, PilotStatus};
 
 super::commands! {
     fn list_pilots() -> Vec<PilotDefinition> => Ok(pilots::list_pilots());
@@ -32,6 +33,18 @@ super::commands! {
 
     /// The pilots the agent's skill.md declares, and what the user granted each
     fn agent_pilot_permissions(state, agent_id: String) -> Vec<AgentPilotPermission> => pilots::agent_pilot_permissions(&state, &agent_id).await;
+
+    /// My Nandi browser for each browser type installed here (Settings › Browser)
+    fn nandi_browsers(state) -> Vec<NandiBrowser> => pilots::nandi_browsers(&state).await;
+
+    /// Opens the person's own window on My Nandi browser (no agent attached)
+    fn open_nandi_browser(state, browser: BrowserKind) -> () => pilots::open_nandi_browser(&state, browser).await;
+
+    /// "Sign out everywhere" for My Nandi browser. `false`: it had no profile
+    fn sign_out_nandi_browser(state, browser: BrowserKind) -> bool => pilots::sign_out_nandi_browser(&state, browser).await;
+
+    /// Lets the agent's visible browser use My Nandi browser, or (`null`) its own profile again
+    fn set_agent_browser_profile(state, agent_id: String, browser: Option<BrowserKind>) -> () => pilots::set_agent_browser_profile(&state, &agent_id, browser).await;
 }
 
 #[cfg(test)]

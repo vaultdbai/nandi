@@ -148,6 +148,8 @@ describe('PermissionsPanel sites and accounts', () => {
     'setPilotSecret',
     'addPilotSecret',
     'clearBrowserProfile',
+    'nandiBrowsers',
+    'setAgentBrowserProfile',
   ]
 
   const setUp = (readOnly: boolean) => {
@@ -203,6 +205,24 @@ describe('PermissionsPanel sites and accounts', () => {
       if (first) first.hasProfile = false
       return ok(true)
     })
+    mocked.nandiBrowsers = vi.fn(async () =>
+      ok([
+        {
+          browser: 'chrome',
+          hasProfile: true,
+          openInWindow: false,
+          inUseBy: null,
+          agents: [],
+        },
+      ])
+    )
+    mocked.setAgentBrowserProfile = vi.fn(
+      async (_agent: string, browser: 'chrome' | 'edge' | null) => {
+        const first = permissions[0]
+        if (first) first.sharedProfile = browser
+        return ok(null)
+      }
+    )
   })
 
   afterEach(() => {
@@ -266,5 +286,45 @@ describe('PermissionsPanel sites and accounts', () => {
         screen.getByRole('button', { name: 'Sign out everywhere' })
       ).toBeDisabled()
     )
+  })
+
+  it('lets the person give the agent My Nandi browser and take it back', async () => {
+    setUp(true)
+    const user = userEvent.setup()
+    render(<PermissionsPanel agentId="nandi" />)
+    const select = await screen.findByRole('combobox', {
+      name: 'Profile for Browser',
+    })
+    expect(select).toHaveValue('own')
+    expect(screen.getByText('It signs in to sites on its own.')).toBeVisible()
+    await screen.findByRole('option', { name: 'My Nandi browser (Chrome)' })
+
+    await user.selectOptions(select, 'chrome')
+    expect(mocked.setAgentBrowserProfile).toHaveBeenCalledWith(
+      'nandi',
+      'chrome'
+    )
+    await waitFor(() => expect(select).toHaveValue('chrome'))
+    expect(
+      screen.getByText(/uses your sign-ins from My Nandi browser/)
+    ).toBeVisible()
+
+    await user.selectOptions(select, 'own')
+    expect(mocked.setAgentBrowserProfile).toHaveBeenLastCalledWith(
+      'nandi',
+      null
+    )
+    await waitFor(() => expect(select).toHaveValue('own'))
+  })
+
+  it('offers no shared profile to the headless browser', async () => {
+    setUp(false)
+    const first = permissions[0]
+    if (first) first.pilotId = 'browser-headless'
+    render(<PermissionsPanel agentId="nandi" />)
+    expect(await screen.findByText('SITE_PASSWORD')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('combobox', { name: /Profile for/ })
+    ).not.toBeInTheDocument()
   })
 })

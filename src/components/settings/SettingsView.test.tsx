@@ -36,6 +36,7 @@ describe('SettingsView', () => {
       'Auto-approve',
       'Cloud credentials',
       'Internet access',
+      'Browser',
       'Backup',
       'Sources',
       'Logs',

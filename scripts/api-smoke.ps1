@@ -36,7 +36,7 @@ $Commands = @(
     'list_pilots', 'list_push_targets', 'list_recent_changes', 'list_request_returns',
     'list_tasks', 'list_teams', 'list_tools', 'list_triggers', 'list_trust_policies',
     'list_trust_requests', 'list_work', 'list_workflow_templates', 'load_preferences',
-    'mascot_get', 'repo_git_status', 'repo_status'
+    'mascot_get', 'nandi_browsers', 'repo_git_status', 'repo_status'
 )
 
 if (-not (Test-Path $Binary)) {

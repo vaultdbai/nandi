@@ -10,7 +10,8 @@
  * A browser pilot also shows the agent's sites and accounts: the secrets it
  * types (set or remove a value, add a new one for an agent made here; the
  * values go to the keychain and are never shown) and Sign out everywhere,
- * which clears its profile.
+ * which clears its profile. The visible browser also shows which profile it
+ * signs in with: its own, or My Nandi browser (a grant given here).
  */
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -51,9 +52,13 @@ import { Input } from '@/components/ui/input'
 import { useState } from 'react'
 import { RUNTIME_TOOLS } from '@/lib/marketplace-capabilities'
 import { openAgentInStudio } from '@/lib/ask'
+import { BrowserProfileSelect } from './BrowserProfileSelect'
 import { normalizeSecretName, secretNameProblem } from './site-secrets-model'
 
 type Level = 'allowed' | 'ask' | 'denied'
+
+/** The visible browser pilot: the only one that may use My Nandi browser */
+const VISIBLE_BROWSER = 'browser'
 
 /** Built-in tools have plain names (`read_file` → Read files) */
 const BUILTIN_TOOLS = [
@@ -271,6 +276,23 @@ function PilotsSection({
                 .join(', ')}
             >
               <LevelBadge level="allowed" />
+            </Row>
+          ),
+          permission.pilotId === VISIBLE_BROWSER && (
+            <Row
+              key={`${permission.pilotId}/profile`}
+              title={t('editor.permissions.profileTitle')}
+              subtitle={t(
+                permission.sharedProfile
+                  ? 'editor.permissions.profileHintShared'
+                  : 'editor.permissions.profileHintOwn'
+              )}
+            >
+              <BrowserProfileSelect
+                agentId={agentId}
+                pilotName={name}
+                current={permission.sharedProfile ?? null}
+              />
             </Row>
           ),
           permission.browser && (

@@ -1,7 +1,9 @@
 //! Pilot state in SQLite `local_settings`: machine-local runtime data
 //! (installed, running, health, pid, port) under `pilots.<id>.<field>`, and
 //! the user's per-agent consent under
-//! `consent.<agent_id>.<pilot_id>.<capability>`.
+//! `consent.<agent_id>.<pilot_id>.<capability>`, and the person's grant of
+//! My Nandi browser's shared profile to an agent's visible browser under
+//! `consent.<agent_id>.browser.profile` (`chrome` or `edge`).
 //!
 //! None of this is a definition (the catalog is code, an agent's `pilots:`
 //! block is in its skill.md), so it doesn't belong in the repo files.
@@ -11,6 +13,7 @@ use std::sync::LazyLock;
 use rusqlite::{params, Connection};
 use serde_json::Value;
 
+use super::profiles::BrowserKind;
 use super::PilotStatus;
 use crate::db;
 
@@ -24,6 +27,56 @@ pub fn key(id: &str, field: &str) -> String {
 
 pub fn consent_key(agent_id: &str, pilot_id: &str, capability: &str) -> String {
     format!("consent.{agent_id}.{pilot_id}.{capability}")
+}
+
+const PROFILE_GRANT: &str = "profile";
+
+/// Where the person's grant of a shared browser profile to `agent_id` is kept
+pub fn profile_key(agent_id: &str) -> String {
+    consent_key(agent_id, super::browser::BROWSER, PROFILE_GRANT)
+}
+
+/// The shared browser profile the person granted `agent_id`, if any
+pub fn browser_profile(conn: &Connection, agent_id: &str) -> rusqlite::Result<Option<BrowserKind>> {
+    Ok(db::get_setting(conn, &profile_key(agent_id))?
+        .and_then(|v| v.as_str().and_then(|s| s.parse().ok())))
+}
+
+/// Grants `agent_id` the shared `kind` profile, or (`None`) takes the grant
+/// back so it uses its own again
+pub fn set_browser_profile(
+    conn: &Connection,
+    agent_id: &str,
+    kind: Option<BrowserKind>,
+) -> rusqlite::Result<()> {
+    match kind {
+        Some(kind) => set(conn, &profile_key(agent_id), &Value::from(kind.id())),
+        None => remove(conn, &profile_key(agent_id)),
+    }
+}
+
+/// Every agent granted a shared browser profile, sorted by agent
+pub fn browser_profiles(conn: &Connection) -> rusqlite::Result<Vec<(String, BrowserKind)>> {
+    let suffix = format!(".{}.{PROFILE_GRANT}", super::browser::BROWSER);
+    let mut stmt = conn
+        .prepare("SELECT key, value FROM local_settings WHERE key LIKE 'consent.%' ORDER BY key")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (key, value) = row?;
+        let agent = key
+            .strip_prefix("consent.")
+            .and_then(|rest| rest.strip_suffix(suffix.as_str()));
+        let kind = serde_json::from_str::<String>(&value)
+            .ok()
+            .and_then(|s| s.parse::<BrowserKind>().ok());
+        if let (Some(agent), Some(kind)) = (agent, kind) {
+            out.push((agent.to_string(), kind));
+        }
+    }
+    Ok(out)
 }
 
 fn set(conn: &Connection, key: &str, value: &Value) -> rusqlite::Result<()> {
@@ -247,5 +300,47 @@ mod tests {
         );
         // Revoking what was never granted is a no-op
         revoke(&conn, "writer", "macpilot", "browser").unwrap();
+    }
+
+    #[test]
+    fn the_shared_profile_grant_is_per_agent_and_apart_from_capabilities() {
+        let db = Db::in_memory();
+        let conn = db.conn().unwrap();
+        assert_eq!(browser_profile(&conn, "cos").unwrap(), None, "its own");
+        grant(&conn, "cos", "browser", "browser").unwrap();
+        set_browser_profile(&conn, "cos", Some(BrowserKind::Chrome)).unwrap();
+        set_browser_profile(&conn, "shopper", Some(BrowserKind::Edge)).unwrap();
+        assert_eq!(
+            browser_profile(&conn, "cos").unwrap(),
+            Some(BrowserKind::Chrome)
+        );
+        assert_eq!(
+            db::get_setting(&conn, "consent.cos.browser.profile").unwrap(),
+            Some(Value::from("chrome"))
+        );
+        assert_eq!(
+            granted(&conn, "cos", "browser").unwrap(),
+            ["browser"],
+            "not a capability"
+        );
+        assert_eq!(
+            browser_profiles(&conn).unwrap(),
+            [
+                ("cos".to_string(), BrowserKind::Chrome),
+                ("shopper".to_string(), BrowserKind::Edge)
+            ]
+        );
+
+        set_browser_profile(&conn, "cos", None).unwrap();
+        assert_eq!(browser_profile(&conn, "cos").unwrap(), None);
+        assert_eq!(
+            browser_profile(&conn, "shopper").unwrap(),
+            Some(BrowserKind::Edge),
+            "taking one back leaves another's"
+        );
+        // A value that isn't a browser type is no grant
+        set(&conn, &profile_key("odd"), &Value::from("firefox")).unwrap();
+        assert_eq!(browser_profile(&conn, "odd").unwrap(), None);
+        assert_eq!(browser_profiles(&conn).unwrap().len(), 1);
     }
 }

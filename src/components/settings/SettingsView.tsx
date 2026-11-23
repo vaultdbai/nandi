@@ -22,6 +22,7 @@ import { useSettingsFocus } from '@/hooks/useSettingsFocus'
 import { SettingsSectionFrame } from './SettingsFrame'
 import { AccountSection } from './sections/AccountSection'
 import { BackupSection } from './sections/BackupSection'
+import { BrowserSection } from './sections/BrowserSection'
 import { CloudCredentialsSection } from './sections/CloudCredentialsSection'
 import { AutoApproveSection } from './sections/AutoApproveSection'
 import { ConnectorAccessSection } from './sections/ConnectorAccessSection'
@@ -118,6 +119,7 @@ export function SettingsView({
           {section === 'internet' && (
             <InternetAccessSection agentId={view.agentId} />
           )}
+          {section === 'browser' && <BrowserSection />}
           {section === 'backup' && <BackupSection />}
           {section === 'sources' && <SourcesSection />}
           {section === 'logs' && <AuditLogView tab={view.logTab} />}

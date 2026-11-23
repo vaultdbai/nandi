@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
-import type { PilotDefinition, PilotStatus } from '@/lib/bindings'
+import type { BrowserKind, PilotDefinition, PilotStatus } from '@/lib/bindings'
 import { queryClient as appQueryClient } from '@/lib/query-client'
 import { unwrapResult } from '@/lib/tauri-bindings'
 import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
@@ -12,6 +12,7 @@ export const pilotQueryKeys = {
   list: ['pilots', 'list'] as const,
   status: (pilotId: string) => ['pilots', 'status', pilotId] as const,
   permissions: (agentId: string) => ['pilots', 'permissions', agentId] as const,
+  nandiBrowsers: ['pilots', 'nandiBrowsers'] as const,
 }
 
 /** `windows` | `macos` | `linux`, as `PilotDefinition.platform` spells it */
@@ -182,5 +183,40 @@ export function useSetPilotGrant(agentId: string) {
         ? client.grantPilotCapability(agentId, pilotId, capability)
         : client.revokePilotCapability(agentId, pilotId, capability),
     { invalidates: pilotQueryKeys.permissions(agentId) }
+  )
+}
+
+/** My Nandi browser for each browser type installed here */
+export function useNandiBrowsers() {
+  return useClientQuery(pilotQueryKeys.nandiBrowsers, () =>
+    client.nandiBrowsers()
+  )
+}
+
+/** Opens the person's own window on My Nandi browser */
+export function useOpenNandiBrowser() {
+  return useClientMutation(
+    (browser: BrowserKind) => client.openNandiBrowser(browser),
+    { invalidates: pilotQueryKeys.nandiBrowsers }
+  )
+}
+
+/** Sign out everywhere: wipes My Nandi browser's profile */
+export function useSignOutNandiBrowser() {
+  return useClientMutation(
+    (browser: BrowserKind) => client.signOutNandiBrowser(browser),
+    { invalidates: pilotQueryKeys.nandiBrowsers }
+  )
+}
+
+/**
+ * Lets the agent's visible browser use My Nandi browser, or (`null`) its
+ * own profile again. Refreshes the agent's page and Settings › Browser.
+ */
+export function useSetAgentBrowserProfile(agentId: string) {
+  return useClientMutation(
+    (browser: BrowserKind | null) =>
+      client.setAgentBrowserProfile(agentId, browser),
+    { invalidates: pilotQueryKeys.all }
   )
 }
