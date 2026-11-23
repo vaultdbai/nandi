@@ -695,6 +695,15 @@ Nandi can keep My notes up to date from your email, so you don't have to write t
 - **Your controls.** **Check now**, **Read again** (the last 3 days once more, for anything Nandi missed; it doesn't repeat what your notes have), **Pause** and **Sign out** on each mailbox. **Sign out** forgets where Nandi got to in that mailbox. Signing out the **Identity** mailbox keeps the identity: the relay and the free trial then ask for that mailbox to be connected again. Your notes stay. With no mailbox connected, Home shows **Connect your email** with the buttons to do it.
 - **If sign-in stops.** Some companies need an IT admin to approve Nandi first. Nandi says so and gives you a link to send them. Gmail test sign-ins end every 7 days: choose **Reconnect**.
 
+#### Your files and calendar
+
+Under **Connect Outlook** or **Connect Gmail** are two ticks, both on: **Also read my files** (OneDrive or Google Drive) and **Also read my calendar** (Outlook or Google). The one sign-in asks only for your mail and what you leave ticked, all read-only. Each connected account has the same two switches in its row: turning one on asks you to sign in again for just that, turning one off stops at once. With several accounts, each has its own files and calendar.
+
+- **Files.** Ask Nandi to find or read a document ("what does the Q3 plan say?"). It reads text, Markdown, CSV, JSON and Google Docs, and links to other files. With several accounts, it says which account a file is in. Nothing is copied: a file's text lives only for that answer.
+- **Calendar.** Every hour by default, Nandi reads what changed in each calendar and keeps your meetings and time off in My notes. Each account's row says when its calendar was last checked. **Calendar check** (below the email settings, once a calendar is read) sets how often and has **Check calendars now**.
+- **Never.** Nandi never accepts, declines, moves or deletes events, and never changes or uploads files.
+- **From an earlier Nandi.** A calendar or drive you connected on its own before now shows under the account with the same address and keeps working, with "Still on its own sign-in from before" until you **Reconnect**. One whose address has no mailbox shows as its own account, "Files and calendar only", with **Read its mail too** if you want Nandi to read that mail as well. You don't need to sign in again.
+
 ### Auto-approve rules
 
 Mail and teammates' requests that Nandi screens wait in Home's **Waiting for your OK**. **Settings › Auto-approve** lets some of them through without a click. **Add rule** takes an **Email domain** (`chase.com`, which also covers `alerts.chase.com`), an **Email address** (`billing@acme-energy.com`) or a **Teammate** (picked from your relay's members; without a relay it says to connect to it, and the other two still work). Each rule has actions you tick: **Start work** and **Add news to work** for mail, **Run their requests** for a teammate. Untick one, or click the bin to remove the rule.

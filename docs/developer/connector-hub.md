@@ -104,17 +104,16 @@ connectors: { forbid: [gmail, 'tracker:write'], ask: ['outlook*'] }
 | `list_registry_connectors`                                            | `POST /api/rpc/list_registry_connectors`                             |
 | `get_connector_consent`, `install_registry_connector`                 | `POST /api/rpc/get_connector_consent`, `…/install`                   |
 | `remove_connector`, `scaffold_connector`, `publish_connector`         | `POST /api/rpc/remove_connector`, `/connectors/scaffold`, `/publish` |
-| `get_workspace_status`, `start/poll_workspace_sign_in`                | `POST /api/rpc/{command}`                                            |
-| `disconnect_workspace`, `check_calendar_now`, `set_calendar_interval` | `POST /api/rpc/{command}`                                            |
+| `get_workspace_status`, `check_calendar_now`, `set_calendar_interval` | `POST /api/rpc/{command}`                                            |
 | `list_note_suggestions`, `answer_note_suggestion`                     | `POST /api/rpc/{command}`                                            |
 
 Events: `grants://changed`, `workspace://changed`, `connectors://changed`.
 
 ## Calendars and files
 
-`services/workspace/`: our own connectors on the shared sign-in (`auth/oauth.rs`) and the GET-only client (`email/api.rs` `MailApi::for_account`). Tokens stay in the keyring as `nandi.<id>.oauth`; tools run on the host.
+`services/workspace/`: our own connectors on each account's sign-in (`auth/oauth.rs`) and the GET-only client (`email/api.rs` `MailApi::for_account`). Tokens stay in the keyring under the account's entry; tools run on the host.
 
-**Incremental consent.** Each account signs in separately with only its own scopes, so mail, calendar and files are asked for when the person connects each one. The Entra app already has these delegated permissions.
+**One sign-in per account, incremental consent.** A drive and a calendar belong to a connected account (Settings › Email): connecting asks for mail plus only what the person ticks, and ticking one later signs in again for it. Each account has its own cursors, so several accounts each have their own drive and calendar. See [email.md › Files and calendar with each account](./email.md#files-and-calendar-with-each-account). The Entra app already has these delegated permissions.
 
 | Account          | Scopes (plus `openid profile email`, Microsoft also `offline_access User.Read`) | Change feed                                                          |
 | ---------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
@@ -123,20 +122,20 @@ Events: `grants://changed`, `workspace://changed`, `connectors://changed`.
 | OneDrive         | `Files.Read`, `Files.Read.All`                                                  | `GET /me/drive/root/delta?token=latest`, then deltaLink              |
 | Google Drive     | `https://www.googleapis.com/auth/drive.readonly`                                | `GET changes/startPageToken`, then `changes?pageToken`               |
 
-Cursors (`local_settings` `workspace.<id>.cursor`) restart on 410 and weekly (the calendar window moves). Free/busy comes from `calendarView` / `events` (no POST). File text: text, Markdown, CSV, JSON and Google Docs (`export`), at most 12,000 characters; other files are linked, never copied.
+Cursors (`local_settings` `files.<provider>.<hash>.cursor`, `calendar.<provider>.<hash>.cursor`) restart on 410 and weekly (the calendar window moves). Free/busy comes from `calendarView` / `events` (no POST). File text: text, Markdown, CSV, JSON and Google Docs (`export`), at most 12,000 characters; other files are linked, never copied.
 
 | Tool                                            | Returns                                                                     |
 | ----------------------------------------------- | --------------------------------------------------------------------------- |
 | `calendar_events {start?, end?, limit?}`        | events, soonest first (default the next 7 days)                             |
 | `calendar_get_event {id}`, `calendar_free_busy` | one event with 2,000 characters of description; busy and time-off intervals |
 | `files_recent`, `files_search {query}`          | files with links (OneDrive search includes shared files)                    |
-| `files_read_text {id}`, `files_changes`         | a document's text; what changed since the last call                         |
+| `files_read_text {id}`, `files_changes`         | a document's text; what changed since the last call (per account)           |
 
-Offered to an agent with a grant on a connected account, or that names the account in skill.md `connectors:` (then the first call asks). IDs carry the account: `outlook-calendar:<id>`.
+Every tool takes an optional `account` (an address) and otherwise reaches every granted account. With several, each event and file carries `account`. Offered to an agent with a grant on a connected account, or that names the account in skill.md `connectors:` (then the first call asks, listing the accounts each connector covers). IDs carry the kind: `outlook-calendar:<id>`; a tool reading one asks each account of that kind in turn.
 
 ## Nandi and the calendar
 
-Every hour by default (`set_calendar_interval`, 15 minutes to 24 hours), `workspace::check_calendars` reads each granted calendar's feed and hands every change to Nandi in **one** run (source `calendar_check`, conversation `calendar:<uuid>`), only when there is something. The run gets only the notes tools, `calendar_*` and Nandi's work tools (`orchestrator::data_run_allows`), and events sit in `<calendar-data>` (untrusted). Its skill.md › Calendar keeps `meetings.md`, `time-off.md` and `suggestions.md`.
+Every hour by default (`set_calendar_interval`, 15 minutes to 24 hours), `workspace::check_calendars` reads each account's granted calendar feed and hands every change to Nandi in **one** run (source `calendar_check`, conversation `calendar:<uuid>`), only when there is something. The run gets only the notes tools, `calendar_*` and Nandi's work tools (`orchestrator::data_run_allows`), and events sit in `<calendar-data>` (untrusted). Its skill.md › Calendar keeps `meetings.md`, `time-off.md` and `suggestions.md`.
 
 **Suggestions and corrections** (`notes/corrections.rs`): `- [ ] …` lines in `suggestions.md` are accepted (ticked) or dismissed (removed) on My notes; both are remembered in `corrections.md`. Saving a note from My notes that drops or changes a cited line (`(from …)`, `(calendar…)`) adds "Removed from <note>: …" there. The skill.md reads `corrections.md` first and never adds those back.
 
@@ -146,5 +145,6 @@ Every hour by default (`set_calendar_interval`, 15 minutes to 24 hours), `worksp
 | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
 | Studio scaffold → publish to a file:// registry → install on a second Nandi → pause → Allow → revoke → Don't allow → policy | `src-tauri/src/connector_hub_suite.rs` |
 | Allow once lasts for the run                                                                                                | same                                   |
-| Mock Graph and Google: identity, grant, one run per calendar check, cursors, tools, GET only                                | `services/workspace/tests.rs`          |
+| Mock Graph and Google: per-account grant and keys, one run per calendar check, cursors, tools naming accounts, GET only     | `services/workspace/tests.rs`          |
+| 0.2's own calendar and drive connections move under their accounts                                                          | `services/workspace/keys_from_0_2.rs`  |
 | Format, entry, declaration, grants, policies, suggestions                                                                   | unit tests in each module              |

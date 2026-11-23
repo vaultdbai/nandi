@@ -13,20 +13,20 @@
 
 ### 1. One sign-in per account, asking for what the person ticks
 
-- [ ] Connecting a mailbox shows two ticks, on by default: **Also read my files** (Drive or OneDrive) and **Also read my calendar**. The sign-in asks only for the ticked read-only scopes (incremental consent; `account_oauth` already takes the scope list).
-- [ ] A connected account can add or drop files or calendar later from its row in Settings › Email (a new sign-in for the added scope only).
-- [ ] Files and calendar for an account use that account's sign-in and keys (`MailboxId`-style names), so each of several accounts has its own Drive cursor and calendar cursor.
-- [ ] **Upgrade in place:** today's separate calendar and files connections move under the matching account (same address) on first start, with an upgrade test. Nobody signs in again.
+- [x] Connecting a mailbox shows two ticks, on by default: **Also read my files** (Drive or OneDrive) and **Also read my calendar**. The sign-in asks only for the ticked read-only scopes (incremental consent; `account_oauth` already takes the scope list).
+- [x] A connected account can add or drop files or calendar later from its row in Settings › Email (a new sign-in for the added scope only).
+- [x] Files and calendar for an account use that account's sign-in and keys (`MailboxId`-style names), so each of several accounts has its own Drive cursor and calendar cursor.
+- [x] **Upgrade in place:** today's separate calendar and files connections move under the matching account (same address) on first start, with an upgrade test. Nobody signs in again.
 
 ### 2. Tools and the record
 
-- [ ] `files_*` and `calendar_*` tools reach every granted account and say which account each result came from (like `mailbox:` for mail).
-- [ ] Grants name the account and what it covers (mail, files, calendar).
-- [ ] Notes and to-dos that come from a file link back to it and name the account.
+- [x] `files_*` and `calendar_*` tools reach every granted account and say which account each result came from (like `mailbox:` for mail).
+- [x] Grants name the account and what it covers (mail, files, calendar).
+- [x] Notes and to-dos that come from a file link back to it and name the account. (Prompt-level: tool results carry `account`, and the `meeting-prep` playbook says to link each file and name its account. Nandi's `skill.md` is at its 900-word limit, so it is unchanged.)
 
 ### 3. Docs
 
-- [ ] User guide (Settings › Email, the old Calendar & files page folded in or pointing there), `docs/testing/`, `docs/developer/email.md`.
+- [x] User guide (Settings › Email, the old Calendar & files page folded in or pointing there), `docs/testing/`, `docs/developer/email.md`.
 
 ## Rules
 

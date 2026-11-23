@@ -408,26 +408,27 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 - **Needs relay:** no
 - **Status:** Shipped
 
-### CP-34 — Calendars and files: Outlook calendar, Google Calendar, OneDrive, Google Drive
+### CP-34 — Files and calendar with each account: OneDrive, Google Drive, Outlook calendar, Google Calendar
 
-- **What:** Settings › Calendar & files connects each account with only its own read-only scopes (`Calendars.Read`, `calendar.readonly`, `Files.Read` + `Files.Read.All`, `drive.readonly`). Agents get `calendar_*` and `files_*` tools (read-only, on the host); nothing is copied but cursors.
-- **Where:** `services/workspace/`.
+- **What:** Connecting a mailbox in Settings › Email shows **Also read my files** and **Also read my calendar**, ticked by default. One sign-in asks for mail plus only the ticked read-only scopes (`Files.Read` + `Files.Read.All` or `drive.readonly`; `Calendars.Read` or `calendar.readonly`). Each account's row has a switch for each: on signs in again for it, off stops at once. Each account keeps its own drive and calendar cursors. Agents get `calendar_*` and `files_*` tools (read-only, on the host) over every granted account; with several, each event and file names its `account`. Nothing is copied but cursors.
+- **Where:** Settings › Email (`ConnectMailbox`, `MailboxRow`, `reads-model.ts`); `services/workspace/`, `email::set_reads`.
 - **Preconditions:** A build with `NANDI_MICROSOFT_CLIENT_ID` / `NANDI_GOOGLE_CLIENT_ID` and secret.
-- **Steps:** 1. Connect Outlook calendar. 2. Ask Nandi "what's on my calendar next week?". 3. Connect OneDrive; ask it to read a Markdown file by name.
-- **Expected:** Step 1 asks only for calendar access. Step 2 lists events with organizers. Step 3 returns the text with a link.
-- **Edge / negative cases:** Only GET reaches the APIs; Office files are linked, not read; an agent without a grant is asked first.
-- **Automation:** Covered by: `services/workspace/tests.rs` (mock Graph and Google), `calendar.rs`, `files.rs`, `tool.rs` tests | Layer: unit | Gap: real sign-ins are manual.
+- **Steps:** 1. Connect Outlook with **Also read my calendar** unticked. 2. Ask Nandi to read a Markdown file in OneDrive by name. 3. Turn on the row's calendar switch and sign in. 4. Ask "what's on my calendar next week?". 5. Add a Gmail account with both ticked; search files for a word in both drives. 6. Turn the Gmail files switch off.
+- **Expected:** Step 1's consent lists mail and files, not the calendar. Step 2 returns the text with a link. Step 3's consent asks for the calendar. Step 4 lists events with organizers. Step 5 lists files from both, each with its account. Step 6 stops at once, no sign-in; OneDrive still works.
+- **Edge / negative cases:** Only GET reaches the APIs; Office files are linked, not read; an agent without a grant is asked first, and the prompt names the accounts each connector covers. A mailbox's mail can't be switched off without signing out.
+- **Upgrade from 0.2:** A calendar or drive connected on its own in 0.2 shows under the account with the same address, still working, with "Still on its own sign-in from before" until the next Reconnect. One whose address has no mailbox shows as its own account, "Files and calendar only", with **Read its mail too**. Nobody signs in again. Covered by `workspace/keys_from_0_2.rs` tests.
+- **Automation:** Covered by: `services/workspace/tests.rs` (mock Graph and Google), `workspace/keys_from_0_2.rs`, `email/tests.rs` (`connecting_asks_only_for_the_ticked_reads_on_one_sign_in`, `an_account_drops_its_files_and_keeps_its_mail`, `a_new_sign_in_takes_over_a_calendar_connected_apart`), `calendar.rs`, `files.rs`, `tool.rs`, `reads-model.test.ts`, `EmailSection.test.tsx` | Layer: unit | Gap: real sign-ins are manual.
 - **Needs relay:** no
 - **Status:** Shipped (live test pending)
 
 ### CP-35 — Nandi keeps My notes from the calendar
 
-- **What:** Every hour (Settings › Calendar & files), changed events from each granted calendar go to Nandi in one run (source "Calendar check"), which keeps `meetings.md`, `time-off.md` and capability suggestions in `suggestions.md`. My notes shows suggestions with **Accept** and **Dismiss**; both, and cited lines you remove from a note, are remembered in `corrections.md` and never added back.
+- **What:** Every hour (Settings › Email › Calendar check), changed events from each account's granted calendar go to Nandi in one run (source "Calendar check"), each line naming its account when there are several, which keeps `meetings.md`, `time-off.md` and capability suggestions in `suggestions.md`. My notes shows suggestions with **Accept** and **Dismiss**; both, and cited lines you remove from a note, are remembered in `corrections.md` and never added back.
 - **Where:** `workspace::check_calendars`, `workspace/batch.rs`, `notes/corrections.rs`; Nandi's skill.md › Calendar.
-- **Steps:** 1. Connect a calendar with meetings this week and an out-of-office day. 2. **Check now**. 3. Open My notes. 4. Dismiss a suggestion; delete a cited meeting line; check again.
-- **Expected:** One run; meetings and time off cited by title and date; dismissed and removed items stay gone.
+- **Steps:** 1. Connect an account with its calendar ticked, with meetings this week and an out-of-office day. 2. Settings › Email › Calendar check › **Check calendars now**. 3. Open My notes. 4. Dismiss a suggestion; delete a cited meeting line; check again.
+- **Expected:** One run; meetings and time off cited by title and date; dismissed and removed items stay gone. The account's row says when its calendar was checked.
 - **Edge / negative cases:** Calendar-check runs get only the notes and calendar tools; event text is untrusted.
-- **Automation:** Covered by: `workspace/tests.rs` (`one_nandi_run_per_calendar_check_then_only_changes`), `batch.rs`, `corrections.rs` | Layer: unit | Gap: the model's notes are manual.
+- **Automation:** Covered by: `workspace/tests.rs` (`one_nandi_run_per_calendar_check_naming_each_events_account`), `batch.rs`, `corrections.rs` | Layer: unit | Gap: the model's notes are manual.
 - **Needs relay:** no
 - **Status:** Shipped (live test pending)
 

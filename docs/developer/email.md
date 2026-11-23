@@ -49,14 +49,15 @@ the run: mail_* tools (host) + filesystem__* notes tools, no container, nothing 
 
 A mailbox is its provider and its address (`MailboxId` in `email/provider.rs`). Its keys name it by `<provider>.<hash>`: the first 12 hex digits of the SHA-256 of the lowercased address, so keyring user names and `local_settings` keys never hold the address. Connecting a second address of the same provider adds a mailbox.
 
-| What                                                 | Where                                                                                                                                   |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| A sign-in in progress (before the address is known)  | Keyring `nandi.email.<provider>.sign-in.<attempt>`, one per attempt (`EmailService.sign_ins`); connecting moves it to the mailbox entry |
-| Sign-in tokens (access, refresh, expiry)             | Keyring `nandi.email.<provider>.<hash>.oauth`                                                                                           |
-| Accounts (email, name, paused), interval, watch list | `~/.nandi/config.json` `email`, in the order they were connected                                                                        |
-| Which agent may read which mailbox                   | grants: `settings.yaml` or `~/.nandi/settings.local.yaml`, per provider for now                                                         |
-| Change cursor                                        | `local_settings` `email.<provider>.<hash>.cursor`                                                                                       |
-| Last check (time, count, run, error, needs sign-in)  | `local_settings` `email.<provider>.<hash>.state`                                                                                        |
+| What                                                                  | Where                                                                                                                                   |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| A sign-in in progress (before the address is known)                   | Keyring `nandi.email.<provider>.sign-in.<attempt>`, one per attempt (`EmailService.sign_ins`); connecting moves it to the mailbox entry |
+| Sign-in tokens (access, refresh, expiry)                              | Keyring `nandi.email.<provider>.<hash>.oauth`                                                                                           |
+| Accounts (email, name, paused, what each reads), interval, watch list | `~/.nandi/config.json` `email`, in the order they were connected                                                                        |
+| An account's drive and calendar cursors                               | `local_settings` `files.<provider>.<hash>.cursor`, `calendar.<provider>.<hash>.{cursor,state,seen}`                                     |
+| Which agent may read which mailbox                                    | grants: `settings.yaml` or `~/.nandi/settings.local.yaml`, per provider for now                                                         |
+| Change cursor                                                         | `local_settings` `email.<provider>.<hash>.cursor`                                                                                       |
+| Last check (time, count, run, error, needs sign-in)                   | `local_settings` `email.<provider>.<hash>.state`                                                                                        |
 
 **Disconnect** (`email::disconnect`) takes one mailbox: it deletes its keyring entry, its `local_settings` rows and its account. The provider's grants go with its last mailbox. **Reconnect** of the same address (after a sign-in ended) keeps the cursor and the mailbox's place in the list; another address is added and starts with the 14-day window. Pause, Resume and the background read act on one mailbox too. The first mailbox stays this Nandi's identity (`services::identity`).
 
@@ -65,6 +66,34 @@ A mailbox is its provider and its address (`MailboxId` in `email/provider.rs`). 
 **Sign-ins in progress.** Each `start_email_sign_in` makes its own keyring entry (`MailProvider::sign_in_entry(attempt)`) and `EmailService.sign_ins` remembers the provider's current one. Starting again replaces it (the old flow is cancelled and its entry deleted), so two attempts never share a token. If `connect` fails after moving the token (config.json can't be written), a new mailbox's token entry is deleted again: no secret is left without an account.
 
 **From Nandi 0.2** (`email/keys_from_0_2.rs`): 0.2 kept one mailbox per provider under `nandi.email.<provider>.oauth` and `email.<provider>.{cursor,state,backfill}`. At start, before anything reads a mailbox, each moves to the name of the account `config.json` holds for that provider: new name written first, old one deleted after, so an interrupted start finishes the next time. `state.db`'s schema doesn't change, so there is no migration.
+
+## Files and calendar with each account
+
+An account reads its mail and, when the person ticks them, its drive (OneDrive or Google Drive) and its calendar (Outlook or Google), all read-only, on **one sign-in** (`services/workspace/`, see its module doc). `Reads { mail, files, calendar }` (`email/provider.rs`) says what a sign-in asks for; `Reads::scopes` turns it into the scopes, so the consent screen lists only what was ticked.
+
+| Read     | Microsoft                                       | Google                 |
+| -------- | ----------------------------------------------- | ---------------------- |
+| Always   | `openid profile email offline_access User.Read` | `openid email profile` |
+| Mail     | `Mail.Read`                                     | `gmail.readonly`       |
+| Files    | `Files.Read`, `Files.Read.All`                  | `drive.readonly`       |
+| Calendar | `Calendars.Read`                                | `calendar.readonly`    |
+
+- **Connect** (`ConnectMailbox`): **Also read my files** and **Also read my calendar**, ticked by default. `start_email_sign_in(provider, reads)` asks for mail plus the ticks.
+- **Later**, from the account's row (`MailboxRow`, `reads-model.ts`): turning one on is a new sign-in asking for it and everything the account reads (`readChange` → `signIn`); turning one off is `set_email_reads(mailbox, reads)`, which only drops (its cursors go; adding returns an error). Mail stops only by signing out.
+- **The account** (`EmailAccount`): `mail` (default true), `files` and `calendar` (`ReadSignIn::Account` or `Apart`, absent when off). `reads()` is what the account's own sign-in asked for: every API on that token renews with those scopes (`Mailbox::new`, `workspace::Source`), so a mail refresh never narrows the token the drive uses.
+- **Per-account keys:** `files.<provider>.<hash>.cursor` and `calendar.<provider>.<hash>.{cursor,state,seen}` (`MailboxId::read_key`). Each account has its own Drive and calendar cursors.
+- **Grants** stay per connector (`onedrive`, `google-drive`, `outlook-calendar`, `google-calendar`), like mail's per provider. Ticking one gives Nandi a saved read grant; it goes with the last account that reads it (`workspace::stopped`). Asking first (`access_need`) lists the accounts each connector covers ("OneDrive: a@x.com, b@y.com").
+- **Tools:** `calendar_*` and `files_*` reach every granted account, with an optional `account` argument. With several accounts each event and file carries `account` (its address), like mail's `mailbox`; the calendar check's lines say `| account <address>`. A tool reading an item by id asks each account of that kind in turn.
+- **Settings › Email** holds the calendar check (interval, Check now) once an account reads its calendar. There is no separate Calendar & files page.
+
+**From Nandi 0.2** (`workspace/keys_from_0_2.rs`): 0.2 connected each calendar and drive on its own (`config.json` `workspace.accounts`, keyring `nandi.<kind>.oauth`, `workspace.<kind>.{cursor,state,seen}`). At start, right after the mail upgrade, each moves under the account with the same provider and address:
+
+| Case                      | Result                                                                                                                                                                                                                 |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A mailbox has the address | It reads the drive or calendar on its old token, kept at `nandi.email.<provider>.<hash>.<files\|calendar>.oauth` (`ReadSignIn::Apart`): tokens can't merge. The account's next sign-in that asks for it takes over     |
+| No mailbox has it         | A new account with `mail: false` (it never asked for mail). Its first drive or calendar becomes the account's sign-in; a second keeps its own. The row says "Files and calendar only" and offers **Read its mail too** |
+
+Each token is written under its new name before the old one is deleted, the cursors move in one transaction, and `config.json` changes last (adding the reads and dropping `workspace.accounts`). An interrupted start finishes the next time; a failure is logged and never blocks startup. Nobody signs in again.
 
 ## Providers
 
@@ -146,6 +175,7 @@ IDs carry their provider: `outlook:<id>`, `gmail:<id>`. Results are wrapped as u
 | --------------------- | ----------------------------------- |
 | `get_email_status`    | `POST /api/rpc/get_email_status`    |
 | `start_email_sign_in` | `POST /api/rpc/start_email_sign_in` |
+| `set_email_reads`     | `POST /api/rpc/set_email_reads`     |
 | `poll_email_sign_in`  | `POST /api/rpc/poll_email_sign_in`  |
 | `check_email_now`     | `POST /api/rpc/check_email_now`     |
 | `set_email_paused`    | `POST /api/rpc/set_email_paused`    |
