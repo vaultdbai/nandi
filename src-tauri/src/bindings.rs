@@ -109,6 +109,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             llm_keys::set_default_model,
             llm_keys::set_free_trial,
             llm_keys::get_free_trial_account,
+            llm_keys::try_free_trial,
             llm_keys::test_llm_key,
             llm_keys::list_provider_models,
             llm_keys::detect_ollama,

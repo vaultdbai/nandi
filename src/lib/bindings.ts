@@ -601,6 +601,17 @@ async getFreeTrialAccount() : Promise<Result<TrialAccount, string>> {
 }
 },
 /**
+ * One short message through the free tokens, to see them work
+ */
+async tryFreeTrial() : Promise<Result<TrialTry, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("try_free_trial") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Checks a key (`None`: the stored one) without storing it
  */
 async testLlmKey(provider: KeyedProvider, apiKey: string | null) : Promise<Result<LlmKeyTest, string>> {
@@ -9311,6 +9322,11 @@ paused: boolean;
  * The gateway couldn't be reached a moment ago
  */
 unreachable: boolean }
+/**
+ * What **Try free tokens** in Settings got back: the trial's answer and
+ * the allowance after it
+ */
+export type TrialTry = { reply: string; account: TrialAccount }
 /**
  * A trigger rule. In API responses `source_config` never holds the secret
  * (see `has_secret` and `SavedTrigger`).

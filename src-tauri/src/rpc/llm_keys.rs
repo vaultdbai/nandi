@@ -1,7 +1,7 @@
 //! LLM API key commands (Tauri adapter for `services::llm_keys`).
 
 use crate::services::llm_keys::{self, KeyedProvider, LlmKeyStatus};
-use crate::services::llm_trial::TrialAccount;
+use crate::services::llm_trial::{TrialAccount, TrialTry};
 
 super::commands! {
     /// Whether Ollama runs on this computer, and its models
@@ -28,4 +28,7 @@ super::commands! {
 
     /// The free trial's allowance as the gateway counts it
     fn get_free_trial_account(state) -> TrialAccount => llm_keys::get_free_trial_account(&state).await;
+
+    /// One short message through the free tokens, to see them work
+    fn try_free_trial(state) -> TrialTry => llm_keys::try_free_trial(&state).await;
 }

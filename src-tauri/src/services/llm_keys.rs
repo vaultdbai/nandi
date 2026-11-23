@@ -424,6 +424,11 @@ pub async fn get_free_trial_account(state: &AppState) -> Result<llm_trial::Trial
     llm_trial::account(state).await
 }
 
+/// One short message on the free tokens, whatever the model settings say
+pub async fn try_free_trial(state: &AppState) -> Result<llm_trial::TrialTry, String> {
+    llm_trial::try_it(state).await
+}
+
 /// Which providers have a key configured. Never returns the keys.
 pub async fn get_llm_key_status(state: &AppState) -> Result<Vec<LlmKeyStatus>, String> {
     KeyedProvider::ALL

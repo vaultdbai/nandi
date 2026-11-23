@@ -53,6 +53,7 @@ import type {
   LlmKeyTest,
   TrialAccount,
   TrialStatus,
+  TrialTry,
 } from '@/lib/bindings'
 import { trialLinkLine, trialMessage, trialUsedUp } from '@/lib/free-trial'
 import { SettingsField } from './shared/SettingsComponents'
@@ -156,7 +157,61 @@ function FreeTrialField({ trial }: { trial: TrialStatus }) {
         </span>
       </div>
       {account.data && <TrialLink account={account.data} />}
+      <TryFreeTokens />
     </SettingsField>
+  )
+}
+
+/**
+ * **Try free tokens**: one short message straight through the trial, so
+ * anyone can see it work even when their own model answers everything
+ * else. It changes no setting.
+ */
+function TryFreeTokens() {
+  const { t, i18n } = useTranslation()
+  const queryClient = useQueryClient()
+  const [trying, setTrying] = useState(false)
+  const [answer, setAnswer] = useState<TrialTry | null>(null)
+  const format = (n: number) => n.toLocaleString(i18n.language)
+
+  const tryIt = async () => {
+    setTrying(true)
+    setAnswer(null)
+    const result = await client.tryFreeTrial()
+    setTrying(false)
+    if (result.status === 'error') {
+      toast.error(result.error)
+      return
+    }
+    setAnswer(result.data)
+    await queryClient.invalidateQueries({ queryKey: llmKeyStatusQueryKey })
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={trying}
+          onClick={() => void tryIt()}
+        >
+          {trying && <Spinner />}
+          {t(trying ? 'models.trial.trying' : 'models.trial.try')}
+        </Button>
+      </div>
+      {answer && (
+        <p className="text-sm" role="status" data-testid="free-trial-try">
+          {t('models.trial.tryReply', {
+            reply: answer.reply,
+            left: format(
+              Math.max(answer.account.limit - answer.account.used, 0)
+            ),
+            limit: format(answer.account.limit),
+          })}
+        </p>
+      )}
+    </div>
   )
 }
 

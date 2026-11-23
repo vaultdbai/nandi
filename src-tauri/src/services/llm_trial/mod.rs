@@ -384,6 +384,48 @@ pub async fn chat(
     result.map_err(|e| e.user_message())
 }
 
+/// What **Try free tokens** in Settings got back: the trial's answer and
+/// the allowance after it
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TrialTry {
+    pub reply: String,
+    pub account: TrialAccount,
+}
+
+/// One short message straight through the gateway, at the user's click, so
+/// anyone can see the free tokens work, even with a model of their own
+/// (which every other call uses first). It changes no setting.
+pub async fn try_it(state: &AppState) -> Result<TrialTry, String> {
+    let (trial, client) = require(state.secrets())?;
+    let (_, model) = crate::llm::parse_model(TRIAL_MODEL)?;
+    let request = LlmRequest {
+        model: TRIAL_MODEL.to_string(),
+        system: Some("Answer in one short, friendly sentence.".to_string()),
+        messages: vec![crate::llm::Message::User {
+            content: "Say hello and that the free tokens work.".to_string(),
+        }],
+        tools: vec![],
+        max_tokens: None,
+    };
+    let result = client
+        .chat(
+            &reqwest::Client::new(),
+            model,
+            &request,
+            TRY_MAX_TOKENS,
+            None,
+        )
+        .await;
+    trial.note(&result);
+    let reply = result.map_err(|e| e.user_message())?.content;
+    let account = account(state).await?;
+    Ok(TrialTry { reply, account })
+}
+
+/// A hello needs few tokens; this caps what a click can cost
+const TRY_MAX_TOKENS: u32 = 64;
+
 /// `GET /v1/trial`: the allowance as the gateway counts it, for Settings.
 /// Not linked yet while an email is connected: links first.
 pub async fn account(state: &AppState) -> Result<TrialAccount, String> {
