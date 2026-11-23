@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { EmailProviderStatus, IdentityStatus } from '@/lib/bindings'
+import type { MailboxStatus, IdentityStatus } from '@/lib/bindings'
 import {
   branchFor,
   defaultRelayDraft,
@@ -261,15 +261,13 @@ describe('onboarding resume', () => {
 })
 
 describe('mailbox identity', () => {
-  const provider = (
-    overrides: Partial<EmailProviderStatus> = {}
-  ): EmailProviderStatus => ({
+  const provider = (overrides: Partial<MailboxStatus> = {}): MailboxStatus => ({
     provider: 'outlook',
-    available: true,
-    connected: true,
-    accountName: 'Dev Chechi',
-    accountEmail: 'dev.chechi@company.com',
-    accountProfile: null,
+
+    isIdentity: false,
+    name: 'Dev Chechi',
+    email: 'dev.chechi@company.com',
+    profile: null,
     state: 'ready',
     error: null,
     lastCheckedAt: null,
@@ -281,21 +279,34 @@ describe('mailbox identity', () => {
 
   it('is the first connected mailbox that names its owner', () => {
     expect(mailboxIdentity([])).toBeNull()
-    expect(mailboxIdentity([provider({ connected: false })])).toBeNull()
-    expect(mailboxIdentity([provider({ accountName: null })])).toBeNull()
+    expect(mailboxIdentity([provider({ name: null })])).toBeNull()
     expect(
       mailboxIdentity([
-        provider({ accountName: '  ' }),
-        provider({ provider: 'gmail', accountName: 'Dev G' }),
+        provider({ name: '  ' }),
+        provider({ provider: 'gmail', name: 'Dev G' }),
       ])
     ).toMatchObject({ provider: 'gmail', name: 'Dev G' })
+  })
+
+  it('prefers the identity mailbox over one connected before it was marked', () => {
+    expect(
+      mailboxIdentity([
+        provider({ name: 'Work', email: 'work@company.com' }),
+        provider({
+          provider: 'gmail',
+          name: 'Home',
+          email: 'home@gmail.com',
+          isIdentity: true,
+        }),
+      ])
+    ).toMatchObject({ email: 'home@gmail.com' })
   })
 
   it('carries title, department and manager when the directory gave them', () => {
     expect(
       mailboxIdentity([
         provider({
-          accountProfile: {
+          profile: {
             title: 'Platform lead',
             department: 'Engineering',
             manager: { name: 'Priya Rao', email: null, title: 'VP' },
@@ -318,7 +329,7 @@ describe('mailbox identity', () => {
     expect(
       mailboxIdentity([
         provider({
-          accountProfile: {
+          profile: {
             title: null,
             department: null,
             manager: { name: 'Sam', email: null, title: null },

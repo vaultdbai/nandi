@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { EmailProviderStatus } from '@/lib/tauri-bindings'
+import type { EmailProviderStatus, MailboxStatus } from '@/lib/tauri-bindings'
 import {
+  accountLabel,
+  addableProviders,
   backfillLine,
+  canCheckNow,
   estimateTotals,
   DEFAULT_INTERVAL_MINUTES,
   emailTodo,
@@ -12,6 +15,7 @@ import {
   mailboxOf,
   parseWatchList,
   problemKey,
+  providerStatusKey,
 } from './email-model'
 
 function status(
@@ -21,10 +25,18 @@ function status(
     provider: 'outlook',
     available: true,
     connected: false,
-    accountName: null,
-    accountEmail: null,
-    accountProfile: null,
-    state: 'notConnected',
+    ...overrides,
+  }
+}
+
+function mailbox(overrides: Partial<MailboxStatus> = {}): MailboxStatus {
+  return {
+    provider: 'outlook',
+    email: 'dev@company.com',
+    name: null,
+    profile: null,
+    state: 'ready',
+    isIdentity: false,
     error: null,
     lastCheckedAt: null,
     lastFound: 0,
@@ -35,72 +47,95 @@ function status(
 }
 
 describe('mailboxOf', () => {
-  it('names the connected mailbox by provider and address', () => {
-    expect(mailboxOf(status())).toBeNull()
+  it('names a mailbox by provider and address', () => {
     expect(
-      mailboxOf(
-        status({
-          provider: 'gmail',
-          connected: true,
-          state: 'ready',
-          accountEmail: 'dev@gmail.com',
-        })
-      )
+      mailboxOf(mailbox({ provider: 'gmail', email: 'dev@gmail.com' }))
     ).toEqual({ provider: 'gmail', email: 'dev@gmail.com' })
   })
 })
 
-describe('mailboxCard', () => {
-  it('offers Connect only when the build can sign in', () => {
-    expect(mailboxCard(status()).canConnect).toBe(true)
-    const unavailable = mailboxCard(status({ available: false }))
-    expect(unavailable.canConnect).toBe(false)
-    expect(unavailable.statusKey).toBe('email.status.unavailable')
+describe('accountLabel', () => {
+  it('shows the name with the address, or the address alone', () => {
+    expect(accountLabel({ name: 'Dev Chechi', email: 'dev@company.com' })).toBe(
+      'Dev Chechi (dev@company.com)'
+    )
+    expect(accountLabel({ name: null, email: 'dev@company.com' })).toBe(
+      'dev@company.com'
+    )
+  })
+})
+
+describe('providers a mailbox can be added from', () => {
+  it('lists the providers this build can sign in to', () => {
+    expect(addableProviders([status(), status({ provider: 'gmail' })])).toEqual(
+      ['outlook', 'gmail']
+    )
+    expect(
+      addableProviders([
+        status({ available: false }),
+        status({ provider: 'gmail' }),
+      ])
+    ).toEqual(['gmail'])
   })
 
+  it('says why a provider with no mailbox has none', () => {
+    expect(providerStatusKey(status())).toBe('email.status.notConnected')
+    expect(providerStatusKey(status({ available: false }))).toBe(
+      'email.status.unavailable'
+    )
+  })
+})
+
+describe('mailboxCard', () => {
   it('shows who is connected and what can be done', () => {
     const card = mailboxCard(
-      status({
-        connected: true,
-        state: 'ready',
-        accountName: 'Dev Chechi',
-        accountEmail: 'dev@company.com',
-      })
+      mailbox({ name: 'Dev Chechi', email: 'dev@company.com' })
     )
     expect(card.account).toBe('Dev Chechi (dev@company.com)')
     expect(card).toMatchObject({
-      canCheck: true,
       canPause: true,
       canResume: false,
-      canDisconnect: true,
-      canConnect: false,
+      reconnect: false,
       tone: 'ok',
     })
   })
 
   it('asks to reconnect when the sign-in ended', () => {
     const card = mailboxCard(
-      status({
+      mailbox({
         provider: 'gmail',
-        connected: true,
         state: 'needsSignIn',
-        accountEmail: 'dev@gmail.com',
+        email: 'dev@gmail.com',
         error: 'invalid_grant',
       })
     )
     expect(card).toMatchObject({
       name: 'Gmail',
-      canConnect: true,
       reconnect: true,
       tone: 'warning',
       error: 'invalid_grant',
-      canCheck: false,
+      canPause: false,
     })
   })
 
   it('offers Resume when paused', () => {
-    const card = mailboxCard(status({ connected: true, state: 'paused' }))
-    expect(card.canResume && !card.canPause && !card.canCheck).toBe(true)
+    const card = mailboxCard(mailbox({ state: 'paused' }))
+    expect(card.canResume && !card.canPause).toBe(true)
+  })
+})
+
+describe('canCheckNow', () => {
+  it('needs a mailbox that is being read', () => {
+    expect(canCheckNow([])).toBe(false)
+    expect(
+      canCheckNow([
+        mailbox({ state: 'paused' }),
+        mailbox({ state: 'needsSignIn' }),
+      ])
+    ).toBe(false)
+    expect(
+      canCheckNow([mailbox({ state: 'paused' }), mailbox({ state: 'error' })])
+    ).toBe(true)
   })
 })
 
@@ -146,18 +181,15 @@ describe('emailTodo', () => {
 
   it('offers the other one quietly once one is connected', () => {
     expect(
-      emailTodo([
-        status({ connected: true, state: 'ready' }),
-        status({ provider: 'gmail' }),
-      ])
+      emailTodo([status({ connected: true }), status({ provider: 'gmail' })])
     ).toEqual({ kind: 'another', providers: ['gmail'] })
   })
 
   it('shows nothing when both are connected or none can be', () => {
     expect(
       emailTodo([
-        status({ connected: true, state: 'ready' }),
-        status({ provider: 'gmail', connected: true, state: 'ready' }),
+        status({ connected: true }),
+        status({ provider: 'gmail', connected: true }),
       ])
     ).toEqual({ kind: 'none' })
     expect(

@@ -8,6 +8,7 @@ import type {
   BackfillStatus,
   EmailProviderStatus,
   MailboxId,
+  MailboxStatus,
   MailProvider,
   SignInProblemKind,
 } from '@/lib/tauri-bindings'
@@ -25,61 +26,57 @@ export interface MailboxCard {
   /** i18n key of the status line */
   statusKey: string
   tone: CardTone
-  /** "Connected as …" */
-  account: string | null
-  /** Connect (or Reconnect) is offered */
-  canConnect: boolean
-  /** Reconnect rather than Connect */
+  /** "Name (address)", or the address alone */
+  account: string
+  /** Sign in again is offered */
   reconnect: boolean
-  canCheck: boolean
   canPause: boolean
   canResume: boolean
-  canDisconnect: boolean
   error: string | null
 }
 
-/** The mailbox a card's Pause, Sign out and older-mail controls act on */
-export function mailboxOf(status: EmailProviderStatus): MailboxId | null {
-  return status.connected && status.accountEmail
-    ? { provider: status.provider, email: status.accountEmail }
-    : null
+/** The mailbox a row's Pause, Sign out and older-mail controls act on */
+export function mailboxOf(status: MailboxStatus): MailboxId {
+  return { provider: status.provider, email: status.email }
 }
 
-export function mailboxCard(status: EmailProviderStatus): MailboxCard {
-  const name = PROVIDER_NAMES[status.provider]
-  const account = status.accountEmail
-    ? status.accountName
-      ? `${status.accountName} (${status.accountEmail})`
-      : status.accountEmail
-    : null
+/** "Name (address)", or the address alone */
+export function accountLabel(
+  status: Pick<MailboxStatus, 'name' | 'email'>
+): string {
+  return status.name ? `${status.name} (${status.email})` : status.email
+}
+
+/** The i18n key of what a provider with no mailbox says */
+export function providerStatusKey(status: EmailProviderStatus): string {
+  return status.available
+    ? 'email.status.notConnected'
+    : 'email.status.unavailable'
+}
+
+/** The providers a mailbox can still be added from (this build has them) */
+export function addableProviders(
+  providers: readonly EmailProviderStatus[]
+): MailProvider[] {
+  return providers.filter(p => p.available).map(p => p.provider)
+}
+
+export function mailboxCard(status: MailboxStatus): MailboxCard {
   const base = {
     provider: status.provider,
-    name,
-    account,
-    canConnect: false,
+    name: PROVIDER_NAMES[status.provider],
+    account: accountLabel(status),
     reconnect: false,
-    canCheck: false,
     canPause: false,
     canResume: false,
-    canDisconnect: status.connected,
     error: null as string | null,
   }
   switch (status.state) {
-    case 'notConnected':
-      return {
-        ...base,
-        statusKey: status.available
-          ? 'email.status.notConnected'
-          : 'email.status.unavailable',
-        tone: 'muted',
-        canConnect: status.available,
-      }
     case 'ready':
       return {
         ...base,
         statusKey: 'email.status.ready',
         tone: 'ok',
-        canCheck: true,
         canPause: true,
       }
     case 'paused':
@@ -94,7 +91,6 @@ export function mailboxCard(status: EmailProviderStatus): MailboxCard {
         ...base,
         statusKey: 'email.status.needsSignIn',
         tone: 'warning',
-        canConnect: status.available,
         reconnect: true,
         error: status.error,
       }
@@ -103,11 +99,15 @@ export function mailboxCard(status: EmailProviderStatus): MailboxCard {
         ...base,
         statusKey: 'email.status.error',
         tone: 'error',
-        canCheck: true,
         canPause: true,
         error: status.error,
       }
   }
+}
+
+/** Check now and Read again need a mailbox that is being read */
+export function canCheckNow(mailboxes: readonly MailboxStatus[]): boolean {
+  return mailboxes.some(m => m.state === 'ready' || m.state === 'error')
 }
 
 /** The i18n key that explains a sign-in problem */

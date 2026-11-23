@@ -5932,7 +5932,7 @@ proxyUrl: string; routes: EgressRoute[]; aws: AwsCredentialStatus;
  * Newest first
  */
 recentEntries: EgressLogEntry[] }
-export type EmailAccountState = "notConnected" | "ready" | "paused" | 
+export type EmailAccountState = "ready" | "paused" | 
 /**
  * The sign-in ended or was refused: Reconnect
  */
@@ -5949,26 +5949,22 @@ export type EmailProviderStatus = { provider: MailProvider;
 /**
  * This build has the provider's client ID
  */
-available: boolean; connected: boolean; accountName: string | null; accountEmail: string | null; 
+available: boolean; 
 /**
- * Title, department and manager the mailbox gave (Outlook)
+ * At least one mailbox of the provider is connected
  */
-accountProfile: Profile | null; state: EmailAccountState; error: string | null; lastCheckedAt: number | null; 
-/**
- * Emails the last check handed to Nandi
- */
-lastFound: number; lastRunId: string | null; 
-/**
- * The background read of older mail
- */
-backfill: BackfillStatus }
+connected: boolean }
 export type EmailSettingsInput = { intervalMinutes: number; watch: string[]; backfill: BackfillRange }
 export type EmailSignInPoll = { phase: SignInPhase; problem: SignInProblem | null }
 export type EmailStatus = { 
 /**
  * Outlook, then Gmail
  */
-providers: EmailProviderStatus[]; intervalMinutes: number; watch: string[]; nextCheckAt: number | null; checking: boolean; 
+providers: EmailProviderStatus[]; 
+/**
+ * Every connected mailbox, in the order they were connected
+ */
+mailboxes: MailboxStatus[]; intervalMinutes: number; watch: string[]; nextCheckAt: number | null; checking: boolean; 
 /**
  * How far back the background read of older mail goes
  */
@@ -7043,6 +7039,27 @@ export type MailProvider =
  * sign-in, cursor, last check and background read.
  */
 export type MailboxId = { provider: MailProvider; email: string }
+/**
+ * One connected mailbox
+ */
+export type MailboxStatus = { provider: MailProvider; email: string; name: string | null; 
+/**
+ * Title, department and manager the mailbox gave (Outlook)
+ */
+profile: Profile | null; state: EmailAccountState; 
+/**
+ * This Nandi's identity (relay, free trial, Settings › Account): the
+ * first mailbox connected. Signing the mailbox out doesn't move it.
+ */
+isIdentity: boolean; error: string | null; lastCheckedAt: number | null; 
+/**
+ * Emails the last check handed to Nandi
+ */
+lastFound: number; lastRunId: string | null; 
+/**
+ * The background read of older mail
+ */
+backfill: BackfillStatus }
 /**
  * The mailbox owner's manager
  */

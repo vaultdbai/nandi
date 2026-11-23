@@ -7,7 +7,9 @@ import {
   DEFAULT_INTERVAL_MINUTES,
   intervalLabel,
   intervalOptions,
-  mailboxCard,
+  accountLabel,
+  PROVIDER_NAMES,
+  providerStatusKey,
 } from '@/components/settings/email/email-model'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -18,6 +20,7 @@ import { useEmailAction, useEmailStatus } from '@/hooks/useEmail'
 import type {
   BackfillRange,
   EmailProviderStatus,
+  MailboxStatus,
   MailProvider,
 } from '@/lib/tauri-bindings'
 
@@ -94,6 +97,9 @@ export function StepEmail({ onNext }: StepEmailProps) {
             <MailboxChoice
               key={provider.provider}
               status={provider}
+              mailbox={status.data?.mailboxes.find(
+                m => m.provider === provider.provider
+              )}
               chosen={chosen.includes(provider.provider)}
               onToggle={on => toggle(provider.provider, on)}
             />
@@ -147,15 +153,18 @@ export function StepEmail({ onNext }: StepEmailProps) {
 
 function MailboxChoice({
   status,
+  mailbox,
   chosen,
   onToggle,
 }: {
   status: EmailProviderStatus
+  /** The provider's first mailbox, if connected */
+  mailbox: MailboxStatus | undefined
   chosen: boolean
   onToggle: (on: boolean) => void
 }) {
   const { t } = useTranslation()
-  const card = mailboxCard(status)
+  const name = PROVIDER_NAMES[status.provider]
   const id = `onboarding-email-${status.provider}`
   return (
     <div
@@ -171,11 +180,11 @@ function MailboxChoice({
           className="mt-0.5"
         />
         <div className="space-y-0.5">
-          <Label htmlFor={id}>{card.name}</Label>
+          <Label htmlFor={id}>{name}</Label>
           <p className="text-xs text-muted-foreground">
-            {card.account
-              ? t('email.connectedAs', { account: card.account })
-              : t(card.statusKey)}
+            {mailbox
+              ? t('email.connectedAs', { account: accountLabel(mailbox) })
+              : t(providerStatusKey(status))}
           </p>
         </div>
       </div>

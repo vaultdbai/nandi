@@ -5,8 +5,8 @@
  * before saving.
  */
 import type {
-  EmailProviderStatus,
   IdentityStatus,
+  MailboxStatus,
   MailProvider,
   RelayUrlSource,
 } from '@/lib/bindings'
@@ -266,17 +266,20 @@ export interface MailboxIdentity {
 }
 
 /**
- * The first connected mailbox that names its owner (Outlook is listed
- * first), or `null`: setup then asks, as it does without a mailbox.
+ * The identity mailbox if it names its owner, else the first connected one
+ * that does, or `null`: setup then asks, as it does without a mailbox.
  */
 export function mailboxIdentity(
-  providers: readonly EmailProviderStatus[]
+  mailboxes: readonly MailboxStatus[]
 ): MailboxIdentity | null {
-  for (const status of providers) {
-    const name = status.accountName?.trim() ?? ''
-    const email = status.accountEmail?.trim() ?? ''
-    if (!status.connected || !name || !email) continue
-    const profile = status.accountProfile
+  const identityFirst = [...mailboxes].sort(
+    (a, b) => Number(b.isIdentity) - Number(a.isIdentity)
+  )
+  for (const status of identityFirst) {
+    const name = status.name?.trim() ?? ''
+    const email = status.email.trim()
+    if (!name || !email) continue
+    const profile = status.profile
     const manager = profile?.manager
     return {
       provider: status.provider,

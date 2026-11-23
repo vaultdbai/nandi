@@ -24,8 +24,13 @@ impl Mailbox {
 
     /// The mailbox a sign-in in progress is for, before Nandi knows its
     /// address
-    pub fn signing_in(provider: MailProvider, setup: &ProviderSetup, secrets: &Secrets) -> Self {
-        Self::at(provider, provider.sign_in_entry(), setup, secrets)
+    pub fn signing_in(
+        provider: MailProvider,
+        entry: String,
+        setup: &ProviderSetup,
+        secrets: &Secrets,
+    ) -> Self {
+        Self::at(provider, entry, setup, secrets)
     }
 
     fn at(provider: MailProvider, entry: String, setup: &ProviderSetup, secrets: &Secrets) -> Self {

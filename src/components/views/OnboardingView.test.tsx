@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor, within } from '@/test/test-utils'
 import { toast } from 'sonner'
 import { commands } from '@/lib/tauri-bindings'
+import type { MailboxStatus } from '@/lib/bindings'
 import type {
   DefaultModelStatus,
   GatewayStatus,
@@ -71,23 +72,15 @@ const gatewayStatus = {
   discoverable: true,
 } as unknown as GatewayStatus
 
-const mailbox = (provider: 'outlook' | 'gmail') => ({
+const providerStatus = (provider: 'outlook' | 'gmail') => ({
   provider,
   available: true,
   connected: false,
-  accountName: null,
-  accountEmail: null,
-  accountProfile: null,
-  state: 'notConnected' as const,
-  error: null,
-  lastCheckedAt: null,
-  lastFound: 0,
-  lastRunId: null,
-  backfill: { phase: 'off' as const, backTo: null, read: 0 },
 })
 
 const emailStatus = {
-  providers: [mailbox('outlook'), mailbox('gmail')],
+  providers: [providerStatus('outlook'), providerStatus('gmail')],
+  mailboxes: [] as MailboxStatus[],
   intervalMinutes: 30,
   watch: [],
   nextCheckAt: null,
@@ -139,19 +132,27 @@ async function toNetwork(user: User) {
 const outlookConnected = {
   ...emailStatus,
   providers: [
+    { ...providerStatus('outlook'), connected: true },
+    providerStatus('gmail'),
+  ],
+  mailboxes: [
     {
-      ...mailbox('outlook'),
-      connected: true,
-      accountName: 'Ada Lovelace',
-      accountEmail: 'ada.lovelace@company.com',
-      accountProfile: {
+      provider: 'outlook' as const,
+      email: 'ada.lovelace@company.com',
+      name: 'Ada Lovelace',
+      profile: {
         title: 'Analyst',
         department: 'Finance',
         manager: { name: 'Priya Rao', email: null, title: 'VP Finance' },
       },
       state: 'ready' as const,
+      isIdentity: true,
+      error: null,
+      lastCheckedAt: null,
+      lastFound: 0,
+      lastRunId: null,
+      backfill: { phase: 'off' as const, backTo: null, read: 0 },
     },
-    mailbox('gmail'),
   ],
 }
 

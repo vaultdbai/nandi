@@ -113,6 +113,7 @@ export type {
   EmailStatus,
   MailProvider,
   MailboxId,
+  MailboxStatus,
   SignInPhase,
   SignInProblem,
   SignInProblemKind,

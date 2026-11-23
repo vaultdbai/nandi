@@ -10,10 +10,13 @@ export function ConnectMailbox({
   provider,
   size = 'sm',
   variant = 'default',
+  another = false,
 }: {
   provider: MailProvider
   size?: 'sm' | 'default'
   variant?: 'default' | 'outline'
+  /** "Add another account": the button stays after one is connected */
+  another?: boolean
 }) {
   const { t } = useTranslation()
   const signIn = useEmailSignIn(provider)
@@ -25,13 +28,15 @@ export function ConnectMailbox({
           {t('email.cancel')}
         </Button>
       ) : (
-        signIn.state.phase !== 'connected' && (
+        (another || signIn.state.phase !== 'connected') && (
           <Button
             size={size}
             variant={variant}
             onClick={() => void signIn.start()}
           >
-            {t('email.connect', { name: PROVIDER_NAMES[provider] })}
+            {t(another ? 'email.addAnother' : 'email.connect', {
+              name: PROVIDER_NAMES[provider],
+            })}
           </Button>
         )
       )}

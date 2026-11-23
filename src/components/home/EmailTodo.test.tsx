@@ -15,21 +15,13 @@ function provider(
     provider: 'outlook',
     available: true,
     connected: false,
-    accountName: null,
-    accountEmail: null,
-    accountProfile: null,
-    state: 'notConnected',
-    error: null,
-    lastCheckedAt: null,
-    lastFound: 0,
-    lastRunId: null,
-    backfill: { phase: 'off', backTo: null, read: 0 },
     ...overrides,
   }
 }
 
 const status = (providers: EmailProviderStatus[]): EmailStatus => ({
   providers,
+  mailboxes: [],
   intervalMinutes: 30,
   watch: [],
   nextCheckAt: null,
@@ -67,10 +59,7 @@ describe('EmailTodo', () => {
   it('goes away once one is connected, offering the other quietly', async () => {
     mocked.getEmailStatus = vi.fn(async () =>
       ok(
-        status([
-          provider({ connected: true, state: 'ready' }),
-          provider({ provider: 'gmail' }),
-        ])
+        status([provider({ connected: true }), provider({ provider: 'gmail' })])
       )
     )
     render(<EmailTodo />)
@@ -84,8 +73,8 @@ describe('EmailTodo', () => {
     const both = vi.fn(async () =>
       ok(
         status([
-          provider({ connected: true, state: 'ready' }),
-          provider({ provider: 'gmail', connected: true, state: 'ready' }),
+          provider({ connected: true }),
+          provider({ provider: 'gmail', connected: true }),
         ])
       )
     )

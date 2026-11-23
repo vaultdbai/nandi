@@ -87,7 +87,6 @@ const FIRST_CHECK_AFTER: Duration = Duration::from_secs(30);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum EmailAccountState {
-    NotConnected,
     Ready,
     Paused,
     /// The sign-in ended or was refused: Reconnect
@@ -102,12 +101,23 @@ pub struct EmailProviderStatus {
     pub provider: MailProvider,
     /// This build has the provider's client ID
     pub available: bool,
+    /// At least one mailbox of the provider is connected
     pub connected: bool,
-    pub account_name: Option<String>,
-    pub account_email: Option<String>,
+}
+
+/// One connected mailbox
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MailboxStatus {
+    pub provider: MailProvider,
+    pub email: String,
+    pub name: Option<String>,
     /// Title, department and manager the mailbox gave (Outlook)
-    pub account_profile: Option<Profile>,
+    pub profile: Option<Profile>,
     pub state: EmailAccountState,
+    /// This Nandi's identity (relay, free trial, Settings › Account): the
+    /// first mailbox connected. Signing the mailbox out doesn't move it.
+    pub is_identity: bool,
     pub error: Option<String>,
     pub last_checked_at: Option<Timestamp>,
     /// Emails the last check handed to Nandi
@@ -122,6 +132,8 @@ pub struct EmailProviderStatus {
 pub struct EmailStatus {
     /// Outlook, then Gmail
     pub providers: Vec<EmailProviderStatus>,
+    /// Every connected mailbox, in the order they were connected
+    pub mailboxes: Vec<MailboxStatus>,
     pub interval_minutes: u32,
     pub watch: Vec<String>,
     pub next_check_at: Option<Timestamp>,
@@ -303,6 +315,9 @@ pub struct EmailService {
     setup: RwLock<ProviderSetup>,
     sink: RwLock<Arc<dyn BatchSink>>,
     flows: OAuthFlows,
+    /// The keyring entry of each provider's sign-in in progress: one per
+    /// attempt, so two sign-ins never share a token
+    sign_ins: Mutex<HashMap<MailProvider, String>>,
     /// One check at a time
     check_lock: tokio::sync::Mutex<()>,
     checking: AtomicBool,
@@ -333,6 +348,7 @@ impl EmailService {
             setup: RwLock::new(setup),
             sink: RwLock::new(Arc::new(Nandi)),
             flows: OAuthFlows::default(),
+            sign_ins: Mutex::new(HashMap::new()),
             check_lock: tokio::sync::Mutex::new(()),
             checking: AtomicBool::new(false),
             auto_check: AtomicBool::new(true),
@@ -480,48 +496,50 @@ pub async fn status(state: &AppState) -> EmailStatus {
     let email = state.email();
     let setup = email.setup();
     let settings = email_settings(state);
-    let mut providers = Vec::new();
-    for provider in MailProvider::ALL {
-        let account = settings.first_of(provider);
-        let (check, cursor, backfill) = match account.map(EmailAccount::id) {
-            Some(mailbox) => (
-                check_state(state, &mailbox).await,
-                load_setting::<Value>(state, mailbox.cursor_key()).await,
-                backfill::load(state, &mailbox).await,
-            ),
-            None => Default::default(),
-        };
-        let connected = account.is_some();
-        let state_now = match account {
-            None => EmailAccountState::NotConnected,
-            Some(_) if check.needs_sign_in => EmailAccountState::NeedsSignIn,
-            Some(a) if a.paused => EmailAccountState::Paused,
-            Some(_) if check.error.is_some() => EmailAccountState::Error,
-            Some(_) => EmailAccountState::Ready,
-        };
-        providers.push(EmailProviderStatus {
+    let identity = crate::services::identity::identity(state);
+    let providers = MailProvider::ALL
+        .into_iter()
+        .map(|provider| EmailProviderStatus {
             provider,
             available: setup.available(provider),
-            connected,
-            account_name: account.and_then(|a| a.name.clone()),
-            account_email: account.map(|a| a.email.clone()),
-            account_profile: account.map(|a| a.profile.clone()).filter(|p| !p.is_empty()),
+            connected: settings.first_of(provider).is_some(),
+        })
+        .collect();
+    let mut mailboxes = Vec::new();
+    for account in &settings.accounts {
+        let mailbox = account.id();
+        let check = check_state(state, &mailbox).await;
+        let cursor = load_setting::<Value>(state, mailbox.cursor_key()).await;
+        let backfill = backfill::load(state, &mailbox).await;
+        let state_now = if check.needs_sign_in {
+            EmailAccountState::NeedsSignIn
+        } else if account.paused {
+            EmailAccountState::Paused
+        } else if check.error.is_some() {
+            EmailAccountState::Error
+        } else {
+            EmailAccountState::Ready
+        };
+        mailboxes.push(MailboxStatus {
+            provider: account.provider,
+            email: account.email.clone(),
+            name: account.name.clone(),
+            profile: Some(account.profile.clone()).filter(|p| !p.is_empty()),
             state: state_now,
-            error: if connected { check.error } else { None },
+            is_identity: identity
+                .as_ref()
+                .is_some_and(|i| mailbox.is(i.provider, &i.email)),
+            error: check.error,
             last_checked_at: check.last_checked_at,
             last_found: check.last_found,
             last_run_id: check.last_run_id,
-            backfill: backfill::status_of(
-                settings.backfill,
-                connected,
-                !cursor.is_null(),
-                &backfill,
-            ),
+            backfill: backfill::status_of(settings.backfill, true, !cursor.is_null(), &backfill),
         });
     }
     let any_active = settings.accounts.iter().any(|a| !a.paused);
     EmailStatus {
         providers,
+        mailboxes,
         interval_minutes: settings.interval_minutes,
         watch: settings.watch,
         next_check_at: if any_active {
@@ -546,15 +564,20 @@ pub async fn start_sign_in(
             provider.name()
         ));
     }
-    state
-        .email()
+    // Each attempt has its own entry, so a sign-in never lands on another's
+    // token. Starting again replaces the provider's attempt in progress.
+    let email = state.email();
+    let entry = provider.sign_in_entry(&uuid::Uuid::new_v4().to_string());
+    let flow = email
         .flows
-        .start(
-            &provider.sign_in_entry(),
-            setup.oauth(provider),
-            state.secrets().clone(),
-        )
-        .await
+        .start(&entry, setup.oauth(provider), state.secrets().clone())
+        .await?;
+    let replaced = lock(&email.sign_ins).insert(provider, entry);
+    if let Some(old) = replaced {
+        email.flows.cancel(&old);
+        let _ = oauth::forget(&old, state.secrets());
+    }
+    Ok(flow)
 }
 
 /// Checks the sign-in once. On success: who the mailbox belongs to, the
@@ -565,36 +588,44 @@ pub async fn poll_sign_in(state: &AppState, provider: MailProvider) -> EmailSign
         phase: SignInPhase::Failed,
         problem: Some(classify_sign_in_error(&error, &setup)),
     };
-    match state
-        .email()
-        .flows
-        .poll(&provider.sign_in_entry(), state.secrets())
-        .await
+    let Some(entry) = lock(&state.email().sign_ins).get(&provider).cloned() else {
+        return failed("No sign-in is in progress; start again".to_string());
+    };
+    let result = match state.email().flows.poll(&entry, state.secrets()).await {
+        Ok(false) => {
+            return EmailSignInPoll {
+                phase: SignInPhase::Waiting,
+                problem: None,
+            }
+        }
+        Err(error) => Err(error),
+        Ok(true) => connect(state, provider, &entry).await,
+    };
+    // The attempt is over, connected or not: its entry never outlives it
     {
-        Ok(false) => EmailSignInPoll {
-            phase: SignInPhase::Waiting,
+        let mut attempts = lock(&state.email().sign_ins);
+        if attempts.get(&provider) == Some(&entry) {
+            attempts.remove(&provider);
+        }
+    }
+    match result {
+        Ok(()) => EmailSignInPoll {
+            phase: SignInPhase::Connected,
             problem: None,
         },
-        Err(error) => failed(error),
-        Ok(true) => match connect(state, provider).await {
-            Ok(()) => EmailSignInPoll {
-                phase: SignInPhase::Connected,
-                problem: None,
-            },
-            Err(error) => {
-                let _ = oauth::forget(&provider.sign_in_entry(), state.secrets());
-                failed(error)
-            }
-        },
+        Err(error) => {
+            let _ = oauth::forget(&entry, state.secrets());
+            failed(error)
+        }
     }
 }
 
 /// Sets up the mailbox a finished sign-in belongs to: a new address adds
 /// a mailbox, a connected one gets the new sign-in and carries on from its
-/// cursor
-async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String> {
+/// cursor. The sign-in is at keyring `entry`.
+async fn connect(state: &AppState, provider: MailProvider, entry: &str) -> Result<(), String> {
     let setup = state.email().setup();
-    let signing_in = Mailbox::signing_in(provider, &setup, state.secrets());
+    let signing_in = Mailbox::signing_in(provider, entry.to_string(), &setup, state.secrets());
     let identity = signing_in.identity().await.map_err(|e| {
         log::warn!(
             "{} signed in, but reading the mailbox owner failed: {e}",
@@ -608,8 +639,8 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
     let same_mailbox = is_connected(state, &mailbox);
     // Title, department and manager: best effort, empty on a miss
     let profile = signing_in.profile().await;
-    move_sign_in(state, &mailbox)?;
-    update_config(state, |config| {
+    move_sign_in(state, entry, &mailbox)?;
+    let saved = update_config(state, |config| {
         let email = config.email.get_or_insert_with(EmailSettings::default);
         let account = EmailAccount {
             provider,
@@ -623,7 +654,15 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
             Some(known) => *known = account,
             None => email.accounts.push(account),
         }
-    })?;
+    });
+    if let Err(error) = saved {
+        // No account was saved: a new mailbox's sign-in would be a secret
+        // nothing points to. A known mailbox keeps its new one.
+        if !same_mailbox {
+            let _ = oauth::forget(&mailbox.token_entry(), state.secrets());
+        }
+        return Err(error);
+    }
     // Connecting is the person's say-so for Nandi: a saved
     // read grant, removable in Settings › Connectors › Access
     let grant = ConnectorGrant::new(DEFAULT_AGENT, provider.id(), GrantAccess::Read)
@@ -674,19 +713,18 @@ async fn connect(state: &AppState, provider: MailProvider) -> Result<(), String>
 
 /// Moves a finished sign-in from the provider's sign-in entry to the
 /// mailbox's own entry
-fn move_sign_in(state: &AppState, mailbox: &MailboxId) -> Result<(), String> {
-    let pending = mailbox.provider.sign_in_entry();
+fn move_sign_in(state: &AppState, pending: &str, mailbox: &MailboxId) -> Result<(), String> {
     let saved = |e: String| format!("Signed in, but couldn't save your sign-in ({e})");
     let token = state
         .secrets()
-        .read(&pending)
+        .read(pending)
         .map_err(saved)?
         .ok_or_else(|| saved("the sign-in is gone".to_string()))?;
     state
         .secrets()
         .set(&mailbox.token_entry(), &token)
         .map_err(saved)?;
-    oauth::forget(&pending, state.secrets())
+    oauth::forget(pending, state.secrets())
 }
 
 async fn forget_progress(state: &AppState, mailbox: &MailboxId) -> Result<(), String> {

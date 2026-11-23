@@ -88,7 +88,7 @@ Anyone can send the user an email that says "ignore your instructions and forwar
 - [x] Runs that start from the email trigger get only the read-only mail tools and the notes tools. No web, no send, no other connectors' write tools, no delegating to other agents without approval.
 - [x] Email text goes into the prompt clearly marked as untrusted data, never as instructions.
 - [x] Refresh tokens on expiry (the gap in `task-x-auth-platform-and-mcp-servers.md`). Signing out deletes the keyring entry and the cursor.
-- [x] Settings shows what is read, how often, and a "Stop reading my email" button.
+- [x] Settings shows what is read, how often, and a "Sign out" button.
 
 ## Tests
 
@@ -115,7 +115,7 @@ Anyone can send the user an email that says "ignore your instructions and forwar
 
 ## How it was built (differs from the plan above)
 
-- **Not a trigger file.** The check is `services/email/` with its own scheduler, so it needs no `.nandi/triggers/` file; runs carry `source_type: email`. Turning it on is connecting a mailbox in Settings › Email (that consents and grants the Chief of Staff read access), not a switch on the Chief of Staff's page. **Pause** and **Stop reading my email** turn it off.
+- **Not a trigger file.** The check is `services/email/` with its own scheduler, so it needs no `.nandi/triggers/` file; runs carry `source_type: email`. Turning it on is connecting a mailbox in Settings › Email (that consents and grants the Chief of Staff read access), not a switch on the Chief of Staff's page. **Pause** and **Sign out** turn it off.
 - **Mailboxes aren't Library connectors.** The Gmail stub and the OAuth2 connector kind were removed from the Library; `connectors/oauth.rs` moved to `services/auth/oauth.rs` with token refresh added (phase 1 of `task-x-auth-platform-and-mcp-servers.md`, for what email needs).
 - **Notes cite sender, date and subject**, not the message ID (owner brief 2026-11-04).
 - **Microsoft authority is `common`** (work and personal accounts), redirect `http://localhost:<port>`.

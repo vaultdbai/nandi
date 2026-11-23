@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor, within } from '@/test/test-utils'
 import { commands } from '@/lib/tauri-bindings'
-import type { EmailProviderStatus, EmailStatus } from '@/lib/bindings'
+import type {
+  EmailProviderStatus,
+  EmailStatus,
+  MailboxStatus,
+} from '@/lib/bindings'
 import { StepEmail } from './StepEmail'
 
 type Commands = Record<string, unknown>
@@ -16,21 +20,16 @@ function provider(
     provider: 'outlook',
     available: true,
     connected: false,
-    accountName: null,
-    accountEmail: null,
-    accountProfile: null,
-    state: 'notConnected',
-    error: null,
-    lastCheckedAt: null,
-    lastFound: 0,
-    lastRunId: null,
-    backfill: { phase: 'off', backTo: null, read: 0 },
     ...overrides,
   }
 }
 
-const status = (providers: EmailProviderStatus[]): EmailStatus => ({
+const status = (
+  providers: EmailProviderStatus[],
+  mailboxes: MailboxStatus[] = []
+): EmailStatus => ({
   providers,
+  mailboxes,
   intervalMinutes: 30,
   watch: [],
   nextCheckAt: null,
@@ -95,14 +94,27 @@ describe('StepEmail', () => {
   it('shows a provider this build lacks calmly, without blocking', async () => {
     mocked.getEmailStatus = vi.fn(async () =>
       ok(
-        status([
-          provider({
-            connected: true,
-            state: 'ready',
-            accountEmail: 'd@x.com',
-          }),
-          provider({ provider: 'gmail', available: false }),
-        ])
+        status(
+          [
+            provider({ connected: true }),
+            provider({ provider: 'gmail', available: false }),
+          ],
+          [
+            {
+              provider: 'outlook',
+              email: 'd@x.com',
+              name: null,
+              profile: null,
+              state: 'ready',
+              isIdentity: true,
+              error: null,
+              lastCheckedAt: null,
+              lastFound: 0,
+              lastRunId: null,
+              backfill: { phase: 'off', backTo: null, read: 0 },
+            },
+          ]
+        )
       )
     )
     render(<StepEmail onNext={vi.fn()} />)

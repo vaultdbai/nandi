@@ -77,7 +77,7 @@ function IdentityForm({ identity }: { identity: IdentityStatus }) {
   const saveName = useSetDisplayName()
   const saveSlug = useSetUserSlug()
   const remote = useRemoteStatus()
-  const mailbox = mailboxIdentity(useEmailStatus().data?.providers ?? [])
+  const mailbox = mailboxIdentity(useEmailStatus().data?.mailboxes ?? [])
   const backedUp = remote.data?.configured === true
   const [confirmHandle, setConfirmHandle] = useState(false)
   const nameError = validateName(name)

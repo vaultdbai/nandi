@@ -78,7 +78,7 @@ export function OnboardingView({
   // `null` until the user moves: where the saved state says to start
   const [stepEdit, setStep] = useState<OnboardingStepKey | null>(null)
   const emailStatus = useEmailStatus()
-  const mailbox = mailboxIdentity(emailStatus.data?.providers ?? [])
+  const mailbox = mailboxIdentity(emailStatus.data?.mailboxes ?? [])
   // `null` until the user edits: what the mailbox says, else nothing
   const [nameEdit, setNameEdit] = useState<IdentityDraft | null>(null)
   const savedName = identity.data?.displayName

@@ -25,8 +25,8 @@ Each slice lands on its own.
 
 ### 2. Settings › Email shows them all (UI)
 
-- [ ] A list of mailboxes, each with its provider, address, status and its own Pause and Sign out. **Add another account** for Gmail and for Outlook.
-- [ ] The **first mailbox stays this Nandi's identity** (relay, trial link, Settings › Account), marked as such. Adding more never changes it.
+- [x] A list of mailboxes, each with its provider, address, status and its own Pause and Sign out. **Add another account** for Gmail and for Outlook.
+- [x] The **first mailbox stays this Nandi's identity** (relay, trial link, Settings › Account), marked as such. Adding more never changes it.
 
 ### 3. Agents know which mailbox (trust)
 

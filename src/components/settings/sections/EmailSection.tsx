@@ -1,55 +1,34 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Mail, RefreshCw } from 'lucide-react'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import { RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
-import { EmailSignInStatus } from '@/components/email/EmailSignInStatus'
+import { ConnectMailbox } from '@/components/email/ConnectMailbox'
 import { BackfillChoice } from '@/components/email/BackfillChoice'
 import { EmailReads } from '@/components/email/EmailReads'
-import {
-  useEmailAction,
-  useEmailSignIn,
-  useEmailStatus,
-} from '@/hooks/useEmail'
+import { MailboxRow } from '@/components/email/MailboxRow'
+import { useEmailAction, useEmailStatus } from '@/hooks/useEmail'
 import { formatRelativeTime } from '@/lib/format-time'
-import type { EmailProviderStatus, EmailStatus } from '@/lib/tauri-bindings'
-import { cn } from '@/lib/utils'
+import type { EmailStatus } from '@/lib/tauri-bindings'
 import {
-  backfillLine,
+  addableProviders,
+  canCheckNow,
   formatWatchList,
   intervalLabel,
   intervalOptions,
-  mailboxCard,
-  mailboxOf,
   parseWatchList,
-  type CardTone,
+  PROVIDER_NAMES,
+  providerStatusKey,
 } from '../email/email-model'
 import { SettingsGroup, SettingsSectionFrame } from '../SettingsFrame'
 
-const TONE: Record<CardTone, string> = {
-  muted: 'text-muted-foreground',
-  ok: 'text-success',
-  warning: 'text-warning',
-  error: 'text-destructive',
-}
-
 /**
  * Settings › Email: connect Outlook or Gmail so Nandi keeps
- * My notes from it. Says what's read and what never happens, then each
- * mailbox's status and actions, then how often and whom to watch.
+ * My notes from it, as many mailboxes as the person has. Says what's read
+ * and what never happens, then one row per mailbox (status and its own
+ * actions) with Add another account, then how often and whom to watch.
  */
 export function EmailSection() {
   const { t } = useTranslation()
@@ -72,17 +51,66 @@ export function EmailSection() {
 
 function EmailBody({ status }: { status: EmailStatus }) {
   const { t, i18n } = useTranslation()
-  const anyConnected = status.providers.some(p => p.connected)
+  const action = useEmailAction()
+  const anyConnected = status.mailboxes.length > 0
+  const unavailable = status.providers.filter(p => !p.available)
   return (
     <>
       <SettingsGroup title={t('email.mailboxes')}>
-        {status.providers.map(provider => (
-          <MailboxCardView
-            key={provider.provider}
-            status={provider}
-            checking={status.checking}
+        {!anyConnected && (
+          <p className="text-sm text-muted-foreground">
+            {t('email.noMailboxes')}
+          </p>
+        )}
+        {status.mailboxes.map(mailbox => (
+          <MailboxRow
+            key={`${mailbox.provider}:${mailbox.email}`}
+            status={mailbox}
           />
         ))}
+        {unavailable.map(provider => (
+          <p
+            key={provider.provider}
+            className="text-sm text-muted-foreground"
+            data-provider={provider.provider}
+          >
+            {PROVIDER_NAMES[provider.provider]}:{' '}
+            {t(providerStatusKey(provider))}
+          </p>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          {addableProviders(status.providers).map(provider => (
+            <ConnectMailbox
+              key={provider}
+              provider={provider}
+              variant="outline"
+              another={anyConnected}
+            />
+          ))}
+        </div>
+        {canCheckNow(status.mailboxes) && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={status.checking || action.isPending}
+              onClick={() => action.mutate({ kind: 'check' })}
+            >
+              {status.checking ? <Spinner /> : <RefreshCw />}
+              {status.checking ? t('email.checking') : t('email.checkNow')}
+            </Button>
+            {/* The resync: the last few days again, the cursors where they are */}
+            <Button
+              size="sm"
+              variant="ghost"
+              title={t('email.readAgainHint')}
+              disabled={status.checking || action.isPending}
+              onClick={() => action.mutate({ kind: 'again' })}
+            >
+              {t('email.readAgain')}
+            </Button>
+          </div>
+        )}
         {anyConnected && status.nextCheckAt !== null && !status.checking && (
           <p className="text-xs text-muted-foreground">
             {t('email.nextCheck', {
@@ -93,155 +121,6 @@ function EmailBody({ status }: { status: EmailStatus }) {
       </SettingsGroup>
       <ScheduleSettings status={status} />
     </>
-  )
-}
-
-function MailboxCardView({
-  status,
-  checking,
-}: {
-  status: EmailProviderStatus
-  checking: boolean
-}) {
-  const { t, i18n } = useTranslation()
-  const card = mailboxCard(status)
-  const mailbox = mailboxOf(status)
-  const action = useEmailAction()
-  const signIn = useEmailSignIn(status.provider)
-  const waiting = signIn.state.phase === 'waiting'
-
-  return (
-    <div
-      className="space-y-3 rounded-md border p-4"
-      data-provider={status.provider}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <Mail className="size-4 text-muted-foreground" />
-        <span className="font-medium">{card.name}</span>
-        <span className={cn('text-sm', TONE[card.tone])}>
-          {t(card.statusKey)}
-        </span>
-      </div>
-      {card.account && (
-        <p className="text-sm">
-          {t('email.connectedAs', { account: card.account })}
-        </p>
-      )}
-      {status.connected && (
-        <p className="text-xs text-muted-foreground">
-          {status.lastCheckedAt !== null
-            ? t('email.lastChecked', {
-                when: formatRelativeTime(status.lastCheckedAt, i18n.language),
-                count: status.lastFound,
-              })
-            : t('email.notCheckedYet')}
-        </p>
-      )}
-      <BackfillLineView status={status} />
-      {card.error && (
-        <p className="text-xs text-muted-foreground">{card.error}</p>
-      )}
-      <EmailSignInStatus state={signIn.state} />
-      <div className="flex flex-wrap gap-2">
-        {card.canConnect && !waiting && (
-          <Button size="sm" onClick={() => void signIn.start()}>
-            {card.reconnect
-              ? t('email.reconnect')
-              : t('email.connect', { name: card.name })}
-          </Button>
-        )}
-        {waiting && (
-          <Button size="sm" variant="ghost" onClick={signIn.reset}>
-            {t('email.cancel')}
-          </Button>
-        )}
-        {card.canCheck && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={checking || action.isPending}
-            onClick={() => action.mutate({ kind: 'check' })}
-          >
-            {checking ? <Spinner /> : <RefreshCw />}
-            {checking ? t('email.checking') : t('email.checkNow')}
-          </Button>
-        )}
-        {/* The resync: the last few days again, the cursors where they are */}
-        {card.canCheck && (
-          <Button
-            size="sm"
-            variant="ghost"
-            title={t('email.readAgainHint')}
-            disabled={checking || action.isPending}
-            onClick={() => action.mutate({ kind: 'again' })}
-          >
-            {t('email.readAgain')}
-          </Button>
-        )}
-        {card.canPause && mailbox && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={action.isPending}
-            onClick={() =>
-              action.mutate({
-                kind: 'pause',
-                mailbox,
-                paused: true,
-              })
-            }
-          >
-            {t('email.pause')}
-          </Button>
-        )}
-        {card.canResume && mailbox && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={action.isPending}
-            onClick={() =>
-              action.mutate({
-                kind: 'pause',
-                mailbox,
-                paused: false,
-              })
-            }
-          >
-            {t('email.resume')}
-          </Button>
-        )}
-        {card.canDisconnect && mailbox && (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button size="sm" variant="ghost" disabled={action.isPending}>
-                {t('email.disconnect')}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {t('email.disconnectTitle', { name: card.name })}
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t('email.disconnectBody')}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{t('email.cancel')}</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => action.mutate({ kind: 'disconnect', mailbox })}
-                >
-                  {t('email.disconnect')}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        )}
-      </div>
-      {action.error && (
-        <p className="text-sm text-destructive">{String(action.error)}</p>
-      )}
-    </div>
   )
 }
 
@@ -318,61 +197,5 @@ function ScheduleSettings({ status }: { status: EmailStatus }) {
         )}
       </div>
     </SettingsGroup>
-  )
-}
-
-/** The background read of older mail: where it is, with its controls */
-function BackfillLineView({ status }: { status: EmailProviderStatus }) {
-  const { t, i18n } = useTranslation()
-  const action = useEmailAction()
-  const line = backfillLine(status.backfill)
-  const mailbox = mailboxOf(status)
-  if (line.key === null || mailbox === null) return null
-  const when =
-    line.when === null
-      ? ''
-      : new Intl.DateTimeFormat(i18n.language, {
-          month: 'long',
-          year: 'numeric',
-        }).format(new Date(line.when))
-  const act = (kind: 'pause' | 'resume' | 'stop') =>
-    action.mutate({ kind: 'backfill', mailbox, action: kind })
-  return (
-    <div
-      className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-      data-testid="email-backfill"
-    >
-      <span>{t(line.key, { when, count: line.count })}</span>
-      {line.canPause && (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7"
-          onClick={() => act('pause')}
-        >
-          {t('email.pause')}
-        </Button>
-      )}
-      {line.canResume && (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7"
-          onClick={() => act('resume')}
-        >
-          {t('email.resume')}
-        </Button>
-      )}
-      {line.canStop && (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7"
-          onClick={() => act('stop')}
-        >
-          {t('email.backfill.stop')}
-        </Button>
-      )}
-    </div>
   )
 }

@@ -70,10 +70,10 @@ impl MailProvider {
         })
     }
 
-    /// The keyring entry a sign-in lands in before Nandi knows whose
+    /// The keyring entry sign-in attempt `attempt` lands in before Nandi knows whose
     /// mailbox it is; connecting moves it to the mailbox's own entry
-    pub fn sign_in_entry(self) -> String {
-        format!("nandi.email.{}.sign-in", self.id())
+    pub fn sign_in_entry(self, attempt: &str) -> String {
+        format!("nandi.email.{}.sign-in.{attempt}", self.id())
     }
 }
 

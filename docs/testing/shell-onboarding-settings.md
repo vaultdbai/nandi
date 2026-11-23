@@ -1443,7 +1443,7 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **What:** With no mailbox connected (skipped at setup, or disconnected later), Home shows a card "Connect your email so Nandi can keep your notes." with **Connect Outlook** and **Connect Gmail** (each provider this build can connect) and **Email settings**. Connecting signs in from the card. The card goes away once a mailbox is connected; while the other provider is still free, one quiet line says "You can also connect <name>." with **Email settings**. Nothing shows when both are connected or the build can connect neither.
 - **Where:** `src/components/home/EmailTodo.tsx`, `HomeView.tsx`, `settings/email/email-model.ts` (`emailTodo`), `useEmailStatus` (refreshes on `email://changed`).
 - **Preconditions:** A build with at least one email client ID.
-- **Steps:** 1. Skip the email step at setup; open Home. 2. **Connect Outlook** from the card and sign in. 3. Settings › Email › **Stop reading my email**; back to Home.
+- **Steps:** 1. Skip the email step at setup; open Home. 2. **Connect Outlook** from the card and sign in. 3. Settings › Email › **Sign out**; back to Home.
 - **Expected:** Step 1: the card. Step 2: the card goes; the "You can also connect Gmail." line remains (if Gmail is available). Step 3: the card is back.
 - **Edge / negative cases:** No dismiss: it is a to-do until a mailbox is connected. A mailbox that needs a new sign-in is handled in Settings › Email (Reconnect), not here.
 - **Automation:** Covered by: `EmailTodo.test.tsx`, `email-model.test.ts` (`emailTodo`) | Layer: unit | Gap: none.
