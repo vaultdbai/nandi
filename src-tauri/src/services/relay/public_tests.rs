@@ -365,10 +365,12 @@ fn a_version_mismatch_says_which_side_is_behind() {
     use crate::services::relay::protocol::PROTOCOL_VERSION;
     use crate::services::relay::version::UpdateNeeded;
     let ours = PROTOCOL_VERSION;
+    // Too old is below the oldest protocol we still speak, not below ours
+    let oldest = nandi_protocol::MIN_SUPPORTED_PROTOCOL;
     // (the relay's min_supported, its current, the side behind)
     let cases = [
         (ours + 1, ours + 1, Some(UpdateNeeded::Nandi)),
-        (ours - 1, ours - 1, Some(UpdateNeeded::Relay)),
+        (oldest - 1, oldest - 1, Some(UpdateNeeded::Relay)),
         (ours, ours, None),
     ];
     for (min, current, behind) in cases {

@@ -285,12 +285,14 @@ async fn health_only(body: serde_json::Value) -> String {
 #[tokio::test]
 async fn a_relay_whose_range_leaves_this_nandi_out_is_not_joined() {
     let ours = PROTOCOL_VERSION;
+    // Too old is below the oldest protocol we still speak, not below ours
+    let oldest = nandi_protocol::MIN_SUPPORTED_PROTOCOL;
     let state = AppState::for_tests(vec![]);
     // (relay's min_supported, relay's current, the side to update or None
     // when the range takes this Nandi)
     let cases = [
         (ours + 1, ours + 1, Some(UpdateNeeded::Nandi)),
-        (ours - 2, ours - 1, Some(UpdateNeeded::Relay)),
+        (oldest - 2, oldest - 1, Some(UpdateNeeded::Relay)),
         (ours, ours + 1, None),
     ];
     for (min, current, update) in cases {

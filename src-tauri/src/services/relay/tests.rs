@@ -1201,11 +1201,13 @@ async fn a_relay_that_refuses_our_version_says_who_updates_and_is_not_retried() 
     use super::version::UpdateNeeded;
     use std::sync::atomic::Ordering;
     let ours = PROTOCOL_VERSION;
+    // Too old is below the oldest protocol we still speak, not below ours
+    let oldest = nandi_protocol::MIN_SUPPORTED_PROTOCOL;
     // (relay's min_supported, relay's current, the side to update; None
     // when the relay's /health takes us, so the refusal can't say)
     let cases = [
         (ours + 1, ours + 1, Some(UpdateNeeded::Nandi)),
-        (ours - 1, ours - 1, Some(UpdateNeeded::Relay)),
+        (oldest - 1, oldest - 1, Some(UpdateNeeded::Relay)),
         (ours, ours, None),
     ];
     let mut refused = Vec::new();
