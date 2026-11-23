@@ -488,17 +488,20 @@ pub fn addresses_of(state: &AppState, connector: &str) -> Option<Vec<String>> {
 }
 
 /// What a grant on `connector` covers when the person chose `chosen` (all
-/// providers' addresses mixed): `None` when none of its mailboxes were
-/// chosen, empty (every mailbox) when nothing was narrowed
+/// providers' addresses mixed) answering an access request: `None` when
+/// none of its mailboxes were chosen, else the chosen ones by name
 pub fn grant_cover(state: &AppState, connector: &str, chosen: &[String]) -> Option<Vec<String>> {
     cover(&addresses_of(state, connector).unwrap_or_default(), chosen)
 }
 
-/// [`grant_cover`] on `connected`, the provider's mailboxes. Pure. Choosing
-/// every one of them is every mailbox, ones connected later too
+/// [`grant_cover`] on `connected`, the provider's mailboxes. Pure. A yes
+/// to a request names the mailboxes it was given, even all of them: a
+/// mailbox connected later needs its own yes. Only Settings › Connectors ›
+/// Access saves "every mailbox" (empty), when the person picks it.
 fn cover(connected: &[String], chosen: &[String]) -> Option<Vec<String>> {
     if chosen.is_empty() {
-        return Some(Vec::new());
+        // No choice shown (one mailbox): the request covered what's connected
+        return Some(connected.to_vec());
     }
     let mine: Vec<String> = connected
         .iter()
@@ -507,8 +510,6 @@ fn cover(connected: &[String], chosen: &[String]) -> Option<Vec<String>> {
         .collect();
     if mine.is_empty() {
         None
-    } else if mine.len() == connected.len() {
-        Some(Vec::new())
     } else {
         Some(mine)
     }
@@ -523,22 +524,23 @@ mod cover_tests {
     }
 
     #[test]
-    fn a_grant_covers_what_was_chosen_and_all_of_them_is_every_mailbox() {
+    fn a_yes_names_the_mailboxes_it_was_given_so_later_ones_ask_again() {
         let connected = list(&["a@x.com", "b@y.com"]);
-        assert_eq!(cover(&connected, &[]), Some(vec![]));
+        assert_eq!(cover(&connected, &[]), Some(connected.clone()));
         assert_eq!(
             cover(&connected, &list(&["B@y.com"])),
             Some(list(&["b@y.com"]))
         );
+        // All of today's mailboxes is still a list, never every mailbox
         assert_eq!(
             cover(&connected, &list(&["a@x.com", "b@y.com"])),
-            Some(vec![])
+            Some(connected.clone())
         );
         // Another provider's mailbox only: no grant on this one
         assert_eq!(cover(&connected, &list(&["me@outlook.com"])), None);
         assert_eq!(
             cover(&list(&["a@x.com"]), &list(&["a@x.com"])),
-            Some(vec![])
+            Some(list(&["a@x.com"]))
         );
     }
 }
