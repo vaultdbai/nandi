@@ -180,6 +180,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ON-15 | Step 1: connect your email (skippable)                                   | Shipped (live test pending)                          | unit       | no          |                                        |
 | ON-16 | Step 4: get your computer ready (recommended, skippable)                 | Shipped                                              | unit       | no          |                                        |
 | ON-17 | Settings › Account › Run setup again                                     | Shipped                                              | unit       | no          |                                        |
+| ON-18 | Model step: What do you already use?                                     | Shipped                                              | unit       | no          |                                        |
 | ON-13 | Starter packs page (after setup)                                         | Duplicate of LB-20                                   | —          | no          |                                        |
 | ON-14 | Upgrades from pre-identity installs                                      | Removed (2026-10-22, no legacy support)              | —          | no          |                                        |
 | SH-04 | Title bar and window controls                                            | Shipped                                              | ui-e2e     | no          |                                        |

@@ -17,9 +17,9 @@ A short chooser in the setup's model step (Step2_Model). Each choice shows only 
 | Microsoft 365 Copilot, GitHub Copilot | No API for other apps. Point to the company's Azure AI Foundry if it has one                                                                                | none possible           |
 | Nothing yet                           | The free tokens, or local models through Ollama (free, on your own computer)                                                                                | none                    |
 
-- [ ] Words only where possible: `locales/*.json` and links. No plan detection, no scraping: the person picks.
-- [ ] Honest copy: never promise a subscription works where it doesn't. Note that Google's free tier may use prompts to improve its products, so it isn't private.
-- [ ] `docs/testing/` entry and the user guide.
+- [x] Words only where possible: `locales/*.json` and links. No plan detection, no scraping: the person picks.
+- [x] Honest copy: never promise a subscription works where it doesn't. Note that Google's free tier may use prompts to improve its products, so it isn't private (that note waits for the Gemini provider slice: Nandi offers no Gemini key yet).
+- [x] `docs/testing/` entry and the user guide.
 
 ## 2. A Gemini Provider (separate slice)
 

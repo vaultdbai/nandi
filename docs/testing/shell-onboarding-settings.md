@@ -349,6 +349,22 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
+### ON-18 — Model step: "What do you already use?"
+
+- **What:** Under the provider cards, a collapsed "What do you already use?". Opening it lists six plans: Claude Pro/Max/Team/Enterprise, company AWS or Azure, ChatGPT, Gemini or Google AI Pro, Microsoft 365 or GitHub Copilot, and Nothing yet. Picking one shows two or three plain steps of what that plan really allows, and buttons that open a link or a form already on the step. Nothing is detected: the person picks. Claude is limited to Claude Code agents. ChatGPT and Gemini say the subscription can't be used by other apps (ChatGPT points to an OpenAI API key, billed apart; Gemini says Nandi has no Gemini keys yet). Copilot points to the company's Azure AI Foundry. "Nothing yet" offers the free tokens (only in a build that has them) or Ollama.
+- **Where:** `Step2_Model.tsx`, `PlansChooser.tsx`, `plans-model.ts`, `locales/*.json` (`onboarding.plans.*`).
+- **Preconditions:** On the model step.
+- **Steps:**
+  1. Open "What do you already use?" and pick ChatGPT. Click "Open OpenAI API keys", then "Open the OpenAI key form".
+  2. Pick Gemini, then Nothing yet.
+- **Expected:** (1) The OpenAI key page opens in the browser, then the OpenAI key form shows on the step. (2) Gemini offers no key form; the free-tokens step shows only when the trial is offered. "Set up Ollama" opens the Ollama setup.
+- **Edge / negative cases:**
+  - No trial in the build: no free-tokens line anywhere.
+  - A person with a model already found can ignore it: it stays collapsed.
+- **Automation:** Covered by: `PlansChooser.test.tsx`, `plans-model.test.ts` | Layer: unit | Gap: the links open in a real browser manually.
+- **Needs relay:** no
+- **Status:** Shipped
+
 ### ON-13 — Starter packs page (after setup)
 
 - **Duplicate:** tested under LB-20. This ID is kept so old references stay valid; don't test it separately.
