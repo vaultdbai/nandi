@@ -593,6 +593,18 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - **Needs relay:** no
 - **Status:** Shipped
 
+### MD-23 — Try free tokens
+
+- **What:** **Try free tokens** on the Free tokens card sends one short hello straight through the trial gateway, whatever the model settings and even when the person's own model answers every other call, then shows "Free tokens answered: “…” <left> of <limit> left." It changes no setting and caps the reply at 64 tokens. An error (used up, paused, unreachable) shows as a toast in the trial's own words.
+- **Where:** `LlmKeysSection.tsx` (`TryFreeTokens`), `llm_trial/mod.rs` (`try_it`, `TrialTry`), `llm_keys.rs` and `rpc/llm_keys.rs` (`try_free_trial`).
+- **Preconditions:** A build with `NANDI_TRIAL_GATEWAY_URL` (or the same variable at run time).
+- **Steps:** 1. With a Claude sign-in present, open Settings › Models › Free tokens and click **Try free tokens**.
+- **Expected:** 1. A one-sentence answer from the trial and the allowance a few tokens lower; the default model and the switch are unchanged.
+- **Edge / negative cases:** used up or paused: the toast says so and nothing is charged; no gateway in the build: the card isn't shown.
+- **Automation:** Gap: no unit test drives `try_it` against the fake gateway yet; checked live on 2026-11-22 (one call, 69 tokens). | Layer: manual
+- **Needs relay:** no
+- **Status:** Shipped
+
 ## Sandbox security and egress
 
 ### SB-01 — Container hardening (tool and coding-agent containers)
