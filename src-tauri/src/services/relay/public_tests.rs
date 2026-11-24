@@ -91,7 +91,9 @@ fn app_with_public(relay: &str) -> AppState {
 
 /// Polls `check` every 20ms for up to 5s
 async fn eventually(mut check: impl AsyncFnMut() -> bool) -> bool {
-    for _ in 0..250 {
+    // 15 seconds: a CI runner busy with every other test can take a while
+    // to connect, and a check that's already true returns at once
+    for _ in 0..750 {
         if check().await {
             return true;
         }

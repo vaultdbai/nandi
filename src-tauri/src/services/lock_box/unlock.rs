@@ -15,6 +15,9 @@ use async_trait::async_trait;
 
 /// What the person did with the prompt
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// Only Windows has a prompt yet: elsewhere `OsUnlock` answers Unavailable
+// and only the tests' fake builds the other two
+#[cfg_attr(not(windows), allow(dead_code))]
 pub enum UnlockOutcome {
     /// The OS confirmed it is them
     Verified,
