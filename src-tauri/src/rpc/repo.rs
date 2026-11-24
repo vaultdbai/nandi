@@ -69,7 +69,7 @@ mod tests {
         let state = AppState::for_tests(vec![]);
         git2::Repository::init(&state.store().layout().root).unwrap();
 
-        let input = json!({ "name": "Writer", "skillBody": "Write.", "capabilities": { "tools": ["shell"] } });
+        let input = json!({ "name": "Writer", "agentBody": "Write.", "capabilities": { "tools": ["shell"] } });
         let saved = call(
             &state,
             "repo_save_agent",
@@ -83,7 +83,7 @@ mod tests {
             json!({ "kind": "agent", "id": "writer" }),
         );
         let entity = entity.await.unwrap();
-        assert_eq!(entity["skillBody"], "Write.");
+        assert_eq!(entity["agentBody"], "Write.");
         assert_eq!(entity["capabilities"]["tools"][0], "shell");
 
         let status = call(&state, "repo_git_status", json!({})).await.unwrap();
@@ -91,9 +91,9 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .any(|f| f["path"] == ".nandi/agents/writer/skill.md"));
+            .any(|f| f["path"] == ".nandi/agents/writer/agent.md"));
 
-        let path = ".nandi/agents/writer/skill.md";
+        let path = ".nandi/agents/writer/agent.md";
         let diff = call(&state, "repo_git_diff", json!({ "path": path }))
             .await
             .unwrap();

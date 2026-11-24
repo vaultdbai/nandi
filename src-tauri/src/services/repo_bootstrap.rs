@@ -257,7 +257,9 @@ mod tests {
         );
         assert!(layout.settings_path().is_file());
         assert!(layout.manifest_path().is_file());
-        assert!(layout.skill_path(builtin_agents::DEFAULT_AGENT).is_file());
+        assert!(layout
+            .agent_md_path(builtin_agents::DEFAULT_AGENT)
+            .is_file());
         for (id, _) in builtin_agents::DEFAULT_TRIGGERS {
             assert!(layout.trigger_path(id).is_file(), "{id} is on by default");
         }

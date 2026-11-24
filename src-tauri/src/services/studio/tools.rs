@@ -106,7 +106,7 @@ pub fn specs() -> Vec<ToolSpec> {
         ),
         spec(
             GET_AGENT,
-            "One agent's skill.md text.",
+            "One agent's agent.md text.",
             json!({"id": {"type": "string"}}),
             &["id"],
         ),
@@ -155,7 +155,7 @@ pub fn specs() -> Vec<ToolSpec> {
         ),
         spec(
             CHECK_ARTIFACT,
-            "Check a skill.md or workflow before showing it: the same parsing saving uses, plus unknown tools, models without a key and missing agents. Returns {ok, errors, warnings}.",
+            "Check an agent.md or workflow before showing it: the same parsing saving uses, plus unknown tools, models without a key and missing agents. Returns {ok, errors, warnings}.",
             json!({
                 "kind": {"type": "string", "enum": ["agent", "workflow"]},
                 "id": {"type": "string", "description": "The agent's ID (folder name); for a workflow, its `id:`"},
@@ -177,7 +177,7 @@ pub fn specs() -> Vec<ToolSpec> {
         ),
         spec(
             SAVE_ARTIFACT,
-            "Save what you built into the user's repo, creating it or replacing it: an agent (skill.md), workflow (YAML), capability or policy (`content`), a trigger (`trigger`), a connector (`connector`), or only an agent's instructions.md (`instructions`, with `content`; the way to change an installed agent's rules, which updates keep). The user approves every save. Check agents and workflows with nandi_check_artifact first.",
+            "Save what you built into the user's repo, creating it or replacing it: an agent (agent.md), workflow (YAML), capability or policy (`content`), a trigger (`trigger`), a connector (`connector`), or only an agent's instructions.md (`instructions`, with `content`; the way to change an installed agent's rules, which updates keep). The user approves every save. Check agents and workflows with nandi_check_artifact first.",
             json!({
                 "kind": {"type": "string", "enum": super::save::KINDS},
                 "id": {"type": "string", "description": "The agent's folder name, workflow, capability, policy or connector ID. A workflow's defaults to its `id:`; a trigger's is in `trigger`"},
@@ -385,8 +385,8 @@ pub async fn call(state: &AppState, name: &str, args: &Value) -> ToolOutcome {
         }
         GET_AGENT => match arg(args, "id") {
             None => error("id is required"),
-            Some(id) => match state.store().read(|repo| repo.agent(id).map(|a| a.to_skill_md())) {
-                Some(text) => ok(json!({ "id": id, "skillMd": text })),
+            Some(id) => match state.store().read(|repo| repo.agent(id).map(|a| a.to_agent_md())) {
+                Some(text) => ok(json!({ "id": id, "agentMd": text })),
                 None => error(format!("No agent '{id}'. Call {LIST_AGENTS} for the IDs.")),
             },
         },

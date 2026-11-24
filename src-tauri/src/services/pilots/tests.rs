@@ -194,7 +194,7 @@ async fn install_records_success_and_emits_output() {
 }
 
 fn agent(id: &str, pilots: &str) -> Agent {
-    Agent::from_skill_md(
+    Agent::from_agent_md(
         AgentId::parse(id).unwrap(),
         &format!("---\nname: {id}\npilots: [{pilots}]\n---\nDo things"),
     )
@@ -202,16 +202,16 @@ fn agent(id: &str, pilots: &str) -> Agent {
 }
 
 #[test]
-fn reads_the_skill_md_pilot_block() {
+fn reads_the_agent_md_pilot_block() {
     assert_eq!(
         tools::declared(&agent("a", "opendesk, other-pilot")),
         ["opendesk", "other-pilot"]
     );
     assert!(tools::declared(&agent("b", "")).is_empty());
-    // Duplicates and bad IDs are rejected when skill.md is parsed
+    // Duplicates and bad IDs are rejected when agent.md is parsed
     let id = AgentId::parse("c").unwrap();
-    assert!(Agent::from_skill_md(id.clone(), "---\npilots: [x, x]\n---\n").is_err());
-    assert!(Agent::from_skill_md(id, "---\npilots: [\".hidden\"]\n---\n").is_err());
+    assert!(Agent::from_agent_md(id.clone(), "---\npilots: [x, x]\n---\n").is_err());
+    assert!(Agent::from_agent_md(id, "---\npilots: [\".hidden\"]\n---\n").is_err());
 }
 
 #[tokio::test]
@@ -395,7 +395,7 @@ async fn a_hand_over_waits_for_the_person_and_takes_their_answer() {
     std::fs::create_dir_all(&root).unwrap();
     git2::Repository::init(&root).unwrap();
     state.store().load().unwrap();
-    let poster = Agent::from_skill_md(
+    let poster = Agent::from_agent_md(
         AgentId::parse("poster").unwrap(),
         // Without the run plan's rules: this is about the hand-over itself
         "---\nname: Poster\npilots: [browser]\nmiddlewares: [verify_on_stop]\n---\nYou post.\n",
@@ -533,7 +533,7 @@ impl log::Log for LeakLogger {
     fn flush(&self) {}
 }
 
-/// A site secret the user adds: its name goes into skill.md and its value
+/// A site secret the user adds: its name goes into agent.md and its value
 /// into the keychain, and nowhere else: not a file, the Permissions view,
 /// an event, the prompt, or a log line
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -558,7 +558,7 @@ async fn a_site_secret_s_value_stays_in_the_keychain() {
     std::fs::create_dir_all(&layout.root).unwrap();
     git2::Repository::init(&layout.root).unwrap();
     state.store().load().unwrap();
-    let shopper = Agent::from_skill_md(
+    let shopper = Agent::from_agent_md(
         AgentId::parse("shopper").unwrap(),
         "---
 name: Shopper
@@ -577,8 +577,8 @@ Shop.
         .await
         .unwrap();
 
-    // skill.md names it; the keychain has the value under that entry
-    let skill = std::fs::read_to_string(layout.skill_path("shopper")).unwrap();
+    // agent.md names it; the keychain has the value under that entry
+    let skill = std::fs::read_to_string(layout.agent_md_path("shopper")).unwrap();
     assert!(
         skill.contains("ACME_PASSWORD: nandi.pilot.shopper.acme-password"),
         "{skill}"

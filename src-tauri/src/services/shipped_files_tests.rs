@@ -1,7 +1,7 @@
 use super::*;
 use crate::services::builtin_agents;
 use crate::services::repo_bootstrap::GITIGNORE;
-use crate::services::repos::layout::{INSTRUCTIONS_FILE, SKILL_FILE};
+use crate::services::repos::layout::{AGENT_FILE, INSTRUCTIONS_FILE};
 use crate::services::repos::Repos;
 
 /// Nandi's files as 0.1.0 seeded them into the Chief of Staff's folder
@@ -29,7 +29,7 @@ fn next(name: &str, added: &str) -> &'static str {
 }
 
 fn next_skill() -> &'static str {
-    next(SKILL_FILE, "\nCheck the calendar before you plan a day.\n")
+    next(AGENT_FILE, "\nCheck the calendar before you plan a day.\n")
 }
 
 fn next_instructions() -> &'static str {
@@ -162,7 +162,7 @@ fn gold_copy_from_0_1_0(role: &str) -> (tempfile::TempDir, RepoLayout) {
     git2::Repository::init(&layout.root).unwrap();
     let files = [
         (".gitignore".to_string(), GITIGNORE),
-        (nandi(SKILL_FILE), SKILL_0_1_0),
+        (nandi(AGENT_FILE), SKILL_0_1_0),
         (nandi(INSTRUCTIONS_FILE), role),
     ];
     for (file, text) in &files {
@@ -199,11 +199,11 @@ fn agent_file(path: String, content: &'static str) -> ShippedFile {
     }
 }
 
-/// The next build's files: skill.md, instructions.md and the occasions
+/// The next build's files: agent.md, instructions.md and the occasions
 /// playbook changed, and a new trigger
 fn next_build() -> Vec<ShippedFile> {
     vec![
-        agent_file(nandi(SKILL_FILE), next_skill()),
+        agent_file(nandi(AGENT_FILE), next_skill()),
         agent_file(nandi(INSTRUCTIONS_FILE), next_instructions()),
         agent_file(
             nandi("skills/occasions.md"),
@@ -284,7 +284,7 @@ fn an_update_replaces_unedited_files_keeps_edited_ones_and_adds_new_ones() {
 
     // (file, what is there now)
     let expected = [
-        ("unedited", nandi(SKILL_FILE), Some(next_skill())),
+        ("unedited", nandi(AGENT_FILE), Some(next_skill())),
         ("edited", nandi(INSTRUCTIONS_FILE), Some(MY_ROLE)),
         ("deleted", nandi("skills/occasions.md"), None),
         (
@@ -296,15 +296,15 @@ fn an_update_replaces_unedited_files_keeps_edited_ones_and_adds_new_ones() {
     for (case, path, text) in &expected {
         assert_eq!(read(layout, path).as_deref(), *text, "{case}: {path}");
     }
-    assert_eq!(updated.replaced, [nandi(SKILL_FILE)]);
+    assert_eq!(updated.replaced, [nandi(AGENT_FILE)]);
     assert_eq!(updated.added, [".nandi/triggers/evening-review.yaml"]);
 
     // Committed, saying what changed
     let message = head_message(layout);
     assert!(message.starts_with(UPDATE_COMMIT), "{message}");
-    assert!(message.contains(&nandi(SKILL_FILE)), "{message}");
+    assert!(message.contains(&nandi(AGENT_FILE)), "{message}");
     assert_eq!(
-        committed(layout, &nandi(SKILL_FILE)).as_deref(),
+        committed(layout, &nandi(AGENT_FILE)).as_deref(),
         Some(next_skill())
     );
     assert_eq!(
@@ -347,9 +347,9 @@ fn a_gold_copy_from_0_1_0_tells_edited_from_unedited_by_its_hashes() {
                 .content
         };
         assert_eq!(
-            read(&layout, &nandi(SKILL_FILE)).as_deref(),
-            Some(today(SKILL_FILE)),
-            "{case}: the unedited skill.md is today's"
+            read(&layout, &nandi(AGENT_FILE)).as_deref(),
+            Some(today(AGENT_FILE)),
+            "{case}: the unedited agent.md is today's"
         );
         let role_expected = role_now.unwrap_or(today(INSTRUCTIONS_FILE));
         assert_eq!(
@@ -391,9 +391,9 @@ fn a_malformed_record_changes_nothing() {
     let (_tmp, store, _git) = gold_copy();
     let layout = store.layout();
     write(layout, ".nandi/shipped.yaml", "files: [not, a, map]\n");
-    let skill = read(layout, &nandi(SKILL_FILE));
+    let skill = read(layout, &nandi(AGENT_FILE));
     assert!(update_files(layout, &next_build()).is_err());
-    assert_eq!(read(layout, &nandi(SKILL_FILE)), skill);
+    assert_eq!(read(layout, &nandi(AGENT_FILE)), skill);
 }
 
 // --- Take update and Keep mine -----------------------------------------------
@@ -500,7 +500,7 @@ fn keep_mine_is_remembered_until_a_newer_version_ships() {
 fn only_an_update_on_offer_can_be_taken_or_kept() {
     let (_tmp, store, git) = gold_copy();
     let layout = store.layout();
-    let unedited = nandi(SKILL_FILE);
+    let unedited = nandi(AGENT_FILE);
     let error = take_of(&store, &git, &next_build(), &unedited).unwrap_err();
     assert!(error.contains("no update"), "{error}");
     let error = keep_mine_of(layout, &git, &next_build(), ".nandi/settings.yaml").unwrap_err();

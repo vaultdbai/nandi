@@ -108,7 +108,7 @@ pub fn build(
         }
         ArtifactRef::Agent(id) => {
             let id = AgentId::parse(id).map_err(|e| e.to_string())?;
-            domain::Agent::from_skill_md(id, &after)
+            domain::Agent::from_agent_md(id, &after)
                 .map_err(|e| format!("The edit isn't a valid agent: {e}"))?;
         }
         ArtifactRef::Workflow(id) => {
@@ -147,7 +147,7 @@ pub fn build(
 fn path_label(artifact: &ArtifactRef) -> String {
     match artifact {
         ArtifactRef::Capability(id) => format!("capabilities/{id}.yaml"),
-        ArtifactRef::Agent(id) => format!("agents/{id}/skill.md"),
+        ArtifactRef::Agent(id) => format!("agents/{id}/agent.md"),
         ArtifactRef::Workflow(id) => format!("workflows/{id}.yaml"),
         ArtifactRef::Policy(id) => format!("policies/{id}.md"),
         ArtifactRef::Gateway => "NANDI.md".to_string(),

@@ -88,7 +88,7 @@ export function dayTone(day: AgentDay): DayTone {
   return day.completed === 0 ? 'all' : 'some'
 }
 
-/** The text a broken skill.md's model error starts with (domain `ModelRef`) */
+/** The text a broken agent.md's model error starts with (domain `ModelRef`) */
 const MODEL_FORMAT = /should be '<provider>:<model>'|<provider>:<model>/
 
 /** The agent's file names a model Nandi can't read */
@@ -196,7 +196,7 @@ export function runOrigin(run: RunSummary): RunOrigin {
 // Settings › Model: provider and model by display name
 // ---------------------------------------------------------------------------
 
-/** skill.md's model prefix for each keyed provider */
+/** agent.md's model prefix for each keyed provider */
 const PREFIX: Record<KeyedProvider, string> = {
   anthropic: 'claude',
   openAi: 'gpt',
@@ -204,7 +204,7 @@ const PREFIX: Record<KeyedProvider, string> = {
 }
 
 export interface ProviderChoice {
-  /** skill.md prefix: `claude`, `gpt`, `deepseek`, `ollama` */
+  /** agent.md prefix: `claude`, `gpt`, `deepseek`, `ollama` */
   prefix: string
   /** `models.provider.*.name` or `models.ollama.name` */
   labelKey: string

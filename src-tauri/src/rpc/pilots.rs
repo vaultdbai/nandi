@@ -20,10 +20,10 @@ super::commands! {
 
     fn revoke_pilot_capability(state, agent_id: String, pilot_id: String, capability: String) -> () => pilots::revoke_pilot_capability(&state, &agent_id, &pilot_id, &capability).await;
 
-    /// Saves (or, empty, removes) a pilot secret the agent's skill.md names
+    /// Saves (or, empty, removes) a pilot secret the agent's agent.md names
     fn set_pilot_secret(state, agent_id: String, pilot_id: String, name: String, value: String) -> () => pilots::set_pilot_secret(&state, &agent_id, &pilot_id, &name, &value).await;
 
-    /// Adds a site secret to the agent's browser: the name into skill.md, the
+    /// Adds a site secret to the agent's browser: the name into agent.md, the
     /// value into the keychain
     fn add_pilot_secret(state, agent_id: String, pilot_id: String, name: String, value: String) -> () => pilots::add_pilot_secret(&state, &agent_id, &pilot_id, &name, &value).await;
 
@@ -31,7 +31,7 @@ super::commands! {
     /// had none
     fn clear_browser_profile(state, agent_id: String, pilot_id: String) -> bool => pilots::clear_browser_profile(&state, &agent_id, &pilot_id).await;
 
-    /// The pilots the agent's skill.md declares, and what the user granted each
+    /// The pilots the agent's agent.md declares, and what the user granted each
     fn agent_pilot_permissions(state, agent_id: String) -> Vec<AgentPilotPermission> => pilots::agent_pilot_permissions(&state, &agent_id).await;
 
     /// My Nandi browser for each browser type installed here (Settings › Browser)

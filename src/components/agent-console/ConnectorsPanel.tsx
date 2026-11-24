@@ -18,11 +18,11 @@ import {
 export interface ConnectorsPanelProps {
   /** The agent whose connectors these are (for labels and test IDs) */
   agentId?: string
-  /** Connector IDs the agent's skill.md declares (`connectors: [...]`) */
+  /** Connector IDs the agent's agent.md declares (`connectors: [...]`) */
   enabled?: readonly string[]
   /**
    * Called with the new list when a toggle flips. The owner writes it to
-   * the agent's skill.md (the agent editor's save). Without it, the
+   * the agent's agent.md (the agent editor's save). Without it, the
    * toggles are read-only.
    */
   onEnabledChange?: (enabled: string[]) => void
@@ -34,7 +34,7 @@ export interface ConnectorsPanelProps {
 
 /**
  * The connectors an agent uses, and their status. Connectors are off for
- * every agent until its skill.md declares them; this panel flips that per
+ * every agent until its agent.md declares them; this panel flips that per
  * agent and shows the tools each connector would add.
  */
 export function ConnectorsPanel({

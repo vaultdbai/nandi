@@ -35,7 +35,7 @@ export function retroTargetLabel(target: string): {
     case 'trigger':
       return { key: 'retro.target.trigger', values: { name } }
     default:
-      return { key: 'retro.target.skill', values: {} }
+      return { key: 'retro.target.agent', values: {} }
   }
 }
 

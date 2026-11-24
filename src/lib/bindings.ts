@@ -1088,7 +1088,7 @@ async revokePilotCapability(agentId: string, pilotId: string, capability: string
 }
 },
 /**
- * The pilots the agent's skill.md declares, and what the user granted each
+ * The pilots the agent's agent.md declares, and what the user granted each
  */
 async agentPilotPermissions(agentId: string) : Promise<Result<AgentPilotPermission[], string>> {
     try {
@@ -1099,7 +1099,7 @@ async agentPilotPermissions(agentId: string) : Promise<Result<AgentPilotPermissi
 }
 },
 /**
- * Saves (or, empty, removes) a pilot secret the agent's skill.md names
+ * Saves (or, empty, removes) a pilot secret the agent's agent.md names
  */
 async setPilotSecret(agentId: string, pilotId: string, name: string, value: string) : Promise<Result<null, string>> {
     try {
@@ -1110,7 +1110,7 @@ async setPilotSecret(agentId: string, pilotId: string, name: string, value: stri
 }
 },
 /**
- * Adds a site secret to the agent's browser: the name into skill.md, the
+ * Adds a site secret to the agent's browser: the name into agent.md, the
  * value into the keychain
  */
 async addPilotSecret(agentId: string, pilotId: string, name: string, value: string) : Promise<Result<null, string>> {
@@ -1408,7 +1408,7 @@ async getAgentConnectors(agentId: string) : Promise<Result<AgentConnectorChoice[
 }
 },
 /**
- * Replaces the connectors an agent uses (its skill.md `connectors:`)
+ * Replaces the connectors an agent uses (its agent.md `connectors:`)
  */
 async setAgentConnectors(agentId: string, connectors: AgentConnectorChoice[]) : Promise<Result<null, string>> {
     try {
@@ -2358,7 +2358,7 @@ async getAgentMemoryEnabled(agentId: string) : Promise<Result<boolean, string>> 
 }
 },
 /**
- * Writes `memory_disabled` to the agent's skill.md
+ * Writes `memory_disabled` to the agent's agent.md
  */
 async setAgentMemoryEnabled(agentId: string, enabled: boolean) : Promise<Result<null, string>> {
     try {
@@ -3046,7 +3046,7 @@ async gatewayChat(message: string) : Promise<Result<string, string>> {
 }
 },
 /**
- * The requester agent's clarification policy (skill.md `clarification:`)
+ * The requester agent's clarification policy (agent.md `clarification:`)
  */
 async getClarificationPolicy(agentId: string) : Promise<Result<ClarificationPolicy, string>> {
     try {
@@ -4424,13 +4424,13 @@ export type AgentDay = { completed: number; failed: number }
 export type AgentDefinitionCapabilities = { tools?: string[]; network?: string[]; pilots?: string[] }
 /**
  * Everything the agent editor saves. Optional fields fall back to the
- * defaults in skill.md (`memory_mb` 1024, `cpu` 1.0, the default model).
+ * defaults in agent.md (`memory_mb` 1024, `cpu` 1.0, the default model).
  */
 export type AgentDefinitionInput = { name: string; description?: string; 
 /**
- * The skill.md body (below the frontmatter)
+ * The agent.md body (below the frontmatter)
  */
-skillBody?: string; 
+agentBody?: string; 
 /**
  * `instructions.md`, if any
  */
@@ -4496,9 +4496,9 @@ export type AgentInfo = {
  */
 id: string; name: string; description: string; 
 /**
- * Absolute path to the agent's skill.md
+ * Absolute path to the agent's agent.md
  */
-skillPath: string; status: AgentStatus; currentTask: string | null; 
+agentMdPath: string; status: AgentStatus; currentTask: string | null; 
 /**
  * Whose folder it is: the user's own, or a read-only marketplace one
  */
@@ -4605,15 +4605,15 @@ days: AgentDay[]; lastRunAt: number | null }
  */
 export type AgentPilotPermission = { pilotId: string; 
 /**
- * Declared in skill.md but not in this OS's catalog
+ * Declared in agent.md but not in this OS's catalog
  */
 available: boolean; capabilities: string[]; granted: string[]; 
 /**
- * What skill.md lets it do without asking (`allow:`)
+ * What agent.md lets it do without asking (`allow:`)
  */
 allows?: string[]; 
 /**
- * The secrets skill.md names for it, and whether each is in the
+ * The secrets agent.md names for it, and whether each is in the
  * keychain (never the value)
  */
 secrets?: PilotSecretStatus[]; 
@@ -4708,7 +4708,7 @@ recentEvents: RunEventRecord[];
 container: ContainerState; 
 /**
  * What the egress proxy lets the agent reach, for the Permissions
- * panel. From skill.md, or the last recorded copy if it doesn't parse.
+ * panel. From agent.md, or the last recorded copy if it doesn't parse.
  */
 capabilities: Capabilities | null }
 export type AgentStatus = "running" | "idle" | "waitingApproval" | "error"
@@ -5517,7 +5517,7 @@ export type CheckState = "ok" | "missing" | "stopped" | "needsUpdate" |
 "blocked" | "unknown"
 /**
  * How a requester agent answers a provider's questions, kept in its
- * skill.md (`clarification:`)
+ * agent.md (`clarification:`)
  */
 export type ClarificationPolicy = { 
 /**
@@ -5773,7 +5773,7 @@ id: string; name: string; description?: string | null;
  */
 model?: string | null; 
 /**
- * The skill.md body (the agent's instructions)
+ * The agent.md body (the agent's instructions)
  */
 instructions?: string | null }
 /**
@@ -8828,7 +8828,7 @@ export type RetroChanged = Record<string, never>
  */
 export type RetroItem = { id: string; agentId: string; agentName: string; 
 /**
- * `skill`, `playbook:<name>`, `workflow:<id>` or `trigger:<id>`
+ * `agent`, `playbook:<name>`, `workflow:<id>` or `trigger:<id>`
  */
 target: string; 
 /**

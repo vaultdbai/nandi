@@ -902,7 +902,7 @@ async fn agents_turned_on_while_connected_reach_the_relay() {
     share(&state, true);
 
     // An agent starts accepting delegation after the connect
-    let agent = Agent::from_skill_md(
+    let agent = Agent::from_agent_md(
         AgentId::parse("papers").unwrap(),
         "---\nname: Papers\nserves: [{name: find-papers}]\naccepts_delegation: true\n---\nHi.\n",
     )
@@ -946,7 +946,7 @@ async fn agents_stay_off_the_relay_while_sharing_is_off() {
     assert!(eventually(async || get_relay_status(&state).await.unwrap().connected).await);
     share(&state, false);
 
-    let agent = Agent::from_skill_md(
+    let agent = Agent::from_agent_md(
         AgentId::parse("papers").unwrap(),
         "---\nname: Papers\nserves: [{name: find-papers}]\naccepts_delegation: true\n---\nHi.\n",
     )

@@ -26,7 +26,8 @@ import {
 } from './agent-page-model'
 
 /**
- * "New agent": a name and what it does, from a template (created here with
+ * "New agent": a name and what it does (required: other agents see only
+ * those until it runs), from a template (created here with
  * the default model, then opened), or described to Studio, which drafts
  * the whole thing.
  */
@@ -60,7 +61,7 @@ export function NewAgentDialog({
     const result = await client.createAgent({
       id,
       name: name.trim(),
-      description: description.trim() || null,
+      description: description.trim(),
       model: null,
       instructions:
         template === 'blank'
@@ -111,7 +112,7 @@ export function NewAgentDialog({
           className="flex flex-col gap-4"
           onSubmit={event => {
             event.preventDefault()
-            if (name.trim()) void create()
+            if (name.trim() && description.trim()) void create()
           }}
         >
           <div className="space-y-1.5">
@@ -133,6 +134,7 @@ export function NewAgentDialog({
               id="new-agent-description"
               value={description}
               maxLength={2000}
+              required
               placeholder={t('agentPage.new.whatPlaceholder')}
               onChange={event => setDescription(event.target.value)}
             />
@@ -178,7 +180,10 @@ export function NewAgentDialog({
             >
               {t('agentPage.new.describeInStudio')}
             </Button>
-            <Button type="submit" disabled={!name.trim() || creating}>
+            <Button
+              type="submit"
+              disabled={!name.trim() || !description.trim() || creating}
+            >
               {creating && <Spinner />}
               {t('agentPage.new.create')}
             </Button>

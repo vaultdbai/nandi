@@ -123,7 +123,7 @@ export function AgentSettingsTab({
     <SettingsForm
       // A fresh form whenever the files change (e.g. Studio saved, or
       // Your rules saved)
-      key={`${definition.data.renderedSkillMd}\n${definition.data.draft.instructions}`}
+      key={`${definition.data.renderedAgentMd}\n${definition.data.draft.instructions}`}
       agent={agent}
       saved={definition.data.draft}
       networkRules={definition.data.networkRules}
@@ -753,7 +753,7 @@ function Note({
 
 /**
  * The connectors and shared folders this agent uses. Each change is saved
- * to its skill.md right away (like the permission switches above).
+ * to its agent.md right away (like the permission switches above).
  */
 function AgentConnectors({ agentId }: { agentId: string }) {
   const { t } = useTranslation()

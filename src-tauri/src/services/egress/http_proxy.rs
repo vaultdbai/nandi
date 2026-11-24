@@ -1,5 +1,5 @@
 //! `POST /fetch`: an HTTP request on an agent's behalf, to a host in its
-//! skill.md `network.allow` list.
+//! agent.md `network.allow` list.
 //!
 //! Body: `{ agent_id?, url, method?, headers?, body?, body_base64? }`.
 //! Returns `{ status, headers, body | bodyBase64 }`. Redirects are returned,

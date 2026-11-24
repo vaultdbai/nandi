@@ -10,14 +10,14 @@
 //!   (`SourceType::Agent`) on the target agent's orchestrator
 //! - `history`: the `delegations` table, `delegation://` events, and the
 //!   JSONL audit log (`~/.nandi/local/logs/delegations.log`)
-//! - `settings`: per-agent delegation settings, kept in skill.md
+//! - `settings`: per-agent delegation settings, kept in agent.md
 //! - `tool`: the `delegate_to_agent` tool the orchestrator offers
 //!
 //! Decisions (see `docs/developer/a2a-delegation.md`):
 //! - Local providers run in-process, so delegation works without a relay.
-//! - Outbound: an agent gets `delegate_to_agent` when its skill.md sets
+//! - Outbound: an agent gets `delegate_to_agent` when its agent.md sets
 //!   `delegation_outbound: true` or lists the tool in `allowed-tools`.
-//!   Each call needs approval unless skill.md declares `requires_approval`
+//!   Each call needs approval unless agent.md declares `requires_approval`
 //!   without it (the provider is only picked after approval, so local and
 //!   cross-user calls are treated alike).
 //! - Inbound: trust policy `ask` rejects the task with an error naming the
@@ -161,7 +161,7 @@ pub struct DelegationOverride {
 // ---------------------------------------------------------------------------
 
 /// How a requester agent answers a provider's questions, kept in its
-/// skill.md (`clarification:`)
+/// agent.md (`clarification:`)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ClarificationPolicy {
@@ -335,7 +335,7 @@ pub async fn get_agent_delegation(
     Ok(settings::read(&agent))
 }
 
-/// Writes the settings into the agent's skill.md (the gold copy), then
+/// Writes the settings into the agent's agent.md (the gold copy), then
 /// projects the change.
 pub async fn set_agent_delegation(
     state: &AppState,

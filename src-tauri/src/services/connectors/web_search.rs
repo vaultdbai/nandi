@@ -1,5 +1,5 @@
 //! The `web_search` connector: search the web and read pages, without an
-//! API key, only on the sites the calling agent may reach (its skill.md
+//! API key, only on the sites the calling agent may reach (its agent.md
 //! `network.allow`, narrowed by its policies).
 //!
 //! - `search` asks the search engine's own results page (Bing's RSS
@@ -11,7 +11,7 @@
 //!
 //! The agent's sites arrive as its connector options' `allowed_sites`,
 //! which Nandi sets on every call ([`ALLOWED_SITES`]); an agent's own
-//! skill.md can't widen them.
+//! agent.md can't widen them.
 
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;

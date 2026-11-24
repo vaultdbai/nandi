@@ -1,5 +1,5 @@
 //! What an agent may do: tools, pilots, network hosts, and AWS services.
-//! Declared in skill.md frontmatter:
+//! Declared in agent.md frontmatter:
 //!
 //! ```yaml
 //! allowed-tools: [shell, read_file]   # omitted: every runtime tool
@@ -33,20 +33,20 @@ use super::{DomainError, DomainResult, PilotRef};
 // The wire shape lives in `nandi-protocol`
 pub use nandi_protocol::ServesCapability;
 
-/// Tools that need approval when skill.md doesn't say otherwise: anything
+/// Tools that need approval when agent.md doesn't say otherwise: anything
 /// that runs code or changes files.
 pub const DEFAULT_REQUIRES_APPROVAL: &[&str] = &["shell", "write_file"];
 
 /// The built-in tool an agent calls to delegate to another agent.
-/// Cross-user calls need approval unless skill.md says otherwise.
+/// Cross-user calls need approval unless agent.md says otherwise.
 pub const DELEGATION_TOOL: &str = "delegate_to_agent";
 
-/// Concurrent delegated tasks an accepting agent runs when skill.md
+/// Concurrent delegated tasks an accepting agent runs when agent.md
 /// doesn't set `max_delegation_concurrent`.
 pub const DEFAULT_MAX_DELEGATION_CONCURRENT: u32 = 1;
 
 /// What an agent may do with a pilot without asking, and what it fills
-/// forms with (skill.md: a `pilots:` item written as a mapping,
+/// forms with (agent.md: a `pilots:` item written as a mapping,
 /// `{id: browser, allow: [...], values: {...}, secrets: {...}}`)
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PilotOptions {
@@ -121,11 +121,11 @@ impl PilotOptions {
 pub struct CapabilitySet {
     tools: ToolPolicy,
     pilots: Vec<PilotRef>,
-    /// Per pilot (by ID), for the ones skill.md gives options
+    /// Per pilot (by ID), for the ones agent.md gives options
     pilot_options: std::collections::BTreeMap<String, PilotOptions>,
     network: NetworkPolicy,
     aws: Option<AwsPolicy>,
-    /// `None` when skill.md declares none of the delegation keys (boxed:
+    /// `None` when agent.md declares none of the delegation keys (boxed:
     /// most agents don't, and `Agent` stays small)
     delegation: Option<Box<Delegation>>,
 }
@@ -139,7 +139,7 @@ struct Delegation {
     max_concurrent: Option<u32>,
     /// Capability IDs from the `provides:` shorthand that have no `serves:`
     /// entry of their own (they are in `serves` too, as bare entries; kept
-    /// apart so skill.md is written back the way it was)
+    /// apart so agent.md is written back the way it was)
     provides: Vec<String>,
 }
 
@@ -270,7 +270,7 @@ impl CapabilitySet {
         &self.pilots
     }
 
-    /// The options skill.md gives a pilot it lists, if any
+    /// The options agent.md gives a pilot it lists, if any
     pub fn pilot_options(&self, pilot: &str) -> Option<&PilotOptions> {
         self.pilot_options.get(pilot)
     }
@@ -356,7 +356,7 @@ impl CapabilitySet {
         self.delegation.as_ref().is_some_and(|d| d.accepts)
     }
 
-    /// As written in skill.md (`None` if the key was omitted).
+    /// As written in agent.md (`None` if the key was omitted).
     pub fn max_delegation_concurrent(&self) -> Option<u32> {
         self.delegation.as_ref().and_then(|d| d.max_concurrent)
     }
@@ -420,7 +420,7 @@ impl ToolPolicy {
         self.allowed.as_deref()
     }
 
-    /// As written in skill.md (`None` if the key was omitted).
+    /// As written in agent.md (`None` if the key was omitted).
     pub fn declared_approvals(&self) -> Option<&[String]> {
         self.requires_approval.as_deref()
     }

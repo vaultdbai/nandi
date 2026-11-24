@@ -10,7 +10,7 @@
 //!   ([`crate::mcp_client`]);
 //! - a proxy token for the host egress proxy (LLM, AWS, HTTP) — never a
 //!   provider API key or long-term AWS key. `sts`-mode agents also get
-//!   short-lived AWS credentials scoped to their skill.md grants.
+//!   short-lived AWS credentials scoped to their agent.md grants.
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -531,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn container_limits_come_from_skill_md() {
+    fn container_limits_come_from_agent_md() {
         let limits = |skill: &SkillConfig| {
             let config = container_config(skill, DEFAULT_RUNTIME_IMAGE, "/w", vec![]);
             let host = config.host_config.unwrap();

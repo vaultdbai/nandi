@@ -21,7 +21,7 @@
 //! Writes into the user's notes (`my-notes/`, Nandi's) aren't
 //! code and never need a check.
 //!
-//! It can't tell whether the right checks ran, only that some did; skill.md
+//! It can't tell whether the right checks ran, only that some did; agent.md
 //! `middlewares: []` (or a list without `verify_on_stop`) turns it off.
 
 use std::io::Write;
@@ -493,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn the_default_pipeline_includes_it_unless_skill_md_opts_out() {
+    fn the_default_pipeline_includes_it_unless_agent_md_opts_out() {
         use super::super::middleware::{TurnPolicy, VERIFY_ON_STOP};
         assert!(TurnPolicy::default().enables(VERIFY_ON_STOP));
         let off = TurnPolicy {

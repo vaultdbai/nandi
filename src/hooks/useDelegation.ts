@@ -221,7 +221,7 @@ export function useAgentDelegation(agentId: string) {
   )
 }
 
-/** Saves the settings into skill.md; optimistic, rolled back on error */
+/** Saves the settings into agent.md; optimistic, rolled back on error */
 export function useSetAgentDelegation(agentId: string) {
   const queryClient = useQueryClient()
   const key = delegationQueryKeys.settings(agentId)

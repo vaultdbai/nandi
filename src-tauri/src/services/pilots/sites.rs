@@ -7,7 +7,7 @@
 //!   otherwise ─▶ access request (`services::access`, family `site`)
 //!        Allow once        ─▶ this run only ([`allow_for_run`]; the proxy and the
 //!                             browser read it until the run ends, [`end_run`])
-//!        Always allow      ─▶ the host goes into the agent's skill.md (`network.allow`)
+//!        Always allow      ─▶ the host goes into the agent's agent.md (`network.allow`)
 //!        Don't allow       ─▶ the call fails; not asked again in this run
 //! ```
 //!

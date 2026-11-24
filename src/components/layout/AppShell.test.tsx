@@ -391,7 +391,7 @@ describe('AppShell', () => {
       for (const tab of ['Chat', 'Runs', 'Settings']) {
         expect(screen.getByRole('tab', { name: tab })).toBeInTheDocument()
       }
-      // No skill.md path in the header
+      // No agent.md path in the header
       expect(screen.queryByText(/skill\.md/)).toBeNull()
     })
 

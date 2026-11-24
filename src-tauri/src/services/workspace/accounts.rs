@@ -59,7 +59,7 @@ impl AccountKind {
         }
     }
 
-    /// The connector ID grants and skill.md use
+    /// The connector ID grants and agent.md use
     pub fn id(self) -> &'static str {
         match self {
             Self::OutlookCalendar => "outlook-calendar",

@@ -93,7 +93,7 @@ pub struct RouterInputs {
     /// The agent's egress proxy token (`ProxyTokens::issue`)
     pub proxy_token: String,
     /// Its tools once its policies applied (`RepoStore::skill`); `None`:
-    /// skill.md's own
+    /// agent.md's own
     pub tools: Option<ToolGrant>,
     /// Its policies' `models.allow` lists (`SkillConfig::model_rules`)
     pub model_rules: Vec<(Vec<String>, String)>,
@@ -197,7 +197,7 @@ pub fn allowed_tool_kinds(allowed: Option<&[String]>) -> Vec<String> {
 }
 
 /// ACP tool kinds a person approves first: `requires_approval` (`shell`
-/// and `write_file` unless skill.md says otherwise, plus a policy's `ask`),
+/// and `write_file` unless agent.md says otherwise, plus a policy's `ask`),
 /// as for native runs
 pub fn approval_tool_kinds(approval: &[String]) -> Vec<String> {
     tool_kinds(approval)
@@ -254,7 +254,7 @@ pub fn plan(agent: &Agent, inputs: RouterInputs) -> RuntimeDecision {
         image: HARNESS_IMAGE.to_string(),
         name: container_name(agent.id().as_str()),
         host_workdir: inputs.workdir.clone(),
-        // The native runtime's limits when skill.md sets none
+        // The native runtime's limits when agent.md sets none
         memory_mb: agent.container().memory_mb().unwrap_or(DEFAULT_MEMORY_MB),
         cpu: agent.container().cpu().unwrap_or(DEFAULT_CPU),
         // Internal: its way out is the egress relay (`HTTPS_PROXY` below)
@@ -392,7 +392,7 @@ fn model_hosts(harness_id: &str) -> Vec<String> {
     let hosts: &[&str] = match harness_id {
         // Vertex from Claude Code's own settings
         "claude-code" => &["api.anthropic.com"],
-        // A custom CLI gets what its skill.md allows
+        // A custom CLI gets what its agent.md allows
         _ => &[],
     };
     hosts.iter().map(|h| h.to_string()).collect()
@@ -426,7 +426,7 @@ pub async fn resolve_runtime(app: &AppState, agent: &Agent) -> RuntimeDecision {
             workdir.display()
         ));
     }
-    // skill.md narrowed by its policies (folders, tools); a broken policy
+    // agent.md narrowed by its policies (folders, tools); a broken policy
     // or a refused model stops it
     let skill = match app.store().skill(agent.id().as_str()) {
         Ok(skill) => skill,
@@ -465,7 +465,7 @@ const TEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
 /// runtime and nothing else (no folders, no `network.allow`, no tool limits)
 fn test_agent(harness_id: &str) -> Result<Agent, String> {
     let id = AgentId::parse(TEST_AGENT_ID).map_err(|e| e.to_string())?;
-    Agent::from_skill_md(
+    Agent::from_agent_md(
         id,
         &format!("---\nname: Test harness\nruntime: {harness_id}\n---\n"),
     )
@@ -619,7 +619,7 @@ async fn inputs_for(
 }
 
 /// The steps a harness run may take: `runtime_config.max_turns`, else
-/// skill.md `max_turns` (as for native runs). ACP has no turn limit, so
+/// agent.md `max_turns` (as for native runs). ACP has no turn limit, so
 /// `execute_harness_run` enforces it.
 pub fn max_turns(agent: &Agent) -> u32 {
     agent
@@ -657,7 +657,7 @@ impl TurnBudget {
         self.steps += 1;
         let max = self.max_turns;
         (max > 0 && self.steps > max).then(|| {
-            format!("Stopped: this run reached its limit of {max} turns (skill.md `max_turns`).")
+            format!("Stopped: this run reached its limit of {max} turns (agent.md `max_turns`).")
         })
     }
 }
@@ -1046,7 +1046,7 @@ mod tests {
     use crate::services::harness::detection::{DetectEnv, HarnessDetector};
 
     fn agent(frontmatter: &str) -> Agent {
-        Agent::from_skill_md(
+        Agent::from_agent_md(
             AgentId::parse("writer").unwrap(),
             &format!("---\nname: Writer\n{frontmatter}---\n\nYou write.\n"),
         )
@@ -1073,7 +1073,7 @@ mod tests {
         let agent = agent("");
         assert!(agent.runtime().is_native());
         assert!(matches!(plan(&agent, inputs()), RuntimeDecision::Native));
-        assert!(!agent.to_skill_md().contains("runtime"));
+        assert!(!agent.to_agent_md().contains("runtime"));
     }
 
     #[test]
@@ -1082,7 +1082,7 @@ mod tests {
             "runtime: claude-code\nruntime_config:\n  model: us.anthropic.claude-sonnet-5\n  provider: bedrock\n  team_note: kept\nallowed-tools: [read_file, shell]\n",
         );
         assert_eq!(*agent.runtime(), AgentRuntimeKind::ClaudeCode);
-        let rendered = agent.to_skill_md();
+        let rendered = agent.to_agent_md();
         assert!(rendered.contains("runtime: claude-code"), "{rendered}");
         assert!(rendered.contains("team_note: kept"), "unknown keys survive");
 
@@ -1143,7 +1143,7 @@ mod tests {
     }
 
     #[test]
-    fn harness_containers_get_the_native_limits_unless_skill_md_sets_them() {
+    fn harness_containers_get_the_native_limits_unless_agent_md_sets_them() {
         let cases = [
             ("", (DEFAULT_MEMORY_MB, DEFAULT_CPU)),
             (
@@ -1693,7 +1693,7 @@ cpu: 2.5
             "runtime: claude-code\nruntime_config:\n  model: two words\n",
         ] {
             assert!(
-                Agent::from_skill_md(
+                Agent::from_agent_md(
                     AgentId::parse("a").unwrap(),
                     &format!("---\nname: A\n{bad}---\n")
                 )
@@ -1714,7 +1714,7 @@ cpu: 2.5
         let input = AgentDefinitionInput {
             name: "Writer".into(),
             description: String::new(),
-            skill_body: "Body".into(),
+            agent_body: "Body".into(),
             instructions: String::new(),
             model_provider: None,
             model_name: None,
@@ -1740,7 +1740,7 @@ cpu: 2.5
         };
         let agent = definition_agent(&id, Some(existing), &native).unwrap();
         assert!(agent.runtime().is_native());
-        assert!(!agent.to_skill_md().contains("runtime"));
+        assert!(!agent.to_agent_md().contains("runtime"));
     }
 
     #[test]
@@ -1868,7 +1868,7 @@ cpu: 2.5
     }
 
     #[test]
-    fn max_turns_comes_from_runtime_config_then_skill_md() {
+    fn max_turns_comes_from_runtime_config_then_agent_md() {
         let default = agent("runtime: claude-code\n");
         assert_eq!(
             harness_plan(plan(&default, inputs())).config.max_turns,

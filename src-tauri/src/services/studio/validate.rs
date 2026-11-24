@@ -95,7 +95,7 @@ pub fn validate_agent(id: &str, content: &str, facts: &ValidationFacts) -> Artif
         Ok(id) => id,
         Err(e) => return failed(format!("Not a valid agent ID: {e}")),
     };
-    let agent = match domain::Agent::from_skill_md(id, content) {
+    let agent = match domain::Agent::from_agent_md(id, content) {
         Ok(agent) => agent,
         Err(e) => return failed(format!("Not a valid agent: {e}")),
     };

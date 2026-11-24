@@ -10,7 +10,7 @@ import {
 const draft = (patch: Partial<EditorDraft> = {}): EditorDraft => ({
   name: 'Writer',
   description: '',
-  skillBody: '',
+  agentBody: '',
   instructions: '',
   modelProvider: '',
   modelName: '',
@@ -118,7 +118,7 @@ describe('parseAgentDefinition', () => {
     const definition = parseAgentDefinition({
       id: 'writer',
       name: 'Writer',
-      skillBody: 'Write.',
+      agentBody: 'Write.',
       memoryMb: 2048,
       cpu: null,
       capabilities: { tools: ['shell'], network: ['a.io'], pilots: [] },
@@ -126,11 +126,11 @@ describe('parseAgentDefinition', () => {
       allowedTools: null,
       requiresApproval: ['shell', 'write_file'],
       networkRules: [{ host: 'a.io', methods: ['GET'] }],
-      skillMd: '---\nname: Writer\n---\n',
+      agentMd: '---\nname: Writer\n---\n',
     })
     expect(definition.draft).toMatchObject({
       name: 'Writer',
-      skillBody: 'Write.',
+      agentBody: 'Write.',
       memoryMb: '2048',
       cpu: '',
       tools: ['shell'],

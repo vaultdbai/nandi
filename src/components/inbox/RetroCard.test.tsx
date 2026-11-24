@@ -10,8 +10,8 @@ const mocks = () =>
   commands as unknown as Record<string, ReturnType<typeof vi.fn>>
 
 const DIFF = [
-  '--- a/.nandi/agents/writer/skill.md',
-  '+++ b/.nandi/agents/writer/skill.md',
+  '--- a/.nandi/agents/writer/agent.md',
+  '+++ b/.nandi/agents/writer/agent.md',
   '@@ -1 +1,2 @@',
   ' Draft posts.',
   '+Keep them under 80 words.',
@@ -21,8 +21,8 @@ const item = (overrides: Partial<RetroItem> = {}): RetroItem => ({
   id: 'p1',
   agentId: 'writer',
   agentName: 'Writer',
-  target: 'skill',
-  path: '.nandi/agents/writer/skill.md',
+  target: 'agent',
+  path: '.nandi/agents/writer/agent.md',
   reason: 'You shortened 4 of 5 drafts',
   runs: ['r1', 'r2'],
   diff: DIFF,

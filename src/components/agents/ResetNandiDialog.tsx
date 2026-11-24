@@ -14,7 +14,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { useResetDefaultAgent } from '@/hooks/useAgentEditor'
 
 /** What a reset puts back as Nandi ships it, in the order the confirm lists */
-const RESET_CHANGES = ['skill', 'rules', 'playbooks', 'triggers'] as const
+const RESET_CHANGES = ['agent', 'rules', 'playbooks', 'triggers'] as const
 
 /**
  * The confirm before Nandi goes back to its defaults (owner decision N-5):

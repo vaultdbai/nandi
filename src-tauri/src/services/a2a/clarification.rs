@@ -72,7 +72,7 @@ pub const CLARIFICATION_REQUESTED: &str = "task://clarification_requested";
 /// `task://clarification_answered`
 pub const CLARIFICATION_ANSWERED: &str = "task://clarification_answered";
 
-/// skill.md key of the policy
+/// agent.md key of the policy
 pub const POLICY_KEY: &str = "clarification";
 /// Sent for every question when the policy doesn't allow clarification
 pub const NOT_ALLOWED_ANSWER: &str = "Clarification not allowed";
@@ -122,7 +122,7 @@ impl Route {
 // Policy
 // ---------------------------------------------------------------------------
 
-/// The policy as skill.md frontmatter (snake_case, every key optional)
+/// The policy as agent.md frontmatter (snake_case, every key optional)
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct PolicyYaml {
@@ -163,7 +163,7 @@ impl From<PolicyYaml> for ClarificationPolicy {
     }
 }
 
-/// The agent's policy (the default when skill.md has none or it's invalid)
+/// The agent's policy (the default when agent.md has none or it's invalid)
 pub fn policy_of(agent: &Agent) -> ClarificationPolicy {
     agent
         .extra()
@@ -211,12 +211,12 @@ pub fn normalize(policy: ClarificationPolicy) -> Result<ClarificationPolicy, Str
     })
 }
 
-/// The agent's policy, from its skill.md
+/// The agent's policy, from its agent.md
 pub fn read_policy(store: &RepoStore, agent_id: &str) -> Result<ClarificationPolicy, String> {
     Ok(policy_of(&store.agent(agent_id)?))
 }
 
-/// Writes the policy into the agent's skill.md (the gold copy), then
+/// Writes the policy into the agent's agent.md (the gold copy), then
 /// projects the change. The default policy removes the key.
 pub fn write_policy(
     store: &RepoStore,

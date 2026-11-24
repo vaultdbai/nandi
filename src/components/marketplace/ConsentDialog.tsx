@@ -37,7 +37,7 @@ interface ConsentDialogProps {
 }
 
 /**
- * First run of a marketplace agent: everything its skill.md requests, one
+ * First run of a marketplace agent: everything its agent.md requests, one
  * category at a time. Each must be ticked before it may run.
  */
 export function ConsentDialog({ status, onOpenChange }: ConsentDialogProps) {

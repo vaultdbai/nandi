@@ -862,7 +862,7 @@ mod tests {
 
         let (bus, sink) = bus();
         let store = crate::services::repo_store::RepoStore::for_tests(bus.db.clone());
-        let skill = store.layout().skill_path("writer");
+        let skill = store.layout().agent_md_path("writer");
         std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
         std::fs::write(
             &skill,

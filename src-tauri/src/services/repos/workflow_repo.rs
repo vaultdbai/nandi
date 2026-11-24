@@ -51,7 +51,7 @@ impl WorkflowRepository {
     fn folders(&self) -> Vec<(PathBuf, WorkflowScope)> {
         let mut folders = vec![(self.layout.workflows_dir.clone(), WorkflowScope::Global)];
         let mut seen = std::collections::HashSet::new();
-        // Local folders count even without a skill.md: the aggregate reports
+        // Local folders count even without an agent.md: the aggregate reports
         // the missing agent
         let local = fs::read_dir(&self.layout.agents_dir)
             .into_iter()
@@ -298,7 +298,7 @@ mod tests {
         fs::write(pack_wf.join("daily.yaml"), YAML).unwrap();
         let agent = repos.layout().vendored_agent_dir("alice", "writer");
         fs::create_dir_all(agent.join("workflows")).unwrap();
-        fs::write(agent.join("skill.md"), "---\nname: W\n---\n").unwrap();
+        fs::write(agent.join("agent.md"), "---\nname: W\n---\n").unwrap();
         fs::write(
             agent.join("workflows/mine.yaml"),
             YAML.replace("daily", "mine"),

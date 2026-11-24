@@ -3,7 +3,7 @@
 Runs in the `nandi-egress` container, which sits on both that network and
 Docker's default bridge. It forwards every connection on 0.0.0.0:<listen> to
 the host's egress proxy, which authenticates each request by the agent's
-proxy token and enforces its skill.md. The relay itself decides nothing.
+proxy token and enforces its agent.md. The relay itself decides nothing.
 
 Usage: python relay.py <listen port> <target host> <target port>
 """

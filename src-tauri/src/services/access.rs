@@ -14,7 +14,7 @@
 //! A browser pilot opening a site outside the agent's allowed sites asks
 //! the same way (family `site`, [`SiteAccess`]): Allow once lets the
 //! browser and the egress proxy reach it until the run ends
-//! (`pilots::sites`), Always allow writes it into the agent's skill.md
+//! (`pilots::sites`), Always allow writes it into the agent's agent.md
 //! (`network.allow`), Don't allow fails the call.
 //!
 //! Grants are read on every call, so a removed grant stops the next call,
@@ -486,7 +486,7 @@ async fn resolve(
 
 /// What the person's choice on a site request does: Allow once lets the
 /// browser and the proxy reach it for `run_id`, Always allow writes it into
-/// the agent's skill.md. Returns the site as decided.
+/// the agent's agent.md. Returns the site as decided.
 fn answer_site(
     state: &AppState,
     agent: &str,
@@ -518,7 +518,7 @@ fn answer_site(
 }
 
 /// Adds `hosts` to agent `id`'s allowed sites, through its repository
-/// (skill.md is the gold copy)
+/// (agent.md is the gold copy)
 fn save_sites(state: &AppState, id: &str, hosts: &[String]) -> Result<(), String> {
     let store = state.store();
     let mut agent = store.agent(id)?;

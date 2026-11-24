@@ -79,10 +79,10 @@ fn pack_files(version: &str, summarizer_body: &str) -> Vec<(String, String)> {
         ),
         ("README.md".into(), "# Research".into()),
         (
-            "agents/summarizer/skill.md".into(),
+            "agents/summarizer/agent.md".into(),
             format!("---\nname: Summarizer\nallowed-tools: [read_file]\n---\n{summarizer_body}"),
         ),
-        ("agents/citer/skill.md".into(), "---\nname: Citer\n---\nCite.".into()),
+        ("agents/citer/agent.md".into(), "---\nname: Citer\n---\nCite.".into()),
         (
             "agents/citer/workflows/citer-daily.yaml".into(),
             "id: citer-daily\nname: Daily\nsteps:\n  - {id: a, agent: citer, input: go}\n".into(),
@@ -111,7 +111,7 @@ fn pack_manifest(origin: &Path, version: &str, min_nandi: &str) -> PackManifest 
     parse_pack_entry(&entry.to_string(), "test-registry").unwrap()
 }
 
-/// What the fixture agents' entries list: their skill.md names no
+/// What the fixture agents' entries list: their agent.md names no
 /// `allowed-tools`, so every tool, and an install refuses content that asks
 /// for more than its entry lists
 fn every_tool() -> serde_json::Value {
@@ -131,14 +131,14 @@ fn agent_manifest(origin: &Path, id: &str, version: &str, registry: &str) -> Age
 fn agent_files(body: &str) -> Vec<(String, String)> {
     vec![
         (
-            "agents/arxiv/skill.md".into(),
+            "agents/arxiv/agent.md".into(),
             format!("---\nname: ArXiv\nsource: github.com/alice/nandi-agents\npublisher: alice\nmodel: claude:claude-sonnet-5\n---\n{body}"),
         ),
         (
             "agents/arxiv/workflows/arxiv-daily.yaml".into(),
             "id: arxiv-daily\nname: Daily papers\nsteps:\n  - {id: a, agent: arxiv, input: today}\n".into(),
         ),
-        ("agents/other/skill.md".into(), "---\nname: Other\n---\n".into()),
+        ("agents/other/agent.md".into(), "---\nname: Other\n---\n".into()),
     ]
 }
 
@@ -161,7 +161,7 @@ fn installs_a_pack_from_a_local_fixture_into_the_projection() {
     assert_eq!(world.projected("workflows"), ["citer-daily", "review"]);
 
     let pack_dir = world.layout().pack_dir("research-pack");
-    assert!(pack_dir.join("agents/summarizer/skill.md").is_file());
+    assert!(pack_dir.join("agents/summarizer/agent.md").is_file());
     assert!(pack_dir.join(".nandi/manifest.yaml").is_file());
     assert!(!pack_dir.join("scripts").exists(), "only allowlisted files");
     let installed = world.store.repos().vendor.load_installed().unwrap();
@@ -236,7 +236,7 @@ fn refuses_entries_and_packs_that_need_a_newer_nandi() {
 #[test]
 fn refuses_ids_that_are_already_taken() {
     let world = World::new();
-    let mine = world.layout().skill_path("summarizer");
+    let mine = world.layout().agent_md_path("summarizer");
     fs::create_dir_all(mine.parent().unwrap()).unwrap();
     fs::write(&mine, "---\nname: Mine\n---\n").unwrap();
     world.store.rescan_all(ChangedBy::Watcher);
@@ -277,7 +277,7 @@ fn fork_copies_the_folder_rewrites_frontmatter_and_drops_the_entry() {
     assert!(forked.warnings.is_empty());
     assert_eq!(forked.agent.name(), "My ArXiv");
     assert!(!vendored.exists(), "the vendored copy moved");
-    let skill = fs::read_to_string(world.layout().skill_path("my-arxiv")).unwrap();
+    let skill = fs::read_to_string(world.layout().agent_md_path("my-arxiv")).unwrap();
     assert!(skill.contains("name: My ArXiv"));
     assert!(skill.contains("model: claude:claude-sonnet-5"));
     assert!(
@@ -395,7 +395,7 @@ fn updates_are_reported_and_refused_over_local_changes() {
     let skill = world
         .layout()
         .vendored_agent_dir("alice", "arxiv")
-        .join("skill.md");
+        .join("agent.md");
     let original = fs::read_to_string(&skill).unwrap();
     fs::write(&skill, "---\nname: Hacked\n---\n").unwrap();
     assert!(world.installer.list_installed().unwrap()[0].modified);
@@ -409,7 +409,7 @@ fn updates_are_reported_and_refused_over_local_changes() {
             &mut no_progress(),
         )
         .unwrap_err();
-    assert!(err.contains("skill.md"), "{err}");
+    assert!(err.contains("agent.md"), "{err}");
 
     // Undone: the update applies
     fs::write(&skill, original).unwrap();
@@ -640,7 +640,7 @@ async fn the_latest_version_across_registries_is_the_one_installed() {
         .store()
         .layout()
         .vendored_agent_dir("alice", "arxiv")
-        .join("skill.md");
+        .join("agent.md");
     assert!(fs::read_to_string(skill).unwrap().ends_with("new"));
     let listed = marketplace::list_available_agents(
         &state,
@@ -717,7 +717,7 @@ async fn the_watcher_picks_up_a_manually_cloned_agent_folder() {
     let dir = layout.vendored_agent_dir("bob", "test-writer");
     fs::create_dir_all(dir.join("workflows")).unwrap();
     fs::write(
-        dir.join("skill.md"),
+        dir.join("agent.md"),
         "---\nname: Test Writer\n---\nWrite tests.",
     )
     .unwrap();
@@ -838,7 +838,7 @@ async fn signatures_verify_and_pin_the_release_commit() {
     let commit_signed = commit(&signed_repo, &agent_files("signed"), "v1.0.0");
     let moved_repo = tmp.path().join("moved");
     let moved_files = vec![(
-        "agents/mover/skill.md".to_string(),
+        "agents/mover/agent.md".to_string(),
         "---\nname: Mover\n---\n".to_string(),
     )];
     let commit_moved = commit(&moved_repo, &moved_files, "v1.0.0");
@@ -914,7 +914,7 @@ async fn signatures_verify_and_pin_the_release_commit() {
     commit(
         &moved_repo,
         &[(
-            "agents/mover/skill.md".to_string(),
+            "agents/mover/agent.md".to_string(),
             "---\nname: Evil\n---\n".to_string(),
         )],
         "v1.0.0",
@@ -940,7 +940,7 @@ async fn a_publisher_key_is_pinned_on_first_install_and_a_changed_key_is_refused
     let source = tmp.path().join("source");
     let mut files = agent_files("first");
     files.push((
-        "agents/second/skill.md".to_string(),
+        "agents/second/agent.md".to_string(),
         "---\nname: Second\n---\nsecond".to_string(),
     ));
     let sha = commit(&source, &files, "v1.0.0");
@@ -1239,7 +1239,7 @@ fn local_packs_get_the_same_checks_as_registry_packs() {
     assert!(err.contains("99.0.0"), "{err}");
 
     // An ID that's taken
-    let mine = world.layout().skill_path("summarizer");
+    let mine = world.layout().agent_md_path("summarizer");
     fs::create_dir_all(mine.parent().unwrap()).unwrap();
     fs::write(&mine, "---\nname: Mine\n---\n").unwrap();
     world.store.rescan_all(ChangedBy::Watcher);

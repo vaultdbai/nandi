@@ -3,7 +3,7 @@
 //! - Offered only to agents that may delegate (`settings::outbound_allowed`).
 //! - Needs approval through the orchestrator's usual approval path (the
 //!   call is persisted, the user approves or rejects it, the run resumes),
-//!   unless skill.md declares `requires_approval` without it.
+//!   unless agent.md declares `requires_approval` without it.
 //! - Runs on the delegator whatever the engine, so canned runs exercise it.
 //!
 //! Also `ask_requester`: `{questions: [{question,

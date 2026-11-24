@@ -45,9 +45,9 @@ fn repo_from_0_1_0(edited: bool) -> (tempfile::TempDir, RepoLayout) {
     let files = [
         (".gitignore", GITIGNORE),
         (".nandi/settings.yaml", SETTINGS),
-        (".nandi/agents/chief-of-staff/skill.md", SKILL_0_1_0),
+        (".nandi/agents/chief-of-staff/agent.md", SKILL_0_1_0),
         (".nandi/agents/chief-of-staff/instructions.md", instructions),
-        (".nandi/agents/writer/skill.md", WRITER_SKILL),
+        (".nandi/agents/writer/agent.md", WRITER_SKILL),
         (".nandi/triggers/weekly-report.yaml", TRIGGER),
     ];
     for (file, text) in files {
@@ -106,7 +106,7 @@ fn head_message(layout: &RepoLayout) -> String {
 #[test]
 fn the_0_1_0_fixture_is_what_0_1_0_shipped() {
     let fixture = [
-        (SKILL_FILE, SKILL_0_1_0),
+        (AGENT_FILE, SKILL_0_1_0),
         (INSTRUCTIONS_FILE, INSTRUCTIONS_0_1_0),
     ]
     .map(|(file, text)| (file.to_string(), text_hash(text.as_bytes())));
@@ -204,11 +204,11 @@ fn the_upgrade_commits_once_and_history_keeps_the_old_files() {
         Some(EDITED_ROLE)
     );
     assert_eq!(
-        committed(&layout, 0, ".nandi/agents/chief-of-staff/skill.md"),
+        committed(&layout, 0, ".nandi/agents/chief-of-staff/agent.md"),
         None
     );
     assert_eq!(
-        committed(&layout, 0, &nandi_file("skill.md")).as_deref(),
+        committed(&layout, 0, &nandi_file("agent.md")).as_deref(),
         Some(SKILL_0_1_0)
     );
     // Machine-local files move with the folder but are never committed
@@ -249,7 +249,7 @@ fn grants_and_triggers_name_nandi() {
     );
     // The person's own agent is untouched
     assert_eq!(
-        read(&layout, ".nandi/agents/writer/skill.md").as_deref(),
+        read(&layout, ".nandi/agents/writer/agent.md").as_deref(),
         Some(WRITER_SKILL)
     );
     assert_eq!(

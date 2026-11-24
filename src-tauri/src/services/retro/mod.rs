@@ -14,7 +14,7 @@
 //! The model reads and proposes; this module keeps the record, the limits
 //! and the check. The limits (`domain::retro`) are checked in code when a
 //! change is proposed and again when it is applied: a change may edit an
-//! agent's `skill.md`, a playbook, a workflow or a trigger, and narrow
+//! agent's `agent.md`, a playbook, a workflow or a trigger, and narrow
 //! access, never widen it. Agents from a signed pack are never edited.
 //!
 //! The retro's tools ([`tool`]) are offered only in the weekly trigger's
@@ -84,7 +84,7 @@ pub struct RetroItem {
     pub id: String,
     pub agent_id: String,
     pub agent_name: String,
-    /// `skill`, `playbook:<name>`, `workflow:<id>` or `trigger:<id>`
+    /// `agent`, `playbook:<name>`, `workflow:<id>` or `trigger:<id>`
     pub target: String,
     /// Its file in the gold copy
     pub path: String,

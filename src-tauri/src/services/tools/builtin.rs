@@ -47,7 +47,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
             &["runtime", "filesystem"],
         ),
         ToolDefinition {
-            // Cross-user calls need approval unless skill.md says otherwise
+            // Cross-user calls need approval unless agent.md says otherwise
             requires_approval: true,
             ..builtin(
                 DELEGATION_TOOL,
@@ -63,7 +63,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
 }
 
 /// A people tool, described as the agent sees it (offered only when its
-/// skill.md lists it)
+/// agent.md lists it)
 fn people_tool(name: &str, latency_class: LatencyClass) -> ToolDefinition {
     let spec = people::spec(name).expect("people tool names are known");
     builtin(

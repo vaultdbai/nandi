@@ -18,7 +18,7 @@ use bollard::models::{ContainerCreateBody, HostConfig, Mount, MountType, PortBin
 
 use crate::runtime::AgentUser;
 
-/// Container limits when skill.md doesn't set `memory_mb` / `cpu`, and for
+/// Container limits when agent.md doesn't set `memory_mb` / `cpu`, and for
 /// every container that doesn't set its own
 pub const DEFAULT_MEMORY_MB: u32 = 1024;
 pub const DEFAULT_CPU: f32 = 1.0;

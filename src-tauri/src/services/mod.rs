@@ -227,6 +227,13 @@ impl AppState {
     /// orchestrator per agent (and Studio) and the file watcher.
     pub fn start(config: Config) -> Result<Self, String> {
         let layout = repo_bootstrap::install_layout()?;
+        // First, so everything after finds each agent's agent.md, and the
+        // scaffolding never seeds a fresh one beside a person's skill.md
+        match repos::from_0_2::upgrade(&layout) {
+            Ok(Some(upgraded)) => log::info!("Upgraded the gold copy's agents: {upgraded:?}"),
+            Ok(None) => {}
+            Err(e) => log::error!("Failed to upgrade the agents to agent.md: {e}"),
+        }
         // Before the scaffolding, so Nandi's folder is the person's Chief of
         // Staff from 0.1.0, not a fresh copy
         match repos::from_0_1_0::upgrade(&layout) {
@@ -1028,6 +1035,9 @@ impl repo_store::EventPublisher for Reactor {
 
     fn invalid(&self, _problem: &domain::Problem, _changed_by: domain::ChangedBy) {}
 }
+
+#[cfg(test)]
+mod loaded_when_needed_tests;
 
 #[cfg(test)]
 mod tests {

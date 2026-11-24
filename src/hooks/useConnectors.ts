@@ -139,14 +139,14 @@ export function useFolderUsers(connectorId: string) {
   )
 }
 
-/** The connectors an agent's skill.md declares, with its folders */
+/** The connectors an agent's agent.md declares, with its folders */
 export function useAgentConnectors(agentId: string) {
   return useClientQuery(connectorsQueryKeys.agent(agentId), () =>
     client.getAgentConnectors(agentId)
   )
 }
 
-/** Replaces them (writes the agent's skill.md) */
+/** Replaces them (writes the agent's agent.md) */
 export function useSetAgentConnectors(agentId: string) {
   return useClientMutation(
     (connectors: AgentConnectorChoice[]) =>

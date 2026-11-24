@@ -18,6 +18,6 @@ super::commands! {
     /// Whether the agent keeps a memory
     fn get_agent_memory_enabled(state, agent_id: String) -> bool => agent_memory::memory_enabled(&state, &agent_id).await;
 
-    /// Writes `memory_disabled` to the agent's skill.md
+    /// Writes `memory_disabled` to the agent's agent.md
     fn set_agent_memory_enabled(state, agent_id: String, enabled: bool) -> () => agent_memory::set_memory_enabled(&state, &agent_id, enabled).await;
 }

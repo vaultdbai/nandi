@@ -255,7 +255,7 @@ async fn an_agent_runs_and_its_request_is_approved(state: &AppState, router: &Ro
     rpc(
         router,
         "create_agent",
-        json!({ "input": { "id": "offline-assistant", "name": "Offline Assistant" } }),
+        json!({ "input": { "id": "offline-assistant", "name": "Offline Assistant", "description": "A test agent" } }),
     )
     .await;
     let sent = rpc(
@@ -300,7 +300,7 @@ async fn a_workflow_runs(state: &AppState, router: &Router) {
         rpc(
             router,
             "create_agent",
-            json!({ "input": { "id": id, "name": id } }),
+            json!({ "input": { "id": id, "name": id, "description": "A test agent" } }),
         )
         .await;
     }
@@ -471,7 +471,7 @@ async fn an_inbox_item_opens_as_a_chat(state: &AppState, router: &Router) {
     rpc(
         router,
         "create_agent",
-        json!({ "input": { "id": "offline-assistant", "name": "Offline Assistant" } }),
+        json!({ "input": { "id": "offline-assistant", "name": "Offline Assistant", "description": "A test agent" } }),
     )
     .await;
     rpc(

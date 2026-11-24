@@ -10,13 +10,13 @@ use crate::services::domain::retro::{check_agent, check_trigger, check_workflow}
 use crate::services::domain::{AgentId, EntityKind, Trigger, Workflow, WorkflowId};
 use crate::services::repo_store::RepoStore;
 use crate::services::repos::formats;
-use crate::services::repos::layout::{PLAYBOOKS_DIR, SKILL_FILE};
+use crate::services::repos::layout::{AGENT_FILE, PLAYBOOKS_DIR};
 
 /// What a proposal changes
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
-    /// The agent's `skill.md`
-    Skill,
+    /// The agent's `agent.md`
+    Agent,
     /// One of the agent's playbooks (`skills/<name>.md`), new or not
     Playbook(String),
     /// A workflow, by ID
@@ -26,7 +26,7 @@ pub enum Target {
 }
 
 impl Target {
-    /// `skill`, `playbook:<name>`, `workflow:<id>` or `trigger:<id>`
+    /// `agent`, `playbook:<name>`, `workflow:<id>` or `trigger:<id>`
     pub fn parse(text: &str) -> Result<Self, String> {
         let text = text.trim();
         let named = |prefix: &str| {
@@ -34,8 +34,8 @@ impl Target {
                 .map(str::trim)
                 .filter(|n| !n.is_empty())
         };
-        if text == "skill" {
-            Ok(Self::Skill)
+        if text == "agent" {
+            Ok(Self::Agent)
         } else if let Some(name) = named("playbook:") {
             Ok(Self::Playbook(name.to_string()))
         } else if let Some(id) = named("workflow:") {
@@ -44,7 +44,7 @@ impl Target {
             Ok(Self::Trigger(id.to_string()))
         } else {
             Err(format!(
-                "'{text}' isn't something the retro may change: use `skill`, `playbook:<name>`, \
+                "'{text}' isn't something the retro may change: use `agent`, `playbook:<name>`, \
 `workflow:<id>` or `trigger:<id>`"
             ))
         }
@@ -52,7 +52,7 @@ impl Target {
 
     pub fn as_string(&self) -> String {
         match self {
-            Self::Skill => "skill".to_string(),
+            Self::Agent => "agent".to_string(),
             Self::Playbook(name) => format!("playbook:{name}"),
             Self::Workflow(id) => format!("workflow:{id}"),
             Self::Trigger(id) => format!("trigger:{id}"),
@@ -91,8 +91,8 @@ pub fn resolve(store: &RepoStore, agent_id: &str, target: &Target) -> Result<Res
         return Err(format!("Agent '{agent_id}' {PACK_AGENT}"));
     }
     let (path, kind, entity_id, must_exist) = match target {
-        Target::Skill => (
-            place.dir.join(SKILL_FILE),
+        Target::Agent => (
+            place.dir.join(AGENT_FILE),
             EntityKind::Agent,
             agent_id.to_string(),
             true,
@@ -173,9 +173,9 @@ pub fn check(
 ) -> Result<(), String> {
     let refused = |why: String| format!("Refused: {why}. A retro change may never widen access.");
     match target {
-        Target::Skill => {
+        Target::Agent => {
             let before = agent(agent_id, before.unwrap_or_default())?;
-            let after = agent(agent_id, after).map_err(|e| format!("The new skill.md: {e}"))?;
+            let after = agent(agent_id, after).map_err(|e| format!("The new agent.md: {e}"))?;
             check_agent(&before, &after).map_err(|w| refused(w.to_string()))
         }
         Target::Playbook(name) => Playbook::from_md(name, after)
@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn targets_round_trip_and_others_are_refused() {
         for text in [
-            "skill",
+            "agent",
             "playbook:pay-a-bill",
             "workflow:weekly",
             "trigger:digest",

@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::fs_atomic::TEMP_MARKER;
-use super::layout::{MARKETPLACE_DIR, PACKS_DIR, SKILL_FILE};
+use super::layout::{AGENT_FILE, MARKETPLACE_DIR, PACKS_DIR};
 use super::RepoLayout;
 
 /// Who owns an agent or workflow folder.
@@ -65,11 +65,10 @@ fn subdirs(dir: &Path) -> Vec<(String, PathBuf)> {
     dirs
 }
 
-/// Agent folders (holding a skill.md) directly under `dir`.
-fn agent_folders(dir: &Path, origin: &Origin) -> Vec<AgentPlace> {
+/// Folders directly under `dir`, with or without an agent.md.
+fn folders_in(dir: &Path, origin: &Origin) -> Vec<AgentPlace> {
     subdirs(dir)
         .into_iter()
-        .filter(|(_, path)| path.join(SKILL_FILE).is_file())
         .map(|(id, dir)| AgentPlace {
             id,
             dir,
@@ -78,40 +77,62 @@ fn agent_folders(dir: &Path, origin: &Origin) -> Vec<AgentPlace> {
         .collect()
 }
 
-/// Every vendored agent folder, publishers first, then packs.
-pub fn vendored(layout: &RepoLayout) -> Vec<AgentPlace> {
+/// Every vendored folder where an agent may live, publishers first, then
+/// packs, whether or not it holds an agent.md.
+fn vendored_folders(layout: &RepoLayout) -> Vec<AgentPlace> {
     let mut places = Vec::new();
     let marketplace = layout.marketplace_dir();
     for (publisher, dir) in subdirs(&marketplace) {
         if publisher == PACKS_DIR {
             continue;
         }
-        places.extend(agent_folders(&dir, &Origin::Publisher { publisher }));
+        places.extend(folders_in(&dir, &Origin::Publisher { publisher }));
     }
     for (pack, dir) in subdirs(&marketplace.join(PACKS_DIR)) {
-        places.extend(agent_folders(&dir.join("agents"), &Origin::Pack { pack }));
+        places.extend(folders_in(&dir.join("agents"), &Origin::Pack { pack }));
     }
     places
 }
 
-/// Every agent folder: local ones (sorted by ID), then vendored ones. An ID
-/// can appear more than once; the first is the one that loads.
-pub fn all(layout: &RepoLayout) -> Vec<AgentPlace> {
-    let mut places: Vec<AgentPlace> = agent_folders(&layout.agents_dir, &Origin::Local)
+/// Every folder where an agent may live, local ones (sorted by name) then
+/// vendored ones, whether or not it holds an agent.md. For upgrading the
+/// folders themselves (`from_0_2`); loading uses [`all`].
+pub fn folders(layout: &RepoLayout) -> Vec<AgentPlace> {
+    let mut places: Vec<AgentPlace> = folders_in(&layout.agents_dir, &Origin::Local)
         .into_iter()
         .filter(|place| place.id != MARKETPLACE_DIR)
         .collect();
-    places.extend(vendored(layout));
+    places.extend(vendored_folders(layout));
     places
 }
 
-/// Where agent `id` lives, if it has a folder with a skill.md.
+fn has_agent_file(place: &AgentPlace) -> bool {
+    place.dir.join(AGENT_FILE).is_file()
+}
+
+/// Every vendored agent folder (holding an agent.md), publishers first,
+/// then packs.
+pub fn vendored(layout: &RepoLayout) -> Vec<AgentPlace> {
+    vendored_folders(layout)
+        .into_iter()
+        .filter(has_agent_file)
+        .collect()
+}
+
+/// Every agent folder (holding an agent.md): local ones (sorted by ID),
+/// then vendored ones. An ID can appear more than once; the first is the
+/// one that loads.
+pub fn all(layout: &RepoLayout) -> Vec<AgentPlace> {
+    folders(layout).into_iter().filter(has_agent_file).collect()
+}
+
+/// Where agent `id` lives, if it has a folder with an agent.md.
 pub fn locate(layout: &RepoLayout, id: &str) -> Option<AgentPlace> {
     if id == MARKETPLACE_DIR {
         return None;
     }
     let local = layout.agent_dir(id);
-    if local.join(SKILL_FILE).is_file() {
+    if local.join(AGENT_FILE).is_file() {
         return Some(AgentPlace {
             id: id.to_string(),
             dir: local,
@@ -142,7 +163,7 @@ mod tests {
 
     fn skill(path: PathBuf) {
         fs::create_dir_all(&path).unwrap();
-        fs::write(path.join(SKILL_FILE), "---\nname: X\n---\n").unwrap();
+        fs::write(path.join(AGENT_FILE), "---\nname: X\n---\n").unwrap();
     }
 
     #[test]

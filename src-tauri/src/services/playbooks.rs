@@ -527,7 +527,7 @@ mod tests {
         let store = seeded();
         let dir = store.layout().vendored_agent_dir("alice", "arxiv");
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("skill.md"), "---\nname: ArXiv\n---\nSearch.").unwrap();
+        std::fs::write(dir.join("agent.md"), "---\nname: ArXiv\n---\nSearch.").unwrap();
         assert!(!can_propose(&store, "arxiv"));
         assert!(!can_propose(&store, "nobody"));
         assert!(can_propose(

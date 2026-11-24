@@ -143,7 +143,12 @@ async fn write(
                 .map_err(|e| format!("Not a valid agent: {e}"))?;
                 let path = match existing {
                     Some(_) => agents.save(&agent),
-                    None => agents.create(&agent),
+                    None => {
+                        agent
+                            .check_new()
+                            .map_err(|e| format!("Not a valid agent: {e}"))?;
+                        agents.create(&agent)
+                    }
                 }
                 .map_err(String::from)?;
                 store.commit(EntityKind::Agent, agent_id.as_str())?;

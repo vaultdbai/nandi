@@ -61,7 +61,7 @@ const SUMMARY_SYSTEM: &str = "You maintain the working summary of a long-running
 The agent's earlier turns are being removed from its context; your summary replaces them. \
 Be concrete: keep file paths, commands, identifiers, decisions, and open problems. Reply with the summary only.";
 
-/// skill.md `compaction:`
+/// agent.md `compaction:`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CompactionPolicy {
@@ -341,8 +341,8 @@ fn is_step_continuation(role_name: &str) -> bool {
     role_name == role::TOOL_CALL || role_name == role::APPROVAL
 }
 
-/// The agent's skill.md model, or the default (Studio, or an unreadable
-/// skill.md)
+/// The agent's agent.md model, or the default (Studio, or an unreadable
+/// agent.md)
 fn agent_model(deps: &RunDeps, agent_id: &str) -> String {
     if agent_id == STUDIO_AGENT_ID {
         return super::default_model(&deps.store);

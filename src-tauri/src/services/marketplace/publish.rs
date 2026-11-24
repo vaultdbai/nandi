@@ -5,7 +5,7 @@
 //!    commit.
 //! 2. The release is tagged in the agents repo as `<id>-v<version>` (the
 //!    repo holds many agents, so tags are prefixed).
-//! 3. The registry entry is generated from skill.md (capabilities included)
+//! 3. The registry entry is generated from agent.md (capabilities included)
 //!    and, if the user has a publisher key, signed.
 //! 4. A pull request adds or updates `agents/<id>.json` and `index.json` on
 //!    the registry. It's opened from a fork when the user can't push to the
@@ -63,7 +63,7 @@ pub fn github_repo(url: &str) -> Option<(String, String)> {
         .then(|| (owner.to_string(), repo.to_string()))
 }
 
-/// The registry entry for a release, from the agent's skill.md.
+/// The registry entry for a release, from the agent's agent.md.
 pub fn entry(
     agent: &Agent,
     release: &Release,
@@ -410,7 +410,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     fn agent() -> Agent {
-        Agent::from_skill_md(
+        Agent::from_agent_md(
             AgentId::parse("writer").unwrap(),
             "---\nname: Writer\ndescription: Writes things\nallowed-tools: [read_file, write_file]\nrequires_approval: [write_file]\nnetwork:\n  allow:\n    - host: api.example.com\n---\nWrite.",
         )
@@ -484,7 +484,7 @@ mod tests {
             .unwrap();
         let agent_dir = root.join(".nandi/agents/writer");
         std::fs::create_dir_all(&agent_dir).unwrap();
-        std::fs::write(agent_dir.join("skill.md"), "---\nname: W\n---\n").unwrap();
+        std::fs::write(agent_dir.join("agent.md"), "---\nname: W\n---\n").unwrap();
         let unsaved = synced_release(&root, &agent_dir).unwrap_err();
         assert!(
             unsaved.contains("Back up now in Settings › Backup"),

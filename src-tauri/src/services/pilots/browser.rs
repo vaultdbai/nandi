@@ -22,7 +22,7 @@
 //! - What runs without asking is decided per call ([`action`], [`needs_approval`]):
 //!   reading and moving between allowed pages never ask; clicking and
 //!   typing, submitting, typing a secret, files and paying ask unless the
-//!   agent's skill.md allows them (`pilots: [{id: browser, allow: [...]}]`).
+//!   agent's agent.md allows them (`pilots: [{id: browser, allow: [...]}]`).
 //!   The arbitrary-code tools are never offered.
 //! - Policies can refuse controls (`browser.refuse`, [`super::refusal`]):
 //!   before a call that acts on the page, Nandi asks the page what the
@@ -317,7 +317,7 @@ pub fn action(tool: &str, args: &Value, read_only: bool, secret_names: &[String]
     }
 }
 
-/// Whether `action` waits for the user, given what skill.md allows
+/// Whether `action` waits for the user, given what agent.md allows
 pub fn needs_approval(action: Action, options: Option<&PilotOptions>) -> bool {
     let allows = |kind: &str| options.is_some_and(|o| o.allows(kind));
     match action {
@@ -1326,7 +1326,7 @@ mod tests {
         ] {
             assert!(needs_approval(kind, None), "{kind:?}");
         }
-        // Auto mode: skill.md allows them
+        // Auto mode: agent.md allows them
         let auto = options(&["interact", "submit", "secrets"]);
         assert!(!needs_approval(Action::Interact, Some(&auto)));
         assert!(!needs_approval(Action::Submit, Some(&auto)));

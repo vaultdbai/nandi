@@ -5,7 +5,7 @@
 //!
 //! | ✅ A change may                                    | ❌ A change may never                                  |
 //! | -------------------------------------------------- | ------------------------------------------------------ |
-//! | Edit a `skill.md`'s text, a playbook, a workflow's  | Add a tool, a site, a secret, a connector or a pilot   |
+//! | Edit an `agent.md`'s text, a playbook, a workflow's  | Add a tool, a site, a secret, a connector or a pilot   |
 //! | steps' wording or a trigger's schedule and input   | Remove an approval, or let a pilot act without asking  |
 //! | Narrow the tools, sites, connectors or pilots      | Touch the sandbox, the runtime or the AWS grants       |
 //! |                                                    | Add a workflow step or change who does one             |
@@ -93,7 +93,7 @@ impl fmt::Display for Widening {
 /// Frontmatter keys an agent's text may change freely
 const FREE_EXTRA_KEYS: &[&str] = &["tags", "connectors"];
 
-/// `after` may replace `before` (the same agent's `skill.md`): only its
+/// `after` may replace `before` (the same agent's `agent.md`): only its
 /// text, name and description change, or it narrows what it may do
 pub fn check_agent(before: &Agent, after: &Agent) -> Result<(), Widening> {
     if before.id() != after.id() {
@@ -340,7 +340,7 @@ Be brief.
 ";
 
     fn agent(content: &str) -> Agent {
-        Agent::from_skill_md(AgentId::parse("helper").unwrap(), content).unwrap()
+        Agent::from_agent_md(AgentId::parse("helper").unwrap(), content).unwrap()
     }
 
     fn changed(from: &str, to: &str) -> Result<(), Widening> {

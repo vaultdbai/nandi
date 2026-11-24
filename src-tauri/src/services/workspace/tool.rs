@@ -70,7 +70,7 @@ pub fn allowed_in_calendar_run(name: &str) -> bool {
 }
 
 /// The tools of each family an account reads, for an agent with a grant on
-/// one of its connectors or that names one in skill.md `connectors:`
+/// one of its connectors or that names one in agent.md `connectors:`
 pub fn offered(state: &AppState, agent: &str, declared: &[String]) -> Vec<ToolSpec> {
     let grants = state.grants();
     let mut out = Vec::new();

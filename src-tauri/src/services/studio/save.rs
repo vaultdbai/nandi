@@ -288,7 +288,7 @@ async fn save_connector(state: &AppState, args: &Value) -> ToolOutcome {
             "setup": info.setup_hint,
             "secrets": info.secrets.iter().filter(|s| !s.is_set).map(|s| s.key.clone()).collect::<Vec<_>>(),
             "next": format!(
-                "An agent uses it once its skill.md lists `{id}` under `connectors`. Missing secrets and sign-ins are set in Library › Browse › Tools."
+                "An agent uses it once its agent.md lists `{id}` under `connectors`. Missing secrets and sign-ins are set in Library › Browse › Tools."
             ),
         })),
         Err(e) => error(e),

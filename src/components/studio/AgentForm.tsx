@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { FormGrid, ListField, TextField, type FormProps } from './form-fields'
 
-/** An agent's skill.md frontmatter */
+/** An agent's agent.md frontmatter */
 export function AgentForm(props: FormProps) {
   const { t } = useTranslation()
   return (

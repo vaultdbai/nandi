@@ -1432,6 +1432,7 @@ pub async fn publish_agent(
         if place.origin.is_vendored() {
             return Err("Only your own agents can be published. Fork this one first.".to_string());
         }
+        agent.check_new().map_err(|e| e.to_string())?;
         let list = registries(state);
         let registry = list
             .find(&input.registry_url)

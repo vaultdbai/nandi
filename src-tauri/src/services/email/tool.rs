@@ -56,7 +56,7 @@ pub fn allowed_in_email_run(name: &str) -> bool {
 }
 
 /// The mail tools, while a mailbox is connected, for an agent that has a
-/// grant on one or names one in its skill.md `connectors:`. A call without
+/// grant on one or names one in its agent.md `connectors:`. A call without
 /// a grant asks the person first (`services::access`)
 pub fn offered(state: &AppState, agent_id: &str, declared: &[String]) -> Vec<ToolSpec> {
     let connected = super::connected(state);

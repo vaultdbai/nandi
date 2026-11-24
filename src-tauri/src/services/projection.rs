@@ -455,7 +455,7 @@ mod tests {
 
     fn repo() -> AgentRepo {
         AgentRepo::assemble(RepoSnapshot {
-            agents: vec![Agent::from_skill_md(
+            agents: vec![Agent::from_agent_md(
                 AgentId::parse("writer").unwrap(),
                 "---\nname: Writer\nnetwork:\n  allow:\n    - host: x.com\n---\nWrite.",
             )

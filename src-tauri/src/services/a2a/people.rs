@@ -12,7 +12,7 @@
 //!   others and what others asked the owner, from the A2A task log and
 //!   the gateway's held requests.
 //!
-//! Offered only to agents whose skill.md lists them in `allowed-tools`,
+//! Offered only to agents whose agent.md lists them in `allowed-tools`,
 //! so an agent never gets the user's network by default.
 
 use std::collections::HashMap;
@@ -43,7 +43,7 @@ pub fn is_people_tool(name: &str) -> bool {
     name == FIND_PEOPLE || name == MY_REQUESTS
 }
 
-/// The people tools `agent_id`'s skill.md names in `allowed-tools`
+/// The people tools `agent_id`'s agent.md names in `allowed-tools`
 pub fn offered(store: &RepoStore, agent_id: &str) -> Vec<&'static str> {
     let Ok(agent) = store.agent(agent_id) else {
         return Vec::new();
@@ -532,7 +532,7 @@ mod tests {
     fn save_agent(state: &AppState, id: &str, frontmatter: &str) {
         use crate::services::domain::{Agent, AgentId, EntityKind};
         use crate::services::repos::Repository;
-        let agent = Agent::from_skill_md(
+        let agent = Agent::from_agent_md(
             AgentId::parse(id).unwrap(),
             &format!(
                 "---

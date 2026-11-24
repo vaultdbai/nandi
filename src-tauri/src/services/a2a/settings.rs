@@ -1,4 +1,4 @@
-//! An agent's delegation settings, kept in its skill.md (the gold copy):
+//! An agent's delegation settings, kept in its agent.md (the gold copy):
 //!
 //! ```yaml
 //! accepts_delegation: true          # inbound (CapabilitySet)
@@ -11,7 +11,7 @@
 //!
 //! `delegation_outbound` and `delegation_overrides` are frontmatter keys
 //! the domain keeps as unknown keys (written back unchanged), so this
-//! module reads and writes them through the skill.md text. Listing
+//! module reads and writes them through the agent.md text. Listing
 //! `delegate_to_agent` in `allowed-tools` also allows outbound calls.
 //!
 //! Overrides, per capability: `allow` takes the capability's tasks even
@@ -33,9 +33,9 @@ pub const OUTBOUND_KEY: &str = "delegation_outbound";
 pub const OVERRIDES_KEY: &str = "delegation_overrides";
 const ALLOWED_TOOLS_KEY: &str = "allowed-tools";
 
-/// The skill.md frontmatter as YAML (empty if it has none).
+/// The agent.md frontmatter as YAML (empty if it has none).
 fn frontmatter(agent: &Agent) -> Mapping {
-    let md = agent.to_skill_md();
+    let md = agent.to_agent_md();
     split_frontmatter(&md)
         .ok()
         .and_then(|(yaml, _)| yaml)
@@ -69,7 +69,7 @@ fn overrides_of(fm: &Mapping) -> BTreeMap<String, TrustPolicy> {
         return BTreeMap::new();
     };
     map.iter()
-        // Deliberate: skill.md is a hand-edited file. An override that isn't
+        // Deliberate: agent.md is a hand-edited file. An override that isn't
         // allow, deny or ask is left out, so the capability keeps the
         // agent's own policy
         .filter_map(|(capability, policy)| {
@@ -95,14 +95,14 @@ pub fn read(agent: &Agent) -> AgentDelegationSettings {
     }
 }
 
-/// The agent with `settings` written into its skill.md. The domain
+/// The agent with `settings` written into its agent.md. The domain
 /// re-validates the result (e.g. `max_concurrent` of 0 is rejected).
 pub fn apply(agent: &Agent, settings: &AgentDelegationSettings) -> Result<Agent, String> {
-    let md = agent.to_skill_md();
+    let md = agent.to_agent_md();
     let (yaml, body) = split_frontmatter(&md)?;
     let mut fm: Mapping = match yaml {
         Some(yaml) if !yaml.trim().is_empty() => {
-            serde_yaml::from_str(yaml).map_err(|e| format!("Invalid skill.md: {e}"))?
+            serde_yaml::from_str(yaml).map_err(|e| format!("Invalid agent.md: {e}"))?
         }
         _ => Mapping::new(),
     };
@@ -174,7 +174,7 @@ mod tests {
     use crate::services::domain::AgentId;
 
     fn agent(frontmatter: &str) -> Agent {
-        Agent::from_skill_md(
+        Agent::from_agent_md(
             AgentId::parse("papers").unwrap(),
             &format!("---\nname: Papers\n{frontmatter}---\nFind papers.\n"),
         )
@@ -188,7 +188,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_round_trip_through_skill_md() {
+    fn settings_round_trip_through_agent_md() {
         let original = agent("serves: [{name: find-papers}]\ncustom: kept\n");
         let settings = AgentDelegationSettings {
             allow_outbound: true,
@@ -203,14 +203,14 @@ mod tests {
         assert_eq!(read(&updated), settings);
         assert!(updated.capabilities().accepts_delegation());
         assert_eq!(updated.capabilities().delegation_limit(), 3);
-        assert_eq!(updated.skill_body(), "Find papers.");
-        let md = updated.to_skill_md();
+        assert_eq!(updated.agent_body(), "Find papers.");
+        let md = updated.to_agent_md();
         assert!(md.contains("custom: kept"), "{md}");
         assert!(md.contains("delegation_outbound: true"), "{md}");
 
         let off = apply(&updated, &AgentDelegationSettings::default()).unwrap();
         assert_eq!(read(&off), AgentDelegationSettings::default());
-        assert!(!off.to_skill_md().contains("delegation_"));
+        assert!(!off.to_agent_md().contains("delegation_"));
         assert_eq!(off.capabilities().serves().len(), 1, "serves is kept");
     }
 

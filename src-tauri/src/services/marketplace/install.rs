@@ -133,7 +133,7 @@ fn agent_file_allowed(relative: &str) -> bool {
         None => {
             matches!(
                 relative,
-                "skill.md" | "instructions.md" | "README.md" | "icon.svg" | "icon.png"
+                "agent.md" | "instructions.md" | "README.md" | "icon.svg" | "icon.png"
             ) || relative.starts_with("LICENSE")
         }
         Some(("workflows", file)) => {
@@ -161,7 +161,7 @@ fn select_pack_files(files: &FileSet, agents: &[AgentId], workflows: &[WorkflowI
             if path.as_str() == PACK_MANIFEST_PATH
                 || agent_file_allowed(path) && !path.contains('/')
             {
-                return path.as_str() != "skill.md" && path.as_str() != "instructions.md";
+                return path.as_str() != "agent.md" && path.as_str() != "instructions.md";
             }
             if let Some(rest) = path.strip_prefix("agents/") {
                 if let Some((id, inner)) = rest.split_once('/') {
@@ -222,7 +222,7 @@ fn validate_agent(
     drives: &[AgentId],
 ) -> Result<(Agent, Vec<WorkflowId>), String> {
     let skill =
-        text(files, "skill.md")?.ok_or_else(|| format!("The agent '{id}' has no skill.md"))?;
+        text(files, "agent.md")?.ok_or_else(|| format!("The agent '{id}' has no agent.md. Packs made for Nandi 0.2 name it skill.md: ask the publisher for a release made for Nandi 0.3 or later."))?;
     let agent = Agent::from_files(id.clone(), skill, text(files, "instructions.md")?)
         .map_err(|e| describe_error(id.as_str(), &e))?;
     let mut workflows = Vec::new();
@@ -264,7 +264,7 @@ fn validate_workflow(
 }
 
 /// The agents and workflows a pack ships: its manifest's lists, or every
-/// `agents/<id>/skill.md` and `workflows/<w>.yaml` if it lists none.
+/// `agents/<id>/agent.md` and `workflows/<w>.yaml` if it lists none.
 fn pack_contents(
     pack: &PackFile,
     files: &FileSet,
@@ -272,7 +272,7 @@ fn pack_contents(
     let agents = if pack.agents.is_empty() {
         files
             .keys()
-            .filter_map(|p| p.strip_prefix("agents/")?.strip_suffix("/skill.md"))
+            .filter_map(|p| p.strip_prefix("agents/")?.strip_suffix("/agent.md"))
             .filter(|id| !id.contains('/'))
             .map(|id| AgentId::parse(id).map_err(|e| e.to_string()))
             .collect::<Result<Vec<_>, _>>()?
@@ -981,7 +981,7 @@ impl Installer {
     // -- Fork -------------------------------------------------------------------
 
     /// Moves a marketplace agent into the user's own agents as `new_id`:
-    /// copies its folder to `.nandi/agents/<new_id>/`, rewrites skill.md
+    /// copies its folder to `.nandi/agents/<new_id>/`, rewrites agent.md
     /// (new ID and name, source metadata dropped) and its own workflows
     /// (pointed at the new ID), then removes the vendored copy and its
     /// `installed.yaml` entry. Updates stop for it.
@@ -1501,14 +1501,14 @@ You post.
     #[test]
     fn an_agent_brings_its_playbooks_but_no_scripts() {
         let files = pack(&[
-            ("skill.md", POSTER),
+            ("agent.md", POSTER),
             ("skills/post.md", "playbook"),
             ("skills/deep/x.md", "nested"),
             ("skills/run.sh", "script"),
             ("scripts/x.sh", "script"),
         ]);
         let kept: Vec<String> = select_agent_files(files).into_keys().collect();
-        assert_eq!(kept, ["skill.md", "skills/post.md"]);
+        assert_eq!(kept, ["agent.md", "skills/post.md"]);
     }
 
     #[test]
@@ -1521,7 +1521,7 @@ Why.
 ";
         let files = pack(&[
             (PACK_MANIFEST_PATH, MANIFEST),
-            ("agents/poster/skill.md", POSTER),
+            ("agents/poster/agent.md", POSTER),
             ("policies/posting.md", own),
             ("policies/notes.txt", "left behind"),
         ]);
@@ -1578,7 +1578,7 @@ browser: { refuse: [{}] }
         ] {
             let files = pack(&[
                 (PACK_MANIFEST_PATH, MANIFEST),
-                ("agents/poster/skill.md", POSTER),
+                ("agents/poster/agent.md", POSTER),
                 ("policies/posting.md", bad),
             ]);
             assert!(read_pack(&files, "social", &[]).is_err(), "{why}");

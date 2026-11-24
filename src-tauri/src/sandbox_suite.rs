@@ -412,7 +412,7 @@ async fn the_native_container_is_locked_down() {
         plant_credentials(home.path());
         let agent_dir = home.path().join(".nandi/agents/sandbox-e2e-native");
         std::fs::create_dir_all(&agent_dir).unwrap();
-        std::fs::write(agent_dir.join("skill.md"), "# sandbox e2e").unwrap();
+        std::fs::write(agent_dir.join("agent.md"), "# sandbox e2e").unwrap();
         let notes = home.path().join("notes");
         std::fs::create_dir_all(&notes).unwrap();
         std::fs::write(notes.join("plan.md"), "shared, read-only").unwrap();
@@ -540,7 +540,7 @@ fn container_env(
 
 fn coding_agent(runtime: &HarnessRuntime) -> Agent {
     let id = runtime.id();
-    Agent::from_skill_md(
+    Agent::from_agent_md(
         AgentId::parse(format!("sandbox-e2e-{id}")).unwrap(),
         &format!("---\nname: Coder\nruntime: {id}\n---\n\nYou code.\n"),
     )
@@ -872,7 +872,7 @@ async fn the_native_tool_server_is_confined() {
 
     with_relay(|proxy| async move {
         let agent_dir = tempfile::tempdir().unwrap();
-        std::fs::write(agent_dir.path().join("skill.md"), "# e2e").unwrap();
+        std::fs::write(agent_dir.path().join("agent.md"), "# e2e").unwrap();
         let skill = skill("sandbox-e2e-tools", agent_dir.path(), Vec::new());
         workdir_of(&skill.id);
         let egress = EgressState::new(Secrets::in_memory());
@@ -918,9 +918,9 @@ async fn the_native_tool_server_is_confined() {
             .await
             .unwrap();
         assert_eq!(exit_code(&shell), Some(0), "{shell:?}");
-        assert!(shell.content.contains("skill.md"), "{shell:?}");
+        assert!(shell.content.contains("agent.md"), "{shell:?}");
         let escaped = mcp
-            .call_tool("read_file", &json!({"path": "../skill/skill.md"}))
+            .call_tool("read_file", &json!({"path": "../skill/agent.md"}))
             .await
             .unwrap();
         assert!(escaped.is_error, "path escape must fail: {escaped:?}");

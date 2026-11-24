@@ -7,7 +7,7 @@
 //! The folder is the one already shared as `my-notes`, or, when there is
 //! none, `~/.nandi/notes` (machine-local, never a gold-copy definition),
 //! created empty on first use and shared read and write. Nandi
-//! decides what to keep there and how to arrange it (its skill.md says
+//! decides what to keep there and how to arrange it (its agent.md says
 //! how), and keeps it current as it learns things. Writes
 //! there don't ask ([`is_notes_write`]): letting agents update the notes
 //! is the user's one decision (`set_agents_can_write`). Notes are `.md`
@@ -30,7 +30,7 @@ use super::AppState;
 use crate::model::Timestamp;
 use crate::utils::nandi_config;
 
-/// The ID agents know the notes folder by (Nandi's skill.md)
+/// The ID agents know the notes folder by (Nandi's agent.md)
 pub const NOTES_FOLDER_ID: &str = "my-notes";
 
 /// The managed folder, under the Nandi home

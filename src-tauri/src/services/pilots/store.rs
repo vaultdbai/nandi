@@ -6,7 +6,7 @@
 //! `consent.<agent_id>.browser.profile` (`chrome` or `edge`).
 //!
 //! None of this is a definition (the catalog is code, an agent's `pilots:`
-//! block is in its skill.md), so it doesn't belong in the repo files.
+//! block is in its agent.md), so it doesn't belong in the repo files.
 
 use std::sync::LazyLock;
 

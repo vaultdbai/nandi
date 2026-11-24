@@ -141,7 +141,7 @@ async fn each_agent_reaches_only_the_folders_its_skill_names() {
     );
     let manifest = ConnectorManifest::from_yaml(&yaml).unwrap();
     let registry = ConnectorRegistry::with_audit_log(docs.path().join("audit.log"));
-    let agent = domain::Agent::from_skill_md(
+    let agent = domain::Agent::from_agent_md(
         domain::AgentId::parse("reader").unwrap(),
         "---\nname: Reader\nconnectors:\n  - {id: filesystem, folders: [docs]}\n---\nRead.\n",
     )
@@ -389,7 +389,7 @@ async fn start_and_stop_are_explicit() {
 /// `filesystem__read_file` of `shared/a.txt` through the instance an agent
 /// with `on_host` uses
 async fn read_shared(registry: &ConnectorRegistry, on_host: &[String]) -> ToolOutcome {
-    let agent = domain::Agent::from_skill_md(
+    let agent = domain::Agent::from_agent_md(
         domain::AgentId::parse("desk").unwrap(),
         "---
 name: Desk
@@ -476,15 +476,15 @@ async fn start_failures_are_reported_in_the_status() {
 }
 
 #[test]
-fn reads_connectors_from_skill_md() {
-    let agent = domain::Agent::from_skill_md(
+fn reads_connectors_from_agent_md() {
+    let agent = domain::Agent::from_agent_md(
         domain::AgentId::parse("helper").unwrap(),
         "---\nname: Helper\nconnectors:\n  - filesystem\n  - {id: web_search}\n  - filesystem\n---\nHelp.\n",
     )
     .unwrap();
     assert_eq!(declared_connectors(&agent), ["filesystem", "web_search"]);
 
-    let plain = domain::Agent::from_skill_md(
+    let plain = domain::Agent::from_agent_md(
         domain::AgentId::parse("plain").unwrap(),
         "---\nname: Plain\n---\nHi.\n",
     )
@@ -630,9 +630,9 @@ async fn an_agents_folders_are_set_from_its_page() {
     assert!(bad.unwrap_err().contains("Two folders"));
 
     let layout = state.store().layout().clone();
-    std::fs::create_dir_all(layout.skill_path("writer").parent().unwrap()).unwrap();
+    std::fs::create_dir_all(layout.agent_md_path("writer").parent().unwrap()).unwrap();
     std::fs::write(
-        layout.skill_path("writer"),
+        layout.agent_md_path("writer"),
         "---\nname: Writer\n---\nWrite.\n",
     )
     .unwrap();
@@ -669,7 +669,7 @@ async fn an_agents_folders_are_set_from_its_page() {
             },
         ]
     );
-    let skill = std::fs::read_to_string(layout.skill_path("writer")).unwrap();
+    let skill = std::fs::read_to_string(layout.agent_md_path("writer")).unwrap();
     assert!(skill.contains("folders:"), "{skill}");
     let skill = state.store().skill("writer").unwrap();
     let got: Vec<(&str, folders::Access)> = skill

@@ -7,11 +7,11 @@
 //!
 //! ```text
 //! .nandi/connectors.yaml ──install──▶ declared ──start (or first use)──▶ running ──▶ tools
-//! agent skill.md `connectors: [filesystem]` ──▶ that agent sees `filesystem__read_file`, …
+//! agent agent.md `connectors: [filesystem]` ──▶ that agent sees `filesystem__read_file`, …
 //! ```
 //!
 //! - Connectors are disabled by default: nothing runs until it's installed,
-//!   and an agent only sees the tools of connectors its skill.md declares.
+//!   and an agent only sees the tools of connectors its agent.md declares.
 //! - Tool names are prefixed `<connector_id>__` (see `tools`), so they can't
 //!   collide with the container's tools.
 //! - Sensitive tools (marked in [`ConnectorDefinition`]) go through the
@@ -60,7 +60,7 @@ pub use catalog::{definition_for, ConnectorDefinition, MCP as MCP_KIND};
 /// Connectors that are the person's own accounts, signed in under
 /// Settings › Email / Calendar / Files rather than installed: their tools
 /// run on the host (`services::email`, `services::workspace`). An agent
-/// names them in skill.md `connectors:` like any other
+/// names them in agent.md `connectors:` like any other
 pub const ACCOUNT_CONNECTORS: &[&str] = &[
     "outlook",
     "gmail",
@@ -292,7 +292,7 @@ pub trait Connector: Send + Sync {
     ) -> BoxFuture<'a, Result<Value, String>>;
 
     /// `call_tool` for one agent: `options` is its `connectors:` item in
-    /// skill.md (the filesystem connector reads its `folders`). Most
+    /// agent.md (the filesystem connector reads its `folders`). Most
     /// connectors are the same for every agent.
     fn call_tool_for<'a>(
         &'a self,
@@ -820,7 +820,7 @@ pub struct FolderChoice {
     pub access: Option<folders::Access>,
 }
 
-/// The connectors `agent_id`'s skill.md declares, with its folders
+/// The connectors `agent_id`'s agent.md declares, with its folders
 pub fn agent_connectors(
     state: &AppState,
     agent_id: &str,
@@ -890,7 +890,7 @@ pub fn folder_users(state: &AppState, connector_id: &str) -> Result<Vec<FolderUs
     Ok(users)
 }
 
-/// `choices` as skill.md's `connectors:` (plain IDs where there are no
+/// `choices` as agent.md's `connectors:` (plain IDs where there are no
 /// folders); `None` when there are no connectors
 pub fn connectors_yaml(choices: &[AgentConnectorChoice]) -> Option<serde_yaml::Value> {
     if choices.is_empty() {
@@ -923,7 +923,7 @@ pub fn connectors_yaml(choices: &[AgentConnectorChoice]) -> Option<serde_yaml::V
     Some(serde_yaml::Value::Sequence(items))
 }
 
-/// Replaces the connectors `agent_id` uses (its skill.md, through the
+/// Replaces the connectors `agent_id` uses (its agent.md, through the
 /// agent repository). Folders must be on their connector's list.
 pub async fn set_agent_connectors(
     state: &AppState,
@@ -986,7 +986,7 @@ pub fn declared_options(agent: &domain::Agent) -> HashMap<String, serde_yaml::Va
 
 /// `options` with every declared connector's `allowed_sites` set to the
 /// agent's effective `network.allow` (web search reads it). Whatever
-/// skill.md says there is replaced, so an agent can't widen its own sites.
+/// agent.md says there is replaced, so an agent can't widen its own sites.
 pub fn with_allowed_sites(
     mut options: HashMap<String, serde_yaml::Value>,
     declared: &[String],
@@ -1029,14 +1029,14 @@ pub fn agent_folders(
     granted
 }
 
-/// The connector IDs an agent's skill.md declares:
+/// The connector IDs an agent's agent.md declares:
 ///
 /// ```yaml
 /// connectors: [filesystem, web_search]
 /// ```
 pub fn declared_connectors(agent: &domain::Agent) -> Vec<String> {
-    let skill_md = agent.to_skill_md();
-    let Ok((Some(frontmatter), _)) = domain::agent::split_frontmatter(&skill_md) else {
+    let agent_md = agent.to_agent_md();
+    let Ok((Some(frontmatter), _)) = domain::agent::split_frontmatter(&agent_md) else {
         return Vec::new();
     };
     let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(frontmatter) else {
@@ -1276,7 +1276,7 @@ fn connector_info(
 }
 
 /// Declares a built-in connector in `.nandi/connectors.yaml`. Installing
-/// doesn't start it, and no agent uses it until its skill.md says so.
+/// doesn't start it, and no agent uses it until its agent.md says so.
 pub async fn install_connector(state: &AppState, id: &str) -> Result<(), String> {
     parse_id(id)?;
     let current = manifest(state);

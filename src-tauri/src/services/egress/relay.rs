@@ -5,7 +5,7 @@
 //! route to the internet or to the host. The `nandi-egress` relay sits on
 //! that network and on Docker's default bridge, and forwards whatever
 //! reaches it to the host egress proxy. The proxy authenticates each
-//! request by the agent's proxy token and enforces its skill.md, so a
+//! request by the agent's proxy token and enforces its agent.md, so a
 //! process that ignores `HTTPS_PROXY` simply can't get out.
 //!
 //! ```text

@@ -4,7 +4,7 @@ title: Build an agent
 when: Proposing or changing an agent.
 ---
 
-An agent is a folder in the user's repo: a `skill.md` (frontmatter, then the procedure in Markdown), an optional `instructions.md` next to it, and optional playbooks in `skills/<name>.md` (frontmatter `name`, `description`, `when`, then the steps; 900 words or fewer each). The run's prompt lists only each playbook's name, description and when; the agent reads one with `skill_get`. Use playbooks for distinct kinds of work an agent does, so skill.md stays short. The user edits them on the agent's Playbooks tab.
+An agent is a folder in the user's repo: an `agent.md` (frontmatter, then the procedure in Markdown), an optional `instructions.md` next to it, and optional playbooks in `skills/<name>.md` (frontmatter `name`, `description`, `when`, then the steps; 900 words or fewer each). The run's prompt lists only each playbook's name, description and when; the agent reads one with `skill_get`. Use playbooks for distinct kinds of work an agent does, so agent.md stays short. The user edits them on the agent's Playbooks tab.
 
 ## Steps
 
@@ -14,7 +14,7 @@ An agent is a folder in the user's repo: a `skill.md` (frontmatter, then the pro
    - **AWS Ops Analyst** investigates failed AWS Batch jobs and CloudWatch alarms and proposes fixes.
 3. **Pick the tools.** Give only the tools the job needs, by ID, from the tool list in your prompt. Fewer tools is safer and gives better results. Call `nandi_list_tools` to see which are switched on, including connectors and pilots. For an outside service or a folder on the user's computer, the agent lists a connector under `connectors`: check `nandi_list_connectors`, and install a missing one with `nandi_save_artifact` (kind `connector`) before saving the agent.
 4. **Pick the approvals.** Any tool that changes something (runs commands, writes files, sends messages, posts reviews) belongs in `requires_approval` at first. Tell the user they can relax it once they trust the agent.
-5. **Split the text.** The `skill.md` body holds the procedure and the output format: what to do, in which order, what the answer looks like. `instructions.md` holds the user's own rules and policy ("never touch prod", "tests for every bug fix"). Mark it clearly as theirs to edit.
+5. **Split the text.** The `agent.md` body holds the procedure and the output format: what to do, in which order, what the answer looks like. `instructions.md` holds the user's own rules and policy ("never touch prod", "tests for every bug fix"). Mark it clearly as theirs to edit.
 6. **Pick the model.** Leave `model` out, or use the default model from your prompt, unless the user asks for another. Use only models your prompt says this Nandi can call. Call `nandi_list_models` if unsure.
 7. **Folders.** Folders on the user's computer come from the filesystem connector's list of shared folders (`nandi_list_connectors` shows each folder's short name and whether it's read only). Give the agent only the ones it needs, by short name: `connectors: [{id: filesystem, folders: [docs, {id: reports, access: read}]}]`. An agent can be narrowed to read only, never given write on a read-only folder. If the folder isn't on the list, tell the user to add it in Library › Connectors › Filesystem; don't invent one.
 8. **Network.** Agents have no internet by default. If the job needs a host, add it to `network` and say why. Outside services (GitHub, AWS, an MCP server) come through connectors instead: read the connect-a-service guide.

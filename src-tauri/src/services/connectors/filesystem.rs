@@ -1,6 +1,6 @@
 //! The `filesystem` connector: the container's file tools (`read_file`,
 //! `write_file`, `list_dir`), but on the host folders the user shared
-//! (`folders`). Each agent sees only the folders its skill.md names, at
+//! (`folders`). Each agent sees only the folders its agent.md names, at
 //! the access it was given (`folders::granted`). Paths are
 //! `<folder>/<path inside it>` and can't leave the folder, not even
 //! through a symlink; with one folder, the folder can be left out.
@@ -148,7 +148,7 @@ impl FilesystemConnector {
     fn run(&self, name: &str, args: &Value, roots: &[Root]) -> Result<Value, String> {
         if roots.is_empty() {
             return Err(
-                "No folders are shared with you. The user gives an agent folders on its page, or in its skill.md (`connectors: [{id: filesystem, folders: [...]}]`)."
+                "No folders are shared with you. The user gives an agent folders on its page, or in its agent.md (`connectors: [{id: filesystem, folders: [...]}]`)."
                     .to_string(),
             );
         }

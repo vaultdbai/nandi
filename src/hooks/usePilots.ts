@@ -143,7 +143,7 @@ export function useSetPilotSecret(agentId: string) {
   )
 }
 
-/** Adds a site secret to the agent's browser (skill.md + keychain) */
+/** Adds a site secret to the agent's browser (agent.md + keychain) */
 export function useAddPilotSecret(agentId: string) {
   return useClientMutation(
     ({

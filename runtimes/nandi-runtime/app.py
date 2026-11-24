@@ -18,7 +18,7 @@ from pathlib import Path
 from mcp.server.mcpserver import MCPServer
 
 WORKDIR = Path("/agent/workdir").resolve()
-# skill.md `shell_timeout_s`, passed by the host; 30s when it's absent
+# agent.md `shell_timeout_s`, passed by the host; 30s when it's absent
 SHELL_TIMEOUT_SECONDS = int(os.environ.get("NANDI_SHELL_TIMEOUT_SECONDS") or 30)
 # Keeps a runaway command from flooding the LLM context
 MAX_OUTPUT_CHARS = 100_000
@@ -51,7 +51,7 @@ def truncate(text: str) -> str:
 @mcp.tool()
 def shell(cmd: str) -> dict:
     """Run a shell command in the workdir. Times out after the agent's shell
-    timeout (30 seconds unless its skill.md sets `shell_timeout_s`)."""
+    timeout (30 seconds unless its agent.md sets `shell_timeout_s`)."""
     # New session so a timeout can kill the whole process group, not just sh
     proc = subprocess.Popen(
         cmd,

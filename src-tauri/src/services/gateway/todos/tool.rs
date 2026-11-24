@@ -1,6 +1,6 @@
 //! Nandi's to-do tools: thin wrappers over [`super`], so Nandi keeps the
 //! user's to-do list from what it reads. Run on the host, offered only to
-//! Nandi when its `skill.md` lists them, in chats, triggers and the email
+//! Nandi when its `agent.md` lists them, in chats, triggers and the email
 //! and calendar checks' runs. They need no approval: like the notes, the
 //! list is Nandi's to keep, and every add and done is in Decisions.
 //!
@@ -48,7 +48,7 @@ pub const REFUSED_FOR_OTHERS: &str =
     "The user's to-dos aren't available while you answer for someone else";
 
 /// The to-do tools `agent_id` may call in a run started from `source`:
-/// Nandi's, those its `skill.md` lists in `allowed-tools`, and none in a
+/// Nandi's, those its `agent.md` lists in `allowed-tools`, and none in a
 /// run for someone else
 pub fn offered(store: &RepoStore, agent_id: &str, source: Option<SourceType>) -> Vec<ToolSpec> {
     if agent_id != DEFAULT_AGENT || !allowed_in(source) {

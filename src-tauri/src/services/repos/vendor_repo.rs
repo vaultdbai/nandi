@@ -282,10 +282,10 @@ mod tests {
         let repos = Repos::new(RepoLayout::new(tmp.path(), tmp.path().join("trash")));
         let dest = repos.layout().vendored_agent_dir("alice", "arxiv");
 
-        let v1 = files(&[("skill.md", "one"), ("workflows/a.yaml", "a")]);
+        let v1 = files(&[("agent.md", "one"), ("workflows/a.yaml", "a")]);
         repos.vendor.put(&dest, &v1).unwrap();
         assert_eq!(repos.vendor.read(&dest).unwrap(), v1);
-        let v2 = files(&[("skill.md", "two")]);
+        let v2 = files(&[("agent.md", "two")]);
         repos.vendor.put(&dest, &v2).unwrap();
         assert_eq!(repos.vendor.read(&dest).unwrap(), v2, "old files are gone");
         assert_ne!(tree_hash(&v1), tree_hash(&v2));
@@ -298,7 +298,7 @@ mod tests {
         let index = git2::Repository::open(tmp.path()).unwrap().index().unwrap();
         assert!(index
             .get_path(
-                Path::new(".nandi/agents/marketplace/alice/arxiv/skill.md"),
+                Path::new(".nandi/agents/marketplace/alice/arxiv/agent.md"),
                 0
             )
             .is_some());
@@ -313,7 +313,7 @@ mod tests {
             .vendor
             .copy_to_local(&dest, &AgentId::parse("my-arxiv").unwrap())
             .unwrap();
-        assert_eq!(fs::read_to_string(local.join("skill.md")).unwrap(), "two");
+        assert_eq!(fs::read_to_string(local.join("agent.md")).unwrap(), "two");
         repos.vendor.remove(&dest).unwrap();
         assert!(!dest.exists());
         assert!(
@@ -335,7 +335,7 @@ mod tests {
         let local = repos.layout().agent_dir("mine");
         assert!(repos
             .vendor
-            .put(&local, &files(&[("skill.md", "x")]))
+            .put(&local, &files(&[("agent.md", "x")]))
             .is_err());
         assert!(repos
             .vendor

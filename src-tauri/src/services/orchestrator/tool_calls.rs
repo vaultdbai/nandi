@@ -329,9 +329,9 @@ pub(super) async fn execute_tool(
     if disabled {
         return Ok(unavailable("it's switched off in the tool catalog"));
     }
-    // Its skill.md narrowed by its policies; a broken policy stops it here
+    // Its agent.md narrowed by its policies; a broken policy stops it here
     let skill = deps.store.skill(&ctx.agent_id)?;
-    // Pilots: host-side, governed by skill.md `pilots:` + consent
+    // Pilots: host-side, governed by agent.md `pilots:` + consent
     if let Some((pilot, _)) = pilots::tools::parse_tool_name(&call.tool) {
         if !skill.pilots.iter().any(|p| p == pilot) {
             crate::services::policies::record_refused(
@@ -350,7 +350,7 @@ pub(super) async fn execute_tool(
     }
     if !skill.allows_tool(&call.tool) {
         return Ok(unavailable(
-            "not allowed by this agent's skill.md or its policies",
+            "not allowed by this agent's agent.md or its policies",
         ));
     }
     let runtime = deps

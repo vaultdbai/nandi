@@ -4,7 +4,7 @@ title: Connect a service
 when: Folders, GitHub, AWS, S3 backup, web search, MCP servers.
 ---
 
-Agents reach outside services through **connectors**. A connector is installed once, set up in Library › Tools › the connector › Setup, and started there. An agent uses it only when its skill.md lists the connector under `connectors`; its tools appear as `<connector>__<tool>`. Check what's installed with `nandi_list_connectors`, and install one with `nandi_save_artifact` (kind `connector`, then the connector's `id`). The user approves the save.
+Agents reach outside services through **connectors**. A connector is installed once, set up in Library › Tools › the connector › Setup, and started there. An agent uses it only when its agent.md lists the connector under `connectors`; its tools appear as `<connector>__<tool>`. Check what's installed with `nandi_list_connectors`, and install one with `nandi_save_artifact` (kind `connector`, then the connector's `id`). The user approves the save.
 
 ## Built-in connectors
 
@@ -68,7 +68,7 @@ Any other service (Outlook, Slack, Jira, a database…) can come from an **MCP s
    - which tools run without asking
    - which secrets or sign-ins they'll set up
 4. Save it with `nandi_save_artifact` (kind `connector`, and for MCP a connector object with kind `mcp`, its config and secret_refs). The user approves.
-5. Add the connector to the agent that should use it (`connectors` in its skill.md). Fork a marketplace agent first, because it's read-only.
+5. Add the connector to the agent that should use it (`connectors` in its agent.md). Fork a marketplace agent first, because it's read-only.
 6. Tell the user what's left: enter the secrets and click **Start** in Library › Tools, plus any sign-in or policy.
 
 ## Don't

@@ -355,7 +355,7 @@ async fn the_tools_read_events_free_busy_and_file_text_naming_accounts() {
     assert_eq!(
         tool::offered(&state, "pr-reviewer", &["onedrive".into()]).len(),
         4,
-        "named in skill.md: offered, asks on use"
+        "named in agent.md: offered, asks on use"
     );
 
     // One calendar: its events don't need an account to tell them apart

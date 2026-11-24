@@ -124,7 +124,7 @@ beforeEach(() => {
         id: 'writer',
         name: 'Report Writer',
         description: '',
-        skillPath: '',
+        agentMdPath: '',
         status: 'idle',
         currentTask: null,
         origin: { kind: 'local' },

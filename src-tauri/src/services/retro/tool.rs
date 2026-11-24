@@ -43,7 +43,7 @@ pub fn offered(agent_id: &str, source_id: Option<&str>) -> Vec<ToolSpec> {
     }
     let text = |what: &str| json!({ "type": "string", "description": what });
     let target = text(
-        "`skill` (the agent's skill.md), `playbook:<name>`, `workflow:<id>` or `trigger:<id>`",
+        "`agent` (the agent's agent.md), `playbook:<name>`, `workflow:<id>` or `trigger:<id>`",
     );
     vec![
         ToolSpec {
@@ -57,7 +57,7 @@ Also what you proposed lately and how many proposals are left this week."
         ToolSpec {
             name: READ.to_string(),
             description: "Read the file a proposal would change, as it is now: a local agent's \
-skill.md or playbook, a workflow or a trigger. Agents from a pack can't be read or changed here."
+agent.md or playbook, a workflow or a trigger. Agents from a pack can't be read or changed here."
                 .to_string(),
             input_schema: json!({
                 "type": "object",

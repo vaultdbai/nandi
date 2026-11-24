@@ -1,5 +1,5 @@
 //! The run plan's two middlewares (task "Run plans", step 1). Both are on
-//! for every agent unless skill.md `middlewares:` leaves them out, like
+//! for every agent unless agent.md `middlewares:` leaves them out, like
 //! verify-on-stop, and neither applies to a run the email or calendar check
 //! started (those have no plan tools; `execute_run` drops them).
 //!

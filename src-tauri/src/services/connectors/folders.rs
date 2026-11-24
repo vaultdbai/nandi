@@ -12,7 +12,7 @@
 //!       - {id: reports, path: ~/Reports, access: write}
 //! ```
 //!
-//! An agent names the folders it gets in its skill.md, optionally narrowed
+//! An agent names the folders it gets in its agent.md, optionally narrowed
 //! to read-only, never widened:
 //!
 //! ```yaml

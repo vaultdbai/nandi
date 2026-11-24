@@ -17,7 +17,7 @@
 //!
 //! Every route authenticates the agent by its per-container proxy token, and
 //! checks the request against the `aws` / `network` capabilities its
-//! skill.md asks for, narrowed by its policies (re-read per request, so
+//! agent.md asks for, narrowed by its policies (re-read per request, so
 //! edits apply immediately); a stdio connector's container (`connector:<id>`)
 //! may reach its package registries and `config.network`. AWS, fetch,
 //! and tunnel requests are audited to `~/.nandi/local/logs/egress.log`.
@@ -438,7 +438,7 @@ async fn record(entry: EgressLogEntry) {
 // Server
 // ---------------------------------------------------------------------------
 
-/// Loads an agent's capabilities (from skill.md in production).
+/// Loads an agent's capabilities (from agent.md in production).
 pub(crate) type CapabilitiesFn = Arc<dyn Fn(&str) -> Result<Capabilities, String> + Send + Sync>;
 
 /// What the AWS, fetch, and tunnel routes share: who's calling, and what

@@ -20,7 +20,7 @@ pub(super) enum RunEnd {
     ContinuedIn(String),
 }
 
-/// The turn policy of `agent_id`'s skill.md, and the middleware pipeline
+/// The turn policy of `agent_id`'s agent.md, and the middleware pipeline
 /// it declares (see `middleware.rs`), built once per `execute_run`.
 ///
 /// Studio, and agents without a definition, get only the built-in limits:

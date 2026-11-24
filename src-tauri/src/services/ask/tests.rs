@@ -309,7 +309,7 @@ fn the_description_lists_every_section() {
 async fn the_loader_reads_the_repo_for_each_kind_of_view() {
     let state = AppState::for_tests(vec![]);
     let layout = state.store().layout().clone();
-    let skill = layout.skill_path("writer");
+    let skill = layout.agent_md_path("writer");
     std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
     std::fs::write(
         &skill,
@@ -777,8 +777,8 @@ fn agent_edits_produce_a_valid_diff() {
         },
     )
     .unwrap();
-    assert!(preview.diff.contains("--- a/agents/writer/skill.md"));
-    assert!(preview.diff.contains("+++ b/agents/writer/skill.md"));
+    assert!(preview.diff.contains("--- a/agents/writer/agent.md"));
+    assert!(preview.diff.contains("+++ b/agents/writer/agent.md"));
     assert!(preview.diff.contains("-name: Writer"));
     assert!(preview.diff.contains("+name: Scribe"));
     assert!(preview.diff.contains("@@"));
@@ -911,7 +911,7 @@ fn edit_asks_find_their_artifact() {
 async fn an_edit_ask_previews_the_change_with_subscribers() {
     let state = AppState::for_tests(vec![]);
     let layout = state.store().layout().clone();
-    let skill = layout.skill_path("reviewer");
+    let skill = layout.agent_md_path("reviewer");
     std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
     std::fs::write(
         &skill,

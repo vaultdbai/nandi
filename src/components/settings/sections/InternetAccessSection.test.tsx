@@ -31,7 +31,7 @@ const definition = (id: string, network: string[]) => ({
   id,
   name: id,
   description: '',
-  skillBody: 'Help.',
+  agentBody: 'Help.',
   instructions: '',
   modelProvider: null,
   modelName: null,

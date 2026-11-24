@@ -155,7 +155,7 @@ pub struct Placement {
     /// Host directory mounted at `/agent/workdir`
     pub host_workdir: PathBuf,
     /// Memory and CPU limits (`runtime_router::plan` gives the native
-    /// runtime's defaults when skill.md sets none)
+    /// runtime's defaults when agent.md sets none)
     pub memory_mb: u32,
     pub cpu: f32,
     /// The Docker network it joins: `nandi-agents` for runs, whose only way

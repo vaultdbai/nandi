@@ -43,10 +43,10 @@ impl Fixture {
         builtin_agents::seed_triggers(&layout).unwrap();
         let writer = layout.agent_dir("writer");
         std::fs::create_dir_all(&writer).unwrap();
-        std::fs::write(writer.join("skill.md"), WRITER).unwrap();
+        std::fs::write(writer.join("agent.md"), WRITER).unwrap();
         let pack = layout.vendored_agent_dir("acme", "poster");
         std::fs::create_dir_all(&pack).unwrap();
-        std::fs::write(pack.join("skill.md"), WRITER.replace("Writer", "Poster")).unwrap();
+        std::fs::write(pack.join("agent.md"), WRITER.replace("Writer", "Poster")).unwrap();
         let repo = git2::Repository::init(&layout.root).unwrap();
         crate::services::repo_bootstrap::commit_all(&repo, "Setup", Some("tester")).unwrap();
         store.load().unwrap();
@@ -83,7 +83,7 @@ impl Fixture {
     }
 
     fn skill(&self) -> String {
-        std::fs::read_to_string(self.root.join(".nandi/agents/writer/skill.md")).unwrap()
+        std::fs::read_to_string(self.root.join(".nandi/agents/writer/agent.md")).unwrap()
     }
 
     fn head(&self) -> (String, String) {
@@ -102,8 +102,8 @@ impl Fixture {
             id: "sneaky".to_string(),
             run_id: "retro-run".to_string(),
             agent_id: "writer".to_string(),
-            target: "skill".to_string(),
-            path: ".nandi/agents/writer/skill.md".to_string(),
+            target: "agent".to_string(),
+            path: ".nandi/agents/writer/agent.md".to_string(),
             reason: "Wider".to_string(),
             runs: vec!["r1".to_string()],
             before: Some(WRITER.to_string()),
@@ -128,9 +128,9 @@ const SHORTER: &str = "Draft posts for the user.\nKeep them under 80 words; no h
 fn a_proposal_is_recorded_with_its_diff_and_changes_nothing() {
     let fx = Fixture::new();
     let after = WRITER.replace("Draft posts for the user.\n", SHORTER);
-    let proposal = fx.propose("writer", "skill", &after).unwrap();
+    let proposal = fx.propose("writer", "agent", &after).unwrap();
     assert_eq!(proposal.status, ProposalStatus::Pending);
-    assert_eq!(proposal.path, ".nandi/agents/writer/skill.md");
+    assert_eq!(proposal.path, ".nandi/agents/writer/agent.md");
     assert!(
         proposal.diff.contains("+Keep them under 80 words"),
         "{}",
@@ -145,7 +145,7 @@ fn a_proposal_is_recorded_with_its_diff_and_changes_nothing() {
     let item = &items[0];
     assert_eq!(
         (item.agent_name.as_str(), item.target.as_str()),
-        ("Writer", "skill")
+        ("Writer", "agent")
     );
     assert_eq!(item.reason, "You shortened 4 of 5 drafts");
     assert_eq!(item.runs, ["r1", "r2"]);
@@ -216,7 +216,7 @@ fn a_proposal_that_adds_a_tool_a_site_or_a_secret_is_refused() {
         WRITER.replace("requires_approval: [write_file]", "requires_approval: []"),
     ];
     for after in &wider {
-        let why = fx.propose("writer", "skill", after).unwrap_err();
+        let why = fx.propose("writer", "agent", after).unwrap_err();
         assert!(why.starts_with("Refused:"), "{why}");
     }
     // Made anyway (say, before a rule existed): refused again at apply
@@ -243,14 +243,14 @@ fn a_proposal_that_adds_a_tool_a_site_or_a_secret_is_refused() {
     }
     // Narrowing is fine
     let narrower = WRITER.replace("[read_file, write_file]", "[read_file]");
-    fx.propose("writer", "skill", &narrower).unwrap();
+    fx.propose("writer", "agent", &narrower).unwrap();
 }
 
 #[test]
 fn a_signed_pack_agent_is_never_changed() {
     let fx = Fixture::new();
     let why = fx
-        .propose("poster", "skill", &WRITER.replace("Writer", "Poster!"))
+        .propose("poster", "agent", &WRITER.replace("Writer", "Poster!"))
         .unwrap_err();
     assert!(
         why.contains("signed pack") && why.contains("local copy"),
@@ -268,7 +268,7 @@ fn a_signed_pack_agent_is_never_changed() {
         &fx.retro,
         "retro-run",
         tool::READ,
-        &json!({ "agent": "poster", "target": "skill" }),
+        &json!({ "agent": "poster", "target": "agent" }),
         NOW,
     );
     assert!(read.is_error && read.result.contains("signed pack"));
@@ -279,7 +279,7 @@ fn apply_then_undo_leaves_the_gold_copy_as_it_was() {
     let fx = Fixture::new();
     let (tree_before, _) = fx.head();
     let after = WRITER.replace("Draft posts for the user.\n", SHORTER);
-    let id = fx.propose("writer", "skill", &after).unwrap().id;
+    let id = fx.propose("writer", "agent", &after).unwrap().id;
 
     let applied = apply(&fx.retro, &id, NOW + 1).unwrap();
     assert_eq!(applied.status, ProposalStatus::Applied);
@@ -300,7 +300,7 @@ fn apply_then_undo_leaves_the_gold_copy_as_it_was() {
             .store
             .agent("writer")
             .unwrap()
-            .skill_body()
+            .agent_body()
             .contains("80 words"),
         "the agent runs with it"
     );
@@ -325,7 +325,7 @@ fn apply_then_undo_leaves_the_gold_copy_as_it_was() {
         .store
         .agent("writer")
         .unwrap()
-        .skill_body()
+        .agent_body()
         .contains("80 words"));
     assert!(items(&fx.retro, NOW + 4).unwrap().is_empty());
 }
@@ -353,8 +353,8 @@ fn a_new_playbook_goes_on_apply_and_away_on_undo() {
 fn an_edit_since_is_never_overwritten() {
     let fx = Fixture::new();
     let after = WRITER.replace("Draft posts for the user.\n", SHORTER);
-    let id = fx.propose("writer", "skill", &after).unwrap().id;
-    let skill = fx.root.join(".nandi/agents/writer/skill.md");
+    let id = fx.propose("writer", "agent", &after).unwrap().id;
+    let skill = fx.root.join(".nandi/agents/writer/agent.md");
     std::fs::write(&skill, WRITER.replace("Draft", "Write")).unwrap();
     assert!(apply(&fx.retro, &id, NOW + 1)
         .unwrap_err()
@@ -372,7 +372,7 @@ fn an_edit_since_is_never_overwritten() {
 fn refusing_drops_it_from_the_inbox() {
     let fx = Fixture::new();
     let after = WRITER.replace("Draft posts for the user.\n", SHORTER);
-    let id = fx.propose("writer", "skill", &after).unwrap().id;
+    let id = fx.propose("writer", "agent", &after).unwrap().id;
     refuse(&fx.retro, &id, NOW + 1).unwrap();
     assert!(items(&fx.retro, NOW + 2).unwrap().is_empty());
     assert!(apply(&fx.retro, &id, NOW + 2).is_err());
@@ -402,7 +402,7 @@ fn decide_runs(fx: &Fixture, prefix: &str, total: u32, corrections: u32, at: i64
 fn the_check_compares_rates_from_run_records_and_offers_the_undo() {
     let fx = Fixture::new();
     let after = WRITER.replace("Draft posts for the user.\n", SHORTER);
-    let id = fx.propose("writer", "skill", &after).unwrap().id;
+    let id = fx.propose("writer", "agent", &after).unwrap().id;
     let applied_at = NOW + 1;
     apply(&fx.retro, &id, applied_at).unwrap();
     // Before: 2 of 4 refused. After: 3 of 5, worse
@@ -440,7 +440,7 @@ fn the_check_compares_rates_from_run_records_and_offers_the_undo() {
 fn a_change_that_helped_leaves_no_note() {
     let fx = Fixture::new();
     let after = WRITER.replace("Draft posts for the user.\n", SHORTER);
-    let id = fx.propose("writer", "skill", &after).unwrap().id;
+    let id = fx.propose("writer", "agent", &after).unwrap().id;
     let applied_at = NOW + 1;
     apply(&fx.retro, &id, applied_at).unwrap();
     decide_runs(&fx, "before-", 4, 3, applied_at - DAY_MS);
@@ -471,7 +471,7 @@ fn the_tools_are_only_in_the_weekly_retro_run() {
         &fx.retro,
         "retro-run",
         tool::READ,
-        &json!({ "agent": "writer", "target": "skill" }),
+        &json!({ "agent": "writer", "target": "agent" }),
         NOW,
     );
     assert_eq!(read.result, WRITER);

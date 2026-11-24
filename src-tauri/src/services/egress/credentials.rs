@@ -1,7 +1,7 @@
 //! AWS credentials: where an agent's AWS calls get their identity, and
 //! short-lived STS sessions scoped to each agent's capabilities.
 //!
-//! An agent's identity is, in order: the profile its skill.md names
+//! An agent's identity is, in order: the profile its agent.md names
 //! (`aws.profile`), the long-term key in the OS keychain, or the sign-in
 //! profile in Settings → Cloud credentials (`AWS_PROFILE`, else the SDK's
 //! default chain). Long-term keys are narrowed to the agent's grants with

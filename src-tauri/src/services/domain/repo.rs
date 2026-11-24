@@ -483,7 +483,7 @@ mod tests {
     use super::*;
 
     fn agent(id: &str) -> Agent {
-        Agent::from_skill_md(AgentId::parse(id).unwrap(), "---\nname: A\n---\n").unwrap()
+        Agent::from_agent_md(AgentId::parse(id).unwrap(), "---\nname: A\n---\n").unwrap()
     }
 
     fn workflow(id: &str, agent: &str) -> Workflow {
@@ -574,7 +574,7 @@ mod tests {
         );
         assert_eq!(repo.upsert(Entity::from(agent("new"))).unwrap(), None);
         let renamed =
-            Agent::from_skill_md(AgentId::parse("new").unwrap(), "---\nname: B\n---\n").unwrap();
+            Agent::from_agent_md(AgentId::parse("new").unwrap(), "---\nname: B\n---\n").unwrap();
         assert_eq!(
             repo.upsert(Entity::from(renamed)).unwrap(),
             Some(ChangeAction::Updated)
@@ -593,8 +593,8 @@ mod tests {
         repo.record_problem(Problem {
             kind: EntityKind::Agent,
             id: Some("writer".into()),
-            source_path: Some("/repo/.nandi/agents/writer/skill.md".into()),
-            error: DomainError::parse("skill.md", "bad"),
+            source_path: Some("/repo/.nandi/agents/writer/agent.md".into()),
+            error: DomainError::parse("agent.md", "bad"),
             severity: Severity::Error,
         });
         assert!(repo.agent("writer").is_some());

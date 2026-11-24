@@ -1,5 +1,5 @@
 /**
- * An agent's playbooks (`skills/<name>.md` next to its skill.md) and their
+ * An agent's playbooks (`skills/<name>.md` next to its agent.md) and their
  * mutations, via TanStack Query. The key sits under the agent definition's
  * (`['agent-definition', id]`), so every file change, live change and
  * Refresh that updates the agent updates its playbooks too.

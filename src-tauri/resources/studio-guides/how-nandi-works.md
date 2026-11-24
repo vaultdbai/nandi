@@ -25,7 +25,7 @@ Who's responsible for what comes live from the network (`find_people`), not from
 
 ## When Nandi updates the notes
 
-The model decides during a conversation with the user, guided by its skill.md. No app code chooses for it.
+The model decides during a conversation with the user, guided by its agent.md. No app code chooses for it.
 
 - **Getting started:** if the notes are empty or thin, it offers once to ask a few questions, then writes the first files.
 - **Noting as you go:** when the user mentions a deadline, decision, owner change, contact or commitment, or a request's result comes up in the chat, it writes the right file and says so in one line ("Noted in deadlines.md").

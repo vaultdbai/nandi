@@ -675,7 +675,7 @@ mod tests {
         // Written by the app (staged) or by hand (untracked), never committed
         fs::create_dir_all(a.join(".nandi/agents/helper")).unwrap();
         fs::write(
-            a.join(".nandi/agents/helper/skill.md"),
+            a.join(".nandi/agents/helper/agent.md"),
             "---
 name: H
 ---

@@ -19,7 +19,7 @@ export interface AgentDelegationTabProps {
 
 /**
  * The agent editor's Delegation tab: its clarification policy, read from
- * and saved to the agent's skill.md (`clarification:`) on its own, apart
+ * and saved to the agent's agent.md (`clarification:`) on its own, apart
  * from the rest of the editor's draft.
  */
 export function AgentDelegationTab({ agentId }: AgentDelegationTabProps) {

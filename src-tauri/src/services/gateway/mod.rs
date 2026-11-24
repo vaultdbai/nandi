@@ -1300,7 +1300,7 @@ mod tests {
         use crate::services::repos::Repository;
 
         let state = AppState::for_tests(vec![]);
-        let agent = Agent::from_skill_md(
+        let agent = Agent::from_agent_md(
             AgentId::parse("papers").unwrap(),
             "---\nname: Papers\nserves: [{name: find-papers}]\naccepts_delegation: true\n---\n",
         )

@@ -131,8 +131,8 @@ mod tests {
     use crate::model::SourceType;
     use crate::services::domain::AgentId;
 
-    fn agent(skill_md: &str) -> Agent {
-        Agent::from_skill_md(AgentId::parse("writer").unwrap(), skill_md).unwrap()
+    fn agent(agent_md: &str) -> Agent {
+        Agent::from_agent_md(AgentId::parse("writer").unwrap(), agent_md).unwrap()
     }
 
     fn run(status: RunStatus, started_at: f64, ended_at: Option<f64>) -> RunSummary {

@@ -6,7 +6,7 @@
 //!
 //! Guides hold judgement and steps; facts (schema keys, tool IDs, model
 //! names) stay generated in the prompt. The tests below fail when a guide
-//! names a tool or skill.md key that doesn't exist, or when the user guide
+//! names a tool or agent.md key that doesn't exist, or when the user guide
 //! has no section for a guide (`<!-- studio-guide: <id> -->`): the guides
 //! are the source, and the user guide marks where it covers each one.
 
@@ -89,11 +89,11 @@ pub fn index_lines() -> String {
 }
 
 /// Names a guide (or a playbook) may put in backticks: built-in, Studio,
-/// delegation, plan and playbook tools, skill.md and policy keys, and the
+/// delegation, plan and playbook tools, agent.md and policy keys, and the
 /// built-in connectors
 #[cfg(test)]
 pub(crate) fn known_names() -> std::collections::BTreeSet<String> {
-    use crate::services::domain::agent::SKILL_FRONTMATTER_KEYS;
+    use crate::services::domain::agent::AGENT_FRONTMATTER_KEYS;
     let mut known: std::collections::BTreeSet<String> =
         crate::services::tools::builtin::builtin_tools()
             .into_iter()
@@ -113,7 +113,7 @@ pub(crate) fn known_names() -> std::collections::BTreeSet<String> {
     );
     known.insert(crate::services::playbooks::PROPOSE.to_string());
     known.extend(
-        SKILL_FRONTMATTER_KEYS
+        AGENT_FRONTMATTER_KEYS
             .iter()
             .map(|(key, _)| key.to_string()),
     );
@@ -155,7 +155,7 @@ mod tests {
 
     /// Guides must not invent facts the prompt generates: a backticked
     /// snake_case name is a real tool (built-in or Studio's), delegation,
-    /// skill.md or policy key, or built-in connector
+    /// agent.md or policy key, or built-in connector
     #[test]
     fn guides_name_only_real_tools_and_keys() {
         let known = known_names();

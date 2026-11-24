@@ -1,5 +1,5 @@
 //! Playbooks: an agent's skill files. Each is `skills/<name>.md` next to
-//! its `skill.md`: frontmatter with `name` (the file stem), `description`
+//! its `agent.md`: frontmatter with `name` (the file stem), `description`
 //! and `when` (one line each), then the steps in Markdown.
 //!
 //! The run's prompt carries only the index (name, description, when); the
@@ -14,7 +14,7 @@ use specta::Type;
 use super::agent::split_frontmatter;
 use super::{check_len, has_conflict_markers, DomainError, DomainResult, CONFLICT_MARKERS};
 
-/// Most words a playbook's body may have (like a pack agent's skill.md)
+/// Most words a playbook's body may have (like a pack agent's agent.md)
 pub const MAX_PLAYBOOK_WORDS: usize = 900;
 /// Longest name, in characters
 pub const MAX_NAME_CHARS: usize = 64;

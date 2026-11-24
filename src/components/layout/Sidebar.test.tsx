@@ -102,7 +102,7 @@ describe('Sidebar', () => {
           id: 'writer',
           name: 'Writer',
           description: '',
-          skillPath: '',
+          agentMdPath: '',
           status: 'running',
           currentTask: null,
           origin: { kind: 'local' },

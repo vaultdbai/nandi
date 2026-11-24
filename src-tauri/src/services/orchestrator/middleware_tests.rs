@@ -36,7 +36,7 @@ fn setup(script: Value) -> (AppState, Arc<RecordingSink>) {
 }
 
 fn save_agent(state: &AppState, id: &str, frontmatter: &str) {
-    let agent = Agent::from_skill_md(
+    let agent = Agent::from_agent_md(
         AgentId::parse(id).unwrap(),
         &format!("---\nname: {id}\n{frontmatter}---\nHelp the user.\n"),
     )
@@ -444,7 +444,7 @@ async fn continue_with_keeps_the_loop_going_once() {
     state.shutdown();
 }
 
-/// Plan mode end to end: skill.md `middlewares: [read_only]`, the real
+/// Plan mode end to end: agent.md `middlewares: [read_only]`, the real
 /// pipeline, the canned engine
 #[tokio::test]
 async fn plan_mode_rejects_write_tool_calls() {

@@ -980,7 +980,7 @@ mod tests {
             id: "writer".into(),
             name: "Writer".into(),
             description: String::new(),
-            skill_path: String::new(),
+            agent_md_path: String::new(),
             status: agents::AgentStatus::Idle,
             current_task: None,
             origin: agents::AgentOrigin::Local,

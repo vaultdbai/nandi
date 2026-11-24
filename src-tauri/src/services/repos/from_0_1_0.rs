@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use serde_yaml::{Mapping, Value};
 
 use super::fs_atomic::content_hash;
-use super::layout::{INSTRUCTIONS_FILE, SKILL_FILE};
+use super::layout::{AGENT_FILE, INSTRUCTIONS_FILE};
 use super::{RepoLayout, Repos};
 use crate::services::builtin_agents::{default_agent, DEFAULT_AGENT};
 use crate::services::repo_service::GitService;
@@ -38,7 +38,7 @@ pub const COMMIT_MESSAGE: &str = "Upgrade from Nandi 0.1.0";
 /// SHA-256 of each ([`text_hash`]), from the tag v0.1.0
 pub const SHIPPED_IN_0_1_0: &[(&str, &str)] = &[
     (
-        SKILL_FILE,
+        AGENT_FILE,
         "9ab35eff289774a988e7ec9a449198a5b5b3e41cdae2216a8bb45f97c46dad8d",
     ),
     (

@@ -8,7 +8,7 @@
 //! .nandi/settings.yaml
 //! .nandi/connectors.yaml
 //! .nandi/connectors/<id>/connector.md                     (connector packages)
-//! .nandi/agents/<id>/skill.md
+//! .nandi/agents/<id>/agent.md
 //! .nandi/agents/<id>/instructions.md
 //! .nandi/agents/<id>/skills/<playbook>.md                (playbooks)
 //! .nandi/agents/<id>/workflows/<workflow>.yaml
@@ -35,9 +35,9 @@ use crate::services::domain::workflow::WorkflowScope;
 use crate::services::domain::EntityKind;
 
 pub const META_DIR: &str = ".nandi";
-pub const SKILL_FILE: &str = "skill.md";
+pub const AGENT_FILE: &str = "agent.md";
 pub const INSTRUCTIONS_FILE: &str = "instructions.md";
-/// Next to `skill.md`: the agent's playbooks, one `<name>.md` each
+/// Next to `agent.md`: the agent's playbooks, one `<name>.md` each
 pub const PLAYBOOKS_DIR: &str = "skills";
 /// Agent-maintained memory
 #[allow(dead_code)]
@@ -99,8 +99,8 @@ impl RepoLayout {
         self.agents_dir.join(id)
     }
 
-    pub fn skill_path(&self, id: &str) -> PathBuf {
-        self.agent_dir(id).join(SKILL_FILE)
+    pub fn agent_md_path(&self, id: &str) -> PathBuf {
+        self.agent_dir(id).join(AGENT_FILE)
     }
 
     pub fn instructions_path(&self, id: &str) -> PathBuf {
@@ -216,7 +216,7 @@ impl RepoLayout {
         scope: Option<&WorkflowScope>,
     ) -> PathBuf {
         match kind {
-            EntityKind::Agent => self.skill_path(id),
+            EntityKind::Agent => self.agent_md_path(id),
             EntityKind::Workflow => self.workflow_path(id, scope.unwrap_or(&WorkflowScope::Global)),
             EntityKind::Trigger => self.trigger_path(id),
             EntityKind::Settings => self.settings_path(),
@@ -247,8 +247,8 @@ mod tests {
     fn paths_live_under_dot_nandi() {
         let layout = RepoLayout::new("/r", "/trash");
         assert_eq!(
-            layout.skill_path("writer"),
-            Path::new("/r/.nandi/agents/writer/skill.md")
+            layout.agent_md_path("writer"),
+            Path::new("/r/.nandi/agents/writer/agent.md")
         );
         let scoped = WorkflowScope::Agent(AgentId::parse("writer").unwrap());
         assert_eq!(

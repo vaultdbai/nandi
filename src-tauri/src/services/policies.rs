@@ -3,7 +3,7 @@
 //! `RepoStore::skill` sends every `SkillConfig` through [`narrow`], so the
 //! orchestrator (tools, approvals), the egress proxy (network, AWS) and the
 //! runtime container (shared folders) all see what the agent may do once
-//! every applying policy in `.nandi/policies/` has narrowed its skill.md
+//! every applying policy in `.nandi/policies/` has narrowed its agent.md
 //! (`domain::policy`). A broken policy that may cover the agent, or a model
 //! a policy refuses, stops it: `skill` returns the reason.
 //!
@@ -207,7 +207,7 @@ pub fn check_file(store: &RepoStore, id: &str) -> PolicyFile {
     }
 }
 
-/// What the agent's skill.md asks for, as the policy evaluator reads it
+/// What the agent's agent.md asks for, as the policy evaluator reads it
 fn request(agent: &Agent, skill: &SkillConfig) -> Request {
     let capabilities = agent.capabilities();
     Request {
@@ -304,7 +304,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn agent(frontmatter: &str) -> Agent {
-        Agent::from_skill_md(
+        Agent::from_agent_md(
             AgentId::parse("writer").unwrap(),
             &format!("---\nname: Writer\n{frontmatter}---\n\nYou write.\n"),
         )
@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn no_policies_leave_skill_md_as_it_is() {
+    fn no_policies_leave_agent_md_as_it_is() {
         let agent = agent("network: { allow: [{ host: api.github.com }] }\n");
         let skill = skill_for(&agent);
         let narrowed = narrow(&agent, skill.clone(), &PolicySet::default()).unwrap();
@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn tags_in_skill_md_select_policies() {
+    fn tags_in_agent_md_select_policies() {
         let tagged = agent("tags: [finance]\n");
         let untagged = agent("");
         let policies = set(&[(

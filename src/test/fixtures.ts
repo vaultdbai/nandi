@@ -21,7 +21,7 @@ export function agentInfo(
     id,
     name,
     description: '',
-    skillPath: `/home/me/.nandi/agents/${id}/skill.md`,
+    agentMdPath: `/home/me/.nandi/agents/${id}/agent.md`,
     status: 'idle',
     currentTask: null,
     origin: { kind: 'local' },

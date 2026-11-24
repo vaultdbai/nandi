@@ -6,7 +6,7 @@
 //!   host (decoded and raw) and the agent's reason;
 //! - Allow once lets this run open it (and only this run: the proxy's
 //!   grant ends with the run, and the next run asks again);
-//! - Always allow writes the host into the agent's skill.md, so later runs
+//! - Always allow writes the host into the agent's agent.md, so later runs
 //!   don't ask; with subdomains, `*.host` too;
 //! - Don't allow fails the call with words the agent can pass on;
 //! - addresses, local names and ports are never asked about.
@@ -43,7 +43,7 @@ fn script(url: &str) -> Value {
 
 /// An agent of the user's own with the visible browser and one allowed site
 fn add_agent(state: &AppState) {
-    let path = state.store().layout().skill_path(AGENT);
+    let path = state.store().layout().agent_md_path(AGENT);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(
         &path,
@@ -170,8 +170,8 @@ async fn always_allow_saves_the_site_to_the_agent() {
         allowed_hosts(&state),
         ["example.com", "shop.example.org", "*.shop.example.org"]
     );
-    let skill_md = std::fs::read_to_string(state.store().layout().skill_path(AGENT)).unwrap();
-    assert!(skill_md.contains("shop.example.org"), "{skill_md}");
+    let agent_md = std::fs::read_to_string(state.store().layout().agent_md_path(AGENT)).unwrap();
+    assert!(agent_md.contains("shop.example.org"), "{agent_md}");
     // Later runs open it without asking
     let (_, detail) = run(&router).await;
     assert_eq!(detail["run"]["status"], "completed", "{detail}");

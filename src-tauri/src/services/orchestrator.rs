@@ -103,7 +103,7 @@ const MAX_RESTARTS: u32 = 5;
 const RESTART_DELAY: Duration = Duration::from_secs(1);
 /// What a run that failed inside Nandi (a panic) tells the user
 const INTERNAL_ERROR: &str = "The agent hit an internal error.";
-// Steps per run are bounded by skill.md `max_turns` (TurnLimitMiddleware)
+// Steps per run are bounded by agent.md `max_turns` (TurnLimitMiddleware)
 
 // Queue priorities: lower runs sooner, so interactive requests jump ahead
 // of background work. Ties run oldest first.
@@ -293,7 +293,7 @@ pub struct RunDeps {
     pub bus: EventBus,
     pub secrets: Secrets,
     pub runtimes: AgentRuntimes,
-    /// Agents' definitions (skill.md, instructions.md)
+    /// Agents' definitions (agent.md, instructions.md)
     pub store: RepoStore,
     /// Runtime connectors; `None` in tests that don't need them
     pub connectors: Option<Arc<ConnectorRegistry>>,

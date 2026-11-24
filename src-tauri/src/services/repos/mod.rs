@@ -15,6 +15,7 @@ pub mod connector_repo;
 pub mod decision_repo;
 pub mod formats;
 pub mod from_0_1_0;
+pub mod from_0_2;
 pub mod fs_atomic;
 pub mod git;
 pub mod group_repo;
@@ -343,7 +344,7 @@ impl Repos {
         let (path, bytes) = match kind {
             EntityKind::Agent => {
                 let dir = self.agents.locate(id)?.dir;
-                let skill = dir.join(layout::SKILL_FILE);
+                let skill = dir.join(layout::AGENT_FILE);
                 let mut bytes = read(&skill)?;
                 if let Some(extra) = read(&dir.join(layout::INSTRUCTIONS_FILE)) {
                     bytes.push(0);
@@ -422,7 +423,7 @@ impl Repos {
             .agents
             .folder_names()
             .into_iter()
-            .map(|id| (&formats::AGENT, layout.skill_path(&id)));
+            .map(|id| (&formats::AGENT, layout.agent_md_path(&id)));
         let workflows = self
             .workflows
             .file_ids()

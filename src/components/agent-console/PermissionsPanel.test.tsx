@@ -13,7 +13,7 @@ const definition = {
   id: 'writer',
   name: 'Writer',
   description: '',
-  skillBody: 'Write.',
+  agentBody: 'Write.',
   instructions: '',
   modelProvider: null,
   modelName: null,
@@ -26,9 +26,9 @@ const definition = {
   requiresApproval: [],
   networkRules: [],
   workflows: [],
-  skillMd: '',
-  renderedSkillMd: '',
-  sourcePath: '/repo/.nandi/agents/writer/skill.md',
+  agentMd: '',
+  renderedAgentMd: '',
+  sourcePath: '/repo/.nandi/agents/writer/agent.md',
 }
 
 describe('PermissionsPanel pilots', () => {

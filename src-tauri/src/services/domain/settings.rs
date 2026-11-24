@@ -48,7 +48,7 @@ use super::agent::{model_ref_mapping, ModelRef, Provider};
 use super::grant::Grants;
 use super::{DomainError, DomainResult};
 
-/// The model agents use when skill.md doesn't name one.
+/// The model agents use when agent.md doesn't name one.
 #[cfg(test)]
 pub const DEFAULT_MODEL: &str = "claude:claude-sonnet-5";
 

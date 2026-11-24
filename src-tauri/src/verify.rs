@@ -1,5 +1,5 @@
 //! `verify --agent <id>`: checks what an end-to-end run of the agent needs
-//! (skill.md, Docker, the runtime image, the state database, the model's API
+//! (agent.md, Docker, the runtime image, the state database, the model's API
 //! key) and prints a report. Makes no LLM calls and starts no container.
 
 use rusqlite::{Connection, OpenFlags};
@@ -40,8 +40,8 @@ pub fn run(agent_id: &str) -> i32 {
     let skill = match agents::load_skill_from_config(agent_id) {
         Ok(skill) => {
             report.pass(format!(
-                "skill.md parses ({})",
-                skill.dir.join("skill.md").display()
+                "agent.md parses ({})",
+                skill.dir.join("agent.md").display()
             ));
             Some(skill)
         }

@@ -13,7 +13,7 @@ export function displayAgent(id: string, name: string): AgentInfo {
     id,
     name,
     description: '',
-    skillPath: '',
+    agentMdPath: '',
     status: 'idle',
     currentTask: null,
     origin: { kind: 'local' },

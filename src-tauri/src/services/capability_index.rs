@@ -329,7 +329,7 @@ mod tests {
     use crate::services::repos::Repository;
 
     fn agent(id: &str, frontmatter: &str) -> Agent {
-        Agent::from_skill_md(
+        Agent::from_agent_md(
             AgentId::parse(id).unwrap(),
             &format!("---\nname: {id}\n{frontmatter}---\nBody\n"),
         )
@@ -355,7 +355,7 @@ mod tests {
         assert_eq!(serves[0].description, "Finds papers");
         assert!(!agent.capabilities().accepts_delegation());
         assert_eq!(agent.capabilities().delegation_limit(), 3);
-        assert!(Agent::from_skill_md(
+        assert!(Agent::from_agent_md(
             AgentId::parse("bad").unwrap(),
             "---\nserves: [{name: has space}]\n---\n"
         )
@@ -423,7 +423,7 @@ mod tests {
         CreateAgentInput {
             id: id.to_string(),
             name: id.to_string(),
-            description: None,
+            description: Some(format!("The {id} agent")),
             model: None,
             instructions: None,
         }

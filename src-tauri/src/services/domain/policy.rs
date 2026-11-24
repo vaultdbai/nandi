@@ -15,7 +15,7 @@
 //! Why this exists, in plain words. Never grants anything.
 //! ```
 //!
-//! A policy only ever takes away. An agent gets what its skill.md asks for,
+//! A policy only ever takes away. An agent gets what its agent.md asks for,
 //! narrowed by every policy that applies to it, and a deny anywhere wins
 //! ([`effective`]). The one exception is `connectors.run_on_host`, which
 //! lets a trusted connector run on the host instead of in a container.
@@ -76,19 +76,19 @@ pub enum Target {
     All,
     /// `agent:<id or glob>`
     Agent(glob::Pattern),
-    /// `tag:<tag>`: agents whose skill.md lists the tag
+    /// `tag:<tag>`: agents whose agent.md lists the tag
     Tag(String),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolRules {
-    /// Only these tools (on top of what skill.md allows)
+    /// Only these tools (on top of what agent.md allows)
     #[serde(default)]
     pub allow: Option<Vec<String>>,
     #[serde(default)]
     pub deny: Vec<String>,
-    /// Always ask first, whatever skill.md says
+    /// Always ask first, whatever agent.md says
     #[serde(default)]
     pub ask: Vec<String>,
 }
@@ -603,7 +603,7 @@ pub struct FolderRequest {
     pub mode: FileMode,
 }
 
-/// What an agent's skill.md asks for: the input to [`effective`]
+/// What an agent's agent.md asks for: the input to [`effective`]
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Request {
     /// `None`: every runtime tool

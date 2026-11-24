@@ -263,7 +263,7 @@ impl World {
 }
 
 fn save_agent(state: &AppState, id: &str, frontmatter: &str) {
-    let agent = Agent::from_skill_md(
+    let agent = Agent::from_agent_md(
         AgentId::parse(id).unwrap(),
         &format!("---\nname: {id}\n{frontmatter}---\nHelp.\n"),
     )
@@ -450,7 +450,7 @@ fn questions_route_by_policy_with_escalation_as_the_default() {
 }
 
 #[tokio::test]
-async fn the_policy_lives_in_skill_md() {
+async fn the_policy_lives_in_agent_md() {
     let state = AppState::for_tests(vec![]);
     save_agent(&state, "writer", "");
     assert_eq!(
@@ -476,7 +476,7 @@ async fn the_policy_lives_in_skill_md() {
         "trimmed and de-duplicated"
     );
     assert_eq!(read_policy(state.store(), "writer").unwrap(), saved);
-    let md = state.store().agent("writer").unwrap().to_skill_md();
+    let md = state.store().agent("writer").unwrap().to_agent_md();
     assert!(md.contains("clarification:"), "{md}");
     assert!(md.contains("max_rounds: 3"), "{md}");
 
@@ -489,7 +489,7 @@ async fn the_policy_lives_in_skill_md() {
 
     // The default removes the key
     write_policy(state.store(), "writer", ClarificationPolicy::default()).unwrap();
-    let md = state.store().agent("writer").unwrap().to_skill_md();
+    let md = state.store().agent("writer").unwrap().to_agent_md();
     assert!(!md.contains("clarification:"), "{md}");
 }
 

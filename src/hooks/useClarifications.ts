@@ -31,7 +31,7 @@ export const DEFAULT_MAX_ROUNDS = 2
 export const clarificationQueryKeys = {
   all: ['clarification'] as const,
   pending: ['clarification', 'pending'] as const,
-  /** A requester agent's policy (its skill.md `clarification:`) */
+  /** A requester agent's policy (its agent.md `clarification:`) */
   policy: (agentId: string) => ['clarification', 'policy', agentId] as const,
 }
 
@@ -148,7 +148,7 @@ export function useClarificationPolicy(agentId: string, enabled = true) {
   )
 }
 
-/** Saves an agent's clarification policy to its skill.md */
+/** Saves an agent's clarification policy to its agent.md */
 export function useSetClarificationPolicy(agentId: string) {
   const queryClient = useQueryClient()
   return useClientMutation(

@@ -19,7 +19,7 @@ fn deps(state: &AppState) -> RunDeps {
 }
 
 fn save_agent(state: &AppState, id: &str, frontmatter: &str) {
-    let agent = Agent::from_skill_md(
+    let agent = Agent::from_agent_md(
         AgentId::parse(id).unwrap(),
         &format!("---\nname: {id}\n{frontmatter}---\nHelp the user.\n"),
     )
@@ -129,7 +129,7 @@ pilots: { allow: [] }
     assert!(
         shell
             .result
-            .contains("not allowed by this agent's skill.md or its policies"),
+            .contains("not allowed by this agent's agent.md or its policies"),
         "{}",
         shell.result
     );

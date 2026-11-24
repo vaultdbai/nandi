@@ -22,7 +22,7 @@ async fn recorded_state(sinks: Vec<Arc<dyn crate::services::events::EventSink>>)
         .await
         .unwrap();
     let layout = state.store().layout().clone();
-    let skill = layout.skill_path("writer");
+    let skill = layout.agent_md_path("writer");
     std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
     std::fs::write(&skill, SKILL).unwrap();
     std::fs::create_dir_all(&layout.workflows_dir).unwrap();
@@ -189,7 +189,7 @@ async fn agents_and_policies_save_through_their_repositories() {
         .store()
         .read(|repo| repo.agent("writer").map(|a| a.name().to_string()));
     assert_eq!(name.as_deref(), Some("Scribe"));
-    assert!(committed(&root, ".nandi/agents/writer/skill.md")
+    assert!(committed(&root, ".nandi/agents/writer/agent.md")
         .unwrap()
         .contains("name: Scribe"));
 
@@ -301,7 +301,7 @@ async fn chat_creates_what_it_builds() {
         (saved["saved"].as_bool(), saved["created"].as_bool()),
         (Some(true), Some(true))
     );
-    assert!(committed(&root, ".nandi/agents/inbox/skill.md")
+    assert!(committed(&root, ".nandi/agents/inbox/agent.md")
         .unwrap()
         .contains("connectors"));
     let saved = chat_saves(
@@ -312,7 +312,7 @@ async fn chat_creates_what_it_builds() {
     assert_eq!(saved["created"], false);
     assert!(state
         .store()
-        .read(|repo| repo.agent("inbox").map(|a| a.to_skill_md()))
+        .read(|repo| repo.agent("inbox").map(|a| a.to_agent_md()))
         .unwrap()
         .contains("briefly"));
 

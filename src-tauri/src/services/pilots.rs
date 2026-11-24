@@ -21,7 +21,7 @@
 //!   (`consent.<agent_id>.<pilot_id>.<capability>`). Neither is a gold-copy
 //!   definition: they describe this machine, not the agent.
 //! - [`tools`]: what an agent may use. An agent reaches a pilot only if its
-//!   skill.md `pilots:` block names it **and** the user granted every
+//!   agent.md `pilots:` block names it **and** the user granted every
 //!   capability the pilot exposes. The orchestrator talks to the pilot's
 //!   MCP server from the host, so one agent's grant never opens another
 //!   pilot to it. Every call is audited to `pilots.log` ([`audit`]).
@@ -409,7 +409,7 @@ pub(crate) async fn status_of(
 }
 
 /// Records the user's consent for `agent_id` to use one capability of a
-/// pilot. The agent must also declare the pilot in its skill.md.
+/// pilot. The agent must also declare the pilot in its agent.md.
 pub async fn grant_pilot_capability(
     state: &AppState,
     agent_id: &str,
@@ -481,14 +481,14 @@ pub(crate) async fn revoke(
 #[serde(rename_all = "camelCase")]
 pub struct AgentPilotPermission {
     pub pilot_id: String,
-    /// Declared in skill.md but not in this OS's catalog
+    /// Declared in agent.md but not in this OS's catalog
     pub available: bool,
     pub capabilities: Vec<String>,
     pub granted: Vec<String>,
-    /// What skill.md lets it do without asking (`allow:`)
+    /// What agent.md lets it do without asking (`allow:`)
     #[serde(default)]
     pub allows: Vec<String>,
-    /// The secrets skill.md names for it, and whether each is in the
+    /// The secrets agent.md names for it, and whether each is in the
     /// keychain (never the value)
     #[serde(default)]
     pub secrets: Vec<PilotSecretStatus>,
@@ -570,7 +570,7 @@ pub async fn agent_pilot_permissions(
     Ok(permissions)
 }
 
-/// Saves the value of a secret `agent_id`'s skill.md names for `pilot_id`
+/// Saves the value of a secret `agent_id`'s agent.md names for `pilot_id`
 /// (`secrets: {NAME: <keychain entry>}`) in the keychain; empty removes it.
 /// Write-only: the value is never read back.
 pub async fn set_pilot_secret(
@@ -587,7 +587,7 @@ pub async fn set_pilot_secret(
         .pilot_options(pilot_id)
         .and_then(|o| o.secrets.get(name))
         .ok_or_else(|| {
-            format!("This agent's skill.md doesn't name a secret '{name}' for {pilot_id}")
+            format!("This agent's agent.md doesn't name a secret '{name}' for {pilot_id}")
         })?
         .clone();
     if value.is_empty() {
@@ -600,7 +600,7 @@ pub async fn set_pilot_secret(
 }
 
 /// Adds a site secret to `agent_id`'s `pilot_id` browser: its name goes
-/// into skill.md (`secrets: {NAME: nandi.pilot.<agent>.<name>}`, through
+/// into agent.md (`secrets: {NAME: nandi.pilot.<agent>.<name>}`, through
 /// the repository) and its value into the keychain. Only for agents made
 /// on this computer: a pack's agent names its secrets itself.
 pub async fn add_pilot_secret(

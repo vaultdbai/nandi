@@ -44,7 +44,7 @@ pub fn seed_files(owner: &str, repo: &str) -> Vec<(String, String)> {
          1. Ask @{owner} to add you as a collaborator on this repo.\n\
          2. In Nandi: **Marketplace → Registries → Add registry**, URL `github.com/{owner}/{repo}`, kind *community*, and tick *Use my GitHub sign-in*.\n\n\
          ## Share an agent\n\n\
-         1. Push your agent folder (`skill.md`, `instructions.md`, optional `workflows/`) to any repo members can read, and tag a release (`git tag -a v1.0.0 -m v1.0.0 && git push --tags`).\n\
+         1. Push your agent folder (`agent.md`, `instructions.md`, optional `workflows/`) to any repo members can read, and tag a release (`git tag -a v1.0.0 -m v1.0.0 && git push --tags`).\n\
          2. Add `agents/<id>.json` here (same fields as the public registry: `id`, `name`, `description`, `publisher`, `repo`, `path`, `latest_version`, `capabilities`, …) and the same entry to the `agents` list in `index.json`.\n\
          3. Commit to `main`. Members see it in **Discover** within a few minutes.\n\n\
          Packs work the same way, under `packs/` and the index's `packs` list.\n"

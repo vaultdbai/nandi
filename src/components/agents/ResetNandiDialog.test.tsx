@@ -40,7 +40,7 @@ describe('ResetNandiDialog', () => {
     ).toBeInTheDocument()
     const changes = screen.getAllByRole('listitem').map(li => li.textContent)
     expect(changes).toEqual([
-      'Its settings: name, model, network and tools (skill.md)',
+      'Its settings: name, model, network and tools (agent.md)',
       'Your rules, back to the template (instructions.md)',
       'Its playbooks: edited ones go back, ones you added are removed',
       'Its morning digest and mail check, even if you removed them',

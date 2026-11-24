@@ -8,7 +8,7 @@ export const agentPoliciesQueryKeys = {
 
 /**
  * The policies in `.nandi/policies/` over an agent: which apply, what each
- * changed from its skill.md, or why it can't run
+ * changed from its agent.md, or why it can't run
  */
 export function useAgentPolicies(agentId: string) {
   return useClientQuery(agentPoliciesQueryKeys.agent(agentId), () =>

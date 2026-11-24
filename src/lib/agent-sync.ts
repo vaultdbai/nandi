@@ -352,7 +352,7 @@ export function handleNandiEvent(event: NandiEvent) {
         void queryClient.invalidateQueries({
           queryKey: ['agent-definition', event.payload.id],
         })
-        // What its policies change depends on what skill.md asks for
+        // What its policies change depends on what agent.md asks for
         void queryClient.invalidateQueries({
           queryKey: agentPoliciesQueryKeys.agent(event.payload.id),
         })

@@ -4,7 +4,7 @@ title: Use the browser
 when: Agents opening web pages, clicking, filling forms, screenshots.
 ---
 
-Agents use a real browser through the **browser pilots**: Browser (a window the user watches) and Browser (headless) (in a sandbox, no window). The user installs and starts one in Library › Tools, and allows it for the agent on first use. The agent's skill.md lists it under `pilots`.
+Agents use a real browser through the **browser pilots**: Browser (a window the user watches) and Browser (headless) (in a sandbox, no window). The user installs and starts one in Library › Tools, and allows it for the agent on first use. The agent's agent.md lists it under `pilots`.
 
 ## Only allowed sites open
 
@@ -24,7 +24,7 @@ pilots:
 
 - `allow` picks from interact, submit, secrets, upload, pay. Allow only what the task needs; pay is never implied.
 - `values` are plain values the agent may type (it reads them).
-- `secrets` are keychain entries: the agent types the name and the browser fills in the value. The user saves the value on the agent's Permissions tab. Never put a password in skill.md.
+- `secrets` are keychain entries: the agent types the name and the browser fills in the value. The user saves the value on the agent's Permissions tab. Never put a password in agent.md.
 
 ## Sites and accounts
 

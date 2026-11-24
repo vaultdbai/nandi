@@ -363,7 +363,7 @@ mod tests {
         db.call(|conn| {
             conn.execute_batch(
                 "INSERT INTO agents (id, name, created_at, updated_at, source_path, projection_version)
-                 VALUES ('reader', 'Research Reader', 0, 0, 'reader/skill.md', 1);
+                 VALUES ('reader', 'Research Reader', 0, 0, 'reader/agent.md', 1);
                  INSERT INTO triggers (id, name, source_type, source_config, target_type,
                                        target_id, created_at, updated_at)
                  VALUES ('nightly', 'Nightly digest', 'cron', '{}', 'agent', 'writer', 0, 0);

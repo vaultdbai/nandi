@@ -25,7 +25,7 @@ super::commands! {
     /// The connectors an agent uses, with its shared folders
     fn get_agent_connectors(state, agent_id: String) -> Vec<connectors::AgentConnectorChoice> => connectors::agent_connectors(&state, &agent_id);
 
-    /// Replaces the connectors an agent uses (its skill.md `connectors:`)
+    /// Replaces the connectors an agent uses (its agent.md `connectors:`)
     fn set_agent_connectors(state, agent_id: String, connectors: Vec<connectors::AgentConnectorChoice>) -> () => connectors::set_agent_connectors(&state, &agent_id, connectors).await;
 
     /// Which agents get each of a filesystem connector's shared folders

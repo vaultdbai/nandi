@@ -340,12 +340,12 @@ pub(crate) mod tests {
         let v1 = fixture_repo(
             &origin,
             &[
-                ("agents/a/skill.md", "---\nname: A\n---\n"),
+                ("agents/a/agent.md", "---\nname: A\n---\n"),
                 ("README.md", "hi"),
             ],
             "v1.0.0",
         );
-        let v2 = fixture_repo(&origin, &[("agents/a/skill.md", "two")], "v1.1.0");
+        let v2 = fixture_repo(&origin, &[("agents/a/agent.md", "two")], "v1.1.0");
         let source = GitSource::new(&origin.display().to_string(), None);
 
         let tags = source.release_tags("").unwrap();
@@ -366,7 +366,7 @@ pub(crate) mod tests {
         let old = checkout.files(&v1, None).unwrap();
         assert_eq!(old.len(), 2);
         let agent = checkout.files(&v2, Some("agents/a")).unwrap();
-        assert_eq!(agent["skill.md"], b"two");
+        assert_eq!(agent["agent.md"], b"two");
         assert!(checkout.files(&v2, Some("agents/missing")).is_err());
         drop(checkout);
         assert_eq!(fs::read_dir(&scratch).unwrap().count(), 0, "cleaned up");

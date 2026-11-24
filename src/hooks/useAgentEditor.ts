@@ -37,7 +37,7 @@ const MODEL_PROVIDERS = ['deepseek', 'claude', 'gpt', 'ollama'] as const
 export interface EditorDraft {
   name: string
   description: string
-  skillBody: string
+  agentBody: string
   instructions: string
   /** `''`: the settings default model */
   modelProvider: string
@@ -70,13 +70,13 @@ export interface AgentDefinition {
   /** Tools that need approval, with the default applied */
   requiresApproval: string[]
   networkRules: HostRule[]
-  /** skill.md has an `aws` section */
+  /** agent.md has an `aws` section */
   hasAws: boolean
   workflows: string[]
-  /** skill.md as it is on disk */
-  skillMd: string
+  /** agent.md as it is on disk */
+  agentMd: string
   /** What saving renders for the agent unchanged */
-  renderedSkillMd: string
+  renderedAgentMd: string
   sourcePath: string
 }
 
@@ -105,7 +105,7 @@ export function parseAgentDefinition(value: JsonValue): AgentDefinition {
     draft: {
       name: str(value.name),
       description: str(value.description),
-      skillBody: str(value.skillBody),
+      agentBody: str(value.agentBody),
       instructions: str(value.instructions),
       modelProvider: str(value.modelProvider),
       modelName: str(value.modelName),
@@ -131,8 +131,8 @@ export function parseAgentDefinition(value: JsonValue): AgentDefinition {
     })),
     hasAws: value.hasAws === true,
     workflows: strings(value.workflows),
-    skillMd: str(value.skillMd),
-    renderedSkillMd: str(value.renderedSkillMd),
+    agentMd: str(value.agentMd),
+    renderedAgentMd: str(value.renderedAgentMd),
     sourcePath: str(value.sourcePath),
   }
 }
@@ -147,7 +147,7 @@ export function toDefinitionInput(draft: EditorDraft): AgentDefinitionInput {
   return {
     name: draft.name.trim(),
     description: draft.description.trim(),
-    skillBody: draft.skillBody,
+    agentBody: draft.agentBody,
     instructions: draft.instructions,
     modelProvider: optional(draft.modelProvider),
     modelName: optional(draft.modelName),
@@ -173,7 +173,7 @@ export function toDefinitionInput(draft: EditorDraft): AgentDefinitionInput {
 type DraftField =
   | 'name'
   | 'description'
-  | 'skillBody'
+  | 'agentBody'
   | 'instructions'
   | 'model'
   | 'image'
@@ -211,8 +211,8 @@ export function validateDraft(draft: EditorDraft): DraftErrors {
   else if (name.length > MAX_NAME_CHARS) errors.name = 'editor.errors.tooLong'
   if (draft.description.trim().length > MAX_DESCRIPTION_CHARS)
     errors.description = 'editor.errors.tooLong'
-  if (draft.skillBody.trim().length > MAX_PROMPT_CHARS)
-    errors.skillBody = 'editor.errors.tooLong'
+  if (draft.agentBody.trim().length > MAX_PROMPT_CHARS)
+    errors.agentBody = 'editor.errors.tooLong'
   if (draft.instructions.trim().length > MAX_PROMPT_CHARS)
     errors.instructions = 'editor.errors.tooLong'
 

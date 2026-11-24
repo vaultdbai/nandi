@@ -14,7 +14,7 @@
 //!
 //! Reads (`agent`, `skill`, `list_agents`) are read-through until the file
 //! watcher keeps the aggregate fresh: they re-check the files' hashes,
-//! which is what lets an edited skill.md apply to the next model call.
+//! which is what lets an edited agent.md apply to the next model call.
 //!
 //! All methods block (filesystem + SQLite); async callers use
 //! `spawn_blocking` for anything that may touch many files.
@@ -478,7 +478,7 @@ mod tests {
     fn loads_reloads_and_keeps_the_last_good_version() {
         let tmp = tempfile::tempdir().unwrap();
         let store = store(&tmp.path().join("repo"));
-        let skill = store.layout().skill_path("writer");
+        let skill = store.layout().agent_md_path("writer");
         write(skill.clone(), "---\nname: Writer\n---\nWrite.");
         store.load().unwrap();
         assert_eq!(store.display_name("writer"), "Writer");
@@ -520,8 +520,8 @@ mod tests {
         let root = tmp.path().join("repo");
         let layout = RepoLayout::new(&root, tmp.path().join("trash"));
         let db = Db::in_memory();
-        write(layout.skill_path("a"), "---\nname: A\n---\n");
-        write(layout.skill_path("b"), "---\nname: B\n---\n");
+        write(layout.agent_md_path("a"), "---\nname: A\n---\n");
+        write(layout.agent_md_path("b"), "---\nname: B\n---\n");
         let first = RepoStore::sqlite(Repos::new(layout.clone()), db.clone());
         assert_eq!(
             first.load().unwrap().agents,
@@ -530,7 +530,7 @@ mod tests {
         );
 
         // While "closed": edit one file, delete another
-        write(layout.skill_path("a"), "---\nname: A2\n---\n");
+        write(layout.agent_md_path("a"), "---\nname: A2\n---\n");
         fs::remove_dir_all(layout.agent_dir("b")).unwrap();
         let second = RepoStore::sqlite(Repos::new(layout), db.clone());
         assert_eq!(second.load().unwrap().agents, 1, "only the drifted agent");

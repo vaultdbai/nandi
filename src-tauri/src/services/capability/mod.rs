@@ -8,7 +8,7 @@
 //!
 //! Files are the gold copy (`.nandi/capabilities/<id>.yaml`, written only
 //! by `repos::capability_repo`); SQLite is rebuildable from them. An
-//! agent provides a capability by naming it in skill.md (`serves:` or
+//! agent provides a capability by naming it in agent.md (`serves:` or
 //! `provides:`), a workflow by `provides:`.
 
 pub mod aggregation;
@@ -1374,7 +1374,7 @@ required_tools: [shell]
         let recorder = Arc::new(RecordingSink::default());
         let state = AppState::for_tests(vec![recorder.clone()]);
         let layout = state.store().layout().clone();
-        let skill = layout.skill_path("reviewer");
+        let skill = layout.agent_md_path("reviewer");
         std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
         std::fs::write(
             &skill,

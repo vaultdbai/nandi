@@ -1,5 +1,5 @@
 /**
- * An agent's real capabilities, as declared in its skill.md: the tools it
+ * An agent's real capabilities, as declared in its agent.md: the tools it
  * may use and which need approval, the hosts it may reach, and its pilots
  * with the capabilities the user granted (each can be switched off here).
  *
@@ -412,7 +412,7 @@ function PilotSecretRow({
   )
 }
 
-/** A new secret for the agent's browser: the name into skill.md, the value
+/** A new secret for the agent's browser: the name into agent.md, the value
  * into the keychain (cleared from the form once saved) */
 function AddSiteSecretRow({
   agentId,

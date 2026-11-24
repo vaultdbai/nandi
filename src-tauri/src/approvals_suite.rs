@@ -173,7 +173,7 @@ async fn triager_with_tracker(router: &axum::Router) {
     rpc(
         router,
         "create_agent",
-        json!({ "input": { "id": "triager", "name": "Triager" } }),
+        json!({ "input": { "id": "triager", "name": "Triager", "description": "A test agent" } }),
     )
     .await;
     let (status, body) = call(
@@ -203,7 +203,7 @@ async fn approvals_and_refusals_are_on_the_record() {
     rpc(
         &router,
         "create_agent",
-        json!({ "input": { "id": "approver", "name": "Approver" } }),
+        json!({ "input": { "id": "approver", "name": "Approver", "description": "A test agent" } }),
     )
     .await;
     let (run_id, detail) = run(&router, "approver", "How long is the report?").await;
@@ -372,7 +372,7 @@ async fn a_denied_tool_is_refused_without_asking_first() {
     rpc(
         &router,
         "create_agent",
-        json!({ "input": { "id": "counter", "name": "Counter" } }),
+        json!({ "input": { "id": "counter", "name": "Counter", "description": "A test agent" } }),
     )
     .await;
     write_policy(
@@ -447,7 +447,7 @@ async fn a_decision_in_an_inbox_chat_is_recorded_with_the_chat() {
     rpc(
         &router,
         "create_agent",
-        json!({ "input": { "id": "approver", "name": "Approver" } }),
+        json!({ "input": { "id": "approver", "name": "Approver", "description": "A test agent" } }),
     )
     .await;
     let (run_id, _) = run(&router, "approver", "How long is the report?").await;
@@ -638,7 +638,7 @@ async fn a_crashing_orchestrator_restarts_up_to_the_cap() {
     rpc(
         &router,
         "create_agent",
-        json!({ "input": { "id": "crasher", "name": "Crasher" } }),
+        json!({ "input": { "id": "crasher", "name": "Crasher", "description": "A test agent" } }),
     )
     .await;
     let (run_id, _) = run(&router, "crasher", "How long is the report?").await;
@@ -705,7 +705,7 @@ async fn a_crash_mid_run_fails_that_run_and_the_queue_goes_on() {
     rpc(
         &router,
         "create_agent",
-        json!({ "input": { "id": "crasher", "name": "Crasher" } }),
+        json!({ "input": { "id": "crasher", "name": "Crasher", "description": "A test agent" } }),
     )
     .await;
     let first = send(&router, "crasher", "first").await;

@@ -1,4 +1,4 @@
-//! Per-agent egress capabilities, declared in skill.md frontmatter:
+//! Per-agent egress capabilities, declared in agent.md frontmatter:
 //!
 //! ```yaml
 //! aws:

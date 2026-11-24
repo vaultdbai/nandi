@@ -39,7 +39,7 @@ Options:
 
 Commands:
   verify --agent <ID>  Check Docker, the runtime image, the state database,
-                       the model's API key, and the agent's skill.md; exit
+                       the model's API key, and the agent's agent.md; exit
                        non-zero if any check fails
   rebuild [--force]    Rebuild the local database's view of the repo files
                        (agents, workflows, triggers, settings). Refuses while

@@ -81,7 +81,7 @@ mod tests {
             kind: EntityKind::Agent,
             id: "writer".into(),
             action: ChangeAction::Created,
-            source_path: PathBuf::from(".nandi/agents/writer/skill.md"),
+            source_path: PathBuf::from(".nandi/agents/writer/agent.md"),
             changed_by: ChangedBy::User,
         };
         assert_eq!(event.topic(), "repo://agent-created");

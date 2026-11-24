@@ -18,7 +18,7 @@
 //!
 //! The same signal proposes a **playbook** (step 5): when Nandi does
 //! a step itself and did the same work itself before, its step's
-//! prompt carries [`playbook_hint`]. Its skill.md and `build-a-workflow`
+//! prompt carries [`playbook_hint`]. Its agent.md and `build-a-workflow`
 //! playbook say the rest: one line in `suggestions.md`, never repeated, and
 //! `skill_propose` only once the user says yes.
 

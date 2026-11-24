@@ -1,4 +1,4 @@
-//! Updates to the files Nandi ships for its default agent: `skill.md`,
+//! Updates to the files Nandi ships for its default agent: `agent.md`,
 //! `instructions.md`, the playbooks and the default triggers.
 //!
 //! `.nandi/shipped.yaml` ([`ShippedManifest`]) records the SHA-256
@@ -18,7 +18,7 @@
 //! about the gold copy's files: it is committed with them, so it travels
 //! with Backup and a restore, and a fresh `state.db` never loses it.
 //!
-//! A gold copy from Nandi 0.1.0 has no record. Its `skill.md` and
+//! A gold copy from Nandi 0.1.0 has no record. Its `agent.md` and
 //! `instructions.md` are compared with [`SHIPPED_IN_0_1_0`].
 
 use std::collections::BTreeMap;

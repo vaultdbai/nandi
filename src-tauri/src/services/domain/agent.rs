@@ -1,4 +1,4 @@
-//! The agent entity: `.nandi/agents/<id>/skill.md` (frontmatter + system
+//! The agent entity: `.nandi/agents/<id>/agent.md` (frontmatter + system
 //! prompt) and the optional `instructions.md` (persistent user
 //! instructions appended to it).
 //!
@@ -42,7 +42,7 @@ pub const MAX_NAME_CHARS: usize = 200;
 pub const MAX_DESCRIPTION_CHARS: usize = 2_000;
 pub const MAX_INSTRUCTIONS_CHARS: usize = 200_000;
 
-/// skill.md frontmatter a marketplace publisher may set to describe where
+/// agent.md frontmatter a marketplace publisher may set to describe where
 /// an agent came from. A fork drops them: it's the user's own agent.
 const SOURCE_METADATA_KEYS: [&str; 8] = [
     "source",
@@ -85,7 +85,7 @@ impl Provider {
     }
 }
 
-/// An LLM: `deepseek:deepseek-flash` in skill.md, or
+/// An LLM: `deepseek:deepseek-flash` in agent.md, or
 /// `{provider: deepseek, name: deepseek-flash}` in settings.yaml.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModelRef {
@@ -196,7 +196,7 @@ pub struct ContainerSpec {
     shell_timeout_s: Option<u32>,
 }
 
-/// The longest `shell_timeout_s` skill.md may ask for
+/// The longest `shell_timeout_s` agent.md may ask for
 pub const MAX_SHELL_TIMEOUT_S: u32 = 3_600;
 
 impl ContainerSpec {
@@ -266,7 +266,7 @@ impl ContainerSpec {
 }
 
 /// What runs the agent's turns: Nandi's own loop, or a CLI harness over ACP
-/// (`runtime:` in skill.md; absent is `native`).
+/// (`runtime:` in agent.md; absent is `native`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub enum AgentRuntimeKind {
     #[default]
@@ -308,7 +308,7 @@ impl AgentRuntimeKind {
         })
     }
 
-    /// As written in skill.md
+    /// As written in agent.md
     pub fn as_str(&self) -> std::borrow::Cow<'_, str> {
         match self {
             Self::Native => "native".into(),
@@ -324,7 +324,7 @@ impl AgentRuntimeKind {
     }
 }
 
-/// `runtime_config:` in skill.md: settings for a harness runtime. Unknown
+/// `runtime_config:` in agent.md: settings for a harness runtime. Unknown
 /// keys are kept, like the frontmatter's.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -402,7 +402,7 @@ pub struct AgentDraft {
     pub id: AgentId,
     pub name: String,
     pub description: String,
-    pub skill_body: String,
+    pub agent_body: String,
     pub instructions: String,
     pub model: Option<ModelRef>,
     pub container: ContainerSpec,
@@ -416,7 +416,7 @@ impl AgentDraft {
             id,
             name: name.into(),
             description: String::new(),
-            skill_body: String::new(),
+            agent_body: String::new(),
             instructions: String::new(),
             model: None,
             container: ContainerSpec::default(),
@@ -430,8 +430,8 @@ pub struct Agent {
     id: AgentId,
     name: String,
     description: String,
-    /// skill.md without frontmatter: the agent's system prompt
-    skill_body: String,
+    /// agent.md without frontmatter: the agent's system prompt
+    agent_body: String,
     /// instructions.md: persistent instructions from the user
     instructions: String,
     /// `None`: the settings default
@@ -458,7 +458,7 @@ impl Agent {
             id: draft.id,
             name: draft.name.trim().to_string(),
             description: draft.description.trim().to_string(),
-            skill_body: draft.skill_body.trim().to_string(),
+            agent_body: draft.agent_body.trim().to_string(),
             instructions: draft.instructions.trim().to_string(),
             model: draft.model,
             container: draft.container,
@@ -478,6 +478,21 @@ impl Agent {
         format!("Agent '{}'", self.id)
     }
 
+    /// What creating or publishing an agent needs beyond what loading one
+    /// does: a `description`. Other agents and the Library see only an
+    /// agent's name and description until it runs, so it says what the
+    /// agent is for and when to use it.
+    pub fn check_new(&self) -> DomainResult<()> {
+        if self.description.is_empty() {
+            return Err(DomainError::invalid(
+                self.label(),
+                "description",
+                "is required: say what the agent is for and when to use it",
+            ));
+        }
+        Ok(())
+    }
+
     fn check(&self) -> DomainResult<()> {
         let label = self.label();
         if self.name.is_empty() {
@@ -493,7 +508,7 @@ impl Agent {
         check_len(
             &label,
             "skill body",
-            &self.skill_body,
+            &self.agent_body,
             MAX_INSTRUCTIONS_CHARS,
         )?;
         check_len(
@@ -508,10 +523,10 @@ impl Agent {
         Ok(())
     }
 
-    /// Parses skill.md. The name defaults to the ID. Timestamps are the
+    /// Parses agent.md. The name defaults to the ID. Timestamps are the
     /// epoch until the caller sets them (`with_timestamps`).
-    pub fn from_skill_md(id: AgentId, content: &str) -> DomainResult<Self> {
-        let what = || format!("skill.md for agent '{id}'");
+    pub fn from_agent_md(id: AgentId, content: &str) -> DomainResult<Self> {
+        let what = || format!("agent.md for agent '{id}'");
         if has_conflict_markers(content) {
             return Err(DomainError::parse(what(), CONFLICT_MARKERS));
         }
@@ -563,7 +578,7 @@ impl Agent {
                 .filter(|n| !n.is_empty())
                 .unwrap_or_else(|| id.to_string()),
             description: fm.description.unwrap_or_default().trim().to_string(),
-            skill_body: body.trim().to_string(),
+            agent_body: body.trim().to_string(),
             instructions: String::new(),
             model,
             container: ContainerSpec::new(fm.image, fm.memory_mb, fm.cpu, fm.shell_timeout_s)?,
@@ -585,10 +600,10 @@ impl Agent {
         Ok(agent)
     }
 
-    /// skill.md plus the optional instructions.md.
+    /// agent.md plus the optional instructions.md.
     pub fn from_files(
         id: AgentId,
-        skill_md: &str,
+        agent_md: &str,
         instructions_md: Option<&str>,
     ) -> DomainResult<Self> {
         if instructions_md.is_some_and(has_conflict_markers) {
@@ -597,7 +612,7 @@ impl Agent {
                 CONFLICT_MARKERS,
             ));
         }
-        let mut agent = Self::from_skill_md(id, skill_md)?;
+        let mut agent = Self::from_agent_md(id, agent_md)?;
         // Loading isn't a change: set the field without touching timestamps
         agent.instructions = instructions_md.unwrap_or_default().trim().to_string();
         agent.check()?;
@@ -626,7 +641,7 @@ impl Agent {
         Ok(fork)
     }
 
-    pub fn to_skill_md(&self) -> String {
+    pub fn to_agent_md(&self) -> String {
         let tools = self.capabilities.tools();
         let pilots: Vec<PilotItemOut> = self
             .capabilities
@@ -666,10 +681,10 @@ impl Agent {
         };
         // Serializing plain data can't fail
         let yaml = serde_yaml::to_string(&fm).unwrap_or_default();
-        if self.skill_body.is_empty() {
+        if self.agent_body.is_empty() {
             format!("---\n{yaml}---\n")
         } else {
-            format!("---\n{yaml}---\n\n{}\n", self.skill_body)
+            format!("---\n{yaml}---\n\n{}\n", self.agent_body)
         }
     }
 
@@ -756,10 +771,10 @@ impl Agent {
 
     /// The agent's part of the system prompt: skill body, then instructions.
     pub fn system_prompt(&self) -> String {
-        match (self.skill_body.is_empty(), self.instructions.is_empty()) {
-            (_, true) => self.skill_body.clone(),
+        match (self.agent_body.is_empty(), self.instructions.is_empty()) {
+            (_, true) => self.agent_body.clone(),
             (true, false) => self.instructions.clone(),
-            (false, false) => format!("{}\n\n{}", self.skill_body, self.instructions),
+            (false, false) => format!("{}\n\n{}", self.agent_body, self.instructions),
         }
     }
 
@@ -774,7 +789,7 @@ impl Agent {
 
     // -- Accessors ----------------------------------------------------------
 
-    /// skill.md keys Nandi doesn't model, preserved on save (e.g. the turn
+    /// agent.md keys Nandi doesn't model, preserved on save (e.g. the turn
     /// policy: `middlewares`, `max_turns`, `memory_disabled`)
     pub fn extra(&self) -> &BTreeMap<String, serde_yaml::Value> {
         &self.extra
@@ -818,8 +833,8 @@ impl Agent {
         &self.description
     }
 
-    pub fn skill_body(&self) -> &str {
-        &self.skill_body
+    pub fn agent_body(&self) -> &str {
+        &self.agent_body
     }
 
     pub fn instructions(&self) -> &str {
@@ -852,7 +867,7 @@ impl Agent {
 }
 
 // ---------------------------------------------------------------------------
-// skill.md format
+// agent.md format
 // ---------------------------------------------------------------------------
 
 /// A `pilots:` item: its ID, or a mapping with its options
@@ -921,10 +936,10 @@ struct Frontmatter {
     extra: BTreeMap<String, serde_yaml::Value>,
 }
 
-/// Every skill.md frontmatter key [`Frontmatter`] reads, with what it means:
+/// Every agent.md frontmatter key [`Frontmatter`] reads, with what it means:
 /// the schema Studio's prompt shows. `every_frontmatter_key_is_documented`
 /// fails when the struct gains a key this list lacks.
-pub const SKILL_FRONTMATTER_KEYS: &[(&str, &str)] = &[
+pub const AGENT_FRONTMATTER_KEYS: &[(&str, &str)] = &[
     ("name", "display name (defaults to the agent ID)"),
     ("description", "one line on what the agent does"),
     (
@@ -1092,7 +1107,7 @@ Find papers.
 
     #[test]
     fn parses_every_field() {
-        let agent = Agent::from_skill_md(id("research"), FULL).unwrap();
+        let agent = Agent::from_agent_md(id("research"), FULL).unwrap();
         assert_eq!(agent.name(), "Research Agent");
         assert_eq!(agent.description(), "Finds papers");
         assert_eq!(agent.model().unwrap().to_string(), "claude:claude-sonnet-5");
@@ -1109,23 +1124,23 @@ Find papers.
             agent.capabilities().network().allow[0].host,
             "api.example.com"
         );
-        assert_eq!(agent.skill_body(), "# Researcher\nFind papers.");
+        assert_eq!(agent.agent_body(), "# Researcher\nFind papers.");
         assert!(agent.extra.contains_key("command"));
     }
 
     #[test]
-    fn round_trips_through_skill_md() {
+    fn round_trips_through_agent_md() {
         let agent = Agent::from_files(id("research"), FULL, Some("Cite sources.")).unwrap();
-        let skill_md = agent.to_skill_md();
-        let again = Agent::from_files(id("research"), &skill_md, Some(&agent.to_instructions_md()))
+        let agent_md = agent.to_agent_md();
+        let again = Agent::from_files(id("research"), &agent_md, Some(&agent.to_instructions_md()))
             .unwrap();
         assert_eq!(again, agent);
         // Rendering is stable
-        assert_eq!(again.to_skill_md(), skill_md);
-        assert!(skill_md.contains("command: run.sh"), "{skill_md}");
+        assert_eq!(again.to_agent_md(), agent_md);
+        assert!(agent_md.contains("command: run.sh"), "{agent_md}");
 
-        let minimal = Agent::from_skill_md(id("plain"), "Just a prompt").unwrap();
-        let again = Agent::from_skill_md(id("plain"), &minimal.to_skill_md()).unwrap();
+        let minimal = Agent::from_agent_md(id("plain"), "Just a prompt").unwrap();
+        let again = Agent::from_agent_md(id("plain"), &minimal.to_agent_md()).unwrap();
         assert_eq!(again, minimal);
         assert_eq!(minimal.name(), "plain");
         assert!(minimal.model().is_none());
@@ -1134,16 +1149,16 @@ Find papers.
     #[test]
     fn handles_crlf_bom_and_empty_frontmatter() {
         let agent =
-            Agent::from_skill_md(id("w"), "\u{feff}---\r\nname: Win\r\n---\r\nBody\r\n").unwrap();
+            Agent::from_agent_md(id("w"), "\u{feff}---\r\nname: Win\r\n---\r\nBody\r\n").unwrap();
         assert_eq!(agent.name(), "Win");
-        assert_eq!(agent.skill_body(), "Body");
+        assert_eq!(agent.agent_body(), "Body");
         assert_eq!(
-            Agent::from_skill_md(id("e"), "---\n---\nBody")
+            Agent::from_agent_md(id("e"), "---\n---\nBody")
                 .unwrap()
-                .skill_body(),
+                .agent_body(),
             "Body"
         );
-        assert!(Agent::from_skill_md(id("e"), "").is_ok());
+        assert!(Agent::from_agent_md(id("e"), "").is_ok());
     }
 
     #[test]
@@ -1158,7 +1173,7 @@ accepts_delegation: true
 max_delegation_concurrent: 2
 ---
 Body";
-        let agent = Agent::from_skill_md(id("r"), content).unwrap();
+        let agent = Agent::from_agent_md(id("r"), content).unwrap();
         let caps = agent.capabilities();
         assert!(caps.accepts_delegation());
         assert_eq!(caps.delegation_limit(), 2);
@@ -1167,10 +1182,10 @@ Body";
             caps.serves()[0].input_schema,
             Some(serde_json::json!({"type": "object"}))
         );
-        let again = Agent::from_skill_md(id("r"), &agent.to_skill_md()).unwrap();
+        let again = Agent::from_agent_md(id("r"), &agent.to_agent_md()).unwrap();
         assert_eq!(again, agent);
 
-        let plain = Agent::from_skill_md(
+        let plain = Agent::from_agent_md(
             id("p"),
             "---
 name: P
@@ -1180,9 +1195,9 @@ name: P
         .unwrap();
         assert!(!plain.capabilities().accepts_delegation());
         assert!(plain.capabilities().serves().is_empty());
-        let md = plain.to_skill_md();
+        let md = plain.to_agent_md();
         assert!(!md.contains("serves") && !md.contains("delegation"), "{md}");
-        assert!(Agent::from_skill_md(
+        assert!(Agent::from_agent_md(
             id("z"),
             "---
 max_delegation_concurrent: 0
@@ -1196,20 +1211,20 @@ max_delegation_concurrent: 0
     fn a_half_merged_file_isnt_an_agent() {
         let merged =
             "---\nname: A\n---\n<<<<<<< HEAD\nBe brief.\n=======\nBe thorough.\n>>>>>>> 8a5fc95\n";
-        let error = Agent::from_skill_md(id("a"), merged)
+        let error = Agent::from_agent_md(id("a"), merged)
             .unwrap_err()
             .to_string();
         assert!(error.contains("merge conflict"), "{error}");
         assert!(Agent::from_files(id("a"), "---\nname: A\n---\nHi\n", Some(merged)).is_err());
         // A Markdown heading underline isn't a conflict
         let heading = "---\nname: A\n---\nRules\n=======\nBe brief.\n";
-        assert!(Agent::from_skill_md(id("a"), heading).is_ok());
+        assert!(Agent::from_agent_md(id("a"), heading).is_ok());
     }
 
     #[test]
     fn allowing_sites_adds_them_to_network_allow_once() {
         let id = AgentId::parse("browser").unwrap();
-        let mut agent = Agent::from_skill_md(
+        let mut agent = Agent::from_agent_md(
             id.clone(),
             "---
 name: Browser
@@ -1240,7 +1255,7 @@ Body
             "already there"
         );
         // Written back, and read again the same
-        let again = Agent::from_skill_md(id, &agent.to_skill_md()).unwrap();
+        let again = Agent::from_agent_md(id, &agent.to_agent_md()).unwrap();
         assert_eq!(
             again.capabilities().network(),
             agent.capabilities().network()
@@ -1251,7 +1266,7 @@ Body
     #[test]
     fn a_site_secret_added_by_the_user_round_trips_by_name() {
         let id = AgentId::parse("shopper").unwrap();
-        let mut agent = Agent::from_skill_md(
+        let mut agent = Agent::from_agent_md(
             id.clone(),
             "---
 name: Shopper
@@ -1270,7 +1285,7 @@ Buy things.
             agent.add_pilot_secret("browser", "ACME_PASSWORD").unwrap(),
             entry
         );
-        let again = Agent::from_skill_md(id, &agent.to_skill_md()).unwrap();
+        let again = Agent::from_agent_md(id, &agent.to_agent_md()).unwrap();
         let options = again.capabilities().pilot_options("browser").unwrap();
         assert_eq!(options.secrets["ACME_PASSWORD"], entry);
         assert!(options.allows("interact"), "the rest is kept");
@@ -1290,7 +1305,7 @@ serves:
 provides: [test-cap, find-papers]
 ---
 Body";
-        let agent = Agent::from_skill_md(id("r"), content).unwrap();
+        let agent = Agent::from_agent_md(id("r"), content).unwrap();
         let names: Vec<&str> = agent
             .capabilities()
             .serves()
@@ -1300,19 +1315,19 @@ Body";
         assert_eq!(names, ["find-papers", "test-cap"]);
         assert_eq!(agent.capabilities().provides(), ["test-cap"]);
         // Written back as it was: test-cap under provides, not serves
-        let md = agent.to_skill_md();
+        let md = agent.to_agent_md();
         assert!(md.contains("provides:\n- test-cap"), "{md}");
         assert_eq!(md.matches("name: test-cap").count(), 0, "{md}");
-        let again = Agent::from_skill_md(id("r"), &md).unwrap();
+        let again = Agent::from_agent_md(id("r"), &md).unwrap();
         assert_eq!(again, agent);
 
-        assert!(Agent::from_skill_md(id("z"), "---\nprovides: [a, a]\n---\n").is_err());
-        assert!(Agent::from_skill_md(id("z"), "---\nprovides: ['a b']\n---\n").is_err());
+        assert!(Agent::from_agent_md(id("z"), "---\nprovides: [a, a]\n---\n").is_err());
+        assert!(Agent::from_agent_md(id("z"), "---\nprovides: ['a b']\n---\n").is_err());
     }
 
     #[test]
     fn every_frontmatter_key_is_documented() {
-        let keys: Vec<&str> = SKILL_FRONTMATTER_KEYS.iter().map(|(k, _)| *k).collect();
+        let keys: Vec<&str> = AGENT_FRONTMATTER_KEYS.iter().map(|(k, _)| *k).collect();
         // Every documented key is one the parser reads (none land in `extra`)
         let yaml = "name: A\ndescription: d\nmodel: claude:claude-sonnet-5\nimage: img\n\
             memory_mb: 512\ncpu: 1\nshell_timeout_s: 120\nallowed-tools: [shell]\nrequires_approval: [shell]\n\
@@ -1321,7 +1336,7 @@ Body";
             max_delegation_concurrent: 2\nruntime: claude-code\nruntime_config: {model: sonnet}\n\
             connectors: [filesystem]\ntags: [finance]\n";
         let fm: Frontmatter = serde_yaml::from_str(yaml).unwrap();
-        let tagged = Agent::from_skill_md(id("a"), &format!("---\n{yaml}---\nBody\n")).unwrap();
+        let tagged = Agent::from_agent_md(id("a"), &format!("---\n{yaml}---\nBody\n")).unwrap();
         assert_eq!(tagged.tags(), ["finance"]);
         let undocumented: Vec<&String> = fm
             .extra
@@ -1337,14 +1352,14 @@ Body";
         assert_eq!(written, keys, "the fixture covers every documented key");
 
         // Every key the writer emits is documented
-        let agent = Agent::from_skill_md(id("a"), &format!("---\n{yaml}---\nBody\n")).unwrap();
-        let skill_md = agent.to_skill_md();
-        let (out, _) = split_frontmatter(&skill_md).unwrap();
+        let agent = Agent::from_agent_md(id("a"), &format!("---\n{yaml}---\nBody\n")).unwrap();
+        let agent_md = agent.to_agent_md();
+        let (out, _) = split_frontmatter(&agent_md).unwrap();
         let out: serde_yaml::Mapping = serde_yaml::from_str(out.unwrap()).unwrap();
         for key in out.keys().filter_map(|k| k.as_str()) {
             assert!(
                 keys.contains(&key),
-                "'{key}' missing from SKILL_FRONTMATTER_KEYS"
+                "'{key}' missing from AGENT_FRONTMATTER_KEYS"
             );
         }
     }
@@ -1352,7 +1367,7 @@ Body";
     #[test]
     fn rejects_invalid_files() {
         for (content, expected) in [
-            ("---\nname: [unclosed\n---\n", "Invalid skill.md"),
+            ("---\nname: [unclosed\n---\n", "Invalid agent.md"),
             ("---\nname: No end\n", "missing closing"),
             ("---\nmodel: gemini:pro\n---\n", "unknown"),
             ("---\nmodel: claude\n---\n", "provider"),
@@ -1363,10 +1378,10 @@ Body";
                 "---\nnetwork:\n  allow:\n    - host: \"a.*.com\"\n---\n",
                 "invalid host",
             ),
-            ("---\naws:\n  mode: root\n---\n", "Invalid skill.md"),
+            ("---\naws:\n  mode: root\n---\n", "Invalid agent.md"),
             ("---\npilots: [\"../x\"]\n---\n", "pilot"),
         ] {
-            let error = Agent::from_skill_md(id("a"), content)
+            let error = Agent::from_agent_md(id("a"), content)
                 .unwrap_err()
                 .to_string();
             assert!(error.contains(expected), "{content:?}: {error}");
@@ -1377,7 +1392,7 @@ Body";
     fn new_enforces_invariants() {
         assert!(Agent::new(AgentDraft::named(id("a"), "  ")).is_err());
         let mut draft = AgentDraft::named(id("a"), "A");
-        draft.skill_body = "x".repeat(MAX_INSTRUCTIONS_CHARS + 1);
+        draft.agent_body = "x".repeat(MAX_INSTRUCTIONS_CHARS + 1);
         assert!(Agent::new(draft).is_err());
         assert!(
             AgentId::parse("Not_Valid").is_err(),
@@ -1391,7 +1406,7 @@ Body";
 
     #[test]
     fn forks_drop_source_metadata_and_keep_the_rest() {
-        let original = Agent::from_skill_md(
+        let original = Agent::from_agent_md(
             id("arxiv"),
             "---\nname: ArXiv\nmodel: claude:claude-sonnet-5\nsource: github.com/a/b\npublisher: alice\nversion: 1.2.0\ncustom: kept\nallowed-tools: [shell]\n---\nSearch arXiv.",
         )
@@ -1399,9 +1414,9 @@ Body";
         let fork = original.forked(id("my-arxiv"), " My ArXiv ").unwrap();
         assert_eq!(fork.id().as_str(), "my-arxiv");
         assert_eq!(fork.name(), "My ArXiv");
-        assert_eq!(fork.skill_body(), "Search arXiv.");
+        assert_eq!(fork.agent_body(), "Search arXiv.");
         assert_eq!(fork.model(), original.model());
-        let md = fork.to_skill_md();
+        let md = fork.to_agent_md();
         for dropped in ["source:", "publisher:", "version:"] {
             assert!(!md.contains(dropped), "{dropped} in {md}");
         }
@@ -1412,7 +1427,7 @@ Body";
 
     #[test]
     fn instructions_extend_the_system_prompt() {
-        let mut agent = Agent::from_skill_md(id("a"), "---\nname: A\n---\nBe kind.").unwrap();
+        let mut agent = Agent::from_agent_md(id("a"), "---\nname: A\n---\nBe kind.").unwrap();
         assert_eq!(agent.system_prompt(), "Be kind.");
         agent.update_instructions("  Cite sources.\n").unwrap();
         assert_eq!(agent.system_prompt(), "Be kind.\n\nCite sources.");
@@ -1424,7 +1439,7 @@ Body";
 
     #[test]
     fn defaults_to_approving_mutating_tools_and_the_settings_model() {
-        let agent = Agent::from_skill_md(id("a"), "---\nname: A\n---\n").unwrap();
+        let agent = Agent::from_agent_md(id("a"), "---\nname: A\n---\n").unwrap();
         assert!(agent.allows_tool("anything"));
         assert!(agent.requires_approval_for("shell") && agent.requires_approval_for("write_file"));
         let default = ModelRef::parse("deepseek:deepseek-flash").unwrap();
@@ -1457,7 +1472,7 @@ pilots:
 ---
 Buy things.
 ";
-        let agent = Agent::from_skill_md(id.clone(), skill).unwrap();
+        let agent = Agent::from_agent_md(id.clone(), skill).unwrap();
         let options = agent
             .capabilities()
             .pilot_options("browser-headless")
@@ -1470,9 +1485,9 @@ Buy things.
         );
         assert!(agent.capabilities().pilot_options("opendesk").is_none());
         // Written back the same way: a bare ID, and a mapping
-        let again = Agent::from_skill_md(id.clone(), &agent.to_skill_md()).unwrap();
+        let again = Agent::from_agent_md(id.clone(), &agent.to_agent_md()).unwrap();
         assert_eq!(again.capabilities(), agent.capabilities());
-        assert!(agent.to_skill_md().contains("- opendesk"));
+        assert!(agent.to_agent_md().contains("- opendesk"));
 
         for bad in [
             "pilots:
@@ -1494,7 +1509,7 @@ Buy things.
 ---
 "
             );
-            assert!(Agent::from_skill_md(id.clone(), &skill).is_err(), "{bad}");
+            assert!(Agent::from_agent_md(id.clone(), &skill).is_err(), "{bad}");
         }
     }
 }

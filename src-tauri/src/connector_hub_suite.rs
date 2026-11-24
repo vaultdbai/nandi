@@ -230,7 +230,7 @@ async fn a_connector_is_published_installed_granted_and_revoked() {
     rpc(
         &b,
         "create_agent",
-        json!({ "input": { "id": "triager", "name": "Triager" } }),
+        json!({ "input": { "id": "triager", "name": "Triager", "description": "A test agent" } }),
     )
     .await;
     let (status, body) = call(
@@ -345,7 +345,7 @@ async fn allow_once_lasts_for_the_run_only() {
     rpc(
         &router,
         "create_agent",
-        json!({ "input": { "id": "triager", "name": "Triager" } }),
+        json!({ "input": { "id": "triager", "name": "Triager", "description": "A test agent" } }),
     )
     .await;
     call(

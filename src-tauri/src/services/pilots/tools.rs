@@ -1,7 +1,7 @@
 //! Which pilot tools an agent may use, and running them.
 //!
 //! An agent reaches a pilot only when all of these hold:
-//! 1. its skill.md `pilots:` block lists the pilot's ID (e.g. `opendesk`);
+//! 1. its agent.md `pilots:` block lists the pilot's ID (e.g. `opendesk`);
 //! 2. the pilot is installed (through Nandi, or found on this computer:
 //!    [`super::detect`]) and running in this app session. A browser is
 //!    turned on by the agent's first use: it runs one server per agent;
@@ -59,7 +59,7 @@ pub fn is_pilot_tool(name: &str) -> bool {
     parse_tool_name(name).is_some()
 }
 
-/// The pilot IDs the agent's skill.md declares.
+/// The pilot IDs the agent's agent.md declares.
 pub fn declared(agent: &Agent) -> Vec<String> {
     agent
         .capabilities()
@@ -87,7 +87,7 @@ impl Access {
         match self {
             Access::Allowed => format!("{name} is available"),
             Access::NotDeclared => format!(
-                "This agent's skill.md doesn't list the pilot '{}'",
+                "This agent's agent.md doesn't list the pilot '{}'",
                 pilot.id
             ),
             Access::NotInstalled => format!("{name} isn't installed. Install it in Pilots."),
@@ -219,7 +219,7 @@ pub(crate) async fn setup(
 pub struct PilotToolset {
     pub tools: Vec<ToolSpec>,
     read_only: HashSet<String>,
-    /// Browser pilots the agent uses, with what its skill.md allows
+    /// Browser pilots the agent uses, with what its agent.md allows
     browsers: std::collections::HashMap<String, BrowserRules>,
     /// The agent these tools are for
     agent: String,
@@ -227,7 +227,7 @@ pub struct PilotToolset {
     refusals: Vec<Refusal>,
     /// One per declared pilot that isn't usable (for `agent://warning`)
     pub warnings: Vec<String>,
-    /// For the system prompt: what each browser may type (skill.md's
+    /// For the system prompt: what each browser may type (agent.md's
     /// values, and secrets by name). Tool descriptions alone weren't
     /// enough: the model treated them as docs, not as its own data
     pub prompt_notes: Vec<String>,
@@ -244,14 +244,14 @@ struct BrowserRules {
 }
 
 impl PilotToolset {
-    /// The agent's `browser.refuse` rules (from its narrowed skill.md)
+    /// The agent's `browser.refuse` rules (from its narrowed agent.md)
     pub fn set_refusals(&mut self, refusals: Vec<Refusal>) {
         self.refusals = refusals;
     }
 
     /// Every pilot tool needs approval unless its pilot marks it read-only.
     /// A browser decides per call: reading and moving between allowed
-    /// pages don't ask; the rest asks unless skill.md allows it
+    /// pages don't ask; the rest asks unless agent.md allows it
     /// (`browser::needs_approval`); a call a policy refuses doesn't ask, it's
     /// refused when it runs. A pilot-shaped name the set doesn't know (e.g.
     /// hallucinated) asks.
@@ -353,7 +353,7 @@ pub(crate) async fn for_agent_with(
         } else {
             list(&pilot).await
         };
-        // What a browser may type: skill.md's values, and secrets by name
+        // What a browser may type: agent.md's values, and secrets by name
         let fill_note = agent
             .capabilities()
             .pilot_options(&pilot.id)
@@ -572,7 +572,7 @@ mod tests {
             access(&declared, &pilot(), &live(true), &all),
             Access::Allowed
         );
-        // Consent doesn't stand in for the skill.md declaration
+        // Consent doesn't stand in for the agent.md declaration
         assert_eq!(
             access(&[], &pilot(), &live(true), &all),
             Access::NotDeclared
@@ -658,10 +658,10 @@ mod tests {
         assert!(set.requires_approval("pilot_opendesk__click", &args));
         assert!(!set.requires_approval("pilot_opendesk__screenshot", &args));
         assert!(set.requires_approval("pilot_unknown__anything", &args));
-        // Runtime tools follow skill.md, not this
+        // Runtime tools follow agent.md, not this
         assert!(!set.requires_approval("shell", &args));
 
-        // A browser decides per call, by what skill.md allows
+        // A browser decides per call, by what agent.md allows
         set.browsers
             .insert(browser::HEADLESS.into(), BrowserRules::default());
         let click = tool_name(browser::HEADLESS, "browser_click");
@@ -683,7 +683,7 @@ mod tests {
         let submit = serde_json::json!({"element": "Submit button"});
         assert!(set.requires_approval(&click, &submit));
 
-        // A hand-over always waits for the person, whatever skill.md allows
+        // A hand-over always waits for the person, whatever agent.md allows
         let everything = PilotOptions {
             allow: crate::services::domain::capability::PILOT_ALLOWS
                 .iter()

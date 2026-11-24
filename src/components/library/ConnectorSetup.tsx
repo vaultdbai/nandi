@@ -193,7 +193,7 @@ async function pickFolder(): Promise<string | null> {
 
 /**
  * The folders agents can be given, each read only or read and write. An
- * agent gets only the folders its page (or skill.md) names. With `backup`
+ * agent gets only the folders its page (or agent.md) names. With `backup`
  * (S3 Backup): the folders backed up, read only.
  */
 function SharedFoldersField({

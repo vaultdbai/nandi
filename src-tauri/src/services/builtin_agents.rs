@@ -30,7 +30,7 @@ use crate::services::domain::{AgentId, EntityKind, Trigger};
 use crate::services::repo_service::GitService;
 use crate::services::repo_store::RepoStore;
 use crate::services::repos::fs_atomic::write_if_changed;
-use crate::services::repos::layout::{INSTRUCTIONS_FILE, PLAYBOOKS_DIR, SKILL_FILE};
+use crate::services::repos::layout::{AGENT_FILE, INSTRUCTIONS_FILE, PLAYBOOKS_DIR};
 use crate::services::repos::RepoLayout;
 use crate::services::shipped_files;
 
@@ -65,8 +65,8 @@ pub const BUILTIN_AGENTS: &[BuiltinAgent] = &[BuiltinAgent {
     id: DEFAULT_AGENT,
     files: &[
         (
-            SKILL_FILE,
-            include_str!("../../resources/builtin-agents/nandi/skill.md"),
+            AGENT_FILE,
+            include_str!("../../resources/builtin-agents/nandi/agent.md"),
         ),
         (
             INSTRUCTIONS_FILE,
@@ -143,7 +143,7 @@ pub fn is_default(id: &str) -> bool {
     id == DEFAULT_AGENT
 }
 
-/// Writes each built-in agent whose `skill.md` the repo lacks, and its
+/// Writes each built-in agent whose `agent.md` the repo lacks, and its
 /// playbooks when it has no `skills/` folder, and returns the files
 /// written. Existing files are the user's and stay as they are.
 pub fn seed(layout: &RepoLayout) -> Result<Vec<PathBuf>, String> {
@@ -151,7 +151,7 @@ pub fn seed(layout: &RepoLayout) -> Result<Vec<PathBuf>, String> {
     for agent in BUILTIN_AGENTS {
         let id = agent.id;
         let dir = layout.agent_dir(id);
-        if !layout.skill_path(id).is_file() {
+        if !layout.agent_md_path(id).is_file() {
             for (name, content) in agent.files {
                 let path = dir.join(name);
                 if write_new(&path, content)? {
@@ -205,7 +205,7 @@ pub const BEFORE_RESET_COMMIT: &str = "Keep Nandi's files before a reset to defa
 /// The commit of a reset to defaults
 pub const RESET_COMMIT: &str = "Reset Nandi to defaults";
 
-/// The default agent as it ships: its skill.md (with its default settings),
+/// The default agent as it ships: its agent.md (with its default settings),
 /// the instructions.md template, and its playbooks
 fn shipped_default() -> Result<(Agent, Vec<Playbook>), String> {
     let nandi = BUILTIN_AGENTS
@@ -219,13 +219,13 @@ fn shipped_default() -> Result<(Agent, Vec<Playbook>), String> {
             .find(|(file, _)| *file == name)
             .map(|(_, content)| *content)
     };
-    let skill = shipped(SKILL_FILE).ok_or("Nandi ships without a skill.md")?;
+    let skill = shipped(AGENT_FILE).ok_or("Nandi ships without an agent.md")?;
     let agent = Agent::from_files(
         AgentId::parse(DEFAULT_AGENT).map_err(|e| e.to_string())?,
         skill,
         shipped(INSTRUCTIONS_FILE),
     )
-    .map_err(|e| format!("Nandi's shipped skill.md doesn't load: {e}"))?;
+    .map_err(|e| format!("Nandi's shipped agent.md doesn't load: {e}"))?;
     let playbooks = nandi
         .playbooks
         .iter()
@@ -244,7 +244,7 @@ fn shipped_triggers() -> Result<Vec<Trigger>, String> {
         .map_err(|e| format!("A shipped trigger doesn't load: {e}"))
 }
 
-/// Puts Nandi back as it ships (owner decision N-5): its skill.md, which
+/// Puts Nandi back as it ships (owner decision N-5): its agent.md, which
 /// holds its model, network and other settings; the instructions.md
 /// template; its playbooks, so playbooks the person added go; and its
 /// default triggers (the morning digest and the mail check), even ones the
@@ -390,7 +390,7 @@ mod tests {
     }
 
     fn shipped(id: &str) -> Agent {
-        Agent::from_skill_md(AgentId::parse(id).unwrap(), file(builtin(id), SKILL_FILE)).unwrap()
+        Agent::from_agent_md(AgentId::parse(id).unwrap(), file(builtin(id), AGENT_FILE)).unwrap()
     }
 
     #[test]
@@ -399,7 +399,7 @@ mod tests {
         let written = seed(&layout).unwrap();
         let playbooks = builtin(DEFAULT_AGENT).playbooks.len();
         assert_eq!(written.len(), 2 + playbooks, "{written:?}");
-        assert!(layout.skill_path(DEFAULT_AGENT).is_file());
+        assert!(layout.agent_md_path(DEFAULT_AGENT).is_file());
         assert!(layout.instructions_path(DEFAULT_AGENT).is_file());
         assert!(seed(&layout).unwrap().is_empty(), "nothing to add again");
     }
@@ -495,7 +495,7 @@ mod tests {
     fn keeps_the_users_edits() {
         let (_tmp, layout) = layout();
         seed(&layout).unwrap();
-        let skill = layout.skill_path(DEFAULT_AGENT);
+        let skill = layout.agent_md_path(DEFAULT_AGENT);
         let edited = std::fs::read_to_string(&skill).unwrap() + "\nAlways answer in French.\n";
         std::fs::write(&skill, &edited).unwrap();
         seed(&layout).unwrap();
@@ -507,7 +507,7 @@ mod tests {
         let (_tmp, layout) = layout();
         seed(&layout).unwrap();
         std::fs::write(layout.instructions_path(DEFAULT_AGENT), "# My role\nDev\n").unwrap();
-        std::fs::remove_file(layout.skill_path(DEFAULT_AGENT)).unwrap();
+        std::fs::remove_file(layout.agent_md_path(DEFAULT_AGENT)).unwrap();
         assert_eq!(seed(&layout).unwrap().len(), 1, "the playbooks are there");
         assert_eq!(
             std::fs::read_to_string(layout.instructions_path(DEFAULT_AGENT)).unwrap(),
@@ -533,7 +533,7 @@ mod tests {
         std::fs::remove_dir_all(&skills).unwrap();
         let written = seed(&layout).unwrap();
         assert_eq!(written.len(), builtin(DEFAULT_AGENT).playbooks.len());
-        assert!(layout.skill_path(DEFAULT_AGENT).is_file());
+        assert!(layout.agent_md_path(DEFAULT_AGENT).is_file());
     }
 
     #[test]
@@ -590,7 +590,7 @@ mod tests {
     fn a_reset_restores_the_shipped_files() {
         let (_tmp, store, git) = gold_copy();
         let agents = &store.repos().agents;
-        let skill = store.layout().skill_path(DEFAULT_AGENT);
+        let skill = store.layout().agent_md_path(DEFAULT_AGENT);
         let shipped_skill = std::fs::read_to_string(&skill).unwrap();
         let renamed = shipped_skill.replacen("name: Nandi", "name: My Nandi", 1);
         assert_ne!(renamed, shipped_skill);
@@ -609,7 +609,7 @@ mod tests {
 
         let (shipped_agent, shipped_playbooks) = shipped_default().unwrap();
         let agent = agents.load(&nandi_id()).unwrap();
-        assert_eq!(agent.to_skill_md(), shipped_agent.to_skill_md());
+        assert_eq!(agent.to_agent_md(), shipped_agent.to_agent_md());
         assert_eq!(
             agent.to_instructions_md(),
             shipped_agent.to_instructions_md()
@@ -705,7 +705,7 @@ target:
             crate::db::Db::in_memory(),
         );
         store.load().unwrap();
-        let skill = store.layout().skill_path(DEFAULT_AGENT);
+        let skill = store.layout().agent_md_path(DEFAULT_AGENT);
         let edited = std::fs::read_to_string(&skill).unwrap() + "\nMy own words.\n";
         std::fs::write(&skill, &edited).unwrap();
 
@@ -751,7 +751,7 @@ target:
 
     /// A playbook only names tools that exist: a backticked snake_case name
     /// is a known tool (a connector's or the browser's with its prefix) or
-    /// a skill.md key, like the Studio guides
+    /// an agent.md key, like the Studio guides
     #[test]
     fn the_shipped_playbooks_name_only_real_tools() {
         use crate::services::{a2a, email, requests, workspace};
@@ -816,9 +816,9 @@ target:
         }
     }
 
-    /// The words of a skill.md body (after the frontmatter)
-    fn body_words(skill_md: &str) -> usize {
-        let (_, body) = crate::services::domain::agent::split_frontmatter(skill_md).unwrap();
+    /// The words of an agent.md body (after the frontmatter)
+    fn body_words(agent_md: &str) -> usize {
+        let (_, body) = crate::services::domain::agent::split_frontmatter(agent_md).unwrap();
         body.split_whitespace().count()
     }
 
@@ -826,7 +826,7 @@ target:
     fn the_shipped_skills_parse_and_stay_short() {
         assert_eq!(shipped(DEFAULT_AGENT).name(), "Nandi");
         for agent in BUILTIN_AGENTS {
-            let words = body_words(file(agent, SKILL_FILE));
+            let words = body_words(file(agent, AGENT_FILE));
             assert!(words <= 900, "{}: {words} words", agent.id);
             assert!(
                 shipped(agent.id).model().is_none(),

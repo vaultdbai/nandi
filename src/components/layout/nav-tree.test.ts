@@ -24,7 +24,7 @@ const agent = (
   id,
   name: (id[0]?.toUpperCase() ?? '') + id.slice(1),
   description: '',
-  skillPath: '',
+  agentMdPath: '',
   status,
   currentTask: null,
   origin: { kind: 'local' },

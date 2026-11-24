@@ -679,7 +679,7 @@ mod tests {
         let skill = format!(
             "---\nname: {name}\nserves: [{{name: find-papers}}]\naccepts_delegation: true\n---\n"
         );
-        let agent_def = Agent::from_skill_md(AgentId::parse(agent).unwrap(), &skill).unwrap();
+        let agent_def = Agent::from_agent_md(AgentId::parse(agent).unwrap(), &skill).unwrap();
         card_from_agent(&agent_def, instance, "").with_owner(OwnerRef {
             github_handle: format!("{instance}-owner"),
             display_name: format!("{instance} owner"),
@@ -788,7 +788,7 @@ mod tests {
             ),
             ("quiet", ""),
         ] {
-            let agent = Agent::from_skill_md(
+            let agent = Agent::from_agent_md(
                 AgentId::parse(id).unwrap(),
                 &format!("---\nname: {id}\n{frontmatter}---\nHelp.\n"),
             )

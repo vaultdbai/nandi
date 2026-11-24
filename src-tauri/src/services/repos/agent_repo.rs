@@ -1,4 +1,4 @@
-//! Agents: `<agents_dir>/<id>/skill.md` and the optional `instructions.md`.
+//! Agents: `<agents_dir>/<id>/agent.md` and the optional `instructions.md`.
 //!
 //! Marketplace agents (`<agents_dir>/marketplace/…`, see `agent_locator`)
 //! load like any other but are read-only here: saving or deleting one is
@@ -9,7 +9,7 @@
 //!
 //! An agent's playbooks are `skills/<name>.md` in its folder
 //! (`load_playbooks`, `save_playbook`, `delete_playbook`); an installed
-//! agent's are read-only like its skill.md.
+//! agent's are read-only like its agent.md.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,7 +20,7 @@ use super::fs_atomic::{
     file_times, move_to_trash, remove_if_exists, write_if_changed, TEMP_MARKER,
 };
 use super::git::GitIndex;
-use super::layout::{INSTRUCTIONS_FILE, MARKETPLACE_DIR, MEMORY_FILE, PLAYBOOKS_DIR, SKILL_FILE};
+use super::layout::{AGENT_FILE, INSTRUCTIONS_FILE, MARKETPLACE_DIR, MEMORY_FILE, PLAYBOOKS_DIR};
 use super::{formats, read_text, Loaded, RepoError, RepoLayout, RepoResult, Repository};
 use crate::services::domain::playbook::{
     check_unique, is_valid_name as is_valid_playbook_name, Playbook,
@@ -67,7 +67,7 @@ impl AgentRepository {
         self.save(agent)
     }
 
-    /// Names of every agent folder holding a skill.md (local and vendored),
+    /// Names of every agent folder holding an agent.md (local and vendored),
     /// valid or not.
     pub fn folder_names(&self) -> Vec<String> {
         let mut names: Vec<String> = agent_locator::all(&self.layout)
@@ -326,11 +326,11 @@ impl AgentRepository {
         Ok(changed)
     }
 
-    /// The files that define agent `id`: its skill.md and instructions.md
+    /// The files that define agent `id`: its agent.md and instructions.md
     /// (whether or not they exist) and each playbook. Not its memory.
     pub fn definition_files(&self, id: &str) -> RepoResult<Vec<PathBuf>> {
         let dir = self.place(id)?.dir;
-        let mut files = vec![dir.join(SKILL_FILE), dir.join(INSTRUCTIONS_FILE)];
+        let mut files = vec![dir.join(AGENT_FILE), dir.join(INSTRUCTIONS_FILE)];
         files.extend(
             playbook_files(&dir.join(PLAYBOOKS_DIR))
                 .into_iter()
@@ -340,8 +340,8 @@ impl AgentRepository {
     }
 
     fn read_place(&self, id: &AgentId, place: &AgentPlace) -> RepoResult<Agent> {
-        let skill_path = place.dir.join(SKILL_FILE);
-        let skill = read_text(&skill_path, EntityKind::Agent, id.as_str())?;
+        let agent_md_path = place.dir.join(AGENT_FILE);
+        let skill = read_text(&agent_md_path, EntityKind::Agent, id.as_str())?;
         let instructions_path = self.instructions_source(id.as_str(), place);
         let instructions = match fs::read_to_string(&instructions_path) {
             Ok(text) => Some(text),
@@ -350,7 +350,7 @@ impl AgentRepository {
         };
         let skill = formats::AGENT.read(&skill)?;
         let agent = Agent::from_files(id.clone(), &skill, instructions.as_deref())?;
-        let (created, mut updated) = file_times(&skill_path);
+        let (created, mut updated) = file_times(&agent_md_path);
         if instructions.is_some() {
             updated = updated.max(file_times(&instructions_path).1);
         }
@@ -396,7 +396,7 @@ impl Repository for AgentRepository {
         let mut seen = std::collections::HashSet::new();
         for place in agent_locator::all(&self.layout) {
             let name = place.id.clone();
-            let path = place.dir.join(SKILL_FILE);
+            let path = place.dir.join(AGENT_FILE);
             if !seen.insert(name.clone()) {
                 // The same ID in another folder: the first one loads
                 log::warn!("Skipping {}: agent '{name}' already exists", path.display());
@@ -431,14 +431,14 @@ impl Repository for AgentRepository {
     fn save(&self, agent: &Agent) -> RepoResult<PathBuf> {
         let id = agent.id().as_str();
         self.ensure_writable(id)?;
-        let skill_path = self.layout.skill_path(id);
+        let agent_md_path = self.layout.agent_md_path(id);
         if write_if_changed(
-            &skill_path,
-            formats::AGENT.stamp(&agent.to_skill_md()).as_bytes(),
+            &agent_md_path,
+            formats::AGENT.stamp(&agent.to_agent_md()).as_bytes(),
         )
-        .map_err(|e| RepoError::io(&skill_path, e))?
+        .map_err(|e| RepoError::io(&agent_md_path, e))?
         {
-            self.git.stage_add(&skill_path);
+            self.git.stage_add(&agent_md_path);
         }
         let instructions_path = self.layout.instructions_path(id);
         let instructions = agent.to_instructions_md();
@@ -453,7 +453,7 @@ impl Repository for AgentRepository {
         {
             self.git.stage_add(&instructions_path);
         }
-        Ok(skill_path)
+        Ok(agent_md_path)
     }
 
     /// Moves the folder (agent-scoped workflows included) to the trash and
@@ -500,14 +500,14 @@ mod tests {
         let root = tmp.path().join("repo");
         let repos = repos(&root);
         let mut draft = AgentDraft::named(id("writer"), "Writer");
-        draft.skill_body = "Write well.".into();
+        draft.agent_body = "Write well.".into();
         draft.instructions = "Be brief.".into();
         let agent = Agent::new(draft).unwrap();
 
         let path = repos.agents.create(&agent).unwrap();
         assert!(
-            path.ends_with(".nandi/agents/writer/skill.md")
-                || path.ends_with(".nandi\\agents\\writer\\skill.md")
+            path.ends_with(".nandi/agents/writer/agent.md")
+                || path.ends_with(".nandi\\agents\\writer\\agent.md")
         );
         assert!(matches!(
             repos.agents.create(&agent),
@@ -518,7 +518,7 @@ mod tests {
         let git = git2::Repository::open(&root).unwrap();
         let index = git.index().unwrap();
         assert!(index
-            .get_path(std::path::Path::new(".nandi/agents/writer/skill.md"), 0)
+            .get_path(std::path::Path::new(".nandi/agents/writer/agent.md"), 0)
             .is_some());
         assert!(index
             .get_path(
@@ -546,7 +546,7 @@ mod tests {
             ("broken", "---\nname: [oops\n---\n"),
         ] {
             fs::create_dir_all(dir.join(name)).unwrap();
-            fs::write(dir.join(name).join("skill.md"), content).unwrap();
+            fs::write(dir.join(name).join("agent.md"), content).unwrap();
         }
         fs::create_dir_all(dir.join("no-skill")).unwrap();
 
@@ -568,7 +568,7 @@ mod tests {
         let repos = repos(tmp.path());
         let dir = repos.layout().vendored_agent_dir("alice", "arxiv");
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("skill.md"), "---\nname: ArXiv\n---\nSearch.").unwrap();
+        fs::write(dir.join("agent.md"), "---\nname: ArXiv\n---\nSearch.").unwrap();
 
         let agent = repos.agents.load(&id("arxiv")).unwrap();
         assert_eq!(agent.name(), "ArXiv");
@@ -596,7 +596,7 @@ mod tests {
         let repos = repos(tmp.path());
         let dir = repos.layout().vendored_agent_dir("alice", "arxiv");
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("skill.md"), "---\nname: ArXiv\n---\nSearch.").unwrap();
+        fs::write(dir.join("agent.md"), "---\nname: ArXiv\n---\nSearch.").unwrap();
         fs::write(dir.join("instructions.md"), "Shipped rules").unwrap();
         assert_eq!(
             repos.agents.load(&id("arxiv")).unwrap().instructions(),
@@ -629,7 +629,7 @@ mod tests {
 
         // An update rewrites the installed folder; the user's rules stay
         fs::write(
-            dir.join("skill.md"),
+            dir.join("agent.md"),
             "---\nname: ArXiv 2\n---\nSearch better.",
         )
         .unwrap();
@@ -674,7 +674,7 @@ mod tests {
         let repos = repos(tmp.path());
         let agent = Agent::new(AgentDraft::named(id("a"), "A")).unwrap();
         repos.agents.create(&agent).unwrap();
-        let path = repos.layout().skill_path("a");
+        let path = repos.layout().agent_md_path("a");
         let before = fs::metadata(&path).unwrap().modified().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
         repos.agents.save(&agent).unwrap();
@@ -794,7 +794,7 @@ Do.",
         let dir = repos.layout().vendored_agent_dir("alice", "arxiv");
         fs::create_dir_all(dir.join("skills")).unwrap();
         fs::write(
-            dir.join("skill.md"),
+            dir.join("agent.md"),
             "---
 name: ArXiv
 ---

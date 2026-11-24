@@ -4,7 +4,7 @@
 #   powershell -ExecutionPolicy Bypass -File scripts/e2e-smoke.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts/e2e-smoke.ps1 -Image my-image:tag
 #
-# For a per-agent check (skill.md, allowed tools, the model's key), use:
+# For a per-agent check (agent.md, allowed tools, the model's key), use:
 #   nandi verify --agent echo-agent
 # See docs/developer/e2e-checklist.md.
 

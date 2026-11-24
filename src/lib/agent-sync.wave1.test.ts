@@ -75,7 +75,7 @@ describe('agent-sync: runs, audit, and wave-1 events', () => {
       payload: {
         kind: 'agent',
         id: 'writer',
-        sourcePath: 'agents/writer/skill.md',
+        sourcePath: 'agents/writer/agent.md',
         result: 'changed',
         changedBy: 'external',
       },

@@ -30,7 +30,7 @@ Other Nandis can ask the user's agents for work. For each capability the user ca
 ## Written policies
 
 - `NANDI.md` in the repo describes this Nandi's gateway: what it offers, trusted peers, and rules for callers.
-- `.nandi/policies/*.md` hold rules the app enforces, one topic per file. They only take away: an agent gets what its skill.md asks for, narrowed by every policy that applies, and a deny anywhere wins.
+- `.nandi/policies/*.md` hold rules the app enforces, one topic per file. They only take away: an agent gets what its agent.md asks for, narrowed by every policy that applies, and a deny anywhere wins.
 - These are files the user owns. Propose changes as text; the user applies them. Never loosen a policy without saying exactly what it would allow.
 
 ```markdown

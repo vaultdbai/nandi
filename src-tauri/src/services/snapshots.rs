@@ -57,7 +57,7 @@ pub struct AgentSnapshot {
     /// The agent's runtime container
     pub container: ContainerState,
     /// What the egress proxy lets the agent reach, for the Permissions
-    /// panel. From skill.md, or the last recorded copy if it doesn't parse.
+    /// panel. From agent.md, or the last recorded copy if it doesn't parse.
     pub capabilities: Option<Capabilities>,
 }
 
@@ -623,7 +623,7 @@ mod tests {
             id: id.into(),
             name: id.to_uppercase(),
             description: String::new(),
-            skill_path: String::new(),
+            agent_md_path: String::new(),
             status: AgentStatus::Idle,
             current_task: None,
             origin: AgentOrigin::Local,

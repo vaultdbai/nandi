@@ -3,7 +3,7 @@
 // Runs in the `nandi-egress` container, which sits on both that network and
 // Docker's default bridge. It forwards every connection on 0.0.0.0:<listen>
 // to the host's egress proxy, which authenticates each request by the
-// agent's proxy token and enforces its skill.md. The relay decides nothing.
+// agent's proxy token and enforces its agent.md. The relay decides nothing.
 //
 // Usage: node relay.mjs <listen port> <target host> <target port>
 import net from 'node:net'

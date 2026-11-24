@@ -1,10 +1,10 @@
 //! Studio's system prompt, built every turn from the code it describes: the
-//! skill.md schema from the domain (`SKILL_FRONTMATTER_KEYS`), model
+//! agent.md schema from the domain (`AGENT_FRONTMATTER_KEYS`), model
 //! prefixes from `Provider`, tool IDs from the catalog, and the models this
 //! Nandi can call. Nothing about Nandi's formats is written here by hand, so
 //! the prompt can't drift from what saving accepts. Pure.
 
-use crate::services::domain::agent::{Provider, SKILL_FRONTMATTER_KEYS};
+use crate::services::domain::agent::{Provider, AGENT_FRONTMATTER_KEYS};
 
 use super::guides;
 use super::tools::{
@@ -79,7 +79,7 @@ in Ask (the companion has an Open in Ask button).{scope}\n"
 
 /// Where definitions live, relative to the user's home
 pub const REPO_LAYOUT: &[(&str, &str)] = &[
-    ("~/.nandi/repo/.nandi/agents/<id>/skill.md", "an agent"),
+    ("~/.nandi/repo/.nandi/agents/<id>/agent.md", "an agent"),
     (
         "~/.nandi/repo/.nandi/agents/<id>/instructions.md",
         "optional longer instructions",
@@ -95,7 +95,7 @@ pub fn studio_prompt(facts: &PromptFacts) -> String {
         .map(|(path, what)| format!("- `{path}`: {what}"))
         .collect::<Vec<_>>()
         .join("\n");
-    let schema = SKILL_FRONTMATTER_KEYS
+    let schema = AGENT_FRONTMATTER_KEYS
         .iter()
         .map(|(key, meaning)| format!("- `{key}`: {meaning}"))
         .collect::<Vec<_>>()
@@ -165,8 +165,8 @@ Definitions are files in the user's repo. The user doesn't edit them by path: yo
 servers), capabilities and policies.\n\
 {layout}\n\
 \n\
-## skill.md\n\
-A skill.md is YAML frontmatter between `---` lines, then the agent's instructions in Markdown. \
+## agent.md\n\
+An agent.md is YAML frontmatter between `---` lines, then the agent's instructions in Markdown. \
 These are the only frontmatter keys:\n\
 {schema}\n\
 \n\
@@ -181,7 +181,7 @@ Tool IDs in this Nandi: {tools}. Use only these in `allowed-tools` and `requires
 Claude Code tool names such as Read, Write, Edit, Glob, Grep and Bash do not exist in Nandi.\n\
 \n\
 ## Proposing a change\n\
-Before you show any skill.md or workflow, call `{CHECK_ARTIFACT}` with its full text and fix every error \
+Before you show any agent.md or workflow, call `{CHECK_ARTIFACT}` with its full text and fix every error \
 it reports (and warnings where you can). Then show the complete file once, in one fenced code block, \
 with its path on the line above. Never show a file that failed the check.\n\
 \n\
@@ -252,7 +252,7 @@ mod tests {
     fn the_prompt_matches_the_code() {
         let prompt = studio_prompt(&facts());
         // Every schema key, every provider prefix, every built-in tool
-        for (key, _) in SKILL_FRONTMATTER_KEYS {
+        for (key, _) in AGENT_FRONTMATTER_KEYS {
             assert!(prompt.contains(&format!("`{key}`")), "missing key {key}");
         }
         for provider in Provider::ALL {
@@ -305,7 +305,7 @@ mod tests {
     #[test]
     fn the_prompt_has_the_real_paths_only() {
         let prompt = studio_prompt(&facts());
-        assert!(prompt.contains("~/.nandi/repo/.nandi/agents/<id>/skill.md"));
+        assert!(prompt.contains("~/.nandi/repo/.nandi/agents/<id>/agent.md"));
         // The old prompt's wrong location (review shot 27)
         assert!(!prompt.contains("~/.nandi/agents"));
         assert!(prompt.contains("do not exist in Nandi"));
@@ -327,7 +327,7 @@ mod tests {
         let path =
             |p: std::path::PathBuf| p.to_string_lossy().replace('\\', "/").replace("/h/", "~/");
         let real = [
-            path(layout.skill_path("<id>")),
+            path(layout.agent_md_path("<id>")),
             path(layout.instructions_path("<id>")),
             path(layout.workflow_path("<id>", &WorkflowScope::Global)),
             path(layout.trigger_path("<id>")),

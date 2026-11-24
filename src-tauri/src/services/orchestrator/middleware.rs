@@ -24,12 +24,12 @@ use crate::services::run_plan::{classify::Effect, RunPlan};
 
 pub type MiddlewareError = String;
 
-/// skill.md `max_turns` default
+/// agent.md `max_turns` default
 pub const DEFAULT_MAX_TURNS: u32 = 50;
-/// skill.md `max_cost_usd` default
+/// agent.md `max_cost_usd` default
 pub const DEFAULT_MAX_COST_USD: f64 = 5.0;
 
-/// skill.md `middlewares` names
+/// agent.md `middlewares` names
 pub const VERIFY_ON_STOP: &str = "verify_on_stop";
 pub const COMPACTION: &str = "compaction";
 pub const READ_ONLY: &str = "read_only";
@@ -144,7 +144,7 @@ pub struct CallCheck<'a> {
     pub plan: Option<&'a RunPlan>,
 }
 
-/// The turn policy declared in skill.md (unknown frontmatter keys, read
+/// The turn policy declared in agent.md (unknown frontmatter keys, read
 /// from `Agent::extra`):
 ///
 /// ```yaml
@@ -180,7 +180,7 @@ impl Default for TurnPolicy {
 
 impl TurnPolicy {
     /// From an agent's unknown frontmatter keys (snake_case, as written in
-    /// skill.md). A missing key takes its default; an invalid one also
+    /// agent.md). A missing key takes its default; an invalid one also
     /// does, with a warning in the log.
     pub fn from_extra(extra: &BTreeMap<String, serde_yaml::Value>) -> Self {
         let mut policy = Self::default();
@@ -211,7 +211,7 @@ impl TurnPolicy {
         policy
     }
 
-    /// Whether skill.md enables the optional middleware `name`
+    /// Whether agent.md enables the optional middleware `name`
     pub fn enables(&self, name: &str) -> bool {
         match &self.middlewares {
             Some(list) => list.iter().any(|m| m == name),
@@ -221,7 +221,7 @@ impl TurnPolicy {
 }
 
 fn invalid(key: &str, value: &serde_yaml::Value, default: impl std::fmt::Debug) {
-    log::warn!("skill.md `{key}: {value:?}` is invalid; using the default ({default:?})");
+    log::warn!("agent.md `{key}: {value:?}` is invalid; using the default ({default:?})");
 }
 
 /// `middlewares:` must be a list of names; anything else means "not
@@ -236,11 +236,11 @@ fn parse_middlewares(value: &serde_yaml::Value) -> Option<Vec<String>> {
         match item.as_str() {
             Some(name) => {
                 if !OPTIONAL_MIDDLEWARES.contains(&name) {
-                    log::warn!("skill.md `middlewares` names an unknown middleware '{name}'");
+                    log::warn!("agent.md `middlewares` names an unknown middleware '{name}'");
                 }
                 names.push(name.to_string());
             }
-            None => log::warn!("skill.md `middlewares` entry {item:?} isn't a name; ignored"),
+            None => log::warn!("agent.md `middlewares` entry {item:?} isn't a name; ignored"),
         }
     }
     Some(names)
@@ -282,7 +282,7 @@ fn parse_compaction(value: &serde_yaml::Value) -> CompactionPolicy {
     policy
 }
 
-/// The names skill.md `middlewares:` may list
+/// The names agent.md `middlewares:` may list
 pub const OPTIONAL_MIDDLEWARES: [&str; 5] = [
     VERIFY_ON_STOP,
     COMPACTION,
@@ -291,7 +291,7 @@ pub const OPTIONAL_MIDDLEWARES: [&str; 5] = [
     FINISH_CHECK,
 ];
 
-/// The optional middlewares an agent gets when skill.md doesn't declare any
+/// The optional middlewares an agent gets when agent.md doesn't declare any
 pub const DEFAULT_MIDDLEWARES: [&str; 4] = [VERIFY_ON_STOP, COMPACTION, PLAN_FIRST, FINISH_CHECK];
 
 /// The middlewares that hold for every run, Studio included: limits that
@@ -509,7 +509,7 @@ impl TurnMiddleware for TurnLimitMiddleware {
         decide(if ctx.turn_number >= self.max_turns {
             let max = self.max_turns;
             MiddlewareDecision::Abort(format!(
-                "Stopped: this run reached its limit of {max} turns (skill.md `max_turns`)."
+                "Stopped: this run reached its limit of {max} turns (agent.md `max_turns`)."
             ))
         } else {
             MiddlewareDecision::Continue
@@ -537,7 +537,7 @@ impl TurnMiddleware for CostCapMiddleware {
         decide(if ctx.accumulated_cost > self.max_cost_usd {
             let (cost, max) = (ctx.accumulated_cost, self.max_cost_usd);
             MiddlewareDecision::Abort(format!(
-                "Stopped: this run has cost ${cost:.2}, over its limit of ${max:.2} (skill.md `max_cost_usd`)."
+                "Stopped: this run has cost ${cost:.2}, over its limit of ${max:.2} (agent.md `max_cost_usd`)."
             ))
         } else {
             MiddlewareDecision::Continue

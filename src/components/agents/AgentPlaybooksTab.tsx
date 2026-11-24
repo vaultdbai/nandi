@@ -1,7 +1,7 @@
 /**
  * The agent page's Playbooks tab: the agent's skill files
  * (`skills/<name>.md`), each with when to use it. The list on one side,
- * the open playbook on the other, edited like skill.md. An installed
+ * the open playbook on the other, edited like agent.md. An installed
  * agent's playbooks are read-only. Rules live in `playbooks-model.ts`.
  */
 import { useState } from 'react'

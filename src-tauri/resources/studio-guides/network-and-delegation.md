@@ -35,7 +35,7 @@ For the user's agent to take work from others:
 2. Choose who may call it: allow, ask, or deny per caller, in Network › Sharing.
 3. The user must be connected to a relay and reachable. If Network shows "Your Nandi is not visible to the network", **Make Reachable** fixes it. Network › Connection has a checklist with one fix per missing item.
 
-Propose the skill.md change, run `nandi_check_artifact`, show it, then save it with `nandi_save_artifact`.
+Propose the agent.md change, run `nandi_check_artifact`, show it, then save it with `nandi_save_artifact`.
 
 ## Trust
 

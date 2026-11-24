@@ -2,7 +2,7 @@
 //! does it again: capability suggestions they accepted or dismissed
 //! (`suggestions.md`), and cited lines they removed or changed on the My
 //! notes page. Both land in `corrections.md`, which Nandi reads
-//! before it adds anything (its skill.md says so).
+//! before it adds anything (its agent.md says so).
 //!
 //! ```markdown
 //! # Suggestions

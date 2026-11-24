@@ -42,7 +42,7 @@ Nandi is the desktop agent runner (Apache-2.0): Tauri v2, React 19, Rust, pnpm. 
 - **Company sign-in first** (Claude Team or Enterprise login, AWS SSO through Bedrock), API keys last. The free trial never goes ahead of the user's own keys or sign-ins.
 - **Packs set no `model:`.** Pack agents use the user's default model.
 - **Web search stays keyless**, limited to the agent's `network.allow` sites. Don't add key-based search providers without asking.
-- **Nandi, the default agent**, ships with the app as an editable local agent. Its behaviour lives in its `skill.md` (900 words or fewer), not in code.
+- **Nandi, the default agent**, ships with the app as an editable local agent. Its behaviour lives in its `agent.md` (900 words or fewer), not in code.
 - **Never ship `NANDI_RELAY_SECRET` in a client.** Builds carry `NANDI_DEFAULT_RELAY_URL` and a join code (`NANDI_RELAY_JOIN_CODE`).
 
 ## Architecture Patterns (CRITICAL)

@@ -79,15 +79,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let repo = git2::Repository::init(dir.path()).unwrap();
         let git = GitIndex::new(dir.path());
-        let file = dir.path().join(".nandi/agents/a/skill.md");
+        let file = dir.path().join(".nandi/agents/a/agent.md");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::write(&file, "x").unwrap();
 
         git.stage_add(&file);
-        assert!(staged(&repo, ".nandi/agents/a/skill.md"));
+        assert!(staged(&repo, ".nandi/agents/a/agent.md"));
         std::fs::remove_dir_all(dir.path().join(".nandi/agents/a")).unwrap();
         git.stage_remove_dir(&dir.path().join(".nandi/agents/a"));
-        assert!(!staged(&repo, ".nandi/agents/a/skill.md"));
+        assert!(!staged(&repo, ".nandi/agents/a/agent.md"));
 
         // Outside the repo, or no repo at all: nothing happens
         let other = tempfile::tempdir().unwrap();

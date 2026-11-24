@@ -260,7 +260,7 @@ pub(crate) mod tests {
             tmp.path(),
             &[
                 (".nandi/manifest.yaml", "id: p"),
-                ("agents/a/skill.md", "x"),
+                ("agents/a/agent.md", "x"),
                 (".git/HEAD", "ref"),
             ],
         );
@@ -269,7 +269,7 @@ pub(crate) mod tests {
         assert!(source.path().is_absolute());
         let files = source.files().unwrap();
         let names: Vec<&str> = files.keys().map(String::as_str).collect();
-        assert_eq!(names, [".nandi/manifest.yaml", "agents/a/skill.md"]);
+        assert_eq!(names, [".nandi/manifest.yaml", "agents/a/agent.md"]);
     }
 
     #[test]
@@ -280,13 +280,13 @@ pub(crate) mod tests {
             &zip,
             &[
                 ("pack-main/.nandi/manifest.yaml", "id: p"),
-                ("pack-main/agents/a/skill.md", "x"),
+                ("pack-main/agents/a/agent.md", "x"),
                 ("pack-main/.git/HEAD", "ref"),
             ],
         );
         let files = LocalPackSource::open(&zip).unwrap().files().unwrap();
         let names: Vec<&str> = files.keys().map(String::as_str).collect();
-        assert_eq!(names, [".nandi/manifest.yaml", "agents/a/skill.md"]);
+        assert_eq!(names, [".nandi/manifest.yaml", "agents/a/agent.md"]);
     }
 
     #[test]

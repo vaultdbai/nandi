@@ -1819,7 +1819,7 @@ steps:
         let state = AppState::for_tests(vec![]);
         mocked_agents(&state).await;
         for id in ["research-agent", "writer-agent"] {
-            let agent = Agent::from_skill_md(
+            let agent = Agent::from_agent_md(
                 AgentId::parse(id).unwrap(),
                 &format!("---\nname: {id}\n---\nHelp.\n"),
             )

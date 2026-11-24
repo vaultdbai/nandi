@@ -1,7 +1,7 @@
 /**
  * What the policies in `.nandi/policies/` do to one agent: which apply, what
- * each took away or narrowed from its skill.md, or why it can't run at all.
- * The rest of the Permissions section shows what skill.md asks for; this
+ * each took away or narrowed from its agent.md, or why it can't run at all.
+ * The rest of the Permissions section shows what agent.md asks for; this
  * is what it actually gets (`services::policies`).
  */
 import { useTranslation } from 'react-i18next'

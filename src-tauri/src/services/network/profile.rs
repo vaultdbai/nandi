@@ -376,7 +376,7 @@ mod tests {
 
     fn card(instance: &str, agent: &str, handle: &str) -> AgentCard {
         let skill = format!("---\nname: {agent}\nserves: [{{name: find-papers}}]\n---\n");
-        let def = Agent::from_skill_md(AgentId::parse(agent).unwrap(), &skill).unwrap();
+        let def = Agent::from_agent_md(AgentId::parse(agent).unwrap(), &skill).unwrap();
         card_from_agent(&def, instance, "").with_owner(OwnerRef {
             github_handle: handle.to_string(),
             display_name: format!("{handle} name"),

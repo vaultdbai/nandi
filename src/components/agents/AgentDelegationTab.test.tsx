@@ -46,7 +46,7 @@ describe('AgentDelegationTab', () => {
       })
     )
     expect(await screen.findByRole('status')).toHaveTextContent(
-      "Saved to the agent's skill.md"
+      "Saved to the agent's agent.md"
     )
     expect(screen.getByRole('button', { name: 'Save policy' })).toBeDisabled()
   })

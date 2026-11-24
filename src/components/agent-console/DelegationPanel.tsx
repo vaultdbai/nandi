@@ -3,7 +3,7 @@
  * toggles (both off by default), per-capability exceptions, the agents it
  * can call (by capability), and the agents that can call it.
  *
- * Settings live in the agent's skill.md; saving goes through
+ * Settings live in the agent's agent.md; saving goes through
  * `setAgentDelegation`, which writes the file.
  */
 import { useState } from 'react'

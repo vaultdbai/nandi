@@ -12,8 +12,8 @@ const retroItem = (overrides: Partial<RetroItem> = {}): RetroItem => ({
   id: 'p1',
   agentId: 'writer',
   agentName: 'Writer',
-  target: 'skill',
-  path: '.nandi/agents/writer/skill.md',
+  target: 'agent',
+  path: '.nandi/agents/writer/agent.md',
   reason: 'You shortened 4 of 5 drafts',
   runs: ['r1', 'r2'],
   diff: '',
@@ -41,8 +41,8 @@ describe('retro-model', () => {
   })
 
   it('names what changes', () => {
-    expect(retroTargetLabel('skill')).toEqual({
-      key: 'retro.target.skill',
+    expect(retroTargetLabel('agent')).toEqual({
+      key: 'retro.target.agent',
       values: {},
     })
     expect(retroTargetLabel('playbook:linkedin-posts')).toEqual({
@@ -57,9 +57,9 @@ describe('retro-model', () => {
 
   it('reads a unified diff without its headers', () => {
     const diff = [
-      'diff --git a/skill.md b/skill.md',
-      '--- a/skill.md',
-      '+++ b/skill.md',
+      'diff --git a/agent.md b/agent.md',
+      '--- a/agent.md',
+      '+++ b/agent.md',
       '@@ -1,2 +1,3 @@',
       ' Draft posts.',
       '-Be thorough.',

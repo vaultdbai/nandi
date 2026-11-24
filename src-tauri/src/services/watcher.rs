@@ -632,7 +632,7 @@ mod tests {
         let c = Classifier::new(&layout);
         let p = |s: &str| PathBuf::from(format!("/r/{s}"));
         assert_eq!(
-            c.classify(&p(".nandi/agents/writer/skill.md")),
+            c.classify(&p(".nandi/agents/writer/agent.md")),
             target(EntityKind::Agent, "writer")
         );
         assert_eq!(
@@ -699,7 +699,7 @@ mod tests {
         let c = Classifier::new(&layout);
         let p = |s: &str| PathBuf::from(format!("/r/.nandi/agents/marketplace/{s}"));
         assert_eq!(
-            c.classify(&p("alice/arxiv/skill.md")),
+            c.classify(&p("alice/arxiv/agent.md")),
             target(EntityKind::Agent, "arxiv")
         );
         assert_eq!(
@@ -733,7 +733,7 @@ mod tests {
         }
         assert_eq!(c.classify(&p("packs/research/README.md")), None);
         assert_eq!(c.classify(&p("packs/research/.nandi/manifest.yaml")), None);
-        assert_eq!(c.classify(&p(".arxiv.nandi-tmp-1/skill.md")), None);
+        assert_eq!(c.classify(&p(".arxiv.nandi-tmp-1/agent.md")), None);
         // Reported to the change feed, not reloaded
         assert_eq!(
             c.classify(Path::new("/r/.nandi/installed.yaml")),
@@ -748,14 +748,14 @@ mod tests {
         for path in [
             "/r/.git/index",
             "/r/.git/refs/heads/main",
-            "/r/.nandi/agents/writer/.skill.md.swp",
-            "/r/.nandi/agents/writer/skill.md~",
+            "/r/.nandi/agents/writer/.agent.md.swp",
+            "/r/.nandi/agents/writer/agent.md~",
             "/r/.nandi/agents/writer/notes.tmp",
             "/r/.nandi/triggers/.hook.yaml.nandi-tmp-abc",
             "/r/.nandi/agents/writer/runs/1/out.txt",
             "/r/.nandi/workflows/notes.md",
             "/r/README.md",
-            "/elsewhere/skill.md",
+            "/elsewhere/agent.md",
         ] {
             assert_eq!(c.classify(Path::new(path)), None, "{path}");
         }
@@ -777,7 +777,7 @@ mod tests {
     #[test]
     fn events_the_os_may_have_dropped_rescan_everything() {
         use notify::event::{AccessKind, CreateKind, EventKind, Flag};
-        let path = PathBuf::from("/r/.nandi/agents/writer/skill.md");
+        let path = PathBuf::from("/r/.nandi/agents/writer/agent.md");
         let event = |kind| notify::Event::new(kind).add_path(path.clone());
         assert_eq!(
             signals(Ok(event(EventKind::Create(CreateKind::File)))),
@@ -802,7 +802,7 @@ mod tests {
         let mut burst = Batch::default();
         for n in 0..=BURST_LIMIT {
             burst.add(Signal::Path {
-                path: PathBuf::from(format!("/r/.nandi/agents/a{n}/skill.md")),
+                path: PathBuf::from(format!("/r/.nandi/agents/a{n}/agent.md")),
                 created: false,
             });
         }
@@ -848,7 +848,7 @@ mod tests {
             state.runtime(),
         )
         .unwrap();
-        let skill = layout.skill_path("writer");
+        let skill = layout.agent_md_path("writer");
 
         // A new agent written by an editor
         fs::create_dir_all(skill.parent().unwrap()).unwrap();
@@ -911,7 +911,7 @@ mod tests {
         let recorder = Arc::new(RecordingSink::default());
         let state = AppState::for_tests(vec![recorder.clone()]);
         let layout = state.store().layout().clone();
-        let skill = layout.skill_path("writer");
+        let skill = layout.agent_md_path("writer");
         fs::create_dir_all(skill.parent().unwrap()).unwrap();
         fs::write(
             &skill,
@@ -981,7 +981,7 @@ tools: { nope: 1 }
         let blocked = state.store().skill("writer").unwrap_err();
         assert!(blocked.contains("'no-shell'"), "{blocked}");
 
-        // Deleted: reported, and the agent runs as its skill.md says
+        // Deleted: reported, and the agent runs as its agent.md says
         fs::remove_file(&policy).unwrap();
         wait_until("the removed policy", || {
             policy_results(&recorder, "no-shell")

@@ -1,6 +1,6 @@
 //! Agent cards: what other Nandi instances see of an agent that serves
 //! capabilities. A card is derived from the agent's
-//! skill.md; it is never stored in the gold copy.
+//! agent.md; it is never stored in the gold copy.
 //!
 //! `id` is `<instance_id>/<agent_id>`, unique across instances.
 
@@ -35,7 +35,7 @@ mod tests {
 
     #[test]
     fn cards_carry_what_the_agent_serves() {
-        let agent = Agent::from_skill_md(
+        let agent = Agent::from_agent_md(
             AgentId::parse("papers").unwrap(),
             "---\nname: Papers\nserves: [{name: find-papers}]\naccepts_delegation: true\n---\n",
         )

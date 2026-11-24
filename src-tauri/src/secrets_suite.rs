@@ -53,7 +53,7 @@ fn history(repo: &std::path::Path) -> String {
 
 /// An agent with the visible browser, so it can hold a site password
 fn add_shopper(state: &AppState) {
-    let path = state.store().layout().skill_path("shopper");
+    let path = state.store().layout().agent_md_path("shopper");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(
         &path,
@@ -176,10 +176,10 @@ async fn no_secret_reaches_the_repo_or_its_history() {
             .as_deref(),
         Some(connector_key)
     );
-    let skill = std::fs::read_to_string(state.store().layout().skill_path("shopper")).unwrap();
+    let skill = std::fs::read_to_string(state.store().layout().agent_md_path("shopper")).unwrap();
     assert!(
         skill.contains("SITE_PASSWORD"),
-        "the ref is in skill.md: {skill}"
+        "the ref is in agent.md: {skill}"
     );
 
     // Everything into the history, as a backup would commit it

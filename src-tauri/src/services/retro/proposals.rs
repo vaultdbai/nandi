@@ -57,7 +57,7 @@ pub struct Proposal {
     pub run_id: String,
     /// The agent it changes (one agent per proposal)
     pub agent_id: String,
-    /// `skill`, `playbook:<name>`, `workflow:<id>` or `trigger:<id>`
+    /// `agent`, `playbook:<name>`, `workflow:<id>` or `trigger:<id>`
     pub target: String,
     /// Its file, relative to the gold copy's root
     pub path: String,

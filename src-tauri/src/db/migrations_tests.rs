@@ -33,6 +33,10 @@ const SHIPPED: &[(&str, &str)] = &[
         "010_own_devices.sql",
         "4db81492e3af13823e3299074599bbc126dd038a3f227cdf4283f245db31782e",
     ),
+    (
+        "011_agent_md.sql",
+        "d36c531c49042a5437f075b92fa9e8ad0f3ccda9582ab721f05a34a126c4a5be",
+    ),
 ];
 
 /// A person's rows as Nandi 0.1.0 wrote them
@@ -108,13 +112,13 @@ const AGENT_ID_COLUMNS: &[(&str, &str)] = &[
 
 /// Test-only steps after the shipped chain, the way a real one would look
 const ADD_A_COLUMN: Migration = Migration {
-    version: 11,
-    file: "011_runs_label.sql",
+    version: 12,
+    file: "012_runs_label.sql",
     sql: "ALTER TABLE runs ADD COLUMN label TEXT NOT NULL DEFAULT '';",
 };
 const REBUILD_CONVERSATIONS: Migration = Migration {
-    version: 12,
-    file: "012_rebuild_conversations.sql",
+    version: 13,
+    file: "013_rebuild_conversations.sql",
     sql: "CREATE TABLE conversations_new (
               id         TEXT PRIMARY KEY,
               agent_id   TEXT NOT NULL,
@@ -311,8 +315,9 @@ fn each_version_has_its_standing() {
         (7, Standing::Behind),
         (8, Standing::Behind),
         (9, Standing::Behind),
-        (10, Standing::Current),
-        (11, Standing::Newer),
+        (10, Standing::Behind),
+        (11, Standing::Current),
+        (12, Standing::Newer),
     ];
     for (version, expected) in cases {
         assert_eq!(standing(version, MIGRATIONS), expected, "version {version}");
@@ -477,18 +482,18 @@ fn a_new_database_gets_the_whole_schema_and_no_copy() {
 #[test]
 fn a_failed_migration_rolls_every_step_back() {
     let broken_sql = Migration {
-        version: 12,
-        file: "012_broken.sql",
+        version: 13,
+        file: "013_broken.sql",
         sql: "ALTER TABLE no_such_table ADD COLUMN x TEXT;",
     };
     // Deletes a conversation its messages and runs still point to
     let breaks_a_key = Migration {
-        version: 12,
-        file: "012_breaks_a_key.sql",
+        version: 13,
+        file: "013_breaks_a_key.sql",
         sql: "DELETE FROM conversations WHERE id = 'conv-cos';",
     };
     let cases = [
-        (broken_sql, "migration 012_broken.sql failed"),
+        (broken_sql, "migration 013_broken.sql failed"),
         (breaks_a_key, "lost the row they refer to"),
     ];
     for (failing, reason) in cases {
@@ -498,7 +503,7 @@ fn a_failed_migration_rolls_every_step_back() {
         let schema_before = schema(&conn);
 
         let error = upgrade(&conn, &chain(&[ADD_A_COLUMN, failing]), Some(&path)).unwrap_err();
-        assert!(error.contains("from version 2 to 12"), "{error}");
+        assert!(error.contains("from version 2 to 13"), "{error}");
         assert!(error.contains(reason), "{error}");
         assert!(error.contains("Nothing was changed"), "{error}");
         assert!(error.contains("state.db.bak-v2"), "{error}");
@@ -615,7 +620,7 @@ fn a_0_2_database_gains_the_retro_proposals_and_keeps_every_row() {
     conn.execute(
         "INSERT INTO retro_proposals (id, run_id, agent_id, target, path, reason, after, diff,
                                       status, created_at)
-         VALUES ('p1', 'r1', 'writer', 'skill', '.nandi/agents/writer/skill.md', 'Shorter',
+         VALUES ('p1', 'r1', 'writer', 'agent', '.nandi/agents/writer/agent.md', 'Shorter',
                  'text', '', 'pending', 1)",
         [],
     )
@@ -644,7 +649,7 @@ fn a_0_2_database_gains_the_own_devices_table_and_keeps_every_row() {
         done,
         Upgrade::Upgraded {
             from: 9,
-            to: 10,
+            to: SCHEMA_VERSION,
             ..
         }
     ));
@@ -662,4 +667,59 @@ fn a_0_2_database_gains_the_own_devices_table_and_keeps_every_row() {
         })
         .unwrap();
     assert_eq!((failed, seq), (0, 0));
+}
+
+#[test]
+fn retro_proposals_name_agent_md_after_011() {
+    let dir = tempfile::tempdir().unwrap();
+    let (conn, path) = v0_1_0_file(dir.path());
+    // Where a build with the weekly retro and own devices left it
+    let at_010 = MIGRATIONS.iter().position(|m| m.version == 10).unwrap();
+    upgrade(&conn, &MIGRATIONS[..=at_010], Some(&path)).unwrap();
+    let insert = |id: &str, target: &str, file: &str| {
+        conn.execute(
+            "INSERT INTO retro_proposals (id, run_id, agent_id, target, path, reason, after,
+                                          diff, status, created_at)
+             VALUES (?1, 'r1', 'writer', ?2, ?3, 'Shorter', 'text', '', 'pending', 1)",
+            rusqlite::params![id, target, file],
+        )
+        .unwrap();
+    };
+    insert("p1", "skill", ".nandi/agents/writer/skill.md");
+    insert(
+        "p2",
+        "playbook:skill",
+        ".nandi/agents/writer/skills/skill.md",
+    );
+    insert("p3", "workflow:daily", ".nandi/workflows/daily.yaml");
+
+    let done = upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
+    assert!(matches!(done, Upgrade::Upgraded { from: 10, .. }));
+    let proposal = |id: &str| -> (String, String) {
+        conn.query_row(
+            "SELECT target, path FROM retro_proposals WHERE id = ?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap()
+    };
+    assert_eq!(
+        proposal("p1"),
+        ("agent".into(), ".nandi/agents/writer/agent.md".into())
+    );
+    assert_eq!(
+        proposal("p2"),
+        (
+            "playbook:skill".into(),
+            ".nandi/agents/writer/skills/skill.md".into()
+        ),
+        "a playbook keeps its name"
+    );
+    assert_eq!(
+        proposal("p3"),
+        (
+            "workflow:daily".into(),
+            ".nandi/workflows/daily.yaml".into()
+        )
+    );
 }

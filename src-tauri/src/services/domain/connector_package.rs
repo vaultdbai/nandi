@@ -1,5 +1,5 @@
 //! A published connector: one `connector.md` file, like an agent's
-//! `skill.md`. Short frontmatter says how the MCP server runs, what it
+//! `agent.md`. Short frontmatter says how the MCP server runs, what it
 //! reaches and what sign-in it needs; the body is plain instructions for
 //! agents, which go into an agent's context with the tools once the agent is
 //! granted the connector.

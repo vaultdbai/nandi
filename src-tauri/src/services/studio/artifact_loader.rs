@@ -12,7 +12,7 @@ use crate::services::ask::ArtifactRef;
 use crate::services::capability::definition::valid_id;
 use crate::services::domain::WorkflowId;
 use crate::services::gateway::manifest;
-use crate::services::repos::layout::SKILL_FILE;
+use crate::services::repos::layout::AGENT_FILE;
 use crate::services::AppState;
 
 pub fn policies_dir(state: &AppState) -> PathBuf {
@@ -44,7 +44,7 @@ pub fn path_of(state: &AppState, artifact: &ArtifactRef) -> Result<PathBuf, Stud
             .repos()
             .agents
             .locate(id)
-            .map(|place| place.dir.join(SKILL_FILE))
+            .map(|place| place.dir.join(AGENT_FILE))
             .ok_or_else(|| format!("Agent '{id}' not found")),
         ArtifactRef::Workflow(id) => {
             let workflow_id = WorkflowId::parse(id).map_err(|e| e.to_string())?;

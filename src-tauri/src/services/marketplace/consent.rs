@@ -1,7 +1,7 @@
 //! First-use consent for marketplace agents.
 //!
 //! An installed (vendored) agent doesn't run until the user has approved,
-//! category by category, everything its skill.md requests: tools, network
+//! category by category, everything its agent.md requests: tools, network
 //! hosts, AWS services, pilots, connectors, shared folders with their
 //! access, and taking tasks from others. What was approved is recorded in
 //! `settings.yaml` (`consent.<agent>`), item by item, so a later version
@@ -238,7 +238,7 @@ fn folder_covers(approved: &str, requested: &str) -> bool {
     }
 }
 
-/// What an agent's skill.md requests.
+/// What an agent's agent.md requests.
 pub fn requested(agent: &Agent) -> AgentConsent {
     let capabilities = agent.capabilities();
     let connectors = connectors::declared_connectors(agent);
@@ -397,7 +397,7 @@ mod tests {
             layout.agent_dir("arxiv")
         };
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("skill.md"), skill).unwrap();
+        fs::write(dir.join("agent.md"), skill).unwrap();
         let store = RepoStore::sqlite(Repos::new(layout), Db::in_memory());
         store.load().unwrap();
         (tmp, store)
@@ -406,7 +406,7 @@ mod tests {
     /// A new version of the agent lands on disk.
     fn update_skill(store: &RepoStore, skill: &str) {
         let place = store.repos().agents.locate("arxiv").unwrap();
-        fs::write(place.dir.join("skill.md"), skill).unwrap();
+        fs::write(place.dir.join("agent.md"), skill).unwrap();
     }
 
     /// What the dialog shows for `keys`, as the user approves it.

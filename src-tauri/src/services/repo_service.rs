@@ -23,7 +23,7 @@ use crate::services::domain::{Agent, AgentId, ChangedBy, EntityKind, TriggerId, 
 use crate::services::events::{self, NandiEvent};
 use crate::services::projection::ProjectionStats;
 use crate::services::repo_store::RepoStore;
-use crate::services::repos::layout::SKILL_FILE;
+use crate::services::repos::layout::AGENT_FILE;
 use crate::services::repos::{RepoError, Repository};
 use crate::services::AppState;
 
@@ -77,16 +77,16 @@ pub struct RepoStatus {
 // --- Agent editor and git ---
 
 /// Everything the agent editor saves. Optional fields fall back to the
-/// defaults in skill.md (`memory_mb` 1024, `cpu` 1.0, the default model).
+/// defaults in agent.md (`memory_mb` 1024, `cpu` 1.0, the default model).
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentDefinitionInput {
     pub name: String,
     #[serde(default)]
     pub description: String,
-    /// The skill.md body (below the frontmatter)
+    /// The agent.md body (below the frontmatter)
     #[serde(default)]
-    pub skill_body: String,
+    pub agent_body: String,
     /// `instructions.md`, if any
     #[serde(default)]
     pub instructions: String,
@@ -447,7 +447,7 @@ fn repo_relative(path: &str) -> Result<String, String> {
 
 // --- Saving and loading agent definitions -----------------------------------
 
-/// The skill.md frontmatter keys the editor writes. Everything else
+/// The agent.md frontmatter keys the editor writes. Everything else
 /// (`requires_approval`, `aws` but its `profile`, unknown keys) is kept as
 /// it is.
 const MODEL_KEY: &str = "model";
@@ -455,7 +455,7 @@ const TOOLS_KEY: &str = "allowed-tools";
 /// Spellings `Frontmatter` also reads; dropped so the edited value wins
 const ALIASES: [&str; 2] = ["allowed_tools", "memory-mb"];
 
-/// The agent the editor's input describes, on top of what its skill.md
+/// The agent the editor's input describes, on top of what its agent.md
 /// already holds (`existing`; `None` for a new agent). The domain validates
 /// the result, so an invalid input never reaches a file.
 pub fn definition_agent(
@@ -465,7 +465,7 @@ pub fn definition_agent(
 ) -> Result<Agent, String> {
     use serde_yaml::{Mapping, Value};
 
-    // skill.md without a name falls back to the ID; the editor must name it
+    // agent.md without a name falls back to the ID; the editor must name it
     if input.name.trim().is_empty() {
         return Err("Agent name is required".to_string());
     }
@@ -473,7 +473,7 @@ pub fn definition_agent(
         Some((Some(yaml), _)) if !yaml.trim().is_empty() => serde_yaml::from_str::<Mapping>(yaml)
             .map_err(|e| {
             format!(
-                "skill.md for agent '{id}' isn't valid YAML; fix it in a text editor first: {e}"
+                "agent.md for agent '{id}' isn't valid YAML; fix it in a text editor first: {e}"
             )
         })?,
         _ => Mapping::new(),
@@ -613,8 +613,8 @@ pub fn definition_agent(
     }
 
     let yaml = serde_yaml::to_string(&frontmatter).map_err(|e| e.to_string())?;
-    let skill_md = format!("---\n{yaml}---\n\n{}\n", input.skill_body.trim());
-    Agent::from_files(id.clone(), &skill_md, Some(&input.instructions))
+    let agent_md = format!("---\n{yaml}---\n\n{}\n", input.agent_body.trim());
+    Agent::from_files(id.clone(), &agent_md, Some(&input.instructions))
         .map_err(|e| describe_error(id.as_str(), &e))
 }
 
@@ -642,13 +642,13 @@ fn definition_json(
     agent: &Agent,
     read_only: bool,
     workflows: &[String],
-    skill_md: &str,
+    agent_md: &str,
     source_path: &Path,
 ) -> Value {
     let input = AgentDefinitionInput {
         name: agent.name().to_string(),
         description: agent.description().to_string(),
-        skill_body: agent.skill_body().to_string(),
+        agent_body: agent.agent_body().to_string(),
         instructions: agent.instructions().to_string(),
         model_provider: agent
             .model()
@@ -702,9 +702,9 @@ fn definition_json(
         object.insert("hasAws".into(), json!(agent.capabilities().aws().is_some()));
         object.insert("workflows".into(), json!(workflows));
         // The file as it is now, for the editor's diff preview
-        object.insert("skillMd".into(), json!(skill_md));
+        object.insert("agentMd".into(), json!(agent_md));
         // What saving renders for this agent unchanged
-        object.insert("renderedSkillMd".into(), json!(agent.to_skill_md()));
+        object.insert("renderedAgentMd".into(), json!(agent.to_agent_md()));
         object.insert(
             "sourcePath".into(),
             json!(source_path.display().to_string()),
@@ -732,8 +732,8 @@ impl RepoStore {
                     .agents
                     .locate(id)
                     .ok_or_else(|| format!("Agent '{id}' not found"))?;
-                let path = place.dir.join(SKILL_FILE);
-                let skill_md = std::fs::read_to_string(&path)
+                let path = place.dir.join(AGENT_FILE);
+                let agent_md = std::fs::read_to_string(&path)
                     .map_err(|e| format!("{}: {e}", path.display()))?;
                 let agent = self.repos().agents.load(&agent_id).map_err(|e| match e {
                     RepoError::Domain(error) => describe_error(id, &error),
@@ -749,7 +749,7 @@ impl RepoStore {
                     &agent,
                     place.origin.is_vendored(),
                     &workflows,
-                    &skill_md,
+                    &agent_md,
                     &path,
                 );
                 // An installed agent running with the user's own rules
@@ -882,7 +882,7 @@ impl RepoStore {
         }
         let existing = match &place {
             Some(place) => {
-                let path = place.dir.join(SKILL_FILE);
+                let path = place.dir.join(AGENT_FILE);
                 Some(
                     std::fs::read_to_string(&path)
                         .map_err(|e| format!("{}: {e}", path.display()))?,
@@ -1207,7 +1207,7 @@ mod tests {
         let recorder = Arc::new(RecordingSink::default());
         let state = AppState::for_tests(vec![recorder.clone()]);
         let layout = state.store().layout().clone();
-        let skill = layout.skill_path("writer");
+        let skill = layout.agent_md_path("writer");
         fs::create_dir_all(skill.parent().unwrap()).unwrap();
         fs::write(&skill, "---\nname: Writer\n---\n").unwrap();
         fs::create_dir_all(&layout.workflows_dir).unwrap();
@@ -1259,7 +1259,7 @@ mod tests {
         AgentDefinitionInput {
             name: name.into(),
             description: String::new(),
-            skill_body: String::new(),
+            agent_body: String::new(),
             instructions: String::new(),
             model_provider: None,
             model_name: None,
@@ -1282,7 +1282,7 @@ mod tests {
         let existing = "---\nname: Old\nrequires_approval: [shell]\ncustom: kept\nmemory-mb: 64\nnetwork:\n  allow:\n    - host: api.github.com\n      methods: [GET]\n---\nOld body\n";
         let mut edit = input("New");
         edit.description = "Writes".into();
-        edit.skill_body = "New body".into();
+        edit.agent_body = "New body".into();
         edit.instructions = "Cite sources.".into();
         edit.model_provider = Some("claude".into());
         edit.model_name = Some("claude-sonnet-5".into());
@@ -1295,7 +1295,7 @@ mod tests {
         };
         let agent = definition_agent(&id("w"), Some(existing), &edit).unwrap();
         assert_eq!(agent.name(), "New");
-        assert_eq!(agent.skill_body(), "New body");
+        assert_eq!(agent.agent_body(), "New body");
         assert_eq!(agent.instructions(), "Cite sources.");
         assert_eq!(agent.model().unwrap().to_string(), "claude:claude-sonnet-5");
         assert_eq!(agent.container().memory_mb(), Some(2048));
@@ -1303,7 +1303,7 @@ mod tests {
         let rules = &agent.capabilities().network().allow;
         assert_eq!(rules[0].methods, ["GET"], "existing methods are kept");
         assert_eq!(rules[1].host, "pypi.org");
-        let md = agent.to_skill_md();
+        let md = agent.to_agent_md();
         assert!(md.contains("custom: kept"), "{md}");
         assert!(md.contains("requires_approval"), "{md}");
         assert!(!md.contains("memory-mb"), "the alias is replaced: {md}");
@@ -1313,7 +1313,7 @@ mod tests {
         assert!(cleared.model().is_none());
         assert!(cleared.capabilities().tools().allowed().is_none());
         assert!(cleared.capabilities().network().allow.is_empty());
-        assert!(cleared.to_skill_md().contains("custom: kept"));
+        assert!(cleared.to_agent_md().contains("custom: kept"));
     }
 
     #[test]
@@ -1329,15 +1329,15 @@ mod tests {
         assert_eq!(aws.services[0].actions, ["GetObject"]);
 
         let cleared =
-            definition_agent(&id("ops"), Some(&agent.to_skill_md()), &input("Ops")).unwrap();
+            definition_agent(&id("ops"), Some(&agent.to_agent_md()), &input("Ops")).unwrap();
         let aws = cleared.capabilities().aws().unwrap();
         assert!(aws.profile.is_none() && aws.services.len() == 1);
-        assert!(!cleared.to_skill_md().contains("profile"));
+        assert!(!cleared.to_agent_md().contains("profile"));
 
         // A profile alone is an `aws` section; clearing it removes the section
         let alone = definition_agent(&id("ops"), None, &with_profile).unwrap();
         assert!(alone.capabilities().aws().is_some());
-        let none = definition_agent(&id("ops"), Some(&alone.to_skill_md()), &input("Ops")).unwrap();
+        let none = definition_agent(&id("ops"), Some(&alone.to_agent_md()), &input("Ops")).unwrap();
         assert!(none.capabilities().aws().is_none());
 
         let spaced = AgentDefinitionInput {
@@ -1397,7 +1397,7 @@ mod tests {
         let state = AppState::for_tests(vec![recorder.clone()]);
         git2::Repository::init(&state.store().layout().root).unwrap();
         let layout = state.store().layout().clone();
-        let skill = layout.skill_path("writer");
+        let skill = layout.agent_md_path("writer");
         fs::create_dir_all(skill.parent().unwrap()).unwrap();
         fs::write(&skill, "---\nname: Writer\ncustom: kept\n---\nWrite.\n").unwrap();
         state.store().load().unwrap();
@@ -1405,7 +1405,7 @@ mod tests {
         // Load what the editor shows
         let loaded = load_entity(&state, "agent", "writer").await.unwrap();
         assert_eq!(loaded["name"], "Writer");
-        assert_eq!(loaded["skillBody"], "Write.");
+        assert_eq!(loaded["agentBody"], "Write.");
         assert_eq!(loaded["readOnly"], false);
         assert_eq!(loaded["requiresApproval"], json!(["shell", "write_file"]));
         let mut edit: AgentDefinitionInput = serde_json::from_value(loaded).unwrap();
@@ -1444,12 +1444,12 @@ mod tests {
         let status = git_status(&state).await.unwrap();
         let paths: Vec<&str> = status.files.iter().map(|f| f.path.as_str()).collect();
         assert!(
-            paths.contains(&".nandi/agents/writer/skill.md"),
+            paths.contains(&".nandi/agents/writer/agent.md"),
             "{paths:?}"
         );
         assert!(paths.contains(&".nandi/agents/writer/instructions.md"));
         assert!(status.files.iter().all(|f| f.status == "added"));
-        let diff = git_diff(&state, ".nandi/agents/writer/skill.md")
+        let diff = git_diff(&state, ".nandi/agents/writer/agent.md")
             .await
             .unwrap();
         assert!(diff.contains("+name: Ghostwriter"), "{diff}");
@@ -1480,9 +1480,9 @@ mod tests {
         let recorder = Arc::new(RecordingSink::default());
         let state = AppState::for_tests(vec![recorder.clone()]);
         let mut edit = input("Fresh");
-        edit.skill_body = "Hello.".into();
+        edit.agent_body = "Hello.".into();
         save_agent(&state, "fresh", edit).await.unwrap();
-        let skill = state.store().layout().skill_path("fresh");
+        let skill = state.store().layout().agent_md_path("fresh");
         assert!(skill.is_file());
         assert!(recorder.names().contains(&"repo://agent-created"));
         let before = fs::read_to_string(&skill).unwrap();
@@ -1563,7 +1563,7 @@ mod tests {
             tmp.path().join("repo"),
             tmp.path().join("trash"),
         );
-        let skill = layout.skill_path("writer");
+        let skill = layout.agent_md_path("writer");
         fs::create_dir_all(skill.parent().unwrap()).unwrap();
         fs::write(&skill, "---\nname: Writer\n---\n").unwrap();
         let db_path = tmp.path().join("state.db");

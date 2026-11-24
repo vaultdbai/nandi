@@ -11,7 +11,7 @@ super::commands! {
 
     fn get_pending_clarifications(state) -> Vec<PendingClarification> => clarification::get_pending_clarifications(&state).await;
 
-    /// The requester agent's clarification policy (skill.md `clarification:`)
+    /// The requester agent's clarification policy (agent.md `clarification:`)
     fn get_clarification_policy(state, agent_id: String) -> ClarificationPolicy => clarification::get_clarification_policy(&state, &agent_id).await;
 
     /// Returns the policy as saved (bounded, topics trimmed and de-duplicated)

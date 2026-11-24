@@ -14,7 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # What review and ops agents expect in the shell: git and gh (from GitHub's
 # signed apt repo), curl and jq. They reach the internet only through the
-# egress proxy (HTTPS_PROXY) and only to the hosts skill.md allows.
+# egress proxy (HTTPS_PROXY) and only to the hosts agent.md allows.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl git jq \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \

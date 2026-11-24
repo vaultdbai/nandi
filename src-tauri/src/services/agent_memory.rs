@@ -5,7 +5,7 @@
 //! git add). The `agent_memory` table is a rebuildable cache of it.
 //! `MemoryMiddleware` loads it into the system prompt before a step and
 //! extracts new entries in the background after the run's last step.
-//! skill.md `memory_disabled: true` turns both off.
+//! agent.md `memory_disabled: true` turns both off.
 //!
 //! The file format (hand edits are tolerated: see [`parse_memory`]):
 //!
@@ -51,7 +51,7 @@ pub const MEMORY_PROMPT_TOKENS: u32 = 2_000;
 /// Output budget for the extraction call
 pub const EXTRACT_MAX_TOKENS: u32 = 500;
 
-/// skill.md key that turns memory off
+/// agent.md key that turns memory off
 pub const MEMORY_DISABLED_KEY: &str = "memory_disabled";
 /// At most this many entries per extraction
 const MAX_EXTRACTED: usize = 3;
@@ -463,13 +463,13 @@ fn memory_disabled_in(agent: &Agent) -> bool {
     }
 }
 
-/// Whether skill.md leaves memory on (`memory_disabled` unset or false)
+/// Whether agent.md leaves memory on (`memory_disabled` unset or false)
 pub async fn memory_enabled(state: &AppState, agent_id: &str) -> Result<bool, String> {
     let agent = state.store().agent(agent_id)?;
     Ok(!memory_disabled_in(&agent))
 }
 
-/// Writes `memory_disabled` to skill.md (enabling removes the key)
+/// Writes `memory_disabled` to agent.md (enabling removes the key)
 pub async fn set_memory_enabled(
     state: &AppState,
     agent_id: &str,
@@ -859,7 +859,7 @@ fn is_significant_tool(tool: &str) -> bool {
 /// The memory of one run, loaded on its first step
 #[derive(Debug, Clone)]
 struct RunMemory {
-    /// The agent exists and skill.md leaves memory on
+    /// The agent exists and agent.md leaves memory on
     enabled: bool,
     section: Option<String>,
 }
@@ -1107,7 +1107,7 @@ mod tests {
     }
 
     fn save_agent(state: &AppState, id: &str) {
-        let agent = Agent::from_skill_md(
+        let agent = Agent::from_agent_md(
             AgentId::parse(id).unwrap(),
             &format!("---\nname: {id}\n---\nHelp.\n"),
         )
@@ -1371,7 +1371,7 @@ Offsets work.\r\n";
     }
 
     #[tokio::test]
-    async fn the_disable_toggle_lives_in_skill_md_and_skips_loading() {
+    async fn the_disable_toggle_lives_in_agent_md_and_skips_loading() {
         let state = AppState::for_tests(vec![]);
         save_agent(&state, "writer");
         write_memory(&state, "writer", vec![entry("Uses pnpm.", 1.0, None)])
@@ -1392,7 +1392,8 @@ Offsets work.\r\n";
 
         set_memory_enabled(&state, "writer", false).await.unwrap();
         assert!(!memory_enabled(&state, "writer").await.unwrap());
-        let skill = std::fs::read_to_string(state.store().layout().skill_path("writer")).unwrap();
+        let skill =
+            std::fs::read_to_string(state.store().layout().agent_md_path("writer")).unwrap();
         assert!(skill.contains("memory_disabled: true"), "{skill}");
 
         let middleware = MemoryMiddleware::with_model(deps.clone(), FakeModel::new("{}"));
@@ -1409,7 +1410,8 @@ Offsets work.\r\n";
         assert!(flagged.system_extras.is_empty());
 
         set_memory_enabled(&state, "writer", true).await.unwrap();
-        let skill = std::fs::read_to_string(state.store().layout().skill_path("writer")).unwrap();
+        let skill =
+            std::fs::read_to_string(state.store().layout().agent_md_path("writer")).unwrap();
         assert!(!skill.contains("memory_disabled"), "{skill}");
         let mut again = ctx("r4", 0);
         MemoryMiddleware::with_model(deps, FakeModel::new("{}"))

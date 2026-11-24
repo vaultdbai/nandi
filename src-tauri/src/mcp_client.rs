@@ -18,14 +18,14 @@ use crate::llm::ToolSpec;
 const SERVER: &str = "/opt/nandi/app.py";
 /// How long a fresh container's server gets to answer `initialize`
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-/// The runtime's shell timeout when skill.md doesn't set `shell_timeout_s`
+/// The runtime's shell timeout when agent.md doesn't set `shell_timeout_s`
 const DEFAULT_SHELL_TIMEOUT_S: u32 = 30;
 /// How much longer than the shell timeout a call may take, so the server
 /// reports the timeout before the host gives up on it
 const CALL_TIMEOUT_MARGIN_S: u32 = 30;
 
 /// How long the host waits for one tool call of an agent whose `shell` calls
-/// may run `shell_timeout_s` (skill.md; `None` is the runtime's 30s).
+/// may run `shell_timeout_s` (agent.md; `None` is the runtime's 30s).
 pub fn call_timeout(shell_timeout_s: Option<u32>) -> Duration {
     let shell = shell_timeout_s.unwrap_or(DEFAULT_SHELL_TIMEOUT_S);
     Duration::from_secs(u64::from(shell + CALL_TIMEOUT_MARGIN_S))

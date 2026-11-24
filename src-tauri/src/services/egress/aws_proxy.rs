@@ -1,7 +1,7 @@
 //! `POST /aws/{service}/{action}`: an AWS API call on an agent's behalf.
 //!
 //! Body: `{ agent_id?, params }`. The action must be granted by the agent's
-//! skill.md `aws` capabilities. The call runs as the agent's AWS identity
+//! agent.md `aws` capabilities. The call runs as the agent's AWS identity
 //! (see `credentials`): long-term keys under an STS session scoped to the
 //! same grants, so AWS enforces them a second time; temporary sign-in keys
 //! as they are, so the check here is the only one.

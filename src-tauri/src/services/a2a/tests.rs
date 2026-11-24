@@ -26,7 +26,7 @@ use crate::services::relay::RelayClient;
 // ---------------------------------------------------------------------------
 
 pub(super) fn save_agent(state: &AppState, id: &str, frontmatter: &str) {
-    let agent = Agent::from_skill_md(
+    let agent = Agent::from_agent_md(
         AgentId::parse(id).unwrap(),
         &format!("---\nname: {id}\n{frontmatter}---\nHelp.\n"),
     )
@@ -414,7 +414,7 @@ async fn declaring_approvals_without_the_tool_skips_approval() {
 }
 
 #[tokio::test]
-async fn settings_are_written_to_skill_md() {
+async fn settings_are_written_to_agent_md() {
     let state = AppState::for_tests(vec![]);
     save_agent(&state, "papers", "serves: [{name: summarize}]\n");
     let settings = AgentDelegationSettings {
@@ -433,7 +433,7 @@ async fn settings_are_written_to_skill_md() {
         get_agent_delegation(&state, "papers").await.unwrap(),
         settings
     );
-    let md = std::fs::read_to_string(state.store().layout().skill_path("papers")).unwrap();
+    let md = std::fs::read_to_string(state.store().layout().agent_md_path("papers")).unwrap();
     assert!(md.contains("accepts_delegation: true"), "{md}");
     assert!(md.contains("delegation_outbound: true"), "{md}");
     assert!(state

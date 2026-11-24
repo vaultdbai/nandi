@@ -13,7 +13,7 @@
 //!   are never touched.
 //! - A workflow provider's tools are its step agents' tools: their own
 //!   `capability_providers` rows' `provided_tools`, plus the core runtime
-//!   tools their skill.md allows.
+//!   tools their agent.md allows.
 //! - Targets: `<instance>/<workflow_id>` (the provider key selection
 //!   ranks) or `<instance>/workflow:<workflow_id>`. A bare ID that is also
 //!   a local agent stays with the agent; the prefix forces the workflow.
@@ -414,7 +414,7 @@ pub fn write_providers(
 
 /// A workflow provider's tools: the step agents' advertised tools
 /// (`agent_tools`, by agent ID) plus the core runtime tools each step
-/// agent's skill.md allows. Sorted, unique, dotted IDs.
+/// agent's agent.md allows. Sorted, unique, dotted IDs.
 pub fn workflow_tools(
     step_agents: &[Option<&Agent>],
     agent_tools: &HashMap<String, Vec<String>>,

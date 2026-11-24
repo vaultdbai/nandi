@@ -28,7 +28,7 @@ mod tests {
     #[tokio::test]
     async fn serves_capabilities_and_cards() {
         let state = AppState::for_tests(vec![]);
-        let agent = Agent::from_skill_md(
+        let agent = Agent::from_agent_md(
             AgentId::parse("papers").unwrap(),
             "---\nname: Papers\nserves: [{name: find-papers}]\n---\n",
         )

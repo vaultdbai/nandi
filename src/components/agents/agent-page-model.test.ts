@@ -110,7 +110,7 @@ describe('agentProblem', () => {
     const broken = agentInfo('writer', 'Writer', {
       status: 'error',
       description:
-        "Invalid skill.md: 'claude-sonnet-4-5' should be '<provider>:<model>'",
+        "Invalid agent.md: 'claude-sonnet-4-5' should be '<provider>:<model>'",
     })
     expect(agentProblem({ ...base, agent: broken })).toEqual({
       kind: 'badModel',

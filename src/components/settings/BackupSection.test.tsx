@@ -197,7 +197,7 @@ describe('Settings › Account and Backup', () => {
       getRemoteStatus: ok({
         ...configured,
         conflicts: true,
-        conflictedFiles: ['agents/writer/skill.md'],
+        conflictedFiles: ['agents/writer/agent.md'],
       }),
     })
     render(<RemoteSettingsView />)
@@ -210,7 +210,7 @@ describe('Settings › Account and Backup', () => {
       within(banner).getByRole('button', { name: 'Show conflicted files' })
     )
     expect(
-      within(banner).getByText('agents/writer/skill.md')
+      within(banner).getByText('agents/writer/agent.md')
     ).toBeInTheDocument()
     await user.click(within(banner).getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(mocks().pullFromRemote).toHaveBeenCalled())

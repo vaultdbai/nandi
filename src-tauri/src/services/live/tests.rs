@@ -34,7 +34,7 @@ async fn refresh_works_with_the_watcher_off() {
     assert!(!state.store().is_watching());
 
     // Written by an editor while nothing watches
-    let skill = layout.skill_path("writer");
+    let skill = layout.agent_md_path("writer");
     fs::create_dir_all(skill.parent().unwrap()).unwrap();
     fs::write(&skill, agent("Writer")).unwrap();
 
@@ -58,7 +58,7 @@ async fn the_apps_own_definition_writes_are_by_you() {
     let layout = state.store().layout().clone();
     fs::create_dir_all(&layout.agents_dir).unwrap();
     state.store().load().unwrap();
-    let skill = layout.skill_path("writer");
+    let skill = layout.agent_md_path("writer");
     crate::services::repos::fs_atomic::write_atomic(&skill, agent("Writer").as_bytes()).unwrap();
     state.store().commit(EntityKind::Agent, "writer").unwrap();
     let changes = changes_of(&state, ChangeArea::Agent);

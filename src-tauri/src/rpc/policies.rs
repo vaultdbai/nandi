@@ -58,7 +58,7 @@ mod tests {
     async fn an_agents_policies_say_what_they_change_or_why_it_cannot_run() {
         let state = AppState::for_tests(vec![]);
         let layout = state.store().layout().clone();
-        let skill = layout.skill_path("writer");
+        let skill = layout.agent_md_path("writer");
         std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
         std::fs::write(&skill, "---\nname: Writer\n---\nWrite.\n").unwrap();
         let policy = layout.policy_path("no-shell");

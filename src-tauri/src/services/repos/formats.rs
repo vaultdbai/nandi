@@ -1,7 +1,7 @@
 //! Format versions of the gold copy's definition files.
 //!
 //! Each kind of definition file has a format version, written as the
-//! top-level `format_version` key (in the frontmatter of a `skill.md`). A
+//! top-level `format_version` key (in the frontmatter of an `agent.md`). A
 //! file without one is at format 1. When a file format changes, the change
 //! is one small pure function from version N to N+1, appended to that
 //! kind's `steps`:
@@ -52,7 +52,7 @@ pub struct FileFormat {
     pub steps: &'static [Step],
 }
 
-/// An agent's `skill.md` (its frontmatter)
+/// An agent's `agent.md` (its frontmatter)
 pub const AGENT: FileFormat = FileFormat::new("agent", "agents", Syntax::Frontmatter, &[]);
 /// A workflow's `.yaml`, global or agent-scoped
 pub const WORKFLOW: FileFormat = FileFormat::new("workflow", "workflows", Syntax::Yaml, &[]);
@@ -173,7 +173,7 @@ impl FileFormat {
     /// The text with `edit` applied to its YAML, keeping the file at the
     /// format it is in, or `None` when `edit` changed nothing (it returns
     /// whether it did). For a change that isn't a format step, such as a
-    /// renamed ID. The body of a `skill.md` is kept as it is. A file from a
+    /// renamed ID. The body of an `agent.md` is kept as it is. A file from a
     /// newer Nandi is refused, never rewritten.
     pub fn edit(
         &self,

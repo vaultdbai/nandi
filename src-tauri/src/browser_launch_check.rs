@@ -13,7 +13,7 @@
 //! turned on by this first use, offered past deferred loading), a
 //! `browser_navigate` to an allowed site that loads, and one to a site
 //! outside the list that raises the site access request. The Social
-//! Manager's own skill.md is checked the same way when the social pack is
+//! Manager's own agent.md is checked the same way when the social pack is
 //! cloned next to this repo.
 
 use serde_json::json;
@@ -28,10 +28,10 @@ use crate::services::AppState;
 
 const AGENT: &str = "launch-check";
 const SKILL: &str = "---\nname: Launch check\npilots:\n  - id: browser\n    allow: [interact]\nnetwork:\n  allow:\n    - host: example.com\n---\nOpen pages.\n";
-const SOCIAL_SKILL: &str = "../../nandi-social-pack/agents/social-manager/skill.md";
+const SOCIAL_SKILL: &str = "../../nandi-social-pack/agents/social-manager/agent.md";
 
 fn add_agent(state: &AppState, id: &str, skill: &str) {
-    let path = state.store().layout().skill_path(id);
+    let path = state.store().layout().agent_md_path(id);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, skill).unwrap();
     state.store().commit(EntityKind::Agent, id).unwrap();

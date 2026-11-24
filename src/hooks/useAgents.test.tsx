@@ -21,7 +21,7 @@ describe('useAgents', () => {
         id: 'a',
         name: 'A',
         description: '',
-        skillPath: '/a/skill.md',
+        agentMdPath: '/a/agent.md',
         status: 'idle' as const,
         currentTask: null,
         origin: { kind: 'local' as const },

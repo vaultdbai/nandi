@@ -29,7 +29,7 @@ interface PilotConsentDialogProps {
 /**
  * Asks the user to grant an agent a pilot's capabilities. Every capability
  * the pilot exposes is listed and must be ticked: the core only routes an
- * agent to a pilot once all of them are granted (and its skill.md declares
+ * agent to a pilot once all of them are granted (and its agent.md declares
  * the pilot).
  */
 export function PilotConsentDialog({

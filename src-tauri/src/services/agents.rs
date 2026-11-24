@@ -1,7 +1,7 @@
 //! Agents: discovery, status, and lifecycle (create / start / stop /
 //! restart / delete).
 //!
-//! An agent is a folder in the gold copy holding a `skill.md` (frontmatter +
+//! An agent is a folder in the gold copy holding an `agent.md` (frontmatter +
 //! system prompt) and an optional `instructions.md`; `domain::agent` defines
 //! the format and `repos::AgentRepository` reads and writes it. Reads go
 //! through the `RepoStore` (the in-memory aggregate). Runtime status comes
@@ -36,7 +36,7 @@ pub(crate) const AGENT_ID_LABEL: &str = "nandi.agent.id";
 /// The Nandi that started a container (`nandi_config::instance_tag`), so
 /// another one on the machine doesn't count it as its own
 pub(crate) const INSTANCE_LABEL: &str = "nandi.instance";
-pub(crate) const SKILL_FILE: &str = "skill.md";
+pub(crate) const AGENT_FILE: &str = "agent.md";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -55,8 +55,8 @@ pub struct AgentInfo {
     pub id: String,
     pub name: String,
     pub description: String,
-    /// Absolute path to the agent's skill.md
-    pub skill_path: String,
+    /// Absolute path to the agent's agent.md
+    pub agent_md_path: String,
     pub status: AgentStatus,
     pub current_task: Option<String>,
     /// Whose folder it is: the user's own, or a read-only marketplace one
@@ -125,13 +125,13 @@ pub struct SkillConfig {
     pub model: String,
     /// Container image; `None` uses the default runtime image
     pub image: Option<String>,
-    /// skill.md `memory_mb`; `None` uses `sandbox::DEFAULT_MEMORY_MB`
+    /// agent.md `memory_mb`; `None` uses `sandbox::DEFAULT_MEMORY_MB`
     pub memory_mb: Option<u32>,
-    /// skill.md `cpu` (cores); `None` uses `sandbox::DEFAULT_CPU`
+    /// agent.md `cpu` (cores); `None` uses `sandbox::DEFAULT_CPU`
     pub cpu: Option<f32>,
-    /// skill.md `shell_timeout_s`; `None` leaves the runtime's 30s
+    /// agent.md `shell_timeout_s`; `None` leaves the runtime's 30s
     pub shell_timeout_s: Option<u32>,
-    /// skill.md without frontmatter, plus `instructions.md` if present —
+    /// agent.md without frontmatter, plus `instructions.md` if present —
     /// the agent's own part of the system prompt
     pub instructions: String,
     pub allowed_tools: Option<Vec<String>>,
@@ -143,7 +143,7 @@ pub struct SkillConfig {
     pub folders: Vec<SharedFolder>,
     /// Tools a policy denies, whatever `allowed_tools` says
     pub denied_tools: Vec<String>,
-    /// The connectors it may use (`connectors:` in skill.md, narrowed)
+    /// The connectors it may use (`connectors:` in agent.md, narrowed)
     pub connectors: Vec<String>,
     /// Of those, the ones a policy lets run on the host rather than in a
     /// container (`connectors.run_on_host`)
@@ -221,13 +221,13 @@ pub fn validate_agent_id(id: &str) -> Result<(), String> {
 pub fn describe_error(id: &str, error: &DomainError) -> String {
     match error {
         DomainError::Parse { reason, .. } => {
-            format!("Invalid {SKILL_FILE} frontmatter for agent '{id}': {reason}")
+            format!("Invalid {AGENT_FILE} frontmatter for agent '{id}': {reason}")
         }
         DomainError::Invalid { entity, .. } if entity == "model" => {
-            format!("Agent '{id}' has an invalid model in {SKILL_FILE}: {error}")
+            format!("Agent '{id}' has an invalid model in {AGENT_FILE}: {error}")
         }
         DomainError::Invalid { entity, .. } if entity == "capabilities" => {
-            format!("Agent '{id}' has invalid capabilities in {SKILL_FILE}: {error}")
+            format!("Agent '{id}' has invalid capabilities in {AGENT_FILE}: {error}")
         }
         other => other.to_string(),
     }
@@ -293,9 +293,9 @@ impl RepoStore {
             .rev() // the first folder with an ID is the one that loads
             .map(|place| (place.id.clone(), place))
             .collect();
-        let skill_path = |id: &str| match places.get(id) {
-            Some(place) => place.dir.join(SKILL_FILE),
-            None => self.layout().skill_path(id),
+        let agent_md_path = |id: &str| match places.get(id) {
+            Some(place) => place.dir.join(AGENT_FILE),
+            None => self.layout().agent_md_path(id),
         };
         let origin = |id: &str| {
             places
@@ -321,7 +321,7 @@ impl RepoStore {
                             Some(p) => describe_error(&id, &p.error),
                             None => agent.description().to_string(),
                         },
-                        skill_path: skill_path(&id).display().to_string(),
+                        agent_md_path: agent_md_path(&id).display().to_string(),
                         origin: origin(&id),
                         status: if problem.is_some() {
                             AgentStatus::Error
@@ -340,7 +340,7 @@ impl RepoStore {
                     agents.push(AgentInfo {
                         name: id.clone(),
                         description: describe_error(&id, &problem.error),
-                        skill_path: skill_path(&id).display().to_string(),
+                        agent_md_path: agent_md_path(&id).display().to_string(),
                         origin: origin(&id),
                         status: AgentStatus::Error,
                         current_task: None,
@@ -480,7 +480,7 @@ pub struct CreateAgentInput {
     /// e.g. `claude:claude-sonnet-5`
     #[serde(default)]
     pub model: Option<String>,
-    /// The skill.md body (the agent's instructions)
+    /// The agent.md body (the agent's instructions)
     #[serde(default)]
     pub instructions: Option<String>,
 }
@@ -491,7 +491,7 @@ const MAX_INSTRUCTIONS_CHARS: usize = 200_000;
 fn new_agent(input: &CreateAgentInput) -> Result<domain::Agent, String> {
     let mut draft = AgentDraft::named(AgentId::parse(input.id.as_str())?, input.name.as_str());
     draft.description = input.description.clone().unwrap_or_default();
-    draft.skill_body = input.instructions.clone().unwrap_or_default();
+    draft.agent_body = input.instructions.clone().unwrap_or_default();
     draft.model = input
         .model
         .as_deref()
@@ -499,11 +499,13 @@ fn new_agent(input: &CreateAgentInput) -> Result<domain::Agent, String> {
         .filter(|m| !m.is_empty())
         .map(ModelRef::parse)
         .transpose()?;
-    Ok(domain::Agent::new(draft)?)
+    let agent = domain::Agent::new(draft)?;
+    agent.check_new()?;
+    Ok(agent)
 }
 
 /// Creates an agent: the domain validates it, the agent repository writes
-/// `<agents dir>/<id>/skill.md` (staged in git), and the commit updates the
+/// `<agents dir>/<id>/agent.md` (staged in git), and the commit updates the
 /// aggregate and projection and publishes `repo://agent-created` (which
 /// also starts its orchestrator). Fails if the agent already exists.
 pub async fn create_agent(state: &AppState, input: CreateAgentInput) -> Result<AgentInfo, String> {
@@ -678,7 +680,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    /// The orchestrator config a skill.md (and instructions.md) yields.
+    /// The orchestrator config an agent.md (and instructions.md) yields.
     fn parse_skill(
         id: &str,
         dir: PathBuf,
@@ -700,7 +702,7 @@ mod tests {
     }
 
     fn write_skill(store: &RepoStore, id: &str, content: &str) {
-        let path = store.layout().skill_path(id);
+        let path = store.layout().agent_md_path(id);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, content).unwrap();
     }
@@ -732,7 +734,7 @@ mod tests {
         assert_eq!(agents[0].description, "");
         assert_eq!(agents[0].status, AgentStatus::Idle);
         assert!(agents[0].current_task.is_none());
-        assert!(agents[1].skill_path.ends_with(SKILL_FILE));
+        assert!(agents[1].agent_md_path.ends_with(AGENT_FILE));
     }
 
     #[test]
@@ -762,7 +764,7 @@ mod tests {
         let broken = agents.iter().find(|a| a.id == "broken").unwrap();
         assert_eq!(broken.status, AgentStatus::Error);
         assert_eq!(broken.name, "broken");
-        assert!(broken.description.contains("Invalid skill.md frontmatter"));
+        assert!(broken.description.contains("Invalid agent.md frontmatter"));
         let legacy = agents.iter().find(|a| a.id == "Legacy_Id").unwrap();
         assert_eq!(legacy.status, AgentStatus::Error);
         assert!(
@@ -842,7 +844,7 @@ Body"#;
 
     #[test]
     fn parses_the_e2e_echo_agent_fixture() {
-        let content = include_str!("../../../test-fixtures/echo-agent/skill.md");
+        let content = include_str!("../../../test-fixtures/echo-agent/agent.md");
         let skill = parse_skill("echo-agent", PathBuf::new(), content, None).unwrap();
         assert_eq!(skill.model, "deepseek:deepseek-flash");
         assert_eq!(
@@ -899,19 +901,29 @@ Body"#;
         let input = CreateAgentInput {
             id: "writer".into(),
             name: "Writer: drafts".into(),
-            description: Some("  ".into()),
+            description: Some("  Drafts posts ".into()),
             model: Some("ollama:llama3.2".into()),
             instructions: Some("Write well.".into()),
         };
-        let content = new_agent(&input).unwrap().to_skill_md();
+        let content = new_agent(&input).unwrap().to_agent_md();
         let skill = parse_skill("writer", PathBuf::from("/a"), &content, None).unwrap();
 
         assert_eq!(skill.model, "ollama:llama3.2");
         assert_eq!(skill.instructions, "Write well.");
         let agent =
-            domain::Agent::from_skill_md(AgentId::parse("writer").unwrap(), &content).unwrap();
+            domain::Agent::from_agent_md(AgentId::parse("writer").unwrap(), &content).unwrap();
         assert_eq!(agent.name(), "Writer: drafts");
-        assert!(!content.contains("description"), "blank fields are omitted");
+        assert_eq!(agent.description(), "Drafts posts");
+
+        // Other agents see only the name and description: it is required
+        for blank in [None, Some("  ".to_string())] {
+            let input = CreateAgentInput {
+                description: blank,
+                ..input.clone()
+            };
+            let error = new_agent(&input).unwrap_err();
+            assert!(error.contains("description"), "{error}");
+        }
 
         // New agents get strict IDs
         for bad in ["Writer", "code_reviewer", "v1.2"] {
@@ -944,19 +956,19 @@ Body"#;
         let input = CreateAgentInput {
             id: "writer".into(),
             name: "Writer".into(),
-            description: None,
+            description: Some("Drafts posts".into()),
             model: None,
             instructions: Some("Write.".into()),
         };
 
         let info = create_agent(&state, input.clone()).await.unwrap();
         assert_eq!(info.name, "Writer");
-        assert!(state.store().layout().skill_path("writer").is_file());
+        assert!(state.store().layout().agent_md_path("writer").is_file());
         let mut index = git.index().unwrap();
         index.read(true).unwrap();
         assert!(
             index
-                .get_path(std::path::Path::new(".nandi/agents/writer/skill.md"), 0)
+                .get_path(std::path::Path::new(".nandi/agents/writer/agent.md"), 0)
                 .is_some(),
             "the new file is staged"
         );
@@ -997,7 +1009,7 @@ Body"#;
 
         state.triggers().delete("hook").await.unwrap();
         delete_agent(&state, "writer").await.unwrap();
-        assert!(!state.store().layout().skill_path("writer").exists());
+        assert!(!state.store().layout().agent_md_path("writer").exists());
         assert!(recorder.names().contains(&"repo://agent-deleted"));
         assert!(state.store().agent("writer").is_err());
         state.shutdown();
@@ -1014,7 +1026,7 @@ Body"#;
                 .unwrap();
             let error = delete_agent(&state, agent.id).await.unwrap_err();
             assert!(error.contains("comes with Nandi"), "{error}");
-            assert!(state.store().layout().skill_path(agent.id).is_file());
+            assert!(state.store().layout().agent_md_path(agent.id).is_file());
         }
         state.shutdown();
     }
@@ -1025,7 +1037,7 @@ Body"#;
             id: "a".to_string(),
             name: "A".to_string(),
             description: String::new(),
-            skill_path: "/a/skill.md".to_string(),
+            agent_md_path: "/a/agent.md".to_string(),
             status: AgentStatus::WaitingApproval,
             current_task: None,
             origin: crate::services::agents::AgentOrigin::Local,
@@ -1034,7 +1046,7 @@ Body"#;
         let json = serde_json::to_value(agent).unwrap();
 
         assert_eq!(json["status"], "waitingApproval");
-        assert_eq!(json["skillPath"], "/a/skill.md");
+        assert_eq!(json["agentMdPath"], "/a/agent.md");
         assert_eq!(json["kind"], "local");
         assert!(json["currentTask"].is_null());
     }
