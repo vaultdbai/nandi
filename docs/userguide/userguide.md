@@ -912,7 +912,7 @@ When something is stuck, one banner says why and who has to act, with the button
 2. Scan it with the phone's camera. The phone opens the Nandi phone app and shows a code like `3F2A 91C0 7B44 E1D9`.
 3. Settings shows a code too. **Confirm only if the two match.** Choose a PIN of 6 to 12 digits and type it twice.
 
-What a phone can do: see the approvals waiting and your to-dos, and approve or decline, typing the PIN each time. What only this computer can do: approve payments, sending, new access or grants, anything that widens what an agent may do, a browser that types or submits, and settings, keys and adding devices. The phone says "Approve this on your computer" for those; it can still decline them. Every decision from the phone is in the Decisions list with the phone's name.
+What a phone can do: see the approvals waiting and your to-dos, and approve or decline, typing the PIN each time. What only this computer can do: approve anything an agent does outside its own sandbox (in a mailbox, a calendar, a cloud account or any other connection), payments, sending, new access or grants, anything that widens what an agent may do, a browser that types or submits, and settings, keys and adding devices. The phone says "Approve this on your computer" for those; it can still decline them. Every decision from the phone is in the Decisions list with the phone's name.
 
 Five wrong PINs in a row lock the phone. Click **Unlock** here if it was you. **Revoke** removes one phone at once, **Revoke all** every one. Nothing else in Nandi needs a phone or the relay. (The phone app itself, on vaultdb.ai, is on its way: until it ships, pairing has nothing to scan with.)
 

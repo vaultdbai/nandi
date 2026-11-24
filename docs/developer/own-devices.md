@@ -93,11 +93,12 @@ WebAuthn or Face ID on the phone can come later as a second check; the PIN stays
 
 ### What Stays on the Desktop
 
-`desktop_only::reason` errs toward the computer. A phone may never approve:
+`desktop_only::reason` fails closed. A phone may approve only the agent's own sandbox tools (writing a file, running a command, a report). It may never approve:
 
 - an access request (`connector_access`): new access;
 - starting or delegating work (`work_start`, `delegate_to_agent`);
 - a browser call that isn't reading or moving between pages;
+- any other connector or pilot tool (`<id>__<tool>`): it acts outside the sandbox, whatever it's called;
 - a tool whose name, word by word, says it sends, replies, forwards, posts, publishes, shares, invites, grants, pays, transfers, buys, orders, refunds, or changes access, permissions, trust or devices.
 
 A phone may decline any of them. Pairing, revoking, settings, grants and keys aren't calls at all.

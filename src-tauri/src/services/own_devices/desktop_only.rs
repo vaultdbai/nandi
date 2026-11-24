@@ -8,12 +8,15 @@
 //! | An access request (`connector_access`): new access         | desktop only |
 //! | Starting work or delegating (`work_start`, …)              | desktop only |
 //! | A browser call that isn't reading or moving between pages  | desktop only |
+//! | Any other connector or pilot tool (`<id>__<tool>`)         | desktop only |
 //! | A tool whose name says it sends, pays, grants or shares    | desktop only |
-//! | Anything else (writing a file, running a report, …)        | may approve  |
+//! | Anything else, inside the agent's own sandbox              | may approve  |
 //!
-//! The name check reads the tool's own name (after a connector's `__`
-//! prefix), word by word: `send_email`, `gmail__reply_to_thread`,
-//! `stripe__create_payment`. It errs toward the desktop.
+//! It fails closed: a connector or pilot acts outside the sandbox (a
+//! mailbox, a cloud account, a calendar), so its approval stays on the
+//! computer whatever the tool is called. Only the agent's own sandbox
+//! tools (writing a file, running a command, a report) may be approved
+//! from a phone, unless their name says they send, pay, grant or share.
 
 use serde_json::Value;
 
@@ -69,6 +72,10 @@ pub fn reason(tool: &str, args: &Value) -> Option<&'static str> {
             };
         }
     }
+    // A connector or pilot reaches outside the sandbox: never from a phone
+    if tool.contains("__") {
+        return Some("It acts outside the agent's sandbox");
+    }
     if matches!(classify::effect(tool, args, None), Effect::Risky(_)) {
         return Some("It starts work or hands it to someone");
     }
@@ -100,6 +107,12 @@ mod tests {
             "drive__share_file",
             "aws__grant_role",
             "linkedin__publish_post",
+            // Outside the sandbox, whatever the name says
+            "s3__put_object",
+            "calendar__create_event",
+            "notes__append",
+            "github__create_issue",
+            "slack__chat_post",
         ] {
             assert!(reason(tool, &none).is_some(), "{tool}");
         }
@@ -108,14 +121,7 @@ mod tests {
     #[test]
     fn everyday_approvals_may_be_given_from_a_phone() {
         let none = json!({});
-        for tool in [
-            "write_file",
-            "run_report",
-            "shell",
-            "notes__append",
-            "s3__put_object",
-            "calendar__create_event",
-        ] {
+        for tool in ["write_file", "run_report", "shell"] {
             assert_eq!(reason(tool, &none), None, "{tool}");
         }
     }
