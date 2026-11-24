@@ -39,11 +39,14 @@ pub enum RelayFeature {
     Handover,
     /// Groups and their policies
     Groups,
+    /// The person's own devices (a paired phone) and their sealed
+    /// envelopes
+    OwnDevices,
 }
 
 impl RelayFeature {
     /// Every feature, in the order screens list them
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Directory,
         Self::PeopleSearch,
         Self::Routing,
@@ -51,6 +54,7 @@ impl RelayFeature {
         Self::Reassignment,
         Self::Handover,
         Self::Groups,
+        Self::OwnDevices,
     ];
 
     /// The message the feature sends: a relay that reads it has the
@@ -64,6 +68,7 @@ impl RelayFeature {
             Self::Reassignment => MessageKind::Reassign,
             Self::Handover => MessageKind::DutyWatch,
             Self::Groups => MessageKind::GroupRequest,
+            Self::OwnDevices => MessageKind::DeviceRequest,
         }
     }
 
@@ -128,6 +133,7 @@ mod tests {
                     RelayFeature::Reassignment,
                     RelayFeature::Handover,
                     RelayFeature::Groups,
+                    RelayFeature::OwnDevices,
                 ],
             ),
             (
@@ -137,10 +143,12 @@ mod tests {
                     RelayFeature::Reassignment,
                     RelayFeature::Handover,
                     RelayFeature::Groups,
+                    RelayFeature::OwnDevices,
                 ],
             ),
-            (6, vec![RelayFeature::Groups]),
-            (7, vec![]),
+            (6, vec![RelayFeature::Groups, RelayFeature::OwnDevices]),
+            (7, vec![RelayFeature::OwnDevices]),
+            (8, vec![]),
             (PROTOCOL_VERSION, vec![]),
         ];
         for (version, missing) in cases {

@@ -75,6 +75,16 @@
 //!   requester, asked to (`Reseal`), we seal our own request again.
 //! - Content over `MAX_ENVELOPE_BYTES` isn't sent (`ENVELOPE_TOO_LARGE`).
 //!
+//! # Own devices (protocol 8)
+//!
+//! The person's own paired phone is not a person: `device_request` makes
+//! the pairing, listing and revoking calls (`DeviceRequest` →
+//! `DeviceReply`), `send_own_envelope` forwards an envelope the
+//! own-devices service sealed, and `on_devices` hands it claims and the
+//! envelopes the relay forwarded, unopened (`services::own_devices` opens
+//! them with the device's confirmed keys). Live only: a refusal naming a
+//! device (`device_offline`) is logged, never a task's.
+//!
 //! # Store-and-forward
 //!
 //! The relay keeps everything for us in our mailbox until we ack it
@@ -96,7 +106,9 @@ use futures_util::{FutureExt, SinkExt, StreamExt};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
 
-use super::client_api::{GroupSignal, Handler, PeopleSearch, RelayClient, StoringHandler};
+use super::client_api::{
+    DeviceSignal, GroupSignal, Handler, PeopleSearch, RelayClient, StoringHandler,
+};
 use super::client_api::{Submitted, REFUSED_BY_RELAY, UNANSWERED_BY_RELAY};
 use super::features::{RelayFeature, RelayNeedsUpdate};
 use super::protocol::{
@@ -118,8 +130,9 @@ use crate::services::gateway::{registration, GatewayCard};
 use crate::services::network::peer_keys::PEER_KEY_CHANGED;
 use nandi_protocol::{self as wire, PROBE_PAYLOAD};
 use nandi_protocol::{
-    GroupOp, GroupOutcome, PublicKeys, GROUP_CAPABILITY_NOT_ALLOWED, GROUP_DAILY_LIMIT,
-    KEY_MISMATCH, NEEDS_FIRST_TIME_APPROVAL, NO_SHARED_GROUP,
+    DeviceOp, DeviceOutcome, Envelope, GroupOp, GroupOutcome, PublicKeys,
+    GROUP_CAPABILITY_NOT_ALLOWED, GROUP_DAILY_LIMIT, KEY_MISMATCH, NEEDS_FIRST_TIME_APPROVAL,
+    NO_SHARED_GROUP,
 };
 use nandi_seal::DeviceKeys;
 
@@ -222,6 +235,7 @@ struct Handlers {
     reseal: Vec<Arc<Handler<ResealRequest>>>,
     duty: Vec<Arc<Handler<DutyDelivery>>>,
     groups: Vec<Arc<Handler<GroupSignal>>>,
+    devices: Vec<Arc<Handler<DeviceSignal>>>,
 }
 
 /// Calls waiting for the relay's answer, by key. Several may wait on one
@@ -353,6 +367,8 @@ struct Shared {
     waiting_routes: Pending<String, RoutePlan>,
     /// Group calls by request ID
     waiting_groups: Pending<String, GroupOutcome>,
+    /// Own-device calls by request ID
+    waiting_devices: Pending<String, DeviceOutcome>,
     /// Who sees whom, from the relay's last `Registered`
     visibility: Option<super::RelayVisibility>,
     /// The codes of the relay's [`ANNOUNCED`] errors, by their words: the
@@ -394,6 +410,7 @@ impl Shared {
         self.waiting_presence.fail_all(error);
         self.waiting_routes.fail_all(error);
         self.waiting_groups.fail_all(error);
+        self.waiting_devices.fail_all(error);
     }
 
     /// A refusal's words as the app tells them ([`told`]): by its own
@@ -1252,6 +1269,26 @@ impl Inner {
             RelayMessage::GroupChanged { group_id, change } => {
                 self.tell_groups(GroupSignal::Changed { group_id, change });
             }
+            RelayMessage::DeviceReply {
+                request_id,
+                outcome,
+            } => {
+                self.lock()
+                    .waiting_devices
+                    .resolve(&request_id, Ok(outcome));
+            }
+            RelayMessage::DeviceClaimed { device } => {
+                self.tell_devices(DeviceSignal::Claimed(device));
+            }
+            RelayMessage::OwnDelivery {
+                envelope,
+                received_at,
+            } => {
+                self.tell_devices(DeviceSignal::Delivered {
+                    envelope,
+                    received_at,
+                });
+            }
             RelayMessage::CapabilityResult { capability, agents } => {
                 self.lock().waiting_queries.resolve(&capability, Ok(agents));
             }
@@ -1305,6 +1342,11 @@ impl Inner {
                 message,
                 task_id,
             } => {
+                // An own-device envelope the relay didn't forward names its
+                // channel, the device ID: no task's business, and live only
+                if task_id.as_deref().is_some_and(nandi_protocol::is_device_id) {
+                    return log::info!("Relay: an envelope for our device wasn't sent ({code})");
+                }
                 log::warn!("Relay error ({code}): {message}");
                 let about_task = task_id.is_some();
                 if let Some(task_id) = task_id {
@@ -1384,6 +1426,13 @@ impl Inner {
     /// Hands group news to every group handler
     fn tell_groups(&self, signal: GroupSignal) {
         for handler in self.handlers().groups.clone() {
+            handler(signal.clone());
+        }
+    }
+
+    /// Hands own-device news to every device handler
+    fn tell_devices(&self, signal: DeviceSignal) {
+        for handler in self.handlers().devices.clone() {
             handler(signal.clone());
         }
     }
@@ -2159,6 +2208,31 @@ impl RelayClient for WsRelayClient {
 
     fn on_groups(&self, handler: Handler<GroupSignal>) -> BoxFuture<'_, ()> {
         self.inner.handlers().groups.push(Arc::new(handler));
+        Box::pin(async {})
+    }
+
+    fn device_request(&self, op: DeviceOp) -> BoxFuture<'_, Result<DeviceOutcome, String>> {
+        async move {
+            self.inner.until_registered().await?;
+            let request_id = uuid::Uuid::new_v4().to_string();
+            let rx = self.inner.lock().waiting_devices.insert(request_id.clone());
+            self.inner
+                .send(RelayMessage::DeviceRequest { request_id, op })?;
+            self.inner.await_reply(rx, "answer").await
+        }
+        .boxed()
+    }
+
+    fn send_own_envelope(&self, envelope: Envelope) -> BoxFuture<'_, Result<(), String>> {
+        async move {
+            self.inner.until_registered().await?;
+            self.inner.send(RelayMessage::OwnEnvelope { envelope })
+        }
+        .boxed()
+    }
+
+    fn on_devices(&self, handler: Handler<DeviceSignal>) -> BoxFuture<'_, ()> {
+        self.inner.handlers().devices.push(Arc::new(handler));
         Box::pin(async {})
     }
 

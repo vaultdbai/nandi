@@ -11,7 +11,9 @@
 
 use std::net::SocketAddr;
 
-use nandi_protocol::{GroupOp, MIN_SUPPORTED_PROTOCOL, PROTOCOL_VERSION};
+use nandi_protocol::{
+    DeviceOp, Envelope, GroupOp, SealPurpose, SealedFor, MIN_SUPPORTED_PROTOCOL, PROTOCOL_VERSION,
+};
 use nandi_relay::{serve_with, RelayServerConfig};
 use serde_json::json;
 
@@ -86,8 +88,45 @@ impl Team {
                     .await
             }
             RelayFeature::Groups => client.group_request(GroupOp::List).await.map(drop),
+            RelayFeature::OwnDevices => client.device_request(DeviceOp::List).await.map(drop),
         }
     }
+}
+
+/// A sealed envelope for a device, whatever its content
+fn own_envelope() -> Envelope {
+    let keys = nandi_seal::DeviceKeys::generate().unwrap();
+    let device = "device.0123456789abcdef0123456789abcdef";
+    let sealed_for = SealedFor {
+        task_id: device.into(),
+        seq: 1,
+        from: "req".into(),
+        to: device.into(),
+        purpose: SealPurpose::OwnDevice,
+        capability: String::new(),
+    };
+    nandi_seal::seal(&keys, keys.public_keys(), sealed_for, b"{}").unwrap()
+}
+
+#[tokio::test]
+async fn a_relay_before_own_devices_is_never_sent_a_device_message() {
+    let addr = relay_at(RELAY_BEFORE).await;
+    let client = registered(addr, "req", vec![card("req", "writer", "write")]).await;
+    let status = client.status();
+    assert_eq!(
+        status.missing_features.contains(&RelayFeature::OwnDevices),
+        !RelayFeature::OwnDevices.available_at(RELAY_BEFORE)
+    );
+    if RelayFeature::OwnDevices.available_at(RELAY_BEFORE) {
+        return;
+    }
+    for error in [
+        client.device_request(DeviceOp::Pair).await.unwrap_err(),
+        client.send_own_envelope(own_envelope()).await.unwrap_err(),
+    ] {
+        assert!(RelayNeedsUpdate::is(&error), "{error}");
+    }
+    assert!(client.status().connected);
 }
 
 #[tokio::test]

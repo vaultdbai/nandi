@@ -13,7 +13,10 @@ use super::RelayStatus;
 use crate::services::a2a::{Task, TaskResult};
 use crate::services::domain::AgentCard;
 use crate::services::gateway::GatewayCard;
-use nandi_protocol::{GroupChange, GroupOp, GroupOutcome, PublicKeys};
+use nandi_protocol::{
+    DeviceOp, DeviceOutcome, Envelope, GroupChange, GroupOp, GroupOutcome, OwnDevice, PublicKeys,
+    Timestamp,
+};
 
 pub type Handler<T> = Box<dyn Fn(T) + Send + Sync>;
 
@@ -72,6 +75,20 @@ pub enum GroupSignal {
     Changed {
         group_id: String,
         change: GroupChange,
+    },
+}
+
+/// What the relay tells us about our person's own devices (protocol 8)
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeviceSignal {
+    /// A phone claimed a pairing code: its keys wait for the person to
+    /// confirm them by fingerprint
+    Claimed(OwnDevice),
+    /// A sealed envelope from one of our devices, as the relay forwarded
+    /// it (not opened: the own-devices service opens it)
+    Delivered {
+        envelope: Envelope,
+        received_at: Timestamp,
     },
 }
 
@@ -298,5 +315,29 @@ pub trait RelayClient: Send + Sync {
     ) -> BoxFuture<'a, Result<PublicKeys, String>> {
         let _ = instance;
         Box::pin(async { Err("Not supported by this relay client".to_string()) })
+    }
+
+    // Own devices (protocol 8)
+
+    /// One own-device call (`DeviceRequest` → `DeviceReply`), or an error
+    /// after 5s. Not connected: `RelayUnavailable`; a relay too old for
+    /// devices: `RelayNeedsUpdate`, and nothing is sent. A refusal is an
+    /// `Ok` (`DeviceOutcome::Refused`) for the caller to explain.
+    fn device_request(&self, op: DeviceOp) -> BoxFuture<'_, Result<DeviceOutcome, String>> {
+        let _ = op;
+        Box::pin(async { Err("Not supported by this relay client".to_string()) })
+    }
+
+    /// Sends a sealed envelope to one of our own devices (`OwnEnvelope`),
+    /// live only: the relay answers `device_offline` when it isn't there
+    fn send_own_envelope(&self, envelope: Envelope) -> BoxFuture<'_, Result<(), String>> {
+        let _ = envelope;
+        Box::pin(async { Err("Not supported by this relay client".to_string()) })
+    }
+
+    /// Own-device news: claims and envelopes from our devices
+    fn on_devices(&self, handler: Handler<DeviceSignal>) -> BoxFuture<'_, ()> {
+        let _ = handler;
+        Box::pin(async {})
     }
 }
