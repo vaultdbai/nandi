@@ -36,6 +36,7 @@ describe('SettingsView', () => {
       'Connector access',
       'Auto-approve',
       'Cloud credentials',
+      'Lock box',
       'Internet access',
       'Browser',
       'Backup',

@@ -28,6 +28,7 @@ export interface ApprovalSummary {
     | 'startRequest'
     | 'saveArtifact'
     | 'pause'
+    | 'useKey'
     | 'postReview'
     | 'batchRestart'
     | 'ecsRedeploy'
@@ -162,6 +163,9 @@ function short(text: string): string {
     : oneLine
 }
 
+/** A Lock box key's release card (`services::lock_box`): never its value */
+export const LOCK_BOX_KEY_TOOL = 'lock_box_key'
+
 /** `shell {cmd: "git push"}` → "Run a command: `git push`" */
 export function approvalSummary(tool: string, args: Args): ApprovalSummary {
   const value = (...names: string[]) => short(field(args, ...names) ?? '')
@@ -195,6 +199,15 @@ export function approvalSummary(tool: string, args: Args): ApprovalSummary {
     }
     case PAUSE_TOOL:
       return { key: 'pause', values: { reason: value('reason') } }
+    case LOCK_BOX_KEY_TOOL:
+      return {
+        key: 'useKey',
+        values: {
+          agent: agentLabel(value('agent')),
+          key: value('key'),
+          host: value('host'),
+        },
+      }
     case ACCESS_TOOL: {
       const request = parseAccessRequest(args)
       if (!request) break

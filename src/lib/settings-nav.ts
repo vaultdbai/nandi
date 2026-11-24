@@ -21,6 +21,7 @@ export const SETTINGS_SECTIONS = [
   'access',
   'autoApprove',
   'cloud',
+  'lockBox',
   'internet',
   'browser',
   'backup',

@@ -3224,6 +3224,72 @@ async setGroupAccess(groupId: string, level: AccessLevel) : Promise<Result<Acces
 }
 },
 /**
+ * Every key by name and rules, and the OS unlock this computer has. Never a value.
+ */
+async getLockBox() : Promise<Result<LockBoxOverview, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_lock_box") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Adds a key: its value straight into the OS keychain
+ */
+async addLockBoxKey(key: NewKey) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_lock_box_key", { key }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * New rules for a key; its value stays as it is
+ */
+async updateLockBoxKey(name: string, rules: KeyRules) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_lock_box_key", { name, rules }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Removes a key and its keychain entry
+ */
+async deleteLockBoxKey(name: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_lock_box_key", { name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Unlocks a Locked key through the OS prompt; returns when it locks again (epoch ms)
+ */
+async unlockLockBoxKey(name: string) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("unlock_lock_box_key", { name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Locks a key again now
+ */
+async lockLockBoxKey(name: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("lock_lock_box_key", { name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * The paired devices (`connected: false` without a relay)
  */
 async listOwnDevices() : Promise<Result<DevicesOverview, string>> {
@@ -6978,6 +7044,22 @@ export type JoinOutcome =
 { kind: "refused"; message: string }
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
 /**
+ * The request header a key goes in: `name: <prefix><key>`
+ */
+export type KeyHeader = { 
+/**
+ * Lowercase, e.g. `authorization` or `x-api-key`
+ */
+name: string; 
+/**
+ * Text before the key, e.g. `Bearer ` (may be empty)
+ */
+prefix?: string }
+/**
+ * What a key is, for the person reading the list
+ */
+export type KeyKind = "apiKey" | "password" | "token"
+/**
  * A new access-key profile, or new keys for an existing one. No `Debug`:
  * it holds the secret.
  */
@@ -6986,6 +7068,26 @@ export type KeyProfileInput = { profile: string; accessKeyId: string; secretAcce
  * `None`: keep the profile's region (none for a new profile)
  */
 region?: string | null }
+/**
+ * What a person set for one key. Never its value.
+ */
+export type KeyRules = { kind: KeyKind; 
+/**
+ * The sites it may go to: `api.github.com`, `*.example.com`
+ */
+hosts: string[]; 
+/**
+ * The agents that may use it, by ID
+ */
+agents: string[]; lock?: LockLevel; 
+/**
+ * How long an OS unlock lasts, for a Locked key
+ */
+unlockMinutes?: number; 
+/**
+ * Where the egress proxy puts it; `None`: the proxy never adds it
+ */
+header?: KeyHeader | null }
 /**
  * Why a key check failed, in terms the UI can explain and fix
  */
@@ -7006,6 +7108,22 @@ export type KeyTestFailure =
  * No key was given and none is stored
  */
 "noKey" | "other"
+/**
+ * One key as the Lock box page shows it. Never its value.
+ */
+export type KeyView = { name: string; rules: KeyRules; 
+/**
+ * Whether its value is in the keychain
+ */
+stored: boolean; createdAt: number; lastUsedAt: number | null; 
+/**
+ * The agent that used it last
+ */
+lastUsedBy: string | null; lastUsedHost: string | null; 
+/**
+ * A Locked key's open unlock ends then (epoch ms)
+ */
+unlockedUntil: number | null }
 /**
  * Providers that need an API key (Ollama runs locally without one).
  */
@@ -7167,6 +7285,31 @@ endpoint?: string | null;
  */
 model?: string | null }
 export type LlmProviderKind = "bedrock" | "azure" | "litellm" | "anthropic" | "openai" | "ollama"
+/**
+ * The Lock box page
+ */
+export type LockBoxOverview = { keys: KeyView[]; 
+/**
+ * The OS prompt a Locked key uses here (`Windows Hello`); `None`:
+ * Locked keys ask each time on this computer
+ */
+systemUnlock: string | null }
+/**
+ * How a key is released on its sites
+ */
+export type LockLevel = 
+/**
+ * Released on its sites to its agents, without asking
+ */
+"open" | 
+/**
+ * An approval card for each release (the default)
+ */
+"ask" | 
+/**
+ * Released only after the OS's own unlock, for a chosen time
+ */
+"locked"
 /**
  * What the user can do about a check, in phase 1. Phase 2 adds the
  * approved installs and fixes.
@@ -7480,6 +7623,11 @@ handle: string | null }
  * Online first, then by display name
  */
 export type NetworkSnapshot = { relayUrl: string | null; relayConnected: boolean; members: NetworkMember[]; fetchedAt: number }
+/**
+ * A key to add: its value is typed once and goes straight into the
+ * keychain
+ */
+export type NewKey = { name: string; value: string; rules: KeyRules }
 export type NextAction = { 
 /**
  * English, with IDs: for Details only. The UI writes the message from

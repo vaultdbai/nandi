@@ -29,6 +29,7 @@ import { ConnectorAccessSection } from './sections/ConnectorAccessSection'
 import { DevicesSection } from './sections/DevicesSection'
 import { EmailSection } from './sections/EmailSection'
 import { InternetAccessSection } from './sections/InternetAccessSection'
+import { LockBoxSection } from './sections/LockBoxSection'
 import { ModelsSection } from './sections/ModelsSection'
 import { SourcesSection } from './sections/SourcesSection'
 import { ThisComputerSection } from './sections/ThisComputerSection'
@@ -118,6 +119,7 @@ export function SettingsView({
           {section === 'access' && <ConnectorAccessSection />}
           {section === 'autoApprove' && <AutoApproveSection />}
           {section === 'cloud' && <CloudCredentialsSection />}
+          {section === 'lockBox' && <LockBoxSection />}
           {section === 'internet' && (
             <InternetAccessSection agentId={view.agentId} />
           )}
