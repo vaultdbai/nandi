@@ -26,7 +26,7 @@ Nandi is a desktop app for running a small team of AI agents on your own compute
 
 Everything that defines your agents is a plain file in a git repository you own. An agent is a folder with an `agent.md` file: YAML frontmatter for its settings, followed by its instructions in Markdown. Workflows and triggers are YAML files next to them. Nandi keeps that repository at `~/.nandi/repo` and syncs it with GitHub, so your agents are versioned, reviewable, and portable between machines. Run history, approvals, and logs stay local in `~/.nandi/local`.
 
-Nandi is local-first. The app, your agents' containers, and their files run on your machine. The only things that leave it are the model calls your agents make (through a proxy that holds your API keys), the network requests you explicitly allow, and git syncs with GitHub. Sharing with teammates happens through GitHub repositories and, optionally, a relay on your local network.
+Nandi is local-first. The app, your agents' containers, and their files run on your machine. What leaves it: the model calls your agents make (through a proxy that holds your API keys; with the free tokens they pass through VaultDB.ai's trial server on the way to DeepSeek, which keeps none of the text), the network requests you explicitly allow, git syncs with your own repository, and, if you join one, a relay: your company's own, or VaultDB.ai's public relay. A relay sees who asked whom and when, never what was said.
 
 ---
 
@@ -87,13 +87,13 @@ Without the tool sandbox, agents still answer, but in text only: Nandi shows a "
 
 ### The app
 
-Download the installer for your platform from the [Nandi downloads page](https://vaultdb.ai/downloads/nandi) (placeholder link):
+Download the installer from [GitHub Releases](https://github.com/vaultdbai/nandi/releases/latest) or [vaultdb.ai](https://vaultdb.ai):
 
-| Platform | Installer                      | Notes                                                                                                                 |
-| -------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| Windows  | `-setup.exe`                   | Windows 10 or 11. Installs for you only: no admin rights needed. WebView2 ships with Windows and installs if missing. |
-| macOS    | `.dmg`                         | Drag Nandi to Applications.                                                                                           |
-| Linux    | `.AppImage`, `.deb`, or `.rpm` | The AppImage needs `chmod +x`. WebKitGTK is a dependency of the packages.                                             |
+| Platform | Installer         | Notes                                                                                                                 |
+| -------- | ----------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Windows  | `-setup.exe`      | Windows 10 or 11. Installs for you only: no admin rights needed. WebView2 ships with Windows and installs if missing. |
+| macOS    | `.dmg`            | Drag Nandi to Applications.                                                                                           |
+| Linux    | `.AppImage` (x64) | It needs `chmod +x`. WebKitGTK is a dependency.                                                                       |
 
 Installed builds update themselves: when a new version is ready, an **Update** button appears in the title bar.
 
