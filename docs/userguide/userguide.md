@@ -32,7 +32,7 @@ Nandi is local-first. The app, your agents' containers, and their files run on y
 
 ## 2. Installation
 
-You need three things: the Nandi app, Docker, and an API key for a model provider.
+You need the Nandi app and Docker. For the model, use your Claude sign-in, a key, or the free tokens.
 
 ### Requires Docker
 

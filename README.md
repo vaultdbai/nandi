@@ -41,14 +41,25 @@ Nandi gives the agent the job without the keys.
 - **Nandi Business:** for teams. An optional relay that your company hosts connects teammates' Nandis, so people can ask or assign work and share an inbox. The relay sees who asked whom, when, which job and its status. It never sees the request or the answer, which are sealed end to end. Free for up to 20 users.
 - **Nandi Personal:** an AI assistant that asks first. It runs on your computer and keeps your notes. Its Gmail and Outlook connection is read-only: it can't send, move, delete or mark mail as read.
 
-Both work without any server. Nandi also checks GitHub for updates and pulls its container images from ghcr.io.
+Both work without any server.
+
+### What Leaves Your Machine
+
+Nandi has no account and sends no telemetry. These are the only things it sends out:
+
+- The model calls you chose, straight to your provider.
+- With the free tokens: the text a task needs, through VaultDB.ai's trial server to DeepSeek. The server keeps none of the text.
+- The sites you allowed, and mail and files read from Google or Microsoft if you connect them.
+- Pushes to your own git remote, if you back up your agents.
+- Your relay, if you join one. It sees who asked whom and when, never what was said.
+- Update checks and ready-made agents from GitHub, container images from `ghcr.io`, and Claude Code from npm the first time you use it.
 
 ## Why It Runs on Your Machine
 
 Model calls are the cost that grows. Running every agent, tool and coding CLI in a hosted service on top of them makes it grow faster: hosted compute is billed per minute, and a team of agents runs all day. Most people already have a desktop or laptop powerful enough to run agents in containers, and it sits idle much of the time. Nandi uses that machine:
 
 - **Cost:** you pay only for model calls. Agents, tools, containers and storage run on hardware you already own. Local models through Ollama are an option for work that doesn't need a hosted model.
-- **Your setup:** agents use the tools, packages, registries and settings already on your machine, so there's nothing to rebuild in someone else's cloud.
+- **Your setup:** agents use your non-secret settings (Claude settings, `.npmrc` and `pip.conf` without tokens, `~/.aws/config`), mounted read-only, so there's nothing to rebuild in someone else's cloud.
 - **Your data:** files, history and definitions stay on your disk (`~/.nandi`).
 
 ## Stack
@@ -67,6 +78,7 @@ Model calls are the cost that grows. Running every agent, tool and coding CLI in
 ### Prerequisites
 
 - [Node.js](https://nodejs.org) 20+
+- [pnpm](https://pnpm.io) 9+ (`corepack enable`)
 - [Rust](https://rustup.rs) (latest stable)
 - [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your platform
 - [Docker](https://docs.docker.com/get-docker/) running locally (Docker Desktop on macOS/Windows)
@@ -123,6 +135,15 @@ See [docs/developer/tauri-commands.md](docs/developer/tauri-commands.md) for det
 
 - **[Developer Docs](docs/developer/)**: architecture, patterns, and detailed guides
 - **[AGENTS.md](AGENTS.md)**: instructions for AI coding agents working in this repo
+
+## Contributing
+
+Bug reports and pull requests are welcome.
+
+- **Bugs and ideas:** open an [issue](https://github.com/vaultdbai/nandi/issues). Include your Nandi version and the error.
+- **Security holes:** don't open an issue. Follow [SECURITY.md](SECURITY.md).
+- **Pull requests:** read [AGENTS.md](AGENTS.md) for the patterns, and run `pnpm run check:all` before you push.
+- **The app works without the relay.** Every feature except person-to-person work must work with no relay configured.
 
 ## License
 
