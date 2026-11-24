@@ -2,7 +2,7 @@
   "name": "nandi",
   "private": true,
   "packageManager": "pnpm@12.6.0",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "type": "module",
   "author": "Danny Smith",
   "copyright": "Copyright © 2025 Danny Smith. All rights reserved.",

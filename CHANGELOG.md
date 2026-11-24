@@ -2,6 +2,29 @@
 
 What changed in each Nandi release, grouped by what you notice. The release notes for each version are in [docs/release-notes/](docs/release-notes/).
 
+## 0.3.0 (2026-11-24)
+
+Speaks relay protocol 8 and still works with relays at protocol 7.
+
+### New
+
+- **Every Gmail and Outlook account.** Connect as many as you have. Each account keeps its own sign-in and read position. Settings › Email lists them all, with **Add another account**. Your first account stays this Nandi's identity. Existing connections move over on first start: nobody signs in again and no mail is read twice.
+- **Files and calendar with each account.** Connecting an account asks once for mail plus your Drive or OneDrive and your calendar, as you tick them. Each account's row can add or drop them later. Read-only, always.
+- **One morning brief across all your inboxes,** grouped by mailbox. Every email Nandi reads says which mailbox it came from.
+- **Agents know which mailbox.** An agent's access can cover every mailbox or only the ones you choose. A yes to an agent covers the mailboxes you had then; one you connect later asks again.
+- **Approve from your phone.** Pair your phone in Settings › Your devices with a QR code and a PIN. It sees your approvals and to-dos and can approve or decline, typing the PIN each time. Messages go sealed end to end through the relay, which can't read them. Anything that acts outside an agent's sandbox, payments, sending, new access and the browser typing stay on the computer.
+- **The Lock box.** Keep API keys and passwords that agents can use but never see. Each key works only at the sites you bind it to, for the agents you allow, and is Open, Ask each time (the default) or Locked (Windows Hello). The egress proxy adds a key to requests to its sites; it never enters a container, a prompt or a log. Every use is on record.
+- **My Nandi browser.** One browser profile per browser (Chrome, Edge) that you sign in to once with **Open my Nandi browser**. Agents you allow use your sign-ins there; saved passwords come through the browser's own sync and stay in the system keychain. Nandi never copies your everyday browser's passwords or cookies.
+- **It gets better every week.** Once a week Nandi reads what you corrected and suggests up to three changes to its instructions, notes or workflows, each with its reasons. Yes applies it as one commit, Undo reverts it, and Nandi checks afterwards whether it helped. It never gives itself more access.
+- **`agent.md`.** An agent is a folder with an `agent.md` (it was `skill.md`). Your agents and installed packs upgrade on first start, in one commit. Other agents see only an agent's name and description; its instructions load when it runs.
+- **What do you already use?** Setup shows what your Claude, ChatGPT, Gemini, Copilot or company AWS/Azure plan can do in Nandi, honestly, with the next step.
+- **Try free tokens** in Settings › Models sends one short message through the free tokens, even when your own model answers everything else.
+- **A different model answered.** An agent's page and its chat say when a call used another model because the chosen one has no key.
+
+### Changed
+
+- Starter packs now need Nandi 0.3.0 (they ship `agent.md`). Nandi 0.2 asks you to update.
+
 ## 0.2.3 (2026-11-22)
 
 ### New
