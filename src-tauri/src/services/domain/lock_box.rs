@@ -274,6 +274,13 @@ fn is_domain(host: &str) -> bool {
             .is_some_and(|tld| tld.chars().all(|c| c.is_ascii_digit()))
 }
 
+/// Whether `name` (lowercase ASCII) is itself a public suffix in the
+/// Public Suffix List, ICANN or private section (`co.uk`, `github.io`):
+/// names under it belong to unrelated owners
+pub fn is_public_suffix(name: &str) -> bool {
+    psl::suffix(name.as_bytes()).is_some_and(|suffix| suffix.as_bytes() == name.as_bytes())
+}
+
 /// A site a key may be bound to, as kept: lowercase ASCII (an
 /// international name in punycode, as a URL carries it), no scheme, port,
 /// path or trailing dot. `*.example.com` covers the subdomains of
@@ -302,7 +309,13 @@ pub fn normalize_bound_host(raw: &str) -> Result<String, String> {
     if !is_domain(&ascii) {
         return Err(refuse());
     }
-    // Two labels at least, so `*.com` (a whole top-level domain) is refused
+    // Two labels at least, so `*.com` (a whole top-level domain) is refused;
+    // and never every site under a public suffix (`*.co.uk`, `*.github.io`)
+    if wildcard && is_public_suffix(&ascii) {
+        return Err(format!(
+            "'{text}' would cover every site under {ascii}, which anyone can register under: bind the key to one site's name instead"
+        ));
+    }
     Ok(if wildcard {
         format!("*.{ascii}")
     } else {
@@ -430,6 +443,30 @@ mod tests {
         ] {
             assert!(normalize_bound_host(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_wildcard_over_a_public_suffix_is_refused() {
+        for bad in [
+            "*.co.uk",
+            "*.com.au",
+            "*.github.io",
+            "*.s3.amazonaws.com",
+            "*.herokuapp.com",
+        ] {
+            let error = normalize_bound_host(bad).unwrap_err();
+            assert!(error.contains("anyone can register"), "{bad}: {error}");
+        }
+        for ok in ["*.example.co.uk", "*.myorg.github.io", "*.example.com"] {
+            assert!(normalize_bound_host(ok).is_ok(), "{ok}");
+        }
+        // Exact hosts stay as they are, even a registrable-looking one
+        assert_eq!(
+            normalize_bound_host("myorg.github.io").unwrap(),
+            "myorg.github.io"
+        );
+        assert!(is_public_suffix("co.uk"));
+        assert!(!is_public_suffix("example.co.uk"));
     }
 
     #[test]

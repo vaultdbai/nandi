@@ -1077,6 +1077,8 @@ impl EventBus {
             .await?;
         // Sites a person allowed once in this run end with it
         crate::services::pilots::sites::end_run(&run_id);
+        // The Lock box's memory of it: declined unlocks, repeated refusals
+        crate::services::lock_box::end_run(&run_id);
         // So do its browser pages (the profile stays): the run plan's
         // safety net when the agent didn't close them
         crate::services::pilots::browser::close_pages(&agent_id).await;

@@ -649,3 +649,83 @@ async fn the_prompt_names_usable_keys_and_never_a_value() {
     assert_eq!(prompt(&state, "reviewer").await, "");
     state.shutdown();
 }
+
+#[tokio::test]
+async fn a_declined_os_unlock_isnt_raised_again_in_the_run() {
+    let state = state_with_agent();
+    let run = start_run(&state).await;
+    let unlock = FakeUnlock::new(Some("Windows Hello"), UnlockOutcome::Declined);
+    state.lock_box().set_unlocker(unlock.clone());
+    add_key(
+        &state,
+        "bank",
+        rules(&["api.github.com"], LockLevel::Locked),
+    )
+    .await;
+    let to = url("https://api.github.com/");
+
+    let first = release(&state, AGENT, "bank", &to).await.unwrap_err();
+    assert!(first.contains("didn't unlock"), "{first}");
+    for _ in 0..3 {
+        let again = release(&state, AGENT, "bank", &to).await.unwrap_err();
+        assert!(again.contains("earlier in this task"), "{again}");
+    }
+    assert_eq!(unlock.asked(), 1, "the prompt was raised once");
+
+    // A new run may ask again
+    state
+        .bus()
+        .turn_done(&run, crate::model::RunStatus::Completed, None)
+        .await
+        .unwrap();
+    start_run(&state).await;
+    *unlock.outcome.lock().unwrap() = UnlockOutcome::Verified;
+    assert!(release(&state, AGENT, "bank", &to).await.is_ok());
+    assert_eq!(unlock.asked(), 2);
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn a_repeated_refusal_is_recorded_once_and_counted_at_run_end() {
+    let state = state_with_agent();
+    let run = start_run(&state).await;
+    add_key(
+        &state,
+        "github",
+        rules(&["api.github.com"], LockLevel::Open),
+    )
+    .await;
+    let evil = url("https://evil.example.com/");
+    for _ in 0..5 {
+        assert!(release(&state, AGENT, "github", &evil).await.is_err());
+    }
+    // Another refusal is its own entry
+    assert!(release(
+        &state,
+        "reviewer",
+        "github",
+        &url("https://api.github.com/")
+    )
+    .await
+    .is_err());
+    let subject = "key 'github' for agent 'writer' to evil.example.com";
+    assert_eq!(decisions(&state).matches(subject).count(), 1);
+    assert_eq!(decisions(&state).matches("agent 'reviewer'").count(), 1);
+
+    state
+        .bus()
+        .turn_done(&run, crate::model::RunStatus::Completed, None)
+        .await
+        .unwrap();
+    let record = decisions(&state);
+    assert_eq!(record.matches(subject).count(), 2, "{record}");
+    assert!(
+        record.contains("site not bound; the same refusal 4 more times in this run"),
+        "{record}"
+    );
+    assert!(
+        !record.contains("1 more time"),
+        "no summary for a single refusal"
+    );
+    state.shutdown();
+}

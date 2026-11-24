@@ -445,6 +445,52 @@ fn refused(name: &str, why: &str) -> String {
     format!("Key '{name}' wasn't released: {why}")
 }
 
+/// A refusal recorded once in a run, and how often it came again since
+struct Repeat {
+    count: u32,
+    decisions: crate::services::repos::DecisionRepository,
+    /// The entry recorded the first time
+    first: Decided,
+}
+
+/// What the Lock box remembers about one run until it ends, so a looping
+/// agent can neither raise the OS prompt again nor fill the record
+#[derive(Default)]
+struct RunMemory {
+    /// (key, host) whose OS unlock the person cancelled or failed
+    unlock_declined: std::collections::HashSet<(String, String)>,
+    /// Refusals by what they say: recorded once, then counted
+    repeated: HashMap<String, Repeat>,
+}
+
+static RUNS: std::sync::LazyLock<Mutex<HashMap<String, RunMemory>>> =
+    std::sync::LazyLock::new(Mutex::default);
+
+fn runs() -> std::sync::MutexGuard<'static, HashMap<String, RunMemory>> {
+    RUNS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The run ended (`EventBus::turn_done`): one summary line for each
+/// refusal that came again, then the run's memory goes
+pub fn end_run(run_id: &str) {
+    let Some(memory) = runs().remove(run_id) else {
+        return;
+    };
+    for repeat in memory.repeated.into_values().filter(|r| r.count > 0) {
+        let Repeat {
+            count,
+            decisions,
+            first,
+        } = repeat;
+        let note = format!(
+            "{}; the same refusal {count} more time{} in this run",
+            first.note.clone().unwrap_or_default(),
+            if count == 1 { "" } else { "s" }
+        );
+        audit::record_in(&decisions, first.note(Some(&note)));
+    }
+}
+
 /// What the record says about one release or refusal
 struct Release<'a> {
     name: &'a str,
@@ -464,6 +510,28 @@ impl Release<'_> {
             .note(Some(&format!("lock: {}; {note}", self.lock.label())));
         if let Some(by) = by {
             decided = decided.by(by);
+        }
+        // A refusal repeated in the same run is counted, not written again
+        if let ("refused", Some(run_id)) = (decision, self.run_id) {
+            let signature = format!("{}\n{}\n{}\n{note}", self.name, self.agent, self.host);
+            let mut runs = runs();
+            let memory = runs.entry(run_id.to_string()).or_default();
+            if let Some(repeat) = memory.repeated.get_mut(&signature) {
+                repeat.count += 1;
+                return;
+            }
+            let who = decided
+                .by
+                .clone()
+                .unwrap_or_else(|| crate::services::chat::decider(state));
+            memory.repeated.insert(
+                signature,
+                Repeat {
+                    count: 0,
+                    decisions: state.store().repos().decisions.clone(),
+                    first: decided.clone().by(who),
+                },
+            );
         }
         audit::record(state, decided);
     }
@@ -678,6 +746,24 @@ async fn locked(
     if let Some(open) = lock_box.unlocked(release.name) {
         return Ok((open.by, "unlocked".to_string()));
     }
+    // Cancelled or failed once in this run: the prompt isn't raised again
+    let declined = (release.name.to_string(), release.host.to_string());
+    if release.run_id.is_some_and(|run| {
+        runs()
+            .get(run)
+            .is_some_and(|memory| memory.unlock_declined.contains(&declined))
+    }) {
+        release.record(
+            state,
+            "refused",
+            Some(RULES.into()),
+            format!("{prompt} declined earlier in this run"),
+        );
+        return Err(refused(
+            release.name,
+            "the person didn't unlock it earlier in this task. Don't ask for it again",
+        ));
+    }
     let agent_name = state
         .store()
         .agent(release.agent)
@@ -697,6 +783,14 @@ async fn locked(
             ))
         }
         UnlockOutcome::Declined => {
+            // Outside a run there is nothing to remember it for
+            if let Some(run) = release.run_id {
+                runs()
+                    .entry(run.to_string())
+                    .or_default()
+                    .unlock_declined
+                    .insert(declined);
+            }
             release.record(
                 state,
                 "refused",

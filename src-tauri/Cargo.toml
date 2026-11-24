@@ -73,6 +73,9 @@ tower-http = { version = "0.6", features = ["cors"] }
 reqwest = { version = "0.13", features = ["json", "form", "stream"] }
 # A browser pilot's site request shows an international name decoded (`pilots::sites`)
 idna = "1.1"
+# The Lock box refuses `*.<public suffix>` sites (`domain::lock_box`): the Public
+# Suffix List compiled in, pinned and updated on purpose
+psl = "=2.1.261"
 # An HTML-only email as plain text for Nandi (`email::text`)
 html2text = "0.17"
 rmcp = { version = "3.5", default-features = false, features = ["client", "transport-streamable-http-client-reqwest", "transport-child-process"] }
