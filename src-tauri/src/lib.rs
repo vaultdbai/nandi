@@ -34,6 +34,8 @@ mod sandbox_suite;
 #[cfg(test)]
 mod secrets_suite;
 mod services;
+#[cfg(test)]
+mod test_log;
 mod types;
 mod utils;
 mod verify;

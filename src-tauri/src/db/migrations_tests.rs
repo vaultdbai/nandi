@@ -37,6 +37,10 @@ const SHIPPED: &[(&str, &str)] = &[
         "011_agent_md.sql",
         "d36c531c49042a5437f075b92fa9e8ad0f3ccda9582ab721f05a34a126c4a5be",
     ),
+    (
+        "012_lock_box.sql",
+        "3eefadb64e335d903b6f5480ededddcb70f78ffaf661f84f1149aed4ee46e22a",
+    ),
 ];
 
 /// A person's rows as Nandi 0.1.0 wrote them
@@ -112,13 +116,13 @@ const AGENT_ID_COLUMNS: &[(&str, &str)] = &[
 
 /// Test-only steps after the shipped chain, the way a real one would look
 const ADD_A_COLUMN: Migration = Migration {
-    version: 12,
-    file: "012_runs_label.sql",
+    version: 13,
+    file: "013_runs_label.sql",
     sql: "ALTER TABLE runs ADD COLUMN label TEXT NOT NULL DEFAULT '';",
 };
 const REBUILD_CONVERSATIONS: Migration = Migration {
-    version: 13,
-    file: "013_rebuild_conversations.sql",
+    version: 14,
+    file: "014_rebuild_conversations.sql",
     sql: "CREATE TABLE conversations_new (
               id         TEXT PRIMARY KEY,
               agent_id   TEXT NOT NULL,
@@ -316,8 +320,9 @@ fn each_version_has_its_standing() {
         (8, Standing::Behind),
         (9, Standing::Behind),
         (10, Standing::Behind),
-        (11, Standing::Current),
-        (12, Standing::Newer),
+        (11, Standing::Behind),
+        (12, Standing::Current),
+        (13, Standing::Newer),
     ];
     for (version, expected) in cases {
         assert_eq!(standing(version, MIGRATIONS), expected, "version {version}");
@@ -482,18 +487,18 @@ fn a_new_database_gets_the_whole_schema_and_no_copy() {
 #[test]
 fn a_failed_migration_rolls_every_step_back() {
     let broken_sql = Migration {
-        version: 13,
-        file: "013_broken.sql",
+        version: 14,
+        file: "014_broken.sql",
         sql: "ALTER TABLE no_such_table ADD COLUMN x TEXT;",
     };
     // Deletes a conversation its messages and runs still point to
     let breaks_a_key = Migration {
-        version: 13,
-        file: "013_breaks_a_key.sql",
+        version: 14,
+        file: "014_breaks_a_key.sql",
         sql: "DELETE FROM conversations WHERE id = 'conv-cos';",
     };
     let cases = [
-        (broken_sql, "migration 013_broken.sql failed"),
+        (broken_sql, "migration 014_broken.sql failed"),
         (breaks_a_key, "lost the row they refer to"),
     ];
     for (failing, reason) in cases {
@@ -503,7 +508,7 @@ fn a_failed_migration_rolls_every_step_back() {
         let schema_before = schema(&conn);
 
         let error = upgrade(&conn, &chain(&[ADD_A_COLUMN, failing]), Some(&path)).unwrap_err();
-        assert!(error.contains("from version 2 to 13"), "{error}");
+        assert!(error.contains("from version 2 to 14"), "{error}");
         assert!(error.contains(reason), "{error}");
         assert!(error.contains("Nothing was changed"), "{error}");
         assert!(error.contains("state.db.bak-v2"), "{error}");
@@ -721,5 +726,45 @@ fn retro_proposals_name_agent_md_after_011() {
             "workflow:daily".into(),
             ".nandi/workflows/daily.yaml".into()
         )
+    );
+}
+
+#[test]
+fn a_0_3_database_gains_the_lock_box_and_keeps_every_row() {
+    let dir = tempfile::tempdir().unwrap();
+    let (conn, path) = v0_1_0_file(dir.path());
+    // Where a build with agent.md left it
+    let at_011 = MIGRATIONS.iter().position(|m| m.version == 11).unwrap();
+    upgrade(&conn, &MIGRATIONS[..=at_011], Some(&path)).unwrap();
+    let before = rows(&conn);
+
+    let done = upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
+    assert!(matches!(
+        done,
+        Upgrade::Upgraded {
+            from: 11,
+            to: SCHEMA_VERSION,
+            ..
+        }
+    ));
+    assert!(dir.path().join("state.db.bak-v11").exists());
+    assert_rows_survived(&before, &rows(&conn));
+    conn.execute(
+        "INSERT INTO lock_box_keys (name, kind, created_at, updated_at)
+         VALUES ('github', 'apiKey', 1, 1)",
+        [],
+    )
+    .unwrap();
+    // A new key is bound nowhere, allowed to nobody, and asks each time
+    let (hosts, agents, lock, minutes): (String, String, String, i64) = conn
+        .query_row(
+            "SELECT hosts, agents, lock, unlock_minutes FROM lock_box_keys",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        (hosts.as_str(), agents.as_str(), lock.as_str(), minutes),
+        ("[]", "[]", "ask", 15)
     );
 }

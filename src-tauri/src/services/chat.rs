@@ -227,6 +227,14 @@ async fn resolve(
     if approval.tool == a2a::escalation::ESCALATION_TOOL {
         return a2a::escalation::resolve_approval(state, &approval_id, decision).await;
     }
+    // A Lock box key waits in the egress proxy, not in the orchestrator
+    if crate::services::lock_box::approvals::is_key_approval(approval) {
+        if crate::services::lock_box::approvals::decide(&approval_id, decision) {
+            return Ok(());
+        }
+        crate::services::lock_box::approvals::close_stale(state, approval).await?;
+        return Err("This key request stopped waiting, so nothing was released".to_string());
+    }
     // A harness run waits on the call itself; the orchestrator would
     // restart the run natively
     if harness_approvals::is_harness(approval) {
@@ -252,6 +260,10 @@ async fn resolve(
 /// isn't one: the decision it makes is recorded where it's made.
 fn record_decision(state: &AppState, approval: &db::ApprovalRow, decision: ApprovalDecision) {
     if crate::services::inbox::tool::is_decision_tool(&approval.tool) {
+        return;
+    }
+    // A key release records itself, with the key, the host and who decided
+    if crate::services::lock_box::approvals::is_key_approval(approval) {
         return;
     }
     let approved = decision == ApprovalDecision::Approved;
@@ -378,6 +390,17 @@ pub async fn expire_overdue_approvals(state: &AppState) -> Result<usize, String>
     for approval in overdue {
         // Escalated questions follow their clarification's deadline
         if approval.tool == a2a::escalation::ESCALATION_TOOL {
+            continue;
+        }
+        // A waiting key request expires itself; one nobody waits for
+        // closes, releasing nothing
+        if crate::services::lock_box::approvals::is_key_approval(&approval) {
+            if !crate::services::lock_box::approvals::is_waiting(&approval.id) {
+                match crate::services::lock_box::approvals::close_stale(state, &approval).await {
+                    Ok(()) => expired += 1,
+                    Err(e) => log::warn!("Couldn't expire approval {}: {e}", approval.id),
+                }
+            }
             continue;
         }
         // A waiting harness call expires itself; one nobody waits for

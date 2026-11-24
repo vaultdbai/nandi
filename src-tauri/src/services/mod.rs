@@ -44,6 +44,7 @@ pub mod knowme;
 pub mod live;
 pub mod llm_keys;
 pub mod llm_trial;
+pub mod lock_box;
 pub mod machine;
 pub mod marketplace;
 pub mod mascot;
@@ -151,6 +152,8 @@ struct Inner {
     runtime: tokio::runtime::Handle,
     http_port: OnceLock<u16>,
     egress: Arc<EgressState>,
+    /// The Lock box's open unlocks and the OS prompt
+    lock_box: Arc<lock_box::LockBoxState>,
     workflows: Arc<WorkflowEngine>,
     triggers: Arc<TriggerEngine>,
     store: RepoStore,
@@ -615,6 +618,7 @@ impl AppState {
                 runtime: config.runtime,
                 http_port: OnceLock::new(),
                 egress,
+                lock_box: Arc::default(),
                 workflows,
                 triggers,
                 store,
@@ -711,6 +715,11 @@ impl AppState {
     /// AWS credentials and STS sessions for the egress proxy
     pub fn egress(&self) -> &Arc<EgressState> {
         &self.0.egress
+    }
+
+    /// The Lock box's open unlocks and the OS prompt (`services::lock_box`)
+    pub fn lock_box(&self) -> &Arc<lock_box::LockBoxState> {
+        &self.0.lock_box
     }
 
     /// Agents' runtime containers and MCP sessions

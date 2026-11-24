@@ -32,6 +32,7 @@ pub mod grant;
 pub mod group;
 pub mod ids;
 pub mod installed;
+pub mod lock_box;
 pub mod note_guard;
 pub mod playbook;
 pub mod policy;

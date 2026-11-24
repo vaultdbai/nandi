@@ -436,9 +436,11 @@ pub async fn resolve_runtime(app: &AppState, agent: &Agent) -> RuntimeDecision {
     let setup = AgentSetup {
         workdir,
         folders: crate::runtime::folder_mounts(shared),
-        folder_prompt: crate::services::connectors::folders::prompt(
-            shared,
-            crate::runtime::FOLDERS_MOUNT,
+        // Its folders, and the Lock box keys it may use (names, never values)
+        folder_prompt: format!(
+            "{}{}",
+            crate::services::connectors::folders::prompt(shared, crate::runtime::FOLDERS_MOUNT),
+            crate::services::lock_box::prompt(app, agent.id().as_str()).await
         ),
         proxy_identity: agent.id().as_str().to_string(),
         tools: Some(ToolGrant {

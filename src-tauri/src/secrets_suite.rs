@@ -159,6 +159,23 @@ async fn no_secret_reaches_the_repo_or_its_history() {
     .await;
     secrets.push(("remote token", remote_token.into()));
 
+    // Settings › Lock box: a key bound to its site, for the shopper
+    let lock_box_key = "ghp_dt04LockBoxKey0123456789abcdef";
+    rpc(
+        &router,
+        "add_lock_box_key",
+        json!({ "key": {
+            "name": "github", "value": lock_box_key,
+            "rules": {
+                "kind": "token", "hosts": ["api.github.com"], "agents": ["shopper"],
+                "lock": "ask", "unlockMinutes": 15,
+                "header": { "name": "authorization", "prefix": "Bearer " },
+            },
+        } }),
+    )
+    .await;
+    secrets.push(("Lock box key", lock_box_key.into()));
+
     // They were really kept: in the keychain, with a ref in the file
     assert_eq!(
         state
@@ -175,6 +192,14 @@ async fn no_secret_reaches_the_repo_or_its_history() {
             .unwrap()
             .as_deref(),
         Some(connector_key)
+    );
+    assert_eq!(
+        state
+            .secrets()
+            .get("nandi.lockbox.github")
+            .unwrap()
+            .as_deref(),
+        Some(lock_box_key)
     );
     let skill = std::fs::read_to_string(state.store().layout().agent_md_path("shopper")).unwrap();
     assert!(

@@ -144,6 +144,7 @@ pub mod images;
 pub mod knowme;
 pub mod live;
 pub mod llm_keys;
+pub mod lock_box;
 pub mod machine;
 pub mod manual_steps;
 pub mod marketplace;
@@ -206,6 +207,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     email::RPC,
     gateway::RPC,
     groups::RPC,
+    lock_box::RPC,
     own_devices::RPC,
     harness_sessions::RPC,
     harnesses::RPC,

@@ -4,6 +4,13 @@
 //! Body: `{ agent_id?, url, method?, headers?, body?, body_base64? }`.
 //! Returns `{ status, headers, body | bodyBase64 }`. Redirects are returned,
 //! not followed, so a redirect can't lead outside the allowlist.
+//!
+//! With `key: "<name>"`, the request carries a Lock box key
+//! (`services::lock_box`): released only if the agent may use it at this
+//! host now, put in the header its rule names, after any header of that
+//! name the agent set is dropped. The container never holds the value; it
+//! is taken out of the reply too, should the site echo it. A redirect is
+//! returned, never followed, so the key never reaches another host.
 
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
@@ -60,6 +67,32 @@ struct FetchRequest {
     body: Option<String>,
     #[serde(default, alias = "body_base64")]
     body_base64: Option<String>,
+    /// A Lock box key to add, by name
+    #[serde(default)]
+    key: Option<String>,
+}
+
+/// What stands in a reply where a released key was
+const KEY_HIDDEN: &str = "[key hidden]";
+
+/// `bytes` with every copy of `secret` replaced by [`KEY_HIDDEN`]
+fn hide_key(bytes: Vec<u8>, secret: &str) -> Vec<u8> {
+    let needle = secret.as_bytes();
+    if needle.is_empty() || bytes.len() < needle.len() {
+        return bytes;
+    }
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i..].starts_with(needle) {
+            out.extend_from_slice(KEY_HIDDEN.as_bytes());
+            i += needle.len();
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    out
 }
 
 #[derive(Debug, Serialize)]
@@ -148,7 +181,16 @@ async fn handle_fetch(
             )
         }
     };
-    let target = format!("{method} {}", redact_url(&url));
+    let key_name = request
+        .key
+        .as_deref()
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .map(str::to_string);
+    let target = match &key_name {
+        Some(key) => format!("{method} {} [key {key}]", redact_url(&url)),
+        None => format!("{method} {}", redact_url(&url)),
+    };
     let host = url.host_str().unwrap_or_default().to_string();
 
     let entry = |allowed: bool, status: Option<u16>, error: Option<String>| EgressLogEntry {
@@ -182,6 +224,25 @@ async fn handle_fetch(
         }
     };
 
+    // Every egress check passed: now the Lock box's own rules
+    let released = match &key_name {
+        None => None,
+        Some(key) => {
+            let Some(keys) = &state.context.keys else {
+                let message = "this proxy has no Lock box".to_string();
+                record(entry(false, Some(403), Some(message.clone()))).await;
+                return error(StatusCode::FORBIDDEN, &message);
+            };
+            match keys.release(&agent_id, key, &url).await {
+                Ok(released) => Some(released),
+                Err(message) => {
+                    record(entry(false, Some(403), Some(message.clone()))).await;
+                    return error(StatusCode::FORBIDDEN, &message);
+                }
+            }
+        }
+    };
+
     let body = match (&request.body, &request.body_base64) {
         (Some(_), Some(_)) => {
             return error(StatusCode::BAD_REQUEST, "send body or bodyBase64, not both")
@@ -196,9 +257,23 @@ async fn handle_fetch(
 
     let mut outgoing = client_for(&state.client, &url, &addrs).request(method, url);
     for (name, value) in &request.headers {
-        if !HOP_BY_HOP.contains(&name.to_ascii_lowercase().as_str()) {
+        let lower = name.to_ascii_lowercase();
+        // The agent's own copy of the key's header never goes out
+        let replaced = released.as_ref().is_some_and(|k| k.header == lower);
+        if !HOP_BY_HOP.contains(&lower.as_str()) && !replaced {
             outgoing = outgoing.header(name, value);
         }
+    }
+    if let Some(key) = &released {
+        let Ok(mut value) = axum::http::HeaderValue::from_str(&key.header_value) else {
+            return error(
+                StatusCode::FORBIDDEN,
+                "the key can't go in a request header",
+            );
+        };
+        // Kept out of any debug output of the request
+        value.set_sensitive(true);
+        outgoing = outgoing.header(key.header.as_str(), value);
     }
     if !body.is_empty() {
         outgoing = outgoing.body(body);
@@ -214,11 +289,19 @@ async fn handle_fetch(
         }
     };
     let status = response.status().as_u16();
+    let secret = released.as_ref().map(|k| k.secret.as_str());
     let headers: BTreeMap<String, String> = response
         .headers()
         .iter()
         .filter(|(name, _)| !HOP_BY_HOP.contains(&name.as_str()))
-        .filter_map(|(name, value)| Some((name.to_string(), value.to_str().ok()?.to_string())))
+        .filter_map(|(name, value)| {
+            let value = value.to_str().ok()?.to_string();
+            let value = match secret {
+                Some(secret) if !secret.is_empty() => value.replace(secret, KEY_HIDDEN),
+                _ => value,
+            };
+            Some((name.to_string(), value))
+        })
         .collect();
     let bytes = match read_limited(response).await {
         Ok(bytes) => bytes,
@@ -228,6 +311,10 @@ async fn handle_fetch(
         }
     };
     record(entry(true, Some(status), None)).await;
+    let bytes = match secret {
+        Some(secret) => hide_key(bytes, secret),
+        None => bytes,
+    };
 
     let (body, body_base64) = match String::from_utf8(bytes) {
         Ok(text) => (Some(text), None),
@@ -437,6 +524,318 @@ mod tests {
         }
     }
 
+    // --- Lock box keys ------------------------------------------------------
+
+    use crate::services::egress::KeyRelease;
+    use crate::services::lock_box::tests as lock_box;
+    use crate::services::lock_box::ReleasedKey;
+    use std::sync::{Arc, Mutex};
+
+    const KEY: &str = "sk-proxy-test-key-91c2e7";
+
+    /// Releases `KEY` as `x-api-key` for any request (the rules themselves
+    /// are tested in `lock_box::tests`), and counts the releases
+    struct AnyHost(Mutex<Vec<String>>);
+
+    #[async_trait::async_trait]
+    impl KeyRelease for AnyHost {
+        async fn release(&self, agent: &str, key: &str, url: &Url) -> Result<ReleasedKey, String> {
+            self.0.lock().unwrap().push(format!("{agent} {key} {url}"));
+            if key != "api" {
+                return Err(format!("Key '{key}' wasn't released: no such key"));
+            }
+            Ok(ReleasedKey {
+                header: "x-api-key".into(),
+                header_value: format!("Key {KEY}"),
+                secret: KEY.into(),
+            })
+        }
+    }
+
+    /// The real Lock box, judging each request as if it went to
+    /// `https://api.github.com` (a test upstream is plain HTTP on loopback)
+    struct AsIfGitHub(crate::services::AppState);
+
+    #[async_trait::async_trait]
+    impl KeyRelease for AsIfGitHub {
+        async fn release(&self, agent: &str, key: &str, url: &Url) -> Result<ReleasedKey, String> {
+            let as_if = Url::parse(&format!("https://api.github.com{}", url.path())).unwrap();
+            crate::services::lock_box::release(&self.0, agent, key, &as_if).await
+        }
+    }
+
+    /// An upstream that keeps the key headers it got and echoes them back
+    /// in its body and a header; `/redirect` sends the caller to `elsewhere`
+    async fn start_key_upstream(elsewhere: u16) -> (u16, Arc<Mutex<Vec<String>>>) {
+        let got: Arc<Mutex<Vec<String>>> = Arc::default();
+        let kept = got.clone();
+        let app = Router::new()
+            .route(
+                "/echo",
+                any(move |headers: HeaderMap| {
+                    let kept = kept.clone();
+                    async move {
+                        let seen: Vec<String> = ["x-api-key", "authorization"]
+                            .iter()
+                            .flat_map(|name| headers.get_all(*name).iter())
+                            .filter_map(|v| v.to_str().ok().map(str::to_string))
+                            .collect();
+                        kept.lock().unwrap().extend(seen.clone());
+                        let echo = seen.join(" | ");
+                        ([("x-echo", echo.clone())], format!("you sent: {echo}"))
+                    }
+                }),
+            )
+            .route(
+                "/redirect",
+                any(move || async move {
+                    (
+                        StatusCode::FOUND,
+                        [(
+                            header::LOCATION,
+                            format!("http://127.0.0.1:{elsewhere}/steal"),
+                        )],
+                    )
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await });
+        (port, got)
+    }
+
+    /// A host that counts every request that reaches it
+    async fn start_counter() -> (u16, Arc<Mutex<usize>>) {
+        let hits: Arc<Mutex<usize>> = Arc::default();
+        let counted = hits.clone();
+        let app = Router::new().fallback(any(move || {
+            let counted = counted.clone();
+            async move {
+                *counted.lock().unwrap() += 1;
+                "stolen"
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await });
+        (port, hits)
+    }
+
+    #[tokio::test]
+    async fn a_key_replaces_the_agent_s_own_header_and_is_hidden_in_the_reply() {
+        let (port, got) = start_key_upstream(1).await;
+        let tokens = ProxyTokens::default();
+        let token = tokens.issue("writer");
+        let releases = Arc::new(AnyHost(Mutex::default()));
+        let app = router(super::super::tests::context_with_keys(
+            tokens,
+            allow_hosts(&[&format!("127.0.0.1:{port}")]),
+            releases.clone(),
+        ));
+        let response = app
+            .oneshot(post_fetch(
+                Some(&token),
+                serde_json::json!({
+                    "url": format!("http://127.0.0.1:{port}/echo"),
+                    "headers": { "X-Api-Key": "agent-made", "x-api-key": "also-agent", "Authorization": "Bearer mine" },
+                    "key": "api",
+                }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = json_body(response).await;
+        // The upstream got the released key, once, and none of the agent's copies
+        let seen = got.lock().unwrap().clone();
+        assert_eq!(
+            seen,
+            [format!("Key {KEY}"), "Bearer mine".to_string()],
+            "{seen:?}"
+        );
+        // What comes back never shows it
+        let text = json.to_string();
+        assert!(!text.contains(KEY), "{text}");
+        assert!(text.contains("[key hidden]"), "{text}");
+        assert_eq!(
+            releases.0.lock().unwrap().as_slice(),
+            [format!("writer api http://127.0.0.1:{port}/echo")]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_key_never_follows_a_redirect_to_another_host() {
+        let (elsewhere, hits) = start_counter().await;
+        let (port, got) = start_key_upstream(elsewhere).await;
+        let tokens = ProxyTokens::default();
+        let token = tokens.issue("writer");
+        let app = router(super::super::tests::context_with_keys(
+            tokens,
+            allow_hosts(&[
+                &format!("127.0.0.1:{port}"),
+                &format!("127.0.0.1:{elsewhere}"),
+            ]),
+            Arc::new(AnyHost(Mutex::default())),
+        ));
+        let response = app
+            .oneshot(post_fetch(
+                Some(&token),
+                serde_json::json!({ "url": format!("http://127.0.0.1:{port}/redirect"), "key": "api" }),
+            ))
+            .await
+            .unwrap();
+        let json = json_body(response).await;
+        assert_eq!(
+            json["status"], 302,
+            "the redirect is returned, not followed"
+        );
+        assert_eq!(*hits.lock().unwrap(), 0, "the other host got nothing");
+        assert!(got.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_refused_key_sends_nothing() {
+        let (port, got) = start_key_upstream(1).await;
+        let tokens = ProxyTokens::default();
+        let token = tokens.issue("writer");
+        let with_keys = router(super::super::tests::context_with_keys(
+            tokens.clone(),
+            allow_hosts(&[&format!("127.0.0.1:{port}")]),
+            Arc::new(AnyHost(Mutex::default())),
+        ));
+        let without = router(context(
+            tokens,
+            allow_hosts(&[&format!("127.0.0.1:{port}")]),
+        ));
+        for (app, key) in [(with_keys, "unknown"), (without, "api")] {
+            let response = app
+                .oneshot(post_fetch(
+                    Some(&token),
+                    serde_json::json!({ "url": format!("http://127.0.0.1:{port}/echo"), "key": key }),
+                ))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{key}");
+        }
+        assert!(
+            got.lock().unwrap().is_empty(),
+            "the upstream was never called"
+        );
+    }
+
+    /// Every text cell of every table of `state.db`
+    async fn database_text(state: &crate::services::AppState) -> String {
+        state
+            .db()
+            .call(|conn| {
+                let tables: Vec<String> = conn
+                    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")?
+                    .query_map([], |row| row.get(0))?
+                    .collect::<Result<_, _>>()?;
+                let mut out = String::new();
+                for table in tables {
+                    let mut stmt = conn.prepare(&format!("SELECT * FROM \"{table}\""))?;
+                    let columns = stmt.column_count();
+                    let mut rows = stmt.query([])?;
+                    while let Some(row) = rows.next()? {
+                        for i in 0..columns {
+                            if let Ok(text) = row.get::<_, String>(i) {
+                                out.push_str(&text);
+                                out.push('\n');
+                            }
+                        }
+                    }
+                }
+                Ok(out)
+            })
+            .await
+            .unwrap()
+    }
+
+    /// A whole run's use of a key, then a search for its value everywhere
+    /// it must never be: the reply, the run record (messages, approvals,
+    /// run events), the decision record, every gold-copy file, and the logs
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_released_key_s_value_never_reaches_a_record_or_a_log() {
+        let watching = crate::test_log::watch();
+        let state = lock_box::state_with_agent();
+        let run = lock_box::start_run(&state).await;
+        lock_box::add_key(
+            &state,
+            "github",
+            lock_box::rules(
+                &["api.github.com"],
+                crate::services::domain::lock_box::LockLevel::Ask,
+            ),
+        )
+        .await;
+        let (port, got) = start_key_upstream(1).await;
+        let tokens = ProxyTokens::default();
+        let token = tokens.issue(lock_box::AGENT);
+        let app = router(super::super::tests::context_with_keys(
+            tokens,
+            allow_hosts(&[&format!("127.0.0.1:{port}")]),
+            Arc::new(AsIfGitHub(state.clone())),
+        ));
+        let fetching = tokio::spawn(app.oneshot(post_fetch(
+            Some(&token),
+            serde_json::json!({ "url": format!("http://127.0.0.1:{port}/echo"), "key": "github" }),
+        )));
+        let card = lock_box::pending_key_approval(&state, &run.run_id).await;
+        crate::services::chat::approve_action(
+            &state,
+            None,
+            card.id,
+            crate::model::ApprovalDecision::Approved,
+        )
+        .await
+        .unwrap();
+        let response = fetching.await.unwrap().unwrap();
+        let reply = json_body(response).await.to_string();
+        assert_eq!(
+            got.lock().unwrap().as_slice(),
+            [format!("Bearer {}", lock_box::VALUE)],
+            "the site got the key"
+        );
+
+        let value = lock_box::VALUE;
+        assert!(!reply.contains(value), "the reply: {reply}");
+        let db = database_text(&state).await;
+        assert!(db.contains("github"), "the search reads the run record");
+        assert!(!db.contains(value), "state.db holds the value");
+        let record = lock_box::decisions(&state);
+        assert!(record.contains("- **Decision:** released"), "{record}");
+        assert!(
+            !record.contains(value),
+            "the decision record holds the value"
+        );
+        let mut files = Vec::new();
+        let root = state.store().layout().root.clone();
+        let mut dirs = vec![root];
+        while let Some(dir) = dirs.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    dirs.push(path);
+                } else if let Ok(bytes) = std::fs::read(&path) {
+                    files.push((path, String::from_utf8_lossy(&bytes).into_owned()));
+                }
+            }
+        }
+        for (path, text) in &files {
+            assert!(!text.contains(value), "{} holds the value", path.display());
+        }
+        if watching {
+            assert!(
+                !crate::test_log::contains(value),
+                "a log line held the value"
+            );
+        }
+        state.shutdown();
+    }
     #[test]
     fn redacts_urls() {
         let url = Url::parse("https://user:pw@api.example.com:8443/a/b?key=secret#frag").unwrap();

@@ -4086,6 +4086,8 @@ dependencies = [
  "uuid",
  "webpki-roots 0.26.11",
  "which",
+ "windows 0.61.3",
+ "windows-future 0.2.1",
  "zip",
 ]
 

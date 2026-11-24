@@ -58,6 +58,9 @@ pub fn reason(tool: &str, args: &Value) -> Option<&'static str> {
     if tool == crate::services::access::ACCESS_TOOL {
         return Some("It gives an agent new access");
     }
+    if tool == crate::services::lock_box::KEY_TOOL {
+        return Some("It lets an agent use a key from the Lock box");
+    }
     if let Some((pilot, browser_tool)) = pilots::tools::parse_tool_name(tool) {
         if pilots::browser::is_browser(pilot) {
             let action = pilots::browser::action(
@@ -97,6 +100,7 @@ mod tests {
         let none = json!({});
         for tool in [
             "connector_access",
+            "lock_box_key",
             "work_start",
             "delegate_to_agent",
             "send_email",

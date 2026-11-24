@@ -100,6 +100,10 @@ pub(super) async fn llm_step(
                 &skill.folders,
                 crate::runtime::FOLDERS_MOUNT,
             ));
+            // The Lock box keys it may use: names and sites, never values
+            if let Some(state) = app_state(deps) {
+                system.push_str(&crate::services::lock_box::prompt(&state, &ctx.agent_id).await);
+            }
             system.push_str(&today_prompt(&chrono::Local::now()));
             // An Inbox item's thread (an intake one too): Nandi gets
             // the item it's about and what's being decided

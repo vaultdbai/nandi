@@ -514,25 +514,6 @@ async fn a_hand_over_waits_for_the_person_and_takes_their_answer() {
     state.shutdown();
 }
 
-/// Notices any log line that contains `needle` (the test logger is global:
-/// it's installed once, and other tests' lines pass through it too)
-struct LeakLogger {
-    needle: &'static str,
-    seen: std::sync::atomic::AtomicBool,
-}
-
-impl log::Log for LeakLogger {
-    fn enabled(&self, _: &log::Metadata) -> bool {
-        true
-    }
-    fn log(&self, record: &log::Record) {
-        if record.args().to_string().contains(self.needle) {
-            self.seen.store(true, Ordering::SeqCst);
-        }
-    }
-    fn flush(&self) {}
-}
-
 /// A site secret the user adds: its name goes into agent.md and its value
 /// into the keychain, and nowhere else: not a file, the Permissions view,
 /// an event, the prompt, or a log line
@@ -543,14 +524,7 @@ async fn a_site_secret_s_value_stays_in_the_keychain() {
     use crate::services::repos::Repository;
 
     const VALUE: &str = "s3cr3t-value-7731";
-    static LOGGER: LeakLogger = LeakLogger {
-        needle: VALUE,
-        seen: std::sync::atomic::AtomicBool::new(false),
-    };
-    let watching = log::set_logger(&LOGGER).is_ok();
-    if watching {
-        log::set_max_level(log::LevelFilter::Trace);
-    }
+    let watching = crate::test_log::watch();
 
     let sink = Arc::new(RecordingSink::default());
     let state = crate::services::AppState::for_tests(vec![sink.clone() as Arc<dyn EventSink>]);
@@ -642,7 +616,7 @@ Shop.
     }
     if watching {
         assert!(
-            !LOGGER.seen.load(Ordering::SeqCst),
+            !crate::test_log::contains(VALUE),
             "a log line had the value"
         );
     }

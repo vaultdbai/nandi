@@ -441,12 +441,27 @@ async fn record(entry: EgressLogEntry) {
 /// Loads an agent's capabilities (from agent.md in production).
 pub(crate) type CapabilitiesFn = Arc<dyn Fn(&str) -> Result<Capabilities, String> + Send + Sync>;
 
+/// Where `/fetch` gets a Lock box key for one request (`services::lock_box`).
+/// The release checks every rule (the agent, the site, the lock level) and
+/// may wait for the person; an error says why nothing was released.
+#[async_trait::async_trait]
+pub trait KeyRelease: Send + Sync {
+    async fn release(
+        &self,
+        agent: &str,
+        key: &str,
+        url: &reqwest::Url,
+    ) -> Result<crate::services::lock_box::ReleasedKey, String>;
+}
+
 /// What the AWS, fetch, and tunnel routes share: who's calling, and what
 /// they may do.
 #[derive(Clone)]
 pub(crate) struct ProxyContext {
     tokens: ProxyTokens,
     capabilities: CapabilitiesFn,
+    /// The Lock box; `None` where no key may be released
+    keys: Option<Arc<dyn KeyRelease>>,
 }
 
 impl ProxyContext {
@@ -589,6 +604,7 @@ pub fn start_server(state: &AppState) {
             let store = state.store().clone();
             Arc::new(move |identity| capabilities_of(&store, identity))
         },
+        keys: Some(Arc::new(crate::services::lock_box::Releaser(state.clone()))),
     };
     let router = llm_proxy::router(llm_proxy::ProxyState::new(state))
         .merge(model_proxy::router(model_proxy::ModelProxyState::new(
@@ -667,6 +683,19 @@ pub(crate) mod tests {
         ProxyContext {
             tokens,
             capabilities: Arc::new(move |_| Ok(capabilities.clone())),
+            keys: None,
+        }
+    }
+
+    /// [`context`] with a Lock box
+    pub fn context_with_keys(
+        tokens: ProxyTokens,
+        capabilities: Capabilities,
+        keys: Arc<dyn KeyRelease>,
+    ) -> ProxyContext {
+        ProxyContext {
+            keys: Some(keys),
+            ..context(tokens, capabilities)
         }
     }
 
