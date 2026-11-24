@@ -1020,7 +1020,7 @@ network:
 **Settings › Lock box** holds the keys your agents call APIs with: an API key, a token or a password. An agent can use a key, but never sees it, and a key works only at the sites it belongs to.
 
 - **Add a key.** Give it a name (`github`), type its value once, and set its rules. The value goes straight into your system keychain. Nandi never shows it again; to change it, delete the key and add it again.
-- **Sites.** The hosts it may go to, one per line: `api.github.com`, or `*.example.com` for the subdomains of `example.com`. Nothing else matches: not `api.github.com.evil.com`, not `api-github.com`, not a lookalike with a foreign letter, not plain `http`, another port or an IP address. A key with no site is never used. The agent also needs the site in its Internet access.
+- **Sites.** The hosts it may go to, one per line: `api.github.com`, or `*.example.com` for the subdomains of `example.com`. Nothing else matches: not `api.github.com.evil.com`, not `api-github.com`, not a lookalike with a foreign letter, not plain `http`, another port or an IP address. A wildcard over a shared ending, like `*.co.uk` or `*.github.io`, is refused. A key with no site is never used. The agent also needs the site in its Internet access.
 - **Agents.** Only the agents you tick may use it. Untick one and its next call is refused.
 - **How Nandi adds it.** `Authorization: Bearer <key>`, `x-api-key: <key>`, or another header you name.
 - **Lock.** How each use is allowed:

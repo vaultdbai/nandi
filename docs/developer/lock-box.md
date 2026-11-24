@@ -49,6 +49,8 @@ POST /fetch { url, key } ─▶ proxy token ─▶ network.allow ─▶ not an i
 
 `normalize_bound_host` keeps a site as lowercase ASCII (punycode for an international name, as a URL carries it), with no scheme, port, path, user info or trailing dot. `*.example.com` covers one or more whole labels before `example.com`, never `example.com` itself. `*`, `*.com` and IPs are refused.
 
+A `*.<base>` rule is also refused when `<base>` is itself a public suffix (`*.co.uk`, `*.com.au`, `*.github.io`, `*.s3.amazonaws.com`): every name under it belongs to someone else. The check uses the [`psl`](https://crates.io/crates/psl) crate, pinned with `=` in `Cargo.toml`. It compiles Mozilla's Public Suffix List (ICANN and private sections) into the binary, so it needs no file or network at run time, and it follows the list closely. `publicsuffix` reads the list at run time instead, which would mean shipping and updating a data file. Update the pin on purpose, with the domain tests. Exact hosts are not checked against the list: binding `myorg.github.io` is fine.
+
 | ✅ Bound `api.github.com` matches | ❌ Never matches                                                        |
 | --------------------------------- | ----------------------------------------------------------------------- |
 | `https://api.github.com/user`     | `api.github.com.evil.com`, `api-github.com`, `x.api.github.com`         |
@@ -65,7 +67,19 @@ The URL parser lowercases and punycode-encodes the destination first; matching i
 | Ask each time | `approvals::ask`: an approval row (`tool_call_id` `lockbox:<id>`, tool `lock_box_key`) in the agent's active run. `chat::approve_action` hands the decision to the waiter, never to the orchestrator. No run: refused |
 | Locked        | `LockBoxState::unlocked` (memory, with its end time), else `SystemUnlock::verify` (one prompt at a time). A cancelled prompt refuses and never falls back. No prompt on this computer, or it can't be shown: the card |
 
-Changing a key's rules, Lock now and a restart end an unlock. The card is desktop only (`own_devices::desktop_only`). The card's args hold the key's name, the agent and the host: never the value.
+Changing a key's rules, Lock now and a restart end an unlock.
+
+### Each run's memory
+
+`lock_box::end_run`, called from `EventBus::turn_done`, clears what the Lock box keeps for a run (in memory, `RUNS`):
+
+| What                             | In the run                                                             | At its end                                        |
+| -------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------- |
+| A card declined or expired       | That key and host are refused without a card (from the approval rows)  | A new run asks again                              |
+| An OS unlock cancelled or failed | That key and host are refused without raising the prompt again         | A new run may prompt again                        |
+| The same refusal again           | Recorded once; repeats (same key, agent, host and reason) only counted | One summary line: "the same refusal N more times" |
+
+Outside a run nothing is remembered, so each refusal is recorded. The card is desktop only (`own_devices::desktop_only`). The card's args hold the key's name, the agent and the host: never the value.
 
 ## The agent's side
 
