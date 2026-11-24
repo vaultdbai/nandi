@@ -53,12 +53,12 @@ where the key would go (`services/egress/model_proxy.rs`):
 ## Rules
 
 - **Identity comes from the token.** Every route needs the per-container proxy token (`Authorization: Bearer`, or the Basic password for `CONNECT`). A body `agent_id` that names another agent is refused with 403.
-- **Capabilities are re-read per request** from the agent's skill.md, so edits apply immediately. Anything not listed is denied.
+- **Capabilities are re-read per request** from the agent's agent.md, so edits apply immediately. Anything not listed is denied.
 - **Secrets never leave the host or reach the logs.** The long-term AWS key stays in the keychain (`nandi.aws.access_key`, `nandi.aws.secret_key`, `nandi.aws.region`). `Debug` output redacts it, and so does the status UI (`AKIA…WXYZ`). Audit entries drop URL query strings and userinfo.
 - **Redirects are returned, not followed**, so a redirect can't lead outside the allowlist.
 - `aws`, `fetch`, and `tunnel` requests (allowed or denied) are appended to `~/.nandi/local/logs/egress.log`. LLM calls keep going to `llm.log`.
 
-## skill.md capabilities
+## agent.md capabilities
 
 ```yaml
 aws:
@@ -86,7 +86,7 @@ network:
 
 `CredentialsManager::session(agent_id, profile, policy, duration, usage)` picks the agent's identity, in order:
 
-1. `aws.profile` in its skill.md (chosen on the agent's Settings tab).
+1. `aws.profile` in its agent.md (chosen on the agent's Settings tab).
 2. The keychain key (Settings → Cloud credentials → Access key).
 3. The sign-in profile there (`AWS_PROFILE`, else the SDK's default chain).
 

@@ -33,7 +33,7 @@ A to-do is a `gateway_assignments` row with a `source` (migration `008_todos.sql
 
 ## Nandi's Tools
 
-`gateway::todos::tool`: `todo_add {text, kind, due?, source, source_ref?, related_ref?}`, `todo_list {}`, `todo_done {id, note?}`. Host tools, offered to Nandi only when its `skill.md` lists them in `allowed-tools`, allowed in the email and calendar check runs (`data_run_allows`), no approval (`run_plan::classify`: no effect). What to add is in Nandi's `skill.md` ("To-dos"), the `email-triage` playbook and the `mail-check` and `morning-digest` triggers, not in code.
+`gateway::todos::tool`: `todo_add {text, kind, due?, source, source_ref?, related_ref?}`, `todo_list {}`, `todo_done {id, note?}`. Host tools, offered to Nandi only when its `agent.md` lists them in `allowed-tools`, allowed in the email and calendar check runs (`data_run_allows`), no approval (`run_plan::classify`: no effect). What to add is in Nandi's `agent.md` ("To-dos"), the `email-triage` playbook and the `mail-check` and `morning-digest` triggers, not in code.
 
 ## The UI
 

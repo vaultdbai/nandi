@@ -48,7 +48,7 @@ A browser on the host would otherwise bypass the egress proxy, and an agent coul
   - URLs carrying `token=`, `secret=`, `key=` or similar
   - clicking a link that leads off the allowed sites (the click is held and the target shown)
 
-  These become Inbox approvals (RQ-18), and skill.md `requires_approval` can add more.
+  These become Inbox approvals (RQ-18), and agent.md `requires_approval` can add more.
 
 - **Audit:** every call goes to `pilots.log` with redacted arguments, the URL, the outcome and the duration. Screenshots are saved as run files and linked from the run (RN-05), not stored in the log.
 

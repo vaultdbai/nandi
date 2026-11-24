@@ -8,14 +8,14 @@
 
 ## What to find out first
 
-- [x] List every place the app shows data that lives in files or changes in the background, and for each one: is it watched, is an event published, does the screen listen? At least: agents and their skill.md, workflows, triggers, capabilities, policies, **My notes** (the Chief of Staff's notes folder), agents' work folders and run files, installed packs, connectors.yaml, settings.yaml, NANDI.md, the Library, the Inbox, runs and history. Done: the audit below (2026-11-05, before the change).
+- [x] List every place the app shows data that lives in files or changes in the background, and for each one: is it watched, is an event published, does the screen listen? At least: agents and their agent.md, workflows, triggers, capabilities, policies, **My notes** (the Chief of Staff's notes folder), agents' work folders and run files, installed packs, connectors.yaml, settings.yaml, NANDI.md, the Library, the Inbox, runs and history. Done: the audit below (2026-11-05, before the change).
 - [x] Reproduce the owner's case: edit and add files from outside the app (an editor, git pull, another agent or workflow), and note which screens stay stale. Done from the code: the "Stale before" column. The click-through in the app is in DT-43 to DT-46.
 
 ### Audit (before this change)
 
 | Data                                         | Lives in                                        | Watched?                              | Event published                                                                          | Screen listens?                                                          | Stale before                                  |
 | -------------------------------------------- | ----------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------- |
-| Agents list, skill.md, instructions          | `.nandi/agents/<id>/`, `.nandi/overrides/<id>/` | yes (repo watcher)                    | `agent://agents_changed`, `repo://file_changed`                                          | yes: `['agents']`, `['agent-definition', id]`, agent policies            | no                                            |
+| Agents list, agent.md, instructions          | `.nandi/agents/<id>/`, `.nandi/overrides/<id>/` | yes (repo watcher)                    | `agent://agents_changed`, `repo://file_changed`                                          | yes: `['agents']`, `['agent-definition', id]`, agent policies            | no                                            |
 | Agent memory.md                              | `.nandi/agents/<id>/memory.md`                  | yes                                   | `repo://file_changed`                                                                    | yes (`useAgentMemory` subscribes itself)                                 | no                                            |
 | Workflows                                    | `.nandi/workflows/`, `agents/<a>/workflows/`    | yes                                   | `workflow://changed`, `repo://file_changed`                                              | yes: `['workflows']`, `['workflow']`                                     | no                                            |
 | Triggers                                     | `.nandi/triggers/`                              | yes                                   | `trigger://changed`, `repo://file_changed`                                               | yes                                                                      | no                                            |
@@ -46,7 +46,7 @@
 
 ## Acceptance
 
-- [x] Editing a note, an agent's skill.md or a workflow in an outside editor updates the open screen within about a second, with no reload. (Automated for notes and skill.md with real folders; the Notepad check is by hand.)
+- [x] Editing a note, an agent's agent.md or a workflow in an outside editor updates the open screen within about a second, with no reload. (Automated for notes and agent.md with real folders; the Notepad check is by hand.)
 - [x] Files added by an agent or workflow appear without a reload, with who made them (Home › Recent changes).
 - [x] The Refresh button brings every screen up to date even with the watcher switched off (a test: `live/tests.rs` `refresh_works_with_the_watcher_off`).
 - [x] Testing catalog entries added ("Needs relay: no"), `pnpm run check:all` and `pnpm run test:offline` pass.

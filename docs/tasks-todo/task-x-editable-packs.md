@@ -48,7 +48,7 @@ A pack installed into a company's (or a person's private) repo is an ordinary, e
 
 ## Test
 
-1. Install the official pack into a company repo and edit Chief of Staff's `skill.md` and a workflow. Both save, commit, and appear on a second machine sharing that repo.
+1. Install the official pack into a company repo and edit Chief of Staff's `agent.md` and a workflow. Both save, commit, and appear on a second machine sharing that repo.
 2. Release a new pack version that changes different lines. The update merges cleanly, both the edits and the new lines are present, and the agent header shows "modified by <company>".
 3. Release a version that changes the same lines. The update shows "Needs a decision"; Keep mine and Take theirs each give the expected file, and nothing is written before Apply.
 4. With the "Only unmodified signed packs" policy on, editing is refused and the reason is shown in plain words.

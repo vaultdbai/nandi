@@ -8,7 +8,7 @@ Code: `src-tauri/src/services/live/` (Rust), `src/lib/live-changes.ts`, `src/hoo
 
 | Data                                                                                                             | Watched by                                            | Reaches the feed through                              |
 | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------- |
-| Agents (`skill.md`, `instructions.md`), workflows, triggers, `settings.yaml`, `connectors.yaml`, `manifest.yaml` | the repo watcher (`services/watcher.rs`)              | the store (`live::StoreChanges`, an `EventPublisher`) |
+| Agents (`agent.md`, `instructions.md`), workflows, triggers, `settings.yaml`, `connectors.yaml`, `manifest.yaml` | the repo watcher (`services/watcher.rs`)              | the store (`live::StoreChanges`, an `EventPublisher`) |
 | Policies (`.nandi/policies/`)                                                                                    | the repo watcher                                      | `ChangeFeed::file_changed` from the watcher           |
 | `installed.yaml` (installed packs), `NANDI.md` (your profile)                                                    | the repo watcher (`Target::Packs`, `Target::Profile`) | `ChangeFeed::file_changed` from the watcher           |
 | Capabilities                                                                                                     | the repo watcher                                      | their own `capability://*` events (not in the feed)   |

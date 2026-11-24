@@ -6,8 +6,8 @@
 ## Today
 
 - The `filesystem` connector (`services/connectors/filesystem.rs`) shares **one** host folder (`config.path`), read and write; `write_file` is marked sensitive (asks for approval).
-- An agent gets its tools by listing it in skill.md: `connectors: [filesystem]` (`connectors::declared_connectors`). It gets the whole folder or nothing.
-- Since 2026-10-20 Ask can install connectors and save agents (`nandi_save_artifact`, `nandi_list_connectors`), and `connectors` is a documented skill.md key.
+- An agent gets its tools by listing it in agent.md: `connectors: [filesystem]` (`connectors::declared_connectors`). It gets the whole folder or nothing.
+- Since 2026-10-20 Ask can install connectors and save agents (`nandi_save_artifact`, `nandi_list_connectors`), and `connectors` is a documented agent.md key.
 
 ## Design
 
@@ -28,7 +28,7 @@
 
   The old single `path` reads as one folder `{id: shared, access: write}` (migrated on save, so old files keep working).
 
-- **Per agent** (skill.md), by folder ID:
+- **Per agent** (agent.md), by folder ID:
 
   ```yaml
   connectors:
@@ -45,14 +45,14 @@
 ## Work
 
 - [x] Domain + config parsing for `folders` (ids unique, paths absolute after `~`, access enum), with the `path` migration. Tests.
-- [x] `FilesystemConnector` over many roots; the agent's set comes from its skill.md item (`Connector::call_tool_for`). Tests for read-only refusal and containment.
+- [x] `FilesystemConnector` over many roots; the agent's set comes from its agent.md item (`Connector::call_tool_for`). Tests for read-only refusal and containment.
 - [x] Library › Connectors › Filesystem › Setup: add (native folder picker), short name, Read only / Read and write, remove.
 - [x] Show which agents use each folder (`list_folder_users`), and ask before removing one in use.
-- [x] Agent page: "Folders" picker listing the shared folders with a per-agent read/write choice; saves skill.md through the agent repository.
+- [x] Agent page: "Folders" picker listing the shared folders with a per-agent read/write choice; saves agent.md through the agent repository.
 - [x] Ask: `nandi_list_connectors` shows the folders; the build-an-agent guide says how to give an agent folders; `nandi_check_artifact` errors on a folder ID that isn't in the list.
 - [x] i18n in en, fr, ar, ja; `docs/developer/` connector doc and the user guide.
 
 ## Acceptance
 
 - [ ] Add two folders (one read, one read & write), give an agent only the read one: it can list and read it, can't write it, and can't see the other.
-- [ ] "Give the report agent write access to Reports" in Ask shows one approval card and the agent's skill.md changes.
+- [ ] "Give the report agent write access to Reports" in Ask shows one approval card and the agent's agent.md changes.

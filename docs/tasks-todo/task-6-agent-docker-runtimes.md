@@ -230,7 +230,7 @@ Why not host-only: the code under test is untrusted. Unattended runs can't rely 
 
 - [ ] **Browser pilot in the catalog** (`services/pilots/catalog.rs`): Playwright MCP (any OS) and/or Chrome DevTools MCP, capability `BROWSER`. It launches with an isolated, temporary profile, one browser context per run (concurrency), and blocks navigation outside the run's allowed origins (in the pilot flags if supported, otherwise enforced in `pilots/tools.rs`).
 - [ ] **Per-run approval policy for pilot browser tools**: e.g. "auto-approve navigation and clicks within the allowed origins for this run", so a UI test doesn't prompt on every click. Downloads, uploads, file pickers and new origins still prompt.
-- [ ] **Agent picks placement**: `browser: { placement: host-pilot | container, allowed_origins: [...] }` in skill.md, with a run-time override ("watch on my screen"). Fall back to container when no pilot is running or the run is unattended.
+- [ ] **Agent picks placement**: `browser: { placement: host-pilot | container, allowed_origins: [...] }` in agent.md, with a run-time override ("watch on my screen"). Fall back to container when no pilot is running or the run is unattended.
 - [ ] **`protocol: mcp` ports**: a workload port declared as MCP (e.g. Playwright MCP inside the container) is attached to the agent as tools through the host (host stays the only MCP client, same rule as pilots).
 - [ ] **Chrome in a hardened container**: `resources.shm_mb` (default 2048 for browser images). Decide `--no-sandbox` (container is the boundary) vs shipping a Chrome seccomp profile. Document the choice.
 - [ ] **Detached exec**: `container_exec(cmd, detach: true)` returns a handle with `logs(handle)` and `stop(handle)`, for dev servers.

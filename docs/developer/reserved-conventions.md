@@ -13,7 +13,7 @@ A model string's prefix selects the provider: `deepseek:`, `ollama:`, `claude:`,
 
 A remote inference server is an agent like any other:
 
-- It declares itself in `skill.md` with `capabilities.serves: [inference]`.
+- It declares itself in `agent.md` with `capabilities.serves: [inference]`.
 - Its endpoint uses `endpoint.type: a2a`.
 - It is discovered and delegated to through the same A2A path as any other agent.
 

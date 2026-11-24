@@ -16,7 +16,7 @@ On every start, `services::migration::bootstrap` opens `~/.nandi/repo`, or creat
 
 | Data                                                                                                       | Where                                                 | In git | Rebuildable               |
 | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------ | ------------------------- |
-| Agents (`skill.md`, `instructions.md`)                                                                     | `~/.nandi/repo/.nandi/agents/<id>/`                   | ✅     | source                    |
+| Agents (`agent.md`, `instructions.md`)                                                                     | `~/.nandi/repo/.nandi/agents/<id>/`                   | ✅     | source                    |
 | Agent playbooks                                                                                            | `~/.nandi/repo/.nandi/agents/<id>/skills/<name>.md`   | ✅     | source                    |
 | Agent-scoped workflows                                                                                     | `~/.nandi/repo/.nandi/agents/<id>/workflows/<w>.yaml` | ✅     | source                    |
 | Global workflows                                                                                           | `~/.nandi/repo/.nandi/workflows/<w>.yaml`             | ✅     | source                    |
@@ -153,7 +153,7 @@ pub display_name: String,
 
 `state.db` is versioned by numbered, forward-only migrations in `src-tauri/src/db/migrations/`, embedded in the app (`db::migrations`). `PRAGMA user_version` holds the number of the last one applied.
 
-The numbers follow what released builds stamped. Nandi 0.1.0 wrote version 2, so its schema is `002_nandi_0_1_0.sql`, word for word from the tag. `006_since_0_1_0.sql` takes it to Nandi 0.2.0's schema, `007_run_retries.sql` adds `runs.retry_of` and `runs.attempt` ([triggers.md](./triggers.md#when-a-run-fails-or-a-time-is-missed)), and `008_todos.sql` adds the to-do columns to `gateway_assignments` ([todos.md](./todos.md)): `kind` (`do` for every existing row), `source`, `source_ref` (unique per source), `related_ref`, `run_id`, `assigned_agent`. `009_retro.sql` adds `retro_proposals`, the weekly retro's proposals and their commits ([triggers.md](./triggers.md#the-weekly-retro)). `010_own_devices.sql` adds `own_devices`, the person's paired phones: name, confirmed keys, the PIN's Argon2id hash, the lockout and the replay cursor ([own-devices.md](./own-devices.md)). Versions 1 and 3 to 5 were written only by development builds and have no migration.
+The numbers follow what released builds stamped. Nandi 0.1.0 wrote version 2, so its schema is `002_nandi_0_1_0.sql`, word for word from the tag. `006_since_0_1_0.sql` takes it to Nandi 0.2.0's schema, `007_run_retries.sql` adds `runs.retry_of` and `runs.attempt` ([triggers.md](./triggers.md#when-a-run-fails-or-a-time-is-missed)), and `008_todos.sql` adds the to-do columns to `gateway_assignments` ([todos.md](./todos.md)): `kind` (`do` for every existing row), `source`, `source_ref` (unique per source), `related_ref`, `run_id`, `assigned_agent`. `009_retro.sql` adds `retro_proposals`, the weekly retro's proposals and their commits ([triggers.md](./triggers.md#the-weekly-retro)). `010_own_devices.sql` adds `own_devices`, the person's paired phones: name, confirmed keys, the PIN's Argon2id hash, the lockout and the replay cursor ([own-devices.md](./own-devices.md)). `011_agent_md.sql` names an agent's file `agent.md` in the retro's proposals: `target` `skill` becomes `agent`, and a `path` ending in `/skill.md` (not a playbook) ends in `/agent.md`. Versions 1 and 3 to 5 were written only by development builds and have no migration.
 
 | When the app opens `state.db` and finds    | What happens                                                                                                                                           |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -188,7 +188,7 @@ Each kind of definition file has a format version (`services::repos::formats`), 
 
 | Kind              | `FileFormat` | Where the version sits              |
 | ----------------- | ------------ | ----------------------------------- |
-| An agent          | `AGENT`      | `skill.md` frontmatter              |
+| An agent          | `AGENT`      | `agent.md` frontmatter              |
 | A workflow        | `WORKFLOW`   | the `.yaml`, global or agent-scoped |
 | A trigger         | `TRIGGER`    | the `.yaml`                         |
 | `settings.yaml`   | `SETTINGS`   | the file                            |
@@ -216,6 +216,24 @@ Each kind of definition file has a format version (`services::repos::formats`), 
 
 Groups (signed by their admin), decisions (append-only records) and marketplace copies are never rewritten. Playbooks, policies, `access.yaml` and `installed.yaml` have no format version yet.
 
+### Upgrade from Nandi 0.2: `agent.md`
+
+An agent's one required file is `agent.md` (`layout::AGENT_FILE`). Nandi 0.2 and before named it `skill.md`. At start, first of all (before the 0.1.0 upgrade and the scaffolding, so no fresh Nandi is seeded beside the person's file), `repos::from_0_2::upgrade` runs and commits everything once as "Upgrade agents to agent.md". The code knows only `agent.md`; `skill.md` appears only in this step.
+
+| Found                                                                                 | What happens                                                                                                                             |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `skill.md` in any agent folder (`agent_locator::folders`: local, installed, in packs) | Renamed to `agent.md`, byte for byte                                                                                                     |
+| Both `skill.md` and `agent.md`                                                        | `agent.md` stays; `skill.md` is removed (its last committed text stays in history)                                                       |
+| An installed copy whose files are exactly the signed release's but for the rename     | `installed.yaml` records its new tree hash, so it still counts as unmodified; the commit message lists it                                |
+| An installed copy changed in any other way                                            | Its tree hash stays, so it still shows as modified. The upgrade never vouches for files nobody signed                                    |
+| `shipped.yaml` entries for `<agent folder>/skill.md`                                  | Renamed to `…/agent.md` (in `files` and `kept`), so an unedited Nandi still takes this build's updates and an edited one is offered them |
+| A playbook named `skills/skill.md`                                                    | Untouched                                                                                                                                |
+| A folder whose `skill.md` is still in the last commit (a start cut short)             | Committed with the others: every step is idempotent                                                                                      |
+
+**Signed packs.** A publisher signs a release's commit (`signature.rs`), and the install records whether that signature verified and the tree hash of what it vendored from that commit. Nothing rechecks the signature against files on disk, so the rename never touches `signature_verified`. What would change is the tree hash, which covers each path: `from_0_2::renamed_hash` maps `agent.md` back to `skill.md` for the agent files only and records the new hash only when the result is the recorded one. Updating a pack later fetches the new release's files, so a release published with `agent.md` verifies as any release does. A release that still has `skill.md` fails to install or update ("has no agent.md. Packs made for Nandi 0.2 name it skill.md…"): publishers re-release with `agent.md`.
+
+State.db's side is migration 011. `from_0_2_tests.rs` upgrades a committed 0.2-shaped gold copy (Nandi edited and not, a person's agent, a signed pack and agent, a pack changed by hand), a start cut short, a folder with both files, a new install and a 0.1.0 gold copy through both steps.
+
 ### Upgrade from Nandi 0.1.0
 
 0.1.0 shipped the default agent as `chief-of-staff`; it is now `nandi`. At start, before the scaffolding seeds a fresh Nandi, `repos::from_0_1_0::upgrade` runs when `.nandi/agents/chief-of-staff/` exists, and commits everything once as "Upgrade from Nandi 0.1.0", so git history keeps the old files.
@@ -232,7 +250,7 @@ Groups (signed by their admin), decisions (append-only records) and marketplace 
 
 ### Updates to Nandi's Shipped Files
 
-Nandi ships its default agent's files: `skill.md`, `instructions.md`, the playbooks (`resources/builtin-agents/nandi/`) and its default triggers. A newer build updates the ones the person never edited and offers the others (`services::shipped_files`).
+Nandi ships its default agent's files: `agent.md`, `instructions.md`, the playbooks (`resources/builtin-agents/nandi/`) and its default triggers. A newer build updates the ones the person never edited and offers the others (`services::shipped_files`).
 
 `.nandi/shipped.yaml` records, for each shipped file by its path, the SHA-256 (LF line endings) of the version Nandi last wrote there, and under `kept` the shipped version the person chose Keep mine over. It lives in the gold copy, not in `state.db`, because it is about the gold copy's files: it is committed with them, travels with Backup and a restore, and a new `state.db` never loses it.
 
@@ -248,7 +266,7 @@ At start, after the scaffolding and before the format upgrade, `repo_bootstrap::
 | Deleted after Nandi wrote it            | `Leave`   | Stays deleted                            |
 | Not there and never written             | `Add`     | Written and committed                    |
 
-A gold copy from 0.1.0 has no `shipped.yaml`. Its `skill.md` and `instructions.md` are compared with `SHIPPED_IN_0_1_0`; everything else is new.
+A gold copy from 0.1.0 has no `shipped.yaml`. Its `agent.md` (its `skill.md` until the 0.2 upgrade renamed it) and `instructions.md` are compared with `SHIPPED_IN_0_1_0`; everything else is new.
 
 | Action on Nandi's page | What happens                                                                                               |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |

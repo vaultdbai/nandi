@@ -20,7 +20,7 @@ Technical documentation for building and extending this app. These docs describe
 | [Get Your Computer Ready](./machine-readiness.md)                                         | Read-only Docker/WSL/disk/image checks per OS, the checklist UI, phase-2 hooks    |
 | [E2E Checklist](./e2e-checklist.md)                                                       | Manual full-loop test with DeepSeek and a container                               |
 | [Sandbox and Policy Test Checklist](./sandbox-test-checklist.md)                          | Containers, approvals, the agents' network, policies                              |
-| [Egress Proxy](./egress.md)                                                               | LLM/AWS/HTTP proxy, skill.md capabilities, STS                                    |
+| [Egress Proxy](./egress.md)                                                               | LLM/AWS/HTTP proxy, agent.md capabilities, STS                                    |
 | [Workflows](./workflows.md)                                                               | YAML pipelines of agents, executor, approvals                                     |
 | [Triggers](./triggers.md)                                                                 | Cron, file, webhook, device, and event triggers                                   |
 | [Transports](./transports.md)                                                             | Services layer, Tauri IPC + HTTP/WebSocket, web auth                              |
@@ -63,7 +63,7 @@ Technical documentation for building and extending this app. These docs describe
 | [To-dos and reminders](./todos.md)                        | The user's to-dos as local assignments: kinds, hand-off, the card, the tray      |
 | [GitHub security check](./github-security-check.md)       | Read-only checks of the GitHub account and owned orgs; findings as to-dos        |
 | [Harness Container](./harness-container.md)               | Pulling the images, the Claude Code tools volume, sessions                       |
-| [Runtime Routing](./runtime-routing.md)                   | `runtime:` in skill.md, native vs harness runs                                   |
+| [Runtime Routing](./runtime-routing.md)                   | `runtime:` in agent.md, native vs harness runs                                   |
 | [Sign-in](./sign-in.md)                                   | Company identity first, keys last; Claude Code for LLMs                          |
 | [Domain Model](./domain-model.md)                         | Entities, value objects, aggregate, repos                                        |
 | [Data Persistence](./data-persistence.md)                 | File storage patterns, atomic writes, SQLite                                     |

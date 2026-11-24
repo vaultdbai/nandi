@@ -54,7 +54,7 @@ Signature: `nandi-signature-v1\nconnector\n<id>\n<version>\n<commit>\n` (`nandi 
 
 ## Grants
 
-One model for every connector that reaches the person's data: installed MCP connectors and the accounts (`outlook`, `gmail`, `outlook-calendar`, `google-calendar`, `onedrive`, `google-drive`). Built-ins (filesystem, web search, GitHub, AWS, S3 Backup) keep their skill.md declaration and install consent.
+One model for every connector that reaches the person's data: installed MCP connectors and the accounts (`outlook`, `gmail`, `outlook-calendar`, `google-calendar`, `onedrive`, `google-drive`). Built-ins (filesystem, web search, GitHub, AWS, S3 Backup) keep their agent.md declaration and install consent.
 
 | Scope   | File                           | Travels           |
 | ------- | ------------------------------ | ----------------- |
@@ -85,7 +85,7 @@ answer_access_request(choice) ─▶ grant (allowSaved | allowLocal) or not (all
 - `connectors.ask` in a policy asks every time: only Allow once and Don't allow (`askEveryTime`).
 - Don't allow (or an expired request) isn't asked again in that run; the model is told to stop.
 - Audit: each choice is a decision in `.nandi/decisions/<yyyy-mm>.md` (PO-14): the access request's entry names the connector and the choice (`approved (allowOnce)`, `refused (deny)`), a grant given or removed is kind `connectorGrant`, and a connector a policy forbids is kind `policy`, decided by it. `connectors.log` keeps only the calls themselves.
-- A browser pilot opening a site outside the agent's allowed sites asks through the same approval, family `site` (no connectors; `args.site` holds the host). Its answers are Allow once (this run), Always allow for the agent (`allowSaved`: written into its skill.md) and Don't allow; `allowLocal` is refused. `answer_access_request` takes `subdomains` for it. See `docs/developer/pilots.md` › The browser pilots.
+- A browser pilot opening a site outside the agent's allowed sites asks through the same approval, family `site` (no connectors; `args.site` holds the host). Its answers are Allow once (this run), Always allow for the agent (`allowSaved`: written into its agent.md) and Don't allow; `allowLocal` is refused. `answer_access_request` takes `subdomains` for it. See `docs/developer/pilots.md` › The browser pilots.
 
 Policy:
 
@@ -131,13 +131,13 @@ Cursors (`local_settings` `files.<provider>.<hash>.cursor`, `calendar.<provider>
 | `files_recent`, `files_search {query}`          | files with links (OneDrive search includes shared files)                    |
 | `files_read_text {id}`, `files_changes`         | a document's text; what changed since the last call (per account)           |
 
-Every tool takes an optional `account` (an address) and otherwise reaches every granted account. With several, each event and file carries `account`. Offered to an agent with a grant on a connected account, or that names the account in skill.md `connectors:` (then the first call asks, listing the accounts each connector covers). IDs carry the kind: `outlook-calendar:<id>`; a tool reading one asks each account of that kind in turn.
+Every tool takes an optional `account` (an address) and otherwise reaches every granted account. With several, each event and file carries `account`. Offered to an agent with a grant on a connected account, or that names the account in agent.md `connectors:` (then the first call asks, listing the accounts each connector covers). IDs carry the kind: `outlook-calendar:<id>`; a tool reading one asks each account of that kind in turn.
 
 ## Nandi and the calendar
 
-Every hour by default (`set_calendar_interval`, 15 minutes to 24 hours), `workspace::check_calendars` reads each account's granted calendar feed and hands every change to Nandi in **one** run (source `calendar_check`, conversation `calendar:<uuid>`), only when there is something. The run gets only the notes tools, `calendar_*` and Nandi's work tools (`orchestrator::data_run_allows`), and events sit in `<calendar-data>` (untrusted). Its skill.md › Calendar keeps `meetings.md`, `time-off.md` and `suggestions.md`.
+Every hour by default (`set_calendar_interval`, 15 minutes to 24 hours), `workspace::check_calendars` reads each account's granted calendar feed and hands every change to Nandi in **one** run (source `calendar_check`, conversation `calendar:<uuid>`), only when there is something. The run gets only the notes tools, `calendar_*` and Nandi's work tools (`orchestrator::data_run_allows`), and events sit in `<calendar-data>` (untrusted). Its agent.md › Calendar keeps `meetings.md`, `time-off.md` and `suggestions.md`.
 
-**Suggestions and corrections** (`notes/corrections.rs`): `- [ ] …` lines in `suggestions.md` are accepted (ticked) or dismissed (removed) on My notes; both are remembered in `corrections.md`. Saving a note from My notes that drops or changes a cited line (`(from …)`, `(calendar…)`) adds "Removed from <note>: …" there. The skill.md reads `corrections.md` first and never adds those back.
+**Suggestions and corrections** (`notes/corrections.rs`): `- [ ] …` lines in `suggestions.md` are accepted (ticked) or dismissed (removed) on My notes; both are remembered in `corrections.md`. Saving a note from My notes that drops or changes a cited line (`(from …)`, `(calendar…)`) adds "Removed from <note>: …" there. The agent.md reads `corrections.md` first and never adds those back.
 
 ## Tests
 

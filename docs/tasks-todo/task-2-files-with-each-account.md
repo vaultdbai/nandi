@@ -22,7 +22,7 @@
 
 - [x] `files_*` and `calendar_*` tools reach every granted account and say which account each result came from (like `mailbox:` for mail).
 - [x] Grants name the account and what it covers (mail, files, calendar).
-- [x] Notes and to-dos that come from a file link back to it and name the account. (Prompt-level: tool results carry `account`, and the `meeting-prep` playbook says to link each file and name its account. Nandi's `skill.md` is at its 900-word limit, so it is unchanged.)
+- [x] Notes and to-dos that come from a file link back to it and name the account. (Prompt-level: tool results carry `account`, and the `meeting-prep` playbook says to link each file and name its account. Nandi's `agent.md` is at its 900-word limit, so it is unchanged.)
 
 ### 3. Docs
 

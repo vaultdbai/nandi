@@ -7,7 +7,7 @@
 
 ## Why
 
-Today each agent's `skill.md` states its own permissions (`services/domain/capability.rs`: `ToolPolicy`, `NetworkPolicy`, `AwsPolicy`). The local user is the only authority. `.nandi/policies/*.md` are prose: Studio and the ask box read them, and nothing enforces them (`services/repos/policy_repo.rs`).
+Today each agent's `agent.md` states its own permissions (`services/domain/capability.rs`: `ToolPolicy`, `NetworkPolicy`, `AwsPolicy`). The local user is the only authority. `.nandi/policies/*.md` are prose: Studio and the ask box read them, and nothing enforces them (`services/repos/policy_repo.rs`).
 
 The enforcement underneath also has holes:
 
@@ -23,7 +23,7 @@ The enforcement underneath also has holes:
 
 ## Design rules (apply to every wave)
 
-1. **Policies only restrict.** `skill.md` says what an agent _needs_. Policies say what it's _allowed_. The agent gets the overlap. A deny anywhere wins. Adding a policy, even on `*`, can never widen access. This matches the plugin-packs rule that pack policies only add restrictions.
+1. **Policies only restrict.** `agent.md` says what an agent _needs_. Policies say what it's _allowed_. The agent gets the overlap. A deny anywhere wins. Adding a policy, even on `*`, can never widen access. This matches the plugin-packs rule that pack policies only add restrictions.
 2. **Enforce where the agent can't reach:** the orchestrator, container settings, the egress proxy and the LLM proxy. Never in files or env inside the container.
 3. **Fail closed.** If a policy file doesn't parse, or the container network or proxy can't start, the affected agents don't run. Say why in plain words.
 4. **Gold Copy.** Policies stay files in `.nandi/policies/`, written only by `PolicyRepository`. Any SQLite projection can be rebuilt.
@@ -60,10 +60,10 @@ Why this exists, in plain words. The body never grants anything; Studio and the 
 - [x] Targets in `applies_to`:
   - `agent:<id or glob>`
   - `workflow:<id or glob>` (refused on save until runs carry their workflow, PO-04)
-  - `tag:<tag>` (add `tags` to `skill.md` frontmatter)
+  - `tag:<tag>` (add `tags` to `agent.md` frontmatter)
   - `*`
 - [x] `effective_permissions(agent, policies) -> EffectivePermissions` (done as `domain::policy::effective` / `PolicySet::effective`):
-  - starts from what `skill.md` asks for;
+  - starts from what `agent.md` asks for;
   - intersects with each policy that applies;
   - lets deny beat ask beat allow;
   - records which policy decided each item, for the UI.
@@ -71,12 +71,12 @@ Why this exists, in plain words. The body never grants anything; Studio and the 
 - [x] **Evaluator choice.** Because policies only restrict, the logic is set intersection plus pattern matching, so a small built-in evaluator in `services/domain/` is enough for now. Keep Cedar (`cedar-policy`) as the option if central management in v2 needs a shared policy language.
 - [x] Load policies through `PolicyRepository` (`load_all`; Studio validates with the same parser). Notes keys (`name`, …) are allowed at the top level; the rule blocks reject unknown keys. A file that doesn't parse blocks the agents it might target (rule 3) and shows as an error on the policy screen.
 - [ ] Workflow steps (the evaluator takes the workflow in `Subject`; wave 3 passes it): a workflow's policies also apply to every agent while it runs as a step of that workflow.
-- [x] `connectors`: `allow` narrows the connectors an agent's `skill.md` names (`connectors: [..]`); `run_on_host` lists trusted connectors allowed to run on the host instead of in a container. Restrict-only like the rest: a connector runs on the host only if every applying policy that mentions it allows that, and an agent with no policy keeps today's behaviour until Wave 3 flips the default.
+- [x] `connectors`: `allow` narrows the connectors an agent's `agent.md` names (`connectors: [..]`); `run_on_host` lists trusted connectors allowed to run on the host instead of in a container. Restrict-only like the rest: a connector runs on the host only if every applying policy that mentions it allows that, and an agent with no policy keeps today's behaviour until Wave 3 flips the default.
 - [x] `models`: patterns over `provider:model` (`claude:*`, `gpt:gpt-5*`). Applies to Nandi's own runs and to coding agents' CLI models.
 
 ## Wave 3: wire enforcement
 
-Each check reads `EffectivePermissions` and never reads the raw `skill.md` fields. **Done this way:** `RepoStore::skill` runs every `SkillConfig` through `services::policies::narrow`, so everything that reads it (orchestrator, egress proxy, container mounts, the harness router) gets the narrowed result, and a broken policy or a refused model stops the agent there.
+Each check reads `EffectivePermissions` and never reads the raw `agent.md` fields. **Done this way:** `RepoStore::skill` runs every `SkillConfig` through `services::policies::narrow`, so everything that reads it (orchestrator, egress proxy, container mounts, the harness router) gets the narrowed result, and a broken policy or a refused model stops the agent there.
 
 - [x] **Tools and approvals:** the orchestrator's `allows_tool` and approval flag (`orchestrator/middleware.rs`) for native runs, and the ACP permission bridge from Wave 1 for harness runs.
 - [x] **Connector tools:** (denied connector tools aren't offered or run; `ask` adds them to approvals) today they're checked before `allows_tool` (`orchestrator/middleware.rs`), so `tools.deny` doesn't reach them. Make `deny` and `ask` apply to `<connector>__<tool>` names too.
@@ -89,7 +89,7 @@ Each check reads `EffectivePermissions` and never reads the raw `skill.md` field
   - A connector in an applying policy's `run_on_host` runs on the host as today. That's for the ones that need the desktop.
   - Pilots stay on the host: they control the computer, and keep their per-capability grants.
   - Connectors not allowed by policy aren't started for that agent.
-- [x] **Files:** shared folders already exist (`services/connectors/folders.rs`, `66760e3`). Each folder has `access: read | write`, agents name theirs in `skill.md`, and folders mount at `/agent/folders/<id>` for native and CLI runtimes. Policies narrow that list and add no mounts of their own:
+- [x] **Files:** shared folders already exist (`services/connectors/folders.rs`, `66760e3`). Each folder has `access: read | write`, agents name theirs in `agent.md`, and folders mount at `/agent/folders/<id>` for native and CLI runtimes. Policies narrow that list and add no mounts of their own:
   - a folder that no applying policy allows is dropped (no tool access, no mount);
   - `mode: read` turns a write folder into a read-only one, for both the tools and the `:ro` mount.
   - The domain check in Wave 2 matches `files` paths against the folder's `path`, so `files` can also name folder ids: `{ folder: reports, mode: read }`.

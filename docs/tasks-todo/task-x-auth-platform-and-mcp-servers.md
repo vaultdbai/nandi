@@ -90,7 +90,7 @@ Today the only ways to add a server are asking Studio or editing `.nandi/connect
   - Conversion rules: the same as the `connect-a-service` Studio guide. Secret-looking environment values become `secret_refs`, and an `Authorization` header becomes a bearer token or header secret.
 - [ ] Setup shows the server's auth method through the shared components: secret fields, header fields, or **Sign in**.
 - [ ] **Safe tools** checkboxes in Details (today only Studio or YAML can change `safe_tools`).
-- [ ] Add the connector to an agent from the connector's page. Today that only happens in the agent's skill.md or Studio.
+- [ ] Add the connector to an agent from the connector's page. Today that only happens in the agent's agent.md or Studio.
 - [ ] Update the Studio guide `connect-a-service.md`: drop the "browser sign-in isn't supported" lines.
 
 ## Done when

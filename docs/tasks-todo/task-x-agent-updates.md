@@ -15,12 +15,12 @@ So the agents built to be personalized (your role, your review rules) are exactl
 Done: `.nandi/overrides/<agent-id>/instructions.md`, edited in the agent's Settings › Your rules or by Ask (save kind `instructions`), with Reset to default. Catalog: AG-27. Not done: the "default rules changed" diff after an update.
 
 - For a marketplace agent, `instructions.md` becomes **your** file, beside the install, e.g. `.nandi/overrides/<agent-id>/instructions.md`. On first edit it starts as a copy of the shipped one.
-- The agent loads `skill.md` from the install and `instructions.md` from your override when there is one (`services/repos/agent_locator.rs`, `domain/agent.rs` `from_files`).
-- `tree_hash` covers only the shipped files, so an override never marks the install Modified. **Update** replaces `skill.md` and leaves your rules alone.
+- The agent loads `agent.md` from the install and `instructions.md` from your override when there is one (`services/repos/agent_locator.rs`, `domain/agent.rs` `from_files`).
+- `tree_hash` covers only the shipped files, so an override never marks the install Modified. **Update** replaces `agent.md` and leaves your rules alone.
 - When the shipped `instructions.md` changes in an update, show "The default rules changed" with a diff, so you can merge what you want.
 - **Test:**
   1. Edit Chief of Staff's role and PR Reviewer's rules.
-  2. Update the pack: both keep your edits and get the new `skill.md`.
+  2. Update the pack: both keep your edits and get the new `agent.md`.
   3. Uninstall, then reinstall: your override is still there and offered back.
 
 ## Part 2: Updates find you

@@ -101,7 +101,7 @@ If the key leaks, do the same at once: there is no revocation list, and an old a
 
 1. **Backed-up release.** The agent's folder (`.nandi/agents/<id>`) must have no uncommitted changes, and `HEAD` must be on a branch of `origin` (Back up now pushes it to the user's own `nandi/<slug>` branch). Otherwise the user gets "Use Back up now in Settings › Backup, then publish". The release is that commit.
 2. **Tag.** `<id>-v<version>` is created in the user's agents repo through the API. Prefixed tags let one repo hold many agents, and update checks and version history match tags by prefix (`manifest::split_tag`). Reusing a version for a different commit is refused.
-3. **Entry.** Built from skill.md: name, description, capabilities, `ref`, `commit`, `min_nandi_version` = this app's version, optional tags, and a `readme_url` if the folder has a README. It's signed when `~/.nandi/keys/publisher.key` exists.
+3. **Entry.** Built from agent.md: name, description, capabilities, `ref`, `commit`, `min_nandi_version` = this app's version, optional tags, and a `readme_url` if the folder has a README. It's signed when `~/.nandi/keys/publisher.key` exists.
 4. **Pull request.** The flow creates the branch `nandi/publish-<tag>`, writes `agents/<id>.json`, upserts the entry into `index.json`, and adds `publishers/<login>.json` with the public key if it's missing. When the user can't push to the registry (the public one), it forks the registry first and opens the PR from the fork. On a community registry the user can push to, the PR is merged right away and the index cache is refreshed.
 
 `github.rs` holds the REST calls (refs, Contents API, forks, pulls). Tests run the whole flow against a fake GitHub.
@@ -139,7 +139,7 @@ Each agent has its own working folder (`~/.nandi/local/work/<agent-id>/`). Workf
     marketplace/
       packs/research-pack/                     a whole pack
         .nandi/manifest.yaml
-        agents/arxiv-researcher/skill.md …
+        agents/arxiv-researcher/agent.md …
         workflows/literature-review.yaml       global-scope, read-only
       alice/arxiv-researcher/                  one agent from alice's repo
   installed.yaml                               every vendored source
@@ -200,7 +200,7 @@ install_pack(manifest):                       install_agent(manifest):
   RepoStore::rescan_all(User)                   (same)
 ```
 
-Files are read straight from git objects; nothing is checked out. A symlink in the source is an error and submodules are skipped. Only `skill.md`, `instructions.md`, `README.md`, `icon.{svg,png}`, `LICENSE*`, `workflows/*.yaml`, and (for packs) `.nandi/manifest.yaml` are copied. Anything else in a source repo, such as scripts, is left behind.
+Files are read straight from git objects; nothing is checked out. A symlink in the source is an error and submodules are skipped. Only `agent.md`, `instructions.md`, `README.md`, `icon.{svg,png}`, `LICENSE*`, `workflows/*.yaml`, and (for packs) `.nandi/manifest.yaml` are copied. Anything else in a source repo, such as scripts, is left behind.
 
 A workflow's agent steps may drive only the agents it ships with (`validate_workflow`), so a pack never sends work to Nandi or another install, which it has no consent for. An install refuses content whose agents request a tool, host, AWS service, pilot or connector its registry entry doesn't list (`matches_entry` in `install.rs`): the Library card and the install dialog showed the entry. Updates of another registry's install can go by tag, without an entry; first-use consent catches what they widen.
 
@@ -211,7 +211,7 @@ A workflow's agent steps may drive only the agents it ships with (`validate_work
 `fork_agent(installed_id, new_id, new_name)` moves an agent into the user's own agents:
 
 1. Copy the vendored folder to `.nandi/agents/<new_id>/`.
-2. Rewrite `skill.md` through `Agent::forked`: new ID and name, and the source metadata keys (`source`, `publisher`, `version`, …) dropped.
+2. Rewrite `agent.md` through `Agent::forked`: new ID and name, and the source metadata keys (`source`, `publisher`, `version`, …) dropped.
 3. Point the agent's own workflows at the new ID (`Workflow::rename_agent`).
 4. Trash the vendored copy. Remove its `installed.yaml` entry, or for a pack agent add it to the pack's `forked_out` and record the pack's new `tree_hash`.
 5. Re-scan. The result lists anything that still names the original agent, such as a pack workflow.

@@ -33,7 +33,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - **What:** Every container start goes through one image service, `images::ensure`: the image must be here with the label `org.nandi.sandbox` at `runtime::SANDBOX_VERSION` (6: the harness image without Claude Code and with the tools volume). Missing or older, it is downloaded (RT-18) and the label checked again; the run waits. Custom `image:` values must inherit the label (`FROM nandi-runtime`) and are never pulled.
 - **Where:** `src-tauri/src/services/images/mod.rs` (`ensure`), `src-tauri/src/runtime.rs` (`start_container`, `image_is_current`), `services/orchestrator/runtime_router.rs` (`sandbox_ready`), `services/connectors/mcp.rs` (`spawn_in_container`), `services/harness/mod.rs` (`test_config`).
 - **Preconditions:** Docker running; an agent that uses `shell`/file tools (native) or a CLI runtime.
-- **Steps:** 1. `docker rmi ghcr.io/vaultdbai/nandi-runtime:sandbox-6`, run a native agent that calls `shell`. 2. Tag an image without the label as `ghcr.io/vaultdbai/nandi-runtime:sandbox-6`, run again. 3. Set `image: foo:latest` (not present) in skill.md. 4. Offline, remove the harness image and run a Codex agent.
+- **Steps:** 1. `docker rmi ghcr.io/vaultdbai/nandi-runtime:sandbox-6`, run a native agent that calls `shell`. 2. Tag an image without the label as `ghcr.io/vaultdbai/nandi-runtime:sandbox-6`, run again. 3. Set `image: foo:latest` (not present) in agent.md. 4. Offline, remove the harness image and run a Codex agent.
 - **Expected:** 1. The run waits while Nandi downloads the image (a toast and Settings show the progress), then runs. 2. Nandi downloads the published image over it, then runs. 3. "Container image foo:latest not found locally". 4. The run fails with "Couldn't download ghcr.io/vaultdbai/nandi-harness:sandbox-6 (...). Check that this computer is online and can reach ghcr.io, then try again." and the toast offers **Try again**. Never a hint to build.
 - **Edge / negative cases:** a CLI agent with `runtime_config.fallback: native` runs natively when the download fails; a downloaded image whose label is still older says "Downloaded ..., but it isn't built for this Nandi (sandbox 6)".
 - **Automation:** Covered by: `runtime.rs` tests (`image_is_current`), `runtime_router.rs` (`an_unavailable_harness_falls_back_only_when_asked`), live `first_use_claude_code_live`, `codex_runs_with_no_extra_step_live` (ignored) | Layer: unit + manual | Gap: the pull path isn't tested without Docker.
@@ -80,19 +80,19 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### RT-05 — Native container configuration (mounts, resources, no published ports)
 
-- **What:** The tool container mounts the agent folder read-only at `/agent/skill`, a per-agent workdir `~/.nandi/local/work/<agent>` at `/agent/workdir`, and its shared folders at `/agent/folders/<id>` (read-only unless granted write); memory default 1024 MB, 1 CPU (overridable in skill.md). skill.md `shell_timeout_s` reaches the container as `NANDI_SHELL_TIMEOUT_SECONDS` (absent when unset). Since #9 it joins only the internal `nandi-agents` network (SB-13), publishes no ports, has no `host.docker.internal` mapping, and runs with `init` so the shell tool's leftovers are reaped.
+- **What:** The tool container mounts the agent folder read-only at `/agent/skill`, a per-agent workdir `~/.nandi/local/work/<agent>` at `/agent/workdir`, and its shared folders at `/agent/folders/<id>` (read-only unless granted write); memory default 1024 MB, 1 CPU (overridable in agent.md). agent.md `shell_timeout_s` reaches the container as `NANDI_SHELL_TIMEOUT_SECONDS` (absent when unset). Since #9 it joins only the internal `nandi-agents` network (SB-13), publishes no ports, has no `host.docker.internal` mapping, and runs with `init` so the shell tool's leftovers are reaped.
 - **Where:** `src-tauri/src/runtime.rs` (`container_config`, `folder_mounts`; `relay::ensure_ready` before create), `src-tauri/src/sandbox.rs` (`SandboxSpec`, its limits and hardening).
 - **Preconditions:** Docker, `nandi-runtime` built, an agent with tools (and optionally a shared folder).
 - **Steps:** 1. Start the agent. 2. `docker inspect` the container; `docker port nandi-agent-<tag>-<id>` (`docs/developer/sandbox-test-checklist.md` 4.5). 3. From a tool call, write to `/agent/skill` and to a read-only shared folder.
 - **Expected:** Mounts as above; `HostConfig.NetworkMode` = `nandi-agents`, `Init: true`, no `PortBindings`, no `ExposedPorts`, no `ExtraHosts`; `docker port` prints nothing; env `NANDI_AGENT_ID` plus the egress variables (SB-11), no MCP token and no `NANDI_*` names; writes to read-only mounts fail.
-- **Edge / negative cases:** skill.md `memory_mb` / `cpu` overrides; workdir is created if missing; only the relay (SB-14) carries the `host.docker.internal:host-gateway` mapping.
+- **Edge / negative cases:** agent.md `memory_mb` / `cpu` overrides; workdir is created if missing; only the relay (SB-14) carries the `host.docker.internal:host-gateway` mapping.
 - **Automation:** Covered by: `runtime.rs` tests (folder mounts; the config test asserts `network_mode` `nandi-agents`, no port bindings or extra hosts, no `MCP_TOKEN` or `API_KEY` in env); `sandbox_suite.rs` (`pnpm run test:sandbox`, the CI job `sandbox` on a Linux runner with Docker and the published images) `the_native_container_is_locked_down` inspects the started container: exactly the agent folder (read-only), the workdir (writable) and a read-only shared folder mounted, 1024 MB, 1 CPU, `nandi-agents` only, `Init`, no port bindings, exposed ports or extra hosts, env `NANDI_AGENT_ID` plus the proxy variables and no key; writes to the read-only mounts fail | Layer: api (Docker) | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 
 ### RT-06 — Tool server in the container (shell, read_file, write_file, list_dir)
 
-- **What:** `nandi-runtime` is a Python MCP server exposing `shell` (30 s timeout, or skill.md `shell_timeout_s` up to 3600 s), `read_file`, `write_file`, `list_dir`, all confined to `/agent/workdir`. Since #9 it speaks MCP over stdio: the host runs `docker exec -i <container> python /opt/nandi/app.py --stdio` for each session (no port, no bearer token). The host gives it 30 s to answer `initialize`, times calls out 30 s after the shell timeout (60 s by default, `mcp_client::call_timeout`), and truncates results over 100,000 characters.
+- **What:** `nandi-runtime` is a Python MCP server exposing `shell` (30 s timeout, or agent.md `shell_timeout_s` up to 3600 s), `read_file`, `write_file`, `list_dir`, all confined to `/agent/workdir`. Since #9 it speaks MCP over stdio: the host runs `docker exec -i <container> python /opt/nandi/app.py --stdio` for each session (no port, no bearer token). The host gives it 30 s to answer `initialize`, times calls out 30 s after the shell timeout (60 s by default, `mcp_client::call_timeout`), and truncates results over 100,000 characters.
 - **Where:** `runtimes/nandi-runtime/app.py`, `src-tauri/src/mcp_client.rs` (`McpSession::connect(container_id, call_timeout)`, `TokioChildProcess`), used by `services/runtimes.rs` and the orchestrator.
 - **Preconditions:** Docker, `nandi-runtime` built, a native agent with `allowed-tools` including these tools and a working model.
 - **Steps:** 1. Ask the agent to run `echo hi`, write `a.txt`, list the folder, read it back. 2. Ask it to `sleep 40`; then set `shell_timeout_s: 120` and ask again. 3. Ask it to read `../../etc/passwd`.
@@ -179,9 +179,9 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### RT-13 — Choose an agent's runtime
 
 - **What:** On the agent's Settings tab the runtime is chosen by radio (Nandi, Claude Code, Codex, Gemini CLI; uninstalled ones disabled and marked "Not installed · set up in Settings › Models & runtimes"); a CLI runtime shows "Where it runs" with the fixed text "In an isolated container. Agents never run directly on this computer." (there is nothing to choose) and a free-text "Model (optional)" (`runtime_config.model`, placeholder "Default for <runtime>"); a note with "Add a key" appears when the sign-in doesn't reach the container.
-- **Where:** Agent page → Settings tab. `src/components/agents/AgentSettingsTab.tsx`, `src/components/harness/runtime-options.ts`. Saved to `~/.nandi/repo/.nandi/agents/<id>/skill.md` (`runtime:`, `runtime_config:`).
+- **Where:** Agent page → Settings tab. `src/components/agents/AgentSettingsTab.tsx`, `src/components/harness/runtime-options.ts`. Saved to `~/.nandi/repo/.nandi/agents/<id>/agent.md` (`runtime:`, `runtime_config:`).
 - **Preconditions:** An agent; a CLI detected.
-- **Steps:** 1. Switch an agent to Claude Code, type `sonnet` as model, save. 2. Open skill.md.
+- **Steps:** 1. Switch an agent to Claude Code, type `sonnet` as model, save. 2. Open agent.md.
 - **Expected:** `runtime: claude-code`, `runtime_config.model: sonnet`; unknown `runtime_config` keys kept.
 - **Edge / negative cases:** CLI not installed (option disabled unless already chosen); switching back to Nandi shows the provider/model fields.
 - **Automation:** Covered by: agent page tests (`src/components/agents/agent-page-model.test.ts`), `runtime_router.rs` save tests | Layer: ui-e2e / api | Gap: no UI test for the runtime radio.
@@ -214,7 +214,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### RT-16 — Host placement retired
 
-- **What:** A skill.md with `placement: host` was read, run in the container and rewritten to `container` on save. The `placement` key and `RuntimePlacement::Host` no longer exist.
+- **What:** An agent.md with `placement: host` was read, run in the container and rewritten to `container` on save. The `placement` key and `RuntimePlacement::Host` no longer exist.
 - **Needs relay:** no
 - **Status:** Removed (2026-10-22, no legacy support)
 
@@ -244,7 +244,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### RT-19 — Turn limit for harness runs (`max_turns`)
 
-- **What:** A harness run counts tool calls against `runtime_config.max_turns`, else skill.md `max_turns` (default 50); going over sends `session/cancel` and fails the run.
+- **What:** A harness run counts tool calls against `runtime_config.max_turns`, else agent.md `max_turns` (default 50); going over sends `session/cancel` and fails the run.
 - **Where:** `services/orchestrator/runtime_router.rs` (`max_turns` and the step counter, `execute_harness_run`).
 - **Preconditions:** A working CLI agent.
 - **Steps:** 1. Set `runtime_config.max_turns: 2`. 2. Ask for a task needing many tool calls.
@@ -304,7 +304,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### RT-24 — `verify --agent <id>` CLI check
 
-- **What:** Prints a pass/fail report of an agent's end-to-end prerequisites: skill.md parses, model, `shell` allowed (and whether it needs approval), Docker running, runtime image present and current, `state.db` exists with this build's schema (v2; another version fails: "… has schema vN, but this build of Nandi uses v2"), API key stored for the model's provider; exits 1 on any failure. No LLM calls, no containers.
+- **What:** Prints a pass/fail report of an agent's end-to-end prerequisites: agent.md parses, model, `shell` allowed (and whether it needs approval), Docker running, runtime image present and current, `state.db` exists with this build's schema (v2; another version fails: "… has schema vN, but this build of Nandi uses v2"), API key stored for the model's provider; exits 1 on any failure. No LLM calls, no containers.
 - **Where:** `nandi verify --agent <id>` (`src-tauri/src/cli.rs`, `src-tauri/src/verify.rs`).
 - **Preconditions:** Built binary.
 - **Steps:** 1. `nandi verify --agent echo-agent`. 2. Stop Docker, rerun. 3. `nandi verify` without `--agent`. 4. `nandi --agent x`.
@@ -619,13 +619,13 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### SB-01 — Container hardening (tool and coding-agent containers)
 
-- **What:** Both container kinds run with read-only root filesystem, tmpfs for `/tmp` and the home dir (owned by the container's user), the agent user set by the app (`runtime::AgentUser`: the image's `1000:1000` on Docker Desktop, the host user's own uid and gid on a Linux engine, never root, with `HOME` and `USER` set), `cap_drop ALL`, `no-new-privileges`, pids limit (256 native, 512 harness), memory and CPU limits from skill.md `memory_mb` and `cpu` (both kinds default to 1024 MB and 1 CPU), Docker's default seccomp; harness containers use `--rm --init`, native ones `init: true` (since #9). Network isolation is SB-13.
+- **What:** Both container kinds run with read-only root filesystem, tmpfs for `/tmp` and the home dir (owned by the container's user), the agent user set by the app (`runtime::AgentUser`: the image's `1000:1000` on Docker Desktop, the host user's own uid and gid on a Linux engine, never root, with `HOME` and `USER` set), `cap_drop ALL`, `no-new-privileges`, pids limit (256 native, 512 harness), memory and CPU limits from agent.md `memory_mb` and `cpu` (both kinds default to 1024 MB and 1 CPU), Docker's default seccomp; harness containers use `--rm --init`, native ones `init: true` (since #9). Network isolation is SB-13.
 - **Where:** `src-tauri/src/runtime.rs` (`AgentUser`, `container_config`), `src-tauri/src/sandbox.rs` (`SandboxSpec`), `services/harness/adapter.rs`; Dockerfiles label `org.nandi.sandbox="6"`. Stdio connector containers get the same hardening (CP-22).
 - **Preconditions:** Docker, both images built (`sandbox=5`).
 - **Steps:** 1. Start a native agent container and a harness run. 2. `docker inspect` both. 3. From a tool call, `touch /usr/x`; `id`. (Same as `docs/developer/sandbox-test-checklist.md` 1.2–1.5.)
 - **Expected:** `ReadonlyRootfs: true`, `User: 1000:1000` on Docker Desktop (`<your uid>:<your gid>` on a Linux engine), `CapDrop: [ALL]`, `SecurityOpt: [no-new-privileges]`, `PidsLimit` set, tmpfs mounts; write to `/usr` fails; the workdir is writable.
 - **Edge / negative cases:** older image refused (RT-03); pip/npm caches only in tmpfs; on a Linux engine a host user other than uid 1000 (GitHub's runner is 1001) can write the workdir and its writable shared folders, nothing is made world-writable; Nandi run as root there keeps uid 1000.
-- **Automation:** Covered by: `runtime.rs` tests, `adapter.rs` tests, `harness_containers_get_the_native_limits_unless_skill_md_sets_them`; `sandbox_suite.rs` (`pnpm run test:sandbox`, the CI job `sandbox` on a Linux runner with Docker and the published images): `the_native_container_is_locked_down` and `the_coding_agent_container_is_locked_down` inspect both kinds (read-only root, `CapDrop [ALL]`, `no-new-privileges`, pids 256 / 512, `Init`, the agent user and `id -u` inside, the tmpfs mounts, the workdir writable with no folder opened up) and plant host credentials (for each coding agent: Claude Code's `.credentials.json` refresh token, an OpenAI key in the host env and as Nandi's key, `~/.aws/credentials`, an SSO cache, a `pip.conf` and an `.npmrc` token, provider and AWS keys in the keychain, host env tokens) around the agent's folders and in the coding agent's detected home: none is in the env or in any file inside (`grep -r` over `/`) | Layer: api (Docker) | Gap: none. A coding-agent container gets no Claude token in any sign-in mode: only the session's proxy token, as `ANTHROPIC_AUTH_TOKEN`; the host adds the real credential (`claude_code.rs`, `docs/developer/sign-in.md`).
+- **Automation:** Covered by: `runtime.rs` tests, `adapter.rs` tests, `harness_containers_get_the_native_limits_unless_agent_md_sets_them`; `sandbox_suite.rs` (`pnpm run test:sandbox`, the CI job `sandbox` on a Linux runner with Docker and the published images): `the_native_container_is_locked_down` and `the_coding_agent_container_is_locked_down` inspect both kinds (read-only root, `CapDrop [ALL]`, `no-new-privileges`, pids 256 / 512, `Init`, the agent user and `id -u` inside, the tmpfs mounts, the workdir writable with no folder opened up) and plant host credentials (for each coding agent: Claude Code's `.credentials.json` refresh token, an OpenAI key in the host env and as Nandi's key, `~/.aws/credentials`, an SSO cache, a `pip.conf` and an `.npmrc` token, provider and AWS keys in the keychain, host env tokens) around the agent's folders and in the coding agent's detected home: none is in the env or in any file inside (`grep -r` over `/`) | Layer: api (Docker) | Gap: none. A coding-agent container gets no Claude token in any sign-in mode: only the session's proxy token, as `ANTHROPIC_AUTH_TOKEN`; the host adds the real credential (`claude_code.rs`, `docs/developer/sign-in.md`).
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -643,7 +643,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### SB-03 — Egress proxy server and per-container tokens
 
-- **What:** One host server on `127.0.0.1:11435` (another free port if taken) is the only way out for every agent container, native and coding agents; since #9 containers reach it as `nandi-egress:11435` through the relay (SB-14), which forwards without deciding anything. Every route needs that container's proxy token; a body `agent_id` naming another agent is refused 403; capabilities are re-read per request: the agent's skill.md narrowed by its policies (`RepoStore::skill`, PO-13), or for a stdio connector's container (`connector:<id>`) its package registries and `config.network` (CP-22).
+- **What:** One host server on `127.0.0.1:11435` (another free port if taken) is the only way out for every agent container, native and coding agents; since #9 containers reach it as `nandi-egress:11435` through the relay (SB-14), which forwards without deciding anything. Every route needs that container's proxy token; a body `agent_id` naming another agent is refused 403; capabilities are re-read per request: the agent's agent.md narrowed by its policies (`RepoStore::skill`, PO-13), or for a stdio connector's container (`connector:<id>`) its package registries and `config.network` (CP-22).
 - **Where:** `src-tauri/src/services/egress/mod.rs` (`start_server`, `proxy_port`, `container_env`), `src-tauri/src/runtime.rs` (`ProxyTokens::issue/revoke/agent_for`). Docs `docs/developer/egress.md`.
 - **Preconditions:** App running.
 - **Steps:** 1. `curl http://127.0.0.1:11435/fetch` with no token. 2. With a token and another agent's id.
@@ -670,7 +670,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 - **What:** HTTP requests to hosts in the agent's `network.allow` (optional `methods`, wildcard subdomains, non-default ports); anything else denied; redirects are returned, not followed.
 - **Where:** `services/egress/http_proxy.rs`, `services/egress/capabilities.rs`.
 - **Preconditions:** Agent with `network.allow: [{host: api.github.com, methods: [GET]}]`.
-- **Steps:** 1. GET api.github.com via `$NANDI_FETCH_PROXY`. 2. POST it. 3. GET example.com. 4. Edit skill.md to allow example.com, retry without restart.
+- **Steps:** 1. GET api.github.com via `$NANDI_FETCH_PROXY`. 2. POST it. 3. GET example.com. 4. Edit agent.md to allow example.com, retry without restart.
 - **Expected:** 1 allowed; 2, 3 denied (403); 4 allowed immediately. All entries in `egress.log`.
 - **Edge / negative cases:** `*.example.com` matches subdomains only; 3xx returned to caller.
 - **Automation:** Covered by: `http_proxy.rs`, `capabilities.rs` tests | Layer: api | Gap: none.
@@ -716,7 +716,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 ### SB-16 — Each agent's AWS identity: its own profile, the access key, or the sign-in
 
 - **What:** An agent's AWS calls run as, in order:
-  1. The AWS profile chosen for it: agent page → Settings → AWS → "AWS profile", saved as skill.md `aws.profile`.
+  1. The AWS profile chosen for it: agent page → Settings → AWS → "AWS profile", saved as agent.md `aws.profile`.
   2. The access key in Settings → Cloud credentials.
   3. The sign-in profile there (`AWS_PROFILE`, else the SDK's default chain).
 
@@ -731,7 +731,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
   4. Clear the profile and add an access key; ask again.
 - **Expected:**
   - Step 1: listed with the sign-in.
-  - Step 2: listed as the chosen profile; skill.md has `aws: profile:` and its grants unchanged.
+  - Step 2: listed as the chosen profile; agent.md has `aws: profile:` and its grants unchanged.
   - Step 3: refused with "AWS profile '…' gives temporary sign-in keys…, use proxy mode, or add an access key".
   - Step 4: listed with the key.
   - The AWS section shows only for agents with an `aws:` section or a profile. "Default: the access key, else the sign-in" clears it. A saved profile missing from the AWS config shows "(not in your AWS config)".
@@ -777,7 +777,7 @@ What runs an agent's turns (Nandi's own loop, or a coding-agent CLI in the `nand
 
 ### SB-10 — Internet access settings page
 
-- **What:** "Allowed sites by agent" lists each agent's allowed sites ("No internet access" when none, "Any site" for `*`) with Edit (opens the agent's Settings, where they're changed: AG-29), an Agent filter ("All agents"), "Recent" egress requests with relative times and "See all in Logs", a warning when the proxy is down, and the proxy details under Advanced. A blocked fetch or tunnel by an agent made here has **Allow**, which adds that site (with its port unless 443) to the agent's skill.md and toasts "{agent} can now reach {site}".
+- **What:** "Allowed sites by agent" lists each agent's allowed sites ("No internet access" when none, "Any site" for `*`) with Edit (opens the agent's Settings, where they're changed: AG-29), an Agent filter ("All agents"), "Recent" egress requests with relative times and "See all in Logs", a warning when the proxy is down, and the proxy details under Advanced. A blocked fetch or tunnel by an agent made here has **Allow**, which adds that site (with its port unless 443) to the agent's agent.md and toasts "{agent} can now reach {site}".
 - **Where:** Settings → Internet access. `src/components/settings/sections/InternetAccessSection.tsx`, `src/hooks/useEgressStatus.ts`, `useAllowSite` (`useAgentEditor.ts`), `get_egress_status` (`EgressStatus.recentEntries`, `routes`, `proxyUrl`).
 - **Preconditions:** Agents, some egress traffic, one blocked request.
 - **Steps:** 1. Open the page. 2. Filter by one agent. 3. Click Edit. 4. Click Allow on a blocked request, then have the agent retry it.

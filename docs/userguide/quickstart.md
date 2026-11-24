@@ -18,7 +18,7 @@ From nothing to an agent that runs a command for you, in about fifteen minutes. 
 
 ## 3. Create an agent
 
-Save this as `~/.nandi/repo/.nandi/agents/shell-helper/skill.md`:
+Save this as `~/.nandi/repo/.nandi/agents/shell-helper/agent.md`:
 
 ```markdown
 ---

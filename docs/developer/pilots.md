@@ -6,7 +6,7 @@ Pilots are host-side MCP servers that let an agent control the OS: apps, files, 
 
 An agent gets a pilot's tools only when all of these hold (`tools::access`):
 
-1. Its skill.md `pilots:` block lists the pilot.
+1. Its agent.md `pilots:` block lists the pilot.
 2. The pilot is installed, and was started by this app session. A browser pilot needs no Start: the agent's first use turns it on (see below).
 3. The user granted the agent **every** capability the pilot exposes.
 4. Its last health check passed. Checks run every 30s with a 2s timeout. A browser has no shared server to check: a failed start is a warning for that step.
@@ -88,7 +88,7 @@ navigate(url) ─▶ CallGate (access check) ─▶ decide ─▶ site_decision
 answer_access_request(choice, subdomains)
   allowOnce  ─▶ sites::allow_for_run(agent, run): the browser's check and the egress proxy
                 (`browser:<agent>` identity) add the host until the run ends (`EventBus::turn_done` ─▶ sites::end_run)
-  allowSaved ─▶ Agent::allow_sites ─▶ agents repository save + commit (skill.md `network.allow`); only for the user's own agents (`canSave`)
+  allowSaved ─▶ Agent::allow_sites ─▶ agents repository save + commit (agent.md `network.allow`); only for the user's own agents (`canSave`)
   deny       ─▶ the call fails: "<site> isn't allowed: the person didn't let this agent open it…"
 ```
 
@@ -99,7 +99,7 @@ answer_access_request(choice, subdomains)
 
 **Approvals are decided per call** (`browser::action`, `needs_approval`). Playwright asks for each element's human-readable description so a client can decide on permission; that, the tool and its arguments give the kind:
 
-| Kind     | Examples                                                                                | Asks unless skill.md allows |
+| Kind     | Examples                                                                                | Asks unless agent.md allows |
 | -------- | --------------------------------------------------------------------------------------- | --------------------------- |
 | Read     | snapshot, screenshot, find, wait                                                        | never asks                  |
 | Navigate | open an allowed page, back, tabs, close                                                 | never asks                  |
@@ -115,7 +115,7 @@ The arbitrary-code tools (`browser_evaluate`, `browser_run_code_unsafe`) are nev
 
 | Step      | What happens                                                                                                                                                                                                  |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Asking    | Always an approval (`Action::HandOver`; skill.md can't allow it), kept 24 h (`handover::TTL_MS`). The call gate brings the window forward (`browser::bring_to_front`: the current tab, `browser_tabs select`) |
+| Asking    | Always an approval (`Action::HandOver`; agent.md can't allow it), kept 24 h (`handover::TTL_MS`). The call gate brings the window forward (`browser::bring_to_front`: the current tab, `browser_tabs select`) |
 | Answering | `answer_hand_over(approval_id, {outcome, finalText})` / `POST /api/rpc/answer_hand_over`: Done and Changed approve, Skip rejects. `HandOverCard` in every approval surface                                    |
 | Result    | `tools::call` answers it with `handover::result`: what the person did, and the final text for Changed. A plain Approve counts as Done                                                                         |
 
@@ -125,7 +125,7 @@ The arbitrary-code tools (`browser_evaluate`, `browser_run_code_unsafe`) are nev
 
 Packs can ship such policies for their own agents (`policies/<id>.md`; the installer refuses any other target). They load from the vendored pack as `<pack>/<id>` and aren't editable. Nandi Social's `social-posting` policy is the example.
 
-**skill.md:** a `pilots:` item can be a mapping:
+**agent.md:** a `pilots:` item can be a mapping:
 
 ```yaml
 pilots:
@@ -135,7 +135,7 @@ pilots:
     secrets: { SITE_PASSWORD: nandi.pilot.shopper.site-password } # keychain entries
 ```
 
-The values and secret names go into the system prompt ("What your browser may type", `PilotToolset::prompt_notes`) and the descriptions of the typing tools and `browser_navigate`. On the tools alone the model treated them as documentation and asked the user for values it had. The secret's value is saved from the agent's Permissions tab (`set_pilot_secret`, write-only); the agent never sees it. Unknown keys, an unknown `allow` word or a secret name that isn't `CAPITALS_AND_DIGITS` are errors in skill.md. Saving the agent from its Settings tab keeps a pilot's mapping.
+The values and secret names go into the system prompt ("What your browser may type", `PilotToolset::prompt_notes`) and the descriptions of the typing tools and `browser_navigate`. On the tools alone the model treated them as documentation and asked the user for values it had. The secret's value is saved from the agent's Permissions tab (`set_pilot_secret`, write-only); the agent never sees it. Unknown keys, an unknown `allow` word or a secret name that isn't `CAPITALS_AND_DIGITS` are errors in agent.md. Saving the agent from its Settings tab keeps a pilot's mapping.
 
 ### My Nandi browser (shared profiles)
 

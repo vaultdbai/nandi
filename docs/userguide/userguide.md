@@ -24,7 +24,7 @@ This guide is for people who are comfortable with a terminal and git but new to 
 
 Nandi is a desktop app for running a small team of AI agents on your own computer. You are the manager. Each agent is a model (Claude, GPT, DeepSeek, or Ollama: your default model in Preferences → Advanced, or whichever provider you have added a key for) with a job description, a set of tools, and its own sandboxed Docker container to work in. You give agents tasks, approve the risky things they want to do, and review what they did afterwards.
 
-Everything that defines your agents is a plain file in a git repository you own. An agent is a folder with a `skill.md` file: YAML frontmatter for its settings, followed by its instructions in Markdown. Workflows and triggers are YAML files next to them. Nandi keeps that repository at `~/.nandi/repo` and syncs it with GitHub, so your agents are versioned, reviewable, and portable between machines. Run history, approvals, and logs stay local in `~/.nandi/local`.
+Everything that defines your agents is a plain file in a git repository you own. An agent is a folder with an `agent.md` file: YAML frontmatter for its settings, followed by its instructions in Markdown. Workflows and triggers are YAML files next to them. Nandi keeps that repository at `~/.nandi/repo` and syncs it with GitHub, so your agents are versioned, reviewable, and portable between machines. Run history, approvals, and logs stay local in `~/.nandi/local`.
 
 Nandi is local-first. The app, your agents' containers, and their files run on your machine. The only things that leave it are the model calls your agents make (through a proxy that holds your API keys), the network requests you explicitly allow, and git syncs with GitHub. Sharing with teammates happens through GitHub repositories and, optionally, a relay on your local network.
 
@@ -118,7 +118,7 @@ pnpm run tauri:dev
 
 ### A model API key
 
-Agents use DeepSeek unless their `skill.md` says otherwise. Open **Settings › Models** and paste a DeepSeek, Anthropic, or OpenAI key. Keys go into your OS keychain; Nandi never shows them again and never passes them to agent containers.
+Agents use DeepSeek unless their `agent.md` says otherwise. Open **Settings › Models** and paste a DeepSeek, Anthropic, or OpenAI key. Keys go into your OS keychain; Nandi never shows them again and never passes them to agent containers.
 
 ---
 
@@ -205,7 +205,7 @@ There are two good ways to get an agent of your own. The fastest is to fork one 
 
 <!-- studio-guide: build-an-agent -->
 
-Create a folder in your agents repo and a `skill.md` inside it. The folder name is the agent's ID: lowercase letters, digits, and hyphens.
+Create a folder in your agents repo and an `agent.md` inside it. The folder name is the agent's ID: lowercase letters, digits, and hyphens.
 
 ```markdown
 ---
@@ -220,21 +220,23 @@ You are a careful assistant with a Linux sandbox. Before running a command,
 say what it does. After running it, summarize the output in two sentences.
 ```
 
-Save it as `~/.nandi/repo/.nandi/agents/shell-helper/skill.md`. Nandi watches the repo, so the agent appears on the **Agents** page within a second. No restart, no import. If the file is invalid, Nandi keeps the last good version and tells you what's wrong.
+Save it as `~/.nandi/repo/.nandi/agents/shell-helper/agent.md`. Nandi watches the repo, so the agent appears on the **Agents** page within a second. No restart, no import. If the file is invalid, Nandi keeps the last good version and tells you what's wrong.
 
 The frontmatter keys you'll use most:
 
-| Key                   | What it does                                                                   |
-| --------------------- | ------------------------------------------------------------------------------ |
-| `name`, `description` | What you and other agents see                                                  |
-| `model`               | `<provider>:<model>`: `deepseek:`, `claude:`, `gpt:`, or `ollama:`             |
-| `allowed-tools`       | Which container tools it may use. Leave it out for all of them                 |
-| `requires_approval`   | Tools that need your OK before every call                                      |
-| `network`             | Hosts it may reach (see [Security model](#13-security-model)). None by default |
+| Key                   | What it does                                                                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`, `description` | What you and other agents see. Other agents see only these until it runs, so say what it is for and when to use it. A new agent needs a description |
+| `model`               | `<provider>:<model>`: `deepseek:`, `claude:`, `gpt:`, or `ollama:`                                                                                  |
+| `allowed-tools`       | Which container tools it may use. Leave it out for all of them                                                                                      |
+| `requires_approval`   | Tools that need your OK before every call                                                                                                           |
+| `network`             | Hosts it may reach (see [Security model](#13-security-model)). None by default                                                                      |
 
-Prefer putting long-lived standing instructions in an `instructions.md` next to `skill.md`: it's appended to the system prompt and keeps the frontmatter file short.
+`agent.md` is the one file an agent must have. Nandi 0.2 named it `skill.md`: the first start of Nandi 0.3 renames it in every agent you have, installed ones too, in one commit ("Upgrade agents to agent.md"), and changes nothing in it.
 
-**Playbooks.** An agent can have step-by-step guides for the kinds of work it does, in a `skills/` folder next to `skill.md`: one Markdown file per playbook, `skills/<name>.md`.
+Prefer putting long-lived standing instructions in an `instructions.md` next to `agent.md`: it's appended to the system prompt and keeps the frontmatter file short.
+
+**Playbooks.** An agent can have step-by-step guides for the kinds of work it does, in a `skills/` folder next to `agent.md`: one Markdown file per playbook, `skills/<name>.md`.
 
 ```markdown
 ---
@@ -248,7 +250,7 @@ when: A bill is due, or you ask it to pay one
 
 - `name` is lowercase words joined by hyphens and must match the file name. `description` and `when` are one line each. The steps stay at 900 words or fewer. A playbook sets no `model`.
 - Every run lists only each playbook's name, description and when to use it. The agent reads a playbook's steps (`skill_get`) when a task calls for it, so an agent can know many playbooks and still start quickly.
-- Open an agent's **Playbooks** tab to read them, change one, add a new one or delete one. Saving checks the same rules. An installed agent's playbooks are read-only, like its `skill.md`.
+- Open an agent's **Playbooks** tab to read them, change one, add a new one or delete one. Saving checks the same rules. An installed agent's playbooks are read-only, like its `agent.md`.
 - **"Remember how I do this."** Tell an agent you made (Nandi too) how you want something done, for example "remember: I pay bills from Chase, never the card". It drafts a playbook and asks you first: the card shows its name, what it covers, when it's used and the steps (**Show the steps**). A change to a playbook it already has says "replaces the current one" and shows what changes (**Show the changes**). **Approve** saves it to `skills/`; **Reject** saves nothing. Installed agents can't do this.
 
 ### Or fork an installed agent
@@ -393,7 +395,7 @@ Editing the files directly is equally valid. Either way, the change is staged in
 
 ### Turn limits, memory, and self-checks
 
-Recent releases add a few behaviours you control from `skill.md`:
+Recent releases add a few behaviours you control from `agent.md`:
 
 ```yaml
 max_turns: 50 # stop the run after this many steps (default 50)
@@ -423,7 +425,7 @@ Open a run from an agent's **Runs** tab, a Request's step, or Home. The title sa
 
 <!-- studio-guide: companion-and-appearance -->
 
-**Ask** is a chat with the workspace itself: ask it to draft a `skill.md`, design a workflow, or explain an error. It looks things up in your Nandi (runs, Requests, agents, workflows) and reads its built-in guides on how to do things. It shows you the file, then saves it once you approve the save card: new agents, workflows, triggers, connectors (tools from outside services and shared folders), capabilities and policies all land in your repo that way, and open in the editor on the right of the page for changes. Ask it to "run the weekly report" and it shows you a plan; nothing starts until you approve it. The **companion** is the bison in a corner of your screen, above your other apps, lying down and breathing, with a count when something needs you. It moves by default; Settings › Appearance › **Bison moves** sets it to Never, or to follow your computer's reduce-motion setting (on Windows, Animation effects). Drag it to any corner; it snaps there and stays after a restart. Click it, or press Cmd/Ctrl+Shift+Space, to see what needs you, what's running and what finished recently; you can approve or answer right there. Ask it about your work in plain words ("what did my agents do today?"), or start with "@Agent name" to talk to one agent. Requests it mentions appear as live cards. Clicking something that's running or finished keeps you in the companion: it's pinned at the top as a live card, where **Ask about this** points the chat at it; its **›** opens the full page in Nandi. On a Request's page, **Watch in companion** does the same. Clicking elsewhere shrinks it back to the bison; to have no bison at all, turn off **Nandi on the desktop** in Settings › Appearance, and the shortcut shows and hides the card instead. Closing the main window leaves the companion running: **Open in Nandi** brings the window back, and **Quit Nandi** in its ⋯ menu quits. When the card is closed it notifies you about new approvals and questions; turn this off in its ⋯ menu or in Settings › Appearance. To change an agent or workflow, it hands you off with **Open in Ask**. **Cmd/Ctrl+K** opens the command palette for everything else.
+**Ask** is a chat with the workspace itself: ask it to draft an `agent.md`, design a workflow, or explain an error. It looks things up in your Nandi (runs, Requests, agents, workflows) and reads its built-in guides on how to do things. It shows you the file, then saves it once you approve the save card: new agents, workflows, triggers, connectors (tools from outside services and shared folders), capabilities and policies all land in your repo that way, and open in the editor on the right of the page for changes. Ask it to "run the weekly report" and it shows you a plan; nothing starts until you approve it. The **companion** is the bison in a corner of your screen, above your other apps, lying down and breathing, with a count when something needs you. It moves by default; Settings › Appearance › **Bison moves** sets it to Never, or to follow your computer's reduce-motion setting (on Windows, Animation effects). Drag it to any corner; it snaps there and stays after a restart. Click it, or press Cmd/Ctrl+Shift+Space, to see what needs you, what's running and what finished recently; you can approve or answer right there. Ask it about your work in plain words ("what did my agents do today?"), or start with "@Agent name" to talk to one agent. Requests it mentions appear as live cards. Clicking something that's running or finished keeps you in the companion: it's pinned at the top as a live card, where **Ask about this** points the chat at it; its **›** opens the full page in Nandi. On a Request's page, **Watch in companion** does the same. Clicking elsewhere shrinks it back to the bison; to have no bison at all, turn off **Nandi on the desktop** in Settings › Appearance, and the shortcut shows and hides the card instead. Closing the main window leaves the companion running: **Open in Nandi** brings the window back, and **Quit Nandi** in its ⋯ menu quits. When the card is closed it notifies you about new approvals and questions; turn this off in its ⋯ menu or in Settings › Appearance. To change an agent or workflow, it hands you off with **Open in Ask**. **Cmd/Ctrl+K** opens the command palette for everything else.
 
 ### What runs on its own, and what doesn't
 
@@ -603,7 +605,7 @@ Every card shows what it is, who publishes it, one status (Installed, Running, N
 
 ### Install and allow
 
-**Install** first lists exactly what the agent or pack will be allowed to do. **Install and allow** fetches the release, copies only the agent files (`skill.md`, `instructions.md`, README, icon, license, workflows; never scripts) under `~/.nandi/repo/.nandi/agents/marketplace/`, and records your consent, so the first run doesn't ask again. **Cancel** installs nothing. Unverified entries warn you first and say **Install anyway**. Installed agents are read-only; updates are never automatic: use **Check for update** in a card's **⋯** menu.
+**Install** first lists exactly what the agent or pack will be allowed to do. **Install and allow** fetches the release, copies only the agent files (`agent.md`, `instructions.md`, README, icon, license, workflows; never scripts) under `~/.nandi/repo/.nandi/agents/marketplace/`, and records your consent, so the first run doesn't ask again. **Cancel** installs nothing. Unverified entries warn you first and say **Install anyway**. Installed agents are read-only; updates are never automatic: use **Check for update** in a card's **⋯** menu.
 
 ### Tools, connectors and pilots
 
@@ -613,9 +615,9 @@ Built-in tools (Run shell commands, Read files, Write files, List folders, Ask o
 
 <!-- studio-guide: use-the-browser -->
 
-**The browser.** Two pilots let an agent use a real browser: **Browser** opens a Chrome or Edge window on this computer so you can watch, and **Browser (headless)** runs one in a sandbox with no window (it needs Docker). Install and start one in Library › Tools, list it under `pilots` in the agent's skill.md, and allow it for the agent. Each agent gets its own browser profile, so its sign-ins stay separate from yours, unless you let it use [My Nandi browser](#my-nandi-browser). The browser opens the sites in the agent's **Internet access**. When it needs another site, Nandi asks you first: the card shows the agent, the site (with its raw address when the name has accents or other scripts) and why the agent wants it. Choose **Allow once** (this run only), **Always allow for** the agent (added to its Internet access), or **Don't allow**; tick **Include its subdomains** to cover `www.` and the like too. IP addresses, local names such as `printer.local`, other ports, and sites a policy rules out are refused without asking. Reading pages, taking screenshots (saved with the run's files) and opening allowed pages never ask. Clicking and typing, submitting a form, typing a secret, files and paying wait for your approval, unless the agent's pilot entry allows them (`allow: [interact, submit]`). A pilot entry can also hold plain `values` the agent may type and `secrets`: the agent types a secret's name and the browser fills in the value, which you save on the agent's **Permissions** (it stays in your keychain and the agent never sees it).
+**The browser.** Two pilots let an agent use a real browser: **Browser** opens a Chrome or Edge window on this computer so you can watch, and **Browser (headless)** runs one in a sandbox with no window (it needs Docker). Install and start one in Library › Tools, list it under `pilots` in the agent's agent.md, and allow it for the agent. Each agent gets its own browser profile, so its sign-ins stay separate from yours, unless you let it use [My Nandi browser](#my-nandi-browser). The browser opens the sites in the agent's **Internet access**. When it needs another site, Nandi asks you first: the card shows the agent, the site (with its raw address when the name has accents or other scripts) and why the agent wants it. Choose **Allow once** (this run only), **Always allow for** the agent (added to its Internet access), or **Don't allow**; tick **Include its subdomains** to cover `www.` and the like too. IP addresses, local names such as `printer.local`, other ports, and sites a policy rules out are refused without asking. Reading pages, taking screenshots (saved with the run's files) and opening allowed pages never ask. Clicking and typing, submitting a form, typing a secret, files and paying wait for your approval, unless the agent's pilot entry allows them (`allow: [interact, submit]`). A pilot entry can also hold plain `values` the agent may type and `secrets`: the agent types a secret's name and the browser fills in the value, which you save on the agent's **Permissions** (it stays in your keychain and the agent never sees it).
 
-**Sites and accounts.** On the agent's **Permissions** tab, each browser lists its secrets with **Secret saved** or **Not set**, never the value. Type a new value and **Save** to set or replace one, or **Clear** to remove it. For an agent made on this computer, including Nandi, **Add secret** takes a name like `ACME_PASSWORD` and the value: Nandi adds the name to the agent's skill.md and keeps the value in your keychain. An agent that came with a pack names its own secrets; you set their values. **Sign out everywhere** stops the agent's browser and deletes its profile (cookies, sign-ins and site data) after you confirm, so every site forgets it; your saved secrets stay. Browser profiles stay on this computer and are never backed up. Nandi keeps what a site needs, without secrets, in My notes under `private/sites/` (a customer number, the menu path, which secret name to use). Nandi refuses to write a card number or a password line into your notes.
+**Sites and accounts.** On the agent's **Permissions** tab, each browser lists its secrets with **Secret saved** or **Not set**, never the value. Type a new value and **Save** to set or replace one, or **Clear** to remove it. For an agent made on this computer, including Nandi, **Add secret** takes a name like `ACME_PASSWORD` and the value: Nandi adds the name to the agent's agent.md and keeps the value in your keychain. An agent that came with a pack names its own secrets; you set their values. **Sign out everywhere** stops the agent's browser and deletes its profile (cookies, sign-ins and site data) after you confirm, so every site forgets it; your saved secrets stay. Browser profiles stay on this computer and are never backed up. Nandi keeps what a site needs, without secrets, in My notes under `private/sites/` (a customer number, the menu path, which secret name to use). Nandi refuses to write a card number or a password line into your notes.
 
 **Hand-over.** Some agents prepare a page in the browser and leave the last click to you: a social post typed into LinkedIn's composer, say. Nandi brings the browser window forward and your Inbox shows **Your turn: review and post**, with the draft. Change anything you like in the window and press Post yourself. Then answer in Nandi: **Done, I posted it**, **Skip**, or **Changed it** (paste the text that went out). The agent reads your answer and carries on; it waits up to a day. A policy can refuse browser controls outright, such as Post buttons on social sites or Like and Follow everywhere (`browser: { refuse: [...] }`); the agent is told why and hands over instead. The **Nandi Social** starter pack works this way.
 
@@ -950,15 +952,15 @@ Until then there is an experimental shortcut: if you run [Ollama](https://ollama
 | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | "Agents need Docker to act. Set up" on an agent page; agent answers in text only | Docker isn't running or the tool sandbox image is missing. **Set up** opens Settings › This computer with the steps for your computer; download the image in Settings › Models & runtimes (see [Installation](#2-installation)). The next message retries. |
 | "Add your DeepSeek API key to start chatting"                                    | No key for the agent's provider. **Settings › Models**.                                                                                                                                                                                                    |
-| A new agent doesn't appear                                                       | `skill.md` must be at `~/.nandi/repo/.nandi/agents/<id>/skill.md`, and the folder name must be a valid ID. Invalid files are reported; the last good version stays live.                                                                                   |
+| A new agent doesn't appear                                                       | `agent.md` must be at `~/.nandi/repo/.nandi/agents/<id>/agent.md`, and the folder name must be a valid ID. Invalid files are reported; the last good version stays live.                                                                                   |
 | An agent seems stuck                                                             | Check the strip above its chat: it's probably waiting for an approval or working through its queue. **Stop** cancels the current turn.                                                                                                                     |
 | A marketplace agent won't run                                                    | It needs consent: **Review and allow** in its banner.                                                                                                                                                                                                      |
 | Sync now fails with a conflict                                                   | Nothing was changed. Resolve the listed files with git in `~/.nandi/repo`, then sync again.                                                                                                                                                                |
 | A webhook returns 401 / 404 / 429                                                | Wrong secret / trigger disabled or unknown / over 60 requests a minute.                                                                                                                                                                                    |
 | Relay says Reconnecting                                                          | The reason line shows the last error. Usually a firewall, or a relay started with `--host 127.0.0.1`. Use **Test connection**.                                                                                                                             |
-| A run stopped early                                                              | It hit `max_turns` or `max_cost_usd`. Raise them in `skill.md` if that was legitimate.                                                                                                                                                                     |
+| A run stopped early                                                              | It hit `max_turns` or `max_cost_usd`. Raise them in `agent.md` if that was legitimate.                                                                                                                                                                     |
 
-To check an agent's prerequisites (Docker, image, database, API key, `skill.md`) from a terminal, run the app binary with `verify --agent <id>`; it exits non-zero and names what's missing.
+To check an agent's prerequisites (Docker, image, database, API key, `agent.md`) from a terminal, run the app binary with `verify --agent <id>`; it exits non-zero and names what's missing.
 
 ### Where things live
 

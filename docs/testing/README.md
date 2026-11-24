@@ -270,7 +270,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | AG-05 | New agent dialog (template)                                             | Shipped            | api           | no          |                                             |
 | AG-06 | New agent: describe it in Ask                                           | Shipped            | ui-e2e        | no          |                                             |
 | AG-07 | Agent created or changed by editing files                               | Shipped            | api           | no          |                                             |
-| AG-08 | skill.md format: keys the app honors                                    | Shipped            | unit          | no          |                                             |
+| AG-08 | agent.md format: keys the app honors                                    | Shipped            | unit          | no          |                                             |
 | AG-09 | Agent status                                                            | Shipped            | api           | no          |                                             |
 | AG-10 | Agent page shell and header                                             | Shipped            | ui-e2e        | no          |                                             |
 | AG-11 | Pending-approval banner on the agent page                               | Shipped            | ui-e2e        | no          |                                             |
@@ -285,6 +285,8 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | AG-36 | Nandi's page and Reset to defaults                                      | Shipped            | unit + ui     | no          |                                             |
 | AG-37 | Nandi's default schedule                                                | Shipped            | unit + ui     | no          |                                             |
 | AG-38 | Updates to Nandi's shipped files                                        | Shipped            | unit + ui     | no          |                                             |
+| AG-41 | Agents upgrade to `agent.md` (from Nandi 0.2)                           | Shipped            | api           | no          |                                             |
+| AG-42 | Each agent loads only when it is needed                                 | Shipped            | api           | no          |                                             |
 | AG-31 | Nandi browses websites                                                  | Shipped            | unit          | no          |                                             |
 | AG-32 | Run plans: plan first, live checklist, finish check                     | Shipped            | unit          | no          |                                             |
 | AG-33 | Playbooks: skill files an agent reads on demand                         | Shipped            | unit          | no          |                                             |

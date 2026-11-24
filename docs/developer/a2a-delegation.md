@@ -57,11 +57,11 @@ The provider side (`executor.rs`) runs on `RelayClient::on_task_assigned`: it ad
 
 ## Rules
 
-- **Outbound**: an agent is offered `delegate_to_agent` when its skill.md sets `delegation_outbound: true` or lists the tool in `allowed-tools`. Every call goes through the orchestrator's existing approval path (approval row, `agent://approval_request`, resume on approve) unless skill.md declares `requires_approval` without the tool. The provider is only picked after approval, so local and cross-user calls are treated the same.
+- **Outbound**: an agent is offered `delegate_to_agent` when its agent.md sets `delegation_outbound: true` or lists the tool in `allowed-tools`. Every call goes through the orchestrator's existing approval path (approval row, `agent://approval_request`, resume on approve) unless agent.md declares `requires_approval` without the tool. The provider is only picked after approval, so local and cross-user calls are treated the same.
 - **Inbound** is rejected (the requester sees why) when the agent doesn't accept delegation, doesn't serve the capability, is at `max_delegation_concurrent`, or, for requesters on another instance, the trust policy is `deny`. Trust policy `ask` also rejects, with an error naming the requester, unless the owner marked the requester's instance a trusted peer (Network → member → Trust, `network::member_trust::is_trusted_peer`) or allows it in the trust graph. Same-instance requesters skip the trust policy.
 - **Routed by the gateway**: a task the local gateway routes to an agent is sent as `<instance>/gateway`, and `admit` takes it on the gateway's word (NANDI.md `expose`/`hide` and the caller policy already decided), so the agent needn't set `accepts_delegation` or serve the exact capability. An explicit per-capability `deny` override still wins.
-- **Per-capability overrides** (`delegation_overrides: {cap: allow|deny}` in skill.md): `allow` accepts that capability even with `accepts_delegation` off and stands in for a missing trust rule; `deny` rejects it; an explicit trust `deny` still wins.
-- Settings are written to skill.md through the repos layer (`settings::apply` → `repos().agents.save` → `commit`), never to SQLite.
+- **Per-capability overrides** (`delegation_overrides: {cap: allow|deny}` in agent.md): `allow` accepts that capability even with `accepts_delegation` off and stands in for a missing trust rule; `deny` rejects it; an explicit trust `deny` still wins.
+- Settings are written to agent.md through the repos layer (`settings::apply` → `repos().agents.save` → `commit`), never to SQLite.
 
 ## Asking Another Person's Nandi
 
@@ -98,7 +98,7 @@ What the relay operator can and can't see is in the relay's README.
 
 ## Finding People and Tracking Requests
 
-Two read-only built-ins let an agent work for its owner on a team (`services/a2a/people.rs`). They are offered only to agents whose skill.md lists them in `allowed-tools`, so no agent gets the user's network by default. They run on the host and never need approval.
+Two read-only built-ins let an agent work for its owner on a team (`services/a2a/people.rs`). They are offered only to agents whose agent.md lists them in `allowed-tools`, so no agent gets the user's network by default. They run on the host and never need approval.
 
 - **`find_people {topic?, limit?}`**: who on the user's network is responsible for a topic. The relay searches (`RelayClient::find_people` → `FindPeople`/`PeopleMatches`, ranked in the relay's `src/directory.rs`) over its member directory, online or not, and its members' online agent cards. Without a connected relay the tool answers `RelayUnavailable`: there is no matching from a cached copy (design decision 2). `person_json` turns each `PeopleMatch` into the tool's JSON (unchanged for agents; `you` is set here, and someone busy or away adds `availability: {status, until, covered_by}`).
   - The relay scores each person on:
@@ -119,7 +119,7 @@ Nandi, the default agent (`services/builtin_agents.rs`, files in `src-tauri/reso
 
 A person's Nandi therefore answers questions for them, and work assigned to them waits for their approval.
 
-Nandi also browses websites itself (no separate Browser agent). Its `skill.md` declares the visible `browser` pilot with `allow: [interact]`: submitting, secrets, uploads and paying wait for approval, and sign-ins, CAPTCHAs and payments go through `browser_hand_over`. It ships with no allowed sites; a new site asks the user. Only its chats and intake threads get the pilot tools: `agent_pilot_tools` is merged on the chat branch only, and `data_run_allows` drops them for the email and calendar checks (test `a_check_started_run_never_gets_pilot_tools`). Its `skill.md` body stays at 900 words or fewer. `BUILTIN_AGENTS` is the table of built-ins and their files: `seed` writes each one whose `skill.md` is missing, and `delete_agent` refuses the default agent (`is_default`). Its default triggers are in [triggers.md](./triggers.md#nandis-default-triggers).
+Nandi also browses websites itself (no separate Browser agent). Its `agent.md` declares the visible `browser` pilot with `allow: [interact]`: submitting, secrets, uploads and paying wait for approval, and sign-ins, CAPTCHAs and payments go through `browser_hand_over`. It ships with no allowed sites; a new site asks the user. Only its chats and intake threads get the pilot tools: `agent_pilot_tools` is merged on the chat branch only, and `data_run_allows` drops them for the email and calendar checks (test `a_check_started_run_never_gets_pilot_tools`). Its `agent.md` body stays at 900 words or fewer. `BUILTIN_AGENTS` is the table of built-ins and their files: `seed` writes each one whose `agent.md` is missing, and `delete_agent` refuses the default agent (`is_default`). Its default triggers are in [triggers.md](./triggers.md#nandis-default-triggers).
 
 ### Assignments last (`a2a/assignment.rs`, `gateway/assignments.rs`)
 

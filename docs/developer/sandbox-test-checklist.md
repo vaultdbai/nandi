@@ -35,7 +35,7 @@ Each check says what to do, what you should see, and where the code is. Tick it 
 
 ## 3. Coding agents ask first (#8)
 
-Use a Claude Code agent with no `requires_approval` in skill.md (the default asks for `shell` and `write_file`).
+Use a Claude Code agent with no `requires_approval` in agent.md (the default asks for `shell` and `write_file`).
 
 | #   | Do                                                                                                       | Expect                                                                                                      | Code                                             |
 | --- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
@@ -93,7 +93,7 @@ Write each policy as `.nandi/policies/<id>.md` (or through Studio), then run the
 | 6.8  | `pilots: { allow: [] }` on an agent with the browser pilot                                                | Ask it to use the browser             | No pilot tools; a forced call says "a policy doesn't allow this pilot"                            | same                                |
 | 6.9  | Two policies, one `tools: { allow: [shell] }`, one `tools: { deny: [shell] }`                             | Run it                                | `shell` is denied (deny wins)                                                                     | `domain::policy::effective`         |
 | 6.10 | `models: { allow: ['claude:sonnet*'] }` on a Claude Code agent with `runtime_config.model: opus`          | Run it                                | The run fails before its container starts: "The policy '…' doesn't allow the model claude:opus …" | `runtime_router::plan`              |
-| 6.11 | `applies_to: [tag:finance]`, `tools: { deny: [shell] }`; add `tags: [finance]` to one agent's skill.md    | Ask both agents to run a command      | The tagged agent can't run `shell`; an untagged agent still can                                   | `Agent::tags`, `policies::evaluate` |
+| 6.11 | `applies_to: [tag:finance]`, `tools: { deny: [shell] }`; add `tags: [finance]` to one agent's agent.md    | Ask both agents to run a command      | The tagged agent can't run `shell`; an untagged agent still can                                   | `Agent::tags`, `policies::evaluate` |
 | 6.12 | Any policy above, with the agent page › Settings › Permissions open                                       | Save the policy in Studio             | Without a reload: "Policies that apply: …" and one row per change, "by <policy>"                  | `AgentPolicies.tsx`, `agent-sync`   |
 
 ## 7. Connectors in containers (wave 3b)

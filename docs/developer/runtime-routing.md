@@ -17,7 +17,7 @@ runtime_config:
 ---
 ```
 
-Agents without `runtime:` are native, and their skill.md is unchanged.
+Agents without `runtime:` are native, and their agent.md is unchanged.
 Unknown `runtime_config` keys are kept on save.
 
 ## Flow

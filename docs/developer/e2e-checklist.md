@@ -10,7 +10,7 @@ A manual test that runs one full turn with a real DeepSeek model and a real runt
 
    ```powershell
    New-Item -ItemType Directory -Force "$HOME\.nandi\repo\.nandi\agents\echo-agent"
-   Copy-Item test-fixtures\echo-agent\skill.md "$HOME\.nandi\repo\.nandi\agents\echo-agent\skill.md"
+   Copy-Item test-fixtures\echo-agent\agent.md "$HOME\.nandi\repo\.nandi\agents\echo-agent\agent.md"
    ```
 
 4. Check prerequisites:
@@ -20,7 +20,7 @@ A manual test that runs one full turn with a real DeepSeek model and a real runt
    cargo run --manifest-path src-tauri/Cargo.toml -- verify --agent echo-agent
    ```
 
-   `verify` is a command of the app binary (`nandi`), not a separate CLI. It checks skill.md, the `shell` permission, Docker, the image, the DB schema, and the model's API key. Both exit non-zero on failure.
+   `verify` is a command of the app binary (`nandi`), not a separate CLI. It checks agent.md, the `shell` permission, Docker, the image, the DB schema, and the model's API key. Both exit non-zero on failure.
 
 The image's own process just idles (`sleep infinity`); Nandi starts the tool server per session with `docker exec -i … python /opt/nandi/app.py --stdio`. `requires_approval: []` lets `shell` run without an approval prompt. For the sandbox itself (network, approvals, policies) see the [Sandbox and Policy Test Checklist](./sandbox-test-checklist.md).
 
@@ -40,7 +40,7 @@ Prompt to send: `Run "echo hello from nandi && uname -a" and tell me the output.
 
 | #   | Step                                         | Expected                                                                                                                                    | Pass |
 | --- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| 1   | Agent exists (skill.md, image, DeepSeek)     | **Echo Agent** in the sidebar; agent view loads with no skill.md error                                                                      | ☐    |
+| 1   | Agent exists (agent.md, image, DeepSeek)     | **Echo Agent** in the sidebar; agent view loads with no agent.md error                                                                      | ☐    |
 | 2   | Container starts                             | Start (or the first message) → status `starting` → `running`; `docker ps` shows `nandi-agent-<tag>-echo-agent`; no `agent://warning` banner | ☐    |
 | 3   | Send a message that needs `shell`            | User message appears immediately; a run starts                                                                                              | ☐    |
 | 4   | DeepSeek plans and emits `tool_call`         | Tokens stream; a `shell` tool call card appears with `cmd`; one `ok` line in `llm.log`                                                      | ☐    |

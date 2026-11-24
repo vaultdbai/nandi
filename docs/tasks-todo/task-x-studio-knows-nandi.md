@@ -9,14 +9,14 @@
 Studio's system prompt (`services/studio/prompt.rs`) is generated from code, and its read-only `nandi_*` tools (`services/studio/tools.rs`) show everything this Nandi has right now. Studio can see the current state and validate files (`nandi_check_artifact`), but it lacks three things:
 
 - **No product knowledge.** `docs/userguide/` never reaches Studio, so it can't explain triggers, Work, approvals, Requests, runtimes or sign-in beyond their file formats.
-- **No recipes.** It knows the skill.md keys but not good patterns, such as when to use a workflow rather than one agent, approval policies, triggers, or CLI runtimes and their `runtime_config.model`.
+- **No recipes.** It knows the agent.md keys but not good patterns, such as when to use a workflow rather than one agent, approval policies, triggers, or CLI runtimes and their `runtime_config.model`.
 - **Chat can't start work itself.** Its only way to act is `delegate_to_agent`. Running a workflow or starting a Request happens only on Ask's route (`services/ask/planner.rs` → `startRequest`), which the chat model doesn't know about.
 
 ## Wave A — Studio guides (on-demand knowledge)
 
 - [x] **Guide files:** one Markdown file per topic, short and task-shaped, compiled into the binary with `include_str!` (not files in the user's repo; they describe the app, not the user's definitions). Proposed home: `src-tauri/resources/studio-guides/`. Each file has frontmatter `id`, `title` and `when` (one line on when to read it).
 - [x] **First topics:**
-  - [x] `build-an-agent`: choosing tools, `requires_approval`, `instructions.md` vs skill.md body, model choice
+  - [x] `build-an-agent`: choosing tools, `requires_approval`, `instructions.md` vs agent.md body, model choice
   - [x] `agent-or-workflow`: when a single agent is enough and when steps, approvals or several agents call for a workflow
   - [x] `write-a-workflow`: step shapes, inputs and outputs, approvals, scope
   - [x] `set-up-a-trigger`: schedules and events, what a trigger starts
@@ -32,12 +32,12 @@ Studio's system prompt (`services/studio/prompt.rs`) is generated from code, and
   - [x] `nandi_get_guide(id)` returns the body.
   - [x] Both are read-only and need no approval, like the other `nandi_*` tools.
 - [x] **Prompt** (`studio_prompt`): add a "## How to do things" section that lists the guide titles and `when` lines (generated from the files, not hand-written), and says to read the matching guide before proposing an agent, workflow or trigger, or explaining a feature.
-- [x] **Facts stay generated:** guides must not restate schema keys, tool IDs or model names. A test fails if a guide names a tool ID that isn't in `builtin_tools()`, a frontmatter key that isn't in `SKILL_FRONTMATTER_KEYS` (`guides_name_only_real_tools_and_keys`), or a model (`guides_name_no_models`). This is the same idea as `the_prompt_matches_the_code`.
+- [x] **Facts stay generated:** guides must not restate schema keys, tool IDs or model names. A test fails if a guide names a tool ID that isn't in `builtin_tools()`, a frontmatter key that isn't in `AGENT_FRONTMATTER_KEYS` (`guides_name_only_real_tools_and_keys`), or a model (`guides_name_no_models`). This is the same idea as `the_prompt_matches_the_code`.
 - [x] **Ask route:** Question answers get the guide index plus the body of the guide the question is most about (`context::describe_guides`, added in `ask::answer`). It isn't a `GatewayContext` field, because the planner doesn't need it.
 - [x] **Docs:** add a Studio guides section to `docs/developer/interaction-layer.md`, covering how to add a guide and the drift test.
 - [ ] **Acceptance** (needs a live model in the app; the prompt-size item is covered by `the_prompt_lists_every_guide_and_grows_only_by_the_index`):
   - [ ] "How do triggers work?" in Studio reads `set-up-a-trigger` (shown under "Looked at") and answers without inventing keys.
-  - [ ] "Build me an agent that summarises my inbox daily" reads `build-an-agent` and `set-up-a-trigger`, then proposes a skill.md and a trigger that both pass `nandi_check_artifact`.
+  - [ ] "Build me an agent that summarises my inbox daily" reads `build-an-agent` and `set-up-a-trigger`, then proposes an agent.md and a trigger that both pass `nandi_check_artifact`.
   - [x] The prompt grows only by the index (measure before and after; keep it under ~1 KB).
 
 ## Wave B — Chat can start work (one route for Chat and Ask)

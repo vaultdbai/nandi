@@ -23,7 +23,7 @@
 
 - [ ] **Model capabilities:** what each configured model can take (images, video, context size), from the provider's model list where it says so, else a small table in code.
 - [ ] **Roles in Settings › Models** (portable, in `.nandi/settings.yaml` next to the default model).
-- [ ] **Agents declare needs** in `skill.md` (`needs: [vision]`), checked by the domain; the registry entry repeats them so the catalog can say "needs a vision model".
+- [ ] **Agents declare needs** in `agent.md` (`needs: [vision]`), checked by the domain; the registry entry repeats them so the catalog can say "needs a vision model".
 - [ ] **Routing per call:** a turn whose input has an image or video goes to the Vision or Video model for that step, then back to the agent's model. Nandi's own calls (ask classifier, planner, screening summaries) use Fast.
 - [ ] **No model for a need:** the run says which role to set, in plain words, never a raw provider error.
 - [ ] Tests: role fallback, per-agent override wins, routing by input type, an agent whose need has no model.

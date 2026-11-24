@@ -7,7 +7,7 @@
 
 ## The Idea
 
-Nandi's code never changes itself. What gets better is state already in the gold copy: notes, `skill.md` prompts, workflows and triggers. Once a week, the Chief of Staff reads what the person corrected and proposes a few changes. The person says yes or no. Nandi then checks whether the change helped.
+Nandi's code never changes itself. What gets better is state already in the gold copy: notes, `agent.md` prompts, workflows and triggers. Once a week, the Chief of Staff reads what the person corrected and proposes a few changes. The person says yes or no. Nandi then checks whether the change helped.
 
 The model does the reading and the proposing. Nandi builds the record, the approval, the limits and the check.
 
@@ -25,7 +25,7 @@ The model does the reading and the proposing. Nandi builds the record, the appro
 
 | ✅ A proposal may                                     | ❌ A proposal may never                                                 |
 | ----------------------------------------------------- | ----------------------------------------------------------------------- |
-| Edit a `skill.md`, a note, a workflow or a trigger    | Add a tool, a site to `network.allow`, a secret, a connector or a pilot |
+| Edit an `agent.md`, a note, a workflow or a trigger   | Add a tool, a site to `network.allow`, a secret, a connector or a pilot |
 | Narrow a grant or an allowed site                     | Remove an approval or touch the approval policy or the sandbox          |
 | Cite the runs it learned from                         | Turn text from an email or a web page into an instruction               |
 | Suggest an agent take on an action you always approve | Make that action automatic without the person's yes                     |
@@ -36,7 +36,7 @@ The model does the reading and the proposing. Nandi builds the record, the appro
 
 ## Slices
 
-1. **The retro itself.** The Chief of Staff's `skill.md` and a weekly trigger. It reads last week's run and approval records and sends up to three Inbox proposals. First check what the Chief of Staff can already read; add a read-only tool only if something is missing.
+1. **The retro itself.** The Chief of Staff's `agent.md` and a weekly trigger. It reads last week's run and approval records and sends up to three Inbox proposals. First check what the Chief of Staff can already read; add a read-only tool only if something is missing.
 2. **Apply and undo.** A yes writes one gold copy commit with the reason and the run links. Undo reverts it. The ❌ check refuses a proposal that widens anything.
 3. **The check.** Edit and rejection rate per agent, before and after. One calm Inbox note when a change didn't help.
 
@@ -49,7 +49,7 @@ The model does the reading and the proposing. Nandi builds the record, the appro
 
 ## Status (2026-11-23)
 
-The Chief of Staff is now Nandi, the default agent. Its `skill.md` is at the word limit, so the retro's instructions are the playbook `skills/weekly-retro.md` and the trigger `triggers/weekly-retro.yaml` (Fridays at 17:00). Nandi could read no run or approval records, so the retro got three host tools, offered only in that trigger's run: `retro_runs` and `retro_read` (read-only) and `retro_propose` (records a proposal, changes nothing). Developer notes: [triggers.md](../developer/triggers.md#the-weekly-retro). Test catalog: AG-40.
+The Chief of Staff is now Nandi, the default agent. Its `agent.md` is at the word limit, so the retro's instructions are the playbook `skills/weekly-retro.md` and the trigger `triggers/weekly-retro.yaml` (Fridays at 17:00). Nandi could read no run or approval records, so the retro got three host tools, offered only in that trigger's run: `retro_runs` and `retro_read` (read-only) and `retro_propose` (records a proposal, changes nothing). Developer notes: [triggers.md](../developer/triggers.md#the-weekly-retro). Test catalog: AG-40.
 
 - [x] Slice 1: the playbook, the weekly trigger (at most once in six days, `RetroGuard`), the week's records within a budget, at most three proposals a week, each an Inbox item with its diff and its runs
 - [x] Slice 2: Apply is one gold copy commit with the reason and the run IDs; Undo is one more commit. The ❌ column is checked in code at propose and at apply (`domain/retro.rs`); signed pack agents are refused

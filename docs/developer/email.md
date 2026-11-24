@@ -154,7 +154,7 @@ Sign-in failures are sorted by `classify_sign_in_error` into `adminApproval` (AA
 
 `orchestrator::llm_step` sees `source_type = email` (`is_email_run`) and offers only the notes tools (`filesystem__read_file`, `list_dir`, `write_file`), the mail tools and Nandi's work tools (`work_open`, `work_start`, `work_update`: it acts on what the mail calls for, see [the interaction layer](./interaction-layer.md#nandi-acts-on-what-arrives)), without starting the container. Tool dispatch refuses anything else in that run.
 
-Nandi's behaviour is in its `skill.md` › Email: note asks, promises, deadlines, decisions and owners; cite "(from <sender>, <date>, "<subject>")"; never copy more than a short phrase; don't re-add what the user deleted.
+Nandi's behaviour is in its `agent.md` › Email: note asks, promises, deadlines, decisions and owners; cite "(from <sender>, <date>, "<subject>")"; never copy more than a short phrase; don't re-add what the user deleted.
 
 ### Tools
 
@@ -182,7 +182,7 @@ A grant on `gmail` or `outlook` (`ConnectorGrant.mailboxes`, `domain/grant.rs`) 
 | Connecting a mailbox               | Nandi's grant gains that address (one on every mailbox stays so)                                                                                                     |
 | Signing a mailbox out              | Grants naming it lose it; one that named only it goes, never widening to every mailbox (`Grants::drop_mailbox`). The last mailbox of a provider takes all its grants |
 
-Allow once and Don't allow stay per provider within a run. Notes cite the mailbox through Nandi's `skill.md`; a to-do's record has no mailbox field, so `todo_add`'s description asks the model to name the mailbox in the text when there are several (the record would need a migration).
+Allow once and Don't allow stay per provider within a run. Notes cite the mailbox through Nandi's `agent.md`; a to-do's record has no mailbox field, so `todo_add`'s description asks the model to name the mailbox in the text when there are several (the record would need a migration).
 
 ## Commands and routes
 

@@ -143,7 +143,7 @@ definitions, so they never live in the user's repo.
 - **Facts stay generated.** Guides don't restate schema keys, tool IDs, or
   model names; the prompt does. `guides_name_only_real_tools_and_keys`
   fails when a guide names a backticked snake_case identifier that isn't a
-  built-in or Studio tool, `delegate_to_agent`, or a skill.md key.
+  built-in or Studio tool, `delegate_to_agent`, or an agent.md key.
 - **One source with the user guide.** The guides are the source. The user
   guide marks the section that covers each one with
   `<!-- studio-guide: <id> -->`, and `the_user_guide_covers_every_guide`
@@ -323,7 +323,7 @@ and tells it to explain any risk to the user before they approve.
   to-do.
 - The email batch tells it not to start work from backfill, and on the
   first read only for what is still open and due soon. Its behaviour is
-  skill.md › Acting on what arrives.
+  agent.md › Acting on what arrives.
 
 ### Chat saves what it builds
 

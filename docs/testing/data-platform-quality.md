@@ -8,7 +8,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 
 ### DT-01 — Gold-copy repo layout and first-run initialization
 
-- **What:** Definitions live as files in a git repo at `HOME/repo`: `.nandi/manifest.yaml`, `.nandi/settings.yaml`, `.nandi/connectors.yaml`, `.nandi/agents/<id>/{skill.md,instructions.md,workflows/*.yaml}`, `.nandi/workflows/*.yaml`, `.nandi/triggers/*.yaml`, `.nandi/capabilities/*.yaml`, `.nandi/policies/*.md`, `.nandi/installed.yaml`, and vendored marketplace folders under `.nandi/agents/marketplace/`. A brand-new install gets `git init` (branch `main`), a `.gitignore`, a manifest, and one commit ("Initialize Nandi repo"). On every start, whatever the repo lacks of `.nandi/settings.yaml`, `.gitignore` and `.nandi/manifest.yaml` is written (the manifest last).
+- **What:** Definitions live as files in a git repo at `HOME/repo`: `.nandi/manifest.yaml`, `.nandi/settings.yaml`, `.nandi/connectors.yaml`, `.nandi/agents/<id>/{agent.md,instructions.md,workflows/*.yaml}`, `.nandi/workflows/*.yaml`, `.nandi/triggers/*.yaml`, `.nandi/capabilities/*.yaml`, `.nandi/policies/*.md`, `.nandi/installed.yaml`, and vendored marketplace folders under `.nandi/agents/marketplace/`. A brand-new install gets `git init` (branch `main`), a `.gitignore`, a manifest, and one commit ("Initialize Nandi repo"). On every start, whatever the repo lacks of `.nandi/settings.yaml`, `.gitignore` and `.nandi/manifest.yaml` is written (the manifest last).
 - **Where:** `src-tauri/src/services/repos/layout.rs`, `services/repos/mod.rs`, `services/repo_bootstrap.rs` (`install_layout`, `bootstrap`, `adopt_repo`), `services/domain/repo.rs` (`REPO_SCHEMA_VERSION = 1`); docs `docs/developer/data-model.md`, `domain-model.md`.
 - **Preconditions:** None (fresh `NANDI_HOME`).
 - **Steps:**
@@ -107,7 +107,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 
 ### DT-07 — Save an agent definition through the repo (cross-ref Agents)
 
-- **What:** Writes an agent's `skill.md`/`instructions.md` from the editor input, creating the folder if new; validation happens before any write; marketplace agents are read-only until forked; fields the editor doesn't edit are kept. Listed here for the write path only; the editor UI is in the Agents section.
+- **What:** Writes an agent's `agent.md`/`instructions.md` from the editor input, creating the folder if new; validation happens before any write; marketplace agents are read-only until forked; fields the editor doesn't edit are kept. Listed here for the write path only; the editor UI is in the Agents section.
 - **Where:** Tauri `repo_save_agent`; `POST /api/rpc/repo_save_agent`; `services/repo_service.rs` (`save_agent`, `save_agent_definition`).
 - **Preconditions:** None.
 - **Steps:** Save an agent via the editor or the route; check `git status` and `POST /api/rpc/list_agents`.
@@ -125,7 +125,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **Where:** `services/repo_store.rs` (`load`), `services/projection.rs` (`rebuild_all`, `project_entity`, `PROJECTION_VERSION`), `services/mod.rs` (`AppState::start`).
 - **Preconditions:** An install with agents and some run history.
 - **Steps:**
-  1. Quit the app. Edit an agent's `skill.md` description; delete a trigger file.
+  1. Quit the app. Edit an agent's `agent.md` description; delete a trigger file.
   2. Start the app.
 - **Expected:** The agent shows the new description, the trigger is gone, run history intact; log line "Loaded the repo: N agents, M workflows re-projected".
 - **Edge / negative cases:**
@@ -170,7 +170,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **What:** Reports repo root path, agent/workflow/trigger counts, every problem (kind, id, source path, error, isError) and whether the file watcher is live.
 - **Where:** Tauri `repo_status`, `POST /api/rpc/repo_status`, `services/repo_service.rs` (`RepoStore::status`); shown in Settings › Backup › This computer’s copy (DT-31).
 - **Preconditions:** None.
-- **Steps:** `POST /api/rpc/repo_status`; then create an agent folder named `Bad_ID` with a `skill.md` and call again.
+- **Steps:** `POST /api/rpc/repo_status`; then create an agent folder named `Bad_ID` with an `agent.md` and call again.
 - **Expected:** `watching: true`; second call lists a problem for the invalid ID with `isError: true`.
 - **Edge / negative cases:** Duplicate agent ID (local vs vendored) reported as a duplicate; dangling references (workflow naming a missing agent) reported.
 - **Automation:** Covered by: `services/domain/repo.rs` `assembles_with_duplicates_and_dangling_refs_as_problems`; `LocalCopyPanel.test.tsx` | Layer: api | Gap: none.
@@ -197,7 +197,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **Where:** `services/watcher.rs` (`spawn`, `classify`, `DEBOUNCE`, `Target::Policy`, `check_policy`), `services/policies.rs` (`check_file`), `services/repo_store.rs` (`reload`, `rescan`), `src/lib/agent-sync.ts` (`repo://file_changed` case), `src/hooks/useAgentMemory.ts`.
 - **Preconditions:** App running.
 - **Steps:**
-  1. Create `HOME/repo/.nandi/agents/hand-made/skill.md` with valid frontmatter in an external editor.
+  1. Create `HOME/repo/.nandi/agents/hand-made/agent.md` with valid frontmatter in an external editor.
   2. Edit its description; then delete the folder.
   3. Edit a workflow YAML and a trigger YAML by hand.
   4. With an agent page open, add, break, then delete a policy in `.nandi/policies/`.
@@ -214,7 +214,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **What:** A file that fails to parse or validate records a problem, emits `repo://validation_failed`, and the last good version stays live in memory and SQLite. The frontend only logs a warning; the problem count shows in Settings › Backup › This computer’s copy.
 - **Where:** `services/repo_store.rs` (`reload`), `services/domain/repo.rs`, `src/lib/agent-sync.ts`.
 - **Preconditions:** App running with an agent.
-- **Steps:** Break the YAML frontmatter of an agent's `skill.md`; send the agent a message; fix the file.
+- **Steps:** Break the YAML frontmatter of an agent's `agent.md`; send the agent a message; fix the file.
 - **Expected:** Agent keeps working with the old definition; `repo://validation_failed` emitted with the path and error; status shows 1 problem; fixing the file clears it and applies the new version.
 - **Edge / negative cases:** Invalid agent ID folder name (shows **Error** in the agent console until renamed).
 - **Automation:** Covered by: `services/domain/repo.rs` `invalid_reloads_keep_the_last_good_version`; `services/repo_store.rs` `loads_reloads_and_keeps_the_last_good_version` | Layer: api | Gap: no visible UI toast for validation failures (only a log line and the count).
@@ -223,7 +223,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 
 ### DT-15 — Watcher fallback and read-through reads
 
-- **What:** If the watcher cannot start, the app keeps working: status shows "Not watching", and agent reads (`agent`, `skill`, `list_agents`) re-check file hashes on each read, so an edited `skill.md` still applies to the next model call.
+- **What:** If the watcher cannot start, the app keeps working: status shows "Not watching", and agent reads (`agent`, `skill`, `list_agents`) re-check file hashes on each read, so an edited `agent.md` still applies to the next model call.
 - **Where:** `services/mod.rs` (`watch_repo`, log "Not watching the repo files"), `services/repo_store.rs` (`is_watching`, read-through).
 - **Preconditions:** A way to make `notify` fail (e.g. inotify watch limit on Linux) or a unit harness.
 - **Steps:** Start with the watcher disabled; edit an agent's instructions; send a message.
@@ -590,7 +590,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 - **Preconditions:** App running.
 - **Steps:**
   1. Start with the watcher unable to see a change (for example `NANDI_HOME` on a network share), or just press F5 after an edit.
-  2. Edit a skill.md or a note outside Nandi.
+  2. Edit an agent.md or a note outside Nandi.
   3. Press F5, or click Refresh.
 - **Expected:** The screen shows the edit; the page doesn't reload (no flash, the open tab and scroll stay).
 - **Edge / negative cases:** A refresh that fails shows the error as a toast and refetches nothing.
@@ -624,7 +624,7 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 
 ### DT-49 — Gold copy file formats upgrade in place
 
-- **What:** Each kind of definition file (an agent's `skill.md` frontmatter, workflows, triggers, `settings.yaml`, `connectors.yaml`) has a format version in its top-level `format_version` key; a file without one is at format 1, and every kind is at format 1 today. At start, before the repo loads, a file at an older format is upgraded by its kind's steps, written back with `format_version` first, staged, and committed on its own as "Upgrade 3 workflows to format 2"; the old text stays in git history. A file from a newer Nandi is never rewritten: it fails to load like any invalid file, with "this file was written by a newer version of Nandi (format N; this version reads up to M). It is left as it is. Update Nandi to use it." A file pulled in at an older format while the app runs still loads (upgraded in memory) and is written back on the next start.
+- **What:** Each kind of definition file (an agent's `agent.md` frontmatter, workflows, triggers, `settings.yaml`, `connectors.yaml`) has a format version in its top-level `format_version` key; a file without one is at format 1, and every kind is at format 1 today. At start, before the repo loads, a file at an older format is upgraded by its kind's steps, written back with `format_version` first, staged, and committed on its own as "Upgrade 3 workflows to format 2"; the old text stays in git history. A file from a newer Nandi is never rewritten: it fails to load like any invalid file, with "this file was written by a newer version of Nandi (format N; this version reads up to M). It is left as it is. Update Nandi to use it." A file pulled in at an older format while the app runs still loads (upgraded in memory) and is written back on the next start.
 - **Where:** `services/repos/formats.rs` (`FileFormat`, `read`, `upgrade`, `stamp`, `canonical`, `upgrade_files`), `services/repos/mod.rs` (`Repos::definition_files`, `upgrade_formats`), `services/repo_bootstrap.rs` (`upgrade_formats`), `services/mod.rs` (`AppState::start`). See `docs/developer/data-model.md#file-format-versions`.
 - **Preconditions:** App installed; a gold copy with a trigger.
 - **Steps:** 1. Start the app and check `git log` in `~/.nandi/repo`. 2. Quit, add `format_version: 9` as the first line of a trigger's `.yaml`, start again.
@@ -850,9 +850,9 @@ Conventions used below: `HOME` means `~/.nandi` (or `NANDI_HOME`). "Repo" means 
 ### QA-06 — Test fixtures (`test-fixtures/echo-agent`)
 
 - **What:** A minimal agent (`deepseek:deepseek-flash`, `ghcr.io/vaultdbai/nandi-runtime:sandbox-6`, `allowed-tools: [shell]`) used by the agent-parsing unit tests and by the manual E2E checklist.
-- **Where:** `test-fixtures/echo-agent/skill.md`; included by `src-tauri/src/services/agents.rs` tests (`include_str!`).
+- **Where:** `test-fixtures/echo-agent/agent.md`; included by `src-tauri/src/services/agents.rs` tests (`include_str!`).
 - **Preconditions:** None (DeepSeek key + Docker for manual use).
-- **Steps:** Copy to `HOME/repo/.nandi/agents/echo-agent/skill.md`; `nandi verify --agent echo-agent`.
+- **Steps:** Copy to `HOME/repo/.nandi/agents/echo-agent/agent.md`; `nandi verify --agent echo-agent`.
 - **Expected:** Agent appears live; verify passes when prerequisites are met.
 - **Edge / negative cases:** None.
 - **Automation:** Covered by: `services/agents.rs` tests | Layer: unit | Gap: none (`e2e-checklist.md` now copies it to `$HOME\.nandi\repo\.nandi\agents\echo-agent\`).

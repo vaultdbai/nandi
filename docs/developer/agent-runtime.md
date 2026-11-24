@@ -22,6 +22,12 @@ React (agent-store; listeners registered once at boot)
 - **Attachments are picked in Rust.** `pick_attachments` opens the dialog and stages files; the webview only holds IDs. Never accept file paths from the webview.
 - **Specta field names:** avoid digits in snake_case fields (`failed_last_24h`). Serde and specta camelCase them differently, so the TS type won't match the JSON.
 - **Keys are write-only from the UI**, agent IDs are paths (validate with `agents::validate_agent_id`), and agent output is untrusted (`MarkdownContent` renders no HTML or images).
+- **An agent loads only when it is needed.** Its folder must hold `agent.md` (`layout::AGENT_FILE`), and creating or publishing one needs a `description` (`Agent::check_new`; loading an older file without one still works). A run's prompt carries that agent's own `agent.md` body and `instructions.md`, and an index of its own playbooks (bodies through `skill_get`). Other agents appear only by `name` and `description` (and what they serve): the ask context's `AgentBrief`, the provider cards of delegation. Never put another agent's body in a prompt. `services/loaded_when_needed_tests.rs` holds it for Nandi.
+
+| ✅ Do                                                           | ❌ Don't                                                     |
+| --------------------------------------------------------------- | ------------------------------------------------------------ |
+| List other agents as `name: description`                        | Paste another agent's `agent.md` into a prompt "for context" |
+| Load a playbook's body when the agent asks for it (`skill_get`) | Inline every playbook body in the system prompt              |
 
 ## One turn per agent
 
@@ -64,7 +70,7 @@ On startup, runs left `running` are marked failed (their step died with the proc
 
 Runs are planned by a real model by default (`settings.engine` absent or `"llm"`). Each step, `services/orchestrator/llm_step.rs` and `tool_calls.rs`:
 
-1. loads skill.md (+ optional `instructions.md`) for the system prompt and model (`model:` frontmatter; default: the settings default model, `claude:claude-sonnet-5` out of the box). `llm::stream` calls that model when its provider has a key in the keychain, else the first provider with a key (Anthropic, OpenAI, DeepSeek; `llm_keys::usable_model`);
+1. loads agent.md (+ optional `instructions.md`) for the system prompt and model (`model:` frontmatter; default: the settings default model, `claude:claude-sonnet-5` out of the box). `llm::stream` calls that model when its provider has a key in the keychain, else the first provider with a key (Anthropic, OpenAI, DeepSeek; `llm_keys::usable_model`);
 2. for agents, gets the runtime container + MCP session (`services/runtimes.rs`, started on first use; needs Docker and the `nandi-runtime` image) and offers its tools, filtered by `allowed-tools` and its policies (`RepoStore::skill` → `services::policies::narrow`);
 3. rebuilds the history from the DB (`services/history.rs`): every tool call is answered (output, "rejected", or "not run"), and DeepSeek `reasoning_content` is replayed (required with tools);
 4. streams the reply (`llm::stream`), batching tokens into ~50 ms DB writes + `agent://token` events, then records the planned calls and reasoning on the assistant message;
@@ -102,7 +108,7 @@ loop:
 
 **Pipeline order** (`register_default_middlewares`): `turn_limit`, `cost_cap`, `token_cap` (always), `memory` (unless `memory_disabled`), `compaction`, `finish_check` and `verify_on_stop` (when enabled), `plan_first` (when enabled), `read_only` (when declared). See [Run plans](#run-plans). Studio, and agent IDs with no definition, keep only the three built-in limits, since the others work on an agent folder.
 
-**skill.md keys** (unknown frontmatter, read from `Agent::extra()`; an invalid value logs a warning and takes its default):
+**agent.md keys** (unknown frontmatter, read from `Agent::extra()`; an invalid value logs a warning and takes its default):
 
 | Key               | Default                                                                        | Notes                                                       |
 | ----------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------- |
@@ -160,7 +166,7 @@ A run plans how it does its part, step by step (task-x-run-plans-and-playbooks, 
 
 ### Playbooks
 
-An agent's playbooks are skill files next to its `skill.md`: `skills/<name>.md`, each with frontmatter `name` (kebab-case, the file stem), `description` and `when` (one line each), then the steps in Markdown (task-x-run-plans-and-playbooks, step 2). They are gold copy: files written only through the agent repository.
+An agent's playbooks are skill files next to its `agent.md`: `skills/<name>.md`, each with frontmatter `name` (kebab-case, the file stem), `description` and `when` (one line each), then the steps in Markdown (task-x-run-plans-and-playbooks, step 2). They are gold copy: files written only through the agent repository.
 
 | Piece      | Where                                                                            | What it does                                                                                                                                                              |
 | ---------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -179,7 +185,7 @@ An agent's playbooks are skill files next to its `skill.md`: `skills/<name>.md`,
   3. The approval card (`ApprovalRequestCard` → `PlaybookProposalPreview`, rules in `playbook-proposal-model.ts`) shows the name, why, what it covers, when, and the steps folded; with `current` it says "replaces the current one" and shows the old lines and a line diff.
   4. Approved: `playbooks::apply` checks again and writes through `RepoStore::save_agent_playbook` (repository, then `commit`). Rejected: nothing is written.
 - **Not a change for the run plan.** The classifier maps `skill_propose` to `Effect::None`: the card is the user's decision and it writes only the agent's own guides, so a chat "remember: …" needs no plan and no `approval` step.
-- **From repeated work.** A Nandi self-step whose Request repeats earlier `done` work it also did itself (`recurrence::same_work`: same title or same steps) gets `recurrence::playbook_hint` in its prompt: add `- [ ] Add a playbook "<name>" (from <n> similar tasks)` to `suggestions.md` once, and `skill_propose` only when the user ticks it or says yes. The rest is prose (`skill.md`, `build-a-workflow`).
+- **From repeated work.** A Nandi self-step whose Request repeats earlier `done` work it also did itself (`recurrence::same_work`: same title or same steps) gets `recurrence::playbook_hint` in its prompt: add `- [ ] Add a playbook "<name>" (from <n> similar tasks)` to `suggestions.md` once, and `skill_propose` only when the user ticks it or says yes. The rest is prose (`agent.md`, `build-a-workflow`).
 - **Where it came from.** Not recorded: the frontmatter allows only `name`, `description` and `when`, and the commit doesn't carry an author yet.
 - **Seeding.** A built-in agent's playbooks are written when its `skills/` folder is missing, so a playbook the user edits or deletes stays that way. Deleting the last one keeps the empty folder.
 - **Watching and fingerprints.** A change under `skills/` maps to its agent (`watcher.rs`), and the agent's fingerprint includes its playbooks, so editing one publishes `repo://agent-updated`.
@@ -209,7 +215,7 @@ Image: pulled from GitHub's container registry, or built here (`docker build -t 
 
 **One spec for every container** (`sandbox::SandboxSpec`). The native container, the harness CLIs, stdio connectors, the headless browser, tool installs, the egress relay and the LiteLLM gateway are all described by one `SandboxSpec` and rendered with `to_cli_args()` (`docker run`) or `to_bollard()`. It starts hardened: `--cap-drop=ALL`, `no-new-privileges` and memory, CPU and process limits (`sandbox::Limits`, defaults `DEFAULT_MEMORY_MB`, `DEFAULT_CPU`, 256 processes) are always on; a read-only root, the image user and no network are on unless a caller says otherwise (`writable_root`, `image_user`, `network`). Mounts are `--mount type=bind|volume,...`, never `-v`, and a path with a comma or quote is CSV-quoted so it can't add options. Secrets pass by name only (`env_names`, `-e NAME`).
 
-**Shared folders.** The filesystem connector's config lists folders (`folders: [{id, path, access: read|write}]`). An agent names the ones it gets in skill.md (`connectors: [{id: filesystem, folders: [docs, {id: reports, access: read}]}]`), and can narrow access but never widen it. Without `folders` it gets none, so a folder added later is never given to an agent silently. Its policies may then drop a folder or make it read-only (`services::policies`). The same set reaches the agent three ways, all from `connectors::agent_folders` / `folders::granted`: the connector's tools (`call_tool_for` gets the agent's item; paths are `<folder>/<path>`), bind mounts at `/agent/folders/<id>` (`:ro` unless write) in the native container and in CLI runtime containers (`adapter::Placement.folders`), and a line per folder in the system prompt (`folders::prompt`). Folder IDs that aren't on the list fail `nandi_check_artifact` and `set_agent_connectors`.
+**Shared folders.** The filesystem connector's config lists folders (`folders: [{id, path, access: read|write}]`). An agent names the ones it gets in agent.md (`connectors: [{id: filesystem, folders: [docs, {id: reports, access: read}]}]`), and can narrow access but never widen it. Without `folders` it gets none, so a folder added later is never given to an agent silently. Its policies may then drop a folder or make it read-only (`services::policies`). The same set reaches the agent three ways, all from `connectors::agent_folders` / `folders::granted`: the connector's tools (`call_tool_for` gets the agent's item; paths are `<folder>/<path>`), bind mounts at `/agent/folders/<id>` (`:ro` unless write) in the native container and in CLI runtime containers (`adapter::Placement.folders`), and a line per folder in the system prompt (`folders::prompt`). Folder IDs that aren't on the list fail `nandi_check_artifact` and `set_agent_connectors`.
 
 **Text-only fallback.** If the container can't start when a run needs tools, the step runs text-only (no tools offered, and the system prompt says so) and the core emits `agent://warning` `{ agentId, message: "Tool execution unavailable: …" }`. The UI shows it as a banner until it's dismissed or the container is running. Warnings aren't recorded. See [Transports](./transports.md).
 

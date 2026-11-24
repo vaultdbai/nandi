@@ -1,13 +1,13 @@
 # Agents, agent console (chat) and runs
 
-Scope: the Agents list and agent page (all tabs and dialogs), the skill.md format the app honors, agent lifecycle, the per-agent chat (composer, messages, tool calls, approvals, queue), orchestrator behavior (turn middleware, memory, compaction, verify-on-stop, tool search), delegation surfaces shown in the console, run history and Run Detail (all tabs, analysis), the audit log viewer, and the related Tauri commands, HTTP routes and `agent://*` events.
+Scope: the Agents list and agent page (all tabs and dialogs), the agent.md format the app honors, agent lifecycle, the per-agent chat (composer, messages, tool calls, approvals, queue), orchestrator behavior (turn middleware, memory, compaction, verify-on-stop, tool search), delegation surfaces shown in the console, run history and Run Detail (all tabs, analysis), the audit log viewer, and the related Tauri commands, HTTP routes and `agent://*` events.
 
 Shared preconditions used below:
 
 - **App running**: the desktop app (`pnpm run tauri:dev` or a build), or the headless server for `api` tests. HTTP routes are under `/api` (`src-tauri/src/http/mod.rs`), authenticated with the server token.
 - **Model key**: a key for Anthropic, OpenAI or DeepSeek in Settings › Models & runtimes (OS keychain), or Ollama running, or the free trial. Without one, use the canned engine (`settings.engine = "canned"`, see `docs/developer/agent-runtime.md`).
 - **Docker + image**: Docker running and `ghcr.io/vaultdbai/nandi-runtime:sandbox-6` built from Settings › Models & runtimes → Tool sandbox → Build (RT-02; the image must carry `org.nandi.sandbox=5`), needed for any tool call. CLI-runtime agents also need `ghcr.io/vaultdbai/nandi-harness:sandbox-6` (Coding agents' sandbox).
-- **Agent**: an agent folder `~/.nandi/repo/.nandi/agents/<id>/skill.md`. The fixture `test-fixtures/echo-agent/skill.md` (`allowed shell`, `requires_approval: []`) is used in `docs/developer/e2e-checklist.md`.
+- **Agent**: an agent folder `~/.nandi/repo/.nandi/agents/<id>/agent.md`. The fixture `test-fixtures/echo-agent/agent.md` (`allowed shell`, `requires_approval: []`) is used in `docs/developer/e2e-checklist.md`.
 
 ## Agents list
 
@@ -50,11 +50,11 @@ Shared preconditions used below:
 
 ### AG-03 — Agent problem line and fixes
 
-- **What:** Each agent shows at most one problem, in this order: "N waiting for you"; skill.md model is invalid ("The model in this agent's file isn't valid."); file can't be loaded ("This agent's file can't be loaded."); CLI runtime can't sign in in its container ("Can't sign in: add an API key"); no model can be called ("No model: add one").
+- **What:** Each agent shows at most one problem, in this order: "N waiting for you"; agent.md model is invalid ("The model in this agent's file isn't valid."); file can't be loaded ("This agent's file can't be loaded."); CLI runtime can't sign in in its container ("Can't sign in: add an API key"); no model can be called ("No model: add one").
 - **Where:** Agents list rows and Overview tab health card. `agentProblem`, `hasModelFormatError`, `runtimeAuthMissing` in `src/components/agents/agent-page-model.ts`.
-- **Preconditions:** Ability to edit skill.md files and remove model keys.
+- **Preconditions:** Ability to edit agent.md files and remove model keys.
 - **Steps:**
-  1. Set `model: claude-sonnet` (no provider prefix) in an agent's skill.md.
+  1. Set `model: claude-sonnet` (no provider prefix) in an agent's agent.md.
   2. Remove all model keys (and stop Ollama, turn off the trial).
   3. Set an agent to `runtime: claude-code` with no Claude sign-in or key.
 - **Expected:** Step 1: "The model in this agent's file isn't valid." in red; the agent row status is error. Step 2: native agents show "No model: add one"; Overview offers **Connect a model**, which opens Settings › Models & runtimes. Step 3: "Can't sign in: add an API key".
@@ -83,19 +83,20 @@ Shared preconditions used below:
 
 ### AG-05 — New agent dialog (template)
 
-- **What:** Creates an agent from a Name, an optional "What it does" and a "Start from" template (Blank, Researcher, Writer, Helper). The folder ID is derived from the name (lowercase letters, digits, hyphens, max 60 chars, `-2`, `-3` suffix if taken). The agent uses the default model, then its page opens.
-- **Where:** Sidebar → Agents → **New agent**. `src/components/agents/NewAgentDialog.tsx`, `agentIdFrom` in `agent-page-model.ts`; command `create_agent` (`src-tauri/src/rpc/agents.rs` → `services/agents.rs::create_agent`); HTTP `POST /api/rpc/create_agent` with `input: CreateAgentInput { id, name, description?, model?, instructions? }`.
+- **What:** Creates an agent from a Name, a "What it does" (required: it becomes the `description`, which is all other agents see of it until it runs) and a "Start from" template (Blank, Researcher, Writer, Helper). The folder ID is derived from the name (lowercase letters, digits, hyphens, max 60 chars, `-2`, `-3` suffix if taken). The agent uses the default model, then its page opens.
+- **Where:** Sidebar → Agents → **New agent**. `src/components/agents/NewAgentDialog.tsx`, `agentIdFrom` in `agent-page-model.ts`; command `create_agent` (`src-tauri/src/rpc/agents.rs` → `services/agents.rs::create_agent`); HTTP `POST /api/rpc/create_agent` with `input: CreateAgentInput { id, name, description, model?, instructions? }`.
 - **Preconditions:** None.
 - **Steps:**
   1. Click New agent, enter name "Weekly Report", pick Researcher, click Create agent.
   2. Repeat with the same name.
-- **Expected:** Toast "Created Weekly Report"; the agent page opens. `~/.nandi/repo/.nandi/agents/weekly-report/skill.md` exists with `name: Weekly Report`, the description, and the Researcher instructions as body; the file is staged in git; `repo://agent-created` fires and the orchestrator starts. Second create gets ID `weekly-report-2`.
+- **Expected:** Toast "Created Weekly Report"; the agent page opens. `~/.nandi/repo/.nandi/agents/weekly-report/agent.md` exists with `name: Weekly Report`, the description, and the Researcher instructions as body; the file is staged in git; `repo://agent-created` fires and the orchestrator starts. Second create gets ID `weekly-report-2`.
 - **Edge / negative cases:**
   - Create agent is disabled with an empty name; the server also refuses ("Agent name is required").
+  - Create agent is disabled with an empty "What it does"; the server, Studio's save of a new agent and Publish also refuse it ("description is required: say what the agent is for and when to use it").
   - Name over 200 chars is cut by the input; instructions over 200,000 chars are refused.
   - An ID that exists (via API) fails; an invalid model string fails with the model format error.
   - A name with only symbols gets ID `agent`.
-- **Automation:** Covered by: `agent-page-model.test.ts` (`agentIdFrom`), Rust tests in `src-tauri/src/services/agents.rs` | Layer: api | Gap: dialog itself untested.
+- **Automation:** Covered by: `agent-page-model.test.ts` (`agentIdFrom`), Rust tests in `src-tauri/src/services/agents.rs` (`renders_a_parseable_skill_file`: a blank description is refused) | Layer: api | Gap: dialog itself untested.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -114,11 +115,11 @@ Shared preconditions used below:
 
 ### AG-07 — Agent created or changed by editing files
 
-- **What:** Writing or editing `skill.md` (and optional `instructions.md`) in the repo is picked up live by the repo watcher: the agent appears or updates within about a second. An invalid file keeps the last good version running and reports `repo://validation_failed`.
-- **Where:** `~/.nandi/repo/.nandi/agents/<id>/skill.md`. `src-tauri/src/services/watcher.rs`, `src-tauri/src/services/repo_store.rs`, format in `src-tauri/src/services/domain/agent.rs`.
+- **What:** Writing or editing `agent.md` (and optional `instructions.md`) in the repo is picked up live by the repo watcher: the agent appears or updates within about a second. An invalid file keeps the last good version running and reports `repo://validation_failed`.
+- **Where:** `~/.nandi/repo/.nandi/agents/<id>/agent.md`. `src-tauri/src/services/watcher.rs`, `src-tauri/src/services/repo_store.rs`, format in `src-tauri/src/services/domain/agent.rs`.
 - **Preconditions:** App running.
 - **Steps:**
-  1. Create `~/.nandi/repo/.nandi/agents/shell-helper/skill.md` with the example from userguide §4.
+  1. Create `~/.nandi/repo/.nandi/agents/shell-helper/agent.md` with the example from userguide §4.
   2. Edit its `description:`.
   3. Break the frontmatter (remove the closing `---`).
 - **Expected:** Step 1: the agent appears on the Agents page without restart. Step 2: the description updates. Step 3: the agent keeps its previous definition; an error is reported (row may show broken state if it never loaded).
@@ -130,7 +131,7 @@ Shared preconditions used below:
 - **Needs relay:** no
 - **Status:** Shipped
 
-### AG-08 — skill.md format: keys the app honors
+### AG-08 — agent.md format: keys the app honors
 
 - **What:** The frontmatter keys parsed or read today, with their effect:
   - `name`, `description`; `model` (`<provider>:<model>`, prefixes `claude:`, `gpt:`, `deepseek:`, `ollama:`; omitted = settings default model).
@@ -143,10 +144,10 @@ Shared preconditions used below:
   - `tags` (list of labels, e.g. `[finance]`): policies aim at them with `applies_to: [tag:<label>]` (PO-04); trimmed, empty ones dropped.
   - Turn policy keys from unknown frontmatter: `max_turns` (default 50), `max_cost_usd` (default 5.0), `middlewares` (default `[verify_on_stop, compaction, plan_first, finish_check]`; `[]` disables them; `read_only` adds plan mode), `compaction` (`trigger_tokens`, `preserve_recent_percent` 30, `iterative_merge` true), `memory_disabled` (default false).
   - Body = system prompt; `instructions.md` is appended. Unknown keys are kept on save.
-- **Where:** `src-tauri/src/services/domain/agent.rs` (`Frontmatter`, `SKILL_FRONTMATTER_KEYS`, `RuntimeConfig`), `src-tauri/src/services/orchestrator/middleware.rs` (`TurnPolicy::from_extra`), `src-tauri/src/services/agent_memory.rs` (`MEMORY_DISABLED_KEY`), `src-tauri/src/services/a2a/clarification.rs` (`POLICY_KEY`).
+- **Where:** `src-tauri/src/services/domain/agent.rs` (`Frontmatter`, `AGENT_FRONTMATTER_KEYS`, `RuntimeConfig`), `src-tauri/src/services/orchestrator/middleware.rs` (`TurnPolicy::from_extra`), `src-tauri/src/services/agent_memory.rs` (`MEMORY_DISABLED_KEY`), `src-tauri/src/services/a2a/clarification.rs` (`POLICY_KEY`).
 - **Preconditions:** None.
 - **Steps:**
-  1. Write a skill.md using every key above.
+  1. Write an agent.md using every key above.
   2. Open the agent's Settings tab and Permissions panel; save a change from Settings.
   3. Re-open the file.
 - **Expected:** Settings shows name, description, model, image, memory, CPU; Permissions shows the tools, approvals, network hosts and pilots, and the policies aimed at its tags (PO-11). After a Settings save, the unknown and turn-policy keys are still in the file.
@@ -155,7 +156,39 @@ Shared preconditions used below:
   - `runtime_config.gateway: other` or `fallback: other` fail validation.
   - An invalid `max_turns`/`max_cost_usd`/`middlewares`/`compaction`/`memory_disabled` logs a warning and uses the default (the agent still loads).
   - `model:` without a prefix makes the agent error (see AG-03).
-- **Automation:** Covered by: Rust tests in `domain/agent.rs` (incl. `every_frontmatter_key_is_documented`), `orchestrator/middleware.rs` (`from_extra_parses_every_key`, `invalid_values_fall_back_to_the_defaults`), `services/agents.rs`, `services/policies.rs` (`tags_in_skill_md_select_policies`) | Layer: unit | Gap: none.
+- **Automation:** Covered by: Rust tests in `domain/agent.rs` (incl. `every_frontmatter_key_is_documented`), `orchestrator/middleware.rs` (`from_extra_parses_every_key`, `invalid_values_fall_back_to_the_defaults`), `services/agents.rs`, `services/policies.rs` (`tags_in_agent_md_select_policies`) | Layer: unit | Gap: none.
+- **Needs relay:** no
+- **Status:** Shipped
+
+### AG-41 — Agents upgrade to `agent.md` (from Nandi 0.2)
+
+- **What:** An agent's one required file is `agent.md`. A gold copy from Nandi 0.2 (or 0.1.0) has `skill.md`: on the first start of this build, every agent folder's `skill.md` becomes `agent.md` (the person's agents, installed agents and packs), byte for byte, in one commit "Upgrade agents to agent.md". Installed copies still exactly as their signed release (but for the rename) stay unmodified and verified, never re-signed; Nandi's unedited files still take this build's updates and edited ones are offered them. A pack release that still names the file `skill.md` won't install or update.
+- **Where:** `~/.nandi/repo/.nandi/agents/`. `src-tauri/src/services/repos/from_0_2.rs` (run first in `AppState::start`), `agent_locator::folders`; `installed.yaml` and `shipped.yaml` re-recorded; state.db migration `011_agent_md.sql` (retro proposals). See `docs/developer/data-model.md#upgrade-from-nandi-02-agentmd`.
+- **Preconditions:** A `~/.nandi` from Nandi 0.2.x with an own agent, Nandi edited or not, and a starter pack installed.
+- **Steps:**
+  1. Quit 0.2, start this build.
+  2. `git -C ~/.nandi/repo log -1 --stat`.
+  3. Library › Installed: open the pack. Agents page: open each agent.
+  4. Restart.
+- **Expected:** 2: "Upgrade agents to agent.md" renames every `skill.md` (playbooks in `skills/` keep their names) and lists the installed copies "Still as installed from their signed releases". 3: every agent loads with its edits; the pack shows Verified and no "modified" warning; Check for updates works. 4: no new commit.
+- **Edge / negative cases:**
+  - A pack folder edited by hand before the upgrade still shows as modified.
+  - A folder with both files keeps `agent.md`; the `skill.md` text is in the commit before.
+  - A start cut short (the app killed mid-upgrade) finishes on the next start.
+  - Installing a pack release with `skill.md`: "The agent '<id>' has no agent.md. Packs made for Nandi 0.2 name it skill.md: ask the publisher for a release made for Nandi 0.3 or later."
+- **Automation:** Covered by: Rust `repos/from_0_2_tests.rs` (8 tests: every folder in one commit, signed copies re-recorded and changed ones not, Nandi edited and not, a start cut short, both files, a new install, 0.1.0 through both steps, the hash mapping), `db/migrations_tests.rs` (`retro_proposals_name_agent_md_after_011`) | Layer: api | Gap: a real 0.2 home by hand.
+- **Needs relay:** no
+- **Status:** Shipped (0.3.0)
+
+### AG-42 — Each agent loads only when it is needed
+
+- **What:** Other agents (Nandi, the ask box, delegation) see an agent's `name` and `description` (and the capabilities it serves), never its `agent.md` body, its rules or its playbooks. The body and rules load when that agent runs; its playbooks are an index in its own prompt and load one at a time when relevant (`skill_get`).
+- **Where:** `services/orchestrator/llm_step.rs` (an agent's own prompt), `services/ask/context.rs` (`AgentBrief`), `services/a2a` (provider cards), `services/playbooks.rs`.
+- **Preconditions:** Nandi and one more agent with a long body and a playbook.
+- **Steps:** Ask Nandi "who can draft a post?" with the run's prompt visible (Settings › Logs, LLM log).
+- **Expected:** Nandi's request names the agent with its description; the agent's body appears only in that agent's own runs.
+- **Edge / negative cases:** An agent with no description: refused at creation and publishing (AG-05); an older one still loads, and others see only its name.
+- **Automation:** Covered by: Rust `services/loaded_when_needed_tests.rs` (`nandis_prompt_names_other_agents_and_never_carries_their_bodies`, `an_agents_body_loads_when_it_runs_and_its_playbooks_on_demand`) | Layer: api | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -255,17 +288,17 @@ Shared preconditions used below:
 
 ### AG-15 — Settings tab: General, save, revert and leave guard
 
-- **What:** Plain-words form for name and description. Changes show a sticky bar with **Revert** and **Save**; Save writes skill.md through the repo (`repo_save_agent`) and toasts "Settings saved". Leaving the Settings tab with unsaved changes asks "Discard changes?" ("Your unsaved settings will be lost.", with Keep editing and Discard). The form reloads whenever the files change (e.g. Ask saved). Installed agents are read-only with "Installed from the Library. Make a copy in Ask to change it."
+- **What:** Plain-words form for name and description. Changes show a sticky bar with **Revert** and **Save**; Save writes agent.md through the repo (`repo_save_agent`) and toasts "Settings saved". Leaving the Settings tab with unsaved changes asks "Discard changes?" ("Your unsaved settings will be lost.", with Keep editing and Discard). The form reloads whenever the files change (e.g. Ask saved). Installed agents are read-only with "Installed from the Library. Make a copy in Ask to change it."
 - **Where:** Agent page → Settings. `src/components/agents/AgentSettingsTab.tsx`, `src/hooks/useAgentEditor.ts` (`useAgentDefinition` via `loadEntity`, `useSaveAgent`, `validateDraft`, `toDefinitionInput`), `src-tauri/src/rpc/repo.rs` (`repo_save_agent`).
 - **Preconditions:** A local agent.
 - **Steps:**
   1. Change the name; switch to Chat; choose Keep editing; then Save.
   2. Clear the name.
   3. Open Settings on an installed agent.
-- **Expected:** Leave prompt appears; after Save the header and list show the new name and skill.md has it (staged in git). Empty name shows a field error and Save is disabled. Installed agent: fields disabled, lock notice.
+- **Expected:** Leave prompt appears; after Save the header and list show the new name and agent.md has it (staged in git). Empty name shows a field error and Save is disabled. Installed agent: fields disabled, lock notice.
 - **Edge / negative cases:**
   - A model format error on save shows "Pick a model above, then save." instead of the raw error.
-  - skill.md that can't be loaded: Settings shows an error alert (badModel text when the model is the issue) with **Edit in Ask**.
+  - agent.md that can't be loaded: Settings shows an error alert (badModel text when the model is the issue) with **Edit in Ask**.
 - **Automation:** Covered by: `src/hooks/useAgentEditor.test.ts` | Layer: ui-e2e | Gap: no component test for `AgentSettingsTab.tsx`.
 - **Needs relay:** no
 - **Status:** Shipped
@@ -279,7 +312,7 @@ Shared preconditions used below:
   1. Pick DeepSeek and a model; Save.
   2. Pick the default option; Save.
   3. Switch the runtime to Claude Code; set the CLI model to `sonnet`; Save.
-- **Expected:** skill.md gets `model: deepseek:<id>`, then no `model:` key, then `runtime: claude-code` with `runtime_config.model: sonnet`. A saved model not in the catalog is kept in the list (opening the tab never changes it).
+- **Expected:** agent.md gets `model: deepseek:<id>`, then no `model:` key, then `runtime: claude-code` with `runtime_config.model: sonnet`. A saved model not in the catalog is kept in the list (opening the tab never changes it).
 - **Edge / negative cases:**
   - Ollama not running: Ollama option disabled.
   - A CLI runtime has no "Where it runs" choice: it always runs in a container.
@@ -321,9 +354,9 @@ Shared preconditions used below:
   - **The list** shows each `.md` note by its first heading (else its file name), top-level first, then each folder (`runbooks/`). Hidden files and non-Markdown files are left out.
   - **A note** opens in **Read** (rendered Markdown) or **Edit** (a CodeMirror Markdown editor; Ctrl/Cmd+S saves). **Save** shows only with changes. Switching notes or leaving the page with unsaved changes asks first. **Delete** asks first.
   - **New note** takes a name (`deadlines`, `runbooks/etl`), adds `.md` and starts it with a heading.
-  - **"Let Nandi keep them up to date"** makes the share read-and-write. Then `filesystem__write_file` into `my-notes/…` doesn't ask for approval (`notes::is_notes_write`), even when the agent's skill.md lists `write_file` under `requires_approval` (the registry requires that); writes anywhere else still ask. Turning it off makes the share read-only, and the connector refuses writes.
+  - **"Let Nandi keep them up to date"** makes the share read-and-write. Then `filesystem__write_file` into `my-notes/…` doesn't ask for approval (`notes::is_notes_write`), even when the agent's agent.md lists `write_file` under `requires_approval` (the registry requires that); writes anywhere else still ask. Turning it off makes the share read-only, and the connector refuses writes.
   - **Empty:** "No notes yet", with **Open Nandi**.
-  - Nandi's own instructions (its `skill.md`, shipped with Nandi) decide what to note and how to arrange it, and to raise what's coming up. The app doesn't impose a structure.
+  - Nandi's own instructions (its `agent.md`, shipped with Nandi) decide what to note and how to arrange it, and to raise what's coming up. The app doesn't impose a structure.
 - **Where:**
   - `src/components/notes/` (`MyNotesView.tsx`, `MarkdownEditor.tsx`, `notes-model.ts`), `src/hooks/useNotes.ts`, navigation kind `notes`.
   - `services/notes.rs` (`NotesFolder`, `check_name`, `folder`, `my_notes`, `set_agents_can_write`, `is_notes_write`), `services/connectors.rs` (`shared_folder`, `share_folder`), `orchestrator.rs` (approval exemption).
@@ -350,9 +383,9 @@ Shared preconditions used below:
 ### AG-30 — Nandi, the default agent, comes with the app
 
 - **What:** Nandi, the default agent (ID `nandi`), is built into the app, not installed from a pack.
-  - On every start (and when a repo is fetched from a remote), the app writes `.nandi/agents/nandi/skill.md` and `instructions.md` if `skill.md` is missing, and stages them. A new repo's first commit includes it.
+  - On every start (and when a repo is fetched from a remote), the app writes `.nandi/agents/nandi/agent.md` and `instructions.md` if `agent.md` is missing, and stages them. A new repo's first commit includes it.
   - It's an ordinary local agent: no install, consent or fork. The user edits its skill and **Your rules** like any agent of their own; Backup commits and pushes its history with the rest of the repo. An existing folder is never overwritten.
-  - It can't be deleted: Delete is hidden in its menu, page and Settings, and `delete_agent` refuses it; **Reset to defaults** takes its place (AG-36). If its `skill.md` is removed by hand, the next start puts the shipped one back and keeps the user's `instructions.md`.
+  - It can't be deleted: Delete is hidden in its menu, page and Settings, and `delete_agent` refuses it; **Reset to defaults** takes its place (AG-36). If its `agent.md` is removed by hand, the next start puts the shipped one back and keeps the user's `instructions.md`.
   - It is not one more agent. It has its own **Nandi** item at the top of the sidebar (AG-36); the list under Agents, the All agents count and the Agents page hold only the person's own and installed agents.
   - Pickers show it as a fixed **Nandi** choice above the person's agents: a trigger's target, a workflow step's agent, a template's steps, a pilot's grant, Studio's Agent tab, Settings › Internet access, and Network's "takes requests by name".
   - Home's Get started, the welcome strip and the companion's first-run text mean "none of the person's own agents", so they still suggest a starter pack and never name Nandi as one of the user's agents.
@@ -370,7 +403,7 @@ Shared preconditions used below:
   - Step 4: "No notes yet" with **Open Nandi**.
 - **Edge / negative cases:**
   - Installing a pack that contains an agent `nandi` is refused ("you already have nandi").
-  - Deleting `.nandi/agents/nandi/skill.md` by hand: the next start restores it.
+  - Deleting `.nandi/agents/nandi/agent.md` by hand: the next start restores it.
   - An old `.nandi/agents/chief-of-staff/` folder from a dev build stays as an ordinary agent; nothing reads it. Reset `~/.nandi` to drop it.
 - **Automation:** Covered by: `builtin_agents.rs` (`seeds_every_builtin_agent_once`, `keeps_the_users_edits`, `restores_a_removed_skill_but_keeps_the_role`, `the_shipped_skills_parse_and_stay_short`, `no_file_outside_this_one_spells_the_default_agent_id`), `agents.rs` (`builtin_agents_cannot_be_deleted`, `lists_the_default_agent_first`), `repo_bootstrap.rs` (`a_new_install_gets_a_fresh_committed_repo`), `agent-identity.test.ts`, `AgentOptions.test.tsx`, `nav-tree.test.ts` ('gives Nandi its own item…'), `AgentsListView.test.tsx`, `TriggerForm.test.tsx`, `StepDetailsPanel.test.tsx`, `NewWorkflowMenu.test.tsx`, `LibraryDrawer.test.tsx` (the step, template and pilot grant pickers), `Studio.test.tsx` ('switches artifact types'), `InternetAccessSection.test.tsx`, `ChooseAgents.test.tsx`, `dashboard-model.test.ts`, `CompanionWindow.test.tsx` ('greets a first run…') | Layer: unit + ui | Gap: no test of the hidden Delete.
 - **Needs relay:** no
@@ -382,7 +415,7 @@ Shared preconditions used below:
   - The **Nandi** item sits at the top of the sidebar, by Nandi's own name, with its status dot. It opens Nandi's agent page with the same tabs as any agent: Overview, Chat, Runs, Playbooks and Settings (model, Internet access, Your rules, permissions, connectors, sharing, memory). Its page and runs light the Nandi item, never Agents. The page has no Back to Agents.
   - Settings has a **Nandi's settings** button in its header that opens Nandi's Settings tab.
   - Delete is never offered. **Reset to defaults…** is, in the page's ⋯ menu and in Settings › Danger zone.
-  - The confirm names what changes: its settings (`skill.md`), Your rules (back to the `instructions.md` template) and its playbooks (edited ones go back, added ones go). It says that memory, runs, chats, connector grants and other triggers stay, and that the old versions stay in the agents repo's git history. Nothing changes until **Reset to defaults** is pressed.
+  - The confirm names what changes: its settings (`agent.md`), Your rules (back to the `instructions.md` template) and its playbooks (edited ones go back, added ones go). It says that memory, runs, chats, connector grants and other triggers stay, and that the old versions stay in the agents repo's git history. Nothing changes until **Reset to defaults** is pressed.
   - It also puts back Nandi's default triggers, the morning digest and the mail check, as they ship, even ones the person removed (AG-37). Other triggers stay.
   - The reset writes through the agent repository and commits like any gold-copy change. Two git commits: "Keep Nandi's files before a reset to defaults" (the person's files as they were, even if never synced) and "Reset Nandi to defaults". Without a git repository the reset is refused and nothing changes.
 - **Where:** `src/store/navigation-store.ts` (`NAV_SECTIONS`, `navSection`), `src/components/layout/nav-tree.ts`, `Sidebar.tsx`, `views/AgentView.tsx`, `agents/AgentSettingsTab.tsx`, `agents/ResetNandiDialog.tsx`, `settings/SettingsView.tsx` (`NandiSettingsLink`), `hooks/useAgentEditor.ts` (`useResetDefaultAgent`); command `reset_default_agent` (`rpc/agents.rs` → `services/agents.rs` → `builtin_agents::reset_default`), `repos/agent_repo.rs` (`replace_playbooks`, `definition_files`).
@@ -440,7 +473,7 @@ Shared preconditions used below:
 
 ### AG-38 — Updates to Nandi's shipped files
 
-- **What:** A new version of Nandi brings new versions of the files it ships for Nandi: `skill.md`, `instructions.md`, the playbooks and the default triggers. The person's edits are never overwritten.
+- **What:** A new version of Nandi brings new versions of the files it ships for Nandi: `agent.md`, `instructions.md`, the playbooks and the default triggers. The person's edits are never overwritten.
   - At start, each shipped file is compared with what Nandi last wrote there (`.nandi/shipped.yaml`, by SHA-256):
 
     | The file                         | What happens                              |
@@ -457,14 +490,14 @@ Shared preconditions used below:
   - **Keep mine** records the choice in `.nandi/shipped.yaml` and commits it. That version isn't offered again; a later one is.
   - **Reset to defaults** (AG-36) records the files it writes and forgets every Keep mine.
 - **Where:** `services/shipped_files.rs` (`update`, `decide`, `offers`, `take`, `keep_mine`, `restore`), `repo_bootstrap.rs` (`bootstrap`, `commit_shipped_update`), `builtin_agents.rs` (`reset_default`); commands `default_agent_updates`, `take_default_agent_update`, `keep_default_agent_file` (`rpc/agents.rs` → `services/agents.rs`); `agents/NandiUpdateCard.tsx`, `agents/nandi-update-model.ts`, `hooks/useAgentEditor.ts`, `views/AgentView.tsx`.
-- **Preconditions:** A Nandi home from an older build where Nandi's Your rules was edited and `skill.md` wasn't, and a newer build whose shipped `skill.md` and `instructions.md` differ.
+- **Preconditions:** A Nandi home from an older build where Nandi's Your rules was edited and `agent.md` wasn't, and a newer build whose shipped `agent.md` and `instructions.md` differ.
 - **Steps:**
   1. Start the newer build. Run `git log -1 --stat` in `~/.nandi/repo`.
   2. Open Nandi's page.
   3. Press **Keep mine**, then restart Nandi and open its page.
   4. Edit Your rules again on a build with a newer `instructions.md`, open Nandi's page and press **Take update**.
 - **Expected:**
-  - Step 1: the commit "Update Nandi's shipped files" changes `skill.md` only.
+  - Step 1: the commit "Update Nandi's shipped files" changes `agent.md` only.
   - Step 2: the card names `instructions.md` with the diff; nothing else on the page changed.
   - Step 3: the card is gone and stays gone.
   - Step 4: Your rules is the shipped version; `git log -2` shows the person's version, then the update.
@@ -479,11 +512,11 @@ Shared preconditions used below:
 ### AG-31 — Nandi browses websites
 
 - **What:** Nandi browses websites itself, in a browser the user watches. There is no separate Browser agent.
-  - Its `skill.md` declares the visible **Browser** pilot (never headless) with `allow: [interact]`: clicking and typing run, submitting, secrets, uploads and paying wait for approval. Sign-ins, CAPTCHAs, payments and passwords go to the user with the pilot's hand-over.
+  - Its `agent.md` declares the visible **Browser** pilot (never headless) with `allow: [interact]`: clicking and typing run, submitting, secrets, uploads and paying wait for approval. Sign-ins, CAPTCHAs, payments and passwords go to the user with the pilot's hand-over.
   - It ships with no allowed sites. A new site shows the "allow this site?" card with its reason, and it waits.
   - Only the user's chats and intake threads get the browser. The email and calendar check runs never do.
-  - Its behaviour is in its `skill.md` ("Website work", body 900 words or fewer).
-- **Where:** `resources/builtin-agents/nandi/skill.md` ("Website work", `pilots`), `services/orchestrator/llm_step.rs` (`data_run_allows`, `agent_pilot_tools`).
+  - Its behaviour is in its `agent.md` ("Website work", body 900 words or fewer).
+- **Where:** `resources/builtin-agents/nandi/agent.md` ("Website work", `pilots`), `services/orchestrator/llm_step.rs` (`data_run_allows`, `agent_pilot_tools`).
 - **Preconditions:** A new Nandi home. The Browser pilot installed and started in Library › Tools, with Chrome or Edge on the computer.
 - **Steps:**
   1. Ask Nandi: "Check what example.com says on its home page."
@@ -511,7 +544,7 @@ Shared preconditions used below:
   - **Safety net:** when a run ends, Nandi closes that agent's browser pages (the profile stays).
   - **Screenshots:** saved as `browser/<run>/<step>-<n>.png` in the agent's files and linked to the `doing` step; refused during a `handover` step; removed after 30 days; never in an S3 backup.
   - **Live checklist:** a card with each step, its status, its result and screenshot thumbnails (click opens the file on the desktop), in the chat, the intake thread and Run Detail › Overview, updated by `run://plan_updated`. `plan_update` calls are hidden; a refused plan call shows as a tool card.
-  - skill.md `middlewares:` without `plan_first` / `finish_check` turns them off (they are on by default).
+  - agent.md `middlewares:` without `plan_first` / `finish_check` turns them off (they are on by default).
 - **Where:** `src-tauri/src/services/run_plan/` (`mod.rs` model, `classify.rs` what changes something, `store.rs`, `tool.rs`, `screenshots.rs`), `services/orchestrator/run_plan.rs` (the two middlewares), `services/orchestrator/tool_calls.rs` (`run_call`, `screenshot_call`), `services/orchestrator/call_gate.rs` (`plan_check`), `services/pilots/browser.rs` (`close_pages`, `has_open_pages`), `services/events.rs` (`turn_done`), `src/components/agent-console/RunPlanCard.tsx`, `run-plan-model.ts`, `src/hooks/useRunPlan.ts`.
 - **Preconditions:** An agent with tools (Nandi with the Browser pilot started for the browser cases).
 - **Steps:**
@@ -535,7 +568,7 @@ Shared preconditions used below:
 
 ### AG-33 — Playbooks: skill files an agent reads on demand
 
-- **What:** An agent's step-by-step guides, `skills/<name>.md` next to its skill.md.
+- **What:** An agent's step-by-step guides, `skills/<name>.md` next to its agent.md.
   - Frontmatter `name` (kebab-case, the file name), `description` and `when` (one line each), then the steps (900 words or fewer). No `model:` or other keys.
   - Every run with tools (not the email or calendar checks) gets a "Your playbooks" index (name, description, when) and two host tools: `skill_list` and `skill_get` (one body by name). Neither needs a run plan. Broken files are left out of runs.
   - **Playbooks tab** on the agent page: the list (name, description, when), the open playbook in a Markdown editor with a word count, **New playbook**, **Save playbook** (checks the same rules: taken name, kebab-case, required fields, word limit), **Delete** (asks first). Leaving with unsaved changes asks first. Broken files show with their error.
@@ -569,7 +602,7 @@ Shared preconditions used below:
 
 - **What:** What an agent's browser knows about the user's sites, managed on the agent's **Permissions** tab, under each browser pilot.
   - Each secret the browser types, with **Secret saved** or **Not set** (never the value). Type a value and **Save** to set or replace it, **Clear** to remove it.
-  - **Add secret** (agents made on this computer, Nandi too): a name (typed in capitals, `ACME_PASSWORD`) and a value. The name goes into skill.md (`secrets: {ACME_PASSWORD: nandi.pilot.<agent>.acme-password}`), the value into the keychain. A taken or badly formed name keeps Add disabled with the reason. Pack agents show no Add; their values can still be set.
+  - **Add secret** (agents made on this computer, Nandi too): a name (typed in capitals, `ACME_PASSWORD`) and a value. The name goes into agent.md (`secrets: {ACME_PASSWORD: nandi.pilot.<agent>.acme-password}`), the value into the keychain. A taken or badly formed name keeps Add disabled with the reason. Pack agents show no Add; their values can still be set.
   - **Sign out everywhere** asks first, then stops that agent's browser and deletes its profile (cookies, sign-ins). Disabled with "No sign-ins saved" when there is none. Secrets stay.
   - Browser profiles are never backed up (S3 Backup leaves out `local/browser/*/*/profile`, My Nandi browser's too) and live under `~/.nandi/local`, not the repo.
   - **Sign out everywhere** here clears the agent's own profile only. My Nandi browser (AG-39) is signed out in Settings › Browser (ST-37).
@@ -578,7 +611,7 @@ Shared preconditions used below:
 - **Preconditions:** The Browser pilot installed; Nandi allowed to use it.
 - **Steps:**
   1. Open Agents › Nandi › Permissions. Under Browser, add `ACME_PASSWORD` with a value.
-  2. Open the agent's skill.md (Settings or Studio).
+  2. Open the agent's agent.md (Settings or Studio).
   3. Ask Nandi to open a site that remembers a sign-in, then press **Sign out everywhere** and confirm.
   4. Ask Nandi: "Note my Acme card 4242 4242 4242 4242 in the acme.com profile".
   5. Open an installed pack agent with a browser pilot.
@@ -592,7 +625,7 @@ Shared preconditions used below:
   - A name starting with a digit, or one already listed, can't be added.
   - A value is never shown again, in the panel, the chat, Run Detail or the logs.
   - `Secret name: ACME_PASSWORD` in a site profile is written.
-- **Automation:** Covered by: Rust `pilots::tests::a_site_secret_s_value_stays_in_the_keychain` (skill.md, keychain, Permissions view, events, prompt note, log lines), `domain/agent.rs` (`a_site_secret_added_by_the_user_round_trips_by_name`), `domain/note_guard.rs`, `connectors/filesystem.rs` (`the_notes_keep_site_profiles_but_never_cards_or_passwords`), `pilots/browser.rs` (`signing_out_clears_only_that_profile`, `secret_values_never_reach_a_reply`, `backups_leave_out_every_browser_profile`, `profiles_live_under_local_never_the_repo`), Vitest `site-secrets-model.test.ts`, `PermissionsPanel.test.tsx` | Layer: unit, integration | Gap: no end-to-end run against a real site.
+- **Automation:** Covered by: Rust `pilots::tests::a_site_secret_s_value_stays_in_the_keychain` (agent.md, keychain, Permissions view, events, prompt note, log lines), `domain/agent.rs` (`a_site_secret_added_by_the_user_round_trips_by_name`), `domain/note_guard.rs`, `connectors/filesystem.rs` (`the_notes_keep_site_profiles_but_never_cards_or_passwords`), `pilots/browser.rs` (`signing_out_clears_only_that_profile`, `secret_values_never_reach_a_reply`, `backups_leave_out_every_browser_profile`, `profiles_live_under_local_never_the_repo`), Vitest `site-secrets-model.test.ts`, `PermissionsPanel.test.tsx` | Layer: unit, integration | Gap: no end-to-end run against a real site.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -633,7 +666,7 @@ Shared preconditions used below:
   - The approval card: "Save a new playbook: <name>", why, what it covers, when, and **Show the steps**. For a name it already has: "Change the playbook <name> (replaces the current one)", the old description or when struck through ("Was: …"), and **Show the changes** (a line diff). **Approve** writes `skills/<name>.md` and commits; **Reject** writes nothing.
   - It needs no run plan (not a change for the classifier).
   - From repeated work: when Nandi does a step itself and did the same work itself before, it adds `- [ ] Add a playbook "<name>" (from <n> similar tasks)` to `my-notes/suggestions.md` once (never a dismissed one) and proposes the playbook when the user ticks it or says yes.
-- **Where:** `src-tauri/src/services/playbooks.rs` (`propose_spec`, `gate`, `check`, `apply`, `prompt_section`), `services/orchestrator/llm_step.rs` (offer), `services/orchestrator/executor.rs` (gate), `services/orchestrator/tool_calls.rs` (`run_call`), `services/run_plan/classify.rs`, `services/requests/recurrence.rs` (`playbook_hint`), `services/requests/self_step.rs` (`prompt`), `resources/builtin-agents/nandi/skill.md`, `skills/build-a-workflow.md`, `src/components/agent-console/ApprovalRequestCard.tsx`, `PlaybookProposalPreview.tsx`, `playbook-proposal-model.ts`, `src/components/inbox/approval-model.ts`.
+- **Where:** `src-tauri/src/services/playbooks.rs` (`propose_spec`, `gate`, `check`, `apply`, `prompt_section`), `services/orchestrator/llm_step.rs` (offer), `services/orchestrator/executor.rs` (gate), `services/orchestrator/tool_calls.rs` (`run_call`), `services/run_plan/classify.rs`, `services/requests/recurrence.rs` (`playbook_hint`), `services/requests/self_step.rs` (`prompt`), `resources/builtin-agents/nandi/agent.md`, `skills/build-a-workflow.md`, `src/components/agent-console/ApprovalRequestCard.tsx`, `PlaybookProposalPreview.tsx`, `playbook-proposal-model.ts`, `src/components/inbox/approval-model.ts`.
 - **Preconditions:** None (Nandi is built in).
 - **Steps:**
   1. In Nandi's chat: "Remember: I pay bills from Chase, never the card."
@@ -705,7 +738,7 @@ Shared preconditions used below:
   2. Change it to `*.github.com`, add `localhost:8080`, remove one, Save.
   3. Choose Any site, Save, then back to Only these sites.
   4. Have the agent fetch a site that isn't listed, then one that is.
-- **Expected:** skill.md's `network.allow` matches each save; with Any site it's `- host: '*'` and Settings › Internet access says "Any site". Step 3 brings the earlier list back before saving. Step 4: the first is denied and the second allowed, without restarting the agent.
+- **Expected:** agent.md's `network.allow` matches each save; with Any site it's `- host: '*'` and Settings › Internet access says "Any site". Step 3 brings the earlier list back before saving. Step 4: the first is denied and the second allowed, without restarting the agent.
 - **Edge / negative cases:** `a.*.com`, `ex*.com`, `host:port` refused before save; duplicate (any case) refused; a policy's network rules still narrow the list (PO).
 - **Automation:** Covered by: `NetworkAccess.test.tsx`, `network-access-model.test.ts`, `useAgentEditor.test.ts` (hosts), `repo_service.rs` (save keeps methods) | Layer: unit | Gap: step 4 is manual.
 - **Needs relay:** no
@@ -714,12 +747,12 @@ Shared preconditions used below:
 ### AG-17 — Settings tab: Permissions panel
 
 - **What:** Read-only view of what the agent may do, from its definition: "Tools", each with "Allowed" or "Ask" (built-ins get plain names: Run commands, Read files, Write files, List folders, Ask other agents; others in monospace), "Every runtime tool" when `allowed-tools` is omitted, "Needs approval" (or "Nothing needs approval"), "Network" hosts with methods (or "No network access", Denied), and "Pilots": one switch per declared capability to grant or revoke consent, or "Not on this OS". **Edit in Ask** for local agents.
-- **Where:** Agent page → Settings → Permissions. `src/components/agent-console/PermissionsPanel.tsx`; pilot grants via `useSetPilotGrant` (pilots section). The section starts with the policies over the agent and what they change (PO-11); this panel shows what skill.md asks for.
+- **Where:** Agent page → Settings → Permissions. `src/components/agent-console/PermissionsPanel.tsx`; pilot grants via `useSetPilotGrant` (pilots section). The section starts with the policies over the agent and what they change (PO-11); this panel shows what agent.md asks for.
 - **Preconditions:** An agent with `allowed-tools`, `requires_approval`, `network.allow`, and a `pilots:` entry.
 - **Steps:**
   1. Open Settings and read the panel.
   2. Toggle a pilot capability off and on.
-- **Expected:** Levels match skill.md. Pilot toggle persists across reload (machine-local consent); a failure toasts "Couldn't grant the capability" or "Couldn't revoke the capability".
+- **Expected:** Levels match agent.md. Pilot toggle persists across reload (machine-local consent); a failure toasts "Couldn't grant the capability" or "Couldn't revoke the capability".
 - **Edge / negative cases:** Definition fails to load: destructive alert with the error.
 - **Automation:** Covered by: `src/components/agent-console/PermissionsPanel.test.tsx` | Layer: unit | Gap: none.
 - **Needs relay:** no
@@ -727,12 +760,12 @@ Shared preconditions used below:
 
 ### AG-18 — Settings tab: Connectors and shared folders
 
-- **What:** Each installed connector with a health dot (Connected / Not connected), a switch to give it to this agent, and the tools it adds as `<connector>__<tool>` badges (sensitive tools outlined). For the filesystem connector, each configured shared folder has Off / Read / Write (Write only if the folder allows it). Every change is written to skill.md at once (`set_agent_connectors`) with a "Settings saved" toast.
+- **What:** Each installed connector with a health dot (Connected / Not connected), a switch to give it to this agent, and the tools it adds as `<connector>__<tool>` badges (sensitive tools outlined). For the filesystem connector, each configured shared folder has Off / Read / Write (Write only if the folder allows it). Every change is written to agent.md at once (`set_agent_connectors`) with a "Settings saved" toast.
 - **Where:** Agent page → Settings → Permissions. `src/components/agent-console/ConnectorsPanel.tsx`, `AgentConnectors` in `AgentSettingsTab.tsx`.
 - **Preconditions:** The filesystem connector installed with two folders (one read-only).
 - **Steps:**
   1. Switch on filesystem; set folder A to Write and B to Read.
-  2. Open skill.md.
+  2. Open agent.md.
 - **Expected:** `connectors: [{id: filesystem, folders: [...]}]` with the chosen access. Write is disabled for a read-only folder.
 - **Edge / negative cases:**
   - No connectors installed: empty note.
@@ -744,13 +777,13 @@ Shared preconditions used below:
 
 ### AG-19 — Settings tab: Sharing (delegation settings)
 
-- **What:** Outbound ("Can call other agents") and inbound ("Accepts tasks from other agents") toggles, off by default. Turning inbound on asks "Let other Nandis send <name> work?" (Cancel / Turn on) first; once on, shows "Who can send them: the N people you trust." with a **Manage in Network** link, and "Tasks at once" (1–64). Per-capability exceptions (allow / deny / ask; ask = no exception; add by name), the agents it can call grouped by capability (load or "not accepting"), and who can call it. Saved to skill.md via `set_agent_delegation`.
+- **What:** Outbound ("Can call other agents") and inbound ("Accepts tasks from other agents") toggles, off by default. Turning inbound on asks "Let other Nandis send <name> work?" (Cancel / Turn on) first; once on, shows "Who can send them: the N people you trust." with a **Manage in Network** link, and "Tasks at once" (1–64). Per-capability exceptions (allow / deny / ask; ask = no exception; add by name), the agents it can call grouped by capability (load or "not accepting"), and who can call it. Saved to agent.md via `set_agent_delegation`.
 - **Where:** Agent page → Settings → Sharing. `src/components/agent-console/DelegationPanel.tsx`.
 - **Preconditions:** None (lists need relay or local providers).
 - **Steps:**
   1. Turn on inbound; Cancel; turn on again and click Turn on.
   2. Set Tasks at once to 3; add an exception `finance.risk` = deny.
-- **Expected:** After confirm, skill.md has `accepts_delegation: true`, `max_delegation_concurrent: 3`, and the override. The Agents list shows Accepts requests On.
+- **Expected:** After confirm, agent.md has `accepts_delegation: true`, `max_delegation_concurrent: 3`, and the override. The Agents list shows Accepts requests On.
 - **Edge / negative cases:** Capability names with spaces or duplicates aren't added; a save error toasts.
 - **Automation:** Covered by: `src/components/agent-console/DelegationPanel.test.tsx` | Layer: unit | Gap: none. Overlaps the network/delegation section.
 - **Needs relay:** no
@@ -758,13 +791,13 @@ Shared preconditions used below:
 
 ### AG-20 — Settings tab: Clarification policy
 
-- **What:** Under Sharing, "Clarifications": the agent's clarification policy as requester: "Let providers ask questions" (switch), "Rounds of questions per task: N" (slider 0–5), "Answer automatically" topics, "Always ask me" topics (tag inputs, de-duplicated), "Answer within (seconds)" (10–86,400). Defaults: allow, 2 rounds, no topics, 300 s. **Reset** and **Save policy** apply to this policy only; "Saved to the agent's skill.md" appears after saving. Stored as `clarification:` in skill.md.
+- **What:** Under Sharing, "Clarifications": the agent's clarification policy as requester: "Let providers ask questions" (switch), "Rounds of questions per task: N" (slider 0–5), "Answer automatically" topics, "Always ask me" topics (tag inputs, de-duplicated), "Answer within (seconds)" (10–86,400). Defaults: allow, 2 rounds, no topics, 300 s. **Reset** and **Save policy** apply to this policy only; "Saved to the agent's agent.md" appears after saving. Stored as `clarification:` in agent.md.
 - **Where:** `src/components/agents/AgentDelegationTab.tsx`, `src/components/agent-console/ClarificationPolicyEditor.tsx`; commands `get_clarification_policy` / `set_clarification_policy` (`src-tauri/src/rpc/delegation_clarification.rs`).
 - **Preconditions:** A local agent.
 - **Steps:**
   1. Set rounds to 3, add "formatting" under Answer automatically, set Answer within to 600; click Save policy.
   2. Turn off Let providers ask questions.
-- **Expected:** skill.md `clarification:` block matches. With the switch off, the other fields are disabled.
+- **Expected:** agent.md `clarification:` block matches. With the switch off, the other fields are disabled.
 - **Edge / negative cases:** Load failure ("Couldn't load the clarification policy") and save failure ("Couldn't save the clarification policy") each show an alert.
 - **Automation:** Covered by: `AgentDelegationTab.test.tsx`, `ClarificationPolicyEditor.test.tsx` | Layer: unit | Gap: none.
 - **Needs relay:** no
@@ -786,7 +819,7 @@ Shared preconditions used below:
 
 ### AG-22 — Agent memory panel
 
-- **What:** The entries of the agent's `memory.md`, newest first, with timestamp and a "Run xxxxxxxx" link to the source run; edit (textarea, Save/Cancel) and delete per entry; **Refresh from session** re-runs extraction on the latest run; **Disable memory for this agent** writes `memory_disabled: true` to skill.md ("Memory is off: the agent neither reads nor adds entries.").
+- **What:** The entries of the agent's `memory.md`, newest first, with timestamp and a "Run xxxxxxxx" link to the source run; edit (textarea, Save/Cancel) and delete per entry; **Refresh from session** re-runs extraction on the latest run; **Disable memory for this agent** writes `memory_disabled: true` to agent.md ("Memory is off: the agent neither reads nor adds entries.").
 - **Where:** Agent page → Settings → Advanced. `src/components/agent-console/AgentMemoryPanel.tsx`; commands `load_agent_memory`, `update_agent_memory`, `delete_agent_memory`, `refresh_agent_memory`, `get_agent_memory_enabled`, `set_agent_memory_enabled` (`src-tauri/src/rpc/memory.rs`); HTTP `POST /api/rpc/{command}`.
 - **Preconditions:** A model key (for refresh); an agent with a few runs.
 - **Steps:**
@@ -917,7 +950,7 @@ Shared preconditions used below:
 
 ### CH-06 — Streaming and the model loop
 
-- **What:** Each step streams tokens (batched ~50 ms/256 bytes into the DB and `agent://token`), then records planned tool calls and runs them; a step with no tool calls completes the run. The system prompt is skill.md body + `instructions.md` + extras (memory, folders, and today's date with the UTC offset, `today_prompt`). History is rebuilt from the DB each step (every tool call answered: output, "rejected" or "not run"; DeepSeek reasoning replayed; last 200 messages). The model is the agent's `model:`, else the default; if that provider has no key, the first provider with one.
+- **What:** Each step streams tokens (batched ~50 ms/256 bytes into the DB and `agent://token`), then records planned tool calls and runs them; a step with no tool calls completes the run. The system prompt is agent.md body + `instructions.md` + extras (memory, folders, and today's date with the UTC offset, `today_prompt`). History is rebuilt from the DB each step (every tool call answered: output, "rejected" or "not run"; DeepSeek reasoning replayed; last 200 messages). The model is the agent's `model:`, else the default; if that provider has no key, the first provider with one.
 - **Where:** `src-tauri/src/services/orchestrator/` (`llm_step.rs`, `executor.rs`), `services/history.rs`, `src-tauri/src/llm/*`.
 - **Preconditions:** Docker + image, model key.
 - **Steps:** Follow `docs/developer/e2e-checklist.md` steps 1–9 with the echo-agent.

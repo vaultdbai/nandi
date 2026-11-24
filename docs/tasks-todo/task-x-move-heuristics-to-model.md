@@ -4,7 +4,7 @@
 **Serves:** less code; the model does the reading
 **Size:** S per item, one at a time
 
-Code that guesses what text means belongs in a prompt or a `skill.md`. Keep the state and the checks in code. Do one item per change, with a test that the behaviour still holds.
+Code that guesses what text means belongs in a prompt or an `agent.md`. Keep the state and the checks in code. Do one item per change, with a test that the behaviour still holds.
 
 | ID           | Today (code)                                                          | Instead                                                                    | Keep in code                     |
 | ------------ | --------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------- |

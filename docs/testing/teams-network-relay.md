@@ -68,13 +68,13 @@ Notes that apply to the whole section:
 
 ### TM-10 — Agent menu: Callable over the relay
 
-- **What:** Each agent's menu has a "Callable over the relay" toggle. Turning it on asks for confirmation first. Relay sharing turns the agent's `accept_inbound` on or off (skill.md `accepts_delegation`).
+- **What:** Each agent's menu has a "Callable over the relay" toggle. Turning it on asks for confirmation first. Relay sharing turns the agent's `accept_inbound` on or off (agent.md `accepts_delegation`).
 - **Where:** Agents list or agent page → "…" menu. Code: `src/components/sharing/AgentMenu.tsx`, `src/hooks/useAgentSharing.ts` (`useSetRelaySharing` → `get_agent_delegation`/`set_agent_delegation`).
 - **Preconditions:** You have your own agent.
 - **Steps:** 1. Open the agent menu. 2. Toggle "Callable over the relay" and confirm "Let everyone on your relay use {name}?". 3. Turn it off.
 - **Expected:**
   - The relay toggle shows the toasts `agentMenu.relayOn` and `agentMenu.relayOff`.
-  - skill.md `accepts_delegation` flips, and the cards re-register at the relay within about 500 ms.
+  - agent.md `accepts_delegation` flips, and the cards re-register at the relay within about 500 ms.
 - **Edge / negative cases:**
   - A marketplace agent shows "Installed from the marketplace: only its owner can share it".
   - Errors show `agentMenu.relayError`.
@@ -681,17 +681,17 @@ Notes that apply to the whole section:
   - Per-capability exceptions: Always accept, Never accept, or Use the setting above.
   - Lists of "Agents it can call" and "Agents that can call it".
 
-  Settings are written to skill.md through the repos layer, never to SQLite.
+  Settings are written to agent.md through the repos layer, never to SQLite.
 
 - **Where:** Agent → Settings tab → Sharing section (`src/components/agent-console/DelegationPanel.tsx` inside `src/components/agents/AgentSettingsTab.tsx`). Code: `rpc/delegation.rs` (`get_agent_delegation`, `set_agent_delegation`), `services/a2a/settings.rs`. HTTP: `POST /api/rpc/get_agent_delegation|set_agent_delegation`.
 - **Preconditions:** An agent exists.
-- **Steps:** 1. Turn on both switches. 2. Set Tasks at once to 2. 3. Add an exception `summarize: Never accept`. 4. Open skill.md.
-- **Expected:** skill.md has `delegation_outbound: true`, `accepts_delegation: true`, `max_delegation_concurrent: 2` and `delegation_overrides: {summarize: deny}`, and the gold copy commit is made.
+- **Steps:** 1. Turn on both switches. 2. Set Tasks at once to 2. 3. Add an exception `summarize: Never accept`. 4. Open agent.md.
+- **Expected:** agent.md has `delegation_outbound: true`, `accepts_delegation: true`, `max_delegation_concurrent: 2` and `delegation_overrides: {summarize: deny}`, and the gold copy commit is made.
 - **Edge / negative cases:**
   - Invalid settings are rejected; on failure the toast is `delegation.panel.saveFailed`.
   - An explicit `allowed-tools` list follows the outbound toggle.
   - Both are off by default.
-- **Automation:** Covered by: `src/components/agent-console/DelegationPanel.test.tsx`, `src/hooks/useDelegation.test.ts`; Rust `a2a/settings.rs` (`defaults_are_off`, `settings_round_trip_through_skill_md`, `an_explicit_tool_list_follows_the_outbound_toggle`, `invalid_settings_are_rejected`), `a2a/tests.rs` (`settings_are_written_to_skill_md`) | Layer: api | Gap: none.
+- **Automation:** Covered by: `src/components/agent-console/DelegationPanel.test.tsx`, `src/hooks/useDelegation.test.ts`; Rust `a2a/settings.rs` (`defaults_are_off`, `settings_round_trip_through_agent_md`, `an_explicit_tool_list_follows_the_outbound_toggle`, `invalid_settings_are_rejected`), `a2a/tests.rs` (`settings_are_written_to_agent_md`) | Layer: api | Gap: none.
 - **Needs relay:** no
 - **Status:** Shipped
 
@@ -802,7 +802,7 @@ Notes that apply to the whole section:
 
 ### RL-27 — Find who is responsible for a topic (`find_people`)
 
-- **What:** A read-only built-in tool for agents whose skill.md lists `find_people` in `allowed-tools` (the first-party Nandi agent does).
+- **What:** A read-only built-in tool for agents whose agent.md lists `find_people` in `allowed-tools` (the first-party Nandi agent does).
   - The relay searches and ranks (`FindPeople` → `PeopleMatches`), over its member directory (online or not) and its members' online agents: `responsibilities` from NANDI.md (GW-01), description, the capabilities their agents serve, their agents' cards, and the NANDI.md body when they share it.
   - Weights: responsibilities ×5, capabilities ×3, profile and agent cards ×2, body ×1. "SOC 1", "soc1" and "SOC-1" match alike, and an empty topic lists everyone.
   - Someone busy or away carries `availability: {status, until, covered_by}` (NW-14). `covered_by` is the person's name (from the directory or the people found), or "you" when the user asking covers; never a bare instance ID, which a model reads as one of the person's agents.

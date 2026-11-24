@@ -134,7 +134,7 @@ Runtimes shows both, and Ready means the container can run and sign in.
 **`max_turns`.** ACP has no turn limit, and a harness run is one ACP prompt
 however many steps the CLI takes. `execute_harness_run` counts tool calls
 (each is another model request) against `runtime_config.max_turns`, else
-skill.md `max_turns` (default 50), and sends `session/cancel` and fails
+agent.md `max_turns` (default 50), and sends `session/cancel` and fails
 the run when it goes over.
 
 ## LiteLLM gateway (third-party Bedrock models)
