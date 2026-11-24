@@ -121,38 +121,38 @@ These turned up while building the catalog. In each case the catalog follows the
 
 ## Summary
 
-555 features to test: all 618 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 20 removed features.
+573 features to test: all 636 IDs, minus 43 duplicates that point to the entry where the feature is tested, minus 20 removed features.
 
 | Area                                        | File                                                               | Features |
 | ------------------------------------------- | ------------------------------------------------------------------ | -------- |
-| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 68       |
-| Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 80       |
-| Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 62       |
+| App shell, onboarding and settings          | [shell-onboarding-settings.md](./shell-onboarding-settings.md)     | 72       |
+| Agents, chat and runs                       | [agents-chat-runs.md](./agents-chat-runs.md)                       | 84       |
+| Runtimes, models and sandbox                | [runtimes-models-sandbox.md](./runtimes-models-sandbox.md)         | 65       |
 | Policies                                    | [policies.md](./policies.md)                                       | 16       |
 | Workflows, triggers, requests and Inbox     | [workflows-triggers-requests.md](./workflows-triggers-requests.md) | 94       |
-| Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 75       |
-| Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 77       |
+| Library, capabilities, Studio and companion | [library-capabilities-studio.md](./library-capabilities-studio.md) | 76       |
+| Teams, network, delegation and relay        | [teams-network-relay.md](./teams-network-relay.md)                 | 83       |
 | Instance gateway                            | [gateway.md](./gateway.md)                                         | 20       |
 | Data, platform and quality gates            | [data-platform-quality.md](./data-platform-quality.md)             | 63       |
 
 | Status      | Count |
 | ----------- | ----- |
-| Shipped     | 537   |
+| Shipped     | 556   |
 | Removed     | 20    |
-| Partial     | 16    |
+| Partial     | 15    |
 | Known issue | 2     |
 
 | Best automation layer | Count |
 | --------------------- | ----- |
-| `unit`                | 313   |
-| `api`                 | 186   |
-| `manual`              | 32    |
+| `unit`                | 328   |
+| `api`                 | 188   |
+| `manual`              | 33    |
 | `ui-e2e`              | 24    |
 
 | Needs relay | Count |
 | ----------- | ----- |
-| no          | 470   |
-| yes         | 85    |
+| no          | 482   |
+| yes         | 91    |
 
 ## Master index
 
@@ -180,7 +180,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | ON-15 | Step 1: connect your email (skippable)                                   | Shipped (live test pending)                          | unit       | no          |                                        |
 | ON-16 | Step 4: get your computer ready (recommended, skippable)                 | Shipped                                              | unit       | no          |                                        |
 | ON-17 | Settings › Account › Run setup again                                     | Shipped                                              | unit       | no          |                                        |
-| ON-18 | Model step: What do you already use?                                     | Shipped                                              | unit       | no          |                                        |
+| ON-18 | Model step: "What do you already use?"                                   | Shipped                                              | unit       | no          |                                        |
 | ON-13 | Starter packs page (after setup)                                         | Duplicate of LB-20                                   | —          | no          |                                        |
 | ON-14 | Upgrades from pre-identity installs                                      | Removed (2026-10-22, no legacy support)              | —          | no          |                                        |
 | SH-04 | Title bar and window controls                                            | Shipped                                              | ui-e2e     | no          |                                        |
@@ -201,6 +201,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | SH-19 | All activity                                                             | Shipped                                              | unit       | no          |                                        |
 | SH-20 | "No model connected" notice                                              | Shipped                                              | unit       | no          |                                        |
 | SH-36 | Work tray (Needs you · Working · Done)                                   | Shipped                                              | unit       | no          |                                        |
+| SH-42 | To-dos and reminders (Home, the Inbox and the tray)                      | Shipped                                              | unit       | no          |                                        |
 | SH-37 | Home: "Agents can talk, but need Docker to act"                          | Shipped                                              | unit       | no          |                                        |
 | SH-38 | Agent page: "Agents need Docker to act. Set up"                          | Shipped                                              | unit       | no          |                                        |
 | SH-21 | Command palette: open, search, open results                              | Shipped                                              | api        | no          |                                        |
@@ -271,6 +272,8 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | AG-06 | New agent: describe it in Ask                                           | Shipped            | ui-e2e        | no          |                                             |
 | AG-07 | Agent created or changed by editing files                               | Shipped            | api           | no          |                                             |
 | AG-08 | agent.md format: keys the app honors                                    | Shipped            | unit          | no          |                                             |
+| AG-41 | Agents upgrade to `agent.md` (from Nandi 0.2)                           | Shipped (0.3.0)    | api           | no          |                                             |
+| AG-42 | Each agent loads only when it is needed                                 | Shipped            | api           | no          |                                             |
 | AG-09 | Agent status                                                            | Shipped            | api           | no          |                                             |
 | AG-10 | Agent page shell and header                                             | Shipped            | ui-e2e        | no          |                                             |
 | AG-11 | Pending-approval banner on the agent page                               | Shipped            | ui-e2e        | no          |                                             |
@@ -285,14 +288,13 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | AG-36 | Nandi's page and Reset to defaults                                      | Shipped            | unit + ui     | no          |                                             |
 | AG-37 | Nandi's default schedule                                                | Shipped            | unit + ui     | no          |                                             |
 | AG-38 | Updates to Nandi's shipped files                                        | Shipped            | unit + ui     | no          |                                             |
-| AG-41 | Agents upgrade to `agent.md` (from Nandi 0.2)                           | Shipped            | api           | no          |                                             |
-| AG-42 | Each agent loads only when it is needed                                 | Shipped            | api           | no          |                                             |
 | AG-31 | Nandi browses websites                                                  | Shipped            | unit          | no          |                                             |
 | AG-32 | Run plans: plan first, live checklist, finish check                     | Shipped            | unit          | no          |                                             |
 | AG-33 | Playbooks: skill files an agent reads on demand                         | Shipped            | unit          | no          |                                             |
 | AG-34 | Sites and accounts: site secrets, site profiles, sign out everywhere    | Shipped            | unit          | no          |                                             |
-| AG-39 | An agent's browser uses My Nandi browser (a grant)                      | Shipped            | unit + ui     | no          |                                             |
+| AG-39 | An agent's browser uses My Nandi browser (a grant)                      | Shipped            | unit          | no          |                                             |
 | AG-35 | "Remember how I do this": an agent proposes a playbook                  | Shipped            | unit          | no          |                                             |
+| AG-40 | Weekly retro: Nandi gets better from your corrections                   | Shipped            | unit          | no          |                                             |
 | AG-29 | Settings tab: Internet access (allowed sites)                           | Shipped            | unit          | no          |                                             |
 | AG-17 | Settings tab: Permissions panel                                         | Shipped            | unit          | no          |                                             |
 | AG-18 | Settings tab: Connectors and shared folders                             | Shipped            | unit          | no          |                                             |
@@ -389,6 +391,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | MD-04 | Default model: pick provider, type any model                                               | Shipped                                                                                    | api           | no          |               |
 | MD-05 | Suggested models from the provider's own list                                              | Shipped                                                                                    | api           | no          |               |
 | MD-06 | "Which model calls use, and why" line                                                      | Shipped                                                                                    | unit          | no          |               |
+| MD-24 | The same line for an agent set to its own model                                            | Shipped (live test pending)                                                                | unit          | no          |               |
 | MD-07 | Model resolution and fallback order for every call                                         | Shipped                                                                                    | unit          | no          |               |
 | MD-08 | Provider clients (Anthropic, OpenAI, DeepSeek, Ollama)                                     | Shipped                                                                                    | unit + manual | no          |               |
 | MD-09 | LLM usage and cost log (`llm.log`)                                                         | Shipped                                                                                    | unit          | no          |               |
@@ -405,7 +408,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | MD-20 | Bedrock model picker                                                                       | Partial (chosen model is not saved as a runtime default)                                   | api           | no          |               |
 | MD-21 | LiteLLM gateway for third-party Bedrock models                                             | Shipped                                                                                    | manual        | no          |               |
 | MD-22 | Free tokens linked to the connected email (no sign-in)                                     | Shipped                                                                                    | unit          | no          |               |
-| MD-24 | The same line for an agent set to its own model                                            | Shipped (live test pending)                                                                | unit          | no          |               |
+| MD-23 | Try free tokens                                                                            | Shipped                                                                                    | manual        | no          |               |
 | SB-01 | Container hardening (tool and coding-agent containers)                                     | Shipped                                                                                    | api           | no          |               |
 | SB-02 | Ask before CLI tools act (harness approvals)                                               | Shipped                                                                                    | manual        | no          |               |
 | SB-03 | Egress proxy server and per-container tokens                                               | Shipped                                                                                    | api           | no          |               |
@@ -423,6 +426,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | SB-13 | Agents' internal network (`nandi-agents`)                                                  | Shipped                                                                                    | api           | no          |               |
 | SB-14 | Egress relay container (`nandi-egress`)                                                    | Shipped                                                                                    | api           | no          |               |
 | SB-15 | Coding agents through the egress proxy, with their model hosts for the run only            | Shipped                                                                                    | api           | no          |               |
+| SB-18 | The Lock box: keys agents use but never see                                                | Shipped (slice 1: API keys through the proxy; browser sign-ins and password managers la... | unit + api    | no          |               |
 
 ### Policies
 
@@ -580,13 +584,13 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | CP-03 | Email: connect Outlook or Gmail for Nandi                                                  | Shipped (Outlook and Gmail; live sign-in not yet verified)                     | unit               | no          |                 |
 | CP-28 | Email: Nandi keeps My notes from new mail                                                  | Shipped (live test pending)                                                    | unit               | no          |                 |
 | CP-37 | Email: read again, and failed checks tried again                                           | Shipped (live test pending)                                                    | unit               | no          |                 |
-| CP-38 | A mail grant names the mailboxes it covers                                                 | Shipped (live test pending)                                                    | unit + ui          | no          |                 |
 | CP-29 | Email: reading older mail in the background                                                | Shipped (live test pending)                                                    | unit               | no          |                 |
 | CP-30 | Connector packages: install from the Agent Hub with a consent dialog                       | Shipped (live test pending)                                                    | api                | no          |                 |
 | CP-31 | Studio: make a connector from an MCP server and publish it                                 | Shipped (live test pending)                                                    | api                | no          |                 |
 | CP-32 | Access while an agent works: Allow once, Allow for this agent, Don't allow                 | Shipped (live test pending)                                                    | api                | no          |                 |
 | CP-33 | Settings › Connectors › Access and up-front grants                                         | Shipped                                                                        | unit + api         | no          |                 |
-| CP-34 | Files and calendar with each account: OneDrive, Google Drive, Outlook and Google calendars | Shipped (live test pending)                                                    | unit               | no          |                 |
+| CP-38 | A mail grant names the mailboxes it covers                                                 | Shipped (live test pending)                                                    | unit + ui          | no          |                 |
+| CP-34 | Files and calendar with each account: OneDrive, Google Drive, Outlook calendar, Google ... | Shipped (live test pending)                                                    | unit               | no          |                 |
 | CP-35 | Nandi keeps My notes from the calendar                                                     | Shipped (live test pending)                                                    | unit               | no          |                 |
 | CP-04 | Shared folders on the Filesystem connector                                                 | Shipped                                                                        | unit               | no          |                 |
 | CP-05 | Per-agent connectors and folder grants                                                     | Shipped                                                                        | api                | no          |                 |
@@ -711,7 +715,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | RL-42 | Content sealed end to end                                                 | Shipped                                                                                    | unit + api      | yes         |                 |
 | RL-43 | Store-and-forward: work and answers wait at the relay                     | Shipped                                                                                    | api             | yes         |                 |
 | RL-44 | The relay's management API (operator secret)                              | Shipped                                                                                    | api             | yes         |                 |
-| RL-45 | Join the public relay with the connected email                            | Partial (the public relay at `relay.vaultdb.ai` isn't live yet; everything runs against... | unit + api      | yes         |                 |
+| RL-45 | Join the public relay with the connected email                            | Partial (the public relay at `relay.vaultdb.ai` isn't live yet, so 0.2.0 ships without ... | unit + api      | yes         |                 |
 | RL-46 | The public relay's Account card                                           | Shipped                                                                                    | unit + api      | yes         |                 |
 | RL-47 | Limits per person and the daily message limit                             | Shipped                                                                                    | unit + api      | yes         |                 |
 | RL-24 | WebSocket event stream (`/ws`)                                            | Shipped                                                                                    | api             | no          |                 |
@@ -727,6 +731,12 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | GR-07 | My access level per group                                                 | Shipped                                                                                    | unit            | no          |                 |
 | GR-08 | Group policies on incoming work                                           | Partial (intake only, see Gap)                                                             | unit            | yes         |                 |
 | GR-09 | A relay that shows only people you share a group with                     | Shipped                                                                                    | unit            | yes         |                 |
+| OD-01 | Pair a phone: QR code, fingerprint, PIN                                   | Shipped (the phone web app is a separate slice)                                            | unit            | yes         |                 |
+| OD-02 | Only a confirmed device is heard; replays are dropped                     | Shipped                                                                                    | unit            | yes         |                 |
+| OD-03 | The phone sees the Inbox; every approve or decline needs the PIN          | Shipped                                                                                    | unit            | yes         |                 |
+| OD-04 | Risky approvals stay on the computer                                      | Shipped                                                                                    | unit            | yes         |                 |
+| OD-05 | The record names the device                                               | Shipped                                                                                    | unit            | yes         |                 |
+| OD-06 | Revoke one or all; no relay; an older relay                               | Shipped                                                                                    | unit            | yes         |                 |
 
 ### Instance gateway
 

@@ -1015,9 +1015,36 @@ network:
 
 - The container runs as a non-root user with every Linux capability dropped, no privilege escalation, and memory and process limits.
 
+### The Lock box: keys agents use but never see
+
+**Settings › Lock box** holds the keys your agents call APIs with: an API key, a token or a password. An agent can use a key, but never sees it, and a key works only at the sites it belongs to.
+
+- **Add a key.** Give it a name (`github`), type its value once, and set its rules. The value goes straight into your system keychain. Nandi never shows it again; to change it, delete the key and add it again.
+- **Sites.** The hosts it may go to, one per line: `api.github.com`, or `*.example.com` for the subdomains of `example.com`. Nothing else matches: not `api.github.com.evil.com`, not `api-github.com`, not a lookalike with a foreign letter, not plain `http`, another port or an IP address. A key with no site is never used. The agent also needs the site in its Internet access.
+- **Agents.** Only the agents you tick may use it. Untick one and its next call is refused.
+- **How Nandi adds it.** `Authorization: Bearer <key>`, `x-api-key: <key>`, or another header you name.
+- **Lock.** How each use is allowed:
+
+  | Lock          | Each use                                                                                                    |
+  | ------------- | ----------------------------------------------------------------------------------------------------------- |
+  | Open          | Goes ahead on its sites, for its agents                                                                     |
+  | Ask each time | A card in the run and the Inbox names the key, the agent and the site. Nothing is sent until you approve it |
+  | Locked        | Goes ahead only after you unlock it with Windows Hello, for the time you pick (5 minutes to 4 hours)        |
+
+  **Ask each time** is the default. A Locked key shows the Windows Hello prompt the first time an agent needs it, or you unlock it ahead with **Unlock** on the page; **Lock now** locks it again, and so do changing its rules and quitting Nandi. On a computer without Windows Hello (and on macOS and Linux for now), a Locked key asks each time instead, and the page says so. A key's card is never approved from your phone.
+
+What an agent sees and doesn't:
+
+| ✅ The agent sees                      | ❌ The agent never sees                                       |
+| -------------------------------------- | ------------------------------------------------------------- |
+| The names and sites of keys it may use | A key's value: not in its sandbox, prompt, tools or the reply |
+| Whether a call was refused, and why    | Keys it isn't allowed to use, or keys at other sites          |
+
+The agent asks for a key by name when it calls a site through Nandi's egress proxy (`POST $NANDI_FETCH_PROXY` with `"key": "github"`). Nandi checks the rules, adds the key to that one request, drops any header of that name the agent wrote itself, never follows a redirect with it, and hides the key if the site sends it back. Every use, and every refusal, is in **Decisions**: the key, the agent, the run, the site, the lock and who approved or unlocked it. The value never goes into a log, the run record, your repo, the relay or a backup.
+
 ### What never leaves the machine
 
-- **Secrets.** LLM keys, AWS keys, the GitHub token, trigger secrets, and registry tokens live in the OS keychain. Files in your repo hold references only (`nandi.llm.deepseek`), so the repo is safe to push, and pasting a key into a config file fails validation instead of being committed.
+- **Secrets.** LLM keys, AWS keys, the GitHub token, trigger secrets, registry tokens and Lock box keys live in the OS keychain. Files in your repo hold references only (`nandi.llm.deepseek`), so the repo is safe to push, and pasting a key into a config file fails validation instead of being committed.
 - **Run history and logs.** `~/.nandi/local` is never synced. The LLM log records model, tokens, and cost, not prompt text; the trigger log records metadata, not payloads; the delegation log records who called whom, not inputs or outputs.
 
 What does leave: model calls to the provider you chose, network requests you allowed, git pushes to your repos, and (if you connect a relay) your shared agents' cards and the tasks they're sent.

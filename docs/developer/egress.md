@@ -25,7 +25,7 @@ agent ──nandi-agents──▶ nandi-egress:11435 ──bridge──▶ host 
 | `/bedrock/model/{id}/{action}` | `model_proxy.rs` | Bedrock calls the host signs with SigV4 (`sigv4.rs`)     |
 | `/openai/v1/responses`, …      | `model_proxy.rs` | Codex's model calls; the host adds the OpenAI key        |
 | `POST /aws/{service}/{action}` | `aws_proxy.rs`   | AWS calls as the agent's identity (MVP: S3 Get/Put/List) |
-| `POST /fetch`                  | `http_proxy.rs`  | HTTP requests to hosts in `network.allow`                |
+| `POST /fetch`                  | `http_proxy.rs`  | HTTP requests to hosts in `network.allow`; Lock box keys |
 | `CONNECT host:443`             | `tunnel.rs`      | HTTPS tunnels for tools that honor `HTTPS_PROXY`         |
 
 ## Model passthrough
