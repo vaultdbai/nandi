@@ -1376,7 +1376,65 @@ Notes that apply to the whole section:
 - **Needs relay:** yes
 - **Status:** Shipped
 
+## Your devices (a paired phone)
+
+A phone paired with your own Nandi, reaching it only through sealed envelopes on the relay (protocol 8). The phone web app (vaultdb.ai) is not in this repo; the tests use a phone made the way it works. Contract: `docs/developer/own-devices.md`.
+
+### OD-01 — Pair a phone: QR code, fingerprint, PIN
+
+- **What:** Settings › Your devices › Pair a phone shows a QR code (single use, about 5 minutes). Once the phone claims it, the screen shows the phone's key fingerprint ("Check the phone"); the person confirms only if it matches the phone's screen, choosing a PIN (6 to 12 digits, typed twice, no `111111` or `123456`). The PIN is kept only as an Argon2id hash in `state.db`.
+- **Where:** `services/own_devices/mod.rs` (`start_pairing`, `on_claimed`, `confirm`), `pin.rs`, `store.rs`, migration `010_own_devices.sql`, `DevicesSection.tsx`, `devices-model.ts`.
+- **Preconditions:** Connected to a relay at protocol 8.
+- **Steps:** 1. Name the phone, Pair a phone. 2. Scan with the phone. 3. Compare the code; choose a PIN; Confirm.
+- **Expected:** 1: the QR code and "Waiting for your phone…". 2: the fingerprint. 3: the phone is listed as Paired. Until then the relay keeps the phone out (`device_pending`).
+- **Edge / negative cases:** A weak PIN or two different PINs can't be confirmed. Confirming twice fails. A code not claimed in time lapses and leaves the list.
+- **Automation:** Covered by: `own_devices::tests::pairing_shows_the_invite_then_the_phones_fingerprint_and_confirm_activates_it` (real relay), `own_devices::pin::tests::*`, `db::migrations::tests::a_0_2_database_gains_the_own_devices_table_and_keeps_every_row`, vitest `DevicesSection.test.tsx` | Layer: unit
+- **Needs relay:** yes
+- **Status:** Shipped (the phone web app is a separate slice)
+
+### OD-02 — Only a confirmed device is heard; replays are dropped
+
+- **What:** An envelope from a device that is unknown, claimed but not confirmed, or revoked is dropped unanswered. So is one not sealed by the confirmed keys, one sealed for someone else, and one whose `seq` is at or below the last one taken (a replay).
+- **Where:** `services/own_devices/mod.rs` (`on_envelope`), `store::take_seq`.
+- **Automation:** Covered by: `own_devices::tests::an_unconfirmed_or_unknown_device_is_never_answered`, `a_revoked_device_is_refused_at_once`, `a_replayed_or_forged_envelope_is_dropped` | Layer: unit
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### OD-03 — The phone sees the Inbox; every approve or decline needs the PIN
+
+- **What:** The phone may list the waiting approvals and the open to-dos (titles and short text), and approve or decline an approval. Each approve and decline carries the PIN, checked on the Nandi. Five wrong PINs in a row lock the device: everything it sends is refused until the person unlocks it on the desktop (Settings › Your devices › Unlock).
+- **Where:** `services/own_devices/wire.rs` (the command set), `inbox.rs`, `mod.rs` (`decide`, `check_pin`).
+- **Automation:** Covered by: `own_devices::tests::a_phone_reads_the_inbox_sealed_both_ways_through_the_relay`, `every_approval_needs_the_pin_and_wrong_pins_lock_the_device`, `own_devices::wire::tests::*` | Layer: unit
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### OD-04 — Risky approvals stay on the computer
+
+- **What:** A phone can't approve payments, sending, new access or grants, starting or delegating work, or a browser that types or submits. It's told "Approve this on your computer." It may still decline them. Pairing, revoking and settings aren't commands a phone has.
+- **Where:** `services/own_devices/desktop_only.rs`.
+- **Automation:** Covered by: `own_devices::desktop_only::tests::*`, `own_devices::tests::risky_approvals_are_refused_from_a_device_but_may_be_declined` | Layer: unit
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### OD-05 — The record names the device
+
+- **What:** A decision made from a phone goes into the decisions file like any other, with `- **Device:** <name> (<device ID>)`. The Decisions page reads it back (`DecisionRecord.device`).
+- **Where:** `inbox/audit.rs` (`on_device`), `domain/decision.rs`.
+- **Automation:** Covered by: `own_devices::tests::an_approval_from_the_phone_is_recorded_with_the_device` (a real run's approval), `inbox::audit::tests::a_decision_from_a_paired_device_names_the_device`, `domain::decision::tests::a_decision_from_a_paired_device_names_it_and_reads_back` | Layer: unit
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### OD-06 — Revoke one or all; no relay; an older relay
+
+- **What:** Revoke removes a device here at once, then at the relay (its token stops working). Revoke all removes every one. Without a relay the section shows "Connect to your company's relay"; a relay at protocol 7 shows "Your relay needs an update for this" and no device message is sent (`RelayFeature::OwnDevices`). Unlocking works offline.
+- **Where:** `services/own_devices/mod.rs`, `relay/features.rs`, `relay/client.rs` (`device_request`, `send_own_envelope`, `on_devices`).
+- **Automation:** Covered by: `own_devices::tests::revoke_all_removes_every_device_here_and_at_the_relay`, `without_a_relay_it_asks_to_connect_and_unlocking_still_works`, `a_relay_one_version_back_says_it_needs_an_update_and_nothing_is_sent`, `relay::older_relay_tests::a_relay_before_own_devices_is_never_sent_a_device_message`, `relay::features::tests::*`, vitest `DevicesSection.test.tsx` | Layer: unit
+- **Needs relay:** yes
+- **Status:** Shipped
+
 ## Gaps and planned (not testable yet)
+
+- **The phone web app on vaultdb.ai** (pairing from the QR code, the PIN prompt, Face ID / WebAuthn): not built yet. The contract is `docs/developer/own-devices.md`.
 
 - **Userguide §9 says delegation settings live in the agent's "Permissions" tab**: they are in Agent → Settings → Sharing.
 - **Userguide §10 "Delegate: the Relay screen lists agents online … Call"**: the old Relay screen and its strings (`relay.agents.*`, `relay.call.*`) no longer render. Calling now happens from Library → Shared (TM-14).

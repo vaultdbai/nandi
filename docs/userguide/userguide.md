@@ -904,6 +904,18 @@ When something is stuck, one banner says why and who has to act, with the button
 
 **Your own asks are Requests too.** When the ask box answers with a plan, **Run plan** saves it as a Request and opens its page, the same page as work from others. Nandi carries out the steps in order, links each one to the run, workflow run or delegation doing it, and picks up where it was if you restart. A plan that only points at people or manual steps starts without asking; anything that messages an agent, runs a workflow or delegates is shown first. Steps that wait on you have **Mark done**. When it's finished, **Do this again** runs the same plan as a new Request, and **Save as workflow** drafts a workflow from its steps: check the file, change anything, and save.
 
+### Your Nandi from your phone
+
+**Settings › Your devices** pairs your phone with your Nandi, so you can see your Inbox and approve or decline from anywhere. The phone reaches this computer only through sealed messages on your relay: the relay passes them on but can't read or change them. You need a relay that's up to date; without one the section says "Connect to your company's relay", and an older relay shows "Your relay needs an update for this".
+
+1. Give the phone a name and click **Pair a phone**. A QR code shows. It works once and lapses after a few minutes.
+2. Scan it with the phone's camera. The phone opens the Nandi phone app and shows a code like `3F2A 91C0 7B44 E1D9`.
+3. Settings shows a code too. **Confirm only if the two match.** Choose a PIN of 6 to 12 digits and type it twice.
+
+What a phone can do: see the approvals waiting and your to-dos, and approve or decline, typing the PIN each time. What only this computer can do: approve payments, sending, new access or grants, anything that widens what an agent may do, a browser that types or submits, and settings, keys and adding devices. The phone says "Approve this on your computer" for those; it can still decline them. Every decision from the phone is in the Decisions list with the phone's name.
+
+Five wrong PINs in a row lock the phone. Click **Unlock** here if it was you. **Revoke** removes one phone at once, **Revoke all** every one. Nothing else in Nandi needs a phone or the relay. (The phone app itself, on vaultdb.ai, is on its way: until it ships, pairing has nothing to scan with.)
+
 ### One LLM setup for the whole team
 
 If your team runs models through AWS Bedrock, Azure AI Foundry, or a LiteLLM gateway, put the setup in the repo once and everyone who clones it gets it. Create `.nandi/llm.yaml` in your agents repo:
