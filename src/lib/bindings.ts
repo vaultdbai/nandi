@@ -3223,6 +3223,66 @@ async setGroupAccess(groupId: string, level: AccessLevel) : Promise<Result<Acces
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * The paired devices (`connected: false` without a relay)
+ */
+async listOwnDevices() : Promise<Result<DevicesOverview, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_own_devices") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Opens a pairing: the QR code to show, once
+ */
+async startDevicePairing(name: string) : Promise<Result<PairingView, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_device_pairing", { name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The fingerprints matched: activates the phone with its PIN
+ */
+async confirmOwnDevice(deviceId: string, pin: string) : Promise<Result<DeviceView, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("confirm_own_device", { deviceId, pin }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async revokeOwnDevice(deviceId: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("revoke_own_device", { deviceId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async revokeAllOwnDevices() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("revoke_all_own_devices") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Unlocks a device the wrong PINs locked (works offline)
+ */
+async unlockOwnDevice(deviceId: string, pin: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("unlock_own_device", { deviceId, pin }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async setTrustRelationship(instanceId: string, update: TrustUpdate) : Promise<Result<TrustRelationship, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_trust_relationship", { instanceId, update }) };
@@ -4124,6 +4184,7 @@ dashboardAttention: DashboardAttention,
 delegationTaskCompleted: DelegationTaskCompleted,
 delegationTaskFailed: DelegationTaskFailed,
 delegationTaskStarted: DelegationTaskStarted,
+devicesChanged: OwnDevicesChanged,
 emailChanged: EmailChanged,
 grantsChanged: GrantsChanged,
 knowmeChanged: KnowMeChanged,
@@ -4196,6 +4257,7 @@ dashboardAttention: "dashboard://attention",
 delegationTaskCompleted: "delegation://task_completed",
 delegationTaskFailed: "delegation://task_failed",
 delegationTaskStarted: "delegation://task_started",
+devicesChanged: "devices://changed",
 emailChanged: "email://changed",
 grantsChanged: "grants://changed",
 knowmeChanged: "knowme://changed",
@@ -5823,6 +5885,10 @@ decision: string; decidedBy: string; reason: string | null;
  */
 chatId: string | null; 
 /**
+ * The paired device it was decided from (a phone), if any
+ */
+device: string | null; 
+/**
  * That chat is still on this computer. Not in the file: the service
  * fills it in; reading the file leaves it `false`.
  */
@@ -5897,6 +5963,46 @@ interval: number;
  * Unix timestamp (seconds) after which the codes are invalid
  */
 expiresAt: number }
+/**
+ * Where a device stands, as Settings › Your devices shows it
+ */
+export type DeviceStatus = 
+/**
+ * The QR code is shown; no phone claimed it yet
+ */
+"pairing" | 
+/**
+ * A phone claimed it: compare its fingerprint, then confirm
+ */
+"claimed" | "active" | 
+/**
+ * Too many wrong PINs: unlock it here
+ */
+"locked"
+/**
+ * One device in Settings › Your devices
+ */
+export type DeviceView = { deviceId: string; name: string; status: DeviceStatus; 
+/**
+ * The phone's key fingerprint (`3F2A 91C0 7B44 E1D9`), once claimed
+ */
+fingerprint: string | null; pairedAt: number | null; 
+/**
+ * When this Nandi or the relay last heard from it
+ */
+lastSeenAt: number | null; online: boolean; failedPins: number }
+/**
+ * Settings › Your devices
+ */
+export type DevicesOverview = { 
+/**
+ * `false`: no relay (the screen asks to connect)
+ */
+connected: boolean; 
+/**
+ * The relay is too old for devices (the screen says it needs an update)
+ */
+relayNeedsUpdate: boolean; devices: DeviceView[] }
 export type DigestItem = { requestId: string; title: string; source: RequestSource; kind: DigestKind; status: RequestStatus; 
 /**
  * The news, for `updated`
@@ -7426,6 +7532,11 @@ export type OnboardingStep = "name" | "model" |
  * Get your computer ready (Docker; recommended, skippable)
  */
 "computer" | "network" | "packs" | "done"
+/**
+ * `devices://changed`: a device was claimed, confirmed, locked, unlocked
+ * or revoked
+ */
+export type OwnDevicesChanged = { deviceId: string | null }
 export type OwnerKind = "user" | "team" | "org"
 /**
  * Who runs the instance an agent lives on.
@@ -7480,6 +7591,34 @@ runs: string; placement: Placement;
  */
 image: string | null; auth: AuthSpec; reads: string[]; writes: string[]; hosts: string[]; tools: PackageTool[] }
 export type PackageTool = { name: string; description: string; access: GrantAccess }
+/**
+ * What the Nandi's pairing QR code holds, for the phone
+ */
+export type PairingInvite = { 
+/**
+ * The relay's WebSocket URL, without a token
+ */
+relayUrl: string; 
+/**
+ * The Nandi's instance ID: the only recipient the phone will have
+ */
+homeInstance: string; 
+/**
+ * The Nandi's keys: the phone seals to them and checks its signatures
+ */
+homeKeys: PublicKeys; deviceId: string; code: string; expiresAt: number }
+/**
+ * A pairing just opened: shown once
+ */
+export type PairingView = { deviceId: string; name: string; invite: PairingInvite; 
+/**
+ * What the QR code holds: [`PAIRING_LINK`] and the invite
+ */
+link: string; 
+/**
+ * The QR code, as an SVG document
+ */
+qrSvg: string; expiresAt: number }
 /**
  * What running an action did: a message to show, and/or a view the UI
  * should navigate to (a navigation-store `View` as JSON).
@@ -7758,6 +7897,18 @@ failed: number;
  * Mean duration of the succeeded ones
  */
 avgDurationMs: number | null }
+/**
+ * An instance's public keys, each 32 bytes in unpadded base64url.
+ */
+export type PublicKeys = { 
+/**
+ * Ed25519: verifies what this instance signs
+ */
+signing: string; 
+/**
+ * X25519: what envelopes for this instance are sealed to
+ */
+sealing: string }
 /**
  * The Account card on Network › Connection
  */
@@ -8281,7 +8432,12 @@ export type RelayFeature =
 /**
  * Groups and their policies
  */
-"groups"
+"groups" | 
+/**
+ * The person's own devices (a paired phone) and their sealed
+ * envelopes
+ */
+"ownDevices"
 /**
  * What "Copy invite message" passes on: the relay without this instance's
  * token, and the join code when the user typed one for this relay

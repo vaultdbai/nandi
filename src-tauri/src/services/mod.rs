@@ -50,6 +50,7 @@ pub mod mascot;
 pub mod network;
 pub mod notes;
 pub mod orchestrator;
+pub mod own_devices;
 pub mod palette;
 pub mod pilots;
 pub mod playbooks;

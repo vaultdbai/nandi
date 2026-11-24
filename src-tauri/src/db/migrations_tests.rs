@@ -29,6 +29,10 @@ const SHIPPED: &[(&str, &str)] = &[
         "009_retro.sql",
         "be257c53771a2024ca35797ab4c60ca5ecaaad39eab286f469c984c353283753",
     ),
+    (
+        "010_own_devices.sql",
+        "4db81492e3af13823e3299074599bbc126dd038a3f227cdf4283f245db31782e",
+    ),
 ];
 
 /// A person's rows as Nandi 0.1.0 wrote them
@@ -104,13 +108,13 @@ const AGENT_ID_COLUMNS: &[(&str, &str)] = &[
 
 /// Test-only steps after the shipped chain, the way a real one would look
 const ADD_A_COLUMN: Migration = Migration {
-    version: 10,
-    file: "010_runs_label.sql",
+    version: 11,
+    file: "011_runs_label.sql",
     sql: "ALTER TABLE runs ADD COLUMN label TEXT NOT NULL DEFAULT '';",
 };
 const REBUILD_CONVERSATIONS: Migration = Migration {
-    version: 11,
-    file: "011_rebuild_conversations.sql",
+    version: 12,
+    file: "012_rebuild_conversations.sql",
     sql: "CREATE TABLE conversations_new (
               id         TEXT PRIMARY KEY,
               agent_id   TEXT NOT NULL,
@@ -306,8 +310,9 @@ fn each_version_has_its_standing() {
         (6, Standing::Behind),
         (7, Standing::Behind),
         (8, Standing::Behind),
-        (9, Standing::Current),
-        (10, Standing::Newer),
+        (9, Standing::Behind),
+        (10, Standing::Current),
+        (11, Standing::Newer),
     ];
     for (version, expected) in cases {
         assert_eq!(standing(version, MIGRATIONS), expected, "version {version}");
@@ -472,18 +477,18 @@ fn a_new_database_gets_the_whole_schema_and_no_copy() {
 #[test]
 fn a_failed_migration_rolls_every_step_back() {
     let broken_sql = Migration {
-        version: 11,
-        file: "011_broken.sql",
+        version: 12,
+        file: "012_broken.sql",
         sql: "ALTER TABLE no_such_table ADD COLUMN x TEXT;",
     };
     // Deletes a conversation its messages and runs still point to
     let breaks_a_key = Migration {
-        version: 11,
-        file: "011_breaks_a_key.sql",
+        version: 12,
+        file: "012_breaks_a_key.sql",
         sql: "DELETE FROM conversations WHERE id = 'conv-cos';",
     };
     let cases = [
-        (broken_sql, "migration 011_broken.sql failed"),
+        (broken_sql, "migration 012_broken.sql failed"),
         (breaks_a_key, "lost the row they refer to"),
     ];
     for (failing, reason) in cases {
@@ -493,7 +498,7 @@ fn a_failed_migration_rolls_every_step_back() {
         let schema_before = schema(&conn);
 
         let error = upgrade(&conn, &chain(&[ADD_A_COLUMN, failing]), Some(&path)).unwrap_err();
-        assert!(error.contains("from version 2 to 11"), "{error}");
+        assert!(error.contains("from version 2 to 12"), "{error}");
         assert!(error.contains(reason), "{error}");
         assert!(error.contains("Nothing was changed"), "{error}");
         assert!(error.contains("state.db.bak-v2"), "{error}");
@@ -551,7 +556,14 @@ fn assignments_from_0_2_0_read_as_work_to_do_and_to_dos_are_one_per_source() {
     let before = rows(&conn);
 
     let done = upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
-    assert!(matches!(done, Upgrade::Upgraded { from: 7, to: 9, .. }));
+    assert!(matches!(
+        done,
+        Upgrade::Upgraded {
+            from: 7,
+            to: SCHEMA_VERSION,
+            ..
+        }
+    ));
     assert!(dir.path().join("state.db.bak-v7").exists());
     assert_rows_survived(&before, &rows(&conn));
     let (kind, source): (String, Option<String>) = conn
@@ -590,7 +602,14 @@ fn a_0_2_database_gains_the_retro_proposals_and_keeps_every_row() {
     let before = rows(&conn);
 
     let done = upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
-    assert!(matches!(done, Upgrade::Upgraded { from: 8, to: 9, .. }));
+    assert!(matches!(
+        done,
+        Upgrade::Upgraded {
+            from: 8,
+            to: SCHEMA_VERSION,
+            ..
+        }
+    ));
     assert!(dir.path().join("state.db.bak-v8").exists());
     assert_rows_survived(&before, &rows(&conn));
     conn.execute(
@@ -609,4 +628,38 @@ fn a_0_2_database_gains_the_retro_proposals_and_keeps_every_row() {
         )
         .unwrap();
     assert_eq!(runs, "[]");
+}
+
+#[test]
+fn a_0_2_database_gains_the_own_devices_table_and_keeps_every_row() {
+    let dir = tempfile::tempdir().unwrap();
+    let (conn, path) = v0_1_0_file(dir.path());
+    // Where 0.2.x with the weekly retro left it
+    let at_009 = MIGRATIONS.iter().position(|m| m.version == 9).unwrap();
+    upgrade(&conn, &MIGRATIONS[..=at_009], Some(&path)).unwrap();
+    let before = rows(&conn);
+
+    let done = upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
+    assert!(matches!(
+        done,
+        Upgrade::Upgraded {
+            from: 9,
+            to: 10,
+            ..
+        }
+    ));
+    assert!(dir.path().join("state.db.bak-v9").exists());
+    assert_rows_survived(&before, &rows(&conn));
+    conn.execute(
+        "INSERT INTO own_devices (device_id, name, state, created_at)
+         VALUES ('device.0123456789abcdef0123456789abcdef', 'Phone', 'pairing', 1)",
+        [],
+    )
+    .unwrap();
+    let (failed, seq): (i64, i64) = conn
+        .query_row("SELECT failed_pins, last_seq FROM own_devices", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap();
+    assert_eq!((failed, seq), (0, 0));
 }

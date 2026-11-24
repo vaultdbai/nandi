@@ -20,6 +20,7 @@ const record = (overrides: Partial<DecisionRecord> = {}): DecisionRecord => ({
   decidedBy: 'Dev',
   reason: null,
   chatId: null,
+  device: null,
   chatExists: false,
   ...overrides,
 })

@@ -7,9 +7,10 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         capability_definitions, chat, companion, config, connectors, decisions, delegation,
         delegation_clarification, egress, email, gateway, groups, harness_sessions, harnesses,
         help, identity, images, knowme, live, llm_keys, machine, manual_steps, marketplace,
-        marketplace_search, mascot, memory, network, notes, palette, pilots, policies, preferences,
-        queue, reassign, relay, relay_capabilities, remote, repo, requests, retro, runs, shared,
-        snapshots, studio, tasks, tools, triggers, work, workflow_builder, workflows, workspace,
+        marketplace_search, mascot, memory, network, notes, own_devices, palette, pilots, policies,
+        preferences, queue, reassign, relay, relay_capabilities, remote, repo, requests, retro,
+        runs, shared, snapshots, studio, tasks, tools, triggers, work, workflow_builder, workflows,
+        workspace,
     };
     use crate::services::a2a::reassign::TaskReassigned;
     use crate::services::a2a::returns::RequestReturned;
@@ -29,6 +30,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::services::orchestrator::compaction::AgentRunCompacted;
     use crate::services::orchestrator::middleware::AgentTurnAborted;
     use crate::services::orchestrator::tool_search::AgentToolsLoaded;
+    use crate::services::own_devices::OwnDevicesChanged;
     use crate::services::pilots::{PilotChanged, PilotConsentNeeded};
     use crate::services::relay::{
         MemberKeyChanged, RelayAgentOffline, RelayAgentOnline, RelaySealRefused, RelayStatus,
@@ -376,6 +378,12 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             groups::set_group_role,
             groups::get_group_access,
             groups::set_group_access,
+            own_devices::list_own_devices,
+            own_devices::start_device_pairing,
+            own_devices::confirm_own_device,
+            own_devices::revoke_own_device,
+            own_devices::revoke_all_own_devices,
+            own_devices::unlock_own_device,
             network::set_trust_relationship,
             network::get_relay_trust,
             network::set_relay_trust,
@@ -511,6 +519,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             RelaySealRefused,
             MemberKeyChanged,
             GroupsChanged,
+            OwnDevicesChanged,
             KnowMeChanged,
             RetroChanged,
             DelegationTaskStarted,

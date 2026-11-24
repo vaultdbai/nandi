@@ -234,6 +234,9 @@ function DecisionRow({ record }: { record: DecisionRecord }) {
         {record.decidedBy && (
           <span>{t('decisions.by', { name: record.decidedBy })}</span>
         )}
+        {record.device && (
+          <span>{t('decisions.fromDevice', { device: record.device })}</span>
+        )}
         {record.chatId &&
           (view ? (
             <Button

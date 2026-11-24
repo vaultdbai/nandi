@@ -99,6 +99,7 @@ describe('Tell Nandi about you (What you offer)', () => {
               decidedBy: 'Sam',
               reason: 'on the card: Sprint planning',
               chatId: 'inbox:knowMe:you',
+              device: null,
               chatExists: true,
             },
           ],

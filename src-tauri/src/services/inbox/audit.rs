@@ -26,6 +26,14 @@ struct ChatDecision {
 
 tokio::task_local! {
     static CHAT: ChatDecision;
+    /// The paired device a decision is being made from (its name and ID)
+    static DEVICE: String;
+}
+
+/// Runs `decide` as a decision made from the person's paired device
+/// `device` (`services::own_devices`): the entry names it
+pub async fn on_device<F: Future>(device: String, decide: F) -> F::Output {
+    DEVICE.scope(device, decide).await
 }
 
 /// Runs `decide` as a decision made in the chat `conversation_id`, with
@@ -106,6 +114,7 @@ fn entry(decided: Decided, who: String, at: i64) -> DecisionEntry {
             .note
             .or_else(|| chat.as_ref().and_then(|c| c.note.clone())),
         conversation_id: chat.map(|c| c.conversation_id),
+        device: DEVICE.try_with(Clone::clone).ok(),
     }
 }
 
@@ -173,6 +182,21 @@ mod tests {
         assert!(text.contains("- **Decision:** refused"), "{text}");
         assert!(text.contains("- **Reason:** too early"), "{text}");
         assert!(!text.contains("**Chat:**"), "{text}");
+        assert!(!text.contains("**Device:**"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn a_decision_from_a_paired_device_names_the_device() {
+        let state = AppState::for_tests(Vec::new());
+        on_device("Ada's phone (device.01)".into(), async {
+            record(&state, Decided::new("approval", "a1", "approved"));
+        })
+        .await;
+        let text = this_month(&state);
+        assert!(
+            text.contains("- **Device:** Ada's phone (device.01)"),
+            "{text}"
+        );
     }
 
     #[tokio::test]

@@ -152,6 +152,7 @@ pub mod mascot;
 pub mod memory;
 pub mod network;
 pub mod notes;
+pub mod own_devices;
 pub mod palette;
 pub mod pilots;
 pub mod policies;
@@ -205,6 +206,7 @@ const TABLES: &[&[(&str, Handler)]] = &[
     email::RPC,
     gateway::RPC,
     groups::RPC,
+    own_devices::RPC,
     harness_sessions::RPC,
     harnesses::RPC,
     help::RPC,

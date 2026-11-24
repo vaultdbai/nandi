@@ -39,6 +39,7 @@ pub(super) fn start(state: &AppState) {
         relay::start(state, client);
         state.workflows().use_relay(client.clone());
         super::groups::watch(state, client);
+        super::own_devices::watch(state, client);
     }
     if let Some(delegator) = state.a2a_delegator() {
         a2a::start(state, delegator);

@@ -5,6 +5,7 @@
 
 import type {
   GroupsChanged,
+  OwnDevicesChanged,
   AgentApprovalRequest,
   AgentApprovalResolved,
   AgentMessageAdded,
@@ -171,6 +172,8 @@ interface NandiEventMap {
   'network://member_key_changed': MemberKeyChanged
   /** A group I'm in (or was invited to) changed; `groupId: null` after a reconnect */
   'network://group_changed': GroupsChanged
+  /** A paired device was claimed, confirmed, locked, unlocked or revoked */
+  'devices://changed': OwnDevicesChanged
   'delegation://task_started': DelegationTaskStarted
   'delegation://task_completed': DelegationTaskCompleted
   /** Failed, cancelled, or timed out */
@@ -324,6 +327,7 @@ const CORE_EVENTS: Record<CoreEventName, true> = {
   'relay://seal_refused': true,
   'network://member_key_changed': true,
   'network://group_changed': true,
+  'devices://changed': true,
   'delegation://task_started': true,
   'delegation://task_completed': true,
   'delegation://task_failed': true,

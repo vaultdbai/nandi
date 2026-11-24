@@ -16,6 +16,7 @@ export const SETTINGS_SECTIONS = [
   'models',
   'computer',
   'account',
+  'devices',
   'email',
   'access',
   'autoApprove',

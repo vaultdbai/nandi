@@ -105,8 +105,14 @@ impl TestRelay {
         self.reconnect(client, instance).await;
     }
 
-    fn url(&self) -> String {
+    /// Its WebSocket URL
+    pub fn url(&self) -> String {
         format!("ws://{}/relay", self.addr)
+    }
+
+    /// Its HTTP base, as a phone claiming a pairing code reaches it
+    pub fn http_base(&self) -> String {
+        format!("http://{}", self.addr)
     }
 
     /// The frames `instance` sent the relay, in order

@@ -26,6 +26,7 @@ import { BrowserSection } from './sections/BrowserSection'
 import { CloudCredentialsSection } from './sections/CloudCredentialsSection'
 import { AutoApproveSection } from './sections/AutoApproveSection'
 import { ConnectorAccessSection } from './sections/ConnectorAccessSection'
+import { DevicesSection } from './sections/DevicesSection'
 import { EmailSection } from './sections/EmailSection'
 import { InternetAccessSection } from './sections/InternetAccessSection'
 import { ModelsSection } from './sections/ModelsSection'
@@ -112,6 +113,7 @@ export function SettingsView({
           {section === 'models' && <ModelsSection />}
           {section === 'computer' && <ThisComputerSection />}
           {section === 'account' && <AccountSection />}
+          {section === 'devices' && <DevicesSection />}
           {section === 'email' && <EmailSection />}
           {section === 'access' && <ConnectorAccessSection />}
           {section === 'autoApprove' && <AutoApproveSection />}

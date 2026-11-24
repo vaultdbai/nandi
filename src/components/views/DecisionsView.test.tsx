@@ -20,6 +20,7 @@ function record(overrides: Partial<DecisionRecord> = {}): DecisionRecord {
     decidedBy: 'Dev Chechi',
     reason: 'Not before the board meeting',
     chatId: null,
+    device: null,
     chatExists: false,
     ...overrides,
   }

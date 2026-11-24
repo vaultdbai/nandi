@@ -21,6 +21,7 @@ use crate::services::marketplace::events::*;
 use crate::services::orchestrator::compaction::AgentRunCompacted;
 use crate::services::orchestrator::middleware::AgentTurnAborted;
 use crate::services::orchestrator::tool_search::AgentToolsLoaded;
+use crate::services::own_devices::OwnDevicesChanged;
 use crate::services::pilots::{PilotChanged, PilotConsentNeeded};
 use crate::services::relay::{
     MemberKeyChanged, RelayAgentOffline, RelayAgentOnline, RelaySealRefused, RelayStatus,
@@ -109,6 +110,7 @@ tauri_events!(
     RelaySealRefused,
     MemberKeyChanged,
     GroupsChanged,
+    OwnDevicesChanged,
     KnowMeChanged,
     RetroChanged,
     DelegationTaskStarted,

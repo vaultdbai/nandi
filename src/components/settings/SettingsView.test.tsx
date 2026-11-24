@@ -31,6 +31,7 @@ describe('SettingsView', () => {
       'Models & runtimes',
       'This computer',
       'Account',
+      'Your devices',
       'Email',
       'Connector access',
       'Auto-approve',

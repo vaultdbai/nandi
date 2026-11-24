@@ -124,6 +124,7 @@ mod tests {
             decision: decision.into(),
             note: None,
             conversation_id: None,
+            device: None,
         }
     }
 

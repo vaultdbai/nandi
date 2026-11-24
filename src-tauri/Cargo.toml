@@ -130,6 +130,10 @@ aws-types = { version = "1", default-features = false }
 aws-sigv4 = { version = "1", default-features = false, features = ["sign-http"] }
 aws-credential-types = { version = "1", default-features = false }
 aws-runtime = { version = "1", default-features = false }
+# A paired phone's PIN, kept only as a slow hash (Argon2id), and the QR
+# code its pairing shows (`services::own_devices`)
+argon2 = { version = "0.5", features = ["std"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 
 # Development builds use a sibling checkout of nandi-spec (clone it next to
 # this repo, at `../nandi-spec`), so a protocol change and its use land

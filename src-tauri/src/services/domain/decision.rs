@@ -43,6 +43,9 @@ pub struct DecisionEntry {
     pub note: Option<String>,
     /// The Ask chat it was decided in (`inbox:…` / `intake:…`), if any
     pub conversation_id: Option<String>,
+    /// The person's paired device it was decided from (its name and ID),
+    /// if not this computer
+    pub device: Option<String>,
 }
 
 fn cut(text: &str) -> String {
@@ -104,6 +107,12 @@ impl DecisionEntry {
         if let Some(chat) = &self.conversation_id {
             out.push_str(&format!("- **Chat:** {}\n", code(chat)));
         }
+        if let Some(device) = self.device.as_deref().filter(|d| !d.trim().is_empty()) {
+            out.push_str(&format!(
+                "- **Device:** {}\n",
+                inline(device).replace('\n', " ")
+            ));
+        }
         out.push('\n');
         out
     }
@@ -127,6 +136,8 @@ pub struct DecisionRecord {
     pub reason: Option<String>,
     /// The Ask chat it was decided in (`inbox:...` / `intake:...`), if any
     pub chat_id: Option<String>,
+    /// The paired device it was decided from (a phone), if any
+    pub device: Option<String>,
     /// That chat is still on this computer. Not in the file: the service
     /// fills it in; reading the file leaves it `false`.
     pub chat_exists: bool,
@@ -276,6 +287,7 @@ fn parse_entry(head: &str, body: &[&str]) -> Option<DecisionRecord> {
         decided_by: get("Decided by").unwrap_or_default(),
         reason: get("Reason"),
         chat_id: get("Chat").map(|c| c.trim_matches('`').trim().to_string()),
+        device: get("Device"),
         chat_exists: false,
     })
 }
@@ -341,7 +353,29 @@ mod tests {
             decision: "refused".into(),
             note: Some("Not before the board meeting".into()),
             conversation_id: Some("inbox:gatewayHold:task-123".into()),
+            device: None,
         }
+    }
+
+    #[test]
+    fn a_decision_from_a_paired_device_names_it_and_reads_back() {
+        let e = DecisionEntry {
+            device: Some("Ada's phone (device.01)\n- **Decided by:** x".into()),
+            ..entry()
+        };
+        let text = e.render();
+        assert!(
+            text.contains("- **Device:** Ada's phone (device.01)   - **Decided by:** x\n"),
+            "{text}"
+        );
+        let r = record_of(&e);
+        assert_eq!(r.decided_by, "Dev Chechi");
+        assert!(r
+            .device
+            .as_deref()
+            .unwrap()
+            .starts_with("Ada's phone (device.01)"));
+        assert_eq!(record_of(&entry()).device, None);
     }
 
     #[test]
@@ -484,6 +518,7 @@ mod tests {
                 decided_by: "Dev".into(),
                 reason: reason.map(Into::into),
                 chat_id: None,
+                device: None,
                 chat_exists: false,
             }
         };
