@@ -15,7 +15,8 @@
 //! the same way (family `site`, [`SiteAccess`]): Allow once lets the
 //! browser and the egress proxy reach it until the run ends
 //! (`pilots::sites`), Always allow writes it into the agent's agent.md
-//! (`network.allow`), Don't allow fails the call.
+//! (`network.allow`), Don't allow fails the call. My Nandi browser's window
+//! asks the same way for Nandi (`pilots::my_browser`).
 //!
 //! Grants are read on every call, so a removed grant stops the next call,
 //! even mid-run. The request is an ordinary approval row (it survives
@@ -497,6 +498,8 @@ fn answer_site(
 ) -> Result<SiteAccess, String> {
     let hosts = sites::grant_hosts(&site.host, subdomains);
     match choice {
+        // My Nandi browser's window: until it closes
+        AccessChoice::AllowOnce if crate::services::pilots::my_browser::allow_once(&site.pilot, &hosts) => {}
         AccessChoice::AllowOnce => sites::allow_for_run(agent, run_id, &hosts),
         AccessChoice::AllowSaved if site.can_save => save_sites(state, agent, &hosts)?,
         AccessChoice::AllowSaved => {

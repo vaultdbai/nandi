@@ -454,6 +454,13 @@ pub trait KeyRelease: Send + Sync {
     ) -> Result<crate::services::lock_box::ReleasedKey, String>;
 }
 
+/// Who hears about a tunnel the rules refused, to ask the person about the
+/// site (`pilots::my_browser`: My Nandi browser's "Allow this site?"). It
+/// returns at once; the tunnel is refused either way.
+pub trait RefusedSite: Send + Sync {
+    fn refused(&self, identity: &str, host: &str, port: u16);
+}
+
 /// What the AWS, fetch, and tunnel routes share: who's calling, and what
 /// they may do.
 #[derive(Clone)]
@@ -462,6 +469,8 @@ pub(crate) struct ProxyContext {
     capabilities: CapabilitiesFn,
     /// The Lock box; `None` where no key may be released
     keys: Option<Arc<dyn KeyRelease>>,
+    /// Told about refused tunnels; `None` where nobody asks
+    refused: Option<Arc<dyn RefusedSite>>,
 }
 
 impl ProxyContext {
@@ -582,6 +591,11 @@ fn capabilities_of(
         return session_capabilities(identity)
             .ok_or_else(|| "No harness test is running".to_string());
     }
+    // My Nandi browser's window: Nandi's sites, plus any the person allowed
+    // once while it's open
+    if let Some(kind) = crate::services::pilots::my_browser::kind_of_identity(identity) {
+        return crate::services::pilots::my_browser::capabilities(store, kind);
+    }
     // A browser pilot (`browser:<agent>`): that agent's own sites, plus any
     // a person allowed once in its current run
     if let Some(agent) = crate::services::pilots::browser::agent_of_identity(identity) {
@@ -605,6 +619,9 @@ pub fn start_server(state: &AppState) {
             Arc::new(move |identity| capabilities_of(&store, identity))
         },
         keys: Some(Arc::new(crate::services::lock_box::Releaser(state.clone()))),
+        refused: Some(Arc::new(crate::services::pilots::my_browser::Asker(
+            state.clone(),
+        ))),
     };
     let router = llm_proxy::router(llm_proxy::ProxyState::new(state))
         .merge(model_proxy::router(model_proxy::ModelProxyState::new(
@@ -684,6 +701,19 @@ pub(crate) mod tests {
             tokens,
             capabilities: Arc::new(move |_| Ok(capabilities.clone())),
             keys: None,
+            refused: None,
+        }
+    }
+
+    /// [`context`] that tells `refused` about refused tunnels
+    pub fn context_with_refused(
+        tokens: ProxyTokens,
+        capabilities: Capabilities,
+        refused: Arc<dyn RefusedSite>,
+    ) -> ProxyContext {
+        ProxyContext {
+            refused: Some(refused),
+            ..context(tokens, capabilities)
         }
     }
 

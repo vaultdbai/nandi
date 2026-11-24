@@ -1324,30 +1324,33 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 ### ST-37 — Settings › Browser: My Nandi browser
 
 - **What:** One shared browser profile per installed browser type (Chrome, Edge), where the person signs in to sites themselves. Settings › Browser has a card per installed browser:
-  - **Open my Nandi browser** opens a normal Chrome or Edge window on `~/.nandi/local/browser/profiles/<chrome|edge>/profile`, with no agent attached. It's the person's own browsing: it doesn't go through the egress proxy, and no agent's allowed sites limit it. Opening it again while it's open adds a window.
+  - **Open my Nandi browser** opens Chrome or Edge on `~/.nandi/local/browser/profiles/<chrome|edge>/profile` as the Nandi agent's browser: the visible browser pilot's own launch (Playwright, window mode) with no model driving it, through the egress proxy as `my-browser-<chrome|edge>:nandi`, with Nandi's allowed sites. Opening it again while it's open adds a tab.
+  - A site Nandi isn't allowed yet doesn't load, and Nandi's Inbox shows **Allow this site?** for it (once per site while the window is open), in a Nandi run in the conversation `browser:<chrome|edge>`. Allow once lasts until the window closes; Always allow adds it to Nandi's agent.md; Don't allow isn't asked again while it's open. Addresses, local names and other ports are refused without asking, as for agents.
+  - The person's extensions run in their window. An agent's browser on the profile runs with extensions off.
+  - Closing the window frees the profile for agents; a request still open expires.
   - The card says: "Sign in to Chrome (or Edge) in this window to bring your saved passwords through the browser's own sync. Nandi never copies passwords or cookies from your everyday browser."
   - A line says whether sites remember sign-ins, whether the window is open, or which agent has it open right now, and which agents may use it (their grants, AG-39).
   - **Sign out everywhere** asks first, then closes the window and deletes that profile. Refused calmly while an agent's browser has it open ("in use by <agent> right now").
   - Without Chrome or Edge: "Nandi didn't find Chrome or Edge on this computer."
   - The profile is never under the repo, never mounted into a container, and never backed up (the S3 backup leaves out `local/browser/*/*/profile`).
-- **Where:** `src/components/settings/sections/BrowserSection.tsx`, `src/lib/browser-profile.ts`, `src/hooks/usePilots.ts` (`useNandiBrowsers`, `useOpenNandiBrowser`, `useSignOutNandiBrowser`); `src-tauri/src/services/pilots/profiles.rs` (`profile_dir`, `open_window`, `window_args`, `begin_wipe`), `services/pilots/browser.rs` (`sign_out_shared`), `services/pilots.rs` (`nandi_browsers`, `open_nandi_browser`, `sign_out_nandi_browser`); commands `nandi_browsers`, `open_nandi_browser`, `sign_out_nandi_browser`.
+- **Where:** `src/components/settings/sections/BrowserSection.tsx`, `src/lib/browser-profile.ts`, `src/hooks/usePilots.ts` (`useNandiBrowsers`, `useOpenNandiBrowser`, `useSignOutNandiBrowser`); `src-tauri/src/services/pilots/profiles.rs` (`profile_dir`, `claim_for_person`, `begin_wipe`), `services/pilots/my_browser.rs` (`open`, `Asker`, `close_approval`), `services/pilots/browser.rs` (`open_person_window`, `config`, `sign_out_shared`), `services/egress/tunnel.rs` (`RefusedSite`), `services/pilots.rs` (`nandi_browsers`, `open_nandi_browser`, `sign_out_nandi_browser`); commands `nandi_browsers`, `open_nandi_browser`, `sign_out_nandi_browser`.
 - **Preconditions:** Chrome or Edge installed.
 - **Steps:**
   1. Open Settings › Browser.
   2. Press **Open my Nandi browser** under Chrome. Sign in to a site, and to Chrome itself. Close the window.
-  3. Visit a site no agent is allowed in that window.
+  3. In that window, visit a site Nandi isn't allowed. Answer **Allow once** in the Inbox and reload. Visit another new site and answer **Don't allow**.
   4. Give an agent My Nandi browser (AG-39) and start a run that browses; while it runs, press **Open my Nandi browser** and **Sign out everywhere**.
   5. After the run, press **Sign out everywhere** and confirm.
 - **Expected:**
   - Step 1: one card per installed browser, with the sync note.
-  - Step 2: a normal window opens (no "controlled by automated software" bar); after closing, the card says sites remember your sign-ins.
-  - Step 3: the site loads; nothing about it is in `egress.log`.
+  - Step 2: the window opens with no "controlled by automated software" bar; your extensions work in it; after closing, the card says sites remember your sign-ins.
+  - Step 3: the first page doesn't load, and **Allow this site?** for Nandi appears in the Inbox ("You opened it in My Nandi browser (Chrome)"). After Allow once and a reload it loads, and `egress.log` lists its requests as `my-browser-chrome:nandi`. The second site isn't asked about again. Closing the window ends the allowed-once site.
   - Step 4: "In use by <agent> right now"; both buttons are disabled.
   - Step 5: "Signed out everywhere"; the profile folder is gone; the button is disabled.
 - **Edge / negative cases:**
   - The person's everyday Chrome or Edge profile is never read or changed.
   - The window stays open after Nandi quits; an agent asking for the profile then is told it's open in another window (Chromium's own lock).
-- **Automation:** Covered by: Rust `pilots/profiles.rs` (`shared_profiles_live_under_local_browser_profiles`, `the_person_s_window_has_no_proxy_and_its_own_profile`, `a_second_agent_is_told_the_profile_is_in_use_until_the_first_lets_go`, `a_browser_this_app_did_not_start_still_counts`, `no_code_reads_the_everyday_browser_profile`), `pilots/browser.rs` (`backups_leave_out_every_browser_profile`), Vitest `BrowserSection.test.tsx`, `browser-profile.test.ts`, `SettingsView.test.tsx` | Layer: unit | Gap: no test launches a real browser; opening, signing in and Chrome sync are manual.
+- **Automation:** Covered by: Rust `pilots/profiles.rs` (`shared_profiles_live_under_local_browser_profiles`, `the_person_s_window_holds_the_profile_and_agents_wait`, `nothing_here_starts_a_browser_without_the_proxy`, `a_second_agent_is_told_the_profile_is_in_use_until_the_first_lets_go`, `a_browser_this_app_did_not_start_still_counts`, `no_code_reads_the_everyday_browser_profile`), `pilots/browser.rs` (`backups_leave_out_every_browser_profile`, `every_launch_goes_through_the_proxy`, `agents_run_with_extensions_off_and_the_person_keeps_theirs`), `pilots/my_browser.rs` (`the_window_is_nandi_s_browser`, `asks_only_about_public_sites_on_https`, `a_new_site_in_the_window_asks_allow_this_site`), `egress/tunnel.rs` (`a_refused_site_is_told_with_who_asked_and_an_allowed_one_is_not`), Vitest `BrowserSection.test.tsx`, `browser-profile.test.ts`, `SettingsView.test.tsx` | Layer: unit | Gap: no test launches a real browser; opening, signing in and Chrome sync are manual.
 - **Needs relay:** no
 - **Status:** Shipped
 

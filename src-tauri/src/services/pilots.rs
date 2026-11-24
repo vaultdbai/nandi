@@ -36,6 +36,7 @@ pub mod detect;
 pub mod handover;
 pub mod install;
 mod mcp;
+pub mod my_browser;
 pub mod profiles;
 pub mod refusal;
 pub mod runtime;
@@ -714,15 +715,17 @@ fn in_use(state: &AppState, kind: profiles::BrowserKind, holder: &profiles::Hold
     profiles::in_use_message(kind, holder, |id| state.store().display_name(id))
 }
 
-/// Opens the person's own window on My Nandi browser: no agent attached, no
-/// egress proxy (it's the person's own browsing). Refused calmly while an
-/// agent's browser has it open.
+/// Opens the person's own window on My Nandi browser as the Nandi agent's
+/// browser: through the egress proxy with Nandi's allowed sites, asking
+/// before a new one (`my_browser`). Refused calmly while an agent's browser
+/// has it open.
 pub async fn open_nandi_browser(
     state: &AppState,
     browser: profiles::BrowserKind,
 ) -> Result<(), String> {
-    let local = crate::utils::nandi_config::local_dir()?;
-    profiles::open_window(&local, browser)?.map_err(|holder| in_use(state, browser, &holder))
+    my_browser::open(state, browser)
+        .await?
+        .map_err(|holder| in_use(state, browser, &holder))
 }
 
 /// "Sign out everywhere" for My Nandi browser: closes its window and wipes
@@ -732,6 +735,8 @@ pub async fn sign_out_nandi_browser(
     browser: profiles::BrowserKind,
 ) -> Result<bool, String> {
     let local = crate::utils::nandi_config::local_dir()?;
+    // The person's window closes first, so nothing writes to the profile
+    my_browser::close(state, browser).await;
     browser::sign_out_shared(&local, browser, |id| state.store().display_name(id)).await
 }
 

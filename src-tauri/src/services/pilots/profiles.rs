@@ -2,15 +2,20 @@
 //! Edge), at `~/.nandi/local/browser/profiles/<chrome|edge>/profile`.
 //!
 //! - **The person signs in, at their own pace.** Settings › Browser opens a
-//!   visible window on the profile with no agent attached ([`window_args`]).
-//!   That window is the person's own browsing, so it doesn't go through the
-//!   egress proxy and no agent's allowed sites limit it.
+//!   visible window on the profile as the Nandi agent's browser
+//!   ([`super::my_browser`]): the same Playwright launch as an agent's
+//!   visible browser, through the egress proxy under Nandi's identity and
+//!   Nandi's allowed sites. A new site asks "Allow this site?" first.
 //! - **Agents use it only with a grant.** An agent's visible `browser`
 //!   pilot uses the shared profile only when the person chose it on the
 //!   agent's page (`consent.<agent>.browser.profile`, [`super::store`]).
 //!   The agent's browser still goes through the egress proxy, its allowed
-//!   sites and per-call approvals. The headless browser never gets it
-//!   ([`for_pilot`]).
+//!   sites and per-call approvals, with extensions off, so nothing the
+//!   person installed reads an agent's pages. The headless browser never
+//!   gets it ([`for_pilot`]).
+//! - **Nothing opens it without the proxy.** Every launch on a shared
+//!   profile is Playwright MCP's, from `browser::config`; this module starts
+//!   no browser itself.
 //! - **One browser per profile.** Chrome corrupts a profile two processes
 //!   share, so whoever opens it first holds it ([`decide`]); anyone else is
 //!   told calmly that it's in use and tries again. Nobody waits: the
@@ -25,7 +30,6 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Stdio};
 use std::sync::{LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -211,21 +215,14 @@ pub fn in_use_message(kind: BrowserKind, holder: &Holder, name: impl Fn(&str) ->
 
 struct Open {
     holder: Holder,
-    /// The person's window, to see when it closes
-    window: Option<Child>,
+    /// A sign-out is wiping it: only [`end_wipe`] lets it go
+    wiping: bool,
 }
 
 static OPEN: LazyLock<Mutex<HashMap<BrowserKind, Open>>> = LazyLock::new(Default::default);
 
 fn open_profiles() -> std::sync::MutexGuard<'static, HashMap<BrowserKind, Open>> {
-    let mut open = OPEN.lock().unwrap_or_else(|e| e.into_inner());
-    // The person closed their window: the profile is free
-    open.retain(|_, o| {
-        o.window
-            .as_mut()
-            .is_none_or(|w| matches!(w.try_wait(), Ok(None)))
-    });
-    open
+    OPEN.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Who has `kind`'s profile open, as far as this app knows
@@ -262,7 +259,7 @@ pub fn claim_for_agent(kind: BrowserKind, agent: &str, dir: &Path) -> Result<(),
                 kind,
                 Open {
                     holder: who,
-                    window: None,
+                    wiping: false,
                 },
             );
             Ok(())
@@ -278,82 +275,62 @@ pub fn release_agent(agent: &str) {
 
 /// Playwright's defaults that keep a browser's passwords and cookies in a
 /// plain store instead of the system keychain. Every visible browser drops
-/// them (`browser::config`), and the person's window never passes them, so
-/// both read the same sign-ins from the keychain
+/// them (`browser::config`), the person's window included, so both read
+/// the same sign-ins from the keychain
 pub const PLAIN_STORE_ARGS: [&str; 2] = ["--password-store=basic", "--use-mock-keychain"];
 
-/// The person's window's command line: the shared profile and no proxy
-/// (it's the person's own browsing). Its passwords and cookies stay in the
-/// system keychain, as in an agent's visible browser
-pub fn window_args(kind: BrowserKind, dir: &Path) -> Vec<String> {
-    let mut args = vec![
-        format!("--user-data-dir={}", dir.display()),
-        "--no-first-run".to_string(),
-        "--no-default-browser-check".to_string(),
-    ];
-    if kind == BrowserKind::Edge {
-        // Edge otherwise restarts itself, and the window looks closed
-        args.push("--edge-skip-compat-layer-relaunch".to_string());
-    }
-    args
-}
-
-/// Opens the person's window on `kind`'s shared profile under `local`.
-/// `Err(holder)` when an agent has it open. Opening it again while it's
-/// open adds a window to the same browser.
-pub fn open_window(local: &Path, kind: BrowserKind) -> Result<Result<(), Holder>, String> {
-    let exe = kind
-        .executable()
-        .ok_or_else(|| format!("{} isn't on this computer", kind.label()))?;
-    let dir = create(local, kind)?;
+/// The person's window asks for `kind`'s profile (in `dir`): `Ok(Free)`
+/// when it's theirs now, `Ok(Yours)` when their window has it already,
+/// else who has it. A browser this app didn't start counts as the person's.
+pub fn claim_for_person(kind: BrowserKind, dir: &Path) -> Result<Claim, Holder> {
     let mut open = open_profiles();
-    let claim = decide(open.get(&kind).map(|o| &o.holder), &Holder::Person);
-    if let Claim::InUse(holder) = claim {
-        return Ok(Err(holder));
+    match decide(open.get(&kind).map(|o| &o.holder), &Holder::Person) {
+        Claim::InUse(holder) => Err(holder),
+        Claim::Yours if open.get(&kind).is_some_and(|o| o.wiping) => Err(Holder::Person),
+        Claim::Yours => Ok(Claim::Yours),
+        Claim::Free if locked_on_disk(dir) => Err(Holder::Person),
+        Claim::Free => {
+            open.insert(
+                kind,
+                Open {
+                    holder: Holder::Person,
+                    wiping: false,
+                },
+            );
+            Ok(Claim::Free)
+        }
     }
-    let child = std::process::Command::new(exe)
-        .args(window_args(kind, &dir))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Couldn't open {}: {e}", kind.label()))?;
-    if claim == Claim::Free {
-        open.insert(
-            kind,
-            Open {
-                holder: Holder::Person,
-                window: Some(child),
-            },
-        );
-    }
-    log::info!("Opened My Nandi browser ({})", kind.label());
-    Ok(Ok(()))
 }
 
-/// Starts wiping `kind`'s profile: closes the person's window and keeps
-/// agents out until [`end_wipe`]. `Err(holder)` when an agent has it open.
+/// The person's window on `kind` closed: the profile is free (unless a
+/// sign-out is wiping it)
+pub fn release_person(kind: BrowserKind) {
+    let mut open = open_profiles();
+    if open
+        .get(&kind)
+        .is_some_and(|o| o.holder == Holder::Person && !o.wiping)
+    {
+        open.remove(&kind);
+    }
+}
+
+/// Starts wiping `kind`'s profile: keeps agents and a new window out until
+/// [`end_wipe`] (the caller closes the person's window). `Err(holder)` when
+/// an agent has it open.
 pub fn begin_wipe(kind: BrowserKind) -> Result<(), Holder> {
     let mut open = open_profiles();
-    match open.get_mut(&kind) {
-        Some(Open {
-            holder: Holder::Agent(agent),
-            ..
-        }) => return Err(Holder::Agent(agent.clone())),
-        Some(Open {
-            window: Some(window),
-            ..
-        }) => {
-            let _ = window.kill();
-            let _ = window.wait();
-        }
-        _ => {}
+    if let Some(Open {
+        holder: Holder::Agent(agent),
+        ..
+    }) = open.get(&kind)
+    {
+        return Err(Holder::Agent(agent.clone()));
     }
     open.insert(
         kind,
         Open {
             holder: Holder::Person,
-            window: None,
+            wiping: true,
         },
     );
     Ok(())
@@ -361,7 +338,7 @@ pub fn begin_wipe(kind: BrowserKind) -> Result<(), Holder> {
 
 pub fn end_wipe(kind: BrowserKind) {
     let mut open = open_profiles();
-    if open.get(&kind).is_some_and(|o| o.holder == Holder::Person) {
+    if open.get(&kind).is_some_and(|o| o.wiping) {
         open.remove(&kind);
     }
 }
@@ -494,25 +471,51 @@ mod tests {
         }
     }
 
+    /// Uses a browser type no other test claims (the agents' test uses
+    /// Edge), so tests can run together
     #[test]
-    fn the_person_s_window_has_no_proxy_and_its_own_profile() {
-        let dir = Path::new("/h/.nandi/local/browser/profiles/edge/profile");
-        let args = window_args(BrowserKind::Edge, dir);
+    fn the_person_s_window_holds_the_profile_and_agents_wait() {
+        let dir = tempfile::tempdir().unwrap();
+        let kind = BrowserKind::Chrome;
+        assert_eq!(claim_for_person(kind, dir.path()), Ok(Claim::Free));
+        assert_eq!(claim_for_person(kind, dir.path()), Ok(Claim::Yours));
         assert_eq!(
-            args[0],
-            format!("--user-data-dir={}", dir.display()),
-            "never the everyday profile"
+            claim_for_agent(kind, "cos", dir.path()),
+            Err(Holder::Person),
+            "in use while the person's window is open"
         );
-        assert!(args.iter().all(|a| !a.contains("proxy")), "{args:?}");
-        assert!(
-            PLAIN_STORE_ARGS
-                .iter()
-                .all(|plain| !args.contains(&plain.to_string())),
-            "passwords stay in the system keychain"
+        // A sign-out closes the window; the window's close doesn't free it
+        assert_eq!(begin_wipe(kind), Ok(()));
+        release_person(kind);
+        assert_eq!(
+            claim_for_agent(kind, "cos", dir.path()),
+            Err(Holder::Person)
         );
-        assert!(args.contains(&"--edge-skip-compat-layer-relaunch".to_string()));
-        assert!(!window_args(BrowserKind::Chrome, dir)
-            .contains(&"--edge-skip-compat-layer-relaunch".to_string()));
+        assert_eq!(claim_for_person(kind, dir.path()), Err(Holder::Person));
+        end_wipe(kind);
+        assert_eq!(holder(kind), None);
+
+        assert_eq!(claim_for_person(kind, dir.path()), Ok(Claim::Free));
+        release_person(kind);
+        assert_eq!(claim_for_agent(kind, "cos", dir.path()), Ok(()));
+        assert_eq!(
+            claim_for_person(kind, dir.path()),
+            Err(Holder::Agent("cos".into()))
+        );
+        release_agent("cos");
+        assert_eq!(holder(kind), None);
+    }
+
+    /// Every launch on a shared profile goes through Playwright MCP and the
+    /// egress proxy (`browser::config`): this module, which knows where
+    /// Chrome and Edge are, never starts one itself
+    #[test]
+    fn nothing_here_starts_a_browser_without_the_proxy() {
+        let src = include_str!("profiles.rs");
+        let code = &src[..src.find("#[cfg(test)]").unwrap()];
+        for spawn in ["Command::new", ".spawn()", "std::process"] {
+            assert!(!code.contains(spawn), "{spawn}");
+        }
     }
 
     /// The static check: no code names the person's everyday browser

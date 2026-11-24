@@ -1071,7 +1071,24 @@ impl EventBus {
         status: RunStatus,
         error: Option<String>,
     ) -> Result<(), String> {
-        let (run_id, agent_id) = (ctx.run_id.clone(), ctx.agent_id.clone());
+        let agent_id = ctx.agent_id.clone();
+        self.run_done(ctx, status, error).await?;
+        // So do its browser pages (the profile stays): the run plan's
+        // safety net when the agent didn't close them
+        crate::services::pilots::browser::close_pages(&agent_id).await;
+        Ok(())
+    }
+
+    /// Ends a run (see [`close_run`]) and the sites it had, leaving the
+    /// agent's browser pages alone: a run no turn drives (My Nandi
+    /// browser's site requests, `pilots::my_browser`)
+    pub async fn run_done(
+        &self,
+        ctx: &RunContext,
+        status: RunStatus,
+        error: Option<String>,
+    ) -> Result<(), String> {
+        let run_id = ctx.run_id.clone();
         let ctx = ctx.clone();
         self.commit(move |conn, outbox| close_run(conn, outbox, &ctx, status, error))
             .await?;
@@ -1079,9 +1096,6 @@ impl EventBus {
         crate::services::pilots::sites::end_run(&run_id);
         // The Lock box's memory of it: declined unlocks, repeated refusals
         crate::services::lock_box::end_run(&run_id);
-        // So do its browser pages (the profile stays): the run plan's
-        // safety net when the agent didn't close them
-        crate::services::pilots::browser::close_pages(&agent_id).await;
         Ok(())
     }
 

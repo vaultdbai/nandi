@@ -29,6 +29,10 @@
 //!   control is and where it is, and refuses it with the policy's words.
 //! - The visible browser also has `browser_hand_over` ([`super::handover`]):
 //!   the agent prepares a page and a person finishes it.
+//! - My Nandi browser's window (Settings › Browser) is the same launch with
+//!   no model driving it ([`open_person_window`]): Nandi's identity, Nandi's
+//!   sites, the person's extensions kept. Agents always launch with
+//!   extensions off ([`User`]).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -102,9 +106,13 @@ pub fn identity(pilot: &str, agent: &str) -> String {
     format!("{pilot}:{agent}")
 }
 
-/// The agent behind an [`identity`], if it is one
+/// The agent behind an [`identity`], if it is one (My Nandi browser's
+/// window is Nandi's, `my_browser::identity`)
 pub fn agent_of_identity(identity: &str) -> Option<&str> {
-    [BROWSER, HEADLESS].iter().find_map(|pilot| {
+    let pilots = [BROWSER, HEADLESS]
+        .into_iter()
+        .chain(BrowserKind::ALL.map(super::my_browser::pilot_id));
+    pilots.into_iter().find_map(|pilot| {
         identity
             .strip_prefix(pilot)
             .and_then(|rest| rest.strip_prefix(':'))
@@ -359,10 +367,26 @@ enum Mode {
     Window(&'static str),
 }
 
+/// Who a browser is for
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum User {
+    /// An agent: extensions off, so nothing the person installed in a
+    /// shared profile reads the agent's pages
+    Agent,
+    /// The person's own window on My Nandi browser: their extensions run
+    Person,
+}
+
+/// Chromium's switch that keeps extensions from loading. Playwright passes
+/// it by default; agents pass it again so it never depends on that default
+const NO_EXTENSIONS: &str = "--disable-extensions";
+
 /// Playwright MCP's config file. `proxy` is the egress proxy URL as the
 /// browser reaches it; the token is its password (never on a command line).
+#[allow(clippy::too_many_arguments)]
 fn config(
     mode: Mode,
+    user: User,
     proxy: &str,
     token: &str,
     profile: &str,
@@ -384,6 +408,11 @@ fn config(
             "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
         ],
     });
+    if user == User::Agent {
+        if let Some(args) = launch["args"].as_array_mut() {
+            args.push(Value::from(NO_EXTENSIONS));
+        }
+    }
     if let Mode::Window(channel) = mode {
         launch["channel"] = Value::from(channel);
         // Playwright MCP adds --disable-blink-features=AutomationControlled,
@@ -395,7 +424,14 @@ fn config(
         // A visible browser keeps its saved passwords and cookies in the
         // system keychain (macOS Keychain, the Linux keyring, Windows' own
         // encryption), not Playwright's plain store
-        launch["ignoreDefaultArgs"] = json!(super::profiles::PLAIN_STORE_ARGS);
+        let mut ignored = super::profiles::PLAIN_STORE_ARGS.to_vec();
+        // The person's own window runs the extensions they installed, with
+        // no "controlled by automated test software" bar (sites such as a
+        // Google sign-in refuse a browser that says so)
+        if user == User::Person {
+            ignored.extend([NO_EXTENSIONS, "--enable-automation"]);
+        }
+        launch["ignoreDefaultArgs"] = json!(ignored);
     }
     json!({
         "browser": {
@@ -561,7 +597,16 @@ async fn ensure<'a>(
             workdir.join("browser").display().to_string(),
         ),
     };
-    let fingerprint = config(mode, &proxy, "-", &profile_arg, &output_arg, &secrets).to_string();
+    let fingerprint = config(
+        mode,
+        User::Agent,
+        &proxy,
+        "-",
+        &profile_arg,
+        &output_arg,
+        &secrets,
+    )
+    .to_string();
     let key = (agent_id.clone(), pilot.to_string());
     let stale = pool.get_mut(&key).is_some_and(|instance| {
         instance.fingerprint != fingerprint || !matches!(instance.child.try_wait(), Ok(None))
@@ -576,7 +621,15 @@ async fn ensure<'a>(
     }
     if !pool.contains_key(&key) {
         let token = host.proxy_tokens.issue(&identity(pilot, &agent_id));
-        let settings = config(mode, &proxy, &token, &profile_arg, &output_arg, &secrets);
+        let settings = config(
+            mode,
+            User::Agent,
+            &proxy,
+            &token,
+            &profile_arg,
+            &output_arg,
+            &secrets,
+        );
         let config_path = base.join("config.json");
         std::fs::write(
             &config_path,
@@ -630,6 +683,100 @@ async fn ensure<'a>(
     }
     pool.get_mut(&key)
         .ok_or_else(|| "The browser stopped".to_string())
+}
+
+/// The person's window on `kind`'s shared profile under `local`, as
+/// `pilot` (`my_browser::pilot`): Playwright MCP in window mode, exactly as
+/// an agent's visible browser starts, with no model driving it. It goes
+/// through the egress proxy as [`identity`]`(pilot, agent)` (a fresh token,
+/// Playwright answers the proxy's sign-in, so nothing prompts), with
+/// WebRTC forced through it and loopback too. Opening it again while it's
+/// open adds a tab.
+pub(super) async fn open_person_window(
+    local: &Path,
+    kind: BrowserKind,
+    agent: &str,
+    pilot: &str,
+) -> Result<(), String> {
+    let host = host()?;
+    let key = (agent.to_string(), pilot.to_string());
+    let mut pool = POOL.lock().await;
+    if let Some(instance) = pool.get_mut(&key) {
+        if matches!(instance.child.try_wait(), Ok(None)) {
+            run_tool(instance, "browser_tabs", &json!({"action": "new"})).await?;
+            return Ok(());
+        }
+        if let Some(old) = pool.remove(&key) {
+            shutdown(old).await;
+        }
+    }
+    let profile = profiles::create(local, kind)?;
+    // The profile's own folder (`profiles/<kind>`) holds its settings while
+    // it starts
+    let base = profile
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or("My Nandi browser has no folder")?;
+    let mode = Mode::Window(kind.channel());
+    let proxy = format!("http://127.0.0.1:{}", crate::services::egress::proxy_port());
+    let token = host.proxy_tokens.issue(&identity(pilot, agent));
+    let profile_arg = profile.display().to_string();
+    let output_arg = base.display().to_string();
+    let settings = config(
+        mode,
+        User::Person,
+        &proxy,
+        &token,
+        &profile_arg,
+        &output_arg,
+        &HashMap::new(),
+    );
+    let config_path = base.join("config.json");
+    std::fs::write(
+        &config_path,
+        serde_json::to_vec_pretty(&settings).unwrap_or_default(),
+    )
+    .map_err(|e| format!("Couldn't write the browser's settings: {e}"))?;
+    let started = start(mode, pilot, agent, &base, &profile, &base, &config_path).await;
+    // The settings hold the proxy token: not left on disk
+    let _ = std::fs::remove_file(&config_path);
+    let (service, child) = match started {
+        Ok(started) => started,
+        Err(e) => {
+            host.proxy_tokens.revoke(&identity(pilot, agent));
+            return Err(e);
+        }
+    };
+    let mut instance = Instance {
+        service,
+        child,
+        fingerprint: String::new(),
+        tools: Vec::new(),
+        secrets: HashMap::new(),
+        shared: Some(kind),
+    };
+    // Playwright opens the window on its first call
+    if let Err(e) = run_tool(
+        &mut instance,
+        "browser_navigate",
+        &json!({"url": "about:blank"}),
+    )
+    .await
+    {
+        host.proxy_tokens.revoke(&identity(pilot, agent));
+        shutdown(instance).await;
+        return Err(e);
+    }
+    pool.insert(key, instance);
+    Ok(())
+}
+
+/// Whether the person's window as `pilot` still runs (its server is up)
+pub(super) async fn person_window_runs(agent: &str, pilot: &str) -> bool {
+    POOL.lock()
+        .await
+        .get_mut(&(agent.to_string(), pilot.to_string()))
+        .is_some_and(|instance| matches!(instance.child.try_wait(), Ok(None)))
 }
 
 /// Spawns Playwright MCP over stdio: in a container, or on the host
@@ -779,8 +926,8 @@ pub async fn stop_all(pilot: &str) {
     }
 }
 
-/// Stops `agent`'s `pilot` browser, if it runs
-async fn stop(agent: &str, pilot: &str) {
+/// Stops `agent`'s `pilot` browser, if it runs, and revokes its proxy token
+pub(super) async fn stop(agent: &str, pilot: &str) {
     let key = (agent.to_string(), pilot.to_string());
     let instance = POOL.lock().await.remove(&key);
     if let Ok(mut pages) = PAGES.lock() {
@@ -1371,6 +1518,7 @@ mod tests {
         let secrets = HashMap::from([("SITE_PASSWORD".to_string(), "hunter2".to_string())]);
         let settings = config(
             Mode::Container,
+            User::Agent,
             "http://nandi-egress:11435",
             "tok",
             "/profile",
@@ -1396,6 +1544,7 @@ mod tests {
 
         let window = config(
             Mode::Window("msedge"),
+            User::Agent,
             "http://127.0.0.1:1",
             "t",
             "p",
@@ -1413,6 +1562,104 @@ mod tests {
             json!(["--password-store=basic", "--use-mock-keychain"]),
             "saved passwords stay in the system keychain"
         );
+    }
+
+    fn launch_args(settings: &Value) -> Vec<String> {
+        settings["browser"]["launchOptions"]["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|a| a.as_str().map(str::to_string))
+            .collect()
+    }
+
+    /// Every way a browser starts, the person's window included: none
+    /// without the egress proxy, its token and loopback and WebRTC through it
+    #[test]
+    fn every_launch_goes_through_the_proxy() {
+        let launches = [
+            (Mode::Container, User::Agent),
+            (Mode::Window("chrome"), User::Agent),
+            (Mode::Window("msedge"), User::Agent),
+            (Mode::Window("chrome"), User::Person),
+            (Mode::Window("msedge"), User::Person),
+        ];
+        for (mode, user) in launches {
+            let settings = config(
+                mode,
+                user,
+                "http://127.0.0.1:11435",
+                "tok",
+                "/p",
+                "/o",
+                &HashMap::new(),
+            );
+            let launch = &settings["browser"]["launchOptions"];
+            assert_eq!(
+                launch["proxy"]["server"], "http://127.0.0.1:11435",
+                "{mode:?} {user:?}"
+            );
+            assert_eq!(launch["proxy"]["username"], "nandi");
+            assert_eq!(
+                launch["proxy"]["password"], "tok",
+                "the token signs in, no prompt"
+            );
+            assert_eq!(launch["proxy"]["bypass"], "<-loopback>");
+            let args = launch_args(&settings);
+            assert!(args.contains(&"--proxy-bypass-list=<-loopback>".to_string()));
+            assert!(args.contains(
+                &"--force-webrtc-ip-handling-policy=disable_non_proxied_udp".to_string()
+            ));
+        }
+    }
+
+    #[test]
+    fn agents_run_with_extensions_off_and_the_person_keeps_theirs() {
+        let shared = |user| {
+            config(
+                Mode::Window("chrome"),
+                user,
+                "http://127.0.0.1:1",
+                "t",
+                "/h/.nandi/local/browser/profiles/chrome/profile",
+                "o",
+                &HashMap::new(),
+            )
+        };
+        let agent = shared(User::Agent);
+        assert!(launch_args(&agent).contains(&NO_EXTENSIONS.to_string()));
+        assert_eq!(
+            agent["browser"]["launchOptions"]["ignoreDefaultArgs"],
+            json!(profiles::PLAIN_STORE_ARGS),
+            "Playwright's own --disable-extensions stays"
+        );
+        let person = shared(User::Person);
+        assert!(!launch_args(&person).contains(&NO_EXTENSIONS.to_string()));
+        assert_eq!(
+            person["browser"]["launchOptions"]["ignoreDefaultArgs"],
+            json!([
+                "--password-store=basic",
+                "--use-mock-keychain",
+                NO_EXTENSIONS,
+                "--enable-automation"
+            ]),
+            "passwords stay in the keychain; the person's extensions run"
+        );
+        assert_eq!(
+            person["browser"]["userDataDir"],
+            "/h/.nandi/local/browser/profiles/chrome/profile"
+        );
+        assert_eq!(person["secrets"], json!({}), "no agent's secrets");
+        let container = config(
+            Mode::Container,
+            User::Agent,
+            "http://e:1",
+            "t",
+            "/profile",
+            "o",
+            &HashMap::new(),
+        );
+        assert!(launch_args(&container).contains(&NO_EXTENSIONS.to_string()));
     }
 
     #[test]

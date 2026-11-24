@@ -66,6 +66,9 @@ pub(super) async fn handle_connect(context: ProxyContext, mut request: Request<B
             Some("not in network.allow".to_string()),
         ))
         .await;
+        if let Some(refused) = &context.refused {
+            refused.refused(&agent_id, &host, port);
+        }
         return StatusCode::FORBIDDEN.into_response();
     }
 
@@ -228,6 +231,55 @@ mod tests {
             let (_, head) = connect(proxy, &target, Some(&token)).await;
             assert!(head.starts_with("HTTP/1.1 403"), "{target}: {head}");
         }
+    }
+
+    /// Remembers who was refused which site
+    #[derive(Default)]
+    struct Refusals(std::sync::Mutex<Vec<(String, String, u16)>>);
+
+    impl super::super::RefusedSite for Refusals {
+        fn refused(&self, identity: &str, host: &str, port: u16) {
+            self.0
+                .lock()
+                .unwrap()
+                .push((identity.to_string(), host.to_string(), port));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_refused_site_is_told_with_who_asked_and_an_allowed_one_is_not() {
+        let tokens = ProxyTokens::default();
+        let token = tokens.issue("my-browser-chrome:nandi");
+        let echo = start_echo().await;
+        let refusals = std::sync::Arc::new(Refusals::default());
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let proxy = listener.local_addr().unwrap().port();
+        let context = super::super::tests::context_with_refused(
+            tokens,
+            allow_hosts(&[&format!("127.0.0.1:{echo}")]),
+            refusals.clone(),
+        );
+        tokio::spawn(super::super::serve(listener, axum::Router::new(), context));
+
+        let (_, head) = connect(proxy, "example.org:443", Some(&token)).await;
+        assert!(head.starts_with("HTTP/1.1 403"), "{head}");
+        let (_, head) = connect(proxy, &format!("127.0.0.1:{echo}"), Some(&token)).await;
+        assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+        let (_, head) = connect(proxy, "example.org:443", None).await;
+        assert!(
+            head.starts_with("HTTP/1.1 407"),
+            "no token: nobody to ask for"
+        );
+        assert_eq!(
+            *refusals.0.lock().unwrap(),
+            vec![(
+                "my-browser-chrome:nandi".to_string(),
+                "example.org".to_string(),
+                443
+            )]
+        );
     }
 
     #[test]

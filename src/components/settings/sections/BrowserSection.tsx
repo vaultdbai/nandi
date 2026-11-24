@@ -112,7 +112,7 @@ function BrowserCard({ browser }: { browser: NandiBrowser }) {
         {t('settings.browser.syncNote', { browser: label })}
       </p>
       <p className="text-xs text-muted-foreground">
-        {t('settings.browser.ownBrowsing')}
+        {t('settings.browser.throughNandi')}
       </p>
       <p className="text-xs text-muted-foreground">
         {browser.agents.length > 0

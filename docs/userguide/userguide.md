@@ -652,11 +652,13 @@ Built-in tools (Run shell commands, Read files, Write files, List folders, Ask o
 
 Signing in to every site again for each agent is tiresome. **My Nandi browser** is one profile for each browser on this computer (Chrome, Edge) where you sign in yourself, once, and then let chosen agents use it.
 
-1. Open **Settings › Browser** and press **Open my Nandi browser** under Chrome or Edge. A normal window opens, with no agent attached.
+1. Open **Settings › Browser** and press **Open my Nandi browser** under Chrome or Edge. A window opens as Nandi's browser.
 2. Sign in to the sites you want, at your own pace. To bring your saved passwords, sign in to Chrome (or Edge) itself in this window: the browser's own sync brings them. Nandi never copies passwords or cookies from your everyday browser.
 3. On an agent's **Permissions** tab, under **Browser**, set **Signs in with** to **My Nandi browser (Chrome)** (or Edge). That's a grant you give this agent; it's recorded in your decisions and listed on the Settings › Browser card. **Its own profile** takes it back.
 
-This window is your own browsing: it doesn't go through Nandi's internet proxy, and no agent's allowed sites limit it. An agent using My Nandi browser still opens only its allowed sites, still asks before clicks and typing, and still shows its window. The headless browser never uses it.
+This window is Nandi's browser, driven by you. It goes through Nandi's internet proxy and opens Nandi's allowed sites. A site Nandi isn't allowed yet doesn't load: Nandi asks **Allow this site?** in its Inbox, as it does for any agent. **Allow once** lasts until you close the window, **Always allow** adds the site to Nandi's allowed sites, and **Don't allow** isn't asked again while the window is open. Reload the page after you allow it. Your extensions work in your window.
+
+An agent using My Nandi browser also goes through the proxy, opens only its own allowed sites, asks before clicks and typing, and shows its window. It runs with extensions off, so nothing you installed reads its pages. The headless browser never uses it.
 
 One browser at a time can have the profile open. If your window or another agent has it, the agent says it's in use and you can try again when that run ends or you close your window. **Sign out everywhere** on the Settings › Browser card closes the window and deletes the profile (cookies, sign-ins, synced passwords); agents that used it need you to sign in again. The profile stays on this computer (`~/.nandi/local/browser/profiles/`) and is never backed up.
 
