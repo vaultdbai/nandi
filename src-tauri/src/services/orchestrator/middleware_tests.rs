@@ -965,7 +965,7 @@ async fn an_open_browser_gets_the_finish_check_and_is_closed_at_run_end() {
     let (state, _) = setup(json!({ "agent": [{ "text": "Found it." }, { "text": "Closed." }] }));
     save_agent(&state, "surfer", "");
     start(&state, "surfer", "r1").await;
-    pilots::browser::set_pages_open("surfer", "browser", true);
+    pilots::browser::set_pages_open("surfer", "browser-headless", true);
     execute_run(&deps(&state), &DelegationSlot::default(), "surfer", "r1")
         .await
         .unwrap();
@@ -982,6 +982,40 @@ async fn an_open_browser_gets_the_finish_check_and_is_closed_at_run_end() {
     // Nandi closed the pages when the run ended
     assert_eq!(run_of(&state, "r1").await.status, RunStatus::Completed);
     assert!(!pilots::browser::has_open_pages("surfer"));
+    state.shutdown();
+}
+
+/// A video left playing: the visible browser stays open after the run, and
+/// the sites it was allowed once stay allowed until that window closes
+#[tokio::test]
+async fn a_visible_browser_left_open_keeps_its_window_and_sites() {
+    use crate::services::egress::capabilities::Capabilities;
+    let (state, _) =
+        setup(json!({ "agent": [{ "text": "Playing." }, { "text": "Left it open." }] }));
+    save_agent(&state, "viewer", "");
+    start(&state, "viewer", "r-left-open").await;
+    pilots::browser::set_pages_open("viewer", "browser", true);
+    pilots::sites::allow_for_run("viewer", "r-left-open", &["googlevideo.com".into()]);
+    execute_run(
+        &deps(&state),
+        &DelegationSlot::default(),
+        "viewer",
+        "r-left-open",
+    )
+    .await
+    .unwrap();
+    let streams = || {
+        pilots::sites::with_run_sites("viewer", Capabilities::default())
+            .allows_tunnel("googlevideo.com", 443)
+    };
+    assert_eq!(
+        run_of(&state, "r-left-open").await.status,
+        RunStatus::Completed
+    );
+    assert!(pilots::browser::window_open("viewer"), "the window stays");
+    assert!(streams(), "the video keeps streaming");
+    pilots::browser::set_pages_open("viewer", "browser", false);
+    assert!(!streams(), "closing the window takes the sites back");
     state.shutdown();
 }
 

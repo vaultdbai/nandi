@@ -75,6 +75,7 @@ pub const BUILTIN_AGENTS: &[BuiltinAgent] = &[BuiltinAgent {
     ],
     playbooks: &[
         nandi_playbook!("web-task"),
+        nandi_playbook!("browse-like-a-person"),
         nandi_playbook!("pay-a-bill"),
         nandi_playbook!("sign-in-and-accounts"),
         nandi_playbook!("delegate-work"),
@@ -736,7 +737,7 @@ target:
     #[test]
     fn the_shipped_playbooks_parse_and_stay_short() {
         let playbooks = shipped_playbooks();
-        assert_eq!(playbooks.len(), 10);
+        assert_eq!(playbooks.len(), 11);
         crate::services::domain::playbook::check_unique(&playbooks).unwrap();
         for playbook in &playbooks {
             // The domain caps them at 900; these aim for a short read

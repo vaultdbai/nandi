@@ -33,7 +33,9 @@ high level (open the site, sign in, go to billing, fill in the amount, pay, read
 close the browser). Kinds: `submit` for sending a form, `handover` for what the person does \
 themselves (sign-in, payment, posting, anything irreversible), `approval` for what the user \
 decides, `delegate` for starting work or asking an agent, `cleanup` for closing the browser. Mark \
-`evidence: screenshot` on steps whose result belongs in the log (never on a handover). Calling it \
+`evidence: screenshot` only on a step that changes something for good (a form sent, a payment, \
+a booking), never on opening, reading, playing or a handover: the screenshot is for the person's \
+record, and you can't view it. Calling it \
 again replaces the plan (the old one is kept as a revision)."
                 .to_string(),
             input_schema: json!({

@@ -109,7 +109,9 @@ pub fn finish_prompt(unfinished: &Unfinished) -> String {
         ));
     }
     if unfinished.browser_open {
-        text.push_str(" Your browser still has pages open: close it (`browser_close`).");
+        text.push_str(
+            " Your browser still has pages open: close it (`browser_close`), unless the person is still using a page in the visible browser (a video, music, something to read). Then leave it open and say so in your report.",
+        );
     }
     text.push_str(
         " Then end with a short report: one line per step, with its result and evidence, and what's left for the user.",

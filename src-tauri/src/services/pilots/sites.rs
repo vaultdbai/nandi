@@ -166,6 +166,35 @@ pub fn allow_for_run(agent: &str, run_id: &str, hosts: &[String]) {
     }
 }
 
+/// Runs that ended leaving their agent's visible browser open for the
+/// person (a video, music, a page to read): agent → run ids. Their sites
+/// stay allowed until that window closes ([`window_closed`])
+static LEFT_OPEN: LazyLock<RwLock<HashMap<String, Vec<String>>>> = LazyLock::new(Default::default);
+
+/// `run_id` ended but left `agent`'s visible browser open: what it allowed
+/// once stays with the window, so the page keeps loading (a video's
+/// stream) until the window closes
+pub fn keep_with_window(agent: &str, run_id: &str) {
+    let mut left = LEFT_OPEN.write().unwrap_or_else(|e| e.into_inner());
+    let runs = left.entry(agent.to_string()).or_default();
+    if !runs.iter().any(|r| r == run_id) {
+        runs.push(run_id.to_string());
+    }
+}
+
+/// `agent`'s visible browser closed: takes back what the runs that left it
+/// open allowed once
+pub fn window_closed(agent: &str) {
+    let runs = LEFT_OPEN
+        .write()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(agent)
+        .unwrap_or_default();
+    for run_id in runs {
+        end_run(&run_id);
+    }
+}
+
 /// Takes back what was allowed once in `run_id` (the run ended)
 pub fn end_run(run_id: &str) {
     let mut all = RUN_SITES.write().unwrap_or_else(|e| e.into_inner());
@@ -424,6 +453,26 @@ mod tests {
         assert!(!caps().allows_tunnel("example.org", 443));
         end_run("run-1");
         assert!(!caps().allows_tunnel("example.com", 443));
+    }
+
+    /// A run that leaves the visible browser open keeps its sites until
+    /// the window closes, so a video keeps streaming after the run ends
+    #[test]
+    fn a_window_left_open_keeps_its_sites_until_it_closes() {
+        let caps = || with_run_sites("window-agent", Capabilities::default());
+        allow_for_run("window-agent", "run-w", &["googlevideo.com".into()]);
+        keep_with_window("window-agent", "run-w");
+        assert!(
+            caps().allows_tunnel("googlevideo.com", 443),
+            "the run ended, the window didn't"
+        );
+        window_closed("other-agent");
+        assert!(
+            caps().allows_tunnel("googlevideo.com", 443),
+            "not its window"
+        );
+        window_closed("window-agent");
+        assert!(!caps().allows_tunnel("googlevideo.com", 443));
     }
 
     /// What the proxy refused a browser while a page loaded: askable

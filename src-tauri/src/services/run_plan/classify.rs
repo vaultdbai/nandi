@@ -140,7 +140,7 @@ pub fn effect(tool: &str, args: &Value, browser: Option<Action>) -> Effect {
 /// What the model is told when a call needs a plan first
 pub fn plan_first_message(tool: &str) -> String {
     format!(
-        "Blocked: '{tool}' changes something, so make a plan first (`plan_set`): the steps in order, each with its kind (navigate, read, fill, submit, handover, approval, delegate, verify, cleanup, other) and `evidence: screenshot` where a screenshot belongs in the log. Then mark the step you're on `doing` with `plan_update` and try again."
+        "Blocked: '{tool}' changes something, so make a plan first (`plan_set`): the steps in order, each with its kind (navigate, read, fill, submit, handover, approval, delegate, verify, cleanup, other) and `evidence: screenshot` only where something changes for good (a form sent, a payment, a booking). Then mark the step you're on `doing` with `plan_update` and try again."
     )
 }
 

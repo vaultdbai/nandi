@@ -540,8 +540,9 @@ Shared preconditions used below:
   - Two host tools for every agent (not in email or calendar check runs, and not when the agent has no tools): `plan_set` (steps with title, kind `navigate | read | fill | submit | handover | approval | delegate | verify | cleanup | other`, `evidence: screenshot | none`, note) and `plan_update` (one step's status `pending | doing | done | skipped | failed`, result, evidence files). One step is `doing` at a time. A later `plan_set` replaces the plan and keeps the old one as a revision. Plans are run data (`run_plans`), never files.
   - **Plan first:** the first call that changes something (browser clicking, typing, submitting; `work_start`, `work_update`, `delegate_to_agent`; writing files outside the notes) is refused with "make a plan first (`plan_set`)" while the run has no plan. Reads, notes and the plan tools never are. Shell commands aren't classified.
   - **Risky steps are the user's:** a browser submit, payment, secret or hand-over runs only while the `doing` step is `submit`, `handover` or `approval`; `work_start` and `delegate_to_agent` only while it is `delegate` or `approval`. The refusal says which kind to plan. Existing approvals still apply on top.
-  - **Finish check:** once per run, a run that ends with open steps, a `screenshot` step without evidence, or its browser still open gets one continuation asking it to finish, close the browser and report each step.
-  - **Safety net:** when a run ends, Nandi closes that agent's browser pages (the profile stays).
+  - **Finish check:** once per run, a run that ends with open steps, a `screenshot` step without evidence, or its browser still open gets one continuation asking it to finish, close the browser (unless the person is still using a page in the visible browser: a video, music, something to read) and report each step.
+  - **Safety net:** when a run ends, Nandi closes that agent's headless browser pages (the profile stays). The visible browser stays open for the person, and the sites its runs were allowed once stay allowed until that window closes.
+  - **Screenshots:** only on steps that change something for good (a form sent, a payment, a booking), never on opening, reading or playing.
   - **Screenshots:** saved as `browser/<run>/<step>-<n>.png` in the agent's files and linked to the `doing` step; refused during a `handover` step; removed after 30 days; never in an S3 backup.
   - **Live checklist:** a card with each step, its status, its result and screenshot thumbnails (click opens the file on the desktop), in the chat, the intake thread and Run Detail › Overview, updated by `run://plan_updated`. `plan_update` calls are hidden; a refused plan call shows as a tool card.
   - agent.md `middlewares:` without `plan_first` / `finish_check` turns them off (they are on by default).
@@ -554,6 +555,7 @@ Shared preconditions used below:
   4. Ask an agent to write a file without planning (a custom agent whose instructions say "never plan").
 - **Expected:**
   - Step 1–2: it sets a plan first; a "Plan" card shows each step, the one being done highlighted, and a thumbnail under the screenshot step. The browser closes at the end, and the last message reports each step.
+  - Ask Nandi to play a YouTube video: it opens and starts it, takes no screenshot, and the run ends with the window open and the video still playing ("I left the browser open"). Close the window: the video's sites are no longer allowed.
   - Step 3: the same card is on the Overview tab.
   - Step 4: the write is refused with "make a plan first"; the agent plans and the write runs.
 - **Edge / negative cases:**

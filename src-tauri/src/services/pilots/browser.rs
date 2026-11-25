@@ -193,9 +193,11 @@ pub(crate) fn set_pages_open(agent: &str, pilot: &str, open: bool) {
         pages.insert(key);
     } else {
         pages.remove(&key);
-        // Its browser closed: a shared profile it held is free
+        // Its browser closed: a shared profile it held is free, and so are
+        // the sites that runs which left it open allowed once
         if pilot == BROWSER {
             profiles::release_agent(agent);
+            super::sites::window_closed(agent);
         }
     }
 }
@@ -209,14 +211,24 @@ pub fn has_open_pages(agent: &str) -> bool {
         .any(|(a, _)| a == agent)
 }
 
-/// Closes `agent`'s browser pages (a run of its ended). The profile stays,
-/// and so does the browser's server, ready for the next run.
+/// Whether `agent`'s visible browser still has pages open
+pub fn window_open(agent: &str) -> bool {
+    OPEN_PAGES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(&(agent.to_string(), BROWSER.to_string()))
+}
+
+/// Closes `agent`'s headless browser pages (a run of its ended). The
+/// visible browser's stay: the person may still be using them (a video,
+/// music, a page to read) and closes the window themselves. The profile
+/// stays, and so does the browser's server, ready for the next run.
 pub async fn close_pages(agent: &str) {
     let open: Vec<String> = OPEN_PAGES
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .iter()
-        .filter(|(a, _)| a == agent)
+        .filter(|(a, pilot)| a == agent && pilot != BROWSER)
         .map(|(_, pilot)| pilot.clone())
         .collect();
     for pilot in open {
