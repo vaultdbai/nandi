@@ -16,7 +16,13 @@
 //!   unconfirmed or revoked device, sealed for someone else or not signed
 //!   by the device, or with a `seq` at or below the last one taken (a
 //!   replay), is dropped unanswered. The content is a small command set
-//!   ([`wire`]): the Inbox's approvals and to-dos, approve, decline.
+//!   ([`wire`]): the Inbox's approvals and to-dos, approve, decline, and
+//!   asking Nandi ([`chat`]).
+//! - **Asking from a device** is the person's own message: it starts or
+//!   continues one of the device's chats with Nandi, and the run's record
+//!   says "Asked from <device name>". Whatever the run does still goes
+//!   through approvals. The PIN is needed once per [`session`]; the phone
+//!   polls `chat` for the answer.
 //! - **Every approve and decline carries the PIN**, checked here. Wrong
 //!   PINs count; [`pin::MAX_TRIES`] in a row lock the device until the
 //!   desktop unlocks it. The riskiest approvals are refused from a device
@@ -30,9 +36,11 @@
 //! local and still works); a relay one version older answers
 //! `RelayNeedsUpdate` and nothing is sent ([`RelayFeature::OwnDevices`]).
 
+pub mod chat;
 pub mod desktop_only;
 pub mod inbox;
 pub mod pin;
+pub mod session;
 pub mod store;
 pub mod wire;
 
@@ -61,7 +69,9 @@ use crate::services::relay::features::RelayNeedsUpdate;
 use crate::services::relay::{RelayClient, RelayFeature, RelayUnavailable};
 use crate::services::AppState;
 
+use chat::{AppChat, Asker, PhoneChat};
 use inbox::{AppInbox, PhoneInbox};
+use session::Sessions;
 use store::{DeviceRow, RowState};
 use wire::{codes, Answer, Command, PhoneApproval, PhoneTodo, Read, Reply};
 
@@ -184,6 +194,10 @@ pub struct OwnDevices {
     keys: KeySource,
     bus: Option<EventBus>,
     inbox: Arc<dyn PhoneInbox>,
+    chat: Arc<dyn PhoneChat>,
+    sessions: Arc<Sessions>,
+    /// How long a session lasts without an ask ([`session::IDLE_MS`])
+    idle_ms: i64,
 }
 
 impl OwnDevices {
@@ -194,6 +208,7 @@ impl OwnDevices {
         keys: KeySource,
         bus: Option<EventBus>,
         inbox: Arc<dyn PhoneInbox>,
+        chat: Arc<dyn PhoneChat>,
     ) -> Self {
         Self {
             relay,
@@ -202,7 +217,17 @@ impl OwnDevices {
             keys,
             bus,
             inbox,
+            chat,
+            sessions: Sessions::shared(),
+            idle_ms: session::IDLE_MS,
         }
+    }
+
+    /// With sessions that lapse after `idle_ms` (tests)
+    #[cfg(test)]
+    pub fn with_idle(mut self, idle_ms: i64) -> Self {
+        self.idle_ms = idle_ms;
+        self
     }
 
     pub fn of(state: &AppState) -> Result<Self, String> {
@@ -214,6 +239,7 @@ impl OwnDevices {
             Arc::new(move || keyring.device_keys()),
             Some(state.bus().clone()),
             Arc::new(AppInbox::new(state.clone())),
+            Arc::new(AppChat::new(state.clone())),
         ))
     }
 
@@ -464,6 +490,7 @@ impl OwnDevices {
     pub async fn revoke(&self, device_id: &str) -> Result<(), String> {
         let id = device_id.to_string();
         self.db.call(move |conn| store::remove(conn, &id)).await?;
+        self.sessions.end(device_id);
         self.emit(Some(device_id));
         match self
             .call(DeviceOp::Revoke {
@@ -511,6 +538,7 @@ impl OwnDevices {
         if !done {
             return Err("No such paired device".to_string());
         }
+        self.sessions.end(device_id);
         self.emit(Some(device_id));
         Ok(())
     }
@@ -559,7 +587,7 @@ impl OwnDevices {
                 id,
                 Answer::refused(
                     codes::UNKNOWN_COMMAND,
-                    "A phone can see the Inbox and approve or decline. Do the rest on your computer.",
+                    "A phone can see the Inbox, approve or decline, and ask Nandi. Do the rest on your computer.",
                 ),
             ),
             Read::Call(call) => (call.id, self.answer(&row, call.command).await),
@@ -606,6 +634,87 @@ impl OwnDevices {
                 self.decide(row, item_id, &pin, ApprovalDecision::Rejected)
                     .await
             }
+            Command::Ask { text, chat, pin } => self.ask(row, text, chat, pin).await,
+            Command::Chat { chat, after } => self.read_chat(row, chat, after).await,
+        }
+    }
+
+    /// The person asks Nandi from the device: the PIN once per session
+    /// first, then the chat
+    async fn ask(
+        &self,
+        row: &DeviceRow,
+        text: String,
+        chat: Option<String>,
+        pin: Option<String>,
+    ) -> Answer {
+        match pin.filter(|pin| !pin.is_empty()) {
+            Some(pin) => match self.check_pin(row, &pin).await {
+                Ok(None) => {}
+                Ok(Some(refused)) => return refused,
+                Err(e) => return Answer::refused(codes::FAILED, e),
+            },
+            None if self
+                .sessions
+                .is_open(&row.device_id, now_ms(), self.idle_ms) => {}
+            None => {
+                return Answer::refused(
+                    codes::PIN_NEEDED,
+                    "Type your PIN to ask Nandi from this phone.",
+                )
+            }
+        }
+        let text = text.trim().to_string();
+        if text.is_empty() {
+            return Answer::refused(codes::ASK_INVALID, "Type what to ask Nandi.");
+        }
+        if text.chars().count() > wire::MAX_ASK_CHARS {
+            return Answer::refused(
+                codes::ASK_INVALID,
+                format!(
+                    "An ask from a phone has at most {} characters.",
+                    wire::MAX_ASK_CHARS
+                ),
+            );
+        }
+        let (chat, new) = match chat {
+            Some(chat) if chat::owns(&row.device_id, &chat) => (chat, false),
+            Some(_) => return chat_not_found(),
+            None => (chat::new_chat_id(&row.device_id), true),
+        };
+        let asker = Asker {
+            device_id: row.device_id.clone(),
+            name: row.name.clone(),
+        };
+        match self.chat.ask(asker, chat, new, text).await {
+            Ok(Some(asked)) => {
+                self.sessions.renew(&row.device_id, now_ms());
+                Answer::Asked {
+                    chat: asked.chat,
+                    message_id: asked.message_id,
+                    queued: asked.queued,
+                }
+            }
+            Ok(None) => chat_not_found(),
+            Err(e) => Answer::refused(codes::FAILED, e),
+        }
+    }
+
+    /// One of the device's chats, after `after`. No PIN: like the Inbox,
+    /// it is read only, and only the device's own chats are reached.
+    async fn read_chat(&self, row: &DeviceRow, chat: String, after: Option<String>) -> Answer {
+        if !chat::owns(&row.device_id, &chat) {
+            return chat_not_found();
+        }
+        match self.chat.read(chat.clone(), after).await {
+            Ok(Some(view)) => Answer::Chat {
+                chat,
+                messages: view.messages,
+                working: view.working,
+                waiting_for_approval: view.waiting_for_approval,
+            },
+            Ok(None) => chat_not_found(),
+            Err(e) => Answer::refused(codes::FAILED, e),
         }
     }
 
@@ -693,8 +802,10 @@ impl OwnDevices {
             self.db
                 .call(move |conn| store::right_pin(conn, &id))
                 .await?;
+            self.sessions.renew(&row.device_id, now_ms());
             return Ok(None);
         }
+        self.sessions.end(&row.device_id);
         let now = now_ms();
         let failed = self
             .db
@@ -722,6 +833,13 @@ impl OwnDevices {
             },
         }
     }
+}
+
+fn chat_not_found() -> Answer {
+    Answer::refused(
+        codes::CHAT_NOT_FOUND,
+        "That chat isn't there any more. Start a new one.",
+    )
 }
 
 fn locked() -> Answer {

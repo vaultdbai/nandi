@@ -156,6 +156,21 @@ pub fn active_run(
     .optional()
 }
 
+/// The conversation's unfinished runs (queued, running or waiting for an
+/// approval), oldest first
+pub fn unfinished_runs(
+    conn: &Connection,
+    conversation_id: &str,
+) -> rusqlite::Result<Vec<RunSummary>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {RUN_COLUMNS} FROM runs
+          WHERE conversation_id = ?1 AND status IN ('queued', 'running', 'awaiting_approval')
+          ORDER BY started_at ASC"
+    ))?;
+    let rows = stmt.query_map([conversation_id], run_row)?;
+    rows.collect()
+}
+
 /// The agent's current turn: its running or approval-blocked run, in any
 /// of its conversations (its chat, or a delegated task's)
 pub fn active_agent_run(conn: &Connection, agent_id: &str) -> rusqlite::Result<Option<RunSummary>> {

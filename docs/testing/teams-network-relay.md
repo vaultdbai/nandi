@@ -1432,6 +1432,28 @@ A phone paired with your own Nandi, reaching it only through sealed envelopes on
 - **Needs relay:** yes
 - **Status:** Shipped
 
+### OD-07 — Ask Nandi from the phone
+
+- **What:** The phone's Ask Nandi box sends `ask`: the text reaches the Nandi agent as the person's own message, in a new chat (`phone:<device ID>:<uuid>`, titled "Asked from <device name>") or the one given. The run's record is the person's, labelled "Asked from <device name>" with the device as its source. The phone reads the answer with `chat` (polled while `working`), and only its own chats. A risky action the chat leads to waits in the Inbox; the phone can't approve it. Unconfirmed and revoked devices are dropped; a locked one is refused.
+- **Where:** `services/own_devices/chat.rs`, `mod.rs` (`ask`, `read_chat`), `wire.rs`, `orchestrator.rs` (`RunSource::own_device`), `db/runs.rs` (`unfinished_runs`); the phone web app `js/phone-v8/` in vaultdb-web.
+- **Preconditions:** A paired, confirmed phone; Nandi running on the computer.
+- **Steps:** 1. On the phone, type "What's on my list today?" and Ask; type the PIN. 2. Ask a follow-up. 3. Ask for something that sends mail. 4. Quit Nandi on the computer and ask again.
+- **Expected:** 1: "working…", then Nandi's answer. 2: no PIN; the same chat. 3: "Waiting for an approval"; the approval is in the phone's Inbox marked "Approve this on your computer". 4: "Your Nandi is offline".
+- **Edge / negative cases:** An empty ask or one over 4000 characters is refused (`ask_invalid`). Another chat's ID, or another device's, is `chat_not_found`.
+- **Automation:** Covered by: `own_devices::tests::an_ask_from_the_phone_runs_as_the_person_and_risky_actions_wait_for_the_computer` (a real run), `a_device_reads_only_its_own_chats_and_long_or_empty_asks_are_refused`, `an_unconfirmed_revoked_or_locked_device_cannot_ask`, `own_devices::chat::tests::*`, `own_devices::wire::tests::*`; vaultdb-web `tests/phone-model.test.mjs` | Layer: unit
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### OD-08 — The PIN once per ask session
+
+- **What:** The first ask needs the PIN (`pin_needed` without it). Asks within 10 minutes of the last one don't. After 10 minutes idle the PIN is needed again. A wrong PIN counts toward the lock and ends the session. Approvals and declines need the PIN every time, session or not. Reading the Inbox or a chat doesn't keep the session open. A restart of Nandi ends every session.
+- **Where:** `services/own_devices/session.rs`, `mod.rs` (`ask`, `check_pin`).
+- **Steps:** 1. Ask; type the PIN. 2. Ask again at once. 3. Wait 10 minutes; ask.
+- **Expected:** 1: asked. 2: no PIN prompt. 3: the PIN prompt again.
+- **Automation:** Covered by: `own_devices::tests::the_first_ask_needs_the_pin_then_the_session_carries_until_idle`, `own_devices::session::tests::*` | Layer: unit
+- **Needs relay:** yes
+- **Status:** Shipped
+
 ## Gaps and planned (not testable yet)
 
 - **The phone web app on vaultdb.ai** (pairing from the QR code, the PIN prompt, Face ID / WebAuthn): not built yet. The contract is `docs/developer/own-devices.md`.

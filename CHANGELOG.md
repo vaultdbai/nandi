@@ -2,6 +2,12 @@
 
 What changed in each Nandi release, grouped by what you notice. The release notes for each version are in [docs/release-notes/](docs/release-notes/).
 
+## Unreleased
+
+### New
+
+- **Ask Nandi from your phone.** A paired phone has an Ask Nandi box below its Inbox. What you type reaches Nandi on your computer as your own message, sealed end to end, and the answer comes back the same way ("working…" while Nandi works). Anything it then does still asks for your approval, and risky steps still wait for your computer. Your PIN is asked once, then again after 10 minutes without an ask; approvals still ask it every time. Needs phone app version 8.
+
 ## 0.3.1 (2026-11-25)
 
 ### Changed
