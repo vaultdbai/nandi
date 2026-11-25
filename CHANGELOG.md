@@ -2,7 +2,11 @@
 
 What changed in each Nandi release, grouped by what you notice. The release notes for each version are in [docs/release-notes/](docs/release-notes/).
 
-## 0.3.1
+## 0.3.1 (2026-11-25)
+
+### Changed
+
+- **The sitting bison is Nandi's icon.** The app icon, the window icon for every colour theme and the installers show the resting bison instead of the bison's face.
 
 ### Fixed
 
