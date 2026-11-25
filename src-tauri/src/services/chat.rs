@@ -235,14 +235,6 @@ async fn resolve(
         crate::services::lock_box::approvals::close_stale(state, approval).await?;
         return Err("This key request stopped waiting, so nothing was released".to_string());
     }
-    // My Nandi browser's site request: no turn waits for it
-    if crate::services::pilots::my_browser::is_window_approval(approval) {
-        let status = match decision {
-            ApprovalDecision::Approved => ApprovalStatus::Approved,
-            ApprovalDecision::Rejected => ApprovalStatus::Rejected,
-        };
-        return crate::services::pilots::my_browser::close_approval(state, approval, status).await;
-    }
     // A harness run waits on the call itself; the orchestrator would
     // restart the run natively
     if harness_approvals::is_harness(approval) {
@@ -408,20 +400,6 @@ pub async fn expire_overdue_approvals(state: &AppState) -> Result<usize, String>
                     Ok(()) => expired += 1,
                     Err(e) => log::warn!("Couldn't expire approval {}: {e}", approval.id),
                 }
-            }
-            continue;
-        }
-        // My Nandi browser's site request: no turn waits for it
-        if crate::services::pilots::my_browser::is_window_approval(&approval) {
-            match crate::services::pilots::my_browser::close_approval(
-                state,
-                &approval,
-                ApprovalStatus::Expired,
-            )
-            .await
-            {
-                Ok(()) => expired += 1,
-                Err(e) => log::warn!("Couldn't expire approval {}: {e}", approval.id),
             }
             continue;
         }

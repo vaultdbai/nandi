@@ -56,23 +56,6 @@ pub fn ensure_calendar_conversation(
     Ok(id)
 }
 
-/// `browser:<chrome|edge>`: My Nandi browser's own conversation, which
-/// holds the site requests from the person's window
-/// (`pilots::my_browser`)
-pub fn ensure_browser_conversation(
-    conn: &Connection,
-    agent_id: &str,
-    browser: &str,
-    title: &str,
-) -> rusqlite::Result<String> {
-    let id = format!("browser:{browser}");
-    conn.execute(
-        "INSERT OR IGNORE INTO conversations (id, agent_id, created_at, title) VALUES (?1, ?2, ?3, ?4)",
-        params![id, agent_id, now_ms(), title],
-    )?;
-    Ok(id)
-}
-
 /// `task:<task id>`: a delegated task's own conversation, so its turn sees
 /// neither the owner's chats with the agent nor other requesters' tasks
 pub fn task_conversation_id(task_id: &str) -> String {

@@ -3850,7 +3850,7 @@
   "settings.browser.opened": "My Nandi browser ({{browser}}) is open",
   "settings.browser.openFailed": "Couldn't open My Nandi browser",
   "settings.browser.syncNote": "Sign in to {{browser}} in this window to bring your saved passwords through the browser's own sync. Nandi never copies passwords or cookies from your everyday browser.",
-  "settings.browser.throughNandi": "This window is Nandi's browser: it goes through Nandi's proxy and Nandi's allowed sites, and a site Nandi isn't allowed yet asks \"Allow this site?\" first. Agents using this profile always go through it too, with extensions off.",
+  "settings.browser.throughNandi": "Your own window goes through Nandi's proxy and is recorded; only Nandi's policies can block it. Agents reach only their allowed sites and ask for new ones in one card, with extensions off.",
   "settings.browser.state.empty": "No sign-ins saved yet",
   "settings.browser.state.signedIn": "Sites remember your sign-ins here",
   "settings.browser.state.open": "Open in your window",

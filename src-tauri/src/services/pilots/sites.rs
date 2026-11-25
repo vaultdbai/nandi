@@ -9,13 +9,23 @@
 //!                             browser read it until the run ends, [`end_run`])
 //!        Always allow      ─▶ the host goes into the agent's agent.md (`network.allow`)
 //!        Don't allow       ─▶ the call fails; not asked again in this run
+//!
+//! a page on an allowed site needs other hosts ─▶ the proxy refuses them
+//!   ([`SiteRefusals`] notes each, by browser identity)
+//!   ─▶ the call keeps those the page itself asked for ([`refused_since`],
+//!      `browser::call`), names them in its reply and notes them ([`need`])
+//!   ─▶ the agent's next page-opening call asks for all of them in one
+//!      card ([`take_needed`]): one yes allows them all; a host put on a
+//!      card isn't named again for a while ([`was_asked`])
 //! ```
 //!
 //! A grant covers the host only, or the host and its subdomains when the
-//! person ticks that.
+//! person ticks that. Allow once lasts until the run ends, whatever else
+//! the agent runs meanwhile.
 
 use std::collections::HashMap;
-use std::sync::{LazyLock, RwLock};
+use std::sync::{LazyLock, Mutex, RwLock};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -135,51 +145,194 @@ fn rules(hosts: &[String]) -> Vec<HostRule> {
         .collect()
 }
 
-/// Sites allowed once, by agent: the run they're for and its hosts
-struct RunSites {
-    run_id: String,
-    hosts: Vec<String>,
-}
+/// Sites allowed once: agent → run → hosts
+type RunSites = HashMap<String, HashMap<String, Vec<String>>>;
 
-static RUN_SITES: LazyLock<RwLock<HashMap<String, RunSites>>> = LazyLock::new(Default::default);
+static RUN_SITES: LazyLock<RwLock<RunSites>> = LazyLock::new(Default::default);
 
-/// Lets `agent`'s browser open `hosts` until `run_id` ends. A grant left
-/// from another run of the agent is dropped.
+/// Lets `agent`'s browser open `hosts` until `run_id` ends. Another run of
+/// the agent allowing sites, or ending, leaves this run's alone.
 pub fn allow_for_run(agent: &str, run_id: &str, hosts: &[String]) {
     let mut all = RUN_SITES.write().unwrap_or_else(|e| e.into_inner());
-    let entry = all.entry(agent.to_string()).or_insert_with(|| RunSites {
-        run_id: run_id.to_string(),
-        hosts: Vec::new(),
-    });
-    if entry.run_id != run_id {
-        entry.run_id = run_id.to_string();
-        entry.hosts.clear();
-    }
+    let allowed = all
+        .entry(agent.to_string())
+        .or_default()
+        .entry(run_id.to_string())
+        .or_default();
     for host in hosts {
-        if !entry.hosts.contains(host) {
-            entry.hosts.push(host.clone());
+        if !allowed.contains(host) {
+            allowed.push(host.clone());
         }
     }
 }
 
 /// Takes back what was allowed once in `run_id` (the run ended)
 pub fn end_run(run_id: &str) {
-    RUN_SITES
-        .write()
-        .unwrap_or_else(|e| e.into_inner())
-        .retain(|_, sites| sites.run_id != run_id);
+    let mut all = RUN_SITES.write().unwrap_or_else(|e| e.into_inner());
+    for runs in all.values_mut() {
+        runs.remove(run_id);
+    }
+    all.retain(|_, runs| !runs.is_empty());
 }
 
-/// `capabilities` plus the sites `agent`'s current run was allowed once
+/// `capabilities` plus the sites `agent`'s running runs were allowed once
+/// (its browser is one, whichever run drives it)
 pub fn with_run_sites(agent: &str, mut capabilities: Capabilities) -> Capabilities {
-    if let Some(sites) = RUN_SITES
+    if let Some(runs) = RUN_SITES
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .get(agent)
     {
-        capabilities.network.allow.extend(rules(&sites.hosts));
+        for hosts in runs.values() {
+            capabilities.network.allow.extend(rules(hosts));
+        }
     }
     capabilities
+}
+
+// ---------------------------------------------------------------------------
+// Hosts a page needed
+// ---------------------------------------------------------------------------
+
+/// How long a refusal counts, and how long the hosts a page needed wait
+/// for the agent's next page-opening call to ask about them
+const NEEDED_FOR: Duration = Duration::from_secs(120);
+/// How long a host put on a card isn't named again for that browser
+const ASKED_FOR: Duration = Duration::from_secs(600);
+/// The most refusals kept per browser
+const MOST_REFUSED: usize = 64;
+/// The most hosts on one card: it stays readable
+const MOST_NEEDED: usize = 12;
+
+/// A host, and when it was refused, needed or asked about
+struct Seen {
+    host: String,
+    at: Instant,
+}
+
+/// What Nandi knows about one browser's sites
+#[derive(Default)]
+struct Browser {
+    /// Hosts the proxy refused it, oldest first
+    refused: Vec<Seen>,
+    /// Hosts its last page asked for and couldn't reach
+    needed: Vec<Seen>,
+    /// Hosts put on a card lately
+    asked: Vec<Seen>,
+}
+
+/// Browser identity (`<pilot>:<agent>`) → its sites
+static BROWSERS: LazyLock<Mutex<HashMap<String, Browser>>> = LazyLock::new(Default::default);
+
+fn browsers() -> std::sync::MutexGuard<'static, HashMap<String, Browser>> {
+    BROWSERS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn fresh(list: &mut Vec<Seen>, now: Instant, within: Duration) {
+    list.retain(|seen| now.duration_since(seen.at) < within);
+}
+
+/// Notes that the proxy refused `identity` a tunnel to `host:port`. Only a
+/// site a person may be asked about counts.
+pub fn note_refused(identity: &str, host: &str, port: u16) {
+    let Some(site) = (port == 443)
+        .then(|| askable(&format!("https://{host}/")))
+        .flatten()
+    else {
+        return;
+    };
+    let now = Instant::now();
+    let mut all = browsers();
+    let list = &mut all.entry(identity.to_string()).or_default().refused;
+    fresh(list, now, NEEDED_FOR);
+    list.retain(|seen| seen.host != site.host);
+    list.push(Seen {
+        host: site.host,
+        at: now,
+    });
+    if list.len() > MOST_REFUSED {
+        list.remove(0);
+    }
+}
+
+/// The hosts refused to `identity` since `since`, oldest first
+pub fn refused_since(identity: &str, since: Instant) -> Vec<String> {
+    browsers()
+        .get(identity)
+        .map(|browser| {
+            browser
+                .refused
+                .iter()
+                .filter(|seen| seen.at >= since)
+                .map(|seen| seen.host.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Whether `host` was put on a card for `identity` lately: it isn't named
+/// again, whatever the person answered
+pub fn was_asked(identity: &str, host: &str) -> bool {
+    let now = Instant::now();
+    browsers().get_mut(identity).is_some_and(|browser| {
+        fresh(&mut browser.asked, now, ASKED_FOR);
+        browser.asked.iter().any(|seen| seen.host == host)
+    })
+}
+
+/// The hosts `identity`'s page needed and couldn't reach (`browser::call`),
+/// for its next page-opening call to ask about. At most [`MOST_NEEDED`].
+pub fn need(identity: &str, hosts: &[String]) {
+    let now = Instant::now();
+    let mut all = browsers();
+    let needed = &mut all.entry(identity.to_string()).or_default().needed;
+    fresh(needed, now, NEEDED_FOR);
+    for host in hosts {
+        if !needed.iter().any(|seen| &seen.host == host) {
+            needed.push(Seen {
+                host: host.clone(),
+                at: now,
+            });
+        }
+    }
+    while needed.len() > MOST_NEEDED {
+        needed.remove(0);
+    }
+}
+
+/// The hosts `identity`'s pages needed lately, to ask about in one card.
+/// They're taken once and remembered as asked.
+pub fn take_needed(identity: &str) -> Vec<String> {
+    let now = Instant::now();
+    let mut all = browsers();
+    let Some(browser) = all.get_mut(identity) else {
+        return Vec::new();
+    };
+    fresh(&mut browser.needed, now, NEEDED_FOR);
+    let hosts: Vec<String> = browser.needed.drain(..).map(|seen| seen.host).collect();
+    for host in &hosts {
+        browser.asked.retain(|seen| &seen.host != host);
+        browser.asked.push(Seen {
+            host: host.clone(),
+            at: now,
+        });
+    }
+    hosts
+}
+
+/// The egress proxy's refusal hook (`egress::RefusedSite`): notes what an
+/// agent's browser was refused. My Nandi browser's window isn't an agent's
+/// and is never asked about sites.
+pub struct SiteRefusals;
+
+impl crate::services::egress::RefusedSite for SiteRefusals {
+    fn refused(&self, identity: &str, host: &str, port: u16) {
+        if browser::agent_of_identity(identity).is_some()
+            && super::my_browser::kind_of_identity(identity).is_none()
+        {
+            note_refused(identity, host, port);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -253,21 +406,89 @@ mod tests {
         assert!(!covers(&with_subdomains, "example.org"));
     }
 
+    /// Allow once lasts the whole run: another run of the agent allowing a
+    /// site, or ending, doesn't take it back
     #[test]
-    fn a_run_s_sites_last_until_it_ends() {
+    fn an_allow_once_lasts_until_its_run_ends() {
         let caps = || with_run_sites("sites-agent", Capabilities::default());
         assert!(!caps().allows_tunnel("example.com", 443));
         allow_for_run("sites-agent", "run-1", &["example.com".into()]);
         assert!(caps().allows_tunnel("example.com", 443));
         assert!(!with_run_sites("other-agent", Capabilities::default())
             .allows_tunnel("example.com", 443));
-        // Another run of the agent starts clean
         allow_for_run("sites-agent", "run-2", &["example.org".into()]);
-        assert!(!caps().allows_tunnel("example.com", 443));
+        assert!(caps().allows_tunnel("example.com", 443), "run 1 still runs");
         assert!(caps().allows_tunnel("example.org", 443));
-        end_run("run-1");
-        assert!(caps().allows_tunnel("example.org", 443), "not that run");
         end_run("run-2");
+        assert!(caps().allows_tunnel("example.com", 443), "not that run");
         assert!(!caps().allows_tunnel("example.org", 443));
+        end_run("run-1");
+        assert!(!caps().allows_tunnel("example.com", 443));
+    }
+
+    /// What the proxy refused a browser while a page loaded: askable
+    /// sites only, each once, the latest refusal last
+    #[test]
+    fn refused_hosts_are_noted_once() {
+        let identity = "browser:refused-agent";
+        let before = Instant::now();
+        note_refused(identity, "www.gstatic.com", 443);
+        note_refused(identity, "encrypted-tbn0.gstatic.com", 443);
+        note_refused(identity, "www.gstatic.com", 443);
+        note_refused(identity, "127.0.0.1", 443);
+        note_refused(identity, "printer.local", 443);
+        note_refused(identity, "example.com", 8443);
+        note_refused("browser:someone-else", "example.org", 443);
+        assert_eq!(
+            refused_since(identity, before),
+            ["encrypted-tbn0.gstatic.com", "www.gstatic.com"]
+        );
+        assert!(refused_since(identity, Instant::now()).is_empty());
+        assert_eq!(
+            refused_since("browser:someone-else", before),
+            ["example.org"]
+        );
+    }
+
+    /// The hosts a page needed are taken once, for one card, at most
+    /// [`MOST_NEEDED`]; a host put on a card isn't named again
+    #[test]
+    fn a_page_s_needed_hosts_are_taken_once_for_one_card() {
+        let identity = "browser:needing-agent";
+        let hosts = |names: &[&str]| names.iter().map(|h| h.to_string()).collect::<Vec<_>>();
+        need(identity, &hosts(&["www.gstatic.com", "fonts.example.org"]));
+        need(identity, &hosts(&["www.gstatic.com", "cdn.example.net"]));
+        assert!(!was_asked(identity, "www.gstatic.com"));
+        assert_eq!(
+            take_needed(identity),
+            ["www.gstatic.com", "fonts.example.org", "cdn.example.net"]
+        );
+        assert!(take_needed(identity).is_empty(), "taken once");
+        assert!(was_asked(identity, "www.gstatic.com"));
+        assert!(!was_asked("browser:other-agent", "www.gstatic.com"));
+        let many: Vec<String> = (0..MOST_NEEDED + 3)
+            .map(|i| format!("h{i}.example.com"))
+            .collect();
+        need(identity, &many);
+        let kept = take_needed(identity);
+        assert_eq!(kept.len(), MOST_NEEDED);
+        assert_eq!(kept.last(), many.last());
+    }
+
+    /// The proxy's hook notes agents' browsers only: never the person's
+    /// window, or a container that isn't a browser
+    #[test]
+    fn only_agents_browsers_are_noted() {
+        use crate::services::egress::RefusedSite;
+        let before = Instant::now();
+        SiteRefusals.refused("browser-headless:hook-agent", "example.org", 443);
+        SiteRefusals.refused("my-browser-chrome:nandi", "example.org", 443);
+        SiteRefusals.refused("hook-agent", "example.org", 443);
+        assert_eq!(
+            refused_since("browser-headless:hook-agent", before),
+            ["example.org"]
+        );
+        assert!(refused_since("my-browser-chrome:nandi", before).is_empty());
+        assert!(refused_since("hook-agent", before).is_empty());
     }
 }

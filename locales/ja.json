@@ -3850,7 +3850,7 @@
   "settings.browser.opened": "マイ Nandi ブラウザー ({{browser}}) を開きました",
   "settings.browser.openFailed": "マイ Nandi ブラウザーを開けませんでした",
   "settings.browser.syncNote": "このウィンドウで {{browser}} にサインインすると、ブラウザー自身の同期で保存済みのパスワードが届きます。Nandi が普段のブラウザーからパスワードや Cookie をコピーすることはありません。",
-  "settings.browser.throughNandi": "このウィンドウは Nandi のブラウザーです。Nandi のプロキシと Nandi の許可サイトを通り、Nandi がまだ許可されていないサイトでは先に「このサイトを許可しますか?」と尋ねます。このプロファイルを使うエージェントも常に同じ経路を通り、拡張機能はオフになります。",
+  "settings.browser.throughNandi": "あなた自身のウィンドウは Nandi のプロキシを通り、接続はすべて記録されます。ブロックできるのは Nandi のポリシーだけです。エージェントは許可されたサイトにだけアクセスし、新しいサイトは 1 枚のカードでまとめて尋ねます。拡張機能はオフです。",
   "settings.browser.state.empty": "まだサインインは保存されていません",
   "settings.browser.state.signedIn": "ここでのサインインをサイトが記憶しています",
   "settings.browser.state.open": "あなたのウィンドウで開いています",

@@ -582,6 +582,38 @@ impl PolicySet {
             None => Ok(effective(request, subject, &self.policies)),
         }
     }
+
+    /// The most `subject` may reach whatever its own list says: `*` when no
+    /// policy over it has a network ceiling, else what every ceiling
+    /// leaves. For browsing that isn't the agent's (My Nandi browser's
+    /// window, the person's own).
+    pub fn network_ceiling(
+        &self,
+        request: &Request,
+        subject: &Subject,
+    ) -> Result<Vec<HostRule>, String> {
+        let any = HostRule {
+            host: "*".to_string(),
+            methods: Vec::new(),
+        };
+        let ceilings = self
+            .policies
+            .iter()
+            .filter(|policy| policy.applies(subject))
+            .filter_map(|policy| policy.rules.network.as_ref())
+            .flat_map(|network| network.allow.iter().cloned());
+        let request = Request {
+            network: std::iter::once(any).chain(ceilings).collect(),
+            ..request.clone()
+        };
+        let mut hosts: Vec<HostRule> = Vec::new();
+        for rule in self.effective(&request, subject)?.network {
+            if !hosts.contains(&rule) {
+                hosts.push(rule);
+            }
+        }
+        Ok(hosts)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1160,6 +1192,51 @@ mod tests {
         );
         assert_eq!(e.network, narrow.network);
         assert!(e.changes.is_empty());
+    }
+
+    /// Browsing no agent's list limits reaches anything no ceiling keeps
+    /// out: everything with no ceiling, what every ceiling leaves with some
+    #[test]
+    fn the_network_ceiling_is_what_every_policy_leaves() {
+        let set = |policies: Vec<Policy>| PolicySet {
+            policies,
+            broken: Vec::new(),
+        };
+        let none = set(vec![policy(
+            "tools",
+            "applies_to: ['*']\ntools: { deny: [shell] }",
+        )]);
+        assert_eq!(
+            none.network_ceiling(&request(), &subject("a")).unwrap(),
+            [host("*", &[])],
+            "no ceiling: the agent's own list doesn't matter"
+        );
+        let aws = policy(
+            "aws",
+            "applies_to: ['*']\nnetwork: { allow: [{ host: '*.amazonaws.com' }, { host: github.com }] }",
+        );
+        let github = policy(
+            "github",
+            "applies_to: ['*']\nnetwork: { allow: [{ host: '*.github.com' }, { host: github.com }] }",
+        );
+        let other = policy(
+            "other",
+            "applies_to: [agent:b]\nnetwork: { allow: [{ host: example.com }] }",
+        );
+        assert_eq!(
+            set(vec![aws.clone(), other.clone()])
+                .network_ceiling(&request(), &subject("a"))
+                .unwrap(),
+            [host("*.amazonaws.com", &[]), host("github.com", &[])],
+            "a policy for another agent doesn't narrow it"
+        );
+        assert_eq!(
+            set(vec![aws, github, other])
+                .network_ceiling(&request(), &subject("a"))
+                .unwrap(),
+            [host("github.com", &[])],
+            "only what both ceilings leave"
+        );
     }
 
     #[test]

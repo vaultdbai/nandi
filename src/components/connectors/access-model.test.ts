@@ -201,6 +201,7 @@ describe('a site request', () => {
       reason: 'Find the hours',
       canSave: true,
       subdomains: false,
+      also: [],
     })
     expect(parseAccessRequest({ ...SITE_ARGS, site: null })).toBeNull()
     expect(parseAccessRequest({ ...SITE_ARGS, site: { host: '' } })).toBeNull()
@@ -232,6 +233,28 @@ describe('a site request', () => {
     expect(approvalSummary('connector_access', SITE_ARGS)).toEqual({
       key: 'siteAccess',
       values: { agent: 'Browser', site: 'bücher.example' },
+    })
+  })
+
+  it('names every host a page needed in one card', () => {
+    const grouped = {
+      ...SITE_ARGS,
+      site: {
+        ...SITE_ARGS.site,
+        host: 'www.gstatic.com',
+        display: 'www.gstatic.com',
+        also: ['encrypted-tbn0.gstatic.com', '', 7],
+      },
+    }
+    const request = parseAccessRequest(grouped)
+    if (!request?.site) throw new Error('parse')
+    expect(request.site.also).toEqual(['encrypted-tbn0.gstatic.com'])
+    expect(accessSentence(request, 'Nandi').values.names).toBe(
+      'www.gstatic.com, encrypted-tbn0.gstatic.com'
+    )
+    expect(approvalSummary('connector_access', grouped).values).toEqual({
+      agent: 'Browser',
+      site: 'www.gstatic.com, encrypted-tbn0.gstatic.com',
     })
   })
 })

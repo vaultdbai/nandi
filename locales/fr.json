@@ -3850,7 +3850,7 @@
   "settings.browser.opened": "Mon navigateur Nandi ({{browser}}) est ouvert",
   "settings.browser.openFailed": "Impossible d'ouvrir Mon navigateur Nandi",
   "settings.browser.syncNote": "Connectez-vous à {{browser}} dans cette fenêtre pour retrouver vos mots de passe enregistrés grâce à la synchronisation du navigateur. Nandi ne copie jamais les mots de passe ni les cookies de votre navigateur habituel.",
-  "settings.browser.throughNandi": "Cette fenêtre est le navigateur de Nandi : elle passe par le proxy de Nandi et les sites autorisés de Nandi, et un site que Nandi n'a pas encore le droit d'ouvrir demande d'abord « Autoriser ce site ? ». Les agents qui utilisent ce profil passent toujours par là aussi, avec les extensions désactivées.",
+  "settings.browser.throughNandi": "Votre propre fenêtre passe par le proxy de Nandi et chaque connexion est enregistrée ; seules les règles de Nandi peuvent la bloquer. Les agents n'atteignent que leurs sites autorisés et demandent les nouveaux en une seule carte, avec les extensions désactivées.",
   "settings.browser.state.empty": "Aucune connexion enregistrée",
   "settings.browser.state.signedIn": "Les sites se souviennent de vos connexions ici",
   "settings.browser.state.open": "Ouvert dans votre fenêtre",

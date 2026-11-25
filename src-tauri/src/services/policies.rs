@@ -82,6 +82,33 @@ pub fn admits_hosts(store: &RepoStore, id: &str, hosts: &[String]) -> bool {
         .is_ok_and(|effective| effective.network == wanted)
 }
 
+/// The most browsing that isn't agent `id`'s own may reach under the
+/// policies over `id`, whatever its own list says (`*` when none has a
+/// network ceiling). My Nandi browser's window: the person browses as
+/// Nandi, and only Nandi's policies can block a site.
+pub fn network_ceiling(store: &RepoStore, id: &str) -> Result<Capabilities, String> {
+    let (agent, skill) = store.declared_skill(id)?;
+    let policies = store.policies()?;
+    let tags = agent.tags();
+    let subject = Subject {
+        agent: &skill.id,
+        tags: &tags,
+    };
+    let hosts = policies.network_ceiling(&request(&agent, &skill), &subject)?;
+    Ok(Capabilities {
+        aws: None,
+        network: NetworkCapabilities {
+            allow: hosts
+                .into_iter()
+                .map(|rule| HostRule {
+                    host: rule.host,
+                    methods: rule.methods,
+                })
+                .collect(),
+        },
+    })
+}
+
 /// The policies over one agent, for its Permissions panel
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]

@@ -26,6 +26,7 @@ mod address;
 mod aws_proxy;
 pub mod capabilities;
 pub mod credentials;
+pub mod door;
 mod http_proxy;
 mod llm_proxy;
 pub mod model_proxy;
@@ -454,8 +455,8 @@ pub trait KeyRelease: Send + Sync {
     ) -> Result<crate::services::lock_box::ReleasedKey, String>;
 }
 
-/// Who hears about a tunnel the rules refused, to ask the person about the
-/// site (`pilots::my_browser`: My Nandi browser's "Allow this site?"). It
+/// Who hears about a tunnel the rules refused, so an agent's browser can
+/// ask the person about the hosts a page needed (`pilots::sites`). It
 /// returns at once; the tunnel is refused either way.
 pub trait RefusedSite: Send + Sync {
     fn refused(&self, identity: &str, host: &str, port: u16);
@@ -591,10 +592,10 @@ fn capabilities_of(
         return session_capabilities(identity)
             .ok_or_else(|| "No harness test is running".to_string());
     }
-    // My Nandi browser's window: Nandi's sites, plus any the person allowed
-    // once while it's open
-    if let Some(kind) = crate::services::pilots::my_browser::kind_of_identity(identity) {
-        return crate::services::pilots::my_browser::capabilities(store, kind);
+    // My Nandi browser's window: the person's own browsing, anything
+    // Nandi's policies don't keep out
+    if crate::services::pilots::my_browser::kind_of_identity(identity).is_some() {
+        return crate::services::pilots::my_browser::capabilities(store);
     }
     // A browser pilot (`browser:<agent>`): that agent's own sites, plus any
     // a person allowed once in its current run
@@ -619,9 +620,7 @@ pub fn start_server(state: &AppState) {
             Arc::new(move |identity| capabilities_of(&store, identity))
         },
         keys: Some(Arc::new(crate::services::lock_box::Releaser(state.clone()))),
-        refused: Some(Arc::new(crate::services::pilots::my_browser::Asker(
-            state.clone(),
-        ))),
+        refused: Some(Arc::new(crate::services::pilots::sites::SiteRefusals)),
     };
     let router = llm_proxy::router(llm_proxy::ProxyState::new(state))
         .merge(model_proxy::router(model_proxy::ModelProxyState::new(

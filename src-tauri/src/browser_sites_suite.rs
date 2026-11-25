@@ -10,6 +10,8 @@
 //!   don't ask; with subdomains, `*.host` too;
 //! - Don't allow fails the call with words the agent can pass on;
 //! - addresses, local names and ports are never asked about.
+//! - hosts a page needed that the proxy refused are asked about in one
+//!   card, and one yes allows them all for the run (or always).
 
 use serde_json::{json, Value};
 
@@ -43,14 +45,18 @@ fn script(url: &str) -> Value {
 
 /// An agent of the user's own with the visible browser and one allowed site
 fn add_agent(state: &AppState) {
-    let path = state.store().layout().agent_md_path(AGENT);
+    add_agent_named(state, AGENT);
+}
+
+fn add_agent_named(state: &AppState, id: &str) {
+    let path = state.store().layout().agent_md_path(id);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(
         &path,
         "---\nname: Shopper\npilots: [browser]\nnetwork:\n  allow:\n    - host: example.com\n---\nShop.\n",
     )
     .unwrap();
-    state.store().commit(EntityKind::Agent, AGENT).unwrap();
+    state.store().commit(EntityKind::Agent, id).unwrap();
 }
 
 async fn start(url: &str) -> (AppState, axum::Router) {
@@ -62,10 +68,14 @@ async fn start(url: &str) -> (AppState, axum::Router) {
 
 /// Sends a message and waits for the run to settle (done or paused)
 async fn run(router: &axum::Router) -> (String, Value) {
+    run_as(router, AGENT).await
+}
+
+async fn run_as(router: &axum::Router, agent: &str) -> (String, Value) {
     let sent = rpc(
         router,
         "send_message",
-        json!({ "agentId": AGENT, "text": "Where's my order?", "attachments": [], "clientMessageId": null }),
+        json!({ "agentId": agent, "text": "Where's my order?", "attachments": [], "clientMessageId": null }),
     )
     .await;
     let run_id = sent["runId"].as_str().expect("a run ID").to_string();
@@ -110,9 +120,13 @@ async fn finished(router: &axum::Router, run_id: &str) -> Value {
 }
 
 fn allowed_hosts(state: &AppState) -> Vec<String> {
+    allowed_hosts_of(state, AGENT)
+}
+
+fn allowed_hosts_of(state: &AppState, agent: &str) -> Vec<String> {
     state
         .store()
-        .agent(AGENT)
+        .agent(agent)
         .unwrap()
         .capabilities()
         .network()
@@ -226,4 +240,95 @@ async fn allowed_sites_and_never_asked_targets_dont_prompt() {
         assert!(pending.as_array().unwrap().is_empty(), "{url}: {pending}");
         state.shutdown();
     }
+}
+
+/// The agent opens `first`, then `second`, then answers
+fn two_pages(first: &str, second: &str) -> Value {
+    let step = |url: &str, page: &str| {
+        json!({
+            "text": "Opening the page.",
+            "toolCalls": [{
+                "tool": "pilot_browser__browser_navigate",
+                "args": { "url": url, "reason": "Check the order status" },
+                "result": format!("Page: {page}")
+            }]
+        })
+    };
+    json!({
+        "agent": [step(first, "Orders"), step(second, "Images"), { "text": "Done." }],
+        "studio": [],
+        "tokenDelayMs": 0
+    })
+}
+
+/// A page on an allowed site needed other hosts (the ones the proxy
+/// refused that the page asked for, as `browser::call` notes them): they
+/// become one card, one Allow once lets the whole group through for
+/// the rest of the run, and Always allow saves every host in it
+#[tokio::test]
+async fn hosts_a_page_needed_are_asked_in_one_card_and_allowed_for_the_run() {
+    // Its own agent: what the proxy refused is kept by browser identity
+    const GROUPER: &str = "grouper";
+    let (state, router) = boot(BuiltInRelay::new(None, None));
+    add_agent_named(&state, GROUPER);
+    canned(
+        &state,
+        two_pages("https://example.com/orders", "https://cdn.example.net/img"),
+    )
+    .await;
+    // What the agent's last page couldn't reach, in a burst
+    let hosts = |names: &[&str]| names.iter().map(|h| h.to_string()).collect::<Vec<_>>();
+    sites::need("browser:grouper", &hosts(&["fonts.example.org"]));
+    sites::need(
+        "browser:grouper",
+        &hosts(&["cdn.example.net", "fonts.example.org"]),
+    );
+    let (run_id, detail) = run_as(&router, GROUPER).await;
+    assert_eq!(detail["run"]["status"], "awaitingApproval", "{detail}");
+    let pending = rpc(&router, "list_pending_approvals", json!({})).await;
+    assert_eq!(pending.as_array().unwrap().len(), 1, "one card: {pending}");
+    let request = pending_site(&router).await;
+    let site = &request["args"]["site"];
+    // Each host once, in the order the page needed them
+    assert_eq!(site["host"], "fonts.example.org", "{site}");
+    assert_eq!(site["also"], json!(["cdn.example.net"]));
+    assert_eq!(site["reason"], "The page on example.com needs them to load");
+
+    answer(&router, &request, "allowOnce", false).await;
+    let detail = finished(&router, &run_id).await;
+    assert_eq!(detail["run"]["status"], "completed", "{detail}");
+    let text = detail.to_string();
+    assert!(text.contains("Page: Orders"), "{text}");
+    assert!(
+        text.contains("Page: Images"),
+        "the second page, on a host of the group, opened unasked: {text}"
+    );
+    let asked = rpc(&router, "list_pending_approvals", json!({})).await;
+    assert!(asked.as_array().unwrap().is_empty(), "asked once: {asked}");
+    assert_eq!(
+        allowed_hosts_of(&state, GROUPER),
+        ["example.com"],
+        "nothing saved"
+    );
+    assert!(
+        !sites::with_run_sites(GROUPER, Capabilities::default())
+            .allows_tunnel("fonts.example.org", 443),
+        "the run ended"
+    );
+
+    // The next run's page needs them again: Always allow saves the group
+    sites::need(
+        "browser:grouper",
+        &hosts(&["cdn.example.net", "fonts.example.org"]),
+    );
+    let (run_id, _) = run_as(&router, GROUPER).await;
+    let request = pending_site(&router).await;
+    answer(&router, &request, "allowSaved", false).await;
+    let detail = finished(&router, &run_id).await;
+    assert_eq!(detail["run"]["status"], "completed", "{detail}");
+    assert_eq!(
+        allowed_hosts_of(&state, GROUPER),
+        ["example.com", "cdn.example.net", "fonts.example.org"]
+    );
+    state.shutdown();
 }

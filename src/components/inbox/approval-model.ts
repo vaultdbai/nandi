@@ -216,7 +216,7 @@ export function approvalSummary(tool: string, args: Args): ApprovalSummary {
           key: 'siteAccess',
           values: {
             agent: agentLabel(request.agent),
-            site: request.site.display,
+            site: [request.site.display, ...request.site.also].join(', '),
           },
         }
       }

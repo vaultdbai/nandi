@@ -2,6 +2,14 @@
 
 What changed in each Nandi release, grouped by what you notice. The release notes for each version are in [docs/release-notes/](docs/release-notes/).
 
+## 0.3.1
+
+### Fixed
+
+- **Agents' browsers open Google again.** A visible browser's navigation to Google hung for 60 seconds and failed, even with the site allowed: Chrome's own background connections waited for a proxy sign-in nobody answered, and the page waited behind them. A browser on this computer now has its own way into Nandi's proxy with no sign-in to answer. A page that still hangs comes back within 20 seconds and says whether Nandi blocked anything.
+- **One card for everything a page needs.** When a page on an allowed site also needs other sites (Google's images on `gstatic.com`, a consent page), the agent names them and asks for them all in one "Allow this site?" card. One yes covers the lot: once for the run, or always. Allow once lasts the whole run, even while another run of the agent starts or ends.
+- **Your own window is yours.** Open my Nandi browser no longer asks about every site and no longer drops sites you allowed when a request closes. Your browsing still goes through Nandi's proxy and every connection is recorded, but only Nandi's policies can block a site. It never adds sites to the Nandi agent's allowed list.
+
 ## 0.3.0 (2026-11-24)
 
 Speaks relay protocol 8 and still works with relays at protocol 7.

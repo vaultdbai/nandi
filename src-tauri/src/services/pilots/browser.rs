@@ -6,12 +6,17 @@
 //!   proxy. `browser` is a visible window on this computer (system Chrome,
 //!   else Edge) so the user can watch, forced through the same proxy.
 //! - **Only the agent's sites load.** Chromium's proxy is the egress proxy,
-//!   authenticated as `<pilot>:<agent>` ([`identity`]): the proxy applies
+//!   authenticated as `<pilot>:<agent>` ([`identity`]): a browser on this
+//!   computer through its own door (`egress::door`, so Chrome never meets a
+//!   proxy sign-in it can't answer), the container's with its token as the
+//!   proxy password. The proxy applies
 //!   that agent's `network.allow`, narrowed by its policies, to every
 //!   request the page makes, and logs them in `egress.log`. Loopback goes
 //!   through it too (`<-loopback>`), and WebRTC can't go around it.
 //!   Navigation to a site outside the rules is refused before it's tried,
-//!   so the agent says why. (Playwright's own `allowedOrigins` is "not a
+//!   so the agent says why. Hosts the proxy refused while a page loaded
+//!   are named in the call's reply, and the agent's next page-opening call
+//!   asks for all of them in one card ([`super::sites`]). (Playwright's own `allowedOrigins` is "not a
 //!   security boundary" and has no `*.domain` patterns, so it isn't used.)
 //! - Everything else is Playwright MCP's own: its tools, its persistent
 //!   profile (`~/.nandi/local/browser/<agent>/<pilot>/profile`, never the
@@ -30,8 +35,9 @@
 //! - The visible browser also has `browser_hand_over` ([`super::handover`]):
 //!   the agent prepares a page and a person finishes it.
 //! - My Nandi browser's window (Settings › Browser) is the same launch with
-//!   no model driving it ([`open_person_window`]): Nandi's identity, Nandi's
-//!   sites, the person's extensions kept. Agents always launch with
+//!   no model driving it ([`open_person_window`]): its own identity, every
+//!   connection recorded, blocked only by Nandi's policies
+//!   ([`super::my_browser`]), the person's extensions kept. Agents always launch with
 //!   extensions off ([`User`]).
 
 use std::collections::HashMap;
@@ -58,6 +64,7 @@ use crate::services::domain::capability::PilotOptions;
 use crate::services::domain::policy::Refusal;
 use crate::services::domain::Agent;
 use crate::services::egress::capabilities::Capabilities;
+use crate::services::egress::door::{self, Door};
 use crate::services::repo_store::RepoStore;
 use crate::services::secrets::Secrets;
 
@@ -75,6 +82,9 @@ pub const IMAGE: &str = "mcr.microsoft.com/playwright/mcp:v0.0.83";
 const HIDDEN_TOOLS: &[&str] = &["browser_evaluate", "browser_run_code_unsafe"];
 const START_TIMEOUT: Duration = Duration::from_secs(60);
 const CALL_TIMEOUT: Duration = Duration::from_secs(90);
+/// How long a page may take to open before Playwright gives up (its own
+/// default is 60 s). A page that hangs says so sooner.
+const NAVIGATION_TIMEOUT_MS: u64 = 20_000;
 const MAX_RESULT_CHARS: usize = 60_000;
 /// Inside the headless container: the agent's work folder and config
 const CONTAINER_WORKDIR: &str = "/agent/workdir";
@@ -150,6 +160,9 @@ struct Instance {
     secrets: HashMap<String, String>,
     /// My Nandi browser's profile it uses, if the person granted one
     shared: Option<BrowserKind>,
+    /// A browser on the host: its way through the egress proxy, kept open
+    /// while it runs (dropping it closes it)
+    _door: Option<Door>,
 }
 
 /// `(agent, pilot)` → its browser
@@ -381,14 +394,23 @@ enum User {
 /// it by default; agents pass it again so it never depends on that default
 const NO_EXTENSIONS: &str = "--disable-extensions";
 
+/// How a browser signs in to the egress proxy
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProxySignIn<'a> {
+    /// The token is the proxy password (a container's browser, through the
+    /// relay; never on a command line)
+    Token(&'a str),
+    /// Its own door (`egress::door`) signs it in: a browser on the host
+    Door,
+}
+
 /// Playwright MCP's config file. `proxy` is the egress proxy URL as the
-/// browser reaches it; the token is its password (never on a command line).
-#[allow(clippy::too_many_arguments)]
+/// browser reaches it.
 fn config(
     mode: Mode,
     user: User,
     proxy: &str,
-    token: &str,
+    sign_in: ProxySignIn,
     profile: &str,
     output: &str,
     secrets: &HashMap<String, String>,
@@ -399,8 +421,6 @@ fn config(
             "server": proxy,
             // Chromium skips the proxy for loopback unless told not to
             "bypass": "<-loopback>",
-            "username": "nandi",
-            "password": token,
         },
         "args": [
             "--proxy-bypass-list=<-loopback>",
@@ -408,6 +428,10 @@ fn config(
             "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
         ],
     });
+    if let ProxySignIn::Token(token) = sign_in {
+        launch["proxy"]["username"] = Value::from("nandi");
+        launch["proxy"]["password"] = Value::from(token);
+    }
     if user == User::Agent {
         if let Some(args) = launch["args"].as_array_mut() {
             args.push(Value::from(NO_EXTENSIONS));
@@ -440,6 +464,7 @@ fn config(
             "launchOptions": launch,
         },
         "outputDir": output,
+        "timeouts": { "navigation": NAVIGATION_TIMEOUT_MS },
         // The model reads the accessibility tree; screenshots are files
         "imageResponses": "omit",
         "codegen": "none",
@@ -582,26 +607,31 @@ async fn ensure<'a>(
         }
     };
     let (base, profile, workdir) = dirs(&agent_id, pilot, shared)?;
-    let (proxy, profile_arg, output_arg) = match mode {
+    let (relay_proxy, profile_arg, output_arg) = match mode {
         Mode::Container => {
             use crate::services::egress::relay;
             (
-                format!("http://{}:{}", relay::RELAY_NAME, relay::RELAY_PORT),
+                Some(format!(
+                    "http://{}:{}",
+                    relay::RELAY_NAME,
+                    relay::RELAY_PORT
+                )),
                 CONTAINER_PROFILE.to_string(),
                 format!("{CONTAINER_WORKDIR}/browser"),
             )
         }
         Mode::Window(_) => (
-            format!("http://127.0.0.1:{}", crate::services::egress::proxy_port()),
+            None,
             profile.display().to_string(),
             workdir.join("browser").display().to_string(),
         ),
     };
+    // Without the token or the door's port, which change at every start
     let fingerprint = config(
         mode,
         User::Agent,
-        &proxy,
-        "-",
+        relay_proxy.as_deref().unwrap_or("door"),
+        ProxySignIn::Door,
         &profile_arg,
         &output_arg,
         &secrets,
@@ -621,11 +651,18 @@ async fn ensure<'a>(
     }
     if !pool.contains_key(&key) {
         let token = host.proxy_tokens.issue(&identity(pilot, &agent_id));
+        let (proxy, sign_in, door) = match &relay_proxy {
+            Some(relay) => (relay.clone(), ProxySignIn::Token(&token), None),
+            None => {
+                let door = door::open(&token)?;
+                (door.url(), ProxySignIn::Door, Some(door))
+            }
+        };
         let settings = config(
             mode,
             User::Agent,
             &proxy,
-            &token,
+            sign_in,
             &profile_arg,
             &output_arg,
             &secrets,
@@ -678,6 +715,7 @@ async fn ensure<'a>(
                 tools,
                 secrets,
                 shared,
+                _door: door,
             },
         );
     }
@@ -688,8 +726,8 @@ async fn ensure<'a>(
 /// The person's window on `kind`'s shared profile under `local`, as
 /// `pilot` (`my_browser::pilot`): Playwright MCP in window mode, exactly as
 /// an agent's visible browser starts, with no model driving it. It goes
-/// through the egress proxy as [`identity`]`(pilot, agent)` (a fresh token,
-/// Playwright answers the proxy's sign-in, so nothing prompts), with
+/// through the egress proxy as [`identity`]`(pilot, agent)` (a fresh token
+/// behind its own door, `egress::door`, so nothing prompts), with
 /// WebRTC forced through it and loopback too. Opening it again while it's
 /// open adds a tab.
 pub(super) async fn open_person_window(
@@ -718,15 +756,21 @@ pub(super) async fn open_person_window(
         .map(Path::to_path_buf)
         .ok_or("My Nandi browser has no folder")?;
     let mode = Mode::Window(kind.channel());
-    let proxy = format!("http://127.0.0.1:{}", crate::services::egress::proxy_port());
     let token = host.proxy_tokens.issue(&identity(pilot, agent));
+    let door = match door::open(&token) {
+        Ok(door) => door,
+        Err(e) => {
+            host.proxy_tokens.revoke(&identity(pilot, agent));
+            return Err(e);
+        }
+    };
     let profile_arg = profile.display().to_string();
     let output_arg = base.display().to_string();
     let settings = config(
         mode,
         User::Person,
-        &proxy,
-        &token,
+        &door.url(),
+        ProxySignIn::Door,
         &profile_arg,
         &output_arg,
         &HashMap::new(),
@@ -754,6 +798,7 @@ pub(super) async fn open_person_window(
         tools: Vec::new(),
         secrets: HashMap::new(),
         shared: Some(kind),
+        _door: Some(door),
     };
     // Playwright opens the window on its first call
     if let Err(e) = run_tool(
@@ -1234,9 +1279,28 @@ pub async fn call(
             ));
         }
     }
+    let started = std::time::Instant::now();
     let (content, is_error) = run_tool(instance, tool, &args).await?;
     // Playwright hides the values it typed; this is the second lock
     let mut content = mask_secrets(content, &instance.secrets);
+    // What the page couldn't reach: named here, asked about in one card on
+    // the next page-opening call (`sites::need`), each host once
+    let browser_id = identity(pilot, agent_id);
+    let mut refused = sites::refused_since(&browser_id, started);
+    if !refused.is_empty() {
+        refused = asked_by_the_page(instance, refused).await;
+    }
+    refused.retain(|host| !sites::was_asked(&browser_id, host));
+    let needed = needed_hosts(
+        &host.store,
+        agent_id,
+        &sites::with_run_sites(agent_id, skill.capabilities.clone()),
+        refused,
+    );
+    sites::need(&browser_id, &needed);
+    if let Some(note) = needed_note(tool, &needed, is_error, &content) {
+        content.push_str(&note);
+    }
     set_pages_open(agent_id, pilot, tool != "browser_close");
     if let Some(url) = refusal::page_url(&content) {
         remember_page(agent_id, pilot, &url);
@@ -1247,6 +1311,73 @@ pub async fn call(
         ));
     }
     Ok((content, is_error))
+}
+
+/// Of `refused`, the hosts the page itself asked for, by its own list of
+/// requests: Chrome's background connections (sign-in, autofill) aren't
+/// the page's and never reach a card. All of them if the list can't be read.
+async fn asked_by_the_page(instance: &mut Instance, refused: Vec<String>) -> Vec<String> {
+    match run_tool(instance, "browser_network_requests", &json!({})).await {
+        Ok((requests, false)) => refused
+            .into_iter()
+            .filter(|host| names_host(&requests, host))
+            .collect(),
+        _ => refused,
+    }
+}
+
+/// Whether a request list names a URL on `host` (`https://host/…`)
+fn names_host(requests: &str, host: &str) -> bool {
+    ["/", ":", "?", "#"].iter().any(|after| {
+        requests
+            .to_ascii_lowercase()
+            .contains(&format!("://{host}{after}"))
+    })
+}
+
+/// Of the hosts the proxy refused while a call ran, those Nandi can ask the
+/// person about: not allowed yet (a page may have been allowed them since),
+/// and every applying policy leaves them whole
+fn needed_hosts(
+    store: &RepoStore,
+    agent: &str,
+    allowed: &Capabilities,
+    refused: Vec<String>,
+) -> Vec<String> {
+    refused
+        .into_iter()
+        .filter(|host| !allowed.allows_tunnel(host, 443))
+        .filter(|host| {
+            crate::services::policies::admits_hosts(store, agent, std::slice::from_ref(host))
+        })
+        .collect()
+}
+
+/// What the agent reads after a call whose page needed `needed` hosts it
+/// may not open yet, or a navigation that timed out with nothing refused
+fn needed_note(tool: &str, needed: &[String], is_error: bool, content: &str) -> Option<String> {
+    if !needed.is_empty() {
+        let list = needed.join(", ");
+        let what = if is_error {
+            "The page couldn't open"
+        } else {
+            "Parts of the page didn't load"
+        };
+        return Some(format!(
+            "\n### Sites this page needs\n{what}: it also needs {list}, which this agent may not open yet. \
+             Open the page again (the same browser_navigate call) and Nandi asks the person to allow them all in one card. \
+             If they don't, carry on without them and say what was missing."
+        ));
+    }
+    let timed_out = is_error
+        && matches!(tool, "browser_navigate" | "browser_tabs")
+        && content.contains("Timeout");
+    timed_out.then(|| {
+        format!(
+            "\nNandi blocked nothing on this page: the site didn't finish opening within {} seconds. Try once more, or another page.",
+            NAVIGATION_TIMEOUT_MS / 1000
+        )
+    })
 }
 
 /// One call to the browser's MCP server: `(content, is_error)`
@@ -1520,7 +1651,7 @@ mod tests {
             Mode::Container,
             User::Agent,
             "http://nandi-egress:11435",
-            "tok",
+            ProxySignIn::Token("tok"),
             "/profile",
             "/agent/workdir/browser",
             &secrets,
@@ -1541,12 +1672,16 @@ mod tests {
         assert_eq!(settings["browser"]["userDataDir"], "/profile");
         assert_eq!(settings["secrets"]["SITE_PASSWORD"], "hunter2");
         assert_eq!(settings["imageResponses"], "omit");
+        assert_eq!(
+            settings["timeouts"]["navigation"], NAVIGATION_TIMEOUT_MS,
+            "a page that hangs says so well before Playwright's 60 s"
+        );
 
         let window = config(
             Mode::Window("msedge"),
             User::Agent,
             "http://127.0.0.1:1",
-            "t",
+            ProxySignIn::Door,
             "p",
             "o",
             &HashMap::new(),
@@ -1574,7 +1709,10 @@ mod tests {
     }
 
     /// Every way a browser starts, the person's window included: none
-    /// without the egress proxy, its token and loopback and WebRTC through it
+    /// without the egress proxy, and loopback and WebRTC through it. A
+    /// browser on this computer signs in by its door, never a proxy
+    /// password: Chrome's own connections would meet a 407 nobody answers,
+    /// and a page on the same host (Google) would hang behind them
     #[test]
     fn every_launch_goes_through_the_proxy() {
         let launches = [
@@ -1585,11 +1723,15 @@ mod tests {
             (Mode::Window("msedge"), User::Person),
         ];
         for (mode, user) in launches {
+            let sign_in = match mode {
+                Mode::Container => ProxySignIn::Token("tok"),
+                Mode::Window(_) => ProxySignIn::Door,
+            };
             let settings = config(
                 mode,
                 user,
                 "http://127.0.0.1:11435",
-                "tok",
+                sign_in,
                 "/p",
                 "/o",
                 &HashMap::new(),
@@ -1599,11 +1741,19 @@ mod tests {
                 launch["proxy"]["server"], "http://127.0.0.1:11435",
                 "{mode:?} {user:?}"
             );
-            assert_eq!(launch["proxy"]["username"], "nandi");
-            assert_eq!(
-                launch["proxy"]["password"], "tok",
-                "the token signs in, no prompt"
-            );
+            match mode {
+                Mode::Container => {
+                    assert_eq!(launch["proxy"]["username"], "nandi");
+                    assert_eq!(launch["proxy"]["password"], "tok", "the token signs in");
+                }
+                Mode::Window(_) => {
+                    assert!(launch["proxy"].get("username").is_none(), "{user:?}");
+                    assert!(
+                        launch["proxy"].get("password").is_none(),
+                        "no proxy sign-in to answer: {user:?}"
+                    );
+                }
+            }
             assert_eq!(launch["proxy"]["bypass"], "<-loopback>");
             let args = launch_args(&settings);
             assert!(args.contains(&"--proxy-bypass-list=<-loopback>".to_string()));
@@ -1620,7 +1770,7 @@ mod tests {
                 Mode::Window("chrome"),
                 user,
                 "http://127.0.0.1:1",
-                "t",
+                ProxySignIn::Door,
                 "/h/.nandi/local/browser/profiles/chrome/profile",
                 "o",
                 &HashMap::new(),
@@ -1654,7 +1804,7 @@ mod tests {
             Mode::Container,
             User::Agent,
             "http://e:1",
-            "t",
+            ProxySignIn::Token("t"),
             "/profile",
             "o",
             &HashMap::new(),
@@ -1751,6 +1901,81 @@ Typed hunter2-xyz"
         assert!(!masked.contains("hunter2-xyz"), "{masked}");
         assert!(masked.contains("[value=[SITE_PASSWORD]]"));
         assert_eq!(mask_secrets("plain".into(), &secrets), "plain");
+    }
+
+    /// The reply names the hosts the proxy refused while the page loaded
+    /// and how the person is asked; a navigation that only timed out says
+    /// Nandi blocked nothing. Either way it comes back well before 60 s.
+    #[test]
+    fn a_page_s_refused_hosts_are_named_in_the_reply() {
+        let needed = vec![
+            "www.gstatic.com".to_string(),
+            "encrypted-tbn0.gstatic.com".to_string(),
+        ];
+        let loaded = needed_note("browser_navigate", &needed, false, "### Page").unwrap();
+        assert!(loaded.contains("Parts of the page didn't load"), "{loaded}");
+        assert!(loaded.contains("www.gstatic.com, encrypted-tbn0.gstatic.com"));
+        assert!(loaded.contains("in one card"), "{loaded}");
+        let failed = needed_note("browser_navigate", &needed, true, "net::ERR_TUNNEL").unwrap();
+        assert!(failed.contains("The page couldn't open"), "{failed}");
+
+        let timeout = "### Error\nTimeoutError: browserBackend.callTool: Timeout 20000ms exceeded.";
+        let quiet = needed_note("browser_navigate", &[], true, timeout).unwrap();
+        assert!(quiet.contains("Nandi blocked nothing"), "{quiet}");
+        assert!(quiet.contains("20 seconds"), "{quiet}");
+        assert!(needed_note("browser_navigate", &[], false, "### Page").is_none());
+        assert!(needed_note("browser_click", &[], true, timeout).is_none());
+        const { assert!(NAVIGATION_TIMEOUT_MS < 60_000) };
+    }
+
+    /// Only hosts the page asked for count, not Chrome's own connections
+    #[test]
+    fn the_page_s_own_requests_name_its_hosts() {
+        let requests = "1. [GET] https://www.google.com/ => [200] OK
+                        2. [GET] https://www.gstatic.com/og/a.js => [FAILED] net::ERR_TUNNEL_CONNECTION_FAILED
+                        3. [GET] https://Encrypted-Tbn0.gstatic.com?q=1 => [FAILED]";
+        assert!(names_host(requests, "www.gstatic.com"));
+        assert!(names_host(requests, "encrypted-tbn0.gstatic.com"));
+        assert!(
+            !names_host(requests, "gstatic.com"),
+            "a parent isn't the host"
+        );
+        assert!(!names_host(requests, "accounts.google.com"), "Chrome's own");
+    }
+
+    /// Only hosts Nandi can ask about are named: not one allowed already,
+    /// nor one past a policy's network ceiling
+    #[tokio::test]
+    async fn only_hosts_a_person_can_allow_are_needed() {
+        use crate::services::domain::EntityKind;
+        let state = crate::services::AppState::for_tests(vec![]);
+        let path = state.store().layout().agent_md_path("shopper");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "---\nname: Shopper\npilots: [browser]\nnetwork:\n  allow:\n    - host: www.google.com\n---\nShop.\n",
+        )
+        .unwrap();
+        state.store().commit(EntityKind::Agent, "shopper").unwrap();
+        let policies = state.store().layout().policies_dir();
+        std::fs::create_dir_all(&policies).unwrap();
+        std::fs::write(
+            policies.join("google-only.md"),
+            "---\napplies_to: [agent:shopper]\nnetwork: { allow: [{ host: '*.google.com' }, { host: '*.gstatic.com' }] }\n---\nWhy.\n",
+        )
+        .unwrap();
+        let allowed = state.store().skill("shopper").unwrap().capabilities;
+        let needed = needed_hosts(
+            state.store(),
+            "shopper",
+            &allowed,
+            vec![
+                "www.google.com".to_string(),
+                "www.gstatic.com".to_string(),
+                "tracker.example".to_string(),
+            ],
+        );
+        assert_eq!(needed, ["www.gstatic.com"]);
     }
 
     #[test]

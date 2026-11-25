@@ -31,6 +31,8 @@ export interface SiteAccess {
   canSave: boolean
   /** As decided: the grant covers its subdomains too */
   subdomains: boolean
+  /** More hosts the same yes allows: the others the page needed */
+  also: string[]
 }
 
 /** The args of a `connector_access` approval */
@@ -82,6 +84,9 @@ function parseSite(value: unknown): SiteAccess | null {
     reason: text(raw.reason) || null,
     canSave: raw.canSave === true,
     subdomains: raw.subdomains === true,
+    also: Array.isArray(raw.also)
+      ? raw.also.filter((h): h is string => typeof h === 'string' && h !== '')
+      : [],
   }
 }
 
@@ -170,7 +175,10 @@ export function accessSentence(
   if (request.site) {
     return {
       key: 'site',
-      values: { agent: agentName, names: request.site.display },
+      values: {
+        agent: agentName,
+        names: [request.site.display, ...request.site.also].join(', '),
+      },
     }
   }
   const access = request.access === 'write' ? 'Write' : 'Read'

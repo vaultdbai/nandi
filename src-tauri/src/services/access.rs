@@ -15,8 +15,10 @@
 //! the same way (family `site`, [`SiteAccess`]): Allow once lets the
 //! browser and the egress proxy reach it until the run ends
 //! (`pilots::sites`), Always allow writes it into the agent's agent.md
-//! (`network.allow`), Don't allow fails the call. My Nandi browser's window
-//! asks the same way for Nandi (`pilots::my_browser`).
+//! (`network.allow`), Don't allow fails the call. Hosts a page needed that
+//! the proxy refused ride along in the same card (`SiteAccess::also`), so
+//! one yes allows them all. My Nandi browser's window never asks: it is the
+//! person's own browsing (`pilots::my_browser`).
 //!
 //! Grants are read on every call, so a removed grant stops the next call,
 //! even mid-run. The request is an ordinary approval row (it survives
@@ -129,6 +131,20 @@ pub struct SiteAccess {
     /// Set once the person chose: the grant covers its subdomains too
     #[serde(default)]
     pub subdomains: bool,
+    /// More hosts the same yes allows: the ones a page needed besides
+    /// `host` (`pilots::sites`), as the browser sends them
+    #[serde(default)]
+    pub also: Vec<String>,
+}
+
+impl SiteAccess {
+    /// Every `network.allow` host a yes to this card adds
+    pub fn grant_hosts(&self) -> Vec<String> {
+        std::iter::once(&self.host)
+            .chain(&self.also)
+            .flat_map(|host| sites::grant_hosts(host, self.subdomains))
+            .collect()
+    }
 }
 
 /// What one call needs
@@ -496,10 +512,9 @@ fn answer_site(
     choice: AccessChoice,
     subdomains: bool,
 ) -> Result<SiteAccess, String> {
-    let hosts = sites::grant_hosts(&site.host, subdomains);
+    let site = SiteAccess { subdomains, ..site };
+    let hosts = site.grant_hosts();
     match choice {
-        // My Nandi browser's window: until it closes
-        AccessChoice::AllowOnce if crate::services::pilots::my_browser::allow_once(&site.pilot, &hosts) => {}
         AccessChoice::AllowOnce => sites::allow_for_run(agent, run_id, &hosts),
         AccessChoice::AllowSaved if site.can_save => save_sites(state, agent, &hosts)?,
         AccessChoice::AllowSaved => {
@@ -514,10 +529,10 @@ fn answer_site(
         AccessChoice::Deny => {}
     }
     log::info!(
-        "Site {} for agent '{agent}' in run {run_id}: {choice:?} (subdomains: {subdomains})",
-        site.host
+        "Sites {} for agent '{agent}' in run {run_id}: {choice:?} (subdomains: {subdomains})",
+        hosts.join(", ")
     );
-    Ok(SiteAccess { subdomains, ..site })
+    Ok(site)
 }
 
 /// Adds `hosts` to agent `id`'s allowed sites, through its repository
@@ -560,7 +575,7 @@ async fn site_earlier(state: &AppState, run_id: &str, host: &str) -> SiteEarlier
         let Some(site) = request.site else {
             continue;
         };
-        let hosts = sites::grant_hosts(&site.host, site.subdomains);
+        let hosts = site.grant_hosts();
         if !sites::covers(&hosts, host) {
             continue;
         }
@@ -593,32 +608,53 @@ async fn site_decision(
     args: &Value,
 ) -> Option<Decision> {
     let (pilot, url) = sites::requested_page(tool, args)?;
-    let site = sites::askable(&url)?;
+    let page = sites::askable(&url)?;
     let caps = &skill?.capabilities;
-    if caps.allows_tunnel(&site.host, 443) || caps.allows_request(&site.host, None, "GET") {
-        return None;
+    let open = |host: &str| caps.allows_tunnel(host, 443) || caps.allows_request(host, None, "GET");
+    // The page's own site, then the hosts its last load was refused
+    let mut wanted = Vec::new();
+    if !open(&page.host) {
+        wanted.push(page.clone());
     }
-    match site_earlier(state, run_id, &site.host).await {
-        SiteEarlier::Once(hosts) => {
-            // Again after a restart, or for the next page on the site
-            sites::allow_for_run(agent, run_id, &hosts);
-            return None;
+    for host in sites::take_needed(&crate::services::pilots::browser::identity(&pilot, agent)) {
+        if !open(&host) && !wanted.iter().any(|w: &sites::AskableSite| w.host == host) {
+            wanted.extend(sites::askable(&format!("https://{host}/")));
         }
-        SiteEarlier::Refused => {
-            return Some(Decision::Refused(format!(
-                "{} isn't allowed: the person didn't let this agent open it. Don't open it again in this task; say what you needed it for.",
-                site.display
-            )))
+    }
+    let admitted = |host: &str| {
+        crate::services::policies::admits_hosts(state.store(), agent, &[host.to_string()])
+    };
+    let mut ask = Vec::new();
+    for site in wanted {
+        let own = site.host == page.host;
+        match site_earlier(state, run_id, &site.host).await {
+            SiteEarlier::Once(hosts) => {
+                // Again after a restart, or for the next page on the site
+                sites::allow_for_run(agent, run_id, &hosts);
+            }
+            SiteEarlier::Refused if own => {
+                return Some(Decision::Refused(format!(
+                    "{} isn't allowed: the person didn't let this agent open it. Don't open it again in this task; say what you needed it for.",
+                    site.display
+                )))
+            }
+            // The person said no to it in this run: the page goes without
+            SiteEarlier::Refused => {}
+            // A site past a policy's ceiling: refused as before, nobody asked
+            SiteEarlier::Unasked if !admitted(&site.host) => {
+                if own {
+                    return None;
+                }
+            }
+            SiteEarlier::Unasked => ask.push(site),
         }
-        SiteEarlier::Unasked => {}
     }
-    if !crate::services::policies::admits_hosts(
-        state.store(),
-        agent,
-        std::slice::from_ref(&site.host),
-    ) {
-        return None;
-    }
+    let (site, more) = ask.split_first()?;
+    let reason = if site.host == page.host {
+        sites::reason_of(args)
+    } else {
+        Some(format!("The page on {} needs them to load", page.display))
+    };
     let can_save = agent_locator::locate(state.store().layout(), agent)
         .is_none_or(|place| place.origin == Origin::Local);
     Some(Decision::Ask(Box::new(AccessRequest {
@@ -632,12 +668,13 @@ async fn site_decision(
         choice: None,
         decided_by: None,
         site: Some(SiteAccess {
-            host: site.host,
-            display: site.display,
+            host: site.host.clone(),
+            display: site.display.clone(),
             pilot,
-            reason: sites::reason_of(args),
+            reason,
             can_save,
             subdomains: false,
+            also: more.iter().map(|s| s.host.clone()).collect(),
         }),
         mailboxes: Vec::new(),
         granted_mailboxes: None,

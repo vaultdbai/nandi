@@ -55,6 +55,7 @@ const SITE_ARGS = {
     reason: 'Find the opening hours',
     canSave: true,
     subdomains: false,
+    also: [],
   },
 }
 
