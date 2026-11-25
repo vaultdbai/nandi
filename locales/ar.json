@@ -5218,5 +5218,6 @@
   "liveWork.delegation.needsYou": "{{name}} بحاجة إليك",
   "liveWork.delegation.done": "أنهى {{name}} العمل",
   "liveWork.delegation.stopped": "توقف {{name}}",
-  "liveWork.openChat": "فتح المحادثة"
+  "liveWork.openChat": "فتح المحادثة",
+  "liveWork.openLive": "مباشر: افتح المحادثة"
 }

@@ -5218,5 +5218,6 @@
   "liveWork.delegation.needsYou": "{{name}} があなたの確認を待っています",
   "liveWork.delegation.done": "{{name}} が完了しました",
   "liveWork.delegation.stopped": "{{name}} が止まりました",
-  "liveWork.openChat": "チャットを開く"
+  "liveWork.openChat": "チャットを開く",
+  "liveWork.openLive": "進行中: チャットを開く"
 }

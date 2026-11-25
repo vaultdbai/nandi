@@ -1311,6 +1311,22 @@ Shared preconditions used below:
 - **Automation:** Covered by: `src/components/agent-console/delegation-model.test.ts`, `steps-model.test.ts`, Rust `services::runs::tests::delegated_runs_are_the_ones_its_agent_asked_for_while_it_ran` | Layer: unit | Gap: no component test for `DelegationBlock.tsx`.
 - **Needs relay:** no
 
+### CH-33 — The Inbox and Runs point to the live chat
+
+- **What:** An approval in the Inbox has **Open chat** under its card, which opens that run's live chat in Ask (where it can be approved too, in context). In an agent's Runs tab a running or waiting run shows **Live: open the chat** instead of its status; the row itself still opens Run Detail. Run Detail of a running or waiting run has **Live: open the chat** next to Stop. Run Detail stays the history.
+- **Where:** `src/components/inbox/Inbox.tsx` (`InboxItemCard`, approval case), `src/components/agents/AgentRunsTab.tsx` (`AgentRunRow`), `src/components/views/RunDetailView.tsx` (header). The `live-run` view (CH-30).
+- **Preconditions:** An agent run waiting for an approval.
+- **Steps:**
+  1. Open the Inbox and press **Open chat** under the approval.
+  2. Open the agent's Runs tab and press **Live: open the chat** on the waiting run.
+  3. Open the run's Run Detail.
+- **Expected:** Each opens the same live chat with the approval card. Run Detail shows **Live: open the chat** while the run goes on, and not after it ends.
+- **Edge / negative cases:**
+  - Approving in the chat clears the Inbox item (it's the same approval).
+  - A finished run's row shows its status and duration as before.
+- **Automation:** Covered by: the `live-run` view's model tests (CH-30) | Layer: ui-e2e | Gap: no component test for the links.
+- **Needs relay:** no
+
 ## Runs, Run Detail and audit
 
 ### RN-01 — Run Detail page and header

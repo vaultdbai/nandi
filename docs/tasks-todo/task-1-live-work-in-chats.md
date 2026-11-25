@@ -41,7 +41,7 @@ The person never needs the word "run". They see Nandi working in a chat. Every l
 1. **Live runs in Ask.** (done) A Live section lists every running or waiting run; opening one shows its messages, plan card, approval cards and Stop. Reuses `MessageList`, `ApprovalRequestCard` and `StopButton`. No new storage: it reads `runs.conversation_id`. Built: design points 1, 2, 3, 5 and 7 (Try again); the sidebar lists the live chats under Ask. No run starts from a phone today (a paired phone only approves), so there is no "From your phone" origin yet.
 2. **Reply into a live run.** (done) The reply box sends the next turn in that run's conversation (triggered, workflow and phone runs included). Built: design point 4 (it waits in the agent's queue, "<Agent> will read this next") and 7 ("Tell <Agent> what to change").
 3. **Delegated work inside the parent chat.** (done) The child run's steps and approval cards show in a block in the parent chat; approving there answers the child's approval. Built: design point 6. The link is the parent's agent and the parent run's time span (`list_delegated_runs`), with no new storage: an agent runs one turn at a time and its tool calls in order.
-4. **Inbox and Runs point to the chat.** An Inbox approval opens its chat; a live run in the Runs tab links to it.
+4. **Inbox and Runs point to the chat.** (done) An Inbox approval opens its chat; a live run in the Runs tab links to it.
 5. **LATER: the receipt.** At the end of a finished chat run: what was done, what changed, proof links (screenshots, sent items), and "Do this automatically", which drafts a workflow or trigger from the chat for the person's yes.
 6. **LATER: one look.** The app icon, the tray and the phone show the same three states: calm, working, needs you.
 

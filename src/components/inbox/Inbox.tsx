@@ -278,20 +278,32 @@ export function InboxItemCard({ item }: { item: InboxItem }) {
       )
     case 'approval':
       return (
-        <ApprovalRequestCard
-          message={{
-            id: item.approval.id,
-            tool: item.approval.tool,
-            args: item.approval.args,
-            status: 'pending',
-            createdAt: item.approval.createdAt,
-            expiresAt: item.approval.expiresAt,
-          }}
-          agentName={item.agentName}
-          onDecide={(approvalId, decision) =>
-            decideApproval(item.approval.agentId, approvalId, decision)
-          }
-        />
+        <div className="flex flex-col gap-1">
+          <ApprovalRequestCard
+            message={{
+              id: item.approval.id,
+              tool: item.approval.tool,
+              args: item.approval.args,
+              status: 'pending',
+              createdAt: item.approval.createdAt,
+              expiresAt: item.approval.expiresAt,
+            }}
+            agentName={item.agentName}
+            onDecide={(approvalId, decision) =>
+              decideApproval(item.approval.agentId, approvalId, decision)
+            }
+          />
+          <Button
+            size="sm"
+            variant="link"
+            className="h-auto self-start px-0"
+            onClick={() =>
+              opener.open({ kind: 'live-run', runId: item.approval.runId })
+            }
+          >
+            {t('liveWork.openChat')}
+          </Button>
+        </div>
       )
     case 'workflowApproval':
       return <WorkflowApprovalRow item={item} />

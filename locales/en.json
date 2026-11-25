@@ -5218,5 +5218,6 @@
   "liveWork.delegation.needsYou": "{{name}} needs you",
   "liveWork.delegation.done": "{{name}} is done",
   "liveWork.delegation.stopped": "{{name}} stopped",
-  "liveWork.openChat": "Open chat"
+  "liveWork.openChat": "Open chat",
+  "liveWork.openLive": "Live: open the chat"
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { isLiveStatus } from '@/components/live-runs/live-run-model'
 import {
   Empty,
   EmptyContent,
@@ -113,8 +114,25 @@ export function AgentRunRow({ run }: { run: RunSummary }) {
           run.status === 'awaitingApproval' && 'text-warning'
         )}
       >
-        {t(`runs.status.${run.status}`)}
-        {duration !== null && ` · ${formatDuration(duration)}`}
+        {isLiveStatus(run.status) ? (
+          <Button
+            size="sm"
+            variant="link"
+            className="h-auto px-0"
+            onClick={event => {
+              // The row itself opens Run Detail
+              event.stopPropagation()
+              navigate({ kind: 'live-run', runId: run.id })
+            }}
+          >
+            {t('liveWork.openLive')}
+          </Button>
+        ) : (
+          <>
+            {t(`runs.status.${run.status}`)}
+            {duration !== null && ` · ${formatDuration(duration)}`}
+          </>
+        )}
       </span>
     </li>
   )

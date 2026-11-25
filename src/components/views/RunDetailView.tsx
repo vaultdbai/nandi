@@ -17,6 +17,7 @@ import {
   History,
   Layers,
   List,
+  Radio,
   RotateCcw,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -61,6 +62,7 @@ import {
 } from '@/components/agent-console/StopRunButton'
 import { RunTimeline } from '@/components/agent-console/RunTimeline'
 import { isActive } from '@/components/agent-console/run-detail-model'
+import { isLiveStatus } from '@/components/live-runs/live-run-model'
 import {
   inputHeadline,
   rerunNeedsConfirm,
@@ -392,6 +394,20 @@ function RunDetailLayout({
             {t(`runs.status.${run.status}`)}
           </Badge>
           <div className="ms-auto flex items-center gap-2">
+            {isLiveStatus(run.status) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  useNavigationStore
+                    .getState()
+                    .navigate({ kind: 'live-run', runId: run.id })
+                }
+              >
+                <Radio />
+                {t('liveWork.openLive')}
+              </Button>
+            )}
             {active ? (
               <StopRunButton detail={detail} />
             ) : (

@@ -5218,5 +5218,6 @@
   "liveWork.delegation.needsYou": "{{name}} a besoin de vous",
   "liveWork.delegation.done": "{{name}} a terminé",
   "liveWork.delegation.stopped": "{{name}} s'est arrêté",
-  "liveWork.openChat": "Ouvrir la discussion"
+  "liveWork.openChat": "Ouvrir la discussion",
+  "liveWork.openLive": "En direct : ouvrir la discussion"
 }
