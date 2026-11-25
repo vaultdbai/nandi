@@ -142,6 +142,52 @@ pub async fn send_message(
     .await
 }
 
+/// Where a reply to a run goes: the run's agent, in the run's own
+/// conversation. Refused for a run that isn't there, for Ask's own chats
+/// (they reply through `send_studio_message`) and for a conversation that
+/// isn't the run's agent's.
+fn reply_target(conn: &rusqlite::Connection, run_id: &str) -> Result<(String, String), String> {
+    let run = db::get_run(conn, run_id)
+        .map_err(|e| e.to_string())?
+        .ok_or("That run was not found")?;
+    if run.agent_id == STUDIO_AGENT_ID {
+        return Err("Reply to Ask's chats in Ask".to_string());
+    }
+    let owner = db::conversation_agent(conn, &run.conversation_id).map_err(|e| e.to_string())?;
+    if owner.as_deref() != Some(run.agent_id.as_str()) {
+        return Err("That conversation was not found".to_string());
+    }
+    Ok((run.agent_id, run.conversation_id))
+}
+
+/// A reply in a live run's chat: the next turn in that run's own
+/// conversation (its agent's chat, a delegated task's, a check's), run as
+/// that agent with its own grants. While the agent works it waits in its
+/// queue, so it's the turn after this one.
+pub async fn reply_to_run(
+    state: &AppState,
+    run_id: String,
+    text: String,
+    attachments: Vec<String>,
+    client_message_id: Option<String>,
+) -> Result<SendMessageResult, String> {
+    let (agent_id, conversation_id) = state
+        .db()
+        .call(move |conn| Ok(reply_target(conn, &run_id)))
+        .await??;
+    state.store().require_agent(&agent_id)?;
+    submit(
+        state.orchestrators(),
+        &agent_id,
+        conversation_id,
+        text,
+        attachments,
+        client_message_id,
+        RunSource::user(),
+    )
+    .await
+}
+
 /// Like `send_message`, for a Studio conversation.
 pub async fn send_studio_message(
     state: &AppState,
@@ -462,6 +508,40 @@ pub async fn cancel_turn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_reply_goes_to_the_runs_agent_in_the_runs_own_conversation() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        db::init_db(&conn).unwrap();
+        let chat = db::tests::start_run(&conn, "writer", "r1");
+        assert_eq!(reply_target(&conn, "r1"), Ok(("writer".to_string(), chat)));
+
+        // A delegated task's run: its reply stays in the task's conversation
+        let task = db::ensure_task_conversation(&conn, "writer", "t1", "Delegated").unwrap();
+        db::tests::start_run(&conn, "writer", "r2");
+        conn.execute(
+            "UPDATE runs SET conversation_id = ?1 WHERE id = 'r2'",
+            [&task],
+        )
+        .unwrap();
+        assert_eq!(reply_target(&conn, "r2"), Ok(("writer".to_string(), task)));
+
+        // Never into another agent's conversation
+        let other = db::ensure_agent_conversation(&conn, "reader").unwrap();
+        db::tests::start_run(&conn, "writer", "r3");
+        conn.execute(
+            "UPDATE runs SET conversation_id = ?1 WHERE id = 'r3'",
+            [&other],
+        )
+        .unwrap();
+        assert!(reply_target(&conn, "r3").is_err());
+
+        db::tests::start_run(&conn, STUDIO_AGENT_ID, "s1");
+        assert!(reply_target(&conn, "s1").unwrap_err().contains("Ask"));
+        assert!(reply_target(&conn, "nope")
+            .unwrap_err()
+            .contains("not found"));
+    }
     use crate::services::events::tests::{bus, RecordingSink};
     use crate::services::orchestrator::{Orchestrators, RunSource};
     use serde_json::json;

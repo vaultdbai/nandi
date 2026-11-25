@@ -5210,5 +5210,8 @@
   "liveWork.origin.trigger": "トリガー",
   "liveWork.origin.scheduled": "スケジュール",
   "chat.showSteps_one": "{{count}} 件のステップを表示",
-  "chat.showSteps_other": "{{count}} 件のステップを表示"
+  "chat.showSteps_other": "{{count}} 件のステップを表示",
+  "liveWork.reply.placeholder": "{{name}} に返信…",
+  "liveWork.reply.whatToChange": "{{name}} に変えてほしいことを伝える…",
+  "liveWork.reply.next": "{{name}} が次に読みます: {{text}}"
 }

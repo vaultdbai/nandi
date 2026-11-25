@@ -1278,6 +1278,23 @@ Shared preconditions used below:
 - **Automation:** Covered by: `src/components/live-runs/live-run-model.test.ts` (order, groups, origin, status line, messages), `src/components/agent-console/steps-model.test.ts`, `src/components/layout/nav-tree.test.ts` (sidebar), Rust `services::runs::tests::live_runs_are_the_running_waiting_and_just_finished_without_studio`, `services::snapshots::tests::a_runs_conversation_reads_whichever_it_is` | Layer: unit, api | Gap: no component test for `LiveRunView.tsx`.
 - **Needs relay:** no
 
+### CH-31 — Reply into a live chat
+
+- **What:** A live chat in Ask has a reply box, also while the agent works. A reply is the next turn in that run's own conversation (the agent's chat for a chat, trigger or workflow run; the task's own conversation for a delegated run; the check's for an email or calendar check), run as that agent with its own grants. Sent while it works, the reply waits in the agent's queue and shows above the box as "<Agent> will read this next: …" until its turn starts. After a failed run the box says "Tell <Agent> what to change…".
+- **Where:** `src/components/live-runs/LiveRunView.tsx` (`LiveReply`), `waitingReplies` in `live-run-model.ts`, `replyToRun` in `src/lib/agent-actions.ts`. Data: `reply_to_run` (`src-tauri/src/rpc/chat.rs`, `services/chat.rs`: `reply_target` checks the run exists, isn't Ask's own, and its conversation is its agent's).
+- **Preconditions:** Model key; an agent with a trigger.
+- **Steps:**
+  1. Fire the trigger; open its Live chat while it works.
+  2. Type "also check the weekend" and send.
+  3. Wait for the run to end.
+- **Expected:** The reply shows "<Agent> will read this next: also check the weekend" and a "Queued" toast; when the run ends, the reply starts as the next turn in the same chat, and the status line and Stop follow the new turn. A reply to an ended run starts at once.
+- **Edge / negative cases:**
+  - A reply to a run of Ask's own chats is refused ("Reply to Ask's chats in Ask").
+  - A run whose agent was deleted: the reply is refused with the agent-not-found error, the message is removed.
+  - Approvals of the new turn show in the same chat and go through `approve_action` as always.
+- **Automation:** Covered by: Rust `services::chat::tests::a_reply_goes_to_the_runs_agent_in_the_runs_own_conversation`, `src/components/live-runs/live-run-model.test.ts` (`waitingReplies`) | Layer: unit | Gap: no component test for the reply box.
+- **Needs relay:** no
+
 ## Runs, Run Detail and audit
 
 ### RN-01 — Run Detail page and header

@@ -84,6 +84,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             repo::repo_git_commit,
             chat::send_message,
             chat::send_studio_message,
+            chat::reply_to_run,
             chat::create_studio_conversation,
             chat::approve_action,
             chat::answer_hand_over,

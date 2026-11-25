@@ -329,6 +329,17 @@ async sendStudioMessage(conversationId: string, text: string, attachments: strin
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * A reply in a live run's chat: the next turn in that run's own conversation, as its agent
+ */
+async replyToRun(runId: string, text: string, attachments: string[], clientMessageId: string | null) : Promise<Result<SendMessageResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reply_to_run", { runId, text, attachments, clientMessageId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async createStudioConversation() : Promise<Result<StudioConversationSummary, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("create_studio_conversation") };

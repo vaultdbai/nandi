@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ArrowLeft,
@@ -22,17 +22,19 @@ import { AgentAvatar } from '@/components/agent-console/AgentAvatar'
 import { MessageList } from '@/components/agent-console/MessageList'
 import { StopRunButton } from '@/components/agent-console/StopRunButton'
 import { isWorking } from '@/components/agent-console/working'
+import { AskBox } from '@/components/ask/AskBox'
 import { ViewHeader } from '@/components/views/ViewHeader'
 import { useAgents } from '@/hooks/useAgents'
 import { useRunPlan } from '@/hooks/useRunPlan'
 import { useRunDetail } from '@/hooks/useSnapshots'
 import { useRetryRun } from '@/hooks/useWork'
-import { decideApproval } from '@/lib/agent-actions'
+import { decideApproval, replyToRun } from '@/lib/agent-actions'
 import { displayAgent } from '@/lib/agent-identity'
 import { loadRunConversation } from '@/lib/agent-sync'
+import { askContextForView, openEditInStudio } from '@/lib/ask'
 import { RUN_STATUS_CLASSES } from '@/lib/run-status'
-import type { RunDetail, RunStatus } from '@/lib/tauri-bindings'
-import { useConversation } from '@/store/agent-store'
+import type { RunDetail, RunStatus, RunSummary } from '@/lib/tauri-bindings'
+import { useAgentQueue, useConversation } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
 import {
   isLiveStatus,
@@ -41,6 +43,7 @@ import {
   messagesFrom,
   statusLine,
   statusText,
+  waitingReplies,
 } from './live-run-model'
 
 /**
@@ -175,6 +178,65 @@ function LiveChat({ detail }: { detail: RunDetail }) {
             <Spinner />
           </div>
         }
+      />
+      <LiveReply
+        run={run}
+        agentName={agent.name}
+        failed={!current && shown.status === 'failed'}
+      />
+    </div>
+  )
+}
+
+/**
+ * Steer while it works: a reply is the next turn in the run's own
+ * conversation, as its agent. Sent while the agent works, it waits in the
+ * agent's queue and shows as "<Agent> will read this next".
+ */
+function LiveReply({
+  run,
+  agentName,
+  failed,
+}: {
+  run: RunSummary
+  agentName: string
+  failed: boolean
+}) {
+  const { t } = useTranslation()
+  const view = useNavigationStore(state => state.current)
+  const queue = useAgentQueue(run.agentId)
+  const [sent, setSent] = useState<string[]>([])
+  const waiting = waitingReplies(queue, sent)
+  const placeholder = failed
+    ? t('liveWork.reply.whatToChange', { name: agentName })
+    : t('liveWork.reply.placeholder', { name: agentName })
+
+  return (
+    <div className="shrink-0 border-t p-3">
+      {waiting.map(entry => (
+        <p
+          key={entry.id}
+          data-testid="live-reply-next"
+          className="mx-auto max-w-3xl truncate pb-2 text-xs text-muted-foreground"
+        >
+          {t('liveWork.reply.next', { name: agentName, text: entry.message })}
+        </p>
+      ))}
+      <AskBox
+        className="mx-auto max-w-3xl"
+        context={askContextForView(view)}
+        placeholder={placeholder}
+        onApplyEdit={openEditInStudio}
+        fixedMode="chat"
+        chat={{
+          placeholder,
+          onSend: (text, attachments) =>
+            void replyToRun(run.id, run.conversationId, text, attachments).then(
+              result => {
+                if (result?.queued) setSent(ids => [...ids, result.runId])
+              }
+            ),
+        }}
       />
     </div>
   )

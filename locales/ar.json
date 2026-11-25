@@ -5210,5 +5210,8 @@
   "liveWork.origin.trigger": "مشغّل",
   "liveWork.origin.scheduled": "مجدول",
   "chat.showSteps_one": "عرض {{count}} خطوة",
-  "chat.showSteps_other": "عرض {{count}} خطوات"
+  "chat.showSteps_other": "عرض {{count}} خطوات",
+  "liveWork.reply.placeholder": "رد على {{name}}…",
+  "liveWork.reply.whatToChange": "أخبر {{name}} بما يجب تغييره…",
+  "liveWork.reply.next": "سيقرأ {{name}} هذا بعد ذلك: {{text}}"
 }

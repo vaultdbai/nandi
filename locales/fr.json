@@ -5210,5 +5210,8 @@
   "liveWork.origin.trigger": "Un déclencheur",
   "liveWork.origin.scheduled": "Planifié",
   "chat.showSteps_one": "Afficher {{count}} étape",
-  "chat.showSteps_other": "Afficher {{count}} étapes"
+  "chat.showSteps_other": "Afficher {{count}} étapes",
+  "liveWork.reply.placeholder": "Répondre à {{name}}…",
+  "liveWork.reply.whatToChange": "Dites à {{name}} ce qu'il faut changer…",
+  "liveWork.reply.next": "{{name}} lira ceci ensuite : {{text}}"
 }

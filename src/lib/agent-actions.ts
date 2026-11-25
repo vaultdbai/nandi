@@ -74,6 +74,26 @@ export async function sendAgentMessage(
   )
 }
 
+/**
+ * A reply in a live run's chat: the next turn in that run's own
+ * conversation, as its agent. `null` when it failed (a toast says why).
+ */
+export async function replyToRun(
+  runId: string,
+  conversationId: string,
+  text: string,
+  attachments: AttachmentInfo[] = []
+): Promise<SendMessageResult | null> {
+  return sendOptimistically(conversationId, text, attachments, messageId =>
+    client.replyToRun(
+      runId,
+      text,
+      attachments.map(a => a.id),
+      messageId
+    )
+  )
+}
+
 export async function sendStudioMessage(
   conversationId: string,
   text: string,

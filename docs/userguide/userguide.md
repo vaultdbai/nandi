@@ -433,6 +433,8 @@ Everything your agents are doing right now shows in Ask under **Live**, however 
 
 Open one and you watch it as a chat: its messages as they come, its plan, and its approval cards, which you approve right there (it's the same approval as in the Inbox; deciding it in one place clears it everywhere). The steps it takes fold under **Show steps**; what it tells you and what it asks you stay in full. **Stop** is at the top while it works. If it stopped on an error, one line says what happened, with **Try again**. **Details** opens the run's full record.
 
+You can reply in a live chat at any time, also while it works. Your reply is its next turn, in the same chat, and the agent works on it with the same access it always has. Sent while it's busy, your reply shows "Nandi will read this next" until it gets to it. After an error, tell it what to change.
+
 ### What runs on its own, and what doesn't
 
 <!-- studio-guide: how-nandi-works -->

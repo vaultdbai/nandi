@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { RunPlan, RunPlanStep, RunSummary } from '@/lib/bindings'
+import type {
+  QueueEntry,
+  RunPlan,
+  RunPlanStep,
+  RunSummary,
+} from '@/lib/bindings'
 import type { UiMessage } from '@/types/agent'
 import {
   FINISHED_FOR_MS,
@@ -9,6 +14,7 @@ import {
   messagesFrom,
   orderLive,
   statusLine,
+  waitingReplies,
 } from './live-run-model'
 
 const run = (over: Partial<RunSummary> = {}): RunSummary => ({
@@ -232,5 +238,29 @@ describe('messagesFrom', () => {
 
   it('is empty until the run has a message', () => {
     expect(messagesFrom([message('earlier', 'r0')], 'r1')).toEqual([])
+  })
+})
+
+describe('waitingReplies', () => {
+  const entry = (runId: string): QueueEntry => ({
+    id: `q-${runId}`,
+    agentId: 'writer',
+    runId,
+    sourceType: 'user',
+    sourceId: null,
+    sourceLabel: null,
+    priority: 0,
+    message: runId,
+    attachments: [],
+    createdAt: 0,
+    position: 0,
+  })
+
+  it('is the replies sent from this chat still in the queue', () => {
+    const queue = [entry('mine'), entry('other'), entry('later')]
+    expect(
+      waitingReplies(queue, ['mine', 'later', 'started']).map(e => e.runId)
+    ).toEqual(['mine', 'later'])
+    expect(waitingReplies([], ['mine'])).toEqual([])
   })
 })

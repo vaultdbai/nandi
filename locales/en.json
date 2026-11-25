@@ -5210,5 +5210,8 @@
   "liveWork.origin.trigger": "A trigger",
   "liveWork.origin.scheduled": "On a schedule",
   "chat.showSteps_one": "Show {{count}} step",
-  "chat.showSteps_other": "Show {{count}} steps"
+  "chat.showSteps_other": "Show {{count}} steps",
+  "liveWork.reply.placeholder": "Reply to {{name}}…",
+  "liveWork.reply.whatToChange": "Tell {{name}} what to change…",
+  "liveWork.reply.next": "{{name}} will read this next: {{text}}"
 }

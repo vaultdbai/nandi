@@ -4,7 +4,13 @@
  * messages, and render what comes back.
  */
 import type { TFunction } from 'i18next'
-import type { RunPlan, RunStatus, RunSummary, SourceType } from '@/lib/bindings'
+import type {
+  QueueEntry,
+  RunPlan,
+  RunStatus,
+  RunSummary,
+  SourceType,
+} from '@/lib/bindings'
 import type { UiMessage } from '@/types/agent'
 
 /** A label to translate (`key`, with `values`), or a name as it is */
@@ -178,4 +184,15 @@ export function messagesFrom(
 ): UiMessage[] {
   const start = messages.findIndex(message => message.runId === runId)
   return start === -1 ? [] : messages.slice(start)
+}
+
+/**
+ * Replies sent from this chat that wait in the agent's queue: the agent
+ * reads them next, once its current turn ends
+ */
+export function waitingReplies(
+  queue: readonly QueueEntry[],
+  sentRunIds: readonly string[]
+): QueueEntry[] {
+  return queue.filter(entry => sentRunIds.includes(entry.runId))
 }

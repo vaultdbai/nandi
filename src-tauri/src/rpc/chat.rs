@@ -7,6 +7,9 @@ use crate::services::pilots::handover::HandOverAnswer;
 super::commands! {
     fn send_message(state, agent_id: String, text: String, attachments: Vec<String>, client_message_id: Option<String>) -> SendMessageResult => chat::send_message(&state, agent_id, text, attachments, client_message_id).await;
 
+    /// A reply in a live run's chat: the next turn in that run's own conversation, as its agent
+    fn reply_to_run(state, run_id: String, text: String, attachments: Vec<String>, client_message_id: Option<String>) -> SendMessageResult => chat::reply_to_run(&state, run_id, text, attachments, client_message_id).await;
+
     fn send_studio_message(state, conversation_id: String, text: String, attachments: Vec<String>, client_message_id: Option<String>) -> SendMessageResult => chat::send_studio_message(&state, conversation_id, text, attachments, client_message_id).await;
 
     fn create_studio_conversation(state) -> StudioConversationSummary => chat::create_studio_conversation(&state).await;
