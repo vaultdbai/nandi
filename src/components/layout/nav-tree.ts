@@ -12,6 +12,7 @@
 import type {
   AgentInfo,
   AgentStatus,
+  RunSummary,
   StudioConversationSummary,
 } from '@/lib/bindings'
 import {
@@ -59,6 +60,8 @@ export interface NavTreeInput {
   inboxCount: number
   agents: readonly AgentInfo[]
   chats: readonly StudioConversationSummary[]
+  /** Live work, newest first (`list_live_runs`) */
+  live?: readonly RunSummary[]
   /** Settings sections that need attention */
   attention: Partial<Record<SettingsSection, boolean>>
 }
@@ -81,8 +84,31 @@ const STATUS_ORDER: Record<AgentStatus, number> = {
 const key = (k: string, values?: Record<string, string | number>): NavLabel =>
   values ? { key: k, values } : { key: k }
 
-/** New chat, the newest chats, All chats */
-function chatNodes(chats: readonly StudioConversationSummary[]): NavNode[] {
+/**
+ * Live work, what waits on the person first, named for its agent:
+ * finished work stays on Ask's page only
+ */
+function liveNodes(
+  live: readonly RunSummary[],
+  agents: readonly AgentInfo[]
+): NavNode[] {
+  const waiting = live.filter(run => run.status === 'awaitingApproval')
+  const running = live.filter(run => run.status === 'running')
+  return [...waiting, ...running].slice(0, CHAT_LIMIT).map(run => ({
+    id: `live:${run.id}`,
+    label: {
+      text: agents.find(a => a.id === run.agentId)?.name || run.agentId,
+    },
+    view: { kind: 'live-run', runId: run.id },
+    dot: run.status === 'awaitingApproval' ? 'waiting' : 'busy',
+  }))
+}
+
+/** New chat, the live work, the newest chats, All chats */
+function chatNodes(
+  chats: readonly StudioConversationSummary[],
+  live: NavNode[]
+): NavNode[] {
   const recent = [...chats]
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, CHAT_LIMIT)
@@ -94,6 +120,7 @@ function chatNodes(chats: readonly StudioConversationSummary[]): NavNode[] {
       view: { kind: 'studio', conversationId: null, draft: true },
       create: true,
     },
+    ...live,
     ...recent.map(chat => ({
       id: `chat:${chat.id}`,
       label: chat.title ? { text: chat.title } : key('studio.untitled'),
@@ -166,7 +193,7 @@ export function buildNavTree(input: NavTreeInput): NavNode[] {
       tab('home:decisions', 'nav.tree.decisions', { kind: 'decisions' }),
       tab('home:activity', 'home.allActivity', { kind: 'home-activity' }),
     ],
-    studio: chatNodes(input.chats),
+    studio: chatNodes(input.chats, liveNodes(input.live ?? [], input.agents)),
     agents: agentNodes(input.agents),
     automations: [
       tab('automations:workflows', 'nav.workflows', {

@@ -197,6 +197,26 @@ pub async fn get_conversation(
         .await
 }
 
+/// The conversation a run belongs to, whichever it is (its agent's chat,
+/// a delegated task's, a check's): how Ask's Live section shows a run that
+/// started anywhere. A run is the person's own work, so its conversation
+/// is theirs to read, as Run Detail already shows its messages.
+pub async fn get_run_conversation(
+    state: &AppState,
+    run_id: String,
+) -> Result<ConversationSnapshot, String> {
+    state
+        .db()
+        .call(move |conn| {
+            let Some(run) = db::get_run(conn, &run_id)? else {
+                return Ok(None);
+            };
+            conversation_snapshot(conn, &run.conversation_id).map(Some)
+        })
+        .await?
+        .ok_or_else(|| "That run was not found".to_string())
+}
+
 /// Whether `get_conversation` serves this conversation: Studio's, or a
 /// Nandi thread
 fn readable(owner: Option<&str>, conversation_id: &str) -> bool {
@@ -695,5 +715,41 @@ mod tests {
         assert!(actions.contains("r1:completed"));
         assert!(actions.contains("r2:failed"));
         assert!(actions.contains("r3:started"));
+    }
+
+    #[tokio::test]
+    async fn a_runs_conversation_reads_whichever_it_is() {
+        let state = AppState::for_tests(vec![]);
+        state
+            .db()
+            .call(|conn| {
+                start_run(conn, "writer", "r1");
+                // A delegated task's run lives in the task's own conversation
+                let task = db::ensure_task_conversation(conn, "writer", "t1", "Delegated")?;
+                conn.execute(
+                    "UPDATE runs SET conversation_id = ?1 WHERE id = 'r1'",
+                    [&task],
+                )?;
+                let message = db::MessageRow::new(
+                    "m1",
+                    &task,
+                    Some("r1"),
+                    "user",
+                    "hi",
+                    serde_json::json!({}),
+                );
+                db::insert_message(conn, &message)
+            })
+            .await
+            .unwrap();
+
+        let snapshot = get_run_conversation(&state, "r1".into()).await.unwrap();
+        assert_eq!(snapshot.conversation_id, "task:t1");
+        assert_eq!(snapshot.messages.len(), 1);
+        assert_eq!(snapshot.current_run.map(|r| r.id).as_deref(), Some("r1"));
+
+        let missing = get_run_conversation(&state, "nope".into()).await;
+        assert!(missing.unwrap_err().contains("not found"));
+        state.shutdown();
     }
 }

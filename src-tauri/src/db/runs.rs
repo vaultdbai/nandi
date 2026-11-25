@@ -180,6 +180,20 @@ pub fn active_runs(conn: &Connection) -> rusqlite::Result<Vec<RunSummary>> {
     rows.collect()
 }
 
+/// Every running or approval-blocked run, and every run that ended at or
+/// after `ended_since` (ms), Studio's left out: Ask's Live section.
+pub fn live_runs(conn: &Connection, ended_since: i64) -> rusqlite::Result<Vec<RunSummary>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {RUN_COLUMNS} FROM runs
+          WHERE agent_id != ?2
+            AND (status IN ('running', 'awaiting_approval')
+                 OR (status IN ('completed', 'failed', 'cancelled') AND ended_at >= ?1))
+          ORDER BY started_at DESC"
+    ))?;
+    let rows = stmt.query_map(params![ended_since, STUDIO_AGENT_ID], run_row)?;
+    rows.collect()
+}
+
 /// Runs newest first, optionally for one agent. Studio runs are excluded
 /// when no agent is given.
 pub fn list_runs(

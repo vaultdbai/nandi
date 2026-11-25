@@ -156,6 +156,18 @@ pub async fn list_all_runs(
     .await
 }
 
+/// How long a finished run stays in Ask's Live section (it fades out)
+pub const LIVE_FINISHED_MS: i64 = 60 * 60 * 1000;
+
+/// The live work: every running or approval-blocked run of any agent,
+/// however it started, and those that ended in the last hour, newest
+/// first. Ask's chats are listed on their own, so Studio's runs are left
+/// out.
+pub async fn list_live_runs(db: &Db) -> Result<Vec<RunSummary>, String> {
+    let since = db::now_ms() - LIVE_FINISHED_MS;
+    db.call(move |conn| db::live_runs(conn, since)).await
+}
+
 /// Totals over the runs started in `range` (Studio runs left out). The
 /// average duration counts finished runs only.
 pub async fn get_run_stats(db: &Db, range: DateRange) -> Result<RunStats, String> {
@@ -548,6 +560,33 @@ mod tests {
         assert!(list_all_runs(&db, bad_status, 10, 0).await.is_err());
         let bad_source = filters(|f| f.source_type = Some("nope".into()));
         assert!(list_all_runs(&db, bad_source, 10, 0).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn live_runs_are_the_running_waiting_and_just_finished_without_studio() {
+        let db = seeded().await;
+        db.call(|conn| {
+            let mut r1 = run("r1", "writer", 5.0 * DAY);
+            r1.status = RunStatus::Running;
+            r1.source_type = SourceType::Cron;
+            r1.source_label = Some("Nightly digest".into());
+            insert(conn, r1);
+            let mut s2 = run("s2", STUDIO_AGENT_ID, 6.0 * DAY);
+            s2.status = RunStatus::Running;
+            insert(conn, s2);
+            // Just finished: it stays a while; a1 ended long ago
+            let mut f1 = run("f1", "writer", 4.5 * DAY);
+            f1.ended_at = Some(db::now_ms() as f64);
+            insert(conn, f1);
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+        let live = list_live_runs(&db).await.unwrap();
+        let ids: Vec<&str> = live.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, ["r1", "f1", "w1"]);
+        assert_eq!(live[0].source_label.as_deref(), Some("Nightly digest"));
     }
 
     #[tokio::test]

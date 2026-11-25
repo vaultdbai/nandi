@@ -106,6 +106,8 @@ export type View =
   | { kind: 'intake-thread'; conversationId: string }
   /** One Inbox item's Ask chat with Nandi (`inbox:<kind>:<id>`) */
   | { kind: 'inbox-thread'; conversationId: string }
+  /** One live run as a chat (Ask's Live section), however it started */
+  | { kind: 'live-run'; runId: string }
 
 export const RUN_DETAIL_TABS = [
   'overview',
@@ -182,6 +184,7 @@ export function navSection(view: View): NavSection | null {
     case 'member-profile':
       return 'network'
     case 'studio':
+    case 'live-run':
       return 'studio'
     case 'notes':
       return 'nandi'
@@ -359,6 +362,7 @@ const VIEW_KINDS: Record<View['kind'], true> = {
   request: true,
   'intake-thread': true,
   'inbox-thread': true,
+  'live-run': true,
 }
 
 /**
@@ -425,6 +429,8 @@ export function isActiveView(current: View, target: View): boolean {
         current.kind === 'inbox-thread' &&
         current.conversationId === target.conversationId
       )
+    case 'live-run':
+      return current.kind === 'live-run' && current.runId === target.runId
     default:
       return true
   }

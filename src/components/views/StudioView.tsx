@@ -17,6 +17,7 @@ import { AskBox } from '@/components/ask/AskBox'
 import { AskHistory } from '@/components/ask/AskHistory'
 import { ArtifactTabs } from '@/components/studio/ArtifactTabs'
 import { AskNewMenu, AskStarters } from '@/components/studio/AskNewMenu'
+import { LiveRunsSection } from '@/components/live-runs/LiveRunsSection'
 import { useMascotName } from '@/hooks/useMascot'
 import {
   ResizableHandle,
@@ -69,7 +70,10 @@ export function StudioView({
             ) : conversations && conversations.length > 0 ? (
               <ConversationList conversations={conversations} />
             ) : (
-              <StudioEmptyState />
+              <>
+                <LiveRunsSection className="p-3" />
+                <StudioEmptyState />
+              </>
             )}
           </div>
           <div className="shrink-0 border-t p-3">
@@ -146,6 +150,7 @@ function ConversationList({
         actions={<AskNewMenu />}
       />
       <ScrollArea className="min-h-0 flex-1">
+        <LiveRunsSection className="px-3 pt-3" />
         <ul
           aria-label={t('nav.studioConversations')}
           className="flex flex-col gap-1 p-3"

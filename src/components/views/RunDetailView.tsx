@@ -18,18 +18,7 @@ import {
   Layers,
   List,
   RotateCcw,
-  Square,
 } from 'lucide-react'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -66,23 +55,22 @@ import {
 import { MarkdownContent } from '@/components/agent-console/MarkdownContent'
 import { RunKeyResults } from '@/components/agent-console/RunKeyResults'
 import { RunPlanCard } from '@/components/agent-console/RunPlanCard'
+import {
+  ConfirmingButton,
+  StopRunButton,
+} from '@/components/agent-console/StopRunButton'
 import { RunTimeline } from '@/components/agent-console/RunTimeline'
 import { isActive } from '@/components/agent-console/run-detail-model'
 import {
   inputHeadline,
   rerunNeedsConfirm,
-  stopNeedsConfirm,
 } from '@/components/agent-console/run-logs-model'
 import { useNow } from '@/components/agents/task-utils'
 import { AskedBlock } from '@/components/requests/AskedBlock'
 import { useRequest, useRequestForRun } from '@/hooks/useRequests'
 import { analysisErrorMessage, useRunAnalysis } from '@/hooks/useRunAnalysis'
 import { useRunDetail } from '@/hooks/useSnapshots'
-import {
-  cancelQueuedRun,
-  cancelTurn,
-  sendAgentMessage,
-} from '@/lib/agent-actions'
+import { sendAgentMessage } from '@/lib/agent-actions'
 import { displayAgent } from '@/lib/agent-identity'
 import { formatDuration } from '@/lib/format-time'
 import { RUN_STATUS_CLASSES } from '@/lib/run-status'
@@ -205,90 +193,6 @@ function RunActions({ detail }: { detail: RunDetail }) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
-}
-
-/**
- * A button that runs `onConfirm` at once, or first asks in a dialog when
- * `confirm` says what could happen
- */
-function ConfirmingButton({
-  confirm,
-  onConfirm,
-  children,
-  className,
-  variant = 'outline',
-}: {
-  confirm: { title: string; description: string; action: string } | null
-  onConfirm: () => void
-  children: React.ReactNode
-  className?: string
-  variant?: 'outline' | 'destructive'
-}) {
-  const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
-  return (
-    <>
-      <Button
-        size="sm"
-        variant={variant}
-        className={className}
-        onClick={() => (confirm ? setOpen(true) : onConfirm())}
-      >
-        {children}
-      </Button>
-      {confirm && (
-        <AlertDialog open={open} onOpenChange={setOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{confirm.title}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {confirm.description}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>
-                {t('runDetail.confirm.cancel')}
-              </AlertDialogCancel>
-              <AlertDialogAction onClick={onConfirm}>
-                {confirm.action}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
-    </>
-  )
-}
-
-/** Stop while the run is going or waiting; asks first if it did outward work */
-function StopButton({ detail }: { detail: RunDetail }) {
-  const { t } = useTranslation()
-  const { run } = detail
-  const stop = () => {
-    const done =
-      run.status === 'queued'
-        ? cancelQueuedRun(run.id)
-        : cancelTurn(run.agentId, run.id)
-    void done.then(() => toast.success(t('runDetail.stop.stopped')))
-  }
-  return (
-    <ConfirmingButton
-      variant="destructive"
-      onConfirm={stop}
-      confirm={
-        run.status !== 'queued' && stopNeedsConfirm(detail)
-          ? {
-              title: t('runDetail.stop.confirmTitle'),
-              description: t('runDetail.stop.confirmDescription'),
-              action: t('runDetail.stop.confirmAction'),
-            }
-          : null
-      }
-    >
-      <Square />
-      {t('runDetail.stop.button')}
-    </ConfirmingButton>
   )
 }
 
@@ -489,7 +393,7 @@ function RunDetailLayout({
           </Badge>
           <div className="ms-auto flex items-center gap-2">
             {active ? (
-              <StopButton detail={detail} />
+              <StopRunButton detail={detail} />
             ) : (
               <RerunButton detail={detail} />
             )}

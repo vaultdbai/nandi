@@ -459,6 +459,17 @@ async getRunDetail(runId: string) : Promise<Result<RunDetail, string>> {
 }
 },
 /**
+ * The conversation a run belongs to, whichever it is (Ask's Live chats)
+ */
+async getRunConversation(runId: string) : Promise<Result<ConversationSnapshot, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_run_conversation", { runId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * The host path of a file a run touched, if it exists
  */
 async resolveRunFile(runId: string, path: string) : Promise<Result<string | null, string>> {
@@ -1213,6 +1224,17 @@ async listAllRuns(filters: RunFilters, limit: number, offset: number) : Promise<
 async getRunStats(range: DateRange) : Promise<Result<RunStats, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_run_stats", { range }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Every running or approval-blocked run and those ended in the last hour, newest first (Ask's Live chats)
+ */
+async listLiveRuns() : Promise<Result<RunSummary[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_live_runs") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };

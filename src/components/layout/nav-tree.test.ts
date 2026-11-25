@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_AGENT,
   type AgentInfo,
+  type RunSummary,
   type StudioConversationSummary,
 } from '@/lib/bindings'
 import {
@@ -94,6 +95,50 @@ describe('buildNavTree', () => {
       'studio:new',
       'studio:all',
     ])
+  })
+
+  it('lists the live work under Ask, after New chat, named for its agent', () => {
+    const base = {
+      agentId: 'writer',
+      conversationId: 'agent:writer',
+      input: '',
+      summary: null,
+      startedAt: 0,
+      endedAt: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: null,
+      model: null,
+      sourceType: 'user',
+      sourceId: null,
+      sourceLabel: null,
+      priority: 100,
+      queuedAt: null,
+      parentRunId: null,
+      compactionSummary: null,
+    } satisfies Omit<RunSummary, 'id' | 'status'>
+    const live: RunSummary[] = [
+      { ...base, id: 'w', status: 'awaitingApproval' },
+      { ...base, id: 'r', status: 'running', agentId: 'gone' },
+      { ...base, id: 'f', status: 'completed' },
+    ]
+    const agents = [agent('writer')]
+    const ask = findNode(buildNavTree(input({ live, agents })), 'studio')
+    expect(ids(ask?.children)).toEqual([
+      'studio:new',
+      'live:w',
+      'live:r',
+      'studio:all',
+    ])
+    expect(ask?.children?.[1]).toMatchObject({
+      label: { text: 'Writer' },
+      view: { kind: 'live-run', runId: 'w' },
+      dot: 'waiting',
+    })
+    expect(ask?.children?.[2]).toMatchObject({
+      label: { text: 'gone' },
+      dot: 'busy',
+    })
   })
 
   it('lists each agent, busy ones first, with nothing under it', () => {

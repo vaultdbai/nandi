@@ -1259,6 +1259,25 @@ Shared preconditions used below:
 - **Needs relay:** no
 - **Status:** Shipped
 
+### CH-30 — Live work in Ask
+
+- **What:** Ask's chat list has a **Live** section with every running or waiting run of any agent, however it started (the person's chat, a trigger, a workflow, a delegation, an email or calendar check), and the runs that finished in the last hour. Rows that wait on the person come first with a "Needs you" mark, then working ones, then finished ones (faded). Each row shows the agent's name and icon, what it's doing now (the plan step it's on, "Step 2 of 5 · …") and how it started ("You asked", the trigger's name, "Workflow: Pay bills", "Asked by Nandi"). No live work: no section at all. The sidebar lists the waiting and working ones under Ask, after New chat. Opening one shows that run as a chat: its messages streaming, its plan card, its approval cards (decided right there, through the same `approve_action` and checks as everywhere else), a status line at the top, **Stop** at the top while it works, and **Details** (Run Detail, for history). Tool calls fold under "Show N steps". A failed run says what happened in one line with **Try again**.
+- **Where:** Ask (Sidebar → Ask). `src/components/live-runs/` (`LiveRunsSection.tsx`, `LiveRunView.tsx`, `live-run-model.ts`), `src/components/agent-console/steps-model.ts`, `src/components/agent-console/StopRunButton.tsx`, the `live-run` view. Data: `list_live_runs` (`src-tauri/src/rpc/runs.rs`, `services/runs.rs`, `db::live_runs`) and `get_run_conversation` (`rpc/snapshots.rs`), which reads a run's own conversation whichever it is; `loadRunConversation` in `src/lib/agent-sync.ts` puts it in the store so `agent://*` events stream into it. The list refreshes on `agent://run` and `agent://turn_done` (`runsQueryKeys.all`).
+- **Preconditions:** Model key; an agent with a trigger (e.g. a cron trigger) and a tool in its `requires_approval`.
+- **Steps:**
+  1. Fire the trigger (Automations › Triggers › Run now) so the agent's run waits for an approval.
+  2. Open Ask.
+  3. Open the Live row, approve the card.
+  4. Start a long run in another agent's chat and press **Stop** in its Live chat.
+- **Expected:** The trigger's run is first, marked "Needs you", with the trigger's name. Its chat shows the run's messages, plan card and the approval card; approving there resumes the run, the card shows Approved and the status line follows the plan. Stop ends the other run (asks first when it did outward work). Both rows fade, then leave the list an hour after they end.
+- **Edge / negative cases:**
+  - A delegated task's run (its own `task:` conversation) and an email check's run open the same way.
+  - A run that ended over an hour ago opens from a link but isn't listed.
+  - An unknown run ID: "This chat isn't here anymore" with **Back to Ask**.
+  - Ask's own chats (Studio runs) are not in Live; they're in the chat list.
+- **Automation:** Covered by: `src/components/live-runs/live-run-model.test.ts` (order, groups, origin, status line, messages), `src/components/agent-console/steps-model.test.ts`, `src/components/layout/nav-tree.test.ts` (sidebar), Rust `services::runs::tests::live_runs_are_the_running_waiting_and_just_finished_without_studio`, `services::snapshots::tests::a_runs_conversation_reads_whichever_it_is` | Layer: unit, api | Gap: no component test for `LiveRunView.tsx`.
+- **Needs relay:** no
+
 ## Runs, Run Detail and audit
 
 ### RN-01 — Run Detail page and header

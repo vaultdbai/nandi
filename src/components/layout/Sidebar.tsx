@@ -17,6 +17,7 @@ import { useAgents } from '@/hooks/useAgents'
 import { useInbox } from '@/hooks/useInbox'
 import { useNetworkHealth } from '@/hooks/useNetworkHealth'
 import { useSettingsAttention } from '@/hooks/useSettingsAttention'
+import { useLiveRuns } from '@/hooks/useRuns'
 import { cn } from '@/lib/utils'
 import { useStudioConversations } from '@/store/agent-store'
 import {
@@ -78,6 +79,7 @@ export function Sidebar() {
     inboxCount: useInbox().count,
     agents: useAgents().data ?? [],
     chats: useStudioConversations() ?? [],
+    live: useLiveRuns().data ?? [],
     attention: useSettingsAttention(),
   })
   const path = activePath(tree, current)

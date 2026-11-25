@@ -112,6 +112,31 @@ export async function loadConversation(conversationId: string): Promise<void> {
   }
 }
 
+/**
+ * (Re)loads the conversation a run belongs to, whichever it is (its
+ * agent's chat, a delegated task's, a check's), so its events apply live.
+ */
+export async function loadRunConversation(
+  runId: string,
+  conversationId: string
+): Promise<void> {
+  if (loadingConversations.has(conversationId)) return
+  loadingConversations.set(conversationId, [])
+  try {
+    const result = await client.getRunConversation(runId)
+    if (result.status === 'error') {
+      logger.warn('Failed to load run conversation', {
+        runId,
+        error: result.error,
+      })
+      return
+    }
+    useAgentStore.getState().setConversation(result.data)
+  } finally {
+    replay(conversationId)
+  }
+}
+
 function replay(conversationId: string) {
   const buffered = loadingConversations.get(conversationId) ?? []
   loadingConversations.delete(conversationId)

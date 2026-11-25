@@ -1,5 +1,6 @@
 //! Global run commands (Tauri adapter for `services::runs`).
 
+use crate::model::RunSummary;
 use crate::services::runs::{DateRange, RunFilters, RunPage, RunStats};
 use crate::services::{run_retry, runs};
 
@@ -8,6 +9,9 @@ super::commands! {
     fn list_all_runs(state, filters: RunFilters, limit: u32, offset: u32) -> RunPage => runs::list_all_runs(state.db(), filters, limit, offset).await;
 
     fn get_run_stats(state, range: DateRange) -> RunStats => runs::get_run_stats(state.db(), range).await;
+
+    /// Every running or approval-blocked run and those ended in the last hour, newest first (Ask's Live chats)
+    fn list_live_runs(state) -> Vec<RunSummary> => runs::list_live_runs(state.db()).await;
 
     /// Tries a failed run again now, whatever its attempt (the Inbox's
     /// Retry); returns the new run's ID

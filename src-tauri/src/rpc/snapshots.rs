@@ -18,6 +18,9 @@ super::commands! {
 
     fn get_run_detail(state, run_id: String) -> RunDetail => snapshots::get_run_detail(&state, run_id).await;
 
+    /// The conversation a run belongs to, whichever it is (Ask's Live chats)
+    fn get_run_conversation(state, run_id: String) -> ConversationSnapshot => snapshots::get_run_conversation(&state, run_id).await;
+
     /// The run's plan (its checklist card), if it has one
     fn get_run_plan(state, run_id: String) -> Option<RunPlan> => snapshots::get_run_plan(&state, run_id).await;
 
