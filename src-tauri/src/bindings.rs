@@ -181,6 +181,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             runs::list_all_runs,
             runs::get_run_stats,
             runs::list_live_runs,
+            runs::list_delegated_runs,
             runs::retry_run,
             audit::list_audit_log,
             audit::get_audit_health,

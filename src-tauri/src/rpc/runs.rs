@@ -10,6 +10,9 @@ super::commands! {
 
     fn get_run_stats(state, range: DateRange) -> RunStats => runs::get_run_stats(state.db(), range).await;
 
+    /// The runs other local agents did for this run (its delegations), oldest first
+    fn list_delegated_runs(state, run_id: String) -> Vec<RunSummary> => runs::list_delegated_runs(state.db(), run_id).await;
+
     /// Every running or approval-blocked run and those ended in the last hour, newest first (Ask's Live chats)
     fn list_live_runs(state) -> Vec<RunSummary> => runs::list_live_runs(state.db()).await;
 

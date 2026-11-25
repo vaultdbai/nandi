@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils'
 import type { AgentInfo, UiMessage } from '@/types/agent'
 import { ChatMessageItem } from './ChatMessageItem'
 import { WorkingRow } from './WorkingDots'
+import { DelegationBlock } from './DelegationBlock'
+import { delegationWindows } from './delegation-model'
 import { hiddenPlanCalls } from './run-plan-model'
 import { foldSteps, type ChatItem } from './steps-model'
 import { showsWorking, turnStartedAt } from './working'
@@ -78,6 +80,9 @@ export function MessageList({
     ? foldSteps(visible)
     : visible.map(message => ({ kind: 'message', message }))
 
+  // Each delegation's window: the runs it started, until the next one
+  const delegations = delegationWindows(visible)
+
   const renderMessage = (message: UiMessage) => {
     const focused = message.id === focusMessageId
     return (
@@ -91,11 +96,18 @@ export function MessageList({
             'ring-2 ring-primary/40 ring-offset-4 ring-offset-background'
         )}
       >
-        <ChatMessageItem
-          message={message}
-          agent={assistant}
-          onDecide={onDecide}
-        />
+        {message.kind === 'toolCall' && delegations.has(message.id) ? (
+          <DelegationBlock
+            message={message}
+            until={delegations.get(message.id) ?? null}
+          />
+        ) : (
+          <ChatMessageItem
+            message={message}
+            agent={assistant}
+            onDecide={onDecide}
+          />
+        )}
       </div>
     )
   }

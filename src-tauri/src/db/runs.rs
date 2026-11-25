@@ -194,6 +194,26 @@ pub fn live_runs(conn: &Connection, ended_since: i64) -> rusqlite::Result<Vec<Ru
     rows.collect()
 }
 
+/// The runs other agents did for `agent_id` (asked by its own ID or its
+/// card ID) that started in `[from, until]` (`until` open while it runs),
+/// oldest first
+pub fn delegated_runs(
+    conn: &Connection,
+    agent_id: &str,
+    card_id: &str,
+    from: i64,
+    until: Option<i64>,
+) -> rusqlite::Result<Vec<RunSummary>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {RUN_COLUMNS} FROM runs
+          WHERE source_type = 'agent' AND source_id IN (?1, ?2)
+            AND started_at >= ?3 AND (?4 IS NULL OR started_at <= ?4)
+          ORDER BY started_at"
+    ))?;
+    let rows = stmt.query_map(params![agent_id, card_id, from, until], run_row)?;
+    rows.collect()
+}
+
 /// Runs newest first, optionally for one agent. Studio runs are excluded
 /// when no agent is given.
 pub fn list_runs(

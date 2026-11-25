@@ -435,6 +435,8 @@ Open one and you watch it as a chat: its messages as they come, its plan, and it
 
 You can reply in a live chat at any time, also while it works. Your reply is its next turn, in the same chat, and the agent works on it with the same access it always has. Sent while it's busy, your reply shows "Nandi will read this next" until it gets to it. After an error, tell it what to change.
 
+When Nandi brings in another of your agents, that agent shows up in the same chat, like a person in a group chat: "Researcher is working on it". Its steps fold away; if it needs your approval, the card shows right there in the block, and approving it there is the same as anywhere else. **Open chat** opens that agent's own live chat.
+
 ### What runs on its own, and what doesn't
 
 <!-- studio-guide: how-nandi-works -->

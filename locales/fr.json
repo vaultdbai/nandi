@@ -5213,5 +5213,10 @@
   "chat.showSteps_other": "Afficher {{count}} étapes",
   "liveWork.reply.placeholder": "Répondre à {{name}}…",
   "liveWork.reply.whatToChange": "Dites à {{name}} ce qu'il faut changer…",
-  "liveWork.reply.next": "{{name}} lira ceci ensuite : {{text}}"
+  "liveWork.reply.next": "{{name}} lira ceci ensuite : {{text}}",
+  "liveWork.delegation.working": "{{name}} s'en occupe",
+  "liveWork.delegation.needsYou": "{{name}} a besoin de vous",
+  "liveWork.delegation.done": "{{name}} a terminé",
+  "liveWork.delegation.stopped": "{{name}} s'est arrêté",
+  "liveWork.openChat": "Ouvrir la discussion"
 }

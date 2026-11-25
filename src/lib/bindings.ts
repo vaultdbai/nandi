@@ -1252,6 +1252,17 @@ async listLiveRuns() : Promise<Result<RunSummary[], string>> {
 }
 },
 /**
+ * The runs other local agents did for this run (its delegations), oldest first
+ */
+async listDelegatedRuns(runId: string) : Promise<Result<RunSummary[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_delegated_runs", { runId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Tries a failed run again now, whatever its attempt (the Inbox's
  * Retry); returns the new run's ID
  */

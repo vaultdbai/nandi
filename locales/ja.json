@@ -5213,5 +5213,10 @@
   "chat.showSteps_other": "{{count}} 件のステップを表示",
   "liveWork.reply.placeholder": "{{name}} に返信…",
   "liveWork.reply.whatToChange": "{{name}} に変えてほしいことを伝える…",
-  "liveWork.reply.next": "{{name}} が次に読みます: {{text}}"
+  "liveWork.reply.next": "{{name}} が次に読みます: {{text}}",
+  "liveWork.delegation.working": "{{name}} が対応中です",
+  "liveWork.delegation.needsYou": "{{name}} があなたの確認を待っています",
+  "liveWork.delegation.done": "{{name}} が完了しました",
+  "liveWork.delegation.stopped": "{{name}} が止まりました",
+  "liveWork.openChat": "チャットを開く"
 }

@@ -17,6 +17,7 @@ use specta::Type;
 
 use crate::db::{self, Db};
 use crate::model::{RunStatus, RunSummary, SourceType, Timestamp, STUDIO_AGENT_ID};
+use crate::services::domain::AgentCard;
 
 /// Every field narrows the result; `None` doesn't filter.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
@@ -166,6 +167,28 @@ pub const LIVE_FINISHED_MS: i64 = 60 * 60 * 1000;
 pub async fn list_live_runs(db: &Db) -> Result<Vec<RunSummary>, String> {
     let since = db::now_ms() - LIVE_FINISHED_MS;
     db.call(move |conn| db::live_runs(conn, since)).await
+}
+
+/// The runs other local agents did for this run: what its agent delegated
+/// while the run went on. An agent runs one turn at a time and its tool
+/// calls one after another, so every run it delegated in that time is this
+/// run's. Empty for an unknown run.
+pub async fn list_delegated_runs(db: &Db, run_id: String) -> Result<Vec<RunSummary>, String> {
+    let instance = crate::services::network::local_instance_id(db)?;
+    db.call(move |conn| {
+        let Some(run) = db::get_run(conn, &run_id)? else {
+            return Ok(Vec::new());
+        };
+        let card = AgentCard::card_id(&instance, &run.agent_id);
+        db::delegated_runs(
+            conn,
+            &run.agent_id,
+            &card,
+            run.started_at as i64,
+            run.ended_at.map(|t| t as i64),
+        )
+    })
+    .await
 }
 
 /// Totals over the runs started in `range` (Studio runs left out). The
@@ -587,6 +610,45 @@ mod tests {
         let ids: Vec<&str> = live.iter().map(|r| r.id.as_str()).collect();
         assert_eq!(ids, ["r1", "f1", "w1"]);
         assert_eq!(live[0].source_label.as_deref(), Some("Nightly digest"));
+    }
+
+    #[tokio::test]
+    async fn delegated_runs_are_the_ones_its_agent_asked_for_while_it_ran() {
+        let db = Db::in_memory();
+        let instance = crate::services::network::local_instance_id(&db).unwrap();
+        let card = AgentCard::card_id(&instance, "boss");
+        db.call(move |conn| {
+            let mut parent = run("p1", "boss", 10.0);
+            parent.ended_at = Some(50.0);
+            insert(conn, parent);
+            let child = |id: &str, at: f64, asker: &str| {
+                let mut r = run(id, "researcher", at);
+                r.source_type = SourceType::Agent;
+                r.source_id = Some(asker.to_string());
+                r
+            };
+            insert(conn, child("c1", 20.0, &card));
+            insert(conn, child("c2", 30.0, "boss"));
+            insert(conn, child("before", 5.0, &card));
+            insert(conn, child("after", 60.0, &card));
+            insert(conn, child("remote", 25.0, "far/boss"));
+            insert(conn, run("mine", "researcher", 22.0));
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+        let ids: Vec<String> = list_delegated_runs(&db, "p1".into())
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(ids, ["c1", "c2"]);
+        assert!(list_delegated_runs(&db, "nope".into())
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]

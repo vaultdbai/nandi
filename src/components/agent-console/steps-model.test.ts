@@ -42,6 +42,11 @@ describe('foldSteps', () => {
     expect(items[1]).toMatchObject({ kind: 'steps', id: 'steps:t1' })
   })
 
+  it('keeps the work of another agent out of the steps', () => {
+    const items = foldSteps([call('t1'), call('d1', 'delegate_to_agent')])
+    expect(items.map(item => item.kind)).toEqual(['steps', 'message'])
+  })
+
   it('leaves a chat with no steps as it is', () => {
     expect(foldSteps([said('a')])).toEqual([
       { kind: 'message', message: said('a') },

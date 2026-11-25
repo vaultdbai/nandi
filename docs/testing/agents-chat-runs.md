@@ -1295,6 +1295,22 @@ Shared preconditions used below:
 - **Automation:** Covered by: Rust `services::chat::tests::a_reply_goes_to_the_runs_agent_in_the_runs_own_conversation`, `src/components/live-runs/live-run-model.test.ts` (`waitingReplies`) | Layer: unit | Gap: no component test for the reply box.
 - **Needs relay:** no
 
+### CH-32 — Delegated work inside the parent chat
+
+- **What:** When an agent (Nandi, say) delegates to another local agent with `delegate_to_agent`, the parent chat shows the other agent's run as a block named for it, like a person in a group chat: "Researcher is working on it", "… needs you", "… is done" or "… stopped", with its icon and **Open chat** (its own live chat). The block's steps (the delegation call itself, its tool calls and messages) fold under "Show N steps"; its waiting approval cards show open in the block, and approving there answers the child's approval through the same `approve_action` and checks. Until the other agent starts, or when the delegation went to another Nandi, the call shows as its usual tool card. The block is never folded into the parent's own steps.
+- **Where:** `src/components/agent-console/DelegationBlock.tsx`, `delegation-model.ts` (which call started which runs), `MessageList.tsx` (every chat), `steps-model.ts`. Data: `list_delegated_runs` (`src-tauri/src/rpc/runs.rs`, `services/runs.rs`, `db::delegated_runs`): the runs with source `agent` asked by the parent's agent (its ID or its card ID on this Nandi) that started while the parent run went on. An agent runs one turn at a time and its tool calls one after another, so no new storage is needed. The child's messages come from `get_run_detail` and refresh on its events.
+- **Preconditions:** Model key; Nandi with outbound delegation on; another local agent that accepts delegation for a capability and has a tool in its `requires_approval`.
+- **Steps:**
+  1. In Nandi's chat (or its Live chat in Ask), ask for something only the other agent's capability covers.
+  2. Wait for the block, then approve the other agent's card inside it.
+- **Expected:** The block reads "<Agent> is working on it", then "<Agent> needs you" with the approval card open. Approving there resumes the other agent's run; the block reads "… is done" when it ends, and Nandi's chat goes on with the result.
+- **Edge / negative cases:**
+  - Two delegations in one run: each block shows only the runs its call started.
+  - A retry on another provider (failover) shows both runs in the same block.
+  - A delegation to another Nandi (through the relay) shows only the tool card; no relay call is made to draw it.
+- **Automation:** Covered by: `src/components/agent-console/delegation-model.test.ts`, `steps-model.test.ts`, Rust `services::runs::tests::delegated_runs_are_the_ones_its_agent_asked_for_while_it_ran` | Layer: unit | Gap: no component test for `DelegationBlock.tsx`.
+- **Needs relay:** no
+
 ## Runs, Run Detail and audit
 
 ### RN-01 — Run Detail page and header

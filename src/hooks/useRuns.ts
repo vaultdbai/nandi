@@ -33,6 +33,7 @@ export const runsQueryKeys = {
     ['globalRuns', 'page', filters, limit, offset] as const,
   stats: (range: DateRange) => ['globalRuns', 'stats', range] as const,
   live: ['globalRuns', 'live'] as const,
+  delegated: (runId: string) => ['globalRuns', 'delegated', runId] as const,
 }
 
 const STRING_FILTERS = ['status', 'sourceType', 'agentId', 'search'] as const
@@ -86,6 +87,15 @@ export function useRuns(
 /** Every running or waiting run, newest first: Ask's Live chats */
 export function useLiveRuns() {
   return useClientQuery(runsQueryKeys.live, () => client.listLiveRuns())
+}
+
+/** The runs other local agents did for this run (its delegations) */
+export function useDelegatedRuns(runId: string | null) {
+  return useClientQuery(
+    runsQueryKeys.delegated(runId ?? ''),
+    () => client.listDelegatedRuns(runId ?? ''),
+    { enabled: runId !== null }
+  )
 }
 
 /** Every run matching `filters` (up to `max`), page by page. */
