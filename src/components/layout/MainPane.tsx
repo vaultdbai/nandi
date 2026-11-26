@@ -20,7 +20,6 @@ import { useNavigationStore, type View } from '@/store/navigation-store'
 import { AgentsListView } from '@/components/views/AgentsListView'
 import { AllActivityView } from '@/components/home/AllActivityView'
 import { HomeView } from '@/components/home/HomeView'
-import { InboxView } from '@/components/inbox/InboxView'
 import { DecisionsView } from '@/components/views/DecisionsView'
 import {
   AutomationsPage,
@@ -42,7 +41,7 @@ export function MainPane() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      {view.kind === 'studio' && <LlmKeyNotice />}
+      {(view.kind === 'studio' || view.kind === 'nandi') && <LlmKeyNotice />}
       <main className="min-h-0 flex-1">
         <CurrentView view={view} />
       </main>
@@ -53,12 +52,10 @@ export function MainPane() {
 
 function CurrentView({ view }: { view: View }) {
   switch (view.kind) {
-    case 'home':
-      return <HomeView welcome={view.welcome} />
-    case 'home-activity':
-      return <AllActivityView filters={view.filters} />
     case 'inbox':
-      return <InboxView />
+      return <HomeView welcome={view.welcome} />
+    case 'history':
+      return <AllActivityView filters={view.filters} />
     case 'decisions':
       return <DecisionsView />
     case 'agents':

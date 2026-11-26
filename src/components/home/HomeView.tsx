@@ -1,6 +1,5 @@
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CircleCheck, Network, Sparkles } from 'lucide-react'
+import { CircleCheck, Network } from 'lucide-react'
 import {
   BackupNudge,
   GetStarted,
@@ -14,13 +13,10 @@ import { LlmKeyNotice } from '@/components/layout/LlmKeyNotice'
 import { MachineHomeItem } from '@/components/machine/MachineHomeItem'
 import { RecentChanges } from '@/components/live/RecentChanges'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHomeFeed } from '@/hooks/useHome'
 import { useRelay } from '@/hooks/useRelay'
-import { startChat } from '@/lib/agent-actions'
-import { DEFAULT_AGENT } from '@/lib/bindings'
 import { useDashboard } from '@/store/agent-store'
 import { useNavigationStore, type View } from '@/store/navigation-store'
 import { ViewHeader } from '@/components/views/ViewHeader'
@@ -63,10 +59,9 @@ export function HomeView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ViewHeader title={t('nav.home')} />
+      <ViewHeader title={t('nav.inbox')} />
       <ScrollArea className="min-h-0 flex-1">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
-          <AskNandi />
           {fresh && <LlmKeyNotice className="m-0" />}
           <MachineHomeItem />
           {welcome && welcome.packIds.length > 0 && (
@@ -99,42 +94,6 @@ export function HomeView({
         </div>
       </ScrollArea>
     </div>
-  )
-}
-
-/** "Ask Nandi…": typed text opens Studio with it sent; empty just opens it */
-function AskNandi() {
-  const { t } = useTranslation()
-  const [text, setText] = useState('')
-
-  return (
-    <form
-      role="search"
-      onSubmit={event => {
-        event.preventDefault()
-        const ask = text.trim()
-        if (ask) {
-          setText('')
-          void startChat(DEFAULT_AGENT, ask)
-        } else {
-          navigate({ kind: 'nandi' })
-        }
-      }}
-    >
-      <div className="relative">
-        <Sparkles
-          aria-hidden
-          className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          value={text}
-          onChange={event => setText(event.target.value)}
-          placeholder={t('home.askPlaceholder')}
-          aria-label={t('home.askLabel')}
-          className="h-10 ps-9"
-        />
-      </div>
-    </form>
   )
 }
 

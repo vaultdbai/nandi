@@ -128,7 +128,7 @@ export async function showBisonMenu(actions: {
         await MenuItem.new({
           id: 'bison-open-nandi',
           text: actions.labels.openNandi,
-          action: () => void openInMain({ kind: 'home' }),
+          action: () => void openInMain({ kind: 'inbox' }),
         }),
         await PredefinedMenuItem.new({ item: 'Separator' }),
         await MenuItem.new({

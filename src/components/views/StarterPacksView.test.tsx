@@ -85,7 +85,7 @@ describe('StarterPacksView', () => {
     ])
     // Home welcomes what was just installed
     expect(useNavigationStore.getState().current).toEqual({
-      kind: 'home',
+      kind: 'inbox',
       welcome: { packIds: ['engineering-pack', 'research-pack'] },
     })
   })
@@ -149,7 +149,7 @@ describe('StarterPacksView', () => {
       screen.getByRole('button', { name: 'Continue without them' })
     )
     // Nothing installed: no welcome to show
-    expect(useNavigationStore.getState().current).toEqual({ kind: 'home' })
+    expect(useNavigationStore.getState().current).toEqual({ kind: 'inbox' })
   })
 
   it('retries a pack that failed', async () => {
@@ -165,7 +165,7 @@ describe('StarterPacksView', () => {
 
     expect(vi.mocked(commands.installPack)).toHaveBeenCalledTimes(2)
     expect(useNavigationStore.getState().current).toEqual({
-      kind: 'home',
+      kind: 'inbox',
       welcome: { packIds: ['research-pack'] },
     })
   })
@@ -173,7 +173,7 @@ describe('StarterPacksView', () => {
   it('skips to the dashboard', async () => {
     render(<StarterPacksView />)
     await userEvent.click(await screen.findByRole('button', { name: 'Skip' }))
-    expect(useNavigationStore.getState().current.kind).toBe('home')
+    expect(useNavigationStore.getState().current.kind).toBe('inbox')
     expect(commands.installPack).not.toHaveBeenCalled()
   })
 

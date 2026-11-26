@@ -220,7 +220,7 @@ function RowBody({
     case 'approvals':
       if (row.status === 'fail') {
         fix = (
-          <Button size="sm" onClick={() => navigate({ kind: 'home' })}>
+          <Button size="sm" onClick={() => navigate({ kind: 'inbox' })}>
             {t('network.checklist.openInbox')}
           </Button>
         )

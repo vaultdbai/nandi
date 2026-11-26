@@ -43,8 +43,15 @@ fn the_guide_file_is_complete() {
             let known = link.target.starts_with("url:https://")
                 || link.target.starts_with("settings")
                 || link.target.starts_with("network:")
-                || ["agents", "library", "automations", "inbox", "home"]
-                    .contains(&link.target.as_str());
+                || [
+                    "nandi",
+                    "agents",
+                    "library",
+                    "automations",
+                    "inbox",
+                    "history",
+                ]
+                .contains(&link.target.as_str());
             assert!(known, "{}: {}", topic.id, link.target);
         }
     }

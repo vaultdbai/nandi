@@ -4,7 +4,8 @@ import {
   Bot,
   ChevronRight,
   Plus,
-  House,
+  History,
+  Inbox,
   Library,
   Network,
   Settings,
@@ -39,7 +40,8 @@ import {
 
 const ICONS: Record<NavSection, React.ReactNode> = {
   nandi: <NandiMark className="size-4 object-contain" />,
-  home: <House />,
+  inbox: <Inbox />,
+  history: <History />,
   agents: <Bot />,
   automations: <Workflow />,
   library: <Library />,
@@ -201,7 +203,9 @@ function NavItem({
       className={cn(
         'list-none',
         // New chat sits above the chats, with a line between
-        node.create && 'mb-0.5 border-b border-border/60 pb-0.5'
+        node.create && 'mb-0.5 border-b border-border/60 pb-0.5',
+        // Library, Network and Settings: set apart at the bottom
+        node.apart && 'mt-3 border-t border-border/60 pt-2'
       )}
     >
       <div

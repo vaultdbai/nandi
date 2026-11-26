@@ -54,3 +54,18 @@ export function chatAgentId(
     ? conversationId.slice('agent:'.length)
     : null
 }
+
+/** Chats whose title or last message has `search` in it (any case) */
+export function searchChats(
+  chats: readonly ChatSummary[],
+  search: string | undefined
+): ChatSummary[] {
+  const query = search?.trim().toLowerCase() ?? ''
+  const newest = [...chats].sort((a, b) => b.updatedAt - a.updatedAt)
+  if (!query) return newest
+  return newest.filter(chat =>
+    [chat.title, chat.lastMessage ?? ''].some(text =>
+      text.toLowerCase().includes(query)
+    )
+  )
+}

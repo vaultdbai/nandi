@@ -24,6 +24,7 @@ import {
 } from '@/lib/agent-identity'
 import type { SettingsSection } from '@/lib/settings-nav'
 import {
+  BOTTOM_SECTION,
   NAV_SECTIONS,
   SECTION_VIEWS,
   type NavSection,
@@ -55,6 +56,8 @@ export interface NavNode {
   subtle?: boolean
   /** "New chat": an action, set apart from the list it adds to */
   create?: boolean
+  /** The first of the items at the bottom (Library, Network, Settings) */
+  apart?: boolean
   children?: NavNode[]
 }
 
@@ -183,14 +186,15 @@ function sectionDot(
 /** The whole tree, in sidebar order */
 export function buildNavTree(input: NavTreeInput): NavNode[] {
   const children: Record<NavSection, NavNode[] | undefined> = {
-    // All reachable without Home's scroll; the Inbox carries its count
-    home: [
-      {
-        ...tab('home:inbox', 'nav.tree.inbox', { kind: 'inbox' }),
-        badge: input.inboxCount > 0 ? input.inboxCount : undefined,
-      },
-      tab('home:decisions', 'nav.tree.decisions', { kind: 'decisions' }),
-      tab('home:activity', 'home.allActivity', { kind: 'home-activity' }),
+    // The Inbox's page is the whole list; its count is on the item
+    inbox: undefined,
+    // Past decisions, and the audit log behind every run
+    history: [
+      tab('history:decisions', 'nav.tree.decisions', { kind: 'decisions' }),
+      tab('history:audit', 'nav.auditLog', {
+        kind: 'settings',
+        section: 'logs',
+      }),
     ],
     agents: agentNodes(input.agents),
     automations: [
@@ -224,9 +228,11 @@ export function buildNavTree(input: NavTreeInput): NavNode[] {
         : key(`nav.${section}`),
     view: SECTION_VIEWS[section],
     badge:
-      section === 'home' && input.inboxCount > 0 ? input.inboxCount : undefined,
-    badgeView: section === 'home' ? { kind: 'inbox' } : undefined,
+      section === 'inbox' && input.inboxCount > 0
+        ? input.inboxCount
+        : undefined,
     dot: sectionDot(section, input, nandi),
+    apart: section === BOTTOM_SECTION || undefined,
     children: children[section],
   }))
 }

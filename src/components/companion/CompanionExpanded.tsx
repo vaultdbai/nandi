@@ -163,7 +163,7 @@ export function CompanionPanel({
                   {waiting.length > needsYou.length && (
                     <MoreLink
                       count={waiting.length - needsYou.length}
-                      onClick={() => open({ kind: 'home' })}
+                      onClick={() => open({ kind: 'inbox' })}
                     />
                   )}
                 </Section>
@@ -200,7 +200,7 @@ export function CompanionPanel({
                   {feed.running.length > running.length && (
                     <MoreLink
                       count={feed.running.length - running.length}
-                      onClick={() => open({ kind: 'home' })}
+                      onClick={() => open({ kind: 'inbox' })}
                     />
                   )}
                 </Section>

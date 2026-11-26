@@ -132,6 +132,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             workflows::create_workflow_from_template,
             workflows::approve_workflow_step,
             triggers::list_triggers,
+            triggers::list_next_runs,
             triggers::get_trigger,
             triggers::create_trigger,
             triggers::update_trigger,

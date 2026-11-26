@@ -59,7 +59,7 @@ export function askContextForView(view: View): AskContext {
     focusedArtifact: ArtifactRef | null = null
   ): AskContext => ({ currentView, focusedArtifact, recentRuns: [] })
   switch (view.kind) {
-    case 'home':
+    case 'inbox':
       return context('home')
     case 'network':
       return view.tab === 'sharing' && (view.sharing ?? 'offer') === 'offer'

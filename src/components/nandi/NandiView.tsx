@@ -206,7 +206,7 @@ function RecentChats({ agents }: { agents: readonly AgentInfo[] }) {
   )
 }
 
-function ChatRow({
+export function ChatRow({
   chat,
   agents,
   pinned,

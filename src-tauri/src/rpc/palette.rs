@@ -28,11 +28,11 @@ mod tests {
 
     #[tokio::test]
     async fn searches_actions() {
-        let body = call("search_palette", json!({ "query": ">home" }))
+        let body = call("search_palette", json!({ "query": ">inbox" }))
             .await
             .unwrap();
         let results = body.as_array().unwrap();
-        assert_eq!(results[0]["name"], "Go to Home");
+        assert_eq!(results[0]["name"], "Go to Inbox");
         assert!(results.iter().all(|r| r["kind"] == "action"));
     }
 

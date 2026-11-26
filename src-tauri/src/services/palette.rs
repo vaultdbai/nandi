@@ -27,7 +27,7 @@ use specta::Type;
 use super::marketplace::manifest::{AgentManifest, PackManifest};
 use super::marketplace::MarketplaceFilter;
 use super::runs::RunFilters;
-use super::{agents, chat, connectors, marketplace, pilots, runs, snapshots, workflows, AppState};
+use super::{agents, connectors, marketplace, pilots, runs, snapshots, workflows, AppState};
 use crate::db;
 use crate::model::{RunSummary, WorkflowSummary};
 
@@ -90,7 +90,7 @@ pub const PAUSE_ALL: &str = "pause_all";
 pub const RESUME_ALL: &str = "resume_all";
 pub const INSTALL_AGENT: &str = "install_agent";
 pub const RUN_WORKFLOW: &str = "run_workflow";
-pub const NEW_STUDIO_CHAT: &str = "new_studio_chat";
+pub const NEW_CHAT: &str = "new_chat";
 
 fn def(id: &str, name: &str, description: &str, keywords: &[&str]) -> ActionDef {
     ActionDef {
@@ -149,10 +149,10 @@ pub fn actions() -> Vec<ActionDef> {
             &["run", "start", "workflow", "execute"],
         ),
         def(
-            NEW_STUDIO_CHAT,
-            "New chat in Ask",
-            "Start a new conversation in Ask",
-            &["ask", "studio", "chat", "new", "conversation"],
+            NEW_CHAT,
+            "New chat with Nandi",
+            "Start a new conversation with Nandi",
+            &["ask", "nandi", "chat", "new", "conversation"],
         ),
     ]
 }
@@ -186,20 +186,20 @@ fn browse_view() -> Value {
 fn pages() -> Vec<PageView> {
     vec![
         page(
-            "Home",
-            &["dashboard", "overview", "work"],
-            json!({ "kind": "home" }),
+            "Nandi",
+            &["ask", "chat", "conversations", "live", "home"],
+            json!({ "kind": "nandi" }),
         ),
         page(
-            "Ask",
-            &["chat", "conversations", "studio"],
-            json!({ "kind": "studio", "conversationId": null }),
+            "Inbox",
+            &["approvals", "waiting", "todos", "dashboard"],
+            json!({ "kind": "inbox" }),
         ),
         page("Agents", &["agents"], json!({ "kind": "agents" })),
         page(
-            "All activity",
-            &["history", "runs", "delegation"],
-            json!({ "kind": "home-activity" }),
+            "History",
+            &["activity", "runs", "chats", "delegation", "past"],
+            json!({ "kind": "history" }),
         ),
         page(
             "Workflows",
@@ -405,7 +405,7 @@ impl Candidate {
 fn standalone_actions() -> Vec<Candidate> {
     let mut out: Vec<Candidate> = actions()
         .into_iter()
-        .filter(|d| [NEW_STUDIO_CHAT, PAUSE_ALL, RESUME_ALL].contains(&d.id.as_str()))
+        .filter(|d| [NEW_CHAT, PAUSE_ALL, RESUME_ALL].contains(&d.id.as_str()))
         .map(|d| Candidate {
             kind: "action",
             id: d.id,
@@ -708,10 +708,10 @@ async fn search_actions(state: &AppState, query: &str) -> Result<Vec<PaletteResu
 
 /// The actions an empty palette suggests, by name
 const SUGGESTED: &[&str] = &[
-    "New chat in Ask",
-    "Go to Home",
+    "New chat with Nandi",
+    "Go to Inbox",
     "Go to Library",
-    "Go to All activity",
+    "Go to History",
     "Pause all agents",
 ];
 
@@ -857,13 +857,11 @@ pub async fn execute_palette_action(
                 navigate: Some(json!({ "kind": "workflow", "workflowId": id })),
             })
         }
-        NEW_STUDIO_CHAT => {
-            let conversation = chat::create_studio_conversation(state).await?;
-            Ok(PaletteActionOutcome {
-                message: None,
-                navigate: Some(json!({ "kind": "studio", "conversationId": conversation.id })),
-            })
-        }
+        // The Nandi home's composer: the first message makes the chat
+        NEW_CHAT => Ok(PaletteActionOutcome {
+            message: None,
+            navigate: Some(json!({ "kind": "nandi" })),
+        }),
         other => Err(format!("Unknown palette action '{other}'")),
     }
 }
@@ -968,7 +966,7 @@ mod tests {
             RESUME_ALL,
             INSTALL_AGENT,
             RUN_WORKFLOW,
-            NEW_STUDIO_CHAT,
+            NEW_CHAT,
         ] {
             assert!(ids.iter().any(|i| i == id), "{id}");
         }
@@ -1101,7 +1099,7 @@ mod tests {
     async fn empty_query_suggests_actions() {
         let state = AppState::for_tests(vec![]);
         let results = search_palette(&state, "  ").await.unwrap();
-        assert!(results.iter().any(|r| r.id == NEW_STUDIO_CHAT));
+        assert!(results.iter().any(|r| r.id == NEW_CHAT));
         assert!(results
             .iter()
             .all(|r| r.kind == "action" || r.kind == "run"));
@@ -1146,10 +1144,10 @@ mod tests {
             .unwrap();
         assert!(outcome.message.unwrap().contains("No agents"));
 
-        let outcome = execute_palette_action(&state, NEW_STUDIO_CHAT, Value::Null)
+        let outcome = execute_palette_action(&state, NEW_CHAT, Value::Null)
             .await
             .unwrap();
-        assert_eq!(outcome.navigate.unwrap()["kind"], "studio");
+        assert_eq!(outcome.navigate.unwrap()["kind"], "nandi");
         state.shutdown();
     }
 }

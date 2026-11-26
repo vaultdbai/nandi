@@ -248,7 +248,7 @@ describe('the card', () => {
         'approved'
       )
     )
-    expect(useNavigationStore.getState().current).toEqual({ kind: 'home' })
+    expect(useNavigationStore.getState().current).toEqual({ kind: 'nandi' })
   })
 
   it('shows at most three things that need you, then "+ N more"', async () => {
@@ -265,7 +265,7 @@ describe('the card', () => {
       within(needsYou).getAllByRole('button', { name: 'Approve' })
     ).toHaveLength(3)
     await user.click(within(needsYou).getByRole('button', { name: '+ 2 more' }))
-    expect(useNavigationStore.getState().current).toEqual({ kind: 'home' })
+    expect(useNavigationStore.getState().current).toEqual({ kind: 'inbox' })
   })
 
   it('pins a watched Request at the top of Running', async () => {

@@ -66,7 +66,10 @@ use crate::services::AppState;
 use device::{DeviceEvent, DeviceMatch};
 use dispatch::StormDetector;
 use file::FileWatch;
-use schema::{SavedTrigger, Trigger, TriggerEvent, TriggerFire, TriggerInput, TriggerSourceType};
+use schema::{
+    SavedTrigger, Trigger, TriggerEvent, TriggerFire, TriggerInput, TriggerSourceType,
+    TriggerTargetType,
+};
 use webhook::{ReceiveError, RequestLimiter};
 
 /// Fires waiting for the dispatcher before receivers answer `503`
@@ -810,6 +813,45 @@ async fn watch_bus(engine: Weak<TriggerEngine>) {
 pub async fn list_triggers(state: &AppState) -> Result<Vec<Trigger>, String> {
     let list = state.db().call(|conn| store::list_triggers(conn)).await?;
     Ok(list.iter().map(Trigger::public).collect())
+}
+
+/// When a trigger runs next: its target and the time
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct NextRun {
+    pub trigger_id: String,
+    pub target_type: TriggerTargetType,
+    pub target_id: String,
+    pub at: Timestamp,
+}
+
+/// The next run of each enabled scheduled trigger after `after`, soonest
+/// first. Only a schedule knows its next time; the rest wait for a file,
+/// a webhook or an event.
+pub fn next_runs_after(triggers: &[Trigger], after: chrono::DateTime<Local>) -> Vec<NextRun> {
+    let mut runs: Vec<NextRun> = triggers
+        .iter()
+        .filter(|t| t.enabled && t.source_type == TriggerSourceType::Cron)
+        .filter_map(|t| {
+            let schedule = t.source_config.get("schedule")?.as_str()?;
+            let cron = cron::parse_schedule(schedule).ok()?;
+            let at = cron::next_after(&cron, &after)?;
+            Some(NextRun {
+                trigger_id: t.id.clone(),
+                target_type: t.target_type,
+                target_id: t.target_id.clone(),
+                at: at.timestamp_millis() as Timestamp,
+            })
+        })
+        .collect();
+    runs.sort_by(|a, b| a.at.total_cmp(&b.at));
+    runs
+}
+
+/// When each scheduled trigger runs next (Automations' Next run)
+pub async fn next_runs(state: &AppState) -> Result<Vec<NextRun>, String> {
+    let triggers = list_triggers(state).await?;
+    Ok(next_runs_after(&triggers, Local::now()))
 }
 
 pub async fn get_trigger(state: &AppState, id: String) -> Result<Trigger, String> {

@@ -327,7 +327,7 @@ export function CompanionApp({ docked = false }: { docked?: boolean }) {
       opener.open(
         focusedRequestId
           ? { kind: 'request', requestId: focusedRequestId }
-          : { kind: 'home' }
+          : { kind: 'inbox' }
       ),
     onOpenInStudio: () =>
       opener.open({

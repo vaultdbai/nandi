@@ -260,13 +260,13 @@ export function buildTray(input: {
       id: 'working',
       total: running.length,
       rows: running.slice(0, TRAY_LIMITS.working),
-      all: { kind: 'home-activity', filters: { status: 'running' } },
+      all: { kind: 'history', filters: { status: 'running' } },
     },
     {
       id: 'done',
       total: done.length,
       rows: done.slice(0, TRAY_LIMITS.done),
-      all: { kind: 'home-activity' },
+      all: { kind: 'history' },
     },
   ]
 }

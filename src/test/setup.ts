@@ -286,6 +286,7 @@ vi.mock('@/lib/tauri-bindings', async importOriginal => {
       approveWorkflowStep: ok(null),
       getStudioConversations: ok([]),
       listChats: ok([]),
+      listNextRuns: ok([]),
       listLiveRuns: ok([]),
       listDelegatedRuns: ok([]),
       createChat: ok({

@@ -286,34 +286,34 @@ Inside its container, the agent's folder is mounted read-only at `/agent/skill` 
 
 ### Finding your way
 
-The sidebar has seven pages: **Home** first, then **Nandi**, the one place to talk. Four open one level down: **Home** (**Inbox**, **Decisions** and **All activity**), **Nandi** (**+ New chat**, the work going on now, your five latest chats and **My notes**, since Nandi keeps your notes), **Agents** (each agent, with a dot for what it's doing, busiest first) and **Automations** (**Workflows** and **Triggers**). Library, Network and Settings are single items; their pages have their own tabs. Click a name to open it (and its branch), or the arrow beside it to open or close the branch only. Branches stay as you left them, and the one above the page you're on opens by itself.
+The sidebar has what you come for, top to bottom: **Nandi**, **Inbox**, **Automations**, **Agents** and **History**, then, set apart at the bottom, **Library**, **Network** and **Settings**. Nandi opens one level down (**+ New chat**, the work going on now, your five latest chats and **My notes**), and so do Automations (**Workflows**, **Triggers**), Agents (each agent, busiest first) and History (**Decisions** and **Audit log**). Nandi opens when the app starts. Click a name to open it (and its branch), or the arrow beside it to open or close the branch only. Branches stay as you left them, and the one above the page you're on opens by itself.
 
-| Item            | What's there                                                                                                                                                                                       |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Home**        | **Inbox** (what waits on you; its count is on the sidebar badge), **Running**, **Recent**, and **All activity →** (every run and delegation). Type into **Ask Nandi…** to start a chat with Nandi. |
-| **Nandi**       | One place to talk: **What should I do?**, then **Live** (what needs you, what's working) and **Recent** (your last 10 chats; pin one to keep it there). **Nandi's settings** opens its page.       |
-| **Agents**      | Every agent as a row with its runtime, last 7 days and sharing. Click one for its page (Overview, Chat, Runs, Settings); **New agent** makes one.                                                  |
-| **Automations** | **Workflows** and **Triggers**, each with its **New** button.                                                                                                                                      |
-| **Library**     | **Installed**, **Browse** and **Shared with me**: agents, workflows, tools (built-ins, connectors, pilots) and packs, each with one card.                                                          |
-| **Network**     | **People**, **Groups**, **Sharing** (Gateway, Shared by me, Trust graph, Capabilities) and **Connection** (the relay). A dot shows whether you're connected.                                       |
-| **Settings**    | **Models & runtimes**, **Account**, **Cloud credentials**, **Internet access**, **Sources** and **Logs**.                                                                                          |
+| Item            | What's there                                                                                                                                                                                 |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Nandi**       | One place to talk: **What should I do?**, then **Live** (what needs you, what's working) and **Recent** (your last 10 chats; pin one to keep it there). **Nandi's settings** opens its page. |
+| **Inbox**       | What waits on you, each with its fix right there, your to-dos and reminders, and what to do first on a new install. Its count is on the item.                                                |
+| **Automations** | **Workflows** and **Triggers**, each with its last run, its **Next run** (for a schedule) and its **New** button.                                                                            |
+| **Agents**      | Every agent as a row with its runtime, last 7 days and sharing. Click one for its page (Overview, Chat, Runs, Settings); **New agent** makes one.                                            |
+| **History**     | Every past chat (searchable), every run and delegation with filters and CSV export, **Decisions**, and **Audit log**.                                                                        |
+| **Library**     | **Installed**, **Browse** and **Shared with me**: agents, workflows, tools (built-ins, connectors, pilots) and packs, each with one card.                                                    |
+| **Network**     | **People**, **Groups**, **Sharing** (Gateway, Shared by me, Trust graph, Capabilities) and **Connection** (the relay). A dot shows whether you're connected.                                 |
+| **Settings**    | **Models & runtimes**, **Account**, **Cloud credentials**, **Internet access**, **Sources** and **Logs**.                                                                                    |
 
 Up and Down move through the sidebar, Right opens a branch (or steps into it), Left closes it (or goes back up), and Enter opens the page. **Ctrl+K** (⌘K) opens the command palette; its first row, **Ask Nandi: …**, sends what you typed to Nandi.
 
-### Home
+### Inbox
 
-Home answers "does anything need me, and is everything else moving?". From the top:
+The Inbox answers "does anything need me, and is everything else moving?". From the top:
 
-- **Ask Nandi…** sends what you type to **Ask**.
 - One line about your network: "Connected · 4 people online", or "Not connected" with **Join a network**.
-- Up to three numbers (**Runs today**, **Failed in 24 h**, **Waiting on you**), once there's something to count. Click one for that slice of All activity.
+- Up to three numbers (**Runs today**, **Failed in 24 h**, **Waiting on you**), once there's something to count. Click one for that slice of History.
 - The **Inbox**: everything waiting on you, each with its fix right there (see Approvals below).
 - **Running**: what's going now, with "step 2 of 4" and how long it's taken. Something with no progress for 10 minutes says so.
 - **Recent**: what finished in the last day. Rate a delegation's result once (★); a failure has **Retry** (a workflow asks first, since it runs every step again).
 
 When nothing needs you and nothing runs, Home says so in one line. On a fresh install it shows **Get started** instead. Everything updates live; leave it open on a second monitor if you run agents on triggers.
 
-**All activity** (from Recent) lists every run and delegation, both ways, in one table. Filter by search, date, status, source (you, a trigger, a schedule, a workflow, another Nandi), direction, agent and member; the filters stay put when you open a row and come back. **Export CSV** saves exactly what the filters show.
+**History** lists your past chats (search finds them by title or message), then every run and delegation, both ways, in one table. Filter by search, date, status, source (you, a trigger, a schedule, a workflow, another Nandi), direction, agent and member; the filters stay put when you open a row and come back. **Export CSV** saves exactly what the filters show.
 
 ### To-dos and reminders
 
@@ -333,7 +333,7 @@ Every add, hand-off, done and undo is in **Decisions**. To-dos need no relay.
 
 An approval is a tool call that is waiting for your approval. The agent is suspended, not spinning: it uses no tokens, and the approval survives an app restart.
 
-Every approval waiting on you is in the **Inbox** on **Home** (the number on **Home** in the sidebar), together with workflow steps waiting for your approval, questions another Nandi asked you, manual workflow steps, and a missing model. Each has its fix right there. Failures from the last day are listed after them with **Retry** and **Dismiss**; they aren't counted in the number. Work Nandi started on its own (the morning digest, a trigger, the mail check) isn't listed as failed straight away: Nandi tries it again after 2 minutes and again after 10, and it only turns red once those tries fail too. If the app was closed at 8:00, the morning digest runs when you open it (up to 12 hours late). You can decide the same approval in the chat, in the run's **Approvals** tab, on its Request page, or in the Inbox: deciding it in one place clears it everywhere.
+Every approval waiting on you is in the **Inbox** (the number on **Inbox** in the sidebar), together with workflow steps waiting for your approval, questions another Nandi asked you, manual workflow steps, and a missing model. Each has its fix right there. Failures from the last day are listed after them with **Retry** and **Dismiss**; they aren't counted in the number. Work Nandi started on its own (the morning digest, a trigger, the mail check) isn't listed as failed straight away: Nandi tries it again after 2 minutes and again after 10, and it only turns red once those tries fail too. If the app was closed at 8:00, the morning digest runs when you open it (up to 12 hours late). You can decide the same approval in the chat, in the run's **Approvals** tab, on its Request page, or in the Inbox: deciding it in one place clears it everywhere.
 
 - **Approve** runs the call; the agent continues.
 - **Reject** asks you to confirm, then skips it; the model is told, and should adjust its plan rather than retry.
@@ -358,7 +358,7 @@ Two kinds of approval are not per call:
 
 ### Reviewing runs
 
-Every turn is a **run**. Open **Home › All activity** (or an agent's **Runs** tab, which shows what each run was **Part of**: Chat, a workflow, a trigger or a request) for the history with tokens and cost. Click a run for its detail view:
+Every turn is a **run**. Open **History** (or an agent's **Runs** tab, which shows what each run was **Part of**: Chat, a workflow, a trigger or a request) for the history with tokens and cost. Click a run for its detail view:
 
 | Tab       | Shows                                                            |
 | --------- | ---------------------------------------------------------------- |
@@ -720,7 +720,7 @@ Nandi learns what you do and what you'd like help with by asking, a little at a 
 - **Nothing is saved until you confirm.** Nandi shows the changes it would make on a card in the chat. Edit anything (the wording, **On my card** for each work responsibility, who sees a personal one), remove what you don't want, then **Confirm** or **Refuse**.
 - **Work and personal stay apart.** Work responsibilities can go on your card, so people can find you (each is your choice, on by default; your card still follows **Make reachable** and whether responsibilities are shown). Personal ones (family, home, caring for someone) never go on your card: they stay in My notes, in `private/about-me.md`. You may share one with **one group** you're in, such as a family group: members of that group who ask your Nandi can then get that answer. Nobody else can, and the relay's people search doesn't show it.
 - **Suggestions only.** The card may suggest an agent or pack for something no agent does yet (an insurance-renewal reminder, sprint review prep); nothing is installed until you do it from Library.
-- **Recorded.** Each confirmed change is in **Home › Decisions** as "Getting to know you", with what changed (personal answers only counted, never quoted). **Tell Nandi about you** lists the latest ones.
+- **Recorded.** Each confirmed change is in **History › Decisions** as "Getting to know you", with what changed (personal answers only counted, never quoted). **Tell Nandi about you** lists the latest ones.
 - **No model?** The to-do waits; the chat needs a model to answer.
 
 ### Connect your email
@@ -759,7 +759,7 @@ On a clean email item that waits, **Always allow mail from <domain>** adds a dom
 
 List what you're responsible for in **Network › Sharing › What you offer** (one per line). Everyone on your relay can then find you by topic, even if your profile is private.
 
-**Nandi**, the default agent, comes with the app (in the sidebar under Home) and works with you and your team:
+**Nandi**, the default agent, comes with the app (**Nandi**, first in the sidebar) and works with you and your team:
 
 - **Who is responsible:** answers "who is responsible for the SOX audit?" from what people published.
 - **Asking and assigning:** asks people or their agents, and assigns work, each after your approval.

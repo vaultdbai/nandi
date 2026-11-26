@@ -52,28 +52,32 @@ const input = (overrides: Partial<NavTreeInput> = {}): NavTreeInput => ({
 const ids = (nodes: NavNode[] | undefined) => nodes?.map(n => n.id)
 
 describe('buildNavTree', () => {
-  it('puts Home, then Nandi, on top of the seven pages, with Inbox and All activity under Home', () => {
+  it('lists what people come for, then Library, Network and Settings apart', () => {
     const tree = buildNavTree(input({ inboxCount: 3 }))
     expect(ids(tree)).toEqual([
-      'home',
       'nandi',
-      'agents',
+      'inbox',
       'automations',
+      'agents',
+      'history',
       'library',
       'network',
       'settings',
     ])
-    const home = findNode(tree, 'home')
-    expect(ids(home?.children)).toEqual([
-      'home:inbox',
-      'home:decisions',
-      'home:activity',
+    // The Inbox carries its count; its page is the whole list
+    const inbox = findNode(tree, 'inbox')
+    expect(inbox?.badge).toBe(3)
+    expect(inbox?.children).toBeUndefined()
+    expect(findNode(buildNavTree(input()), 'inbox')?.badge).toBeUndefined()
+    // History holds past decisions and the audit log
+    expect(ids(findNode(tree, 'history')?.children)).toEqual([
+      'history:decisions',
+      'history:audit',
     ])
-    expect(home?.badge).toBe(3)
-    expect(home?.children?.[0]?.badge).toBe(3)
-    const quiet = findNode(buildNavTree(input()), 'home')
-    expect(quiet?.badge).toBeUndefined()
-    expect(quiet?.children?.[0]?.badge).toBeUndefined()
+    // Library starts the group at the bottom
+    expect(tree.filter(node => node.apart).map(node => node.id)).toEqual([
+      'library',
+    ])
   })
 
   it('has New chat, the newest five chats and My notes under Nandi', () => {
@@ -251,9 +255,13 @@ describe('the active node', () => {
     expect(
       activePath(tree, { kind: 'agent', agentId: 'amy', tab: 'runs' })
     ).toEqual(['agents', 'agent:amy'])
+    // The audit log is History's
     expect(
       activePath(tree, { kind: 'settings', section: 'logs', logTab: 'llm' })
-    ).toEqual(['settings'])
+    ).toEqual(['history', 'history:audit'])
+    expect(activePath(tree, { kind: 'settings', section: 'models' })).toEqual([
+      'settings',
+    ])
     // My notes is under Nandi
     expect(activePath(tree, { kind: 'notes' })).toEqual([
       'nandi',
@@ -293,11 +301,11 @@ describe('keyboard order', () => {
   const tree = buildNavTree(input({ agents: [agent('amy')] }))
 
   it('walks open branches only', () => {
-    expect(visibleIds(tree, new Set())).toHaveLength(7)
-    expect(visibleIds(tree, new Set(['agents'])).slice(2, 5)).toEqual([
+    expect(visibleIds(tree, new Set())).toHaveLength(8)
+    expect(visibleIds(tree, new Set(['agents'])).slice(3, 6)).toEqual([
       'agents',
       'agent:amy',
-      'automations',
+      'history',
     ])
   })
 

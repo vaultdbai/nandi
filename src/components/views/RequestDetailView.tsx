@@ -94,7 +94,7 @@ export function RequestDetailView({
           {missing ? (
             <Button
               onClick={() =>
-                useNavigationStore.getState().navigate({ kind: 'home' })
+                useNavigationStore.getState().navigate({ kind: 'inbox' })
               }
             >
               {t('request.backHome')}

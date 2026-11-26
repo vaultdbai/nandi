@@ -49,7 +49,7 @@ describe('requestToPin', () => {
     expect(requestToPin(request, 'other')).toBe('r1')
     // Already pinned: its › opens the full page
     expect(requestToPin(request, 'r1')).toBeNull()
-    expect(requestToPin({ kind: 'home' }, null)).toBeNull()
+    expect(requestToPin({ kind: 'inbox' }, null)).toBeNull()
     expect(requestToPin({ kind: 'work-item', id: 'w1' }, null)).toBeNull()
   })
 })

@@ -4924,7 +4924,6 @@
   "help.links.library": "Ouvrir Bibliothèque",
   "help.links.groups": "Ouvrir Réseau › Groupes",
   "help.links.inbox": "Ouvrir la boîte de réception",
-  "help.links.home": "Accueil",
   "help.links.automations": "Automatisations",
   "help.links.network": "Réseau",
   "help.links.settings": "Réglages",
@@ -4951,7 +4950,7 @@
   "help.topics.inbox.title": "Ce qu’est la boîte de réception",
   "help.topics.inbox.answer": "La boîte de réception contient tout ce qui vous attend : les approbations demandées par les agents, les demandes de collègues et les étapes que vous seul pouvez faire. Chaque élément a sa solution sur place, et vos décisions sont enregistrées.",
   "help.topics.find-your-way.title": "Où trouver les choses",
-  "help.topics.find-your-way.answer": "La barre latérale contient tout :\n\n- **Accueil** : la boîte de réception, ce qui tourne et ce qui est terminé.\n- **Agents** : vos agents et leurs discussions.\n- **Automatisations** : workflows et déclencheurs.\n- **Bibliothèque** : packs et outils à installer.\n- **Réseau** : personnes, groupes et votre relais.\n- **Réglages** : modèles, cet ordinateur, sauvegarde et plus.",
+  "help.topics.find-your-way.answer": "La barre latérale contient tout :\n\n- **Nandi** : parlez à Nandi, voyez ce qui se passe et vos discussions récentes.\n- **Boîte de réception** : ce qui vous attend, et vos tâches.\n- **Automatisations** : workflows et déclencheurs.\n- **Agents** : vos agents et leurs pages.\n- **Historique** : discussions, exécutions et décisions passées, et le journal d'audit.\n- **Bibliothèque** : packs et outils à installer.\n- **Réseau** : personnes, groupes et votre relais.\n- **Réglages** : modèles, cet ordinateur, sauvegarde et plus.",
   "approval.summary.knowMePropose": "Enregistrer ce que vous avez dit à Nandi",
   "inbox.knowMe.first": "Parlez-moi de votre travail, et de ce qui, chez vous, mériterait un coup de main",
   "inbox.knowMe.recheck": "Ce que Nandi sait de vous est-il toujours juste ?",
@@ -5249,5 +5248,13 @@
   "savePreview.create": "Créer",
   "savePreview.edit": "Modifier",
   "savePreview.no": "Non",
-  "composer.mentions": "Commencer la discussion avec"
+  "composer.mentions": "Commencer la discussion avec",
+  "help.links.nandi": "Ouvrir Nandi",
+  "nav.history": "Historique",
+  "nav.inbox": "Boîte de réception",
+  "history.subtitle": "Discussions, exécutions et délégations passées",
+  "history.chats_one": "{{count}} discussion",
+  "history.chats_other": "{{count}} discussions",
+  "history.allChats": "Afficher les {{count}} discussions",
+  "automations.columns.nextRun": "Prochaine exécution"
 }

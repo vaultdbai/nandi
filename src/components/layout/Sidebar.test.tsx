@@ -28,10 +28,11 @@ const relay = (relayUrl: string | null, connected: boolean): RelayStatus => ({
 })
 
 const ITEMS = [
-  'Home',
   'Nandi',
-  'Agents',
+  'Inbox',
   'Automations',
+  'Agents',
+  'History',
   'Library',
   'Network',
   'Settings',
@@ -52,14 +53,16 @@ describe('Sidebar', () => {
     })
   })
 
-  it('has Home, then Nandi, of the seven items, in order, closed at first', () => {
+  it('has Nandi first, then the Inbox, of the eight items, in order, closed at first', () => {
     render(<Sidebar />)
     const buttons = within(screen.getByRole('navigation')).getAllByRole(
       'button'
     )
     expect(buttons.map(b => b.textContent)).toEqual([...ITEMS])
-    // Home opens to its Inbox and All activity; Settings has nothing under it
-    expect(navButton('Home')).toHaveAttribute('aria-expanded', 'false')
+    // History opens to Decisions and the audit log; the Inbox and Settings
+    // have nothing under them
+    expect(navButton('History')).toHaveAttribute('aria-expanded', 'false')
+    expect(navButton('Inbox')).not.toHaveAttribute('aria-expanded')
     expect(navButton('Automations')).toHaveAttribute('aria-expanded', 'false')
     expect(navButton('Settings')).not.toHaveAttribute('aria-expanded')
     // Nandi opens to My notes
@@ -68,7 +71,8 @@ describe('Sidebar', () => {
 
   it.each<[string, View]>([
     ['Nandi', { kind: 'nandi' }],
-    ['Home', { kind: 'home' }],
+    ['Inbox', { kind: 'inbox' }],
+    ['History', { kind: 'history' }],
     ['Agents', { kind: 'agents' }],
     ['Automations', { kind: 'automations' }],
     ['Library', { kind: 'library' }],
@@ -214,18 +218,18 @@ describe('Sidebar', () => {
   it('moves between items with the arrow keys', async () => {
     const user = userEvent.setup()
     render(<Sidebar />)
-    navButton('Home').focus()
+    navButton('Nandi').focus()
     await user.keyboard('{ArrowDown}')
-    expect(navButton('Nandi')).toHaveFocus()
+    expect(navButton('Inbox')).toHaveFocus()
     await user.keyboard('{ArrowUp}{ArrowUp}')
     expect(navButton('Settings')).toHaveFocus()
     await user.keyboard('{Home}')
-    expect(navButton('Home')).toHaveFocus()
+    expect(navButton('Nandi')).toHaveFocus()
     await user.keyboard('{End}{Enter}')
     expect(current()).toEqual({ kind: 'settings' })
   })
 
-  it('counts the Inbox on Home, leaving failures out', async () => {
+  it('counts the Inbox, leaving failures out', async () => {
     const approval = (id: string) => ({
       id,
       agentId: 'writer',
@@ -260,13 +264,12 @@ describe('Sidebar', () => {
     })
     const user = userEvent.setup()
     render(<Sidebar />)
-    // Home's count is its own button: it opens the Inbox page
-    const badges = await screen.findAllByRole('button', {
+    // The Inbox item says its count, and opens the Inbox page
+    const inbox = await screen.findByRole('button', {
       name: 'Inbox, 2 waiting',
     })
-    const badge = badges[0] as HTMLElement
-    expect(badge).toHaveTextContent('2')
-    await user.click(badge)
+    expect(inbox).toHaveTextContent('2')
+    await user.click(inbox)
     expect(useNavigationStore.getState().current).toEqual({ kind: 'inbox' })
   })
 

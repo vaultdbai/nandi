@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNextRuns } from '@/hooks/useNextRuns'
+import { nextRunOfTrigger } from './next-run-model'
 import { MoreHorizontal, Plus, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -165,6 +167,7 @@ function TriggersTable({ triggers }: { triggers: Trigger[] }) {
             <th>{t('triggers.columns.when')}</th>
             <th>{t('triggers.columns.runs')}</th>
             <th>{t('triggers.columns.lastFired')}</th>
+            <th>{t('automations.columns.nextRun')}</th>
             <th className="sr-only">{t('triggers.columns.actions')}</th>
           </tr>
         </thead>
@@ -184,6 +187,7 @@ function TriggerRow({ trigger }: { trigger: Trigger }) {
   const { data: fires } = useTriggerFires(trigger.id, 1)
   const last = fires?.[0]
   const lastView = last ? fireView(last, trigger) : null
+  const next = nextRunOfTrigger(useNextRuns().data ?? [], trigger.id)
   const [testing, setTesting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const when = whenText(trigger, t, i18n.language)
@@ -254,6 +258,9 @@ function TriggerRow({ trigger }: { trigger: Trigger }) {
             {last && <FireStatusBadge fire={last} />}
           </span>
         )}
+      </td>
+      <td className="text-xs whitespace-nowrap text-muted-foreground">
+        {next === null ? '—' : formatRelativeTime(next, i18n.language)}
       </td>
       <td className="text-end">
         <DropdownMenu>

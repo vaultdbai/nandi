@@ -455,7 +455,8 @@
         ]
       },
       "links": [
-        { "target": "home", "label": "home" },
+        { "target": "nandi", "label": "nandi" },
+        { "target": "inbox", "label": "inbox" },
         { "target": "agents", "label": "agents" },
         { "target": "automations", "label": "automations" },
         { "target": "library", "label": "library" },

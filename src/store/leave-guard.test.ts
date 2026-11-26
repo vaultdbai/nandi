@@ -12,18 +12,18 @@ describe('leave guard', () => {
     state().navigate({ kind: 'workflow', workflowId: 'daily-report' })
     state().setLeaveGuarded(true)
 
-    state().navigate({ kind: 'home' })
+    state().navigate({ kind: 'inbox' })
     expect(state().current).toEqual({
       kind: 'workflow',
       workflowId: 'daily-report',
     })
     expect(state().pendingLeave).toEqual({
       mode: 'navigate',
-      view: { kind: 'home' },
+      view: { kind: 'inbox' },
     })
 
     state().confirmLeave()
-    expect(state().current).toEqual({ kind: 'home' })
+    expect(state().current).toEqual({ kind: 'inbox' })
     expect(state().leaveGuarded).toBe(false)
     expect(state().pendingLeave).toBeNull()
   })

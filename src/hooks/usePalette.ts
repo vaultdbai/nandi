@@ -98,8 +98,8 @@ export function usePalette(open: boolean) {
       return
     }
     if (item.kind === 'action') {
-      // An empty chat; its first message creates the conversation
-      if (item.id === 'new_studio_chat') {
+      // The Nandi home's composer; its first message creates the chat
+      if (item.id === 'new_chat') {
         openNewChat()
         return
       }

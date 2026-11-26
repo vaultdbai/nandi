@@ -81,7 +81,7 @@ const EVERYTHING = [
 
 function search(query: string) {
   const q = query.trim()
-  if (q === '') return [result('action', 'open_view', 'Go to Home')]
+  if (q === '') return [result('action', 'open_view', 'Go to Inbox')]
   if (q.startsWith('>')) return ACTIONS
   return EVERYTHING
 }
@@ -117,7 +117,7 @@ describe('CommandPalette', () => {
   it('shows suggestions for an empty query', async () => {
     render(<CommandPalette />)
     openPalette()
-    expect(await screen.findByText('Go to Home')).toBeInTheDocument()
+    expect(await screen.findByText('Go to Inbox')).toBeInTheDocument()
     expect(mockClient.searchPalette).toHaveBeenCalledWith('')
   })
 

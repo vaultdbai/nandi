@@ -131,7 +131,7 @@ describe('TaskStatusPanel', () => {
 
   it('says when a question waits for the user and opens the thread', async () => {
     const user = userEvent.setup()
-    useNavigationStore.setState({ current: { kind: 'home' }, history: [] })
+    useNavigationStore.setState({ current: { kind: 'inbox' }, history: [] })
     Object.assign(commands, {
       getTask: ok(taskFixture({ state: 'inputRequired' })),
       getPendingClarifications: ok([

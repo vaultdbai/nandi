@@ -967,7 +967,7 @@ describe('OnboardingView', () => {
       // Nandi starts on the mail now, not one interval later
       expect(mocks().checkEmailNow).toHaveBeenCalled()
       expect(useNavigationStore.getState().current).toEqual({
-        kind: 'home',
+        kind: 'inbox',
         welcome: { packIds: ['research-pack'] },
       })
       // The welcome replaces the old toast that showed a file path
@@ -1002,7 +1002,7 @@ describe('OnboardingView', () => {
       await user.click(await screen.findByRole('button', { name: 'Skip' }))
       await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1))
       expect(mocks().installPack).not.toHaveBeenCalled()
-      expect(useNavigationStore.getState().current).toEqual({ kind: 'home' })
+      expect(useNavigationStore.getState().current).toEqual({ kind: 'inbox' })
     })
   })
 
@@ -1109,7 +1109,7 @@ describe('OnboardingView', () => {
       await user.click(
         screen.getByRole('button', { name: 'Cancel and go back' })
       )
-      expect(useNavigationStore.getState().current).toEqual({ kind: 'home' })
+      expect(useNavigationStore.getState().current).toEqual({ kind: 'inbox' })
       expect(mocks().setOnboardingStep).not.toHaveBeenCalled()
       expect(mocks().setDisplayName).not.toHaveBeenCalled()
     })

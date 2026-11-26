@@ -6,13 +6,13 @@ import App from './App'
 // Tauri bindings are mocked globally in src/test/setup.ts (onboarded)
 
 describe('App', () => {
-  it('renders the workspace shell on Home when onboarded', async () => {
+  it('renders the workspace shell on Nandi when onboarded', async () => {
     render(<App />)
     expect(
       await screen.findByRole('navigation', { name: 'Workspace' })
     ).toBeInTheDocument()
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Home' })
+      await screen.findByRole('heading', { level: 1, name: 'Nandi' })
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Account' })).toBeInTheDocument()
     expect(await screen.findByText("Test User's Nandi")).toBeInTheDocument()

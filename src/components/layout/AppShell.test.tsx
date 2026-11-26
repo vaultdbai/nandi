@@ -77,14 +77,16 @@ describe('AppShell', () => {
   afterEach(() => stopSync())
 
   describe('sidebar', () => {
-    it('has the seven pages, and the Agents page lists agents with status', async () => {
+    it('has the eight pages, and the Agents page lists agents with status', async () => {
       const user = userEvent.setup()
       const nav = await renderShell()
 
       for (const section of [
-        'Home',
-        'Agents',
+        'Nandi',
+        'Inbox',
         'Automations',
+        'Agents',
+        'History',
         'Library',
         'Network',
         'Settings',
@@ -160,7 +162,7 @@ describe('AppShell', () => {
       goTo({ kind: 'agent', agentId: 'writer', tab: 'chat' })
       await renderShell()
 
-      goTo({ kind: 'home' })
+      goTo({ kind: 'inbox' })
       act(() => {
         emitMockEvent('agent://message', {
           ...writerIds,
@@ -184,11 +186,12 @@ describe('AppShell', () => {
   })
 
   describe('home', () => {
-    it('shows what to do first on a fresh home', async () => {
+    it('shows what to do first on a fresh Inbox', async () => {
       vi.mocked(commands.getDashboardSnapshot).mockResolvedValue({
         status: 'ok',
         data: dashboardSnapshot(),
       })
+      goTo({ kind: 'inbox' })
       await renderShell()
 
       // Nothing has happened yet: what to do first, not empty cards
@@ -516,25 +519,6 @@ describe('AppShell', () => {
         ['att-1'],
         expect.any(String)
       )
-    })
-
-    it("Home's Ask Nandi starts a chat with Nandi", async () => {
-      const user = userEvent.setup()
-      await renderShell()
-
-      const ask = screen.getByRole('textbox', { name: 'Ask Nandi' })
-      ask.focus()
-      await user.keyboard('Plan my week{Enter}')
-
-      await vi.waitFor(() =>
-        expect(
-          vi.mocked(commands.sendChatMessage).mock.calls[0]?.slice(0, 2)
-        ).toEqual(['chat:new', 'Plan my week'])
-      )
-      expect(currentView()).toEqual({
-        kind: 'nandi',
-        conversationId: 'chat:new',
-      })
     })
 
     it('has no docked bar on pages without a conversation', async () => {

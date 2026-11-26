@@ -893,3 +893,57 @@ async fn calendar_duties_are_tracked_and_handovers_skip_the_rate_limit() {
     assert_eq!(status("backup"), [TriggerFireStatus::Queued]);
     state.shutdown();
 }
+
+#[test]
+fn next_runs_are_each_enabled_schedule_soonest_first() {
+    let trigger = |id: &str, source: TriggerSourceType, config: Value, enabled: bool| Trigger {
+        id: id.into(),
+        name: id.into(),
+        enabled,
+        source_type: source,
+        source_config: config,
+        target_type: TriggerTargetType::Workflow,
+        target_id: "bills".into(),
+        input_template: None,
+        priority: 0,
+        rate_limit_seconds: None,
+        created_at: 0.0,
+        updated_at: 0.0,
+        last_fired_at: None,
+        has_secret: false,
+    };
+    let triggers = [
+        trigger(
+            "daily",
+            TriggerSourceType::Cron,
+            json!({"schedule": "0 9 * * *"}),
+            true,
+        ),
+        trigger(
+            "hourly",
+            TriggerSourceType::Cron,
+            json!({"schedule": "0 * * * *"}),
+            true,
+        ),
+        trigger(
+            "off",
+            TriggerSourceType::Cron,
+            json!({"schedule": "* * * * *"}),
+            false,
+        ),
+        trigger("hook", TriggerSourceType::Webhook, json!({}), true),
+        trigger(
+            "bad",
+            TriggerSourceType::Cron,
+            json!({"schedule": "nope"}),
+            true,
+        ),
+    ];
+    let after = Local.with_ymd_and_hms(2026, 11, 25, 10, 30, 0).unwrap();
+    let runs = next_runs_after(&triggers, after);
+    let ids: Vec<&str> = runs.iter().map(|r| r.trigger_id.as_str()).collect();
+    assert_eq!(ids, ["hourly", "daily"]);
+    let eleven = Local.with_ymd_and_hms(2026, 11, 25, 11, 0, 0).unwrap();
+    assert_eq!(runs[0].at, eleven.timestamp_millis() as f64);
+    assert_eq!(runs[0].target_id, "bills");
+}

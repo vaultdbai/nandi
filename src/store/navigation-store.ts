@@ -15,13 +15,14 @@ import type { SettingsSection } from '@/lib/settings-nav'
  */
 export type View =
   // The sidebar pages
-  /** Inbox, Running, Recent; `welcome` greets the packs just installed */
-  | { kind: 'home'; welcome?: { packIds: string[] } }
-  /** Home › All activity: runs and delegations, `filters` kept for Back */
-  | { kind: 'home-activity'; filters?: ActivityFilters }
-  /** Home › Inbox: everything waiting on you, each with its fix */
-  | { kind: 'inbox' }
-  /** Home › Decisions: every decision made on the Inbox, by month */
+  /**
+   * Everything waiting on you, each with its fix, with your to-dos;
+   * `welcome` greets the packs just installed
+   */
+  | { kind: 'inbox'; welcome?: { packIds: string[] } }
+  /** History: past chats, runs and delegations, `filters` kept for Back */
+  | { kind: 'history'; filters?: ActivityFilters }
+  /** History › Decisions: every decision made on the Inbox, by month */
   | { kind: 'decisions' }
   | { kind: 'agents' }
   | { kind: 'automations'; tab?: AutomationsTab }
@@ -140,16 +141,24 @@ export type SharingTab =
 /** Who may call you, as a list or the trust graph */
 export type CallersView = 'list' | 'graph'
 
-/** The sidebar items, in order: Home, then Nandi, the default agent */
+/**
+ * The sidebar items, in order: what people come for (Nandi, the Inbox,
+ * Automations, Agents, History), then at the bottom Library, Network and
+ * Settings
+ */
 export const NAV_SECTIONS = [
-  'home',
   'nandi',
-  'agents',
+  'inbox',
   'automations',
+  'agents',
+  'history',
   'library',
   'network',
   'settings',
 ] as const
+
+/** The first of the items set apart at the bottom */
+export const BOTTOM_SECTION: NavSection = 'library'
 
 export type NavSection = (typeof NAV_SECTIONS)[number]
 
@@ -159,21 +168,21 @@ const isDefaultAgentId = (agentId: string) => agentId === DEFAULT_AGENT
 /** Which sidebar item a view belongs to (`null`: none, e.g. onboarding) */
 export function navSection(view: View): NavSection | null {
   switch (view.kind) {
-    case 'home':
-    case 'home-activity':
     case 'inbox':
-    case 'decisions':
     case 'request':
     case 'work-item':
     case 'delegation-thread':
     case 'intake-thread':
     case 'inbox-thread':
-      return 'home'
+      return 'inbox'
+    case 'history':
+    case 'decisions':
+    case 'run-detail':
+      return 'history'
     case 'agent':
     case 'run':
       return isDefaultAgentId(view.agentId) ? 'nandi' : 'agents'
     case 'agents':
-    case 'run-detail':
       return 'agents'
     case 'automations':
     case 'workflow':
@@ -205,7 +214,8 @@ export function navSection(view: View): NavSection | null {
 /** The view each sidebar item opens */
 export const SECTION_VIEWS: Record<NavSection, View> = {
   nandi: { kind: 'nandi' },
-  home: { kind: 'home' },
+  inbox: { kind: 'inbox' },
+  history: { kind: 'history' },
   agents: { kind: 'agents' },
   automations: { kind: 'automations' },
   library: { kind: 'library' },
@@ -298,7 +308,7 @@ export const useNavigationStore = create<NavigationState>()(
         )
 
       return {
-        current: { kind: 'home' },
+        current: { kind: 'nandi' },
         history: [],
         leaveGuarded: false,
         pendingLeave: null,
@@ -342,8 +352,7 @@ export const useNavigationStore = create<NavigationState>()(
 
 /** The view kinds a palette `navigate` may open (exhaustive by type) */
 const VIEW_KINDS: Record<View['kind'], true> = {
-  home: true,
-  'home-activity': true,
+  history: true,
   inbox: true,
   decisions: true,
   agents: true,

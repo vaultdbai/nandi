@@ -215,8 +215,8 @@ describe('buildTray', () => {
     ])
     expect(groups.map(group => group.all)).toEqual([
       { kind: 'inbox' },
-      { kind: 'home-activity', filters: { status: 'running' } },
-      { kind: 'home-activity' },
+      { kind: 'history', filters: { status: 'running' } },
+      { kind: 'history' },
     ])
   })
 

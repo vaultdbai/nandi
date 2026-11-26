@@ -17,8 +17,8 @@ export function StarterPacksView() {
       .getState()
       .navigate(
         packIds.length > 0
-          ? { kind: 'home', welcome: { packIds } }
-          : { kind: 'home' }
+          ? { kind: 'inbox', welcome: { packIds } }
+          : { kind: 'inbox' }
       )
 
   return (

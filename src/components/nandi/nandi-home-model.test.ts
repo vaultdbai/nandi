@@ -5,6 +5,7 @@ import {
   chatLabel,
   isLongChat,
   recentChats,
+  searchChats,
 } from './nandi-home-model'
 
 const chat = (id: string, updatedAt: number, over = {}): ChatSummary => ({
@@ -69,5 +70,18 @@ describe('isLongChat and chatAgentId', () => {
     expect(chatAgentId('chat:1', chats)).toBe('writer')
     expect(chatAgentId('agent:reader', chats)).toBe('reader')
     expect(chatAgentId('chat:unknown', chats)).toBeNull()
+  })
+})
+
+describe('searchChats', () => {
+  it('finds chats by title or last message, newest first', () => {
+    const chats = [
+      chat('a', 1, { title: 'Pay the bills' }),
+      chat('b', 3, { lastMessage: 'The BILL is paid' }),
+      chat('c', 2, { title: 'Trip' }),
+    ]
+    expect(searchChats(chats, 'bill').map(c => c.id)).toEqual(['b', 'a'])
+    expect(searchChats(chats, '  ').map(c => c.id)).toEqual(['b', 'c', 'a'])
+    expect(searchChats(chats, undefined)).toHaveLength(3)
   })
 })

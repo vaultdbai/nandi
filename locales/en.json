@@ -4924,7 +4924,6 @@
   "help.links.library": "Open Library",
   "help.links.groups": "Open Network › Groups",
   "help.links.inbox": "Open the Inbox",
-  "help.links.home": "Home",
   "help.links.automations": "Automations",
   "help.links.network": "Network",
   "help.links.settings": "Settings",
@@ -4951,7 +4950,7 @@
   "help.topics.inbox.title": "What the Inbox is",
   "help.topics.inbox.answer": "The Inbox holds everything waiting on you: approvals agents asked for, requests from colleagues, and steps only you can do. Each item has its fix right there, and your decisions are recorded.",
   "help.topics.find-your-way.title": "Where things are",
-  "help.topics.find-your-way.answer": "The sidebar has it all:\n\n- **Home**: the Inbox, what’s running and what finished.\n- **Agents**: your agents and their chats.\n- **Automations**: workflows and triggers.\n- **Library**: packs and tools to install.\n- **Network**: people, groups and your relay.\n- **Settings**: models, this computer, backup and more.",
+  "help.topics.find-your-way.answer": "The sidebar has it all:\n\n- **Nandi**: talk to Nandi, see what's going on now and your recent chats.\n- **Inbox**: what waits on you, and your to-dos.\n- **Automations**: workflows and triggers.\n- **Agents**: your agents and their pages.\n- **History**: past chats, runs and decisions, and the audit log.\n- **Library**: packs and tools to install.\n- **Network**: people, groups and your relay.\n- **Settings**: models, this computer, backup and more.",
   "approval.summary.knowMePropose": "Save what you told Nandi",
   "inbox.knowMe.first": "Tell me about your work, and anything at home you'd like help with",
   "inbox.knowMe.recheck": "Is what Nandi knows about you still right?",
@@ -5249,5 +5248,13 @@
   "savePreview.create": "Create",
   "savePreview.edit": "Edit",
   "savePreview.no": "No",
-  "composer.mentions": "Start the chat with"
+  "composer.mentions": "Start the chat with",
+  "help.links.nandi": "Open Nandi",
+  "nav.history": "History",
+  "nav.inbox": "Inbox",
+  "history.subtitle": "Past chats, runs and delegations",
+  "history.chats_one": "{{count}} chat",
+  "history.chats_other": "{{count}} chats",
+  "history.allChats": "Show all {{count}} chats",
+  "automations.columns.nextRun": "Next run"
 }

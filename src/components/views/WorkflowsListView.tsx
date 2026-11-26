@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNextRuns } from '@/hooks/useNextRuns'
+import { nextRunOfTarget } from './next-run-model'
 import { Play, Workflow } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -116,6 +118,7 @@ export function WorkflowsListView() {
                       <th>{t('automations.columns.steps')}</th>
                       <th>{t('automations.columns.startedBy')}</th>
                       <th>{t('automations.columns.lastRun')}</th>
+                      <th>{t('automations.columns.nextRun')}</th>
                       <th>{t('automations.columns.status')}</th>
                       <th className="sr-only">
                         {t('automations.columns.run')}
@@ -160,6 +163,11 @@ function WorkflowRow({
   // The page's runs (newest first) give the last-run summary
   const { data: detail } = useWorkflow(workflow.id)
   const lastRun = detail?.runs[0]
+  const next = nextRunOfTarget(
+    useNextRuns().data ?? [],
+    'workflow',
+    workflow.id
+  )
   const active = isActive(lastRun)
   const failed = failedStep(lastRun)
 
@@ -199,6 +207,9 @@ function WorkflowRow({
         ) : (
           t('workflows.neverRun')
         )}
+      </td>
+      <td className="text-xs whitespace-nowrap text-muted-foreground">
+        {next === null ? '—' : formatRelativeTime(next, i18n.language)}
       </td>
       <td>
         {lastRun ? (

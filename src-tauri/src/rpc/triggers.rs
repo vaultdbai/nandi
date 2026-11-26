@@ -11,6 +11,9 @@ use serde_json::Value;
 super::commands! {
     fn list_triggers(state) -> Vec<Trigger> => triggers::list_triggers(&state).await;
 
+    /// When each scheduled trigger runs next, soonest first
+    fn list_next_runs(state) -> Vec<triggers::NextRun> => triggers::next_runs(&state).await;
+
     fn get_trigger(state, id: String) -> Trigger => triggers::get_trigger(&state, id).await;
 
     fn create_trigger(state, input: TriggerInput) -> SavedTrigger => triggers::create_trigger(&state, input).await;

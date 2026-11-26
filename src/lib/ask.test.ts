@@ -5,7 +5,7 @@ import { askContextForView, sourceView } from './ask'
 describe('askContextForView', () => {
   const cases: [View, ReturnType<typeof askContextForView>][] = [
     [
-      { kind: 'home' },
+      { kind: 'inbox' },
       { currentView: 'home', focusedArtifact: null, recentRuns: [] },
     ],
     [

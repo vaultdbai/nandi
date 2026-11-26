@@ -808,6 +808,17 @@ async listTriggers() : Promise<Result<Trigger[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * When each scheduled trigger runs next, soonest first
+ */
+async listNextRuns() : Promise<Result<NextRun[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_next_runs") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async getTrigger(id: string) : Promise<Result<Trigger, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_trigger", { id }) };
@@ -7748,6 +7759,10 @@ export type NextActionKind = "approval" | "manualStep" | "auto"
  * The IDs a next action's fix needs (approve a step, open a run)
  */
 export type NextActionTarget = { runId: string | null; stepId: string | null; agentId: string | null; taskId: string | null }
+/**
+ * When a trigger runs next: its target and the time
+ */
+export type NextRun = { triggerId: string; targetType: TriggerTargetType; targetId: string; at: number }
 /**
  * One note, as the My notes page lists it
  */

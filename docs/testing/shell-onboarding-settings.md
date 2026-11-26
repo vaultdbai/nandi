@@ -466,9 +466,9 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
-### SH-08 — Sidebar: the seven pages
+### SH-08 — Sidebar: the eight pages
 
-- **What:** The sidebar is a tree with seven top items: Home, Nandi, Agents, Automations, Library, Network, Settings. Home has two children: Inbox (with the same count as Home) and All activity. Nandi (the sitting bison, CH-34) has New chat, the live work, the five latest chats and My notes, since Nandi keeps them; a note's page lights My notes under Nandi. Home's count is its own button and opens the Inbox page; the rest of the row opens Home. Each opens its page. The current page is highlighted, and a parent stays bold while a child is open. Views without their own node (a run, a request, a member profile) light their page.
+- **What:** The sidebar is a tree with eight top items: Nandi, Inbox, Automations, Agents, History, then, set apart at the bottom, Library, Network, Settings. Nandi (the sitting bison, CH-34) has New chat, the live work, the five latest chats and My notes; a note's page lights My notes under Nandi. The Inbox shows its count ("Inbox, 2 waiting") and opens the Inbox page (what waits on you, to-dos, first steps). History has Decisions and Audit log (Settings › Logs lights Audit log); its page lists past chats (searchable) above every run and delegation. Automations' Workflows and Triggers lists show each one's last run and Next run (`list_next_runs`, from enabled schedules). The app opens on Nandi. The command palette lists Nandi, Inbox and History, and **New chat with Nandi** (`new_chat`) opens the Nandi home. The current page is highlighted, and a parent stays bold while a child is open. Views without their own node (a run, a request, a member profile) light their page; Run Detail lights History.
 - **Where:** `src/components/layout/Sidebar.tsx`, `nav-tree.ts` (`buildNavTree`, `activePath`), `src/store/navigation-store.ts` (`NAV_SECTIONS`, `SECTION_VIEWS`, `navSection`).
 - **Preconditions:** None.
 - **Steps:**

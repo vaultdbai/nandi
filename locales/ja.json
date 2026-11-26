@@ -4924,7 +4924,6 @@
   "help.links.library": "ライブラリを開く",
   "help.links.groups": "ネットワーク › グループを開く",
   "help.links.inbox": "受信トレイを開く",
-  "help.links.home": "ホーム",
   "help.links.automations": "オートメーション",
   "help.links.network": "ネットワーク",
   "help.links.settings": "設定",
@@ -4951,7 +4950,7 @@
   "help.topics.inbox.title": "受信トレイとは",
   "help.topics.inbox.answer": "受信トレイには、あなたを待っているものがすべて入ります：エージェントが求めた承認、同僚からのリクエスト、あなたにしかできない手順です。各項目はその場で対応でき、決定は記録されます。",
   "help.topics.find-your-way.title": "どこに何があるか",
-  "help.topics.find-your-way.answer": "サイドバーにすべてあります：\n\n- **ホーム**：受信トレイ、実行中と完了したもの。\n- **エージェント**：エージェントとそのチャット。\n- **オートメーション**：ワークフローとトリガー。\n- **ライブラリ**：インストールできるパックとツール。\n- **ネットワーク**：メンバー、グループ、リレー。\n- **設定**：モデル、このコンピューター、バックアップなど。",
+  "help.topics.find-your-way.answer": "サイドバーにすべてあります：\n\n- **Nandi**：Nandi と話す、今の動きと最近のチャット。\n- **受信トレイ**：あなたを待っているものと To-Do。\n- **オートメーション**：ワークフローとトリガー。\n- **エージェント**：エージェントとそのページ。\n- **履歴**：過去のチャット、実行、判断、監査ログ。\n- **ライブラリ**：インストールできるパックとツール。\n- **ネットワーク**：人、グループ、リレー。\n- **設定**：モデル、このコンピューター、バックアップなど。",
   "approval.summary.knowMePropose": "Nandi に伝えた内容を保存",
   "inbox.knowMe.first": "お仕事のこと、そして家庭で手伝ってほしいことを教えてください",
   "inbox.knowMe.recheck": "Nandi が知っているあなたの情報は今も正しいですか？",
@@ -5249,5 +5248,13 @@
   "savePreview.create": "作成",
   "savePreview.edit": "編集",
   "savePreview.no": "いいえ",
-  "composer.mentions": "チャットの相手"
+  "composer.mentions": "チャットの相手",
+  "help.links.nandi": "Nandi を開く",
+  "nav.history": "履歴",
+  "nav.inbox": "受信トレイ",
+  "history.subtitle": "過去のチャット、実行、委任",
+  "history.chats_one": "チャット {{count}} 件",
+  "history.chats_other": "チャット {{count}} 件",
+  "history.allChats": "{{count}} 件すべて表示",
+  "automations.columns.nextRun": "次回の実行"
 }

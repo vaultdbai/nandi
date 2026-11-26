@@ -112,7 +112,7 @@ describe('DelegationThreadView', () => {
         timeoutSeconds: 60,
       }),
     })
-    useNavigationStore.setState({ current: { kind: 'home' }, history: [] })
+    useNavigationStore.setState({ current: { kind: 'inbox' }, history: [] })
   })
 
   it('renders the header and every message kind in order', async () => {

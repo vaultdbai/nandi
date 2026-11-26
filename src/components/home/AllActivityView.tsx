@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Download } from 'lucide-react'
+import { Download, ScrollText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
@@ -8,6 +8,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useNow } from '@/components/agents/task-utils'
 import { ViewHeader } from '@/components/views/ViewHeader'
+import { ChatRow } from '@/components/nandi/NandiView'
+import { searchChats } from '@/components/nandi/nandi-home-model'
+import { useAgents } from '@/hooks/useAgents'
+import { useChats } from '@/hooks/useChats'
+import { useChatPinsStore } from '@/store/chat-pins-store'
 import { useAgentNames } from '@/hooks/useHome'
 import { useDelegation } from '@/hooks/useDelegation'
 import {
@@ -36,6 +41,9 @@ import {
 import { SourceChip } from './HomeRows'
 import { activityHomeRow } from './home-model'
 import { toastError } from '@/lib/toast-error'
+
+/** Chats shown before "Show all" */
+const HISTORY_CHATS = 5
 
 const DAY_MS = 24 * 60 * 60 * 1000
 /** Rows shown before "Load more" */
@@ -107,9 +115,7 @@ export function AllActivityView({
         ([, value]) => value !== undefined && value !== ''
       )
     ) as ActivityFilters
-    useNavigationStore
-      .getState()
-      .replace({ kind: 'home-activity', filters: clean })
+    useNavigationStore.getState().replace({ kind: 'history', filters: clean })
   }
   const set = <K extends keyof ActivityFilters>(
     key: K,
@@ -163,29 +169,32 @@ export function AllActivityView({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ViewHeader
-        leading={
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              useNavigationStore.getState().navigate({ kind: 'home' })
-            }
-          >
-            <ArrowLeft className="rtl:rotate-180" />
-            {t('nav.home')}
-          </Button>
-        }
-        title={t('home.allActivity')}
+        title={t('nav.history')}
+        subtitle={t('history.subtitle')}
         actions={
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={rows.length === 0 || exporting}
-            onClick={() => void exportCsv()}
-          >
-            <Download />
-            {t('home.activity.export')}
-          </Button>
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                useNavigationStore
+                  .getState()
+                  .navigate({ kind: 'settings', section: 'logs' })
+              }
+            >
+              <ScrollText />
+              {t('nav.auditLog')}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={rows.length === 0 || exporting}
+              onClick={() => void exportCsv()}
+            >
+              <Download />
+              {t('home.activity.export')}
+            </Button>
+          </>
         }
       />
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
@@ -252,6 +261,7 @@ export function AllActivityView({
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-3 p-4">
+          <HistoryChats search={filters.search} />
           {runs.isPending ? (
             <div className="flex flex-col gap-2" data-testid="activity-loading">
               <Skeleton className="h-8 w-full" />
@@ -277,9 +287,7 @@ export function AllActivityView({
                     size="sm"
                     variant="outline"
                     onClick={() =>
-                      useNavigationStore
-                        .getState()
-                        .navigate({ kind: 'studio', conversationId: null })
+                      useNavigationStore.getState().navigate({ kind: 'nandi' })
                     }
                   >
                     {t('home.askLabel')}
@@ -378,5 +386,51 @@ export function AllActivityView({
         </div>
       </ScrollArea>
     </div>
+  )
+}
+
+/**
+ * History's chats: every chat with an agent, newest first, narrowed by the
+ * search; the first few shown, the rest behind "Show all"
+ */
+function HistoryChats({ search }: { search: string | undefined }) {
+  const { t } = useTranslation()
+  const chats = searchChats(useChats().data ?? [], search)
+  const agents = useAgents().data ?? []
+  const pinned = useChatPinsStore(state => state.pinned)
+  const [all, setAll] = useState(false)
+  if (chats.length === 0) return null
+  const shown = all ? chats : chats.slice(0, HISTORY_CHATS)
+
+  return (
+    <section aria-labelledby="history-chats-heading">
+      <h2
+        id="history-chats-heading"
+        className="pb-1 text-xs font-medium text-muted-foreground"
+      >
+        {t('history.chats', { count: chats.length })}
+      </h2>
+      <ul className="flex flex-col gap-1">
+        {shown.map(chat => (
+          <li key={chat.id}>
+            <ChatRow
+              chat={chat}
+              agents={agents}
+              pinned={pinned.includes(chat.id)}
+            />
+          </li>
+        ))}
+      </ul>
+      {chats.length > shown.length && (
+        <Button
+          size="sm"
+          variant="link"
+          className="h-auto px-0"
+          onClick={() => setAll(true)}
+        >
+          {t('history.allChats', { count: chats.length })}
+        </Button>
+      )}
+    </section>
   )
 }

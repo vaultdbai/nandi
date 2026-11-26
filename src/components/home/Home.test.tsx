@@ -206,20 +206,6 @@ describe('Home, first run', () => {
       ).toEqual(['studio-new', 'Summarize my reading list'])
     )
   })
-
-  it('asks Nandi from the top of Home', async () => {
-    const user = userEvent.setup()
-    render(<HomeView />)
-    await user.type(
-      await screen.findByRole('textbox', { name: 'Ask Nandi' }),
-      'What failed today?{Enter}'
-    )
-    await waitFor(() =>
-      expect(
-        vi.mocked(commands.sendChatMessage).mock.calls.at(-1)?.slice(0, 2)
-      ).toEqual(['chat:new', 'What failed today?'])
-    )
-  })
 })
 
 describe('Home, with activity', () => {
@@ -528,8 +514,8 @@ describe('All activity', () => {
   it('keeps filters in the view (they survive Back), and clears them', async () => {
     const user = userEvent.setup()
     useNavigationStore.setState({
-      current: { kind: 'home-activity' },
-      history: [{ kind: 'home' }],
+      current: { kind: 'history' },
+      history: [{ kind: 'inbox' }],
     })
     const { rerender } = render(<AllActivityView />)
     await screen.findByText('Sync CRM')
@@ -539,14 +525,14 @@ describe('All activity', () => {
     )
     const current = useNavigationStore.getState().current
     expect(current).toEqual({
-      kind: 'home-activity',
+      kind: 'history',
       filters: { direction: 'incoming' },
     })
     // No Back step per filter change
-    expect(useNavigationStore.getState().history).toEqual([{ kind: 'home' }])
+    expect(useNavigationStore.getState().history).toEqual([{ kind: 'inbox' }])
     rerender(
       <AllActivityView
-        filters={current.kind === 'home-activity' ? current.filters : {}}
+        filters={current.kind === 'history' ? current.filters : {}}
       />
     )
     expect(screen.queryByText('Sync CRM')).toBeNull()

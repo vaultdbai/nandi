@@ -436,6 +436,9 @@ mod tests {
         "services/harness/acp.rs",
         "services/harness/codex.rs",
         "services/network/mod.rs",
+        // The Nandi page's view kind (`{ "kind": "nandi" }`), not the agent
+        "services/help/tests.rs",
+        "services/palette.rs",
         "services/pilots/browser.rs",
         "services/remote/git_ops.rs",
         "services/remote/mod.rs",

@@ -37,13 +37,13 @@ export function helpDestination(target: string): HelpDestination | null {
       return isNetworkTab(sub)
         ? { kind: 'view', view: { kind: 'network', tab: sub } }
         : null
+    case 'nandi':
     case 'agents':
     case 'library':
     case 'automations':
     case 'inbox':
+    case 'history':
       return { kind: 'view', view: { kind: place } }
-    case 'home':
-      return { kind: 'view', view: { kind: 'home' } }
     default:
       return null
   }

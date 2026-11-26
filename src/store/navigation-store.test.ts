@@ -17,9 +17,9 @@ describe('NavigationStore', () => {
     useNavigationStore.setState(useNavigationStore.getInitialState())
   })
 
-  it('starts on Home with no history', () => {
+  it('starts on Nandi with no history', () => {
     const state = useNavigationStore.getState()
-    expect(state.current).toEqual({ kind: 'home' })
+    expect(state.current).toEqual({ kind: 'nandi' })
     expect(state.history).toEqual([])
   })
 
@@ -34,15 +34,15 @@ describe('NavigationStore', () => {
       agentId: 'a1',
     })
     goBack()
-    expect(useNavigationStore.getState().current).toEqual({ kind: 'home' })
+    expect(useNavigationStore.getState().current).toEqual({ kind: 'nandi' })
     // Nothing left: stays put
     goBack()
-    expect(useNavigationStore.getState().current).toEqual({ kind: 'home' })
+    expect(useNavigationStore.getState().current).toEqual({ kind: 'nandi' })
   })
 
   it('ignores navigation to the current view', () => {
     const { navigate } = useNavigationStore.getState()
-    navigate({ kind: 'home' })
+    navigate({ kind: 'nandi' })
     expect(useNavigationStore.getState().history).toHaveLength(0)
   })
 
@@ -62,7 +62,7 @@ describe('NavigationStore', () => {
     } as const
     expect(isActiveView(current, { kind: 'agent', agentId: 'a1' })).toBe(true)
     expect(isActiveView(current, { kind: 'agent', agentId: 'a2' })).toBe(false)
-    expect(isActiveView(current, { kind: 'home' })).toBe(false)
+    expect(isActiveView(current, { kind: 'inbox' })).toBe(false)
   })
 
   it('matches member profiles and delegation threads by id', () => {
@@ -85,28 +85,30 @@ describe('the seven pages', () => {
   })
 
   it('replaces the current view without a Back step', () => {
-    useNavigationStore.setState({ current: { kind: 'home' }, history: [] })
-    useNavigationStore.getState().navigate({ kind: 'home-activity' })
+    useNavigationStore.setState({ current: { kind: 'inbox' }, history: [] })
+    useNavigationStore.getState().navigate({ kind: 'history' })
     useNavigationStore
       .getState()
-      .replace({ kind: 'home-activity', filters: { status: 'failed' } })
+      .replace({ kind: 'history', filters: { status: 'failed' } })
     expect(useNavigationStore.getState().current).toEqual({
-      kind: 'home-activity',
+      kind: 'history',
       filters: { status: 'failed' },
     })
     useNavigationStore.getState().goBack()
-    expect(useNavigationStore.getState().current).toEqual({ kind: 'home' })
+    expect(useNavigationStore.getState().current).toEqual({ kind: 'inbox' })
   })
 
   it('puts every other view under one item', () => {
     const views: [View, NavSection][] = [
-      [{ kind: 'request', requestId: 'r' }, 'home'],
-      [{ kind: 'work-item', id: 'w' }, 'home'],
-      [{ kind: 'delegation-thread', taskId: 't' }, 'home'],
-      [{ kind: 'intake-thread', conversationId: 'intake:q' }, 'home'],
+      [{ kind: 'request', requestId: 'r' }, 'inbox'],
+      [{ kind: 'work-item', id: 'w' }, 'inbox'],
+      [{ kind: 'delegation-thread', taskId: 't' }, 'inbox'],
+      [{ kind: 'intake-thread', conversationId: 'intake:q' }, 'inbox'],
+      // History: past runs and decisions
+      [{ kind: 'decisions' }, 'history'],
       [{ kind: 'agent', agentId: 'a' }, 'agents'],
       [{ kind: 'run', agentId: 'a', runId: 'r' }, 'agents'],
-      [{ kind: 'run-detail', runId: 'r' }, 'agents'],
+      [{ kind: 'run-detail', runId: 'r' }, 'history'],
       // Nandi's page and runs are its own item, not Agents'
       [{ kind: 'agent', agentId: DEFAULT_AGENT, tab: 'settings' }, 'nandi'],
       [{ kind: 'run', agentId: DEFAULT_AGENT, runId: 'r' }, 'nandi'],

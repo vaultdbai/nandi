@@ -4,7 +4,7 @@ import { isSettingsSection, openSettings } from './settings-nav'
 
 describe('openSettings', () => {
   beforeEach(() => {
-    useNavigationStore.setState({ current: { kind: 'home' }, history: [] })
+    useNavigationStore.setState({ current: { kind: 'inbox' }, history: [] })
   })
 
   it('opens the Settings page on a section, with options', () => {
