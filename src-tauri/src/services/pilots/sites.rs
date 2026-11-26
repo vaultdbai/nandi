@@ -131,7 +131,9 @@ pub fn grant_hosts(host: &str, subdomains: bool) -> Vec<String> {
         hosts.push(format!("*.{site}"));
     } else if site != host {
         hosts.push(host.to_string());
-    } else if !is_public_suffix(site) {
+    } else if psl::domain(site.as_bytes()).is_some_and(|d| d.as_bytes() == site.as_bytes()) {
+        // Only a site's own name (example.com) has a www. twin, never a
+        // subdomain (cdn.example.net) or a public suffix (co.uk)
         hosts.push(format!("www.{site}"));
     }
     hosts
@@ -471,6 +473,7 @@ mod tests {
         // A bare name that's a public suffix keeps its www.
         assert_eq!(grant_hosts("www.co.uk", true), ["www.co.uk", "*.www.co.uk"]);
         assert_eq!(grant_hosts("co.uk", false), ["co.uk"]);
+        assert_eq!(grant_hosts("cdn.example.net", false), ["cdn.example.net"]);
     }
 
     /// Allow once lasts the whole run: another run of the agent allowing a
