@@ -7,6 +7,7 @@ import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { client } from '@/lib/client'
 import { useClientMutation, useClientQuery } from '@/hooks/useClientQuery'
+import type { AskLevel } from '@/lib/bindings'
 
 export const ownDeviceQueryKeys = {
   all: ['devices'] as const,
@@ -64,6 +65,15 @@ export function useRevokeAllDevices() {
 export function useUnlockDevice() {
   return useClientMutation(
     (deviceId: string) => client.unlockOwnDevice(deviceId, null),
+    { invalidates: ownDeviceQueryKeys.all }
+  )
+}
+
+/** How much a paired phone may ask (Phone Controls) */
+export function useSetDeviceAskLevel() {
+  return useClientMutation(
+    (input: { deviceId: string; level: AskLevel }) =>
+      client.setOwnDeviceAskLevel(input.deviceId, input.level),
     { invalidates: ownDeviceQueryKeys.all }
   )
 }

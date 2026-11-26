@@ -5118,9 +5118,9 @@
   "devices.unlock": "Unlock",
   "devices.lockedHint": "Too many wrong PINs. Unlock it if it was you.",
   "devices.canTitle": "What a phone can do",
-  "devices.can": "See your Inbox's approvals and to-dos, and approve or decline, with the PIN each time.",
+  "devices.can": "See your Inbox's approvals and to-dos, approve or decline with the PIN each time, and ask Nandi, as much as its setting here allows.",
   "devices.cannotTitle": "Only on this computer",
-  "devices.cannot": "Payments, sending, new access or grants, anything that widens what an agent may do, settings, keys and adding devices. A phone can still decline these.",
+  "devices.cannot": "Payments, sending, new access or grants, making agents or automations, anything that widens what an agent may do, settings, Lock box keys that ask first and adding devices. A phone can still decline these.",
   "decisions.fromDevice": "From {{device}}",
   "settings.section.lockBox": "Lock box",
   "approval.summary.useKey": "{{agent}} asks to use the key {{key}} at {{host}}",
@@ -5257,5 +5257,13 @@
   "history.chats_other": "{{count}} chats",
   "history.allChats": "Show all {{count}} chats",
   "automations.columns.nextRun": "Next run",
-  "nandiHome.welcome": "Ask {{name}} anything, or tell it what to do. Type @ to talk to another agent."
+  "nandiHome.welcome": "Ask {{name}} anything, or tell it what to do. Type @ to talk to another agent.",
+  "devices.askLevel.label": "What {{name}} may ask",
+  "devices.askLevel.confirm": "Do, with your yes",
+  "devices.askLevel.answer": "Answer only",
+  "devices.askLevel.off": "Off",
+  "devices.askLevel.confirmHint": "Asks may act, and every action waits for your yes: no rule lets one through on its own.",
+  "devices.askLevel.answerHint": "Asks read what Nandi may already read and answer. No actions.",
+  "devices.askLevel.offHint": "No asks: the phone only approves.",
+  "liveWork.origin.phone": "From your phone"
 }

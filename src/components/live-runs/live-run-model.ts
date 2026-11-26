@@ -149,8 +149,12 @@ export function liveOrigin(
 ): LiveLabel {
   const label = run.sourceLabel?.trim() || null
   switch (run.sourceType) {
+    // A message typed here, or asked from the person's paired phone
+    // (`RunSource::own_device` names the device)
     case 'user':
-      return { key: 'liveWork.origin.you' }
+      return run.sourceId
+        ? { key: 'liveWork.origin.phone' }
+        : { key: 'liveWork.origin.you' }
     case 'workflow':
       return label
         ? { key: 'liveWork.origin.workflow', values: { name: label } }

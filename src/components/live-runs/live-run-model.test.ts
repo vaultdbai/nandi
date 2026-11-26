@@ -161,6 +161,12 @@ describe('liveOrigin', () => {
     expect(liveOrigin(run(), agentName)).toEqual({ key: 'liveWork.origin.you' })
     expect(
       liveOrigin(
+        run({ sourceId: 'device.1', sourceLabel: "Asked from Ada's phone" }),
+        agentName
+      )
+    ).toEqual({ key: 'liveWork.origin.phone' })
+    expect(
+      liveOrigin(
         run({ sourceType: 'workflow', sourceLabel: 'Pay bills · step 1' }),
         agentName
       )

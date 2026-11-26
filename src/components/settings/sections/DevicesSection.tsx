@@ -13,9 +13,11 @@ import {
   useRevokeAllDevices,
   useRevokeDevice,
   useStartPairing,
+  useSetDeviceAskLevel,
   useUnlockDevice,
 } from '@/hooks/useOwnDevices'
-import type { DeviceView, PairingView } from '@/lib/bindings'
+import type { AskLevel, DeviceView, PairingView } from '@/lib/bindings'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { isRelayNeedsUpdate, isRelayUnavailable } from '@/lib/friendly-error'
 import { formatRelativeTime } from '@/lib/format-time'
 import { toastRelayActionError } from '@/lib/toast-error'
@@ -221,11 +223,15 @@ function ConfirmPhone({
   )
 }
 
+/** Phone Controls, the most a phone may do first */
+const ASK_LEVELS: AskLevel[] = ['confirm', 'answer', 'off']
+
 function DeviceList({ devices }: { devices: DeviceView[] }) {
   const { t } = useTranslation()
   const revoke = useRevokeDevice()
   const revokeAll = useRevokeAllDevices()
   const unlock = useUnlockDevice()
+  const setLevel = useSetDeviceAskLevel()
 
   if (devices.length === 0) {
     return <p className="text-sm text-muted-foreground">{t('devices.empty')}</p>
@@ -276,6 +282,26 @@ function DeviceList({ devices }: { devices: DeviceView[] }) {
                 </p>
               )}
             </div>
+            {(device.status === 'active' || device.status === 'locked') && (
+              <NativeSelect
+                className="h-8 w-48"
+                aria-label={t('devices.askLevel.label', { name: device.name })}
+                title={t(`devices.askLevel.${device.askLevel}Hint`)}
+                value={device.askLevel}
+                onChange={event =>
+                  setLevel.mutate({
+                    deviceId: device.deviceId,
+                    level: event.target.value as AskLevel,
+                  })
+                }
+              >
+                {ASK_LEVELS.map(level => (
+                  <NativeSelectOption key={level} value={level}>
+                    {t(`devices.askLevel.${level}`)}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            )}
             {device.status === 'locked' && (
               <Button
                 size="sm"

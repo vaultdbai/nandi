@@ -41,6 +41,10 @@ const SHIPPED: &[(&str, &str)] = &[
         "012_lock_box.sql",
         "3eefadb64e335d903b6f5480ededddcb70f78ffaf661f84f1149aed4ee46e22a",
     ),
+    (
+        "013_device_ask_level.sql",
+        "c5dd2d3585afb68979a7ac5f158aac6efa48449e9cff27e6cafa17844be16fd3",
+    ),
 ];
 
 /// A person's rows as Nandi 0.1.0 wrote them
@@ -116,13 +120,13 @@ const AGENT_ID_COLUMNS: &[(&str, &str)] = &[
 
 /// Test-only steps after the shipped chain, the way a real one would look
 const ADD_A_COLUMN: Migration = Migration {
-    version: 13,
-    file: "013_runs_label.sql",
+    version: 14,
+    file: "014_runs_label.sql",
     sql: "ALTER TABLE runs ADD COLUMN label TEXT NOT NULL DEFAULT '';",
 };
 const REBUILD_CONVERSATIONS: Migration = Migration {
-    version: 14,
-    file: "014_rebuild_conversations.sql",
+    version: 15,
+    file: "015_rebuild_conversations.sql",
     sql: "CREATE TABLE conversations_new (
               id         TEXT PRIMARY KEY,
               agent_id   TEXT NOT NULL,
@@ -321,8 +325,9 @@ fn each_version_has_its_standing() {
         (9, Standing::Behind),
         (10, Standing::Behind),
         (11, Standing::Behind),
-        (12, Standing::Current),
-        (13, Standing::Newer),
+        (12, Standing::Behind),
+        (13, Standing::Current),
+        (14, Standing::Newer),
     ];
     for (version, expected) in cases {
         assert_eq!(standing(version, MIGRATIONS), expected, "version {version}");
@@ -487,18 +492,18 @@ fn a_new_database_gets_the_whole_schema_and_no_copy() {
 #[test]
 fn a_failed_migration_rolls_every_step_back() {
     let broken_sql = Migration {
-        version: 14,
-        file: "014_broken.sql",
+        version: 15,
+        file: "015_broken.sql",
         sql: "ALTER TABLE no_such_table ADD COLUMN x TEXT;",
     };
     // Deletes a conversation its messages and runs still point to
     let breaks_a_key = Migration {
-        version: 14,
-        file: "014_breaks_a_key.sql",
+        version: 15,
+        file: "015_breaks_a_key.sql",
         sql: "DELETE FROM conversations WHERE id = 'conv-cos';",
     };
     let cases = [
-        (broken_sql, "migration 014_broken.sql failed"),
+        (broken_sql, "migration 015_broken.sql failed"),
         (breaks_a_key, "lost the row they refer to"),
     ];
     for (failing, reason) in cases {
@@ -508,7 +513,7 @@ fn a_failed_migration_rolls_every_step_back() {
         let schema_before = schema(&conn);
 
         let error = upgrade(&conn, &chain(&[ADD_A_COLUMN, failing]), Some(&path)).unwrap_err();
-        assert!(error.contains("from version 2 to 14"), "{error}");
+        assert!(error.contains("from version 2 to 15"), "{error}");
         assert!(error.contains(reason), "{error}");
         assert!(error.contains("Nothing was changed"), "{error}");
         assert!(error.contains("state.db.bak-v2"), "{error}");
@@ -767,4 +772,38 @@ fn a_0_3_database_gains_the_lock_box_and_keeps_every_row() {
         (hosts.as_str(), agents.as_str(), lock.as_str(), minutes),
         ("[]", "[]", "ask", 15)
     );
+}
+
+#[test]
+fn a_0_3_1_database_gives_each_paired_phone_the_ask_level_with_your_yes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (conn, path) = v0_1_0_file(dir.path());
+    // Where Nandi 0.3.1 left it, with a paired phone
+    let at_012 = MIGRATIONS.iter().position(|m| m.version == 12).unwrap();
+    upgrade(&conn, &MIGRATIONS[..=at_012], Some(&path)).unwrap();
+    conn.execute(
+        "INSERT INTO own_devices (device_id, name, state, created_at)
+         VALUES ('device.1', 'Ada''s phone', 'active', 1)",
+        [],
+    )
+    .unwrap();
+    let before = rows(&conn);
+
+    let done = upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
+    assert!(matches!(
+        done,
+        Upgrade::Upgraded {
+            from: 12,
+            to: SCHEMA_VERSION,
+            ..
+        }
+    ));
+    assert!(dir.path().join("state.db.bak-v12").exists());
+    assert_rows_survived(&before, &rows(&conn));
+    let (name, level): (String, String) = conn
+        .query_row("SELECT name, ask_level FROM own_devices", [], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap();
+    assert_eq!((name.as_str(), level.as_str()), ("Ada's phone", "confirm"));
 }

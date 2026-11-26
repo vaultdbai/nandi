@@ -91,6 +91,68 @@ impl PhoneInbox for FakeInbox {
     }
 }
 
+/// The chats with Nandi, as a test sees them: the asks that came in
+#[derive(Default)]
+struct FakeChat {
+    asks: Mutex<Vec<(chat::Asker, String, bool, String)>>,
+}
+
+impl FakeChat {
+    fn asks(&self) -> Vec<(chat::Asker, String, bool, String)> {
+        self.asks.lock().unwrap().clone()
+    }
+}
+
+impl PhoneChat for FakeChat {
+    fn ask(
+        &self,
+        asker: Asker,
+        chat: String,
+        new: bool,
+        text: String,
+    ) -> futures_util::future::BoxFuture<'_, Result<Option<chat::Asked>, String>> {
+        let known = new || self.asks().iter().any(|(_, c, _, _)| *c == chat);
+        if known {
+            self.asks
+                .lock()
+                .unwrap()
+                .push((asker, chat.clone(), new, text));
+        }
+        Box::pin(async move {
+            Ok(known.then(|| chat::Asked {
+                chat,
+                message_id: "m1".into(),
+                queued: false,
+            }))
+        })
+    }
+
+    fn read(
+        &self,
+        chat: String,
+        _after: Option<String>,
+    ) -> futures_util::future::BoxFuture<'_, Result<Option<chat::ChatView>, String>> {
+        let asks = self.asks();
+        Box::pin(async move {
+            let messages: Vec<wire::PhoneMessage> = asks
+                .into_iter()
+                .filter(|(_, c, _, _)| *c == chat)
+                .map(|(_, _, _, text)| wire::PhoneMessage {
+                    id: "m1".into(),
+                    role: "user".into(),
+                    text,
+                    created_at: 1.0,
+                })
+                .collect();
+            Ok((!messages.is_empty()).then_some(chat::ChatView {
+                messages,
+                working: true,
+                waiting_for_approval: false,
+            }))
+        })
+    }
+}
+
 /// This Nandi on a test relay, with the own-devices service listening
 struct Home {
     relay: TestRelay,
@@ -98,20 +160,33 @@ struct Home {
     devices: OwnDevices,
     keys: DeviceKeys,
     inbox: Arc<FakeInbox>,
+    chat: Arc<FakeChat>,
 }
 
 impl Home {
     async fn on(config: RelayServerConfig) -> Self {
         let inbox = Arc::new(FakeInbox::default());
-        Self::with(config, Db::in_memory(), inbox.clone(), inbox).await
+        let chat = Arc::new(FakeChat::default());
+        Self::with(
+            config,
+            Db::in_memory(),
+            inbox.clone(),
+            inbox,
+            chat.clone(),
+            chat,
+        )
+        .await
     }
 
-    /// On `db`, with `phone_inbox` as the Inbox the service decides in
+    /// On `db`, with `phone_inbox` as the Inbox the service decides in and
+    /// `phone_chat` as the chats it asks in
     async fn with(
         config: RelayServerConfig,
         db: Db,
         phone_inbox: Arc<dyn PhoneInbox>,
         inbox: Arc<FakeInbox>,
+        phone_chat: Arc<dyn PhoneChat>,
+        chat: Arc<FakeChat>,
     ) -> Self {
         let relay = TestRelay::start_with(config).await;
         let keys = DeviceKeys::generate().unwrap();
@@ -131,6 +206,7 @@ impl Home {
             source,
             None,
             phone_inbox,
+            phone_chat,
         );
         let listener = devices.clone();
         let runtime = tokio::runtime::Handle::current();
@@ -146,6 +222,7 @@ impl Home {
             devices,
             keys,
             inbox,
+            chat,
         }
     }
 
@@ -559,6 +636,7 @@ async fn without_a_relay_it_asks_to_connect_and_unlocking_still_works() {
         Arc::new(move || DeviceKeys::import_secret(&secret).map_err(|e| e.to_string())),
         None,
         Arc::new(FakeInbox::default()),
+        Arc::new(FakeChat::default()),
     );
     let overview = devices.overview().await.unwrap();
     assert!(!overview.connected && !overview.relay_needs_update);
@@ -627,6 +705,8 @@ async fn an_approval_from_the_phone_is_recorded_with_the_device() {
         state.db().clone(),
         Arc::new(AppInbox::new(state.clone())),
         Arc::new(FakeInbox::default()),
+        Arc::new(FakeChat::default()),
+        Arc::new(FakeChat::default()),
     )
     .await;
     let mut phone = home.paired_phone().await;
@@ -653,5 +733,483 @@ async fn an_approval_from_the_phone_is_recorded_with_the_device() {
         "{}",
         record()
     );
+    state.shutdown();
+}
+
+// ---------------------------------------------------------------------
+// Asking Nandi from the phone
+// ---------------------------------------------------------------------
+
+fn ask(text: &str, chat: Option<&str>, pin: Option<&str>) -> serde_json::Value {
+    let mut call = json!({"id": "c", "op": "ask", "text": text});
+    if let Some(chat) = chat {
+        call["chat"] = json!(chat);
+    }
+    if let Some(pin) = pin {
+        call["pin"] = json!(pin);
+    }
+    call
+}
+
+#[tokio::test]
+async fn the_first_ask_needs_the_pin_then_the_session_carries_until_idle() {
+    let mut home = Home::start().await;
+    home.devices = home.devices.clone().with_idle(300);
+    let mut phone = home.paired_phone().await;
+    let device_id = phone.device_id.clone();
+
+    // No session yet: the PIN first
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("What's on today?", None, None)))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(refusal_code(&answer), codes::PIN_NEEDED);
+    // A wrong PIN counts toward the lock, and asks nothing
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("What's on today?", None, Some("000001"))))
+            .await
+            .unwrap(),
+    );
+    assert!(
+        matches!(&answer, Answer::Refused { code, tries_left: Some(n), .. }
+            if code == codes::PIN_WRONG && *n == pin::MAX_TRIES - 1),
+        "{answer:?}"
+    );
+    assert_eq!(home.device(&device_id).await.unwrap().failed_pins, 1);
+    assert!(home.chat.asks().is_empty());
+
+    // The right PIN: a new chat with Nandi, as this device
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("What's on today?", None, Some(PIN))))
+            .await
+            .unwrap(),
+    );
+    let Answer::Asked { chat, .. } = answer else {
+        panic!("{answer:?}")
+    };
+    assert!(chat::owns(&device_id, &chat), "{chat}");
+    // Within the session: no PIN, the same chat
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("And tomorrow?", Some(&chat), None)))
+            .await
+            .unwrap(),
+    );
+    assert!(matches!(answer, Answer::Asked { .. }), "{answer:?}");
+    let asks = home.chat.asks();
+    assert_eq!(asks.len(), 2);
+    assert_eq!(
+        asks[0].0,
+        Asker {
+            device_id: device_id.clone(),
+            name: "Ada's phone".into()
+        }
+    );
+    assert!(
+        asks[0].2 && !asks[1].2,
+        "the first is new, the second isn't"
+    );
+    assert_eq!(asks[1].1, chat);
+
+    // Idle past the session: the PIN again
+    tokio::time::sleep(Duration::from_millis(350)).await;
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("Still there?", Some(&chat), None)))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(refusal_code(&answer), codes::PIN_NEEDED);
+    assert_eq!(home.chat.asks().len(), 2);
+
+    // Approvals still need the PIN each time, session or not
+    home.inbox.waiting("a1", "write_file");
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("Go on", Some(&chat), Some(PIN))))
+            .await
+            .unwrap(),
+    );
+    assert!(matches!(answer, Answer::Asked { .. }), "{answer:?}");
+    let approve = json!({"id": "c", "op": "approve", "itemId": "a1", "pin": ""});
+    let answer = answer_of(home.devices.on_envelope(phone.seal(approve)).await.unwrap());
+    assert_eq!(refusal_code(&answer), codes::PIN_WRONG);
+    // ...and that wrong PIN ended the session
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("Go on", Some(&chat), None)))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(refusal_code(&answer), codes::PIN_NEEDED);
+}
+
+#[tokio::test]
+async fn a_device_reads_only_its_own_chats_and_long_or_empty_asks_are_refused() {
+    let home = Home::start().await;
+    let mut phone = home.paired_phone().await;
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("Hello", None, Some(PIN))))
+            .await
+            .unwrap(),
+    );
+    let Answer::Asked { chat, .. } = answer else {
+        panic!("{answer:?}")
+    };
+    let read = json!({"id": "c", "op": "chat", "chat": chat});
+    let answer = answer_of(home.devices.on_envelope(phone.seal(read)).await.unwrap());
+    assert!(
+        matches!(&answer, Answer::Chat { messages, working: true, .. }
+            if messages.len() == 1 && messages[0].text == "Hello"),
+        "{answer:?}"
+    );
+    // The person's other chats, and another device's, are out of reach
+    let other = chat::new_chat_id("device.ffffffffffffffffffffffffffffffff");
+    let main = crate::db::agent_conversation_id(crate::services::builtin_agents::DEFAULT_AGENT);
+    for chat in [main.as_str(), other.as_str()] {
+        let read = json!({"id": "c", "op": "chat", "chat": chat});
+        let answer = answer_of(home.devices.on_envelope(phone.seal(read)).await.unwrap());
+        assert_eq!(refusal_code(&answer), codes::CHAT_NOT_FOUND, "{chat}");
+        let answer = answer_of(
+            home.devices
+                .on_envelope(phone.seal(ask("Hi", Some(chat), None)))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(refusal_code(&answer), codes::CHAT_NOT_FOUND, "{chat}");
+    }
+    for text in ["   ", &"x".repeat(wire::MAX_ASK_CHARS + 1)] {
+        let answer = answer_of(
+            home.devices
+                .on_envelope(phone.seal(ask(text, None, None)))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(refusal_code(&answer), codes::ASK_INVALID);
+    }
+    assert_eq!(home.chat.asks().len(), 1);
+}
+
+#[tokio::test]
+async fn an_unconfirmed_revoked_or_locked_device_cannot_ask() {
+    let home = Home::start().await;
+    // Unconfirmed: dropped unanswered
+    let mut claimed = home.claimed_phone().await;
+    assert_eq!(
+        home.devices
+            .on_envelope(claimed.seal(ask("Hello", None, Some(PIN))))
+            .await
+            .unwrap(),
+        Handled::Dropped("not confirmed on the desktop")
+    );
+
+    // Locked: refused, even with the right PIN and an open session
+    let mut phone = home.paired_phone().await;
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("Hello", None, Some(PIN))))
+            .await
+            .unwrap(),
+    );
+    assert!(matches!(answer, Answer::Asked { .. }), "{answer:?}");
+    for _ in 0..pin::MAX_TRIES {
+        home.devices
+            .on_envelope(phone.seal(ask("Hello", None, Some("000001"))))
+            .await
+            .unwrap();
+    }
+    for call in [ask("Hello", None, Some(PIN)), ask("Hello", None, None)] {
+        let answer = answer_of(home.devices.on_envelope(phone.seal(call)).await.unwrap());
+        assert_eq!(refusal_code(&answer), codes::DEVICE_LOCKED);
+    }
+
+    // Revoked: dropped unanswered
+    home.devices.revoke(&phone.device_id).await.unwrap();
+    assert_eq!(
+        home.devices
+            .on_envelope(phone.seal(ask("Hello", None, Some(PIN))))
+            .await
+            .unwrap(),
+        Handled::Dropped("not one of our devices (or revoked)")
+    );
+    assert_eq!(home.chat.asks().len(), 1);
+}
+
+/// The whole path with the app's chat: an ask from the phone starts a
+/// Nandi chat as the person, marked with the device; a risky tool call it
+/// leads to waits in the Inbox, and the phone can't approve it
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_ask_from_the_phone_runs_as_the_person_and_risky_actions_wait_for_the_computer() {
+    let state = AppState::for_tests(Vec::new());
+    crate::services::builtin_agents::seed(state.store().layout()).unwrap();
+    state.store().load().unwrap();
+    let script = json!({
+        "agent": [
+            { "text": "I'll send it.", "toolCalls": [{
+                "tool": "gmail__send_message",
+                "args": {"to": "landlord@example.com", "body": "The rent is paid"},
+                "result": "", "requiresApproval": true
+            }] },
+            { "text": "Sent." }
+        ],
+        "studio": [],
+        "tokenDelayMs": 0
+    });
+    state
+        .db()
+        .call(move |conn| {
+            crate::db::set_setting(conn, crate::db::ENGINE_KEY, &json!("canned"))?;
+            crate::db::set_setting(conn, crate::engine::CANNED_SCRIPT_KEY, &script)
+        })
+        .await
+        .unwrap();
+    let home = Home::with(
+        RelayServerConfig::open(),
+        state.db().clone(),
+        Arc::new(AppInbox::new(state.clone())),
+        Arc::new(FakeInbox::default()),
+        Arc::new(AppChat::new(state.clone())),
+        Arc::new(FakeChat::default()),
+    )
+    .await;
+    let mut phone = home.paired_phone().await;
+
+    let call = ask("Tell the landlord the rent is paid", None, Some(PIN));
+    let answer = answer_of(home.devices.on_envelope(phone.seal(call)).await.unwrap());
+    let Answer::Asked { chat, .. } = answer else {
+        panic!("{answer:?}")
+    };
+    // The person's own message, in a Nandi chat titled with the device
+    let id = chat.clone();
+    let (owner, title) = state
+        .db()
+        .call(move |conn| {
+            conn.query_row(
+                "SELECT agent_id, title FROM conversations WHERE id = ?1",
+                [&id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(owner, crate::services::builtin_agents::DEFAULT_AGENT);
+    // Named by its first message, like a chat made on the computer
+    assert_eq!(title, "Tell the landlord the rent is paid");
+    assert!(crate::db::is_phone_chat(&chat) && crate::db::is_chat(&chat, &owner));
+
+    // The risky call waits for an approval; the phone sees it waiting
+    let pending = || async {
+        crate::services::chat::list_pending_approvals(&state)
+            .await
+            .unwrap()
+    };
+    wait_for("the approval", || async { !pending().await.is_empty() }).await;
+    let approval = pending().await.remove(0);
+    let read = json!({"id": "c", "op": "chat", "chat": chat});
+    let answer = answer_of(home.devices.on_envelope(phone.seal(read)).await.unwrap());
+    let Answer::Chat {
+        messages,
+        working,
+        waiting_for_approval,
+        ..
+    } = answer
+    else {
+        panic!("{answer:?}")
+    };
+    assert!(working && waiting_for_approval);
+    assert_eq!(messages[0].role, "user");
+    assert_eq!(messages[0].text, "Tell the landlord the rent is paid");
+
+    // The run's record: the person's, asked from the device
+    let run_id = approval.run_id.clone();
+    let run = state
+        .db()
+        .call(move |conn| crate::db::get_run(conn, &run_id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(run.source_type, crate::model::SourceType::User);
+    assert_eq!(run.source_id.as_deref(), Some(phone.device_id.as_str()));
+    assert_eq!(run.source_label.as_deref(), Some("Asked from Ada's phone"));
+
+    // Sending stays on the computer, even within the session
+    let approve = json!({"id": "c", "op": "approve", "itemId": approval.id, "pin": PIN});
+    let answer = answer_of(home.devices.on_envelope(phone.seal(approve)).await.unwrap());
+    assert_eq!(refusal_code(&answer), codes::DESKTOP_ONLY);
+    assert_eq!(pending().await.len(), 1, "it still waits for the computer");
+
+    // Approved on the computer: the answer reaches the phone's chat
+    crate::services::chat::approve_action(&state, None, approval.id, ApprovalDecision::Approved)
+        .await
+        .unwrap();
+    let mut last = None;
+    for _ in 0..300 {
+        let read = json!({"id": "c", "op": "chat", "chat": chat});
+        let answer = answer_of(home.devices.on_envelope(phone.seal(read)).await.unwrap());
+        if let Answer::Chat {
+            working: false,
+            messages,
+            ..
+        } = &answer
+        {
+            last = Some(messages.clone());
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let messages = last.expect("the run ended");
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.role == "assistant" && m.text.contains("Sent.")),
+        "{messages:?}"
+    );
+    state.shutdown();
+}
+
+#[tokio::test]
+async fn asking_from_a_phone_set_to_off_is_refused_and_the_level_is_kept() {
+    let home = Home::start().await;
+    let mut phone = home.paired_phone().await;
+    home.devices
+        .set_ask_level(&phone.device_id, controls::AskLevel::Off)
+        .await
+        .unwrap();
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("Hello", None, Some(PIN))))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(refusal_code(&answer), codes::ASKS_OFF);
+    assert!(home.chat.asks().is_empty());
+    let overview = home.devices.overview().await.unwrap();
+    assert_eq!(overview.devices[0].ask_level, controls::AskLevel::Off);
+
+    // Back on: asks go through again
+    home.devices
+        .set_ask_level(&phone.device_id, controls::AskLevel::Answer)
+        .await
+        .unwrap();
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("Hello", None, Some(PIN))))
+            .await
+            .unwrap(),
+    );
+    assert!(matches!(answer, Answer::Asked { .. }), "{answer:?}");
+    assert!(home
+        .devices
+        .set_ask_level("device.gone", controls::AskLevel::Off)
+        .await
+        .is_err());
+}
+
+/// A phone at `level` asks for a change (a to-do) the agent's own rules let through
+/// without asking; what happens to that call
+async fn a_write_asked_at(level: controls::AskLevel) -> (AppState, bool, String) {
+    let state = AppState::for_tests(Vec::new());
+    crate::services::builtin_agents::seed(state.store().layout()).unwrap();
+    state.store().load().unwrap();
+    let script = json!({
+        "agent": [
+            { "text": "Noting it.", "toolCalls": [{
+                "tool": "todo_add",
+                "args": {"title": "Rent is paid"},
+                "result": "added", "requiresApproval": false
+            }] },
+            { "text": "Done." }
+        ],
+        "studio": [],
+        "tokenDelayMs": 0
+    });
+    state
+        .db()
+        .call(move |conn| {
+            crate::db::set_setting(conn, crate::db::ENGINE_KEY, &json!("canned"))?;
+            crate::db::set_setting(conn, crate::engine::CANNED_SCRIPT_KEY, &script)
+        })
+        .await
+        .unwrap();
+    let home = Home::with(
+        RelayServerConfig::open(),
+        state.db().clone(),
+        Arc::new(AppInbox::new(state.clone())),
+        Arc::new(FakeInbox::default()),
+        Arc::new(AppChat::new(state.clone())),
+        Arc::new(FakeChat::default()),
+    )
+    .await;
+    let mut phone = home.paired_phone().await;
+    home.devices
+        .set_ask_level(&phone.device_id, level)
+        .await
+        .unwrap();
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(ask("Note that the rent is paid", None, Some(PIN))))
+            .await
+            .unwrap(),
+    );
+    let Answer::Asked { chat, .. } = answer else {
+        panic!("{answer:?}")
+    };
+    // Either the call waits for a yes, or the run ends without it
+    let mut waited = false;
+    for _ in 0..500 {
+        if !crate::services::chat::list_pending_approvals(&state)
+            .await
+            .unwrap()
+            .is_empty()
+        {
+            waited = true;
+            break;
+        }
+        let id = chat.clone();
+        let done = state
+            .db()
+            .call(move |conn| crate::db::unfinished_runs(conn, &id))
+            .await
+            .unwrap()
+            .is_empty();
+        if done {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let id = chat.clone();
+    let rows = state
+        .db()
+        .call(move |conn| crate::db::list_messages(conn, &id, 100))
+        .await
+        .unwrap();
+    let said = rows
+        .iter()
+        .map(|row| format!("{}: {} {}", row.role, row.content, row.metadata))
+        .collect::<Vec<_>>()
+        .join(
+            "
+",
+        );
+    (state, waited, said)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn with_your_yes_every_action_waits_even_one_the_agent_would_run_unasked() {
+    let (state, waited, _) = a_write_asked_at(controls::AskLevel::Confirm).await;
+    assert!(waited, "a phone-started write waits for the person");
+    state.shutdown();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn answer_only_refuses_every_action_and_still_answers() {
+    let (state, waited, said) = a_write_asked_at(controls::AskLevel::Answer).await;
+    assert!(!waited, "nothing to approve: the write is refused");
+    assert!(said.contains("only ask for answers"), "{said}");
     state.shutdown();
 }

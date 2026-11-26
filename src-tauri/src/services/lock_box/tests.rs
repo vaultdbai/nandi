@@ -729,3 +729,34 @@ async fn a_repeated_refusal_is_recorded_once_and_counted_at_run_end() {
     );
     state.shutdown();
 }
+
+#[tokio::test]
+async fn a_key_that_asks_first_is_never_unlocked_for_an_ask_from_a_phone() {
+    let state = state_with_agent();
+    let run = start_run(&state).await;
+    let id = run.run_id.clone();
+    state
+        .db()
+        .call(move |conn| {
+            conn.execute(
+                "UPDATE runs SET source_type = 'user', source_id = 'device.1' WHERE id = ?1",
+                [&id],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    add_key(&state, "github", rules(&["api.github.com"], LockLevel::Ask)).await;
+    let refused = release(&state, AGENT, "github", &url("https://api.github.com/"))
+        .await
+        .unwrap_err();
+    assert!(refused.contains("phone"), "{refused}");
+
+    // A key left open still works on its site
+    add_key(&state, "open", rules(&["api.github.com"], LockLevel::Open)).await;
+    assert!(
+        release(&state, AGENT, "open", &url("https://api.github.com/"))
+            .await
+            .is_ok()
+    );
+}

@@ -285,9 +285,11 @@ pub(super) async fn llm_step(
             }
             // The person's chats with Nandi: it makes agents and
             // automations too, each save on a card they decide
+            // (never a chat asked from a phone: Phone Controls)
             if ctx.agent_id == DEFAULT_AGENT
                 && data_run.is_none()
                 && db::is_chat(&ctx.conversation_id, &ctx.agent_id)
+                && !db::is_phone_chat(&ctx.conversation_id)
             {
                 system.push_str(studio::tools::BUILD_PROMPT);
                 for spec in studio::tools::build_specs() {

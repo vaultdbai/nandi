@@ -744,6 +744,9 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | OD-04 | Risky approvals stay on the computer                                      | Shipped                                                                                    | unit            | yes         |                 |
 | OD-05 | The record names the device                                               | Shipped                                                                                    | unit            | yes         |                 |
 | OD-06 | Revoke one or all; no relay; an older relay                               | Shipped                                                                                    | unit            | yes         |                 |
+| OD-07 | Ask Nandi from the phone                                                  | Shipped                                                                                    | unit            | yes         |                 |
+| OD-08 | The PIN once per ask session                                              | Shipped                                                                                    | unit            | yes         |                 |
+| OD-09 | Phone Controls: what each phone may ask                                   | Shipped                                                                                    | unit            | yes         |                 |
 
 ### Instance gateway
 

@@ -3,6 +3,10 @@
 //! [`CallGate::decide`] runs them in this order and stops at the first that
 //! doesn't pass:
 //!
+//! 0. **Phone**: in a run asked from a paired phone, its Phone Controls
+//!    (`own_devices::controls`): what the level refuses is refused, and
+//!    every action waits for the person's yes, whatever the agent's own
+//!    rules would let through.
 //! 1. **Policy**: a tool the agent's policies deny (`tools.deny`) is refused
 //!    before anything else, whatever the engine. Nobody is asked.
 //! 2. **Middleware**: plan mode (or another middleware) blocks the tool.
@@ -28,6 +32,10 @@ use crate::engine::ToolOutcome;
 use crate::model::{ApprovalStatus, STUDIO_AGENT_ID};
 use crate::services::agents::SkillConfig;
 use crate::services::events::RunContext;
+use crate::services::own_devices::{
+    self,
+    controls::{self, PhoneVerdict},
+};
 use crate::services::{a2a, pilots, playbooks};
 
 use super::middleware::{self, CallCheck, TurnMiddleware};
@@ -71,6 +79,11 @@ pub(super) enum AccessGate {
 /// One method per check, in the gate's order. A method that finds nothing
 /// against the call returns `None` (or `Go`).
 pub(super) trait CallChecks {
+    /// What the run's phone may do with the call, check 0 (`None`: not
+    /// asked from a phone)
+    async fn phone(&self, _call: &PlannedCall) -> Result<Option<PhoneVerdict>, String> {
+        Ok(None)
+    }
     /// 1. The refusal, if the agent's policies deny the tool
     fn policy_denial(&self, call: &PlannedCall) -> Option<String>;
     /// 2. Why a middleware blocks the tool outright
@@ -98,6 +111,12 @@ impl<C: CallChecks> CallGate<C> {
     }
 
     pub async fn decide(&self, call: &PlannedCall) -> Result<Verdict, String> {
+        let phone = self.checks.phone(call).await?;
+        if let Some(PhoneVerdict::Refuse(reason)) = phone {
+            return Ok(Verdict::Refuse(reason));
+        }
+        // A phone-started action always waits for the person's yes
+        let phone_yes = phone == Some(PhoneVerdict::NeedsYes);
         if let Some(reason) = self.checks.policy_denial(call) {
             return Ok(Verdict::Refuse(reason));
         }
@@ -116,7 +135,7 @@ impl<C: CallChecks> CallGate<C> {
         if let Some(reason) = self.checks.playbook_refusal(call).await {
             return Ok(Verdict::Refuse(reason));
         }
-        if needs_approval(call) {
+        if needs_approval(call) || phone_yes {
             let approval = self.checks.approval(call).await?;
             match approval_status(approval.as_ref(), call) {
                 None => {
@@ -177,6 +196,27 @@ pub(super) struct LiveChecks<'a> {
 }
 
 impl CallChecks for LiveChecks<'_> {
+    /// The run's device and its level, read now: a level changed, a device
+    /// revoked or locked while the run goes on counts from the next call
+    async fn phone(&self, call: &PlannedCall) -> Result<Option<PhoneVerdict>, String> {
+        let run_id = self.ctx.run_id.clone();
+        let level = self
+            .deps
+            .bus
+            .db
+            .call(move |conn| {
+                let Some(run) = db::get_run(conn, &run_id)? else {
+                    return Ok(None);
+                };
+                let Some(device) = controls::asked_from(&run) else {
+                    return Ok(None);
+                };
+                Ok(Some(own_devices::store::ask_level_now(conn, device)?))
+            })
+            .await?;
+        Ok(level.map(|level| controls::verdict(level, &call.tool)))
+    }
+
     /// A broken policy stops the call later, in `execute_tool`
     fn policy_denial(&self, call: &PlannedCall) -> Option<String> {
         if self.ctx.agent_id == STUDIO_AGENT_ID {
@@ -417,6 +457,7 @@ mod tests {
         playbook: Option<&'static str>,
         approval: Option<ApprovalStatus>,
         approval_tool: Option<&'static str>,
+        phone: Option<PhoneVerdict>,
         read: RefCell<Vec<&'static str>>,
     }
 
@@ -427,6 +468,10 @@ mod tests {
     }
 
     impl CallChecks for Fake {
+        async fn phone(&self, _: &PlannedCall) -> Result<Option<PhoneVerdict>, String> {
+            Ok(self.phone.clone())
+        }
+
         fn policy_denial(&self, _: &PlannedCall) -> Option<String> {
             self.read("policy");
             self.policy.map(str::to_string)
@@ -496,6 +541,35 @@ mod tests {
         "playbook",
         "approval",
     ];
+
+    #[tokio::test]
+    async fn a_phone_refusal_comes_first_and_its_actions_always_wait_for_a_yes() {
+        let gate = CallGate::new(Fake {
+            phone: Some(PhoneVerdict::Refuse("not from a phone".into())),
+            ..Fake::default()
+        });
+        let verdict = gate.decide(&call("shell", false)).await.unwrap();
+        assert_eq!(short(&verdict), "refuse: not from a phone");
+        assert!(gate.checks.read.borrow().is_empty());
+
+        // The agent's own rules would run it without asking: a phone's
+        // run asks anyway
+        let gate = CallGate::new(Fake {
+            phone: Some(PhoneVerdict::NeedsYes),
+            ..Fake::default()
+        });
+        let verdict = gate.decide(&call("shell", false)).await.unwrap();
+        assert_eq!(short(&verdict), "wait");
+        assert_eq!(gate.checks.read.borrow().last(), Some(&"ask"));
+
+        // A read runs as at the computer
+        let gate = CallGate::new(Fake {
+            phone: Some(PhoneVerdict::Allow),
+            ..Fake::default()
+        });
+        let verdict = gate.decide(&call("read_file", false)).await.unwrap();
+        assert_eq!(short(&verdict), "run");
+    }
 
     #[tokio::test]
     async fn the_gate_stops_at_the_first_check_that_fails_in_order() {

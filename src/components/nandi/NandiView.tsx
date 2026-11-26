@@ -45,6 +45,7 @@ import { AgentMark, NandiMark } from './AgentMark'
 import {
   chatAgentId,
   chatLabel,
+  isPhoneChat,
   plainPreview,
   recentChats,
 } from './nandi-home-model'
@@ -275,11 +276,13 @@ export function ChatRow({
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm font-medium">{label}</span>
           <span className="truncate text-xs text-muted-foreground">
-            {chat.agentId === DEFAULT_AGENT
-              ? plainPreview(chat.lastMessage)
-              : [agent.name, plainPreview(chat.lastMessage)]
-                  .filter(Boolean)
-                  .join(' · ')}
+            {[
+              isPhoneChat(chat) ? t('liveWork.origin.phone') : null,
+              chat.agentId === DEFAULT_AGENT ? null : agent.name,
+              plainPreview(chat.lastMessage),
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </span>
         </span>
         <span className="shrink-0 text-xs text-muted-foreground">

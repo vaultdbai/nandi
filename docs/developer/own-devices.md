@@ -1,6 +1,6 @@
 # Own Devices: Your Nandi From Your Phone
 
-A person pairs their phone with their own Nandi. The phone then sees the Inbox and approves or declines from anywhere, through sealed envelopes on the relay (protocol 8). The relay forwards them and sees who, when and how big, never what. This page is the contract the phone web app (vaultdb.ai) follows.
+A person pairs their phone with their own Nandi. The phone then sees the Inbox, approves or declines, and asks Nandi from anywhere, through sealed envelopes on the relay (protocol 8). The relay forwards them and sees who, when and how big, never what. This page is the contract the phone web app (vaultdb.ai) follows.
 
 | Piece                     | Where                                                                                                            |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -9,7 +9,8 @@ A person pairs their phone with their own Nandi. The phone then sees the Inbox a
 | The service               | `services/own_devices/mod.rs` (`OwnDevices`)                                                                     |
 | What a phone may say      | `services/own_devices/wire.rs`                                                                                   |
 | What stays on the desktop | `services/own_devices/desktop_only.rs`                                                                           |
-| PIN                       | `services/own_devices/pin.rs` (Argon2id)                                                                         |
+| Asking Nandi              | `services/own_devices/chat.rs` (`PhoneChat`, `AppChat`)                                                          |
+| PIN                       | `services/own_devices/pin.rs` (Argon2id), `session.rs` (the ask session)                                         |
 | Rows                      | `services/own_devices/store.rs`, migration `010_own_devices.sql`                                                 |
 | Screen                    | Settings › Your devices (`DevicesSection.tsx`, `devices-model.ts`)                                               |
 | Tests                     | `services/own_devices/tests.rs` (a real relay and a phone), `docs/testing/teams-network-relay.md` OD-01 to OD-06 |
@@ -65,12 +66,14 @@ The phone seals to `homeKeys` and signs with its own key; it opens the Nandi's a
 
 Inside the seal, JSON, camelCase. Each call has the phone's own `id`; the answer echoes it as `re`.
 
-| Call                                   | Answer                                                      |
-| -------------------------------------- | ----------------------------------------------------------- |
-| `{"id","op":"inbox"}`                  | `{"re","outcome":"inbox","approvals":[…],"todos":[…]}`      |
-| `{"id","op":"approve","itemId","pin"}` | `{"re","outcome":"decided","itemId","decision":"approved"}` |
-| `{"id","op":"decline","itemId","pin"}` | `{"re","outcome":"decided","itemId","decision":"declined"}` |
-| anything else with an `id`             | `refused`, `unknown_command`                                |
+| Call                                      | Answer                                                                         |
+| ----------------------------------------- | ------------------------------------------------------------------------------ |
+| `{"id","op":"inbox"}`                     | `{"re","outcome":"inbox","approvals":[…],"todos":[…]}`                         |
+| `{"id","op":"approve","itemId","pin"}`    | `{"re","outcome":"decided","itemId","decision":"approved"}`                    |
+| `{"id","op":"decline","itemId","pin"}`    | `{"re","outcome":"decided","itemId","decision":"declined"}`                    |
+| `{"id","op":"ask","text","chat"?,"pin"?}` | `{"re","outcome":"asked","chat","messageId","queued"}`                         |
+| `{"id","op":"chat","chat","after"?}`      | `{"re","outcome":"chat","chat","messages":[…],"working","waitingForApproval"}` |
+| anything else with an `id`                | `refused`, `unknown_command`                                                   |
 
 An approval: `{id, agent, title, detail, createdAt, expiresAt, desktopOnly}`; `desktopOnly` is the reason it can only be approved on the computer, or `null`. A to-do: `{id, title, kind, from, dueAt}` (read only). At most 50 of each; titles 120 characters, details 280.
 
@@ -79,15 +82,34 @@ A refusal is `{"re","outcome":"refused","code","message","triesLeft"?}`:
 | Code              | When                                                                      |
 | ----------------- | ------------------------------------------------------------------------- |
 | `pin_wrong`       | The PIN was wrong; `triesLeft` before the lock                            |
+| `pin_needed`      | An ask with no PIN and no open session: ask again with the PIN            |
+| `chat_not_found`  | Not one of this device's chats (or it's gone): start a new one            |
+| `ask_invalid`     | An empty ask, or one over 4000 characters                                 |
 | `device_locked`   | 5 wrong PINs in a row; everything is refused until the desktop unlocks it |
 | `desktop_only`    | A risky approval: "Approve this on your computer."                        |
 | `item_not_found`  | It no longer waits (decided, expired)                                     |
 | `unknown_command` | Not a call a phone has                                                    |
 | `failed`          | Allowed, but it didn't go through                                         |
 
+### Asking Nandi
+
+`ask` is the person's own message (their paired device, behind their PIN; unlike email, which stays untrusted). Without `chat` it starts a new chat with the Nandi agent: a conversation `phone:<device ID>:<uuid>`, named by its first message, one of the person's chats on the computer (`db::is_chat`, `db::is_phone_chat`: Recent shows it "From your phone"; Nandi gets no build tools in it). With `chat` it continues that one. The run's record is the person's (`RunSource::own_device`: source type `user`, source ID the device, label "Asked from <device name>"). A busy Nandi queues it (`queued: true`).
+
+- **A device reaches only its own chats** (`chat::owns`): never the person's other chats, nor another device's.
+- **The answer is polled.** The phone calls `chat` with `after` set to the last message ID it has, about every 2 seconds while `working` is true. `messages` are the person's (`user`), Nandi's (`assistant`) and a failed run's (`error`), oldest first: at most 20, each at most 4000 characters. Tool calls and Nandi's own continuations are left out. `waitingForApproval` is true while the run waits in the Inbox.
+- **Every action still goes through approvals**, exactly as for a message typed on the computer. What a phone may approve is unchanged ([below](#what-stays-on-the-desktop)).
+- **An ask is at most 4000 characters**, under the same seal, size and replay rules as every call.
+- **The computer must be on.** The relay keeps nothing: when this Nandi isn't connected the phone gets `device_offline` and says "Your Nandi is offline".
+
+### Phone Controls
+
+Each device has an ask level (`controls::AskLevel`, `own_devices.ask_level`, migration 013): `confirm` (the default), `answer` or `off`, set with `set_own_device_ask_level`. `ask` answers `asks_off` at `off`. Every tool call of a run asked from a device (`controls::asked_from`: a `user` run with a device as its source) passes `call_gate`'s check 0, `controls::verdict`, with the level read at that call: reads (`only_reads`) run; at `confirm` everything else waits for an approval whatever `requires_approval` says; at `answer` it's refused; a device gone or locked refuses everything. `never_from_a_phone` (saves and build tools, `connector_access`, the profile and playbook proposals) is refused at every level, and `lock_box::release` never unlocks a key that asks first or is locked for such a run.
+
 ### The PIN
 
 The PIN travels only inside the seal, with each approve and decline, and is checked on the Nandi against the slow hash. It is never stored on the phone, never in the clear on the Nandi, and never seen by the relay. The check comes first: nothing is decided, or said about the item, before it. A right PIN resets the count. Unlocking (Settings › Your devices › Unlock) resets it too.
+
+**The ask session.** The first `ask` needs the PIN; asks after it don't, until the device goes 10 minutes without an ask (`session::IDLE_MS`). Then the next ask is refused `pin_needed`. Any right PIN opens or renews the session; reading the Inbox or a chat doesn't, so a phone left polling still locks. A wrong PIN, Unlock and Revoke end it. Approvals and declines still carry the PIN every time. Sessions live in the Nandi's memory only: after a restart every device needs its PIN again. A wrong PIN on an ask counts toward the lock like any other.
 
 WebAuthn or Face ID on the phone can come later as a second check; the PIN stays the Nandi's own proof.
 
@@ -113,4 +135,4 @@ Revoke removes the row first, so the device's envelopes are dropped at once, the
 
 ## The Risk to Name
 
-A web app served from vaultdb.ai is only as safe as the site: a compromised site could serve an app that steals a pairing. The fingerprint check at pairing and the PIN on every decision limit what such an app could do; the riskiest approvals never happen from a phone. Signed builds and Subresource Integrity are the web app's slice.
+A web app served from vaultdb.ai is only as safe as the site: a compromised site could serve an app that steals a pairing. The fingerprint check at pairing and the PIN on every decision limit what such an app could do; the riskiest approvals never happen from a phone. An ask can start work, but only as a message: whatever that work does waits for the same approvals, and the PIN opens a session of at most 10 minutes idle. Signed builds and Subresource Integrity are the web app's slice.

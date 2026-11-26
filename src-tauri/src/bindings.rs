@@ -398,6 +398,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             own_devices::revoke_own_device,
             own_devices::revoke_all_own_devices,
             own_devices::unlock_own_device,
+            own_devices::set_own_device_ask_level,
             network::set_trust_relationship,
             network::get_relay_trust,
             network::set_relay_trust,

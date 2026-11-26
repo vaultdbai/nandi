@@ -5118,9 +5118,9 @@
   "devices.unlock": "فتح القفل",
   "devices.lockedHint": "رموز سرية خاطئة كثيرة. افتح القفل إن كنت أنت.",
   "devices.canTitle": "ما يستطيعه الهاتف",
-  "devices.can": "رؤية الموافقات والمهام في صندوق الوارد، والموافقة أو الرفض، مع الرمز السري في كل مرة.",
+  "devices.can": "عرض موافقات صندوق الوارد ومهامك، والموافقة أو الرفض برمز PIN في كل مرة، وطلب ما يسمح به إعداده هنا من Nandi.",
   "devices.cannotTitle": "على هذا الحاسوب فقط",
-  "devices.cannot": "المدفوعات والإرسال والصلاحيات الجديدة وكل ما يوسّع ما يستطيعه الوكيل والإعدادات والمفاتيح وإضافة الأجهزة. ويبقى بإمكان الهاتف رفضها.",
+  "devices.cannot": "المدفوعات والإرسال والوصول أو الأذونات الجديدة وإنشاء الوكلاء أو الأتمتة وكل ما يوسّع ما يمكن للوكيل فعله والإعدادات ومفاتيح الخزنة التي تسأل أولاً وإضافة الأجهزة. يمكن للهاتف رفضها مع ذلك.",
   "decisions.fromDevice": "من {{device}}",
   "settings.section.lockBox": "خزنة المفاتيح",
   "approval.summary.useKey": "{{agent}} يطلب استخدام المفتاح {{key}} على {{host}}",
@@ -5257,5 +5257,13 @@
   "history.chats_other": "{{count}} محادثات",
   "history.allChats": "عرض كل المحادثات ({{count}})",
   "automations.columns.nextRun": "التشغيل التالي",
-  "nandiHome.welcome": "اسأل {{name}} أي شيء أو أخبره بما يفعل. اكتب @ للتحدث إلى وكيل آخر."
+  "nandiHome.welcome": "اسأل {{name}} أي شيء أو أخبره بما يفعل. اكتب @ للتحدث إلى وكيل آخر.",
+  "devices.askLevel.label": "ما يمكن أن يطلبه {{name}}",
+  "devices.askLevel.confirm": "التنفيذ بموافقتك",
+  "devices.askLevel.answer": "الإجابة فقط",
+  "devices.askLevel.off": "إيقاف",
+  "devices.askLevel.confirmHint": "يمكن للطلبات التنفيذ، وكل إجراء ينتظر موافقتك: لا قاعدة تمرره وحده.",
+  "devices.askLevel.answerHint": "تقرأ الطلبات ما يمكن لـ Nandi قراءته وتجيب. بلا إجراءات.",
+  "devices.askLevel.offHint": "لا طلبات: الهاتف للموافقة فقط.",
+  "liveWork.origin.phone": "من هاتفك"
 }

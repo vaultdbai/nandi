@@ -3437,6 +3437,17 @@ async unlockOwnDevice(deviceId: string, pin: string | null) : Promise<Result<nul
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * How much a paired phone may ask: answer only, do with your yes, or off (works offline)
+ */
+async setOwnDeviceAskLevel(deviceId: string, level: AskLevel) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_own_device_ask_level", { deviceId, level }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async setTrustRelationship(instanceId: string, update: TrustUpdate) : Promise<Result<TrustRelationship, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_trust_relationship", { instanceId, update }) };
@@ -5043,6 +5054,22 @@ recentRuns?: string[] }
  * One remembered ask (`ask_history`)
  */
 export type AskHistoryEntry = { id: string; requestText: string; context: AskContext | null; response: AskResponse; at: number }
+/**
+ * How much a paired phone may ask
+ */
+export type AskLevel = 
+/**
+ * Read and answer; no actions
+ */
+"answer" | 
+/**
+ * Act, with the person's yes on every action
+ */
+"confirm" | 
+/**
+ * No asks: the phone only approves
+ */
+"off"
 export type AskRequest = { text: string; 
 /**
  * Staged attachment IDs
@@ -6164,7 +6191,11 @@ fingerprint: string | null; pairedAt: number | null;
 /**
  * When this Nandi or the relay last heard from it
  */
-lastSeenAt: number | null; online: boolean; failedPins: number }
+lastSeenAt: number | null; online: boolean; failedPins: number; 
+/**
+ * How much it may ask (Phone Controls)
+ */
+askLevel: AskLevel }
 /**
  * Settings › Your devices
  */

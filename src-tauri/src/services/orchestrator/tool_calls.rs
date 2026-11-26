@@ -238,7 +238,8 @@ pub(super) async fn run_call(
         _ if (ctx.agent_id == STUDIO_AGENT_ID && studio::tools::is_studio_tool(&call.tool))
             || (ctx.agent_id == DEFAULT_AGENT
                 && studio::tools::is_build_tool(&call.tool)
-                && db::is_chat(&ctx.conversation_id, &ctx.agent_id)) =>
+                && db::is_chat(&ctx.conversation_id, &ctx.agent_id)
+                && !db::is_phone_chat(&ctx.conversation_id)) =>
         {
             match app_state(deps) {
                 Some(state) => studio::tools::call(&state, &call.tool, &call.args).await,

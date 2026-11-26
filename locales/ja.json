@@ -5118,9 +5118,9 @@
   "devices.unlock": "ロック解除",
   "devices.lockedHint": "PIN の誤りが多すぎます。ご自身ならロックを解除してください。",
   "devices.canTitle": "スマートフォンでできること",
-  "devices.can": "受信箱の承認と ToDo を見て、毎回 PIN を入力して承認または却下できます。",
+  "devices.can": "受信トレイの承認と To-Do を見て、毎回 PIN で承認・拒否し、ここでの設定の範囲で Nandi に頼めます。",
   "devices.cannotTitle": "このコンピューターでのみ",
-  "devices.cannot": "支払い、送信、新しいアクセスや権限、エージェントの権限を広げるもの、設定、鍵、デバイスの追加。スマートフォンからでも却下はできます。",
+  "devices.cannot": "支払い、送信、新しいアクセスや権限、エージェントやオートメーションの作成、エージェントの権限を広げること、設定、先に確認するロックボックスのキー、デバイスの追加。電話からでも拒否はできます。",
   "decisions.fromDevice": "{{device}} から",
   "settings.section.lockBox": "キーの保管庫",
   "approval.summary.useKey": "{{agent}} が {{host}} でキー {{key}} の使用を求めています",
@@ -5257,5 +5257,13 @@
   "history.chats_other": "チャット {{count}} 件",
   "history.allChats": "{{count}} 件すべて表示",
   "automations.columns.nextRun": "次回の実行",
-  "nandiHome.welcome": "{{name}} に何でも聞くか、してほしいことを伝えてください。別のエージェントには @ を。"
+  "nandiHome.welcome": "{{name}} に何でも聞くか、してほしいことを伝えてください。別のエージェントには @ を。",
+  "devices.askLevel.label": "{{name}} から頼めること",
+  "devices.askLevel.confirm": "実行する(毎回あなたの承認)",
+  "devices.askLevel.answer": "回答のみ",
+  "devices.askLevel.off": "オフ",
+  "devices.askLevel.confirmHint": "依頼で実行できますが、どの操作もあなたの承認を待ちます。自動で通すルールはありません。",
+  "devices.askLevel.answerHint": "Nandi がすでに読めるものを読んで回答します。操作はしません。",
+  "devices.askLevel.offHint": "依頼はできません。電話は承認のみです。",
+  "liveWork.origin.phone": "電話から"
 }

@@ -4,6 +4,7 @@ import {
   chatAgentId,
   chatLabel,
   isLongChat,
+  isPhoneChat,
   plainPreview,
   recentChats,
   searchChats,
@@ -100,5 +101,12 @@ describe('plainPreview', () => {
     expect(plainPreview('snake_case_name stays')).toBe('snake_case_name stays')
     expect(plainPreview(null)).toBe('')
     expect(plainPreview('x'.repeat(300))).toHaveLength(140)
+  })
+})
+
+describe('isPhoneChat', () => {
+  it('is a chat asked from a paired phone', () => {
+    expect(isPhoneChat({ id: 'phone:device.1:abc' })).toBe(true)
+    expect(isPhoneChat({ id: 'chat:abc' })).toBe(false)
   })
 })

@@ -93,3 +93,8 @@ export function plainPreview(markdown: string | null): string {
     .trim()
   return text.length > MAX_PREVIEW ? `${text.slice(0, MAX_PREVIEW - 1)}…` : text
 }
+
+/** A chat asked from the person's paired phone (`phone:<device>:<id>`) */
+export function isPhoneChat(chat: Pick<ChatSummary, 'id'>): boolean {
+  return chat.id.startsWith('phone:')
+}

@@ -8,7 +8,7 @@
 //!
 //! The numbers follow the versions released builds stamped: Nandi 0.1.0
 //! wrote version 2 (migration 002, its schema word for word), 006 takes
-//! it to Nandi 0.2.0's, 007 adds run retries, 008 to-dos, 009 the weekly retro's proposals, 010 own devices, 011 names an agent's file `agent.md` in them and 012 adds the Lock box. A version no migration ends at (1, 3 to 5) was
+//! it to Nandi 0.2.0's, 007 adds run retries, 008 to-dos, 009 the weekly retro's proposals, 010 own devices, 011 names an agent's file `agent.md` in them, 012 adds the Lock box and 013 a paired phone's ask level. A version no migration ends at (1, 3 to 5) was
 //! written by a development build that was never released: it is refused
 //! with a "reset your dev data" message.
 //!
@@ -52,6 +52,7 @@ pub const MIGRATIONS: &[Migration] = &[
     migration!(10, "010_own_devices.sql"),
     migration!(11, "011_agent_md.sql"),
     migration!(12, "012_lock_box.sql"),
+    migration!(13, "013_device_ask_level.sql"),
 ];
 
 /// The schema version this build writes: the last migration's number.

@@ -619,6 +619,20 @@ pub async fn release(
         ));
     };
 
+    // Never unlocked for an ask from a phone (Phone Controls): only a key
+    // left open works in a phone-started run
+    if key_rules.lock != LockLevel::Open && phone_run(run.as_ref()) {
+        release.record(
+            state,
+            "refused",
+            Some(RULES.into()),
+            "asked from a phone".into(),
+        );
+        return Err(refused(
+            &name,
+            "a key that asks first is never unlocked for an ask from a phone",
+        ));
+    }
     let (decided_by, note) = match key_rules.lock {
         LockLevel::Open => (OPEN_RULE.to_string(), "released on its site".to_string()),
         LockLevel::Ask => match ask(state, &release, run.as_ref()).await {
@@ -659,6 +673,12 @@ pub async fn release(
         header_value,
         secret: value,
     })
+}
+
+/// Whether `run` was asked from a paired phone
+fn phone_run(run: Option<&crate::model::RunSummary>) -> bool {
+    run.and_then(crate::services::own_devices::controls::asked_from)
+        .is_some()
 }
 
 /// The approval card's arguments: the key, the agent and the host. Never

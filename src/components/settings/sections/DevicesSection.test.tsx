@@ -25,6 +25,7 @@ const device = (patch: Partial<DeviceView>): DeviceView => ({
   lastSeenAt: null,
   online: false,
   failedPins: 0,
+  askLevel: 'confirm',
   ...patch,
 })
 
@@ -136,5 +137,23 @@ describe('Settings › Your devices', () => {
       expect(mocks().revokeOwnDevice).toHaveBeenCalledWith(DEVICE)
     )
     expect(screen.getByText('What a phone can do')).toBeVisible()
+  })
+
+  it('sets what each phone may ask, with your yes by default', async () => {
+    const user = userEvent.setup()
+    mocks().listOwnDevices = ok(overview({ devices: [device({})] }))
+    mocks().setOwnDeviceAskLevel = ok(null)
+    render(<DevicesSection />)
+    const level = await screen.findByRole('combobox', {
+      name: "What Ada's phone may ask",
+    })
+    expect(level).toHaveValue('confirm')
+    await user.selectOptions(level, 'answer')
+    await waitFor(() =>
+      expect(mocks().setOwnDeviceAskLevel).toHaveBeenCalledWith(
+        DEVICE,
+        'answer'
+      )
+    )
   })
 })

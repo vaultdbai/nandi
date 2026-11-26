@@ -139,6 +139,18 @@ impl RunSource {
         }
     }
 
+    /// A message the person typed on their paired phone (`own_devices`):
+    /// theirs, as urgent as one typed here, and the run's record says
+    /// which device it came from
+    pub fn own_device(device_id: &str, device_name: &str) -> Self {
+        Self {
+            source_type: SourceType::User,
+            source_id: Some(device_id.to_string()),
+            source_label: Some(format!("Asked from {device_name}")),
+            priority: PRIORITY_USER,
+        }
+    }
+
     /// A workflow step. Critical steps gate later work, so they go first.
     pub fn workflow(workflow_run_id: &str, label: String, critical: bool) -> Self {
         Self {

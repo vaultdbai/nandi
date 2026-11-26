@@ -5,6 +5,8 @@
 use nandi_protocol::PublicKeys;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
+use super::controls::AskLevel;
+
 /// Where a device is, as this Nandi keeps it
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RowState {
@@ -43,6 +45,8 @@ pub struct DeviceRow {
     pub expires_at: Option<i64>,
     pub paired_at: Option<i64>,
     pub last_seen_at: Option<i64>,
+    /// How much it may ask (migration 013)
+    pub ask_level: AskLevel,
 }
 
 impl DeviceRow {
@@ -52,7 +56,7 @@ impl DeviceRow {
 }
 
 const COLUMNS: &str = "device_id, name, state, signing_key, sealing_key, pin_hash, failed_pins, \
-     locked_at, last_seq, created_at, expires_at, paired_at, last_seen_at";
+     locked_at, last_seq, created_at, expires_at, paired_at, last_seen_at, ask_level";
 
 fn read(row: &Row) -> rusqlite::Result<DeviceRow> {
     let state: String = row.get("state")?;
@@ -81,7 +85,38 @@ fn read(row: &Row) -> rusqlite::Result<DeviceRow> {
         expires_at: row.get("expires_at")?,
         paired_at: row.get("paired_at")?,
         last_seen_at: row.get("last_seen_at")?,
+        ask_level: {
+            let level: String = row.get("ask_level")?;
+            AskLevel::parse(&level).ok_or_else(|| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    13,
+                    rusqlite::types::Type::Text,
+                    format!("unknown ask level {level}").into(),
+                )
+            })?
+        },
     })
+}
+
+/// Sets how much an active device may ask; false when there's no such device
+pub fn set_ask_level(
+    conn: &Connection,
+    device_id: &str,
+    level: AskLevel,
+) -> rusqlite::Result<bool> {
+    let changed = conn.execute(
+        "UPDATE own_devices SET ask_level = ?2 WHERE device_id = ?1 AND state = 'active'",
+        params![device_id, level.as_str()],
+    )?;
+    Ok(changed == 1)
+}
+
+/// How much `device_id` may ask now: `None` when it's gone, not active or
+/// locked (it may ask nothing)
+pub fn ask_level_now(conn: &Connection, device_id: &str) -> rusqlite::Result<Option<AskLevel>> {
+    Ok(get(conn, device_id)?
+        .filter(|row| row.state == RowState::Active && !row.is_locked())
+        .map(|row| row.ask_level))
 }
 
 /// Every device, oldest first

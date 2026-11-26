@@ -1432,6 +1432,28 @@ A phone paired with your own Nandi, reaching it only through sealed envelopes on
 - **Needs relay:** yes
 - **Status:** Shipped
 
+### OD-07 — Ask Nandi from the phone
+
+- **What:** The phone's Ask Nandi box sends `ask`: the text reaches the Nandi agent as the person's own message, in a new chat (`phone:<device ID>:<uuid>`, named by its first message) or the one given. The chat is one of the person's chats on the computer: it shows in the Nandi home's Recent with "From your phone" and opens and continues there like any chat; its live run shows in Live as "From your phone". Nandi gets no build tools in a phone chat. The run's record is the person's, labelled "Asked from <device name>" with the device as its source. The phone reads the answer with `chat` (polled while `working`), and only its own chats. A risky action the chat leads to waits in the Inbox; the phone can't approve it. Unconfirmed and revoked devices are dropped; a locked one is refused.
+- **Where:** `services/own_devices/chat.rs`, `mod.rs` (`ask`, `read_chat`), `wire.rs`, `orchestrator.rs` (`RunSource::own_device`), `db/runs.rs` (`unfinished_runs`); the phone web app `js/phone-v8/` in vaultdb-web.
+- **Preconditions:** A paired, confirmed phone; Nandi running on the computer.
+- **Steps:** 1. On the phone, type "What's on my list today?" and Ask; type the PIN. 2. Ask a follow-up. 3. Ask for something that sends mail. 4. Quit Nandi on the computer and ask again.
+- **Expected:** 1: "working…", then Nandi's answer. 2: no PIN; the same chat. 3: "Waiting for an approval"; the approval is in the phone's Inbox marked "Approve this on your computer". 4: "Your Nandi is offline".
+- **Edge / negative cases:** An empty ask or one over 4000 characters is refused (`ask_invalid`). Another chat's ID, or another device's, is `chat_not_found`.
+- **Automation:** Covered by: `own_devices::tests::an_ask_from_the_phone_runs_as_the_person_and_risky_actions_wait_for_the_computer` (a real run), `a_device_reads_only_its_own_chats_and_long_or_empty_asks_are_refused`, `an_unconfirmed_revoked_or_locked_device_cannot_ask`, `own_devices::chat::tests::*`, `own_devices::wire::tests::*`; vaultdb-web `tests/phone-model.test.mjs` | Layer: unit
+- **Needs relay:** yes
+- **Status:** Shipped
+
+### OD-08 — The PIN once per ask session
+
+- **What:** The first ask needs the PIN (`pin_needed` without it). Asks within 10 minutes of the last one don't. After 10 minutes idle the PIN is needed again. A wrong PIN counts toward the lock and ends the session. Approvals and declines need the PIN every time, session or not. Reading the Inbox or a chat doesn't keep the session open. A restart of Nandi ends every session.
+- **Where:** `services/own_devices/session.rs`, `mod.rs` (`ask`, `check_pin`).
+- **Steps:** 1. Ask; type the PIN. 2. Ask again at once. 3. Wait 10 minutes; ask.
+- **Expected:** 1: asked. 2: no PIN prompt. 3: the PIN prompt again.
+- **Automation:** Covered by: `own_devices::tests::the_first_ask_needs_the_pin_then_the_session_carries_until_idle`, `own_devices::session::tests::*` | Layer: unit
+- **Needs relay:** yes
+- **Status:** Shipped
+
 ## Gaps and planned (not testable yet)
 
 - **The phone web app on vaultdb.ai** (pairing from the QR code, the PIN prompt, Face ID / WebAuthn): not built yet. The contract is `docs/developer/own-devices.md`.
@@ -1446,3 +1468,23 @@ A phone paired with your own Nandi, reaching it only through sealed envelopes on
 - **`.nandi/llm.yaml` `routing.fallbacks`**: validated and shown, but not used for routing (`network-and-reassignment.md`).
 - **Error messages naming instance IDs and evidence latency counting cancelled or reassigned attempts**: open items.
 - **Network isolation for agent containers** (enforced policies wave 1, part two): `docs/tasks-todo/task-x-enforced-policies.md`. This belongs to the sandbox area, but it affects what delegated tasks can reach.
+
+### OD-09 — Phone Controls: what each phone may ask
+
+- **What:** Settings › Your devices has, for each paired phone, **What <phone> may ask**: **Do, with your yes** (the default), **Answer only** or **Off**. Enforced in the core at every tool call of a run asked from that phone (`call_gate`, check 0), never in the UI:
+  - **Do, with your yes:** reads run as at the computer; every other call waits for the person's approval, even one the agent's own rules (`requires_approval`) would run unasked. What only the computer may approve stays there (OD desktop-only rules, unchanged).
+  - **Answer only:** reads only (its sandbox's files, web search, mail, calendar and files it may already read, notes, who's responsible, open requests, the to-do list, its plan); every other call is refused and the model answers from what it read.
+  - **Off:** an ask is refused with `asks_off` ("Asking from this phone is off…"); the phone still approves.
+  - **Never from a phone, at any level:** saving an agent or automation (and the build tools), new access (`connector_access`), the profile proposal, playbook proposals, and a Lock box key that asks first or is locked (refused, recorded "asked from a phone"). A paired phone can't approve a save either.
+  - A run whose phone was revoked or locked does nothing more from its next call. The level is kept per device in `state.db` (migration 013, `own_devices.ask_level`, default `confirm`) and set offline.
+- **Where:** `src-tauri/src/services/own_devices/controls.rs` (`verdict`, `only_reads`, `never_from_a_phone`), `store.rs` (`ask_level_now`, `set_ask_level`), `mod.rs` (`ask`, `set_ask_level`), `orchestrator/call_gate.rs`, `lock_box/mod.rs`, `db/migrations/013_device_ask_level.sql`; `set_own_device_ask_level` (`rpc/own_devices.rs`); `src/components/settings/sections/DevicesSection.tsx`; the phone app's `asks_off` text (vaultdb-web `js/phone-v8/model.js`).
+- **Preconditions:** A paired phone; a relay.
+- **Steps:**
+  1. Leave the phone on Do, with your yes; ask "add a to-do: pay rent".
+  2. Set it to Answer only; ask the same.
+  3. Set it to Off; ask anything.
+  4. At any level ask "make me an agent that reads arxiv".
+- **Expected:** 1: the to-do waits for an approval on the computer. 2: no approval; Nandi answers it can't do that from the phone. 3: the phone says asking is off. 4: refused; Nandi says to do it on the computer.
+- **Edge / negative cases:** Revoke or lock the phone while its run waits: its next call is refused. An open Lock box key still works for a phone's run on its sites.
+- **Automation:** Covered by: Rust `services::own_devices::controls::tests` (each level, the never-list), `services::own_devices::tests::asking_from_a_phone_set_to_off_is_refused_and_the_level_is_kept`, `with_your_yes_every_action_waits_even_one_the_agent_would_run_unasked`, `answer_only_refuses_every_action_and_still_answers`, `an_unconfirmed_revoked_or_locked_device_cannot_ask`, `orchestrator::call_gate::tests::a_phone_refusal_comes_first_and_its_actions_always_wait_for_a_yes`, `lock_box::tests::a_key_that_asks_first_is_never_unlocked_for_an_ask_from_a_phone`, `db::migrations::tests::a_0_3_1_database_gives_each_paired_phone_the_ask_level_with_your_yes`; `src/components/settings/sections/DevicesSection.test.tsx` | Layer: unit, api | Gap: no live phone test.
+- **Needs relay:** yes (asking from a phone); setting the level works offline

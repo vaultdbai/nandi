@@ -2,6 +2,14 @@
 
 What changed in each Nandi release, grouped by what you notice. The release notes for each version are in [docs/release-notes/](docs/release-notes/).
 
+## Unreleased
+
+### New
+
+- **Ask Nandi from your phone.** A paired phone has an Ask Nandi box below its Inbox. What you type reaches Nandi on your computer as your own message, sealed end to end, and the answer comes back the same way ("working…" while Nandi works). Anything it then does still asks for your approval, and risky steps still wait for your computer. Your PIN is asked once, then again after 10 minutes without an ask; approvals still ask it every time. Needs phone app version 8. Phone chats show on the computer with your other chats, marked "From your phone".
+- **Phone Controls.** Settings › Your devices sets, for each phone, what it may ask: Do, with your yes (the default; every action waits for your approval, whatever the agent's own rules), Answer only (no actions) or Off. A phone never makes agents or automations, gives new access, changes settings or unlocks a Lock box key that asks first.
+- **Library, Network and Settings at the bottom** of the left menu, with the main items at the top.
+
 ## 0.3.1 (2026-11-25)
 
 ### Changed
