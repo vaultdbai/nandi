@@ -5256,5 +5256,6 @@
   "history.chats_one": "チャット {{count}} 件",
   "history.chats_other": "チャット {{count}} 件",
   "history.allChats": "{{count}} 件すべて表示",
-  "automations.columns.nextRun": "次回の実行"
+  "automations.columns.nextRun": "次回の実行",
+  "nandiHome.welcome": "{{name}} に何でも聞くか、してほしいことを伝えてください。別のエージェントには @ を。"
 }

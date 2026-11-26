@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { openNewChat, sendToStudio } from '@/lib/agent-actions'
 import { useStudioStore, type ArtifactTab } from '@/store/studio-store'
+import { STARTERS } from './starters'
 
 /** Opens a right-pane tab with nothing selected, so its New ID field shows */
 function openTab(tab: ArtifactTab) {
@@ -88,8 +89,6 @@ export function AskNewMenu() {
     </>
   )
 }
-
-const STARTERS = ['waiting', 'today', 'agent', 'workflow'] as const
 
 /** Example asks for an empty chat: two questions, two things to build */
 export function AskStarters({

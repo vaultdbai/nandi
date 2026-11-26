@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-import { AgentAvatar } from '@/components/agent-console/AgentAvatar'
+import { AgentMark } from '@/components/nandi/AgentMark'
 import { MessageList } from '@/components/agent-console/MessageList'
 import { StopRunButton } from '@/components/agent-console/StopRunButton'
 import { isWorking } from '@/components/agent-console/working'
@@ -131,7 +131,7 @@ function LiveChat({ detail }: { detail: RunDetail }) {
             >
               <ArrowLeft className="rtl:rotate-180" />
             </Button>
-            <AgentAvatar agent={agent} className="size-8" />
+            <AgentMark agent={agent} className="size-8" />
           </div>
         }
         title={agent.name}

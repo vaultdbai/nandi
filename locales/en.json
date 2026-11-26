@@ -5256,5 +5256,6 @@
   "history.chats_one": "{{count}} chat",
   "history.chats_other": "{{count}} chats",
   "history.allChats": "Show all {{count}} chats",
-  "automations.columns.nextRun": "Next run"
+  "automations.columns.nextRun": "Next run",
+  "nandiHome.welcome": "Ask {{name}} anything, or tell it what to do. Type @ to talk to another agent."
 }

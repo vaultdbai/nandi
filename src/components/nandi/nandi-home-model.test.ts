@@ -4,6 +4,7 @@ import {
   chatAgentId,
   chatLabel,
   isLongChat,
+  plainPreview,
   recentChats,
   searchChats,
 } from './nandi-home-model'
@@ -83,5 +84,21 @@ describe('searchChats', () => {
     expect(searchChats(chats, 'bill').map(c => c.id)).toEqual(['b', 'a'])
     expect(searchChats(chats, '  ').map(c => c.id)).toEqual(['b', 'c', 'a'])
     expect(searchChats(chats, undefined)).toHaveLength(3)
+  })
+})
+
+describe('plainPreview', () => {
+  it('reads Markdown as one line of plain text', () => {
+    expect(
+      plainPreview(
+        '**Morning digest, Thu 2026-11-26**\n1. **Do now:** pay the _gas_ bill\n- see [the bill](https://x.test/b) and `invoice.pdf`'
+      )
+    ).toBe(
+      'Morning digest, Thu 2026-11-26 Do now: pay the gas bill see the bill and invoice.pdf'
+    )
+    expect(plainPreview('# Title\n> quoted ~~old~~')).toBe('Title quoted old')
+    expect(plainPreview('snake_case_name stays')).toBe('snake_case_name stays')
+    expect(plainPreview(null)).toBe('')
+    expect(plainPreview('x'.repeat(300))).toHaveLength(140)
   })
 })

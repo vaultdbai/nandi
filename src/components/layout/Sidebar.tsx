@@ -18,7 +18,7 @@ import { useNetworkHealth } from '@/hooks/useNetworkHealth'
 import { useSettingsAttention } from '@/hooks/useSettingsAttention'
 import { useLiveRuns } from '@/hooks/useRuns'
 import { useChats } from '@/hooks/useChats'
-import { NandiMark } from '@/components/nandi/NandiView'
+import { NandiMark } from '@/components/nandi/AgentMark'
 import { cn } from '@/lib/utils'
 import {
   navSection,

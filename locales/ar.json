@@ -5256,5 +5256,6 @@
   "history.chats_one": "{{count}} محادثة",
   "history.chats_other": "{{count}} محادثات",
   "history.allChats": "عرض كل المحادثات ({{count}})",
-  "automations.columns.nextRun": "التشغيل التالي"
+  "automations.columns.nextRun": "التشغيل التالي",
+  "nandiHome.welcome": "اسأل {{name}} أي شيء أو أخبره بما يفعل. اكتب @ للتحدث إلى وكيل آخر."
 }

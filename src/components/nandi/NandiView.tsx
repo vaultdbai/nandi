@@ -1,24 +1,20 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  ArrowLeft,
-  ChevronRight,
-  MessageSquare,
-  Pin,
-  PinOff,
-  Settings2,
-} from 'lucide-react'
-import still from '@/assets/brand/mascot/companion-bison-still.webp'
+import { ArrowLeft, ChevronRight, Pin, PinOff, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { Empty, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Spinner } from '@/components/ui/spinner'
-import { AgentAvatar } from '@/components/agent-console/AgentAvatar'
 import { MessageList } from '@/components/agent-console/MessageList'
 import { isWorking } from '@/components/agent-console/working'
 import { AskBox } from '@/components/ask/AskBox'
@@ -29,6 +25,8 @@ import { LiveBadge, LiveStop } from '@/components/live-runs/LiveRunView'
 import { ViewHeader } from '@/components/views/ViewHeader'
 import { useAgents } from '@/hooks/useAgents'
 import { useChats } from '@/hooks/useChats'
+import { useLiveRuns } from '@/hooks/useRuns'
+import { STARTERS } from '@/components/studio/starters'
 import { decideApproval, sendChatMessage, startChat } from '@/lib/agent-actions'
 import { defaultAgentName, displayAgent } from '@/lib/agent-identity'
 import { loadConversation } from '@/lib/agent-sync'
@@ -43,20 +41,13 @@ import { formatRelativeTime } from '@/lib/format-time'
 import { useConversation } from '@/store/agent-store'
 import { useChatPinsStore } from '@/store/chat-pins-store'
 import { useNavigationStore } from '@/store/navigation-store'
-import { chatAgentId, chatLabel, recentChats } from './nandi-home-model'
-
-/** The sitting bison, Nandi's mark (decorative: the caller labels it) */
-export function NandiMark({ className }: { className?: string }) {
-  return (
-    <img
-      src={still}
-      alt=""
-      aria-hidden
-      draggable={false}
-      className={className ?? 'size-8 object-contain'}
-    />
-  )
-}
+import { AgentMark, NandiMark } from './AgentMark'
+import {
+  chatAgentId,
+  chatLabel,
+  plainPreview,
+  recentChats,
+} from './nandi-home-model'
 
 /**
  * One place to talk. Without a chat: the home (a composer, Live, Recent).
@@ -117,6 +108,9 @@ function NandiHome() {
   const { t } = useTranslation()
   const agents = useAgents().data ?? []
   const name = defaultAgentName(agents)
+  const chats = useChats().data ?? []
+  const live = useLiveRuns().data ?? []
+  const quiet = chats.length === 0 && live.length === 0
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -139,18 +133,63 @@ function NandiHome() {
           </Button>
         }
       />
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4">
-          <Composer
-            placeholder={t('nandiHome.composer')}
-            onSend={(text, attachments) =>
-              void startChat(DEFAULT_AGENT, text, attachments)
-            }
-          />
-          <LiveRunsSection finished={false} />
-          <RecentChats agents={agents} />
-        </div>
-      </ScrollArea>
+      {quiet ? (
+        <Welcome name={name} />
+      ) : (
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4">
+            <LiveRunsSection finished={false} />
+            <RecentChats agents={agents} />
+          </div>
+        </ScrollArea>
+      )}
+      {/* The box at the bottom, like every chat; examples above it */}
+      <div className="shrink-0 space-y-3 border-t p-3">
+        <Starters onPick={text => void startChat(DEFAULT_AGENT, text)} />
+        <Composer
+          placeholder={t('nandiHome.composer')}
+          onSend={(text, attachments) =>
+            void startChat(DEFAULT_AGENT, text, attachments)
+          }
+        />
+      </div>
+    </div>
+  )
+}
+
+/** Nothing going on and no chats yet: Nandi's mark and the question */
+function Welcome({ name }: { name: string }) {
+  const { t } = useTranslation()
+  return (
+    <Empty className="min-h-0 flex-1">
+      <EmptyHeader>
+        <NandiMark className="size-16" />
+        <EmptyTitle>{t('nandiHome.composer')}</EmptyTitle>
+        <EmptyDescription>{t('nandiHome.welcome', { name })}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  )
+}
+
+/** Example asks: tapping one sends it */
+function Starters({ onPick }: { onPick: (text: string) => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2">
+      <span className="text-xs text-muted-foreground">
+        {t('studio.starters')}
+      </span>
+      {STARTERS.map(starter => (
+        <Button
+          key={starter}
+          variant="outline"
+          size="sm"
+          className="h-auto py-1 text-xs whitespace-normal"
+          onClick={() => onPick(t(`studio.starter.${starter}`))}
+        >
+          {t(`studio.starter.${starter}`)}
+        </Button>
+      ))}
     </div>
   )
 }
@@ -232,13 +271,15 @@ export function ChatRow({
         }
         className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-start"
       >
-        <AgentAvatar agent={agent} className="size-6 shrink-0" />
+        <AgentMark agent={agent} className="size-6 shrink-0" />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm font-medium">{label}</span>
           <span className="truncate text-xs text-muted-foreground">
             {chat.agentId === DEFAULT_AGENT
-              ? chat.lastMessage
-              : [agent.name, chat.lastMessage].filter(Boolean).join(' · ')}
+              ? plainPreview(chat.lastMessage)
+              : [agent.name, plainPreview(chat.lastMessage)]
+                  .filter(Boolean)
+                  .join(' · ')}
           </span>
         </span>
         <span className="shrink-0 text-xs text-muted-foreground">
@@ -316,7 +357,7 @@ function ChatView({ conversationId }: { conversationId: string }) {
             >
               <ArrowLeft className="rtl:rotate-180" />
             </Button>
-            <AgentAvatar agent={agent} className="size-8" />
+            <AgentMark agent={agent} className="size-8" />
           </div>
         }
         title={title}
@@ -336,7 +377,7 @@ function ChatView({ conversationId }: { conversationId: string }) {
           empty={
             <Empty className="h-full">
               <EmptyHeader>
-                <MessageSquare className="text-muted-foreground" />
+                <AgentMark agent={agent} className="size-12" />
                 <EmptyTitle>
                   {t('nandiHome.emptyChat', { name: agent.name })}
                 </EmptyTitle>
@@ -349,7 +390,12 @@ function ChatView({ conversationId }: { conversationId: string }) {
           <Spinner />
         </div>
       )}
-      <div className="shrink-0 border-t p-3">
+      <div className="shrink-0 space-y-3 border-t p-3">
+        {conversation && messages.length === 0 && (
+          <Starters
+            onPick={text => void sendChatMessage(conversationId, text)}
+          />
+        )}
         <Composer
           placeholder={t('liveWork.reply.placeholder', { name: agent.name })}
           agentId={agentId}

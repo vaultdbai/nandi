@@ -69,3 +69,27 @@ export function searchChats(
     )
   )
 }
+
+/** A preview stays one short line */
+const MAX_PREVIEW = 140
+
+/**
+ * A chat's last message as one line of plain text: Markdown emphasis,
+ * code marks, headings, list markers and quotes dropped, links and images
+ * kept as their text
+ */
+export function plainPreview(markdown: string | null): string {
+  if (!markdown) return ''
+  const text = markdown
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/gm, '')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(^|[^\w*])\*(\S(?:.*?\S)?)\*(?!\w)/g, '$1$2')
+    .replace(/(^|[^\w])_(\S(?:.*?\S)?)_(?!\w)/g, '$1$2')
+    .replace(/~~(.+?)~~/g, '$1')
+    .replace(/`+([^`]*)`+/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return text.length > MAX_PREVIEW ? `${text.slice(0, MAX_PREVIEW - 1)}…` : text
+}

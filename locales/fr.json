@@ -5256,5 +5256,6 @@
   "history.chats_one": "{{count}} discussion",
   "history.chats_other": "{{count}} discussions",
   "history.allChats": "Afficher les {{count}} discussions",
-  "automations.columns.nextRun": "Prochaine exécution"
+  "automations.columns.nextRun": "Prochaine exécution",
+  "nandiHome.welcome": "Demandez n'importe quoi à {{name}}, ou dites-lui quoi faire. Tapez @ pour parler à un autre agent."
 }

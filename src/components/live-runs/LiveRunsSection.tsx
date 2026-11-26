@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { AgentAvatar } from '@/components/agent-console/AgentAvatar'
+import { AgentMark } from '@/components/nandi/AgentMark'
 import { useNow } from '@/components/agents/task-utils'
 import { useAgents } from '@/hooks/useAgents'
 import { useRunPlan } from '@/hooks/useRunPlan'
@@ -93,7 +93,7 @@ function LiveRow({
         group === 'finished' && 'opacity-60'
       )}
     >
-      <AgentAvatar agent={agent} className="size-6 shrink-0" />
+      <AgentMark agent={agent} className="size-6 shrink-0" />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium">{agent.name}</span>
         <span className="truncate text-xs text-muted-foreground">
