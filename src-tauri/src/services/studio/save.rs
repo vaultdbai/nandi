@@ -13,11 +13,14 @@
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use specta::Type;
 
 use crate::db::PlannedCall;
 use crate::engine::ToolOutcome;
 use crate::services::ask::ArtifactRef;
+use crate::services::domain::AgentId;
 use crate::services::triggers::{self, schema::TriggerInput};
 use crate::services::AppState;
 
@@ -81,6 +84,111 @@ pub fn artifact_of(kind: &str, id: &str) -> Result<Option<ArtifactRef>, String> 
             ))
         }
     }))
+}
+
+/// What a `nandi_save_artifact` call would do, for its card: what it
+/// creates (or replaces) and what it may reach. Read from the call's own
+/// file, the way the save reads it; nothing is written.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SavePreview {
+    pub kind: String,
+    pub id: String,
+    /// Its name as the file gives it, if it does
+    pub name: Option<String>,
+    /// It exists already: saving replaces it
+    pub replaces: bool,
+    /// The sites it may reach (`network.allow`)
+    pub sites: Vec<String>,
+    /// The connectors it names
+    pub connectors: Vec<String>,
+    /// The tools it may use (`allowed-tools`) and its pilots
+    pub tools: Vec<String>,
+    /// For a workflow, its steps' agents; for a trigger, what it starts
+    pub runs: Vec<String>,
+    /// Why the save would be refused, if it would
+    pub problems: Vec<String>,
+}
+
+pub async fn preview(state: &AppState, args: &Value) -> Result<SavePreview, String> {
+    let kind = arg(args, "kind").ok_or("kind is required")?.to_string();
+    let mut preview = SavePreview {
+        kind: kind.clone(),
+        id: arg(args, "id").unwrap_or_default().to_string(),
+        ..SavePreview::default()
+    };
+    let content = args
+        .get("content")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    match kind.as_str() {
+        "agent" => match AgentId::parse(&preview.id)
+            .and_then(|id| crate::services::domain::Agent::from_agent_md(id, content))
+        {
+            Ok(agent) => {
+                preview.name = Some(agent.name().to_string());
+                let capabilities = agent.capabilities();
+                preview.sites = capabilities
+                    .network()
+                    .allow
+                    .iter()
+                    .map(|rule| rule.host.clone())
+                    .collect();
+                preview.connectors = agent.connector_ids();
+                preview.tools = capabilities
+                    .tools()
+                    .allowed()
+                    .map(<[String]>::to_vec)
+                    .unwrap_or_default();
+                preview
+                    .tools
+                    .extend(capabilities.pilots().iter().map(|p| p.as_str().to_string()));
+            }
+            Err(e) => preview.problems.push(e.to_string()),
+        },
+        "workflow" => match crate::services::domain::Workflow::from_yaml(content) {
+            Ok(workflow) => {
+                preview.id = workflow.id().to_string();
+                preview.name = Some(workflow.name().to_string());
+                for agent in workflow.agents() {
+                    if !preview.runs.contains(&agent.to_string()) {
+                        preview.runs.push(agent.to_string());
+                    }
+                }
+            }
+            Err(e) => preview.problems.push(e.to_string()),
+        },
+        "trigger" => match args
+            .get("trigger")
+            .cloned()
+            .map(serde_json::from_value::<TriggerInput>)
+        {
+            Some(Ok(input)) => {
+                preview.id = input.id.clone().unwrap_or_default();
+                preview.name = Some(input.name);
+                preview.runs.push(input.target_id);
+            }
+            Some(Err(e)) => preview.problems.push(format!("Unreadable trigger: {e}")),
+            None => preview.problems.push("trigger is required".to_string()),
+        },
+        _ => {}
+    }
+    if let Ok(Some(artifact)) = artifact_of(&kind, &preview.id) {
+        preview.replaces = !preview.id.is_empty() && exists(state, &artifact);
+        if preview.problems.is_empty() && !content.is_empty() {
+            let checked = validate::validate(
+                &artifact,
+                content,
+                &super::tools::validation_facts(state).await,
+            );
+            preview.problems.extend(checked.errors);
+        }
+    } else if kind == "trigger" && !preview.id.is_empty() {
+        preview.replaces = triggers::get_trigger(state, preview.id.clone())
+            .await
+            .is_ok();
+    }
+    Ok(preview)
 }
 
 /// Runs `nandi_save_artifact` (after the user approved it)
@@ -333,5 +441,45 @@ mod tests {
         for kind in KINDS {
             assert!(artifact_of(kind, "x").is_ok(), "{kind}");
         }
+    }
+
+    #[tokio::test]
+    async fn a_preview_says_what_a_save_creates_and_may_reach() {
+        let state = AppState::for_tests(vec![]);
+        let content = "---
+name: Researcher
+allowed-tools: [web_search]
+network:
+  allow:
+    - host: arxiv.org
+connectors: [filesystem]
+---
+
+Read papers.
+";
+        let args = json!({ "kind": "agent", "id": "researcher", "content": content });
+        let preview = preview(&state, &args).await.unwrap();
+        assert_eq!(preview.name.as_deref(), Some("Researcher"));
+        assert!(!preview.replaces);
+        assert_eq!(preview.sites, ["arxiv.org"]);
+        assert_eq!(preview.connectors, ["filesystem"]);
+        assert_eq!(preview.tools, ["web_search"]);
+
+        let trigger = json!({ "kind": "trigger", "trigger": {
+            "name": "Monday brief", "sourceType": "cron", "sourceConfig": {"cron": "0 8 * * 1"},
+            "targetType": "agent", "targetId": "researcher"
+        }});
+        let preview = super::preview(&state, &trigger).await.unwrap();
+        assert_eq!(preview.name.as_deref(), Some("Monday brief"));
+        assert_eq!(preview.runs, ["researcher"]);
+
+        let broken = json!({ "kind": "workflow", "content": "steps: [" });
+        assert!(!super::preview(&state, &broken)
+            .await
+            .unwrap()
+            .problems
+            .is_empty());
+        assert!(super::preview(&state, &json!({})).await.is_err());
+        state.shutdown();
     }
 }

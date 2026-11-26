@@ -4103,6 +4103,17 @@ async setStudioOpenArtifact(artifact: ArtifactRef | null) : Promise<Result<null,
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * What a `nandi_save_artifact` call would create and may reach, for its card; writes nothing
+ */
+async previewSave(args: JsonValue) : Promise<Result<SavePreview, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("preview_save", { args }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async loadArtifact(artifact: ArtifactRef) : Promise<Result<ArtifactLoad, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("load_artifact", { artifact }) };
@@ -9367,6 +9378,40 @@ export type SandboxImage =
  * Published MCP connectors (Node, Python, uv)
  */
 "connectors"
+/**
+ * What a `nandi_save_artifact` call would do, for its card: what it
+ * creates (or replaces) and what it may reach. Read from the call's own
+ * file, the way the save reads it; nothing is written.
+ */
+export type SavePreview = { kind: string; id: string; 
+/**
+ * Its name as the file gives it, if it does
+ */
+name: string | null; 
+/**
+ * It exists already: saving replaces it
+ */
+replaces: boolean; 
+/**
+ * The sites it may reach (`network.allow`)
+ */
+sites: string[]; 
+/**
+ * The connectors it names
+ */
+connectors: string[]; 
+/**
+ * The tools it may use (`allowed-tools`) and its pilots
+ */
+tools: string[]; 
+/**
+ * For a workflow, its steps' agents; for a trigger, what it starts
+ */
+runs: string[]; 
+/**
+ * Why the save would be refused, if it would
+ */
+problems: string[] }
 /**
  * A saved trigger, plus its secret when one was just generated (shown once).
  */

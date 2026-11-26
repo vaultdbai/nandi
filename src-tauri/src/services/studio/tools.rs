@@ -52,6 +52,30 @@ const EXCERPT_CHARS: usize = 160;
 /// Characters of one tool result the model reads
 const MAX_RESULT_CHARS: usize = 12_000;
 
+/// What Nandi may use in the person's chats to make agents, workflows and
+/// automations: the guides, the check and the save (which always waits for
+/// the person's OK on its card). The rest stays Ask's.
+pub const BUILD_TOOLS: &[&str] = &[LIST_GUIDES, GET_GUIDE, CHECK_ARTIFACT, SAVE_ARTIFACT];
+
+pub fn is_build_tool(name: &str) -> bool {
+    BUILD_TOOLS.contains(&name)
+}
+
+/// The build tools' specs, as Ask has them
+pub fn build_specs() -> Vec<ToolSpec> {
+    specs()
+        .into_iter()
+        .filter(|spec| is_build_tool(&spec.name))
+        .collect()
+}
+
+/// Told to Nandi in the person's chats, with the build tools
+pub const BUILD_PROMPT: &str = "
+
+## Making agents and automations
+When the person asks for a new agent, workflow or trigger (\"make me an agent that...\", \"every Monday...\"), build it yourself: read the guide for it (`nandi_list_guides`, `nandi_get_guide`), write the complete file, check it with `nandi_check_artifact`, then save it with `nandi_save_artifact` in the same turn. The person sees a card with what it creates and what it may reach, and says Create, Edit or No: don't ask first in words. Keep what it may reach (sites, connectors, tools) to what the job needs.
+";
+
 pub fn is_studio_tool(name: &str) -> bool {
     specs().iter().any(|spec| spec.name == name)
 }
@@ -651,6 +675,17 @@ pub async fn prompt_facts(state: &AppState, conversation_id: &str) -> PromptFact
 mod tests {
     use super::*;
     use crate::model::RunStatus;
+
+    #[test]
+    fn nandi_builds_with_the_guides_the_check_and_the_save_only() {
+        let names: Vec<String> = build_specs().into_iter().map(|s| s.name).collect();
+        assert_eq!(names.len(), BUILD_TOOLS.len());
+        assert!(names.iter().all(|n| is_build_tool(n) && is_studio_tool(n)));
+        assert!(is_build_tool(SAVE_ARTIFACT));
+        assert!(!is_build_tool(START_REQUEST));
+        assert!(!is_build_tool(LIST_RUNS));
+        assert!(BUILD_PROMPT.contains(SAVE_ARTIFACT));
+    }
 
     fn run_summary(id: &str, agent_id: &str, status: RunStatus) -> RunSummary {
         RunSummary {

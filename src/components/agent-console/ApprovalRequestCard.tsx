@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Clock, ShieldAlert, X } from 'lucide-react'
+import { Check, Clock, Pencil, ShieldAlert, X } from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +29,8 @@ import {
   minutes,
 } from '@/components/inbox/approval-model'
 import { useNetworkSnapshot } from '@/hooks/useNetwork'
+import { useSavePreview } from '@/hooks/useSavePreview'
+import { openEditInStudio } from '@/lib/ask'
 import { ActionPlanPreview } from '@/components/ask/ActionPlanPreview'
 import { cn } from '@/lib/utils'
 import type { ChatMessage } from '@/types/agent'
@@ -44,6 +46,8 @@ import { formatJson } from './format-json'
 import { HandOverCard } from './HandOverCard'
 import { parsePlaybookProposal } from './playbook-proposal-model'
 import { PlaybookProposalPreview } from './PlaybookProposalPreview'
+import { SAVE_TOOL, saveDraft } from './save-preview-model'
+import { SavePreviewSection } from './SavePreviewSection'
 
 type ApprovalRequestMessage = Extract<ChatMessage, { kind: 'approval' }>
 
@@ -151,6 +155,12 @@ function ToolApprovalCard({
   const plan = approvalPlan(message.tool, message.args)
   // An agent proposing a playbook: the playbook, and what it replaces
   const playbook = parsePlaybookProposal(message.tool, message.args)
+  // Saving a definition: what it creates and may reach; Create, Edit, No
+  const saving = message.tool === SAVE_TOOL
+  const savePreview = useSavePreview(message.id, message.args, saving)
+  const draft = saving
+    ? saveDraft(message.args, savePreview.data?.id || null)
+    : null
   const clock = approvalClock(now, message.createdAt, message.expiresAt)
 
   // The status changes when Rust's approval_resolved event arrives; until
@@ -215,6 +225,10 @@ function ToolApprovalCard({
         </section>
       )}
 
+      {saving && (
+        <SavePreviewSection approvalId={message.id} args={message.args} />
+      )}
+
       <Collapsible>
         <CollapsibleTrigger className="text-xs text-muted-foreground underline-offset-2 hover:underline">
           {t('approval.details')}
@@ -238,17 +252,37 @@ function ToolApprovalCard({
             onClick={() => setConfirmingReject(true)}
           >
             <X />
-            {t('approval.reject')}
+            {saving ? t('savePreview.no') : t('approval.reject')}
           </Button>
+          {draft && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={submitting}
+              onClick={() => {
+                // The person takes it from here, in the editor
+                openEditInStudio(draft)
+                void decide('rejected')
+              }}
+            >
+              <Pencil />
+              {t('savePreview.edit')}
+            </Button>
+          )}
           <Button
             size="sm"
-            disabled={submitting}
+            disabled={
+              submitting ||
+              (saving && (savePreview.data?.problems.length ?? 0) > 0)
+            }
             onClick={() => void decide('approved')}
           >
             <Check />
-            {summary.key === 'pilotSetup'
-              ? t('approval.install')
-              : t('approval.approve')}
+            {saving
+              ? t('savePreview.create')
+              : summary.key === 'pilotSetup'
+                ? t('approval.install')
+                : t('approval.approve')}
           </Button>
         </div>
       )}

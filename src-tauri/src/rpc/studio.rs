@@ -5,6 +5,9 @@ use crate::services::studio;
 use crate::services::studio::{ArtifactLoad, ArtifactSave, ArtifactSaveResult, PushTargetOption};
 
 super::commands! {
+    /// What a `nandi_save_artifact` call would create and may reach, for its card; writes nothing
+    fn preview_save(state, args: serde_json::Value) -> studio::save::SavePreview => studio::save::preview(&state, &args).await;
+
     /// What's open in Studio's editor (`None`: nothing), for Studio's chat
     fn set_studio_open_artifact(state, artifact: Option<ArtifactRef>) -> () => studio::set_open_artifact(&state, artifact);
 

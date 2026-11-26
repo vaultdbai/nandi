@@ -464,6 +464,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             ask::ask_streaming,
             ask::list_ask_history,
             studio::set_studio_open_artifact,
+            studio::preview_save,
             studio::load_artifact,
             studio::save_artifact,
             studio::preview_edit,

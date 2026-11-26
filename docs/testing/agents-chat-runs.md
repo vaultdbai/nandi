@@ -1344,6 +1344,23 @@ Shared preconditions used below:
 - **Automation:** Covered by: `src/components/nandi/nandi-home-model.test.ts`, `src/components/layout/nav-tree.test.ts`, `Sidebar.test.tsx`, `AppShell.test.tsx` (a new chat with its first message), Rust `services::chat::tests::a_chat_message_goes_only_to_a_chat`, `db::tests::chats_are_new_ones_and_each_agents_own_once_it_has_a_message`, `services::snapshots::tests::studio_and_nandi_threads_are_readable_other_chats_are_not` | Layer: unit, ui | Gap: no component test for `NandiView.tsx`.
 - **Needs relay:** no
 
+### CH-35 — Nandi makes agents and automations in a chat
+
+- **What:** In the person's chats with Nandi (the Nandi home's chats and its long chat), "make me an agent that …" or "every Monday …" ends with a card in the chat: "Create the agent “Researcher”" (or "Replace …" when it exists), what it may reach (sites from `network.allow`, connectors, tools and pilots) or "It reaches no sites and no connectors", what a workflow or trigger runs, and why the save would be refused. **Create** approves the save, **No** declines it, **Edit** opens the file in Ask's editor and declines the save (the person saves from the editor). Create is off while the file has problems. The same card shows for Ask's own saves. The model writes the file; the code only builds the card and saves through Ask's save path (validation, the gold copy, events). A paired phone can't approve these saves (they create or change what may run).
+- **Where:** `src/components/agent-console/ApprovalRequestCard.tsx`, `SavePreviewSection.tsx`, `save-preview-model.ts`, `src/hooks/useSavePreview.ts`. Data: `preview_save` (`src-tauri/src/rpc/studio.rs`, `services/studio/save.rs` `preview`, writes nothing). Nandi gets the build tools (`nandi_list_guides`, `nandi_get_guide`, `nandi_check_artifact`, `nandi_save_artifact`; `studio::tools::BUILD_TOOLS`) and a short prompt only in the person's chats (`orchestrator/llm_step.rs`), answered on the host (`orchestrator/tool_calls.rs`), and every save waits for approval (`orchestrator/executor.rs`, `studio::save::gate`). `own_devices/desktop_only.rs` keeps the save on the computer.
+- **Preconditions:** Model key.
+- **Steps:**
+  1. In a Nandi chat: "make me an agent that reads arxiv.org every morning and sums up new papers on agents".
+  2. Read the card; press **Create**.
+  3. Ask again for another agent; press **Edit**.
+- **Expected:** The card names the new agent, "May reach: arxiv.org", its tools. Create saves it: it shows in Agents, and Nandi's chat goes on. Edit opens the draft in the editor with nothing saved yet.
+- **Edge / negative cases:**
+  - An invalid file: the card lists the problems and Create is off; No lets Nandi try again.
+  - In an email check or a task's conversation Nandi has no build tools, and a call to one there is not answered.
+  - The phone shows the save as "Only on this computer".
+- **Automation:** Covered by: `src/components/agent-console/save-preview-model.test.ts`, Rust `services::studio::save::tests::a_preview_says_what_a_save_creates_and_may_reach`, `services::studio::tools::tests::nandi_builds_with_the_guides_the_check_and_the_save_only`, `services::own_devices::desktop_only::tests::risky_approvals_stay_on_the_computer` | Layer: unit | Gap: no live-model test of Nandi writing a file.
+- **Needs relay:** no
+
 ## Runs, Run Detail and audit
 
 ### RN-01 — Run Detail page and header

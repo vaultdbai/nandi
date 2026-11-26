@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { commands } from '@/lib/tauri-bindings'
-import { render, screen } from '@/test/test-utils'
+import { render, screen, within } from '@/test/test-utils'
 import { useAgentStore } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
 import { StudioView } from './StudioView'
@@ -103,7 +103,11 @@ describe('StudioView', () => {
     const user = userEvent.setup()
     render(<StudioView conversationId="c1" />)
 
-    const approve = screen.getByRole('button', { name: 'Approve' })
+    // Saving a definition: its card says Create
+    const approve = within(screen.getByTestId('approval-card')).getByRole(
+      'button',
+      { name: 'Create' }
+    )
     // From the keyboard: the resize handle claims pointer presses in jsdom
     approve.focus()
     await user.keyboard('{Enter}')

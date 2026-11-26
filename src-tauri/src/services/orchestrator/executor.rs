@@ -315,6 +315,10 @@ pub(super) async fn drive_run(
             studio::start::gate(app_state(deps).as_ref(), &mut meta.planned_calls).await;
             studio::save::gate(&mut meta.planned_calls);
         } else {
+            // Nandi saving a definition in a chat waits too
+            if agent_id == DEFAULT_AGENT {
+                studio::save::gate(&mut meta.planned_calls);
+            }
             // A proposed playbook always waits for the user
             playbooks::gate(&deps.store, agent_id, &mut meta.planned_calls);
             // So does an Inbox chat's decision (`inbox::tool`)

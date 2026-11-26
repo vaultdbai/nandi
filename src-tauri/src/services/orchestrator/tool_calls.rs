@@ -234,7 +234,12 @@ pub(super) async fn run_call(
             playbooks::call(&deps.store, &ctx.agent_id, &call.tool, &call.args)
         }
         // Studio's read-only tools: answered on the host, whatever the engine
-        _ if ctx.agent_id == STUDIO_AGENT_ID && studio::tools::is_studio_tool(&call.tool) => {
+        // Nandi making agents and automations in the person's chats
+        _ if (ctx.agent_id == STUDIO_AGENT_ID && studio::tools::is_studio_tool(&call.tool))
+            || (ctx.agent_id == DEFAULT_AGENT
+                && studio::tools::is_build_tool(&call.tool)
+                && db::is_chat(&ctx.conversation_id, &ctx.agent_id)) =>
+        {
             match app_state(deps) {
                 Some(state) => studio::tools::call(&state, &call.tool, &call.args).await,
                 None => ToolOutcome {

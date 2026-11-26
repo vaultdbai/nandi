@@ -825,6 +825,20 @@ impl Agent {
         &self.id
     }
 
+    /// The connectors its file names (`connectors:`)
+    pub fn connector_ids(&self) -> Vec<String> {
+        self.extra
+            .get("connectors")
+            .and_then(serde_yaml::Value::as_sequence)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(serde_yaml::Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }

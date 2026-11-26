@@ -61,6 +61,10 @@ pub fn reason(tool: &str, args: &Value) -> Option<&'static str> {
     if tool == crate::services::lock_box::KEY_TOOL {
         return Some("It lets an agent use a key from the Lock box");
     }
+    // A new or changed agent, workflow or trigger: what may run, and reach
+    if tool == crate::services::studio::save::SAVE_ARTIFACT {
+        return Some("It creates or changes an agent or an automation");
+    }
     if let Some((pilot, browser_tool)) = pilots::tools::parse_tool_name(tool) {
         if pilots::browser::is_browser(pilot) {
             let action = pilots::browser::action(
@@ -101,6 +105,7 @@ mod tests {
         for tool in [
             "connector_access",
             "lock_box_key",
+            "nandi_save_artifact",
             "work_start",
             "delegate_to_agent",
             "send_email",
