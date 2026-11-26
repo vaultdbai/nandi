@@ -242,3 +242,13 @@ export function agentLabel(id: string): string {
     )
     .join(' ')
 }
+
+/**
+ * The site a grant is for, as the person reads it: `www.example.com` is
+ * `example.com` (`services/pilots/sites.rs` `grant_hosts` grants the bare
+ * name, with `*.example.com` for its subdomains)
+ */
+export function bareSite(display: string): string {
+  const bare = display.startsWith('www.') ? display.slice(4) : display
+  return bare.includes('.') ? bare : display
+}

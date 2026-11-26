@@ -31,6 +31,7 @@ use serde_json::Value;
 
 use super::browser;
 use super::tools::parse_tool_name;
+use crate::services::domain::lock_box::is_public_suffix;
 use crate::services::egress::capabilities::{Capabilities, HostRule};
 
 /// The optional argument in which the agent says why it opens a page
@@ -115,11 +116,23 @@ pub fn askable(url: &str) -> Option<AskableSite> {
     Some(AskableSite { host, display })
 }
 
-/// The `network.allow` hosts a grant for `host` adds
+/// The `network.allow` hosts a grant for `host` adds. `www.example.com`
+/// and `example.com` are one site, so a grant covers both, and the
+/// wildcard goes on the bare name (`*.example.com`, never
+/// `*.www.example.com`). A bare name that is a public suffix
+/// (`www.co.uk`) keeps its `www.`
 pub fn grant_hosts(host: &str, subdomains: bool) -> Vec<String> {
-    let mut hosts = vec![host.to_string()];
+    let site = host
+        .strip_prefix("www.")
+        .filter(|bare| bare.contains('.') && !is_public_suffix(bare))
+        .unwrap_or(host);
+    let mut hosts = vec![site.to_string()];
     if subdomains {
-        hosts.push(format!("*.{host}"));
+        hosts.push(format!("*.{site}"));
+    } else if site != host {
+        hosts.push(host.to_string());
+    } else if !is_public_suffix(site) {
+        hosts.push(format!("www.{site}"));
     }
     hosts
 }
@@ -428,11 +441,36 @@ mod tests {
     fn a_grant_covers_the_host_and_subdomains_only_when_asked() {
         let host_only = grant_hosts("example.com", false);
         assert!(covers(&host_only, "example.com"));
-        assert!(!covers(&host_only, "www.example.com"));
+        assert!(
+            covers(&host_only, "www.example.com"),
+            "www is the same site"
+        );
+        assert!(!covers(&host_only, "shop.example.com"));
         let with_subdomains = grant_hosts("example.com", true);
         assert!(covers(&with_subdomains, "www.example.com"));
         assert!(covers(&with_subdomains, "example.com"));
         assert!(!covers(&with_subdomains, "example.org"));
+    }
+
+    /// The wildcard replaces `www.`, so a site without `www.` (or with
+    /// another subdomain) is covered too
+    #[test]
+    fn a_www_grant_is_the_bare_site() {
+        assert_eq!(
+            grant_hosts("www.youtube.com", true),
+            ["youtube.com", "*.youtube.com"]
+        );
+        let youtube = grant_hosts("www.youtube.com", true);
+        assert!(covers(&youtube, "youtube.com"));
+        assert!(covers(&youtube, "m.youtube.com"));
+        assert!(covers(&youtube, "www.youtube.com"));
+        assert_eq!(
+            grant_hosts("www.youtube.com", false),
+            ["youtube.com", "www.youtube.com"]
+        );
+        // A bare name that's a public suffix keeps its www.
+        assert_eq!(grant_hosts("www.co.uk", true), ["www.co.uk", "*.www.co.uk"]);
+        assert_eq!(grant_hosts("co.uk", false), ["co.uk"]);
     }
 
     /// Allow once lasts the whole run: another run of the agent allowing a

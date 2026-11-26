@@ -18,6 +18,7 @@ import {
   accessSentence,
   agentLabel,
   answerMailboxes,
+  bareSite,
   canChooseMailboxes,
   decidedKey,
   DEFAULT_AGENT_SCOPE,
@@ -216,7 +217,7 @@ export function AccessRequestCard({
                 htmlFor={`${approvalId}-subdomains`}
                 className="font-normal"
               >
-                {t('access.site.subdomains', { site: site.display })}
+                {t('access.site.subdomains', { site: bareSite(site.display) })}
               </Label>
             </div>
           )}

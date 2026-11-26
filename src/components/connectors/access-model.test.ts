@@ -5,6 +5,7 @@ import {
   accessChoices,
   accessSentence,
   agentLabel,
+  bareSite,
   answerMailboxes,
   canChooseMailboxes,
   decidedKey,
@@ -256,5 +257,14 @@ describe('a site request', () => {
       agent: 'Browser',
       site: 'www.gstatic.com, encrypted-tbn0.gstatic.com',
     })
+  })
+})
+
+describe('bareSite', () => {
+  it('reads www.example.com as example.com', () => {
+    expect(bareSite('www.youtube.com')).toBe('youtube.com')
+    expect(bareSite('music.youtube.com')).toBe('music.youtube.com')
+    expect(bareSite('youtube.com')).toBe('youtube.com')
+    expect(bareSite('www.localhost')).toBe('www.localhost')
   })
 })
