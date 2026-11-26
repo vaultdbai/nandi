@@ -1,6 +1,6 @@
 //! Chat commands (`services::chat`).
 
-use crate::model::{ApprovalDecision, PendingApproval, StudioConversationSummary};
+use crate::model::{ApprovalDecision, ChatSummary, PendingApproval, StudioConversationSummary};
 use crate::services::chat::{self, SendMessageResult};
 use crate::services::pilots::handover::HandOverAnswer;
 
@@ -11,6 +11,12 @@ super::commands! {
     fn reply_to_run(state, run_id: String, text: String, attachments: Vec<String>, client_message_id: Option<String>) -> SendMessageResult => chat::reply_to_run(&state, run_id, text, attachments, client_message_id).await;
 
     fn send_studio_message(state, conversation_id: String, text: String, attachments: Vec<String>, client_message_id: Option<String>) -> SendMessageResult => chat::send_studio_message(&state, conversation_id, text, attachments, client_message_id).await;
+
+    /// A new chat with an agent (Nandi by default), its own conversation
+    fn create_chat(state, agent_id: String) -> ChatSummary => chat::create_chat(&state, agent_id).await;
+
+    /// A message in one of the person's chats with an agent
+    fn send_chat_message(state, conversation_id: String, text: String, attachments: Vec<String>, client_message_id: Option<String>) -> SendMessageResult => chat::send_chat_message(&state, conversation_id, text, attachments, client_message_id).await;
 
     fn create_studio_conversation(state) -> StudioConversationSummary => chat::create_studio_conversation(&state).await;
 

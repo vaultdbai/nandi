@@ -216,8 +216,8 @@ describe('Home, first run', () => {
     )
     await waitFor(() =>
       expect(
-        vi.mocked(commands.sendStudioMessage).mock.calls.at(-1)?.slice(0, 2)
-      ).toEqual(['studio-new', 'What failed today?'])
+        vi.mocked(commands.sendChatMessage).mock.calls.at(-1)?.slice(0, 2)
+      ).toEqual(['chat:new', 'What failed today?'])
     )
   })
 })

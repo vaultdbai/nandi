@@ -28,9 +28,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::model::{
-    ApprovalStatus, AttachmentInfo, ChatMessage, PendingApproval, QueueEntry, RunEventRecord,
-    RunStatus, RunSummary, SourceType, StudioConversationSummary, Timestamp, ToolCallStatus,
-    WorkflowSummary, STUDIO_AGENT_ID,
+    ApprovalStatus, AttachmentInfo, ChatMessage, ChatSummary, PendingApproval, QueueEntry,
+    RunEventRecord, RunStatus, RunSummary, SourceType, StudioConversationSummary, Timestamp,
+    ToolCallStatus, WorkflowSummary, STUDIO_AGENT_ID,
 };
 
 mod approvals;
@@ -312,6 +312,29 @@ pub(crate) mod tests {
             matches!(error, rusqlite::Error::InvalidColumnIndex(9)),
             "{error:?}"
         );
+    }
+
+    #[test]
+    fn chats_are_new_ones_and_each_agents_own_once_it_has_a_message() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        insert_chat_conversation(&conn, "writer", "chat:new").unwrap();
+        let used = ensure_agent_conversation(&conn, "reader").unwrap();
+        ensure_agent_conversation(&conn, "quiet").unwrap();
+        ensure_task_conversation(&conn, "reader", "t1", "Delegated").unwrap();
+        insert_studio_conversation(&conn, "s1", "").unwrap();
+        let mut said = MessageRow::new("m1", &used, None, "user", "hello", serde_json::json!({}));
+        said.created_at = now_ms() + 1_000;
+        insert_message(&conn, &said).unwrap();
+
+        let chats = list_chats(&conn).unwrap();
+        let ids: Vec<&str> = chats.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["agent:reader", "chat:new"]);
+        assert_eq!(chats[0].last_message.as_deref(), Some("hello"));
+        assert_eq!(chats[1].agent_id, "writer");
+        assert!(is_chat("chat:new", "writer"));
+        assert!(!is_chat("chat:new", STUDIO_AGENT_ID));
+        assert!(!is_chat("task:t1", "reader"));
     }
 
     pub fn start_run(conn: &Connection, agent_id: &str, run_id: &str) -> String {

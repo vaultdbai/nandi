@@ -792,7 +792,7 @@ Covers the Library page and the marketplace behind it (registries, install, cons
 ### AI-01 — Ask page layout and conversations
 
 - **What:** "Ask" (internally Studio) is a split view: left the chat (conversation list when none selected, messages, ask box, Recent asks), right the artifact editor. **New** menu offers Chat, Agent, Workflow, Capability, Policy; empty state shows starter asks ("What's waiting for me?", "What did my agents do today?", …). Conversations persist in SQLite and are listed newest first; a draft chat is created on first message.
-- **Where:** Sidebar → Ask (`{ kind: 'studio', conversationId, draft? }`). `src/components/views/StudioView.tsx`, `src/components/studio/AskNewMenu.tsx`, `src/store/studio-store.ts`; HTTP `POST /api/rpc/get_studio_conversations`, `create_studio_conversation`, `send_studio_message`.
+- **Where:** An agent's page → **Edit in Ask**, or an approved edit (`{ kind: 'studio', conversationId, draft? }`; no longer a sidebar item, see CH-34; **New → Chat** opens the Nandi home). `src/components/views/StudioView.tsx`, `src/components/studio/AskNewMenu.tsx`, `src/store/studio-store.ts`; HTTP `POST /api/rpc/get_studio_conversations`, `create_studio_conversation`, `send_studio_message`.
 - **Preconditions:** A model configured for answers.
 - **Steps:** 1. Open Ask with no chats. 2. New → Chat. 3. Send a message. 4. Back to list.
 - **Expected:** Starters shown; new conversation listed with title.

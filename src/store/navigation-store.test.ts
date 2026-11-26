@@ -118,7 +118,11 @@ describe('the seven pages', () => {
       [{ kind: 'capability-detail', id: 'c' }, 'library'],
       [{ kind: 'starter-packs' }, 'library'],
       [{ kind: 'member-profile', instanceId: 'i' }, 'network'],
-      [{ kind: 'studio', conversationId: 'c' }, 'studio'],
+      // Studio's editor is reached from an agent's page
+      [{ kind: 'studio', conversationId: 'c' }, 'agents'],
+      // One place to talk: the home, its chats and live work
+      [{ kind: 'nandi', conversationId: 'chat:c' }, 'nandi'],
+      [{ kind: 'live-run', runId: 'r' }, 'nandi'],
       [{ kind: 'settings', section: 'logs', logTab: 'egress' }, 'settings'],
     ]
     for (const [view, section] of views) {

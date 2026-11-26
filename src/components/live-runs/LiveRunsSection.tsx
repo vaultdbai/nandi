@@ -20,14 +20,23 @@ import {
 import { LiveBadge } from './LiveRunView'
 
 /**
- * Ask's Live section: what needs the person first, then what's working,
+ * The Live section: what needs the person first, then what's working,
  * then what finished in the last hour (faded), each opening as a chat.
  * No live work: no section at all.
  */
-export function LiveRunsSection({ className }: { className?: string }) {
+export function LiveRunsSection({
+  className,
+  finished = true,
+}: {
+  className?: string
+  /** List what finished in the last hour too (faded) */
+  finished?: boolean
+}) {
   const { t } = useTranslation()
   const now = useNow(true, 60_000)
-  const runs = orderLive(useLiveRuns().data ?? [], now)
+  const runs = orderLive(useLiveRuns().data ?? [], now).filter(
+    run => finished || liveGroup(run) !== 'finished'
+  )
   const agents = useAgents().data ?? []
   if (runs.length === 0) return null
 

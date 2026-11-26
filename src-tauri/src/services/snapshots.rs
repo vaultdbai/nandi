@@ -222,6 +222,8 @@ pub async fn get_run_conversation(
 fn readable(owner: Option<&str>, conversation_id: &str) -> bool {
     match owner {
         Some(STUDIO_AGENT_ID) => true,
+        // The person's chats with an agent
+        Some(agent) if db::is_chat(conversation_id, agent) => true,
         Some(crate::services::builtin_agents::DEFAULT_AGENT) => {
             crate::services::inbox::thread::is_thread(conversation_id)
         }
@@ -234,6 +236,11 @@ pub async fn get_studio_conversations(
 ) -> Result<Vec<StudioConversationSummary>, String> {
     let db = state.db();
     db.call(|conn| db::list_studio_conversations(conn)).await
+}
+
+/// The person's chats with every agent, latest first (the Nandi home)
+pub async fn list_chats(state: &AppState) -> Result<Vec<crate::model::ChatSummary>, String> {
+    state.db().call(|conn| db::list_chats(conn)).await
 }
 
 pub async fn get_workflows(state: &AppState) -> Result<Vec<WorkflowSummary>, String> {
@@ -598,6 +605,10 @@ mod tests {
             !super::readable(Some(DEFAULT_AGENT), "c1"),
             "its own chats stay its own"
         );
+        assert!(super::readable(Some(DEFAULT_AGENT), "chat:c2"));
+        assert!(super::readable(Some("papers"), "agent:papers"));
+        assert!(!super::readable(Some("papers"), "agent:writer"));
+        assert!(!super::readable(Some("papers"), "task:t1"));
         assert!(!super::readable(Some("papers"), "inbox:gatewayHold:t1"));
         assert!(!super::readable(None, "c1"));
     }

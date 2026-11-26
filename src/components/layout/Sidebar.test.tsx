@@ -30,7 +30,6 @@ const relay = (relayUrl: string | null, connected: boolean): RelayStatus => ({
 const ITEMS = [
   'Home',
   'Nandi',
-  'Ask',
   'Agents',
   'Automations',
   'Library',
@@ -53,7 +52,7 @@ describe('Sidebar', () => {
     })
   })
 
-  it('has Home, then Nandi, of the eight items, in order, closed at first', () => {
+  it('has Home, then Nandi, of the seven items, in order, closed at first', () => {
     render(<Sidebar />)
     const buttons = within(screen.getByRole('navigation')).getAllByRole(
       'button'
@@ -68,13 +67,12 @@ describe('Sidebar', () => {
   })
 
   it.each<[string, View]>([
-    ['Nandi', { kind: 'agent', agentId: DEFAULT_AGENT }],
+    ['Nandi', { kind: 'nandi' }],
     ['Home', { kind: 'home' }],
     ['Agents', { kind: 'agents' }],
     ['Automations', { kind: 'automations' }],
     ['Library', { kind: 'library' }],
     ['Network', { kind: 'network' }],
-    ['Ask', { kind: 'studio', conversationId: null }],
     ['Settings', { kind: 'settings' }],
   ])('%s opens its page', async (label, view) => {
     const user = userEvent.setup()
@@ -126,21 +124,34 @@ describe('Sidebar', () => {
     expect(navButton('Agents')).not.toHaveAttribute('aria-current')
   })
 
-  it('has New chat and All chats under Ask', async () => {
+  it('has New chat and the latest chats under Nandi', async () => {
+    vi.mocked(commands.listChats).mockResolvedValue({
+      status: 'ok',
+      data: [
+        {
+          id: 'chat:c1',
+          agentId: DEFAULT_AGENT,
+          title: 'Pay the bills',
+          createdAt: 0,
+          updatedAt: 1,
+          lastMessage: null,
+        },
+      ],
+    })
     const user = userEvent.setup()
     render(<Sidebar />)
-    await user.click(navButton('Ask'))
-    // New chat opens an empty chat; nothing is created yet
+    await user.click(navButton('Nandi'))
+    // New chat opens the home's composer; nothing is created yet
     await user.click(navButton(/New chat/i))
-    expect(current()).toEqual({
-      kind: 'studio',
-      conversationId: null,
-      draft: true,
-    })
-    expect(navButton(/New chat/i)).toHaveAttribute('aria-current', 'page')
-    expect(commands.createStudioConversation).not.toHaveBeenCalled()
-    await user.click(navButton(/^All chats/))
-    expect(current()).toEqual({ kind: 'studio', conversationId: null })
+    expect(current()).toEqual({ kind: 'nandi' })
+    expect(commands.createChat).not.toHaveBeenCalled()
+    await user.click(
+      await within(screen.getByRole('navigation')).findByRole('button', {
+        name: 'Pay the bills',
+      })
+    )
+    expect(current()).toEqual({ kind: 'nandi', conversationId: 'chat:c1' })
+    expect(navButton('Pay the bills')).toHaveAttribute('aria-current', 'page')
   })
 
   it('opens the branches above the current page by itself, and remembers them', async () => {

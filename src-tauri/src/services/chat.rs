@@ -9,7 +9,8 @@ use specta::Type;
 
 use crate::db;
 use crate::model::{
-    ApprovalDecision, ApprovalStatus, RunStatus, StudioConversationSummary, STUDIO_AGENT_ID,
+    ApprovalDecision, ApprovalStatus, ChatSummary, RunStatus, StudioConversationSummary,
+    STUDIO_AGENT_ID,
 };
 use crate::services::harness::approvals as harness_approvals;
 use crate::services::orchestrator::{OrchestratorCommand, Orchestrators, RunSource, TurnRequest};
@@ -186,6 +187,70 @@ pub async fn reply_to_run(
         RunSource::user(),
     )
     .await
+}
+
+/// A new chat with an agent (Nandi by default): its own conversation, so
+/// each chat is its own thread of runs. Untitled until its first message.
+pub async fn create_chat(state: &AppState, agent_id: String) -> Result<ChatSummary, String> {
+    if agent_id == STUDIO_AGENT_ID {
+        return Err("Ask's chats are made in Ask".to_string());
+    }
+    state.store().require_agent(&agent_id)?;
+    let id = db::chat_conversation_id(&uuid::Uuid::new_v4().to_string());
+    state
+        .db()
+        .call(move |conn| db::insert_chat_conversation(conn, &agent_id, &id))
+        .await
+}
+
+/// The agent a chat belongs to: refused for a conversation that isn't one
+/// of the person's chats (a task's, a check's, Ask's)
+fn chat_agent(conn: &rusqlite::Connection, conversation_id: &str) -> Result<String, String> {
+    let owner = db::conversation_agent(conn, conversation_id)
+        .map_err(|e| e.to_string())?
+        .filter(|agent| db::is_chat(conversation_id, agent))
+        .ok_or("That chat was not found")?;
+    Ok(owner)
+}
+
+/// A message in one of the person's chats with an agent: the next turn in
+/// that chat, as its agent. The first message names a new chat.
+pub async fn send_chat_message(
+    state: &AppState,
+    conversation_id: String,
+    text: String,
+    attachments: Vec<String>,
+    client_message_id: Option<String>,
+) -> Result<SendMessageResult, String> {
+    let id = conversation_id.clone();
+    let agent_id = state
+        .db()
+        .call(move |conn| Ok(chat_agent(conn, &id)))
+        .await??;
+    state.store().require_agent(&agent_id)?;
+    let title = crate::services::events::truncate(
+        text.trim().lines().next().unwrap_or_default(),
+        MAX_TITLE_CHARS,
+    );
+    let mut sent = submit(
+        state.orchestrators(),
+        &agent_id,
+        conversation_id.clone(),
+        text,
+        attachments,
+        client_message_id,
+        RunSource::user(),
+    )
+    .await?;
+    if conversation_id.starts_with("chat:") {
+        sent.conversation_title = state
+            .db()
+            .call(move |conn| {
+                Ok(db::set_title_if_untitled(conn, &conversation_id, &title)?.then_some(title))
+            })
+            .await?;
+    }
+    Ok(sent)
 }
 
 /// Like `send_message`, for a Studio conversation.
@@ -508,6 +573,24 @@ pub async fn cancel_turn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_chat_message_goes_only_to_a_chat() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        db::init_db(&conn).unwrap();
+        let chat = db::chat_conversation_id("c1");
+        db::insert_chat_conversation(&conn, "writer", &chat).unwrap();
+        assert_eq!(chat_agent(&conn, &chat), Ok("writer".to_string()));
+        let long = db::ensure_agent_conversation(&conn, "writer").unwrap();
+        assert_eq!(chat_agent(&conn, &long), Ok("writer".to_string()));
+
+        // Not a task's, a check's or Ask's conversation
+        let task = db::ensure_task_conversation(&conn, "writer", "t1", "Delegated").unwrap();
+        assert!(chat_agent(&conn, &task).is_err());
+        let studio = db::insert_studio_conversation(&conn, "s1", "").unwrap();
+        assert!(chat_agent(&conn, &studio.id).is_err());
+        assert!(chat_agent(&conn, "chat:nope").is_err());
+    }
 
     #[test]
     fn a_reply_goes_to_the_runs_agent_in_the_runs_own_conversation() {

@@ -5195,7 +5195,6 @@
   "liveWork.needsYou": "Vous attend",
   "liveWork.stepLine": "Étape {{number}} sur {{total}} · {{text}}",
   "liveWork.gone": "Cette discussion n'existe plus",
-  "liveWork.backToAsk": "Retour à Demander",
   "liveWork.details": "Détails",
   "liveWork.failed": "Il s'est arrêté avant la fin.",
   "liveWork.failedWith": "Il s'est arrêté : {{what}}",
@@ -5219,5 +5218,17 @@
   "liveWork.delegation.done": "{{name}} a terminé",
   "liveWork.delegation.stopped": "{{name}} s'est arrêté",
   "liveWork.openChat": "Ouvrir la discussion",
-  "liveWork.openLive": "En direct : ouvrir la discussion"
+  "liveWork.openLive": "En direct : ouvrir la discussion",
+  "liveWork.backToNandi": "Retour à Nandi",
+  "nandiHome.subtitle": "Demandez, déléguez ou suivez le travail en cours",
+  "nandiHome.settings": "Réglages de {{name}}",
+  "nandiHome.composer": "Que dois-je faire ?",
+  "nandiHome.recent": "Récents",
+  "nandiHome.older_one": "{{count}} discussion plus ancienne",
+  "nandiHome.older_other": "{{count}} discussions plus anciennes",
+  "nandiHome.pin": "Garder {{name}} dans Récents",
+  "nandiHome.unpin": "Ne plus garder {{name}} dans Récents",
+  "nandiHome.untitled": "Nouvelle discussion",
+  "nandiHome.longChat": "Discussions précédentes avec {{name}}",
+  "nandiHome.emptyChat": "Dites à {{name}} quoi faire"
 }

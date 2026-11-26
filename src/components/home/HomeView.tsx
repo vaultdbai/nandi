@@ -19,7 +19,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHomeFeed } from '@/hooks/useHome'
 import { useRelay } from '@/hooks/useRelay'
-import { sendToStudio } from '@/lib/agent-actions'
+import { startChat } from '@/lib/agent-actions'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import { useDashboard } from '@/store/agent-store'
 import { useNavigationStore, type View } from '@/store/navigation-store'
 import { ViewHeader } from '@/components/views/ViewHeader'
@@ -114,9 +115,9 @@ function AskNandi() {
         const ask = text.trim()
         if (ask) {
           setText('')
-          void sendToStudio(ask, [], null)
+          void startChat(DEFAULT_AGENT, ask)
         } else {
-          navigate({ kind: 'studio', conversationId: null })
+          navigate({ kind: 'nandi' })
         }
       }}
     >

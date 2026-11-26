@@ -5195,7 +5195,6 @@
   "liveWork.needsYou": "あなたの確認待ち",
   "liveWork.stepLine": "ステップ {{number}}/{{total}} · {{text}}",
   "liveWork.gone": "このチャットはもうありません",
-  "liveWork.backToAsk": "「質問」に戻る",
   "liveWork.details": "詳細",
   "liveWork.failed": "完了前に止まりました。",
   "liveWork.failedWith": "止まりました: {{what}}",
@@ -5219,5 +5218,17 @@
   "liveWork.delegation.done": "{{name}} が完了しました",
   "liveWork.delegation.stopped": "{{name}} が止まりました",
   "liveWork.openChat": "チャットを開く",
-  "liveWork.openLive": "進行中: チャットを開く"
+  "liveWork.openLive": "進行中: チャットを開く",
+  "liveWork.backToNandi": "Nandi に戻る",
+  "nandiHome.subtitle": "質問、依頼、進行中の作業の確認",
+  "nandiHome.settings": "{{name}} の設定",
+  "nandiHome.composer": "何をしましょうか?",
+  "nandiHome.recent": "最近",
+  "nandiHome.older_one": "古いチャット {{count}} 件",
+  "nandiHome.older_other": "古いチャット {{count}} 件",
+  "nandiHome.pin": "{{name}} を最近に固定",
+  "nandiHome.unpin": "{{name}} の固定を外す",
+  "nandiHome.untitled": "新しいチャット",
+  "nandiHome.longChat": "{{name}} との以前のチャット",
+  "nandiHome.emptyChat": "{{name}} にしてほしいことを書いてください"
 }

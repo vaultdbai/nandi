@@ -466,9 +466,9 @@ There is no sign-in today. Identity is local: a display name and a handle (the "
 - **Needs relay:** no
 - **Status:** Shipped
 
-### SH-08 — Sidebar: the eight pages
+### SH-08 — Sidebar: the seven pages
 
-- **What:** The sidebar is a tree with eight top items: Home, Nandi, Ask, Agents, Automations, Library, Network, Settings. Home has two children: Inbox (with the same count as Home) and All activity. Nandi has one: My notes, since Nandi keeps them; a note's page lights My notes under Nandi. Home's count is its own button and opens the Inbox page; the rest of the row opens Home. Each opens its page. The current page is highlighted, and a parent stays bold while a child is open. Views without their own node (a run, a request, a member profile) light their page.
+- **What:** The sidebar is a tree with seven top items: Home, Nandi, Agents, Automations, Library, Network, Settings. Home has two children: Inbox (with the same count as Home) and All activity. Nandi (the sitting bison, CH-34) has New chat, the live work, the five latest chats and My notes, since Nandi keeps them; a note's page lights My notes under Nandi. Home's count is its own button and opens the Inbox page; the rest of the row opens Home. Each opens its page. The current page is highlighted, and a parent stays bold while a child is open. Views without their own node (a run, a request, a member profile) light their page.
 - **Where:** `src/components/layout/Sidebar.tsx`, `nav-tree.ts` (`buildNavTree`, `activePath`), `src/store/navigation-store.ts` (`NAV_SECTIONS`, `SECTION_VIEWS`, `navSection`).
 - **Preconditions:** None.
 - **Steps:**

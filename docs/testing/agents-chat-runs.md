@@ -1261,26 +1261,26 @@ Shared preconditions used below:
 
 ### CH-30 — Live work in Ask
 
-- **What:** Ask's chat list has a **Live** section with every running or waiting run of any agent, however it started (the person's chat, a trigger, a workflow, a delegation, an email or calendar check), and the runs that finished in the last hour. Rows that wait on the person come first with a "Needs you" mark, then working ones, then finished ones (faded). Each row shows the agent's name and icon, what it's doing now (the plan step it's on, "Step 2 of 5 · …") and how it started ("You asked", the trigger's name, "Workflow: Pay bills", "Asked by Nandi"). No live work: no section at all. The sidebar lists the waiting and working ones under Ask, after New chat. Opening one shows that run as a chat: its messages streaming, its plan card, its approval cards (decided right there, through the same `approve_action` and checks as everywhere else), a status line at the top, **Stop** at the top while it works, and **Details** (Run Detail, for history). Tool calls fold under "Show N steps". A failed run says what happened in one line with **Try again**.
-- **Where:** Ask (Sidebar → Ask). `src/components/live-runs/` (`LiveRunsSection.tsx`, `LiveRunView.tsx`, `live-run-model.ts`), `src/components/agent-console/steps-model.ts`, `src/components/agent-console/StopRunButton.tsx`, the `live-run` view. Data: `list_live_runs` (`src-tauri/src/rpc/runs.rs`, `services/runs.rs`, `db::live_runs`) and `get_run_conversation` (`rpc/snapshots.rs`), which reads a run's own conversation whichever it is; `loadRunConversation` in `src/lib/agent-sync.ts` puts it in the store so `agent://*` events stream into it. The list refreshes on `agent://run` and `agent://turn_done` (`runsQueryKeys.all`).
+- **What:** The Nandi home (CH-34) has a **Live** section with every running or waiting run of any agent, however it started (the person's chat, a trigger, a workflow, a delegation, an email or calendar check), and the runs that finished in the last hour. Rows that wait on the person come first with a "Needs you" mark, then working ones, then finished ones (faded). Each row shows the agent's name and icon, what it's doing now (the plan step it's on, "Step 2 of 5 · …") and how it started ("You asked", the trigger's name, "Workflow: Pay bills", "Asked by Nandi"). No live work: no section at all. The sidebar lists the waiting and working ones under Nandi, after New chat. The home lists only the waiting and working ones. Opening one shows that run as a chat: its messages streaming, its plan card, its approval cards (decided right there, through the same `approve_action` and checks as everywhere else), a status line at the top, **Stop** at the top while it works, and **Details** (Run Detail, for history). Tool calls fold under "Show N steps". A failed run says what happened in one line with **Try again**.
+- **Where:** Sidebar → Nandi. `src/components/live-runs/` (`LiveRunsSection.tsx`, `LiveRunView.tsx`, `live-run-model.ts`), `src/components/agent-console/steps-model.ts`, `src/components/agent-console/StopRunButton.tsx`, the `live-run` view. Data: `list_live_runs` (`src-tauri/src/rpc/runs.rs`, `services/runs.rs`, `db::live_runs`) and `get_run_conversation` (`rpc/snapshots.rs`), which reads a run's own conversation whichever it is; `loadRunConversation` in `src/lib/agent-sync.ts` puts it in the store so `agent://*` events stream into it. The list refreshes on `agent://run` and `agent://turn_done` (`runsQueryKeys.all`).
 - **Preconditions:** Model key; an agent with a trigger (e.g. a cron trigger) and a tool in its `requires_approval`.
 - **Steps:**
   1. Fire the trigger (Automations › Triggers › Run now) so the agent's run waits for an approval.
-  2. Open Ask.
+  2. Open Nandi.
   3. Open the Live row, approve the card.
   4. Start a long run in another agent's chat and press **Stop** in its Live chat.
 - **Expected:** The trigger's run is first, marked "Needs you", with the trigger's name. Its chat shows the run's messages, plan card and the approval card; approving there resumes the run, the card shows Approved and the status line follows the plan. Stop ends the other run (asks first when it did outward work). Both rows fade, then leave the list an hour after they end.
 - **Edge / negative cases:**
   - A delegated task's run (its own `task:` conversation) and an email check's run open the same way.
   - A run that ended over an hour ago opens from a link but isn't listed.
-  - An unknown run ID: "This chat isn't here anymore" with **Back to Ask**.
+  - An unknown run ID: "This chat isn't here anymore" with **Back to Nandi**.
   - Ask's own chats (Studio runs) are not in Live; they're in the chat list.
 - **Automation:** Covered by: `src/components/live-runs/live-run-model.test.ts` (order, groups, origin, status line, messages), `src/components/agent-console/steps-model.test.ts`, `src/components/layout/nav-tree.test.ts` (sidebar), Rust `services::runs::tests::live_runs_are_the_running_waiting_and_just_finished_without_studio`, `services::snapshots::tests::a_runs_conversation_reads_whichever_it_is` | Layer: unit, api | Gap: no component test for `LiveRunView.tsx`.
 - **Needs relay:** no
 
 ### CH-31 — Reply into a live chat
 
-- **What:** A live chat in Ask has a reply box, also while the agent works. A reply is the next turn in that run's own conversation (the agent's chat for a chat, trigger or workflow run; the task's own conversation for a delegated run; the check's for an email or calendar check), run as that agent with its own grants. Sent while it works, the reply waits in the agent's queue and shows above the box as "<Agent> will read this next: …" until its turn starts. After a failed run the box says "Tell <Agent> what to change…".
+- **What:** A live chat has a reply box, also while the agent works. A reply is the next turn in that run's own conversation (the agent's chat for a chat, trigger or workflow run; the task's own conversation for a delegated run; the check's for an email or calendar check), run as that agent with its own grants. Sent while it works, the reply waits in the agent's queue and shows above the box as "<Agent> will read this next: …" until its turn starts. After a failed run the box says "Tell <Agent> what to change…".
 - **Where:** `src/components/live-runs/LiveRunView.tsx` (`LiveReply`), `waitingReplies` in `live-run-model.ts`, `replyToRun` in `src/lib/agent-actions.ts`. Data: `reply_to_run` (`src-tauri/src/rpc/chat.rs`, `services/chat.rs`: `reply_target` checks the run exists, isn't Ask's own, and its conversation is its agent's).
 - **Preconditions:** Model key; an agent with a trigger.
 - **Steps:**
@@ -1325,6 +1325,23 @@ Shared preconditions used below:
   - Approving in the chat clears the Inbox item (it's the same approval).
   - A finished run's row shows its status and duration as before.
 - **Automation:** Covered by: the `live-run` view's model tests (CH-30) | Layer: ui-e2e | Gap: no component test for the links.
+- **Needs relay:** no
+
+### CH-34 — The Nandi home: one place to talk
+
+- **What:** One sidebar item, **Nandi** (the sitting bison), replaces the Nandi item and Ask. Its home has the composer **What should I do?**, then **Live** (what needs you, then what's working; CH-30), then **Recent**: the last 10 chats with any agent, newest first. A chat can be pinned (the pin button) to stay in Recent; the rest fold under "N older chats". Sending from the composer makes a new chat: its own conversation with Nandi (`chat:<id>`), named by its first message, opened at once. A chat shows its messages as they stream (steps folded), Stop while it works, approval cards decided in place, and a composer for the next turn. Nandi's long-lived conversation from before (`agent:nandi`) is one chat in Recent, "Earlier chats with Nandi", unchanged. **Nandi's settings** opens Nandi's agent page. Home's **Ask Nandi…** and the palette's **New chat** start a Nandi chat too. The sidebar lists New chat, the live work, the five latest chats and My notes under Nandi. Ask's editor stays reachable through **Edit in Ask** on an agent's page; Ask is no longer a sidebar item.
+- **Where:** `src/components/nandi/` (`NandiView.tsx`, `nandi-home-model.ts`), `src/store/chat-pins-store.ts` (pins, this computer only), `src/hooks/useChats.ts`, the `nandi` view (`navigation-store.ts`), `nav-tree.ts`. Data: `create_chat`, `send_chat_message` (`src-tauri/src/rpc/chat.rs`, `services/chat.rs`, `chat_agent` refuses a conversation that isn't one of the person's chats), `list_chats` (`rpc/snapshots.rs`, `db::list_chats`), `get_conversation` reads chats. No schema change: a chat is a `conversations` row.
+- **Preconditions:** Model key.
+- **Steps:**
+  1. Open Nandi; type "What's waiting for me?" and send.
+  2. Go back to Nandi; send another message.
+  3. Pin the first chat; make 10 more chats.
+- **Expected:** Each send makes its own chat, named by its message, listed under Recent newest first. The pinned chat stays in Recent; the oldest unpinned ones fold under "older chats". Earlier messages with Nandi are in "Earlier chats with Nandi". Each chat's turns run as Nandi with its own grants.
+- **Edge / negative cases:**
+  - `send_chat_message` to a task's, a check's or Ask's conversation is refused ("That chat was not found").
+  - Pins are kept on this computer only; with storage blocked they last until the app closes.
+  - No chats yet: no Recent section.
+- **Automation:** Covered by: `src/components/nandi/nandi-home-model.test.ts`, `src/components/layout/nav-tree.test.ts`, `Sidebar.test.tsx`, `AppShell.test.tsx` (a new chat with its first message), Rust `services::chat::tests::a_chat_message_goes_only_to_a_chat`, `db::tests::chats_are_new_ones_and_each_agents_own_once_it_has_a_message`, `services::snapshots::tests::studio_and_nandi_threads_are_readable_other_chats_are_not` | Layer: unit, ui | Gap: no component test for `NandiView.tsx`.
 - **Needs relay:** no
 
 ## Runs, Run Detail and audit

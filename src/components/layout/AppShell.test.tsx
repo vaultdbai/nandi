@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { act, render, screen, within } from '@/test/test-utils'
 import { commands } from '@/lib/tauri-bindings'
+import { DEFAULT_AGENT } from '@/lib/bindings'
 import { startAgentSync } from '@/lib/agent-sync'
 import { useAgentStore } from '@/store/agent-store'
 import { useNavigationStore, type View } from '@/store/navigation-store'
@@ -86,7 +87,6 @@ describe('AppShell', () => {
         'Automations',
         'Library',
         'Network',
-        'Ask',
         'Settings',
       ]) {
         expect(within(nav).getByRole('button', { name: section })).toBeVisible()
@@ -130,34 +130,28 @@ describe('AppShell', () => {
       ).toBeVisible()
     })
 
-    it('opens a new chat, created with its first message', async () => {
+    it('opens a new chat with Nandi, created with its first message', async () => {
       const user = userEvent.setup()
       const nav = await renderShell()
 
-      // The sidebar's Ask button opens the conversation list
-      await user.click(within(nav).getByRole('button', { name: 'Ask' }))
-      // From the keyboard: in jsdom the resize handle claims pointer presses
-      ;(await screen.findByRole('button', { name: 'New' })).focus()
-      await user.keyboard('{Enter}')
-      await user.click(await screen.findByRole('menuitem', { name: 'Chat' }))
+      // The sidebar's Nandi opens the home, with its composer
+      await user.click(within(nav).getByRole('button', { name: 'Nandi' }))
+      expect(currentView()).toEqual({ kind: 'nandi' })
+      expect(commands.createChat).not.toHaveBeenCalled()
+      ;(await screen.findByPlaceholderText('What should I do?')).focus()
+      await user.keyboard('Pay the bills{Enter}')
 
-      expect(commands.createStudioConversation).not.toHaveBeenCalled()
-      expect(currentView()).toEqual({
-        kind: 'studio',
-        conversationId: null,
-        draft: true,
-      })
-      // An example ask sends the first message, which creates the chat
-      await user.click(
-        await screen.findByRole('button', { name: "What's waiting for me?" })
+      await vi.waitFor(() =>
+        expect(
+          vi.mocked(commands.sendChatMessage).mock.calls[0]?.slice(0, 2)
+        ).toEqual(['chat:new', 'Pay the bills'])
       )
-      expect(commands.createStudioConversation).toHaveBeenCalled()
+      expect(commands.createChat).toHaveBeenCalledWith(DEFAULT_AGENT)
       expect(currentView()).toEqual({
-        kind: 'studio',
-        conversationId: 'studio-new',
+        kind: 'nandi',
+        conversationId: 'chat:new',
       })
-      // Later tests read the first message sent
-      vi.mocked(commands.sendStudioMessage).mockClear()
+      vi.mocked(commands.sendChatMessage).mockClear()
     })
   })
 
@@ -524,7 +518,7 @@ describe('AppShell', () => {
       )
     })
 
-    it("Home's Ask Nandi sends the text to Studio", async () => {
+    it("Home's Ask Nandi starts a chat with Nandi", async () => {
       const user = userEvent.setup()
       await renderShell()
 
@@ -534,12 +528,12 @@ describe('AppShell', () => {
 
       await vi.waitFor(() =>
         expect(
-          vi.mocked(commands.sendStudioMessage).mock.calls[0]?.slice(0, 2)
-        ).toEqual(['studio-new', 'Plan my week'])
+          vi.mocked(commands.sendChatMessage).mock.calls[0]?.slice(0, 2)
+        ).toEqual(['chat:new', 'Plan my week'])
       )
       expect(currentView()).toEqual({
-        kind: 'studio',
-        conversationId: 'studio-new',
+        kind: 'nandi',
+        conversationId: 'chat:new',
       })
     })
 

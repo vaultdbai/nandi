@@ -17,6 +17,8 @@ import type { HandOverAnswer } from '@/lib/bindings'
 import { loadAgent, loadConversation } from '@/lib/agent-sync'
 import { useAgentStore } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
+import { queryClient } from '@/lib/query-client'
+import { chatsQueryKey } from '@/hooks/useChats'
 
 async function sendOptimistically(
   conversationId: string,
@@ -149,13 +151,53 @@ export async function sendInboxMessage(
 }
 
 /**
- * Opens a new, empty chat in Ask. Nothing is created until its first
- * message is sent (`sendToStudio` without a conversation).
+ * Opens the Nandi home's composer. Nothing is created until the first
+ * message is sent (`startChat`).
  */
 export function openNewChat(): void {
-  useNavigationStore
-    .getState()
-    .navigate({ kind: 'studio', conversationId: null, draft: true })
+  useNavigationStore.getState().navigate({ kind: 'nandi' })
+}
+
+/**
+ * Starts a new chat with an agent (Nandi by default) with this message:
+ * its own conversation, opened on the Nandi home
+ */
+export async function startChat(
+  agentId: string,
+  text: string,
+  attachments: AttachmentInfo[] = []
+): Promise<string | null> {
+  const result = await client.createChat(agentId)
+  if (result.status === 'error') {
+    toast.error(result.error)
+    return null
+  }
+  const conversationId = result.data.id
+  useAgentStore.getState().setConversation({
+    conversationId,
+    messages: [],
+    currentRun: null,
+  })
+  useNavigationStore.getState().navigate({ kind: 'nandi', conversationId })
+  await sendChatMessage(conversationId, text, attachments)
+  return conversationId
+}
+
+/** The next message in one of the person's chats with an agent */
+export async function sendChatMessage(
+  conversationId: string,
+  text: string,
+  attachments: AttachmentInfo[] = []
+): Promise<void> {
+  await sendOptimistically(conversationId, text, attachments, messageId =>
+    client.sendChatMessage(
+      conversationId,
+      text,
+      attachments.map(a => a.id),
+      messageId
+    )
+  )
+  void queryClient.invalidateQueries({ queryKey: chatsQueryKey })
 }
 
 /** Creates a Studio conversation in the DB and opens it. */

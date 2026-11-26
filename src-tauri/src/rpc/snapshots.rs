@@ -1,7 +1,7 @@
 //! Snapshot commands (`services::snapshots`). Opening a run's file is
 //! desktop-only: `desktop::run_files`.
 
-use crate::model::{StudioConversationSummary, WorkflowSummary};
+use crate::model::{ChatSummary, StudioConversationSummary, WorkflowSummary};
 use crate::services::run_plan::RunPlan;
 use crate::services::snapshots::{
     self, AgentSnapshot, ConversationSnapshot, DashboardSnapshot, RunDetail,
@@ -11,6 +11,9 @@ super::commands! {
     fn get_agent_snapshot(state, agent_id: String) -> AgentSnapshot => snapshots::get_agent_snapshot(&state, agent_id).await;
 
     fn get_conversation(state, conversation_id: String) -> ConversationSnapshot => snapshots::get_conversation(&state, conversation_id).await;
+
+    /// The person's chats with every agent, latest first (the Nandi home)
+    fn list_chats(state) -> Vec<ChatSummary> => snapshots::list_chats(&state).await;
 
     fn get_studio_conversations(state) -> Vec<StudioConversationSummary> => snapshots::get_studio_conversations(&state).await;
 

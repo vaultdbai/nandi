@@ -187,7 +187,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | SH-05 | Title-bar bull (status at a glance)                                      | Shipped                                              | unit       | no          |                                        |
 | SH-06 | Account menu                                                             | Shipped                                              | unit       | no          |                                        |
 | SH-07 | Panes and panel toggles                                                  | Shipped                                              | unit       | no          | 2026-10-30 pass                        |
-| SH-08 | Sidebar: the eight pages                                                 | Shipped                                              | unit       | no          |                                        |
+| SH-08 | Sidebar: the seven pages                                                 | Shipped                                              | unit       | no          |                                        |
 | SH-09 | Sidebar: live children                                                   | Shipped                                              | unit       | no          | 2026-10-30 pass                        |
 | SH-10 | Sidebar: keyboard and remembered branches                                | Shipped                                              | unit       | no          |                                        |
 | SH-11 | Sidebar badges and dots                                                  | Shipped                                              | unit       | no          |                                        |
@@ -335,6 +335,11 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | CH-27 | Live sync: snapshots and agent events                                   | Shipped            | unit + api    | no          |                                             |
 | CH-28 | Working indicator while the agent answers                               | Shipped            | unit          | no          |                                             |
 | CH-29 | Select and copy chat text                                               | Shipped            | unit          | no          |                                             |
+| CH-30 | Live work in the Nandi home                                             | Shipped            | unit          | no          |                                             |
+| CH-31 | Reply into a live chat                                                  | Shipped            | unit          | no          |                                             |
+| CH-32 | Delegated work inside the parent chat                                   | Shipped            | unit          | no          |                                             |
+| CH-33 | The Inbox and Runs point to the live chat                               | Shipped            | unit          | no          |                                             |
+| CH-34 | The Nandi home: one place to talk                                       | Shipped            | unit          | no          |                                             |
 | RN-01 | Run Detail page and header                                              | Shipped            | unit + ui-e2e | no          |                                             |
 | RN-02 | Overview tab: key results                                               | Shipped            | unit          | no          |                                             |
 | RN-03 | Timeline tab                                                            | Shipped            | unit          | no          |                                             |

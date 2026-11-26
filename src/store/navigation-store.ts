@@ -106,8 +106,13 @@ export type View =
   | { kind: 'intake-thread'; conversationId: string }
   /** One Inbox item's Ask chat with Nandi (`inbox:<kind>:<id>`) */
   | { kind: 'inbox-thread'; conversationId: string }
-  /** One live run as a chat (Ask's Live section), however it started */
+  /** One live run as a chat (the Nandi home's Live), however it started */
   | { kind: 'live-run'; runId: string }
+  /**
+   * The Nandi home (composer, Live, Recent), or one chat with an agent
+   * (`chat:<id>`, or an agent's long-lived `agent:<id>`)
+   */
+  | { kind: 'nandi'; conversationId?: string }
 
 export const RUN_DETAIL_TABS = [
   'overview',
@@ -139,7 +144,6 @@ export type CallersView = 'list' | 'graph'
 export const NAV_SECTIONS = [
   'home',
   'nandi',
-  'studio',
   'agents',
   'automations',
   'library',
@@ -183,9 +187,12 @@ export function navSection(view: View): NavSection | null {
     case 'network':
     case 'member-profile':
       return 'network'
+    // Studio's editor is reached from an agent's page (Edit)
     case 'studio':
+      return 'agents'
+    case 'nandi':
     case 'live-run':
-      return 'studio'
+      return 'nandi'
     case 'notes':
       return 'nandi'
     case 'settings':
@@ -197,13 +204,12 @@ export function navSection(view: View): NavSection | null {
 
 /** The view each sidebar item opens */
 export const SECTION_VIEWS: Record<NavSection, View> = {
-  nandi: { kind: 'agent', agentId: DEFAULT_AGENT },
+  nandi: { kind: 'nandi' },
   home: { kind: 'home' },
   agents: { kind: 'agents' },
   automations: { kind: 'automations' },
   library: { kind: 'library' },
   network: { kind: 'network' },
-  studio: { kind: 'studio', conversationId: null },
   settings: { kind: 'settings' },
 }
 
@@ -363,6 +369,7 @@ const VIEW_KINDS: Record<View['kind'], true> = {
   'intake-thread': true,
   'inbox-thread': true,
   'live-run': true,
+  nandi: true,
 }
 
 /**
@@ -431,6 +438,11 @@ export function isActiveView(current: View, target: View): boolean {
       )
     case 'live-run':
       return current.kind === 'live-run' && current.runId === target.runId
+    case 'nandi':
+      return (
+        current.kind === 'nandi' &&
+        current.conversationId === target.conversationId
+      )
     default:
       return true
   }

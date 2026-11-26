@@ -42,12 +42,8 @@ describe('StudioView', () => {
     screen.getByRole('button', { name: 'New' }).focus()
     await user.keyboard('{Enter}')
     await user.click(await screen.findByRole('menuitem', { name: 'Chat' }))
-    // An empty chat: nothing is created until its first message
-    expect(useNavigationStore.getState().current).toEqual({
-      kind: 'studio',
-      conversationId: null,
-      draft: true,
-    })
+    // A new chat is Nandi's: its home's composer, nothing created yet
+    expect(useNavigationStore.getState().current).toEqual({ kind: 'nandi' })
     expect(commands.createStudioConversation).not.toHaveBeenCalled()
   })
 

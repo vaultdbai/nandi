@@ -340,6 +340,28 @@ async replyToRun(runId: string, text: string, attachments: string[], clientMessa
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * A new chat with an agent (Nandi by default), its own conversation
+ */
+async createChat(agentId: string) : Promise<Result<ChatSummary, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_chat", { agentId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * A message in one of the person's chats with an agent
+ */
+async sendChatMessage(conversationId: string, text: string, attachments: string[], clientMessageId: string | null) : Promise<Result<SendMessageResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("send_chat_message", { conversationId, text, attachments, clientMessageId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async createStudioConversation() : Promise<Result<StudioConversationSummary, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("create_studio_conversation") };
@@ -557,6 +579,17 @@ async getStudioConversations() : Promise<Result<StudioConversationSummary[], str
 async getConversation(conversationId: string) : Promise<Result<ConversationSnapshot, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_conversation", { conversationId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The person's chats with every agent, latest first (the Nandi home)
+ */
+async listChats() : Promise<Result<ChatSummary[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_chats") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -5563,6 +5596,15 @@ export type ChatMessage = { kind: "user"; id: string; runId: string | null; crea
  * The message ID is also the approval ID
  */
 { kind: "approval"; id: string; runId: string | null; createdAt: number; tool: string; args: JsonValue; status: ApprovalStatus; expiresAt: number | null } | { kind: "error"; id: string; runId: string | null; createdAt: number; content: string }
+/**
+ * One chat with an agent, as the Nandi home lists it: a new chat
+ * (`chat:<id>`) or an agent's long-lived one (`agent:<id>`)
+ */
+export type ChatSummary = { id: string; agentId: string; 
+/**
+ * Empty until its first message names it
+ */
+title: string; createdAt: number; updatedAt: number; lastMessage: string | null }
 export type CheckId = "dockerInstalled" | "dockerRunning" | "wsl" | "virtualization" | "disk" | "images"
 /**
  * Why a check is in its state: the UI picks its sentence and steps by it

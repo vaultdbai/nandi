@@ -1,8 +1,9 @@
 /**
- * The sidebar's tree: Nandi on top, the eight pages, and one level under four of them:
- * Home's Inbox, Decisions and All activity, Ask's latest chats, the person's agents, and
- * Automations' workflows and triggers. Nandi, Library, Network, Notes and
- * Settings are single items (their pages have their own tabs and sections).
+ * The sidebar's tree: the seven pages, and one level under four of them:
+ * Home's Inbox, Decisions and All activity, Nandi's live work, latest chats
+ * and My notes, the person's agents, and Automations' workflows and
+ * triggers. Library, Network and Settings are single items (their pages
+ * have their own tabs and sections).
  * Pure: the sidebar passes in the lists and renders what comes back.
  *
  * - Two levels, never more.
@@ -12,9 +13,10 @@
 import type {
   AgentInfo,
   AgentStatus,
+  ChatSummary,
   RunSummary,
-  StudioConversationSummary,
 } from '@/lib/bindings'
+import { chatLabel } from '@/components/nandi/nandi-home-model'
 import {
   defaultAgentName,
   isDefaultAgent,
@@ -30,7 +32,7 @@ import {
 
 /** Agents listed before "All agents" */
 export const LIST_LIMIT = 8
-/** Ask chats listed before "All chats" */
+/** Chats listed under Nandi */
 export const CHAT_LIMIT = 5
 
 /** A label to translate (`key`, with `values`), or a name as it is */
@@ -59,7 +61,8 @@ export interface NavNode {
 export interface NavTreeInput {
   inboxCount: number
   agents: readonly AgentInfo[]
-  chats: readonly StudioConversationSummary[]
+  /** The person's chats with their agents (`list_chats`) */
+  chats: readonly ChatSummary[]
   /** Live work, newest first (`list_live_runs`) */
   live?: readonly RunSummary[]
   /** Settings sections that need attention */
@@ -104,34 +107,30 @@ function liveNodes(
   }))
 }
 
-/** New chat, the live work, the newest chats, All chats */
-function chatNodes(
-  chats: readonly StudioConversationSummary[],
-  live: NavNode[]
+/** New chat, the live work, the newest chats, then My notes */
+function nandiNodes(
+  chats: readonly ChatSummary[],
+  live: NavNode[],
+  agents: readonly AgentInfo[]
 ): NavNode[] {
   const recent = [...chats]
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, CHAT_LIMIT)
   return [
     {
-      id: 'studio:new',
+      id: 'nandi:new',
       label: key('nav.newChat'),
-      // Empty until its first message is sent, which creates the chat
-      view: { kind: 'studio', conversationId: null, draft: true },
+      // The home's composer: sending the first message makes the chat
+      view: { kind: 'nandi' },
       create: true,
     },
     ...live,
     ...recent.map(chat => ({
       id: `chat:${chat.id}`,
-      label: chat.title ? { text: chat.title } : key('studio.untitled'),
-      view: { kind: 'studio', conversationId: chat.id } as View,
+      label: chatLabel(chat, agents),
+      view: { kind: 'nandi', conversationId: chat.id } as View,
     })),
-    {
-      id: 'studio:all',
-      label: key('nav.tree.allChats', { count: chats.length }),
-      view: { kind: 'studio', conversationId: null },
-      subtle: true,
-    },
+    tab('nandi:notes', 'nav.notes', { kind: 'notes' }),
   ]
 }
 
@@ -193,7 +192,6 @@ export function buildNavTree(input: NavTreeInput): NavNode[] {
       tab('home:decisions', 'nav.tree.decisions', { kind: 'decisions' }),
       tab('home:activity', 'home.allActivity', { kind: 'home-activity' }),
     ],
-    studio: chatNodes(input.chats, liveNodes(input.live ?? [], input.agents)),
     agents: agentNodes(input.agents),
     automations: [
       tab('automations:workflows', 'nav.workflows', {
@@ -205,8 +203,12 @@ export function buildNavTree(input: NavTreeInput): NavNode[] {
         tab: 'triggers',
       }),
     ],
-    // Nandi keeps My notes
-    nandi: [tab('nandi:notes', 'nav.notes', { kind: 'notes' })],
+    // One place to talk: its chats, live work and My notes
+    nandi: nandiNodes(
+      input.chats,
+      liveNodes(input.live ?? [], input.agents),
+      input.agents
+    ),
     // Their pages' own tabs and sections are enough
     library: undefined,
     network: undefined,
@@ -256,6 +258,7 @@ export function activePath(tree: readonly NavNode[], current: View): string[] {
       if (
         node.view &&
         !node.subtle &&
+        !node.create &&
         viewContains(node.view, current) &&
         here.length > best.length
       ) {

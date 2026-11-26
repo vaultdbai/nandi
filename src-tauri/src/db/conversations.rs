@@ -140,3 +140,66 @@ pub fn list_studio_conversations(
     })?;
     rows.collect()
 }
+
+/// `chat:<id>`: one of the person's chats with an agent, each its own
+/// thread of runs (a new chat on the Nandi home)
+pub fn chat_conversation_id(id: &str) -> String {
+    format!("chat:{id}")
+}
+
+/// Whether a conversation is one of the person's chats with `agent_id`:
+/// a new chat, or the agent's long-lived one
+pub fn is_chat(conversation_id: &str, agent_id: &str) -> bool {
+    agent_id != STUDIO_AGENT_ID
+        && (conversation_id.starts_with("chat:")
+            || conversation_id == agent_conversation_id(agent_id))
+}
+
+pub fn insert_chat_conversation(
+    conn: &Connection,
+    agent_id: &str,
+    id: &str,
+) -> rusqlite::Result<ChatSummary> {
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO conversations (id, agent_id, created_at, title) VALUES (?1, ?2, ?3, '')",
+        params![id, agent_id, now],
+    )?;
+    Ok(ChatSummary {
+        id: id.to_string(),
+        agent_id: agent_id.to_string(),
+        title: String::new(),
+        created_at: ts(now),
+        updated_at: ts(now),
+        last_message: None,
+    })
+}
+
+/// The person's chats with every agent, latest first: each new chat, and
+/// each agent's long-lived chat once it has a message
+pub fn list_chats(conn: &Connection) -> rusqlite::Result<Vec<ChatSummary>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.agent_id, COALESCE(c.title, ''), c.created_at,
+                COALESCE((SELECT MAX(created_at) FROM messages m WHERE m.conversation_id = c.id), c.created_at),
+                (SELECT content FROM messages m
+                  WHERE m.conversation_id = c.id AND m.role IN ('user', 'assistant')
+                  ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1)
+           FROM conversations c
+          WHERE c.agent_id != ?1
+            AND (c.id LIKE 'chat:%'
+                 OR (c.id = 'agent:' || c.agent_id
+                     AND EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id)))
+          ORDER BY 5 DESC",
+    )?;
+    let rows = stmt.query_map([STUDIO_AGENT_ID], |row| {
+        Ok(ChatSummary {
+            id: row.get(0)?,
+            agent_id: row.get(1)?,
+            title: row.get(2)?,
+            created_at: ts(row.get(3)?),
+            updated_at: ts(row.get(4)?),
+            last_message: row.get(5)?,
+        })
+    })?;
+    rows.collect()
+}

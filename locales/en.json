@@ -5195,7 +5195,6 @@
   "liveWork.needsYou": "Needs you",
   "liveWork.stepLine": "Step {{number}} of {{total}} · {{text}}",
   "liveWork.gone": "This chat isn't here anymore",
-  "liveWork.backToAsk": "Back to Ask",
   "liveWork.details": "Details",
   "liveWork.failed": "It stopped before it finished.",
   "liveWork.failedWith": "It stopped: {{what}}",
@@ -5219,5 +5218,17 @@
   "liveWork.delegation.done": "{{name}} is done",
   "liveWork.delegation.stopped": "{{name}} stopped",
   "liveWork.openChat": "Open chat",
-  "liveWork.openLive": "Live: open the chat"
+  "liveWork.openLive": "Live: open the chat",
+  "liveWork.backToNandi": "Back to Nandi",
+  "nandiHome.subtitle": "Ask, delegate, or watch the work going on",
+  "nandiHome.settings": "{{name}}'s settings",
+  "nandiHome.composer": "What should I do?",
+  "nandiHome.recent": "Recent",
+  "nandiHome.older_one": "{{count}} older chat",
+  "nandiHome.older_other": "{{count}} older chats",
+  "nandiHome.pin": "Keep {{name}} in Recent",
+  "nandiHome.unpin": "Stop keeping {{name}} in Recent",
+  "nandiHome.untitled": "New chat",
+  "nandiHome.longChat": "Earlier chats with {{name}}",
+  "nandiHome.emptyChat": "Say what {{name}} should do"
 }

@@ -1,5 +1,6 @@
 import { AgentView } from '@/components/views/AgentView'
 import { LiveRunView } from '@/components/live-runs/LiveRunView'
+import { NandiView } from '@/components/nandi/NandiView'
 import { CapabilityDetailView } from '@/components/views/CapabilityDetailView'
 import { DelegationThreadView } from '@/components/views/DelegationThreadView'
 import { RequestDetailView } from '@/components/views/RequestDetailView'
@@ -138,6 +139,8 @@ function CurrentView({ view }: { view: View }) {
           conversationId={view.conversationId}
         />
       )
+    case 'nandi':
+      return <NandiView conversationId={view.conversationId} />
     case 'live-run':
       return <LiveRunView key={view.runId} runId={view.runId} />
     case 'request':

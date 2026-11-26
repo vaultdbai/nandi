@@ -5195,7 +5195,6 @@
   "liveWork.needsYou": "بانتظارك",
   "liveWork.stepLine": "الخطوة {{number}} من {{total}} · {{text}}",
   "liveWork.gone": "لم تعد هذه المحادثة موجودة",
-  "liveWork.backToAsk": "العودة إلى اسأل",
   "liveWork.details": "التفاصيل",
   "liveWork.failed": "توقف قبل أن ينتهي.",
   "liveWork.failedWith": "توقف: {{what}}",
@@ -5219,5 +5218,17 @@
   "liveWork.delegation.done": "أنهى {{name}} العمل",
   "liveWork.delegation.stopped": "توقف {{name}}",
   "liveWork.openChat": "فتح المحادثة",
-  "liveWork.openLive": "مباشر: افتح المحادثة"
+  "liveWork.openLive": "مباشر: افتح المحادثة",
+  "liveWork.backToNandi": "العودة إلى Nandi",
+  "nandiHome.subtitle": "اسأل أو فوّض أو تابع العمل الجاري",
+  "nandiHome.settings": "إعدادات {{name}}",
+  "nandiHome.composer": "ماذا أفعل؟",
+  "nandiHome.recent": "الأحدث",
+  "nandiHome.older_one": "{{count}} محادثة أقدم",
+  "nandiHome.older_other": "{{count}} محادثات أقدم",
+  "nandiHome.pin": "تثبيت {{name}} في الأحدث",
+  "nandiHome.unpin": "إلغاء تثبيت {{name}}",
+  "nandiHome.untitled": "محادثة جديدة",
+  "nandiHome.longChat": "محادثات سابقة مع {{name}}",
+  "nandiHome.emptyChat": "قل ما يجب أن يفعله {{name}}"
 }

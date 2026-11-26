@@ -36,6 +36,12 @@ The person never needs the word "run". They see Nandi working in a chat. Every l
 | 6   | Other agents read like people | Their name and icon on their block ("Researcher is working on it"), their approvals in the same chat                                                  |
 | 7   | Calm failure                  | A failed run says what happened in one line and offers Try again or "Tell <Agent> what to change". Details stay under "Show steps"                    |
 
+## One Nandi
+
+**From:** owner, 2026-11-25: "if Ask is always going to use some agent or Nandi by default then why do we need nandi in the left side or ask ... click on ask nandi shows what nandi has now and new chats start as runs and nandi's active runs show up there as chats and older runs (after 5 or 10) shows up in runs ... how will we create new agents or do other things ask does? maybe nandi does all that too".
+
+One place to talk: Nandi. Ask and the Nandi item become one. Nandi makes agents and automations too, and another agent is one `@` away.
+
 ## Slices
 
 1. **Live runs in Ask.** (done) A Live section lists every running or waiting run; opening one shows its messages, plan card, approval cards and Stop. Reuses `MessageList`, `ApprovalRequestCard` and `StopButton`. No new storage: it reads `runs.conversation_id`. Built: design points 1, 2, 3, 5 and 7 (Try again); the sidebar lists the live chats under Ask. No run starts from a phone today (a paired phone only approves), so there is no "From your phone" origin yet.
@@ -44,5 +50,9 @@ The person never needs the word "run". They see Nandi working in a chat. Every l
 4. **Inbox and Runs point to the chat.** (done) An Inbox approval opens its chat; a live run in the Runs tab links to it.
 5. **LATER: the receipt.** At the end of a finished chat run: what was done, what changed, proof links (screenshots, sent items), and "Do this automatically", which drafts a workflow or trigger from the chat for the person's yes.
 6. **LATER: one look.** The app icon, the tray and the phone show the same three states: calm, working, needs you.
+7. **The Nandi home.** (done) One menu item **Nandi** (the sitting bison) replaces Nandi and Ask: a composer ("What should I do?"), then **Live**, then **Recent** (the last 10 chats, newest first, pinned ones kept; older ones in History). A new chat is a new conversation for Nandi; the long `agent:nandi` conversation stays as one chat. Studio's editor stays reachable from an agent's page as **Edit**. Built: pins are kept in this computer's UI storage (no migration); a chat is a `conversations` row (`chat:<id>`), so no schema change.
+8. **Nandi creates agents and automations.** "Make me an agent that …" or "every Monday …" in a Nandi chat shows a preview card from the planner Ask uses (`services/ask/planner.rs`): what it will create, what it may touch, **Create / Edit / No**. Create goes through Ask's save path; Edit opens the editor. A tool returns the plan; the model does the understanding.
+9. **@mention another agent.** `@` in the composer lists your agents; `@Researcher …` starts or continues that chat with Researcher. Those chats show in Live and Recent with its name and icon.
+10. **The menu, cut to what people come for:** Nandi, Inbox, Automations (workflows and triggers, each with its last and next run), Agents, History (past chats and runs, searchable, the audit log from it), then Library, Network, Settings. Existing screens move under these.
 
 Each slice lands on its own, with its entry in `docs/testing/agents-chat-runs.md` ("Needs relay: no").

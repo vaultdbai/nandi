@@ -6,10 +6,8 @@ import {
   Plus,
   House,
   Library,
-  MessageSquare,
   Network,
   Settings,
-  Sparkles,
   Workflow,
 } from 'lucide-react'
 import { HealthDot } from '@/components/network/NetworkHelp'
@@ -18,8 +16,9 @@ import { useInbox } from '@/hooks/useInbox'
 import { useNetworkHealth } from '@/hooks/useNetworkHealth'
 import { useSettingsAttention } from '@/hooks/useSettingsAttention'
 import { useLiveRuns } from '@/hooks/useRuns'
+import { useChats } from '@/hooks/useChats'
+import { NandiMark } from '@/components/nandi/NandiView'
 import { cn } from '@/lib/utils'
-import { useStudioConversations } from '@/store/agent-store'
 import {
   navSection,
   useNavigationStore,
@@ -39,13 +38,12 @@ import {
 } from './nav-tree'
 
 const ICONS: Record<NavSection, React.ReactNode> = {
-  nandi: <Sparkles />,
+  nandi: <NandiMark className="size-4 object-contain" />,
   home: <House />,
   agents: <Bot />,
   automations: <Workflow />,
   library: <Library />,
   network: <Network />,
-  studio: <MessageSquare />,
   settings: <Settings />,
 }
 
@@ -78,7 +76,7 @@ export function Sidebar() {
     // What waits on you now (the Inbox); failures aren't counted
     inboxCount: useInbox().count,
     agents: useAgents().data ?? [],
-    chats: useStudioConversations() ?? [],
+    chats: useChats().data ?? [],
     live: useLiveRuns().data ?? [],
     attention: useSettingsAttention(),
   })

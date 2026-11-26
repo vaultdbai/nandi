@@ -318,6 +318,20 @@ pub struct RunEventRecord {
     pub created_at: Timestamp,
 }
 
+/// One chat with an agent, as the Nandi home lists it: a new chat
+/// (`chat:<id>`) or an agent's long-lived one (`agent:<id>`)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSummary {
+    pub id: String,
+    pub agent_id: String,
+    /// Empty until its first message names it
+    pub title: String,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+    pub last_message: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct StudioConversationSummary {

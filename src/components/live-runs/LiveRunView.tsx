@@ -78,12 +78,10 @@ export function LiveRunView({ runId }: { runId: string }) {
             size="sm"
             variant="outline"
             onClick={() =>
-              useNavigationStore
-                .getState()
-                .navigate({ kind: 'studio', conversationId: null })
+              useNavigationStore.getState().navigate({ kind: 'nandi' })
             }
           >
-            {t('liveWork.backToAsk')}
+            {t('liveWork.backToNandi')}
           </Button>
         </EmptyContent>
       </Empty>
@@ -296,7 +294,7 @@ function FailedLine({
 }
 
 /** Stop for the turn going now, while it's going */
-function LiveStop({ runId }: { runId: string }) {
+export function LiveStop({ runId }: { runId: string }) {
   const { data } = useRunDetail(runId)
   if (!data || !isLiveStatus(data.run.status)) return null
   return <StopRunButton detail={data} />
