@@ -56,7 +56,6 @@ describe('buildNavTree', () => {
     const tree = buildNavTree(input({ inboxCount: 3 }))
     expect(ids(tree)).toEqual([
       'nandi',
-      'inbox',
       'automations',
       'agents',
       'history',
@@ -64,11 +63,16 @@ describe('buildNavTree', () => {
       'network',
       'settings',
     ])
-    // The Inbox carries its count; its page is the whole list
-    const inbox = findNode(tree, 'inbox')
-    expect(inbox?.badge).toBe(3)
-    expect(inbox?.children).toBeUndefined()
-    expect(findNode(buildNavTree(input()), 'inbox')?.badge).toBeUndefined()
+    // The Inbox is under Nandi with its count, also on Nandi (it opens it)
+    const inbox = findNode(tree, 'nandi:inbox')
+    expect(inbox).toMatchObject({ badge: 3, view: { kind: 'inbox' } })
+    expect(findNode(tree, 'nandi')).toMatchObject({
+      badge: 3,
+      badgeView: { kind: 'inbox' },
+    })
+    const quiet = buildNavTree(input())
+    expect(findNode(quiet, 'nandi:inbox')?.badge).toBeUndefined()
+    expect(findNode(quiet, 'nandi')?.badge).toBeUndefined()
     // History holds past decisions and the audit log
     expect(ids(findNode(tree, 'history')?.children)).toEqual([
       'history:decisions',
@@ -80,28 +84,30 @@ describe('buildNavTree', () => {
     ])
   })
 
-  it('has New chat, the newest five chats and My notes under Nandi', () => {
+  it('has the Inbox, My notes, New chat and the newest five chats under Nandi', () => {
     const chats = Array.from({ length: CHAT_LIMIT + 2 }, (_, i) =>
       chat(`c${i}`, i)
     )
     const nandi = findNode(buildNavTree(input({ chats })), 'nandi')?.children
     expect(ids(nandi)).toEqual([
+      'nandi:inbox',
+      'nandi:notes',
       'nandi:new',
       'chat:c6',
       'chat:c5',
       'chat:c4',
       'chat:c3',
       'chat:c2',
-      'nandi:notes',
     ])
-    expect(nandi?.[1]).toMatchObject({
+    expect(nandi?.[3]).toMatchObject({
       label: { text: 'Chat c6' },
       view: { kind: 'nandi', conversationId: 'c6' },
     })
-    // With no chats yet: New chat and My notes
+    // With no chats yet: the Inbox, My notes and New chat
     expect(ids(findNode(buildNavTree(input()), 'nandi')?.children)).toEqual([
-      'nandi:new',
+      'nandi:inbox',
       'nandi:notes',
+      'nandi:new',
     ])
   })
 
@@ -133,17 +139,18 @@ describe('buildNavTree', () => {
     const agents = [agent('writer')]
     const ask = findNode(buildNavTree(input({ live, agents })), 'nandi')
     expect(ids(ask?.children)).toEqual([
+      'nandi:inbox',
+      'nandi:notes',
       'nandi:new',
       'live:w',
       'live:r',
-      'nandi:notes',
     ])
-    expect(ask?.children?.[1]).toMatchObject({
+    expect(ask?.children?.[3]).toMatchObject({
       label: { text: 'Writer' },
       view: { kind: 'live-run', runId: 'w' },
       dot: 'waiting',
     })
-    expect(ask?.children?.[2]).toMatchObject({
+    expect(ask?.children?.[4]).toMatchObject({
       label: { text: 'gone' },
       dot: 'busy',
     })
@@ -188,10 +195,11 @@ describe('buildNavTree', () => {
       view: { kind: 'nandi' },
       dot: 'busy',
     })
-    // Nandi keeps My notes
+    // Nandi keeps the Inbox and My notes
     expect(ids(findNode(tree, 'nandi')?.children)).toEqual([
-      'nandi:new',
+      'nandi:inbox',
       'nandi:notes',
+      'nandi:new',
     ])
     const list = findNode(tree, 'agents')?.children ?? []
     expect(ids(list)).not.toContain(`agent:${DEFAULT_AGENT}`)
@@ -223,7 +231,7 @@ describe('buildNavTree', () => {
       buildNavTree(input({ chats: [chat('c', 1)] })),
       'nandi'
     )
-    const [create, first] = ask?.children ?? []
+    const [, , create, first] = ask?.children ?? []
     expect(create?.create).toBe(true)
     expect(first?.create).toBeUndefined()
   })
@@ -262,10 +270,14 @@ describe('the active node', () => {
     expect(activePath(tree, { kind: 'settings', section: 'models' })).toEqual([
       'settings',
     ])
-    // My notes is under Nandi
+    // My notes and the Inbox are under Nandi
     expect(activePath(tree, { kind: 'notes' })).toEqual([
       'nandi',
       'nandi:notes',
+    ])
+    expect(activePath(tree, { kind: 'inbox' })).toEqual([
+      'nandi',
+      'nandi:inbox',
     ])
     // The home is Nandi itself, never its New chat row
     expect(activePath(tree, { kind: 'nandi' })).toEqual(['nandi'])
@@ -301,8 +313,8 @@ describe('keyboard order', () => {
   const tree = buildNavTree(input({ agents: [agent('amy')] }))
 
   it('walks open branches only', () => {
-    expect(visibleIds(tree, new Set())).toHaveLength(8)
-    expect(visibleIds(tree, new Set(['agents'])).slice(3, 6)).toEqual([
+    expect(visibleIds(tree, new Set())).toHaveLength(7)
+    expect(visibleIds(tree, new Set(['agents'])).slice(2, 5)).toEqual([
       'agents',
       'agent:amy',
       'history',

@@ -142,13 +142,12 @@ export type SharingTab =
 export type CallersView = 'list' | 'graph'
 
 /**
- * The sidebar items, in order: what people come for (Nandi, the Inbox,
- * Automations, Agents, History), then at the bottom Library, Network and
- * Settings
+ * The sidebar items, in order: what people come for (Nandi, with the
+ * Inbox and My notes under it, Automations, Agents, History), then at the
+ * bottom Library, Network and Settings
  */
 export const NAV_SECTIONS = [
   'nandi',
-  'inbox',
   'automations',
   'agents',
   'history',
@@ -174,7 +173,7 @@ export function navSection(view: View): NavSection | null {
     case 'delegation-thread':
     case 'intake-thread':
     case 'inbox-thread':
-      return 'inbox'
+      return 'nandi'
     case 'history':
     case 'decisions':
     case 'run-detail':
@@ -214,7 +213,6 @@ export function navSection(view: View): NavSection | null {
 /** The view each sidebar item opens */
 export const SECTION_VIEWS: Record<NavSection, View> = {
   nandi: { kind: 'nandi' },
-  inbox: { kind: 'inbox' },
   history: { kind: 'history' },
   agents: { kind: 'agents' },
   automations: { kind: 'automations' },

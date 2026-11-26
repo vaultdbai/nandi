@@ -100,10 +100,12 @@ describe('the seven pages', () => {
 
   it('puts every other view under one item', () => {
     const views: [View, NavSection][] = [
-      [{ kind: 'request', requestId: 'r' }, 'inbox'],
-      [{ kind: 'work-item', id: 'w' }, 'inbox'],
-      [{ kind: 'delegation-thread', taskId: 't' }, 'inbox'],
-      [{ kind: 'intake-thread', conversationId: 'intake:q' }, 'inbox'],
+      // The Inbox is under Nandi, and what opens from it too
+      [{ kind: 'inbox' }, 'nandi'],
+      [{ kind: 'request', requestId: 'r' }, 'nandi'],
+      [{ kind: 'work-item', id: 'w' }, 'nandi'],
+      [{ kind: 'delegation-thread', taskId: 't' }, 'nandi'],
+      [{ kind: 'intake-thread', conversationId: 'intake:q' }, 'nandi'],
       // History: past runs and decisions
       [{ kind: 'decisions' }, 'history'],
       [{ kind: 'agent', agentId: 'a' }, 'agents'],

@@ -77,13 +77,12 @@ describe('AppShell', () => {
   afterEach(() => stopSync())
 
   describe('sidebar', () => {
-    it('has the eight pages, and the Agents page lists agents with status', async () => {
+    it('has the seven pages, and the Agents page lists agents with status', async () => {
       const user = userEvent.setup()
       const nav = await renderShell()
 
       for (const section of [
         'Nandi',
-        'Inbox',
         'Automations',
         'Agents',
         'History',

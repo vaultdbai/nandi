@@ -114,12 +114,19 @@ function liveNodes(
 function nandiNodes(
   chats: readonly ChatSummary[],
   live: NavNode[],
-  agents: readonly AgentInfo[]
+  agents: readonly AgentInfo[],
+  inboxCount: number
 ): NavNode[] {
   const recent = [...chats]
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, CHAT_LIMIT)
   return [
+    // What waits on you and My notes first, right under Nandi
+    {
+      ...tab('nandi:inbox', 'nav.inbox', { kind: 'inbox' }),
+      badge: inboxCount > 0 ? inboxCount : undefined,
+    },
+    tab('nandi:notes', 'nav.notes', { kind: 'notes' }),
     {
       id: 'nandi:new',
       label: key('nav.newChat'),
@@ -133,7 +140,6 @@ function nandiNodes(
       label: chatLabel(chat, agents),
       view: { kind: 'nandi', conversationId: chat.id } as View,
     })),
-    tab('nandi:notes', 'nav.notes', { kind: 'notes' }),
   ]
 }
 
@@ -186,8 +192,6 @@ function sectionDot(
 /** The whole tree, in sidebar order */
 export function buildNavTree(input: NavTreeInput): NavNode[] {
   const children: Record<NavSection, NavNode[] | undefined> = {
-    // The Inbox's page is the whole list; its count is on the item
-    inbox: undefined,
     // Past decisions, and the audit log behind every run
     history: [
       tab('history:decisions', 'nav.tree.decisions', { kind: 'decisions' }),
@@ -211,7 +215,8 @@ export function buildNavTree(input: NavTreeInput): NavNode[] {
     nandi: nandiNodes(
       input.chats,
       liveNodes(input.live ?? [], input.agents),
-      input.agents
+      input.agents,
+      input.inboxCount
     ),
     // Their pages' own tabs and sections are enough
     library: undefined,
@@ -227,10 +232,13 @@ export function buildNavTree(input: NavTreeInput): NavNode[] {
         ? { text: defaultAgentName(input.agents) }
         : key(`nav.${section}`),
     view: SECTION_VIEWS[section],
+    // The Inbox's count, on Nandi too while its branch is closed; it opens
+    // the Inbox
     badge:
-      section === 'inbox' && input.inboxCount > 0
+      section === 'nandi' && input.inboxCount > 0
         ? input.inboxCount
         : undefined,
+    badgeView: section === 'nandi' ? { kind: 'inbox' } : undefined,
     dot: sectionDot(section, input, nandi),
     apart: section === BOTTOM_SECTION || undefined,
     children: children[section],

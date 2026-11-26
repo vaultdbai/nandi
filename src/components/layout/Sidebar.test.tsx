@@ -29,7 +29,6 @@ const relay = (relayUrl: string | null, connected: boolean): RelayStatus => ({
 
 const ITEMS = [
   'Nandi',
-  'Inbox',
   'Automations',
   'Agents',
   'History',
@@ -53,25 +52,23 @@ describe('Sidebar', () => {
     })
   })
 
-  it('has Nandi first, then the Inbox, of the eight items, in order, closed at first', () => {
+  it('has Nandi first, of the seven items, in order, closed at first', () => {
     render(<Sidebar />)
     const buttons = within(screen.getByRole('navigation')).getAllByRole(
       'button'
     )
     expect(buttons.map(b => b.textContent)).toEqual([...ITEMS])
-    // History opens to Decisions and the audit log; the Inbox and Settings
-    // have nothing under them
+    // History opens to Decisions and the audit log; Settings has nothing
+    // under it
     expect(navButton('History')).toHaveAttribute('aria-expanded', 'false')
-    expect(navButton('Inbox')).not.toHaveAttribute('aria-expanded')
     expect(navButton('Automations')).toHaveAttribute('aria-expanded', 'false')
     expect(navButton('Settings')).not.toHaveAttribute('aria-expanded')
-    // Nandi opens to My notes
+    // Nandi opens to the Inbox, My notes, New chat and the chats
     expect(navButton('Nandi')).toHaveAttribute('aria-expanded', 'false')
   })
 
   it.each<[string, View]>([
     ['Nandi', { kind: 'nandi' }],
-    ['Inbox', { kind: 'inbox' }],
     ['History', { kind: 'history' }],
     ['Agents', { kind: 'agents' }],
     ['Automations', { kind: 'automations' }],
@@ -86,11 +83,23 @@ describe('Sidebar', () => {
     expect(navButton(label)).toHaveAttribute('aria-current', 'page')
   })
 
-  it('keeps My notes under Nandi', async () => {
+  it('keeps the Inbox and My notes right under Nandi, above New chat', async () => {
     const user = userEvent.setup()
     render(<Sidebar />)
     await user.click(navButton('Nandi'))
     expect(navButton('Nandi')).toHaveAttribute('aria-expanded', 'true')
+    const names = within(screen.getByRole('navigation'))
+      .getAllByRole('button')
+      .map(b => b.textContent)
+    expect(names.slice(0, 4)).toEqual([
+      'Nandi',
+      'Inbox',
+      'My notes',
+      'New Chat',
+    ])
+    await user.click(navButton('Inbox'))
+    expect(current()).toEqual({ kind: 'inbox' })
+    expect(navButton('Inbox')).toHaveAttribute('aria-current', 'page')
     await user.click(navButton('My notes'))
     expect(current()).toEqual({ kind: 'notes' })
     expect(navButton('My notes')).toHaveAttribute('aria-current', 'page')
@@ -215,12 +224,20 @@ describe('Sidebar', () => {
     expect(navButton('Agents')).not.toHaveAttribute('aria-current')
   })
 
+  it('pins Library, Network and Settings to the bottom of the panel', () => {
+    render(<Sidebar />)
+    // The first of them takes the free space above it
+    expect(navButton('Library').closest('li')).toHaveClass('mt-auto')
+    expect(navButton('History').closest('li')).not.toHaveClass('mt-auto')
+    expect(navButton('Settings').closest('li')).not.toHaveClass('mt-auto')
+  })
+
   it('moves between items with the arrow keys', async () => {
     const user = userEvent.setup()
     render(<Sidebar />)
     navButton('Nandi').focus()
     await user.keyboard('{ArrowDown}')
-    expect(navButton('Inbox')).toHaveFocus()
+    expect(navButton('Automations')).toHaveFocus()
     await user.keyboard('{ArrowUp}{ArrowUp}')
     expect(navButton('Settings')).toHaveFocus()
     await user.keyboard('{Home}')
@@ -264,7 +281,7 @@ describe('Sidebar', () => {
     })
     const user = userEvent.setup()
     render(<Sidebar />)
-    // The Inbox item says its count, and opens the Inbox page
+    // Nandi carries the Inbox's count, which opens the Inbox page
     const inbox = await screen.findByRole('button', {
       name: 'Inbox, 2 waiting',
     })

@@ -5,7 +5,6 @@ import {
   ChevronRight,
   Plus,
   History,
-  Inbox,
   Library,
   Network,
   Settings,
@@ -40,7 +39,6 @@ import {
 
 const ICONS: Record<NavSection, React.ReactNode> = {
   nandi: <NandiMark className="size-4 object-contain" />,
-  inbox: <Inbox />,
   history: <History />,
   agents: <Bot />,
   automations: <Workflow />,
@@ -204,8 +202,9 @@ function NavItem({
         'list-none',
         // New chat sits above the chats, with a line between
         node.create && 'mb-0.5 border-b border-border/60 pb-0.5',
-        // Library, Network and Settings: set apart at the bottom
-        node.apart && 'mt-3 border-t border-border/60 pt-2'
+        // Library, Network and Settings: pinned to the bottom of the panel,
+        // the gap growing with the window (it scrolls when the tree is long)
+        node.apart && 'mt-auto border-t border-border/60 pt-2'
       )}
     >
       <div
