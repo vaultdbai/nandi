@@ -1376,6 +1376,20 @@ Shared preconditions used below:
 - **Automation:** Covered by: `src/components/ask/mention-model.test.ts` | Layer: unit | Gap: no component test for the suggestions.
 - **Needs relay:** no
 
+### CH-37 — Stop means stop
+
+- **What:** Stop (the button in a live chat or a chat, Run Detail's Stop, or the person typing just "stop", "stop it", "stop now", "stop everything" or "please stop" in a chat with a run going, also from the phone) ends the run and everything it started: the call in flight (the turn is cancelled), the runs it delegated to other local agents and theirs, and the replies queued behind it in the chat (dropped; the toast says how many). Typed "stop" sends nothing. If the agent's visible browser still has pages open, the chat shows "Close the browser too?" with **Close** and **Keep it open**; with no answer in 2 minutes it closes, and the sites it allowed once go with it. Keep it open leaves the window and its sites until it closes. The record (Decisions) says who stopped and which runs.
+- **Where:** `src-tauri/src/services/stop.rs` (`is_stop`, `plan`, `stop_run`, `ask_browser`, `answer_browser_question`, `BROWSER_WAIT`), `chat.rs` (`stop_instead` in `send_chat_message` and `reply_to_run`), `own_devices/chat.rs` (from the phone), `pilots/browser.rs` (`close_window`); `stop_run`, `answer_browser_question` (`rpc/chat.rs`); `src/components/agent-console/StopRunButton.tsx`, `src/components/live-runs/BrowserQuestion.tsx`, `src/store/stop-store.ts`, `onStopped` and `stopRun` in `src/lib/agent-actions.ts`.
+- **Preconditions:** Model key; Nandi with a browser and a delegating agent.
+- **Steps:**
+  1. Ask Nandi for something that delegates and browses; while it works, queue a reply; press **Stop**.
+  2. Do it again and type "stop" instead.
+  3. Leave "Close the browser too?" unanswered for 2 minutes.
+- **Expected:** The run, the delegated run and the queued reply all end; "Stopped, with everything it started. 1 waiting message was dropped." The browser question shows; unanswered, the window closes after 2 minutes. Decisions lists the stop with its runs.
+- **Edge / negative cases:** "stop the meeting reminder" is an ordinary message. "stop" with nothing going is an ordinary message. **Keep it open** leaves the window and its sites.
+- **Automation:** Covered by: Rust `services::stop::tests` (plain stop words, the plan reaching delegated runs and queued replies, the browser closing unanswered, on Close, not on Keep), `services::chat::tests::stop_typed_in_a_chat_with_a_run_going_stops_it_and_sends_nothing`; `src/components/live-runs/BrowserQuestion.test.tsx` | Layer: unit | Gap: no live browser test.
+- **Needs relay:** no
+
 ## Runs, Run Detail and audit
 
 ### RN-01 — Run Detail page and header

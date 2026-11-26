@@ -31,6 +31,10 @@ pub struct SendMessageResult {
     pub conversation_title: Option<String>,
     /// The agent was busy: the run waits in its queue
     pub queued: bool,
+    /// The message was just "stop" with a run going: that run and what it
+    /// started were stopped instead (`services::stop`), nothing was sent
+    #[serde(default)]
+    pub stopped: Option<crate::services::stop::StopOutcome>,
 }
 
 /// Validates a message and hands it to the agent's orchestrator, which
@@ -113,6 +117,7 @@ pub(crate) async fn submit(
         message_id,
         conversation_title,
         queued,
+        stopped: None,
     })
 }
 
@@ -177,6 +182,9 @@ pub async fn reply_to_run(
         .call(move |conn| Ok(reply_target(conn, &run_id)))
         .await??;
     state.store().require_agent(&agent_id)?;
+    if let Some(stopped) = stop_instead(state, &conversation_id, &text).await? {
+        return Ok(stopped);
+    }
     submit(
         state.orchestrators(),
         &agent_id,
@@ -187,6 +195,34 @@ pub async fn reply_to_run(
         RunSource::user(),
     )
     .await
+}
+
+/// "stop" typed in a chat with a run going stops it, like the button: the
+/// answer says what was stopped, and nothing is sent. `None` otherwise.
+pub(crate) async fn stop_instead(
+    state: &AppState,
+    conversation_id: &str,
+    text: &str,
+) -> Result<Option<SendMessageResult>, String> {
+    if !crate::services::stop::is_stop(text) {
+        return Ok(None);
+    }
+    let id = conversation_id.to_string();
+    let Some(run) = state
+        .db()
+        .call(move |conn| db::active_run(conn, &id))
+        .await?
+    else {
+        return Ok(None);
+    };
+    let outcome = crate::services::stop::stop_run(state, run.id.clone(), decider(state)).await?;
+    Ok(Some(SendMessageResult {
+        run_id: run.id,
+        message_id: String::new(),
+        conversation_title: None,
+        queued: false,
+        stopped: Some(outcome),
+    }))
 }
 
 /// A new chat with an agent (Nandi by default): its own conversation, so
@@ -228,6 +264,9 @@ pub async fn send_chat_message(
         .call(move |conn| Ok(chat_agent(conn, &id)))
         .await??;
     state.store().require_agent(&agent_id)?;
+    if let Some(stopped) = stop_instead(state, &conversation_id, &text).await? {
+        return Ok(stopped);
+    }
     let title = crate::services::events::truncate(
         text.trim().lines().next().unwrap_or_default(),
         MAX_TITLE_CHARS,
@@ -573,6 +612,44 @@ pub async fn cancel_turn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn stop_typed_in_a_chat_with_a_run_going_stops_it_and_sends_nothing() {
+        let state = AppState::for_tests(vec![]);
+        let chat = state
+            .db()
+            .call(|conn| {
+                let chat = db::chat_conversation_id("c1");
+                db::insert_chat_conversation(conn, "writer", &chat)?;
+                Ok(chat)
+            })
+            .await
+            .unwrap();
+        // Nothing going: "stop" is just a message
+        assert!(stop_instead(&state, &chat, "stop").await.unwrap().is_none());
+
+        let id = chat.clone();
+        state
+            .db()
+            .call(move |conn| {
+                db::tests::start_run(conn, "writer", "r1");
+                conn.execute(
+                    "UPDATE runs SET conversation_id = ?1 WHERE id = 'r1'",
+                    [&id],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        assert!(stop_instead(&state, &chat, "please send the report")
+            .await
+            .unwrap()
+            .is_none());
+        let stopped = stop_instead(&state, &chat, "Stop!").await.unwrap().unwrap();
+        assert_eq!(stopped.run_id, "r1");
+        assert!(stopped.stopped.is_some(), "it stopped instead of sending");
+        state.shutdown();
+    }
 
     #[test]
     fn a_chat_message_goes_only_to_a_chat() {

@@ -22,6 +22,7 @@ import { mentionTarget } from '@/components/ask/mention-model'
 import { labelText } from '@/components/live-runs/live-run-model'
 import { LiveRunsSection } from '@/components/live-runs/LiveRunsSection'
 import { LiveBadge, LiveStop } from '@/components/live-runs/LiveRunView'
+import { BrowserQuestion } from '@/components/live-runs/BrowserQuestion'
 import { ViewHeader } from '@/components/views/ViewHeader'
 import { useAgents } from '@/hooks/useAgents'
 import { useChats } from '@/hooks/useChats'
@@ -368,6 +369,7 @@ function ChatView({ conversationId }: { conversationId: string }) {
         subtitle={agent.name}
         actions={current && <LiveStop runId={current.id} />}
       />
+      <BrowserQuestion />
       {conversation ? (
         <MessageList
           messages={messages}

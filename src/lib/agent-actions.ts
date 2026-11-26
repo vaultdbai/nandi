@@ -13,10 +13,11 @@ import type {
   Result,
   SendMessageResult,
 } from '@/lib/tauri-bindings'
-import type { HandOverAnswer } from '@/lib/bindings'
+import type { HandOverAnswer, StopOutcome } from '@/lib/bindings'
 import { loadAgent, loadConversation } from '@/lib/agent-sync'
 import { useAgentStore } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
+import { useStopStore } from '@/store/stop-store'
 import { queryClient } from '@/lib/query-client'
 import { chatsQueryKey } from '@/hooks/useChats'
 
@@ -43,6 +44,12 @@ async function sendOptimistically(
     store.removeMessage(conversationId, id)
     toast.error(result.error)
     return null
+  }
+  if (result.data.stopped) {
+    // Just "stop": the run was stopped, nothing was sent
+    store.removeMessage(conversationId, id)
+    onStopped(result.data.stopped)
+    return result.data
   }
   if (result.data.queued) {
     // It joins the conversation when its run starts; until then it's in
@@ -255,6 +262,44 @@ export async function answerHandOver(
     return false
   }
   return true
+}
+
+/** How long the browser question waits (`stop::BROWSER_WAIT`) */
+const BROWSER_WAIT_MS = 120_000
+
+/** Says what a stop did, and asks about the browser if it's open */
+export function onStopped(outcome: StopOutcome): void {
+  toast.success(
+    outcome.dropped.length > 0
+      ? i18n.t('stop.stoppedDropped', { count: outcome.dropped.length })
+      : i18n.t('stop.stopped')
+  )
+  if (outcome.browserQuestion) {
+    useStopStore.getState().ask({
+      id: outcome.browserQuestion,
+      until: Date.now() + BROWSER_WAIT_MS,
+    })
+  }
+}
+
+/** Stops a run and everything it started (`services::stop`) */
+export async function stopRun(runId: string): Promise<void> {
+  const result = await client.stopRun(runId)
+  if (result.status === 'error') {
+    toast.error(result.error)
+    return
+  }
+  onStopped(result.data)
+}
+
+/** The answer to "Close the browser too?" */
+export async function answerBrowserQuestion(
+  questionId: string,
+  close: boolean
+): Promise<void> {
+  useStopStore.getState().clear()
+  const result = await client.answerBrowserQuestion(questionId, close)
+  if (result.status === 'error') toast.error(result.error)
 }
 
 export async function cancelTurn(

@@ -30,7 +30,8 @@ vi.mock('@/lib/client', () => ({
 }))
 
 const actions = vi.hoisted(() => ({
-  cancelTurn: vi.fn(() => Promise.resolve()),
+  stopRun: vi.fn(() => Promise.resolve()),
+  answerBrowserQuestion: vi.fn(() => Promise.resolve()),
   cancelQueuedRun: vi.fn(() => Promise.resolve()),
   sendAgentMessage: vi.fn(() => Promise.resolve()),
   decideApproval: vi.fn(() => Promise.resolve(true)),
@@ -442,11 +443,10 @@ describe('RunDetailView while running', () => {
     mockClient.getRunDetail.mockResolvedValue(ok(going()))
     render(<RunDetailView runId="run-1" />)
     await user.click(await screen.findByRole('button', { name: 'Stop' }))
-    expect(actions.cancelTurn).not.toHaveBeenCalled()
+    expect(actions.stopRun).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Stop run' }))
-    await waitFor(() =>
-      expect(actions.cancelTurn).toHaveBeenCalledWith('writer', 'run-1')
-    )
+    // Stop means stop: the run and everything it started
+    await waitFor(() => expect(actions.stopRun).toHaveBeenCalledWith('run-1'))
   })
 
   it('stops a read-only run at once, and a queued one from the queue', async () => {
@@ -456,7 +456,7 @@ describe('RunDetailView while running', () => {
     )
     const { unmount } = render(<RunDetailView runId="run-1" />)
     await user.click(await screen.findByRole('button', { name: 'Stop' }))
-    await waitFor(() => expect(actions.cancelTurn).toHaveBeenCalled())
+    await waitFor(() => expect(actions.stopRun).toHaveBeenCalled())
     unmount()
 
     mockClient.getRunDetail.mockResolvedValue(

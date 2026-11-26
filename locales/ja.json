@@ -5265,5 +5265,12 @@
   "devices.askLevel.confirmHint": "依頼で実行できますが、どの操作もあなたの承認を待ちます。自動で通すルールはありません。",
   "devices.askLevel.answerHint": "Nandi がすでに読めるものを読んで回答します。操作はしません。",
   "devices.askLevel.offHint": "依頼はできません。電話は承認のみです。",
-  "liveWork.origin.phone": "電話から"
+  "liveWork.origin.phone": "電話から",
+  "stop.stopped": "停止しました(開始したものもすべて)",
+  "stop.stoppedDropped_one": "停止しました。待機中のメッセージ {{count}} 件を取り消しました。",
+  "stop.stoppedDropped_other": "停止しました。待機中のメッセージ {{count}} 件を取り消しました。",
+  "stop.browserQuestion": "ブラウザも閉じますか?",
+  "stop.browserClosesIn": "応答がなければ {{seconds}} 秒後に閉じます。",
+  "stop.close": "閉じる",
+  "stop.keepOpen": "開いたままにする"
 }

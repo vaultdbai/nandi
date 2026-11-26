@@ -169,6 +169,16 @@ impl PhoneChat for AppChat {
                     .await?;
             } else if !self.is_nandis(&chat).await? {
                 return Ok(None);
+            } else if crate::services::chat::stop_instead(&self.state, &chat, &text)
+                .await?
+                .is_some()
+            {
+                // "stop" from the phone stops the chat's run, like the button
+                return Ok(Some(Asked {
+                    chat,
+                    message_id: String::new(),
+                    queued: false,
+                }));
             }
             let sent = crate::services::chat::submit(
                 self.state.orchestrators(),

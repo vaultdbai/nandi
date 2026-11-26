@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { Square } from 'lucide-react'
 import {
   AlertDialog,
@@ -13,7 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { cancelQueuedRun, cancelTurn } from '@/lib/agent-actions'
+import { cancelQueuedRun, stopRun } from '@/lib/agent-actions'
 import type { RunDetail } from '@/lib/tauri-bindings'
 import { stopNeedsConfirm } from './run-logs-model'
 
@@ -76,10 +75,8 @@ export function StopRunButton({ detail }: { detail: RunDetail }) {
   const { run } = detail
   const stop = () => {
     const done =
-      run.status === 'queued'
-        ? cancelQueuedRun(run.id)
-        : cancelTurn(run.agentId, run.id)
-    void done.then(() => toast.success(t('runDetail.stop.stopped')))
+      run.status === 'queued' ? cancelQueuedRun(run.id) : stopRun(run.id)
+    void done
   }
   return (
     <ConfirmingButton

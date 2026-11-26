@@ -5265,5 +5265,12 @@
   "devices.askLevel.confirmHint": "Asks may act, and every action waits for your yes: no rule lets one through on its own.",
   "devices.askLevel.answerHint": "Asks read what Nandi may already read and answer. No actions.",
   "devices.askLevel.offHint": "No asks: the phone only approves.",
-  "liveWork.origin.phone": "From your phone"
+  "liveWork.origin.phone": "From your phone",
+  "stop.stopped": "Stopped, with everything it started",
+  "stop.stoppedDropped_one": "Stopped, with everything it started. {{count}} waiting message was dropped.",
+  "stop.stoppedDropped_other": "Stopped, with everything it started. {{count}} waiting messages were dropped.",
+  "stop.browserQuestion": "Close the browser too?",
+  "stop.browserClosesIn": "It closes in {{seconds}} s if you don't answer.",
+  "stop.close": "Close",
+  "stop.keepOpen": "Keep it open"
 }

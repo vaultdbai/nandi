@@ -19,6 +19,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { AgentMark } from '@/components/nandi/AgentMark'
+import { BrowserQuestion } from './BrowserQuestion'
 import { MessageList } from '@/components/agent-console/MessageList'
 import { StopRunButton } from '@/components/agent-console/StopRunButton'
 import { isWorking } from '@/components/agent-console/working'
@@ -160,6 +161,7 @@ function LiveChat({ detail }: { detail: RunDetail }) {
           </>
         }
       />
+      <BrowserQuestion />
       {!current && shown.status === 'failed' && (
         <FailedLine runId={shown.id} summary={shown.summary} />
       )}

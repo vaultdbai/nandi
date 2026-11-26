@@ -245,6 +245,20 @@ pub async fn close_pages(agent: &str) {
     profiles::release_agent(agent);
 }
 
+/// Closes `agent`'s visible browser window (the person said Close after a
+/// stop, or didn't answer): its pages close, and the sites allowed once
+/// with it go ([`set_pages_open`] calls `sites::window_closed`)
+pub async fn close_window(agent: &str) {
+    set_pages_open(agent, BROWSER, false);
+    let mut pool = POOL.lock().await;
+    if let Some(instance) = pool.get_mut(&(agent.to_string(), BROWSER.to_string())) {
+        match run_tool(instance, "browser_close", &json!({})).await {
+            Ok(_) => log::info!("Closed the browser of '{agent}' after a stop"),
+            Err(e) => log::warn!("Couldn't close the browser of '{agent}': {e}"),
+        }
+    }
+}
+
 fn last_page(agent: &str, pilot: &str) -> Option<String> {
     PAGES
         .lock()

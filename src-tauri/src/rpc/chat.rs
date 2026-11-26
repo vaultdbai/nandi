@@ -3,6 +3,7 @@
 use crate::model::{ApprovalDecision, ChatSummary, PendingApproval, StudioConversationSummary};
 use crate::services::chat::{self, SendMessageResult};
 use crate::services::pilots::handover::HandOverAnswer;
+use crate::services::stop::{self, StopOutcome};
 
 super::commands! {
     fn send_message(state, agent_id: String, text: String, attachments: Vec<String>, client_message_id: Option<String>) -> SendMessageResult => chat::send_message(&state, agent_id, text, attachments, client_message_id).await;
@@ -31,6 +32,12 @@ super::commands! {
     fn list_pending_approvals(state) -> Vec<PendingApproval> => chat::list_pending_approvals(&state).await;
 
     fn cancel_turn(state, agent_id: String, turn_id: String) -> () => chat::cancel_turn(&state, agent_id, turn_id).await;
+
+    /// Stops a run and everything it started: its delegated runs, the replies queued behind it, and asks about its browser
+    fn stop_run(state, run_id: String) -> StopOutcome => stop::stop_run(&state, run_id, chat::decider(&state)).await;
+
+    /// "Close the browser too?": `close` closes it now, otherwise it stays open; false when the question has gone
+    fn answer_browser_question(question_id: String, close: bool) -> bool => Ok(stop::answer_browser_question(&question_id, close));
 }
 
 #[cfg(test)]

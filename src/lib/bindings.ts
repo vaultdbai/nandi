@@ -341,6 +341,28 @@ async replyToRun(runId: string, text: string, attachments: string[], clientMessa
 }
 },
 /**
+ * Stops a run and everything it started: its delegated runs, the replies queued behind it, and asks about its browser
+ */
+async stopRun(runId: string) : Promise<Result<StopOutcome, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("stop_run", { runId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * "Close the browser too?": `close` closes it now, otherwise it stays open; false when the question has gone
+ */
+async answerBrowserQuestion(questionId: string, close: boolean) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("answer_browser_question", { questionId, close }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * A new chat with an agent (Nandi by default), its own conversation
  */
 async createChat(agentId: string) : Promise<Result<ChatSummary, string>> {
@@ -9505,7 +9527,12 @@ conversationTitle: string | null;
 /**
  * The agent was busy: the run waits in its queue
  */
-queued: boolean }
+queued: boolean; 
+/**
+ * The message was just "stop" with a run going: that run and what it
+ * started were stopped instead (`services::stop`), nothing was sent
+ */
+stopped?: StopOutcome | null }
 /**
  * One thing an agent does for others, by name (`summarize-paper`).
  * Requesters find providers by this name.
@@ -9679,6 +9706,23 @@ export type StepKind =
  */
 export type StepLink = { agentId: string | null; runId: string | null; taskId: string | null; workflowId: string | null; workflowRunId: string | null }
 export type StepStatus = "pending" | "running" | "waiting" | "done" | "failed" | "skipped"
+/**
+ * What a stop did
+ */
+export type StopOutcome = { 
+/**
+ * The runs stopped: the one asked for first, then what it started
+ */
+stopped: string[]; 
+/**
+ * The replies that waited behind it, dropped
+ */
+dropped: string[]; 
+/**
+ * "Close the browser too?" is waiting for this answer, when the
+ * agent's browser still has pages open
+ */
+browserQuestion: string | null }
 /**
  * `studio://artifact_loaded`
  */

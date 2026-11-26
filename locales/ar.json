@@ -5265,5 +5265,12 @@
   "devices.askLevel.confirmHint": "يمكن للطلبات التنفيذ، وكل إجراء ينتظر موافقتك: لا قاعدة تمرره وحده.",
   "devices.askLevel.answerHint": "تقرأ الطلبات ما يمكن لـ Nandi قراءته وتجيب. بلا إجراءات.",
   "devices.askLevel.offHint": "لا طلبات: الهاتف للموافقة فقط.",
-  "liveWork.origin.phone": "من هاتفك"
+  "liveWork.origin.phone": "من هاتفك",
+  "stop.stopped": "تم الإيقاف مع كل ما بدأه",
+  "stop.stoppedDropped_one": "تم الإيقاف مع كل ما بدأه. أُلغيت {{count}} رسالة منتظرة.",
+  "stop.stoppedDropped_other": "تم الإيقاف مع كل ما بدأه. أُلغيت {{count}} رسائل منتظرة.",
+  "stop.browserQuestion": "إغلاق المتصفح أيضاً؟",
+  "stop.browserClosesIn": "يُغلق خلال {{seconds}} ث إن لم تجب.",
+  "stop.close": "إغلاق",
+  "stop.keepOpen": "إبقاؤه مفتوحاً"
 }

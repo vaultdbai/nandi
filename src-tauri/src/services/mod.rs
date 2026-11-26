@@ -82,6 +82,7 @@ pub mod selection;
 pub mod shared;
 pub mod shipped_files;
 pub mod snapshots;
+pub mod stop;
 pub mod studio;
 pub mod tools;
 pub mod triggers;

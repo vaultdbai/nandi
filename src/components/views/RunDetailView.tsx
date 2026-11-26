@@ -63,6 +63,7 @@ import {
 import { RunTimeline } from '@/components/agent-console/RunTimeline'
 import { isActive } from '@/components/agent-console/run-detail-model'
 import { isLiveStatus } from '@/components/live-runs/live-run-model'
+import { BrowserQuestion } from '@/components/live-runs/BrowserQuestion'
 import {
   inputHeadline,
   rerunNeedsConfirm,
@@ -437,6 +438,7 @@ function RunDetailLayout({
           )}
         </div>
       </header>
+      <BrowserQuestion />
 
       <Tabs
         value={tab}

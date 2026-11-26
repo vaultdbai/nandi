@@ -5265,5 +5265,12 @@
   "devices.askLevel.confirmHint": "Les demandes peuvent agir, et chaque action attend votre accord : aucune règle n'en laisse passer seule.",
   "devices.askLevel.answerHint": "Les demandes lisent ce que Nandi peut déjà lire et répondent. Aucune action.",
   "devices.askLevel.offHint": "Aucune demande : le téléphone ne fait qu'approuver.",
-  "liveWork.origin.phone": "Depuis votre téléphone"
+  "liveWork.origin.phone": "Depuis votre téléphone",
+  "stop.stopped": "Arrêté, avec tout ce qu'il avait lancé",
+  "stop.stoppedDropped_one": "Arrêté, avec tout ce qu'il avait lancé. {{count}} message en attente a été abandonné.",
+  "stop.stoppedDropped_other": "Arrêté, avec tout ce qu'il avait lancé. {{count}} messages en attente ont été abandonnés.",
+  "stop.browserQuestion": "Fermer aussi le navigateur ?",
+  "stop.browserClosesIn": "Il se ferme dans {{seconds}} s sans réponse.",
+  "stop.close": "Fermer",
+  "stop.keepOpen": "Le garder ouvert"
 }
