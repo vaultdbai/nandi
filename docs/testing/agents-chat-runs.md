@@ -1361,6 +1361,21 @@ Shared preconditions used below:
 - **Automation:** Covered by: `src/components/agent-console/save-preview-model.test.ts`, Rust `services::studio::save::tests::a_preview_says_what_a_save_creates_and_may_reach`, `services::studio::tools::tests::nandi_builds_with_the_guides_the_check_and_the_save_only`, `services::own_devices::desktop_only::tests::risky_approvals_stay_on_the_computer` | Layer: unit | Gap: no live-model test of Nandi writing a file.
 - **Needs relay:** no
 
+### CH-36 — @mention another agent
+
+- **What:** In the Nandi home's composer and in a chat's composer, typing `@` lists the person's agents (matching what's typed after it, six at most) as buttons above the box; picking one fills in `@Name `. Sending `@Researcher find …` starts a new chat with Researcher instead of Nandi, with the message after the name; in a chat with Researcher it just continues that chat. The longest matching name wins, and the name must end at a space, `,` or `:`. Those chats show in Live and Recent with that agent's name and icon. A message with no known agent after `@` goes to Nandi as typed. Nandi stays the default.
+- **Where:** `src/components/ask/mention-model.ts`, `AskComposer.tsx` (`mentions`), `AskBox.tsx` (`chat.mentions`), `src/components/nandi/NandiView.tsx` (`Composer`). Data: `create_chat` and `send_chat_message` (CH-34); the new chat runs as that agent with its own grants.
+- **Preconditions:** A second local agent, Researcher.
+- **Steps:**
+  1. On the Nandi home type `@res`; pick Researcher; type "find three papers on agents"; send.
+  2. In that chat send `@Researcher and summarise them`.
+- **Expected:** Step 1 opens a new chat with Researcher (its name and icon in the header and in Recent). Step 2 goes on in the same chat.
+- **Edge / negative cases:**
+  - `@Writers unite` with an agent named Writer: no match, sent to Nandi as typed.
+  - `@Researcher` with no message: sent to the current chat's agent as typed.
+- **Automation:** Covered by: `src/components/ask/mention-model.test.ts` | Layer: unit | Gap: no component test for the suggestions.
+- **Needs relay:** no
+
 ## Runs, Run Detail and audit
 
 ### RN-01 — Run Detail page and header

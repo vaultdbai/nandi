@@ -5248,5 +5248,6 @@
   "savePreview.runs": "Runs",
   "savePreview.create": "Create",
   "savePreview.edit": "Edit",
-  "savePreview.no": "No"
+  "savePreview.no": "No",
+  "composer.mentions": "Start the chat with"
 }

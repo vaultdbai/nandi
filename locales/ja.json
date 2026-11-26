@@ -5248,5 +5248,6 @@
   "savePreview.runs": "実行対象",
   "savePreview.create": "作成",
   "savePreview.edit": "編集",
-  "savePreview.no": "いいえ"
+  "savePreview.no": "いいえ",
+  "composer.mentions": "チャットの相手"
 }

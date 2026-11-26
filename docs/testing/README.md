@@ -341,6 +341,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | CH-33 | The Inbox and Runs point to the live chat                               | Shipped            | unit          | no          |                                             |
 | CH-34 | The Nandi home: one place to talk                                       | Shipped            | unit          | no          |                                             |
 | CH-35 | Nandi makes agents and automations in a chat                            | Shipped            | unit          | no          |                                             |
+| CH-36 | @mention another agent                                                  | Shipped            | unit          | no          |                                             |
 | RN-01 | Run Detail page and header                                              | Shipped            | unit + ui-e2e | no          |                                             |
 | RN-02 | Overview tab: key results                                               | Shipped            | unit          | no          |                                             |
 | RN-03 | Timeline tab                                                            | Shipped            | unit          | no          |                                             |

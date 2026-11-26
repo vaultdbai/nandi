@@ -5248,5 +5248,6 @@
   "savePreview.runs": "يشغّل",
   "savePreview.create": "إنشاء",
   "savePreview.edit": "تعديل",
-  "savePreview.no": "لا"
+  "savePreview.no": "لا",
+  "composer.mentions": "ابدأ المحادثة مع"
 }

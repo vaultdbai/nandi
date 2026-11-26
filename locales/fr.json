@@ -5248,5 +5248,6 @@
   "savePreview.runs": "Lance",
   "savePreview.create": "Créer",
   "savePreview.edit": "Modifier",
-  "savePreview.no": "Non"
+  "savePreview.no": "Non",
+  "composer.mentions": "Commencer la discussion avec"
 }

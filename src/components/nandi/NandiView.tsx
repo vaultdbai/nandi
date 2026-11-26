@@ -22,6 +22,7 @@ import { AgentAvatar } from '@/components/agent-console/AgentAvatar'
 import { MessageList } from '@/components/agent-console/MessageList'
 import { isWorking } from '@/components/agent-console/working'
 import { AskBox } from '@/components/ask/AskBox'
+import { mentionTarget } from '@/components/ask/mention-model'
 import { labelText } from '@/components/live-runs/live-run-model'
 import { LiveRunsSection } from '@/components/live-runs/LiveRunsSection'
 import { LiveBadge, LiveStop } from '@/components/live-runs/LiveRunView'
@@ -69,15 +70,24 @@ export function NandiView({ conversationId }: { conversationId?: string }) {
   )
 }
 
-/** The composer each chat ends with, in chat mode */
+/**
+ * The composer each chat ends with, in chat mode. `@` lists the person's
+ * agents: a message starting `@Researcher …` starts a chat with that
+ * agent instead.
+ */
 function Composer({
   placeholder,
+  agentId,
   onSend,
 }: {
   placeholder: string
+  /** The chat's own agent: mentioning it just continues this chat */
+  agentId?: string
   onSend: (text: string, attachments: AttachmentInfo[]) => void
 }) {
   const view = useNavigationStore(state => state.current)
+  const agents = useAgents().data ?? []
+  const mentions = agents.map(agent => ({ id: agent.id, name: agent.name }))
   return (
     <AskBox
       className="mx-auto w-full max-w-3xl"
@@ -85,7 +95,20 @@ function Composer({
       placeholder={placeholder}
       onApplyEdit={openEditInStudio}
       fixedMode="chat"
-      chat={{ placeholder, onSend }}
+      chat={{
+        placeholder,
+        mentions,
+        onSend: (text, attachments) => {
+          const target = mentionTarget(text, mentions)
+          if (target && target.message && target.agentId === agentId) {
+            onSend(target.message, attachments)
+          } else if (target && target.message) {
+            void startChat(target.agentId, target.message, attachments)
+          } else {
+            onSend(text, attachments)
+          }
+        },
+      }}
     />
   )
 }
@@ -329,6 +352,7 @@ function ChatView({ conversationId }: { conversationId: string }) {
       <div className="shrink-0 border-t p-3">
         <Composer
           placeholder={t('liveWork.reply.placeholder', { name: agent.name })}
+          agentId={agentId}
           onSend={(text, attachments) =>
             void sendChatMessage(conversationId, text, attachments)
           }

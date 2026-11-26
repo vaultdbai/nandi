@@ -22,6 +22,7 @@ import { useNavigationStore } from '@/store/navigation-store'
 import { ActionPlanPreview } from './ActionPlanPreview'
 import { AskAnswer } from './AskAnswer'
 import { AskComposer } from './AskComposer'
+import type { Mentionable } from './mention-model'
 import { EditPreviewCard } from './EditPreview'
 import { HelpAnswerCard } from '@/components/help/HelpAnswerCard'
 import { useDefaultModel } from '@/hooks/useLlmKeyStatus'
@@ -62,6 +63,8 @@ export interface AskBoxProps {
     placeholder: string
     disabled?: boolean
     onSend: (text: string, attachments: AttachmentInfo[]) => void
+    /** Agents an `@` lists while typed (the Nandi home) */
+    mentions?: readonly Mentionable[]
   }
   /** Which mode a box with `chat` starts in (Chat by default) */
   defaultMode?: 'chat' | 'ask'
@@ -189,6 +192,7 @@ export function AskBox({
         placeholder={chatting ? chat.placeholder : placeholder}
         disabled={chatting && chat.disabled}
         busy={!chatting && ask.pending}
+        mentions={chatting ? chat.mentions : undefined}
         onSend={(text, attachments) => {
           if (chatting) {
             chat.onSend(text, attachments)

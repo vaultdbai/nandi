@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger'
 import { client } from '@/lib/client'
 import type { AttachmentInfo } from '@/lib/tauri-bindings'
 import { cn } from '@/lib/utils'
+import { mentionOptions, withMention, type Mentionable } from './mention-model'
 
 const MAX_ATTACHMENTS = 10
 const MAX_TEXTAREA_HEIGHT_PX = 160
@@ -22,6 +23,8 @@ export interface AskComposerProps {
   className?: string
   /** Focus the text box when shown (the companion's hotkey) */
   autoFocus?: boolean
+  /** Agents an `@` lists while typed, to start the chat with instead */
+  mentions?: readonly Mentionable[]
 }
 
 /**
@@ -35,6 +38,7 @@ export function AskComposer({
   onSend,
   className,
   autoFocus = false,
+  mentions,
 }: AskComposerProps) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState('')
@@ -42,6 +46,7 @@ export function AskComposer({
   const [attachments, setAttachments] = useState<AttachmentInfo[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  const options = mentions ? mentionOptions(draft, mentions) : []
   const hasContent = draft.trim().length > 0 || attachments.length > 0
   const canSend = hasContent && !disabled && !busy
 
@@ -100,6 +105,30 @@ export function AskComposer({
                 attachment={attachment}
                 onRemove={removeAttachment}
               />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {options.length > 0 && (
+        <ul
+          aria-label={t('composer.mentions')}
+          className="flex flex-wrap gap-1"
+        >
+          {options.map(agent => (
+            <li key={agent.id}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7"
+                onClick={() => {
+                  setDraft(withMention(agent))
+                  textareaRef.current?.focus()
+                }}
+              >
+                @{agent.name || agent.id}
+              </Button>
             </li>
           ))}
         </ul>
