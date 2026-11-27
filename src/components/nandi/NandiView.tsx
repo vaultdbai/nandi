@@ -27,7 +27,6 @@ import { ViewHeader } from '@/components/views/ViewHeader'
 import { useAgents } from '@/hooks/useAgents'
 import { useChats } from '@/hooks/useChats'
 import { useLiveRuns } from '@/hooks/useRuns'
-import { STARTERS } from '@/components/studio/starters'
 import { decideApproval, sendChatMessage, startChat } from '@/lib/agent-actions'
 import { defaultAgentName, displayAgent } from '@/lib/agent-identity'
 import { loadConversation } from '@/lib/agent-sync'
@@ -43,6 +42,7 @@ import { useConversation } from '@/store/agent-store'
 import { useChatPinsStore } from '@/store/chat-pins-store'
 import { useNavigationStore } from '@/store/navigation-store'
 import { AgentMark, NandiMark } from './AgentMark'
+import { Examples } from './Examples'
 import {
   chatAgentId,
   chatLabel,
@@ -147,7 +147,7 @@ function NandiHome() {
       )}
       {/* The box at the bottom, like every chat; examples above it */}
       <div className="shrink-0 space-y-3 border-t p-3">
-        <Starters onPick={text => void startChat(DEFAULT_AGENT, text)} />
+        <Examples onPick={text => void startChat(DEFAULT_AGENT, text)} />
         <Composer
           placeholder={t('nandiHome.composer')}
           onSend={(text, attachments) =>
@@ -170,29 +170,6 @@ function Welcome({ name }: { name: string }) {
         <EmptyDescription>{t('nandiHome.welcome', { name })}</EmptyDescription>
       </EmptyHeader>
     </Empty>
-  )
-}
-
-/** Example asks: tapping one sends it */
-function Starters({ onPick }: { onPick: (text: string) => void }) {
-  const { t } = useTranslation()
-  return (
-    <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2">
-      <span className="text-xs text-muted-foreground">
-        {t('studio.starters')}
-      </span>
-      {STARTERS.map(starter => (
-        <Button
-          key={starter}
-          variant="outline"
-          size="sm"
-          className="h-auto py-1 text-xs whitespace-normal"
-          onClick={() => onPick(t(`studio.starter.${starter}`))}
-        >
-          {t(`studio.starter.${starter}`)}
-        </Button>
-      ))}
-    </div>
   )
 }
 
@@ -397,7 +374,7 @@ function ChatView({ conversationId }: { conversationId: string }) {
       )}
       <div className="shrink-0 space-y-3 border-t p-3">
         {conversation && messages.length === 0 && (
-          <Starters
+          <Examples
             onPick={text => void sendChatMessage(conversationId, text)}
           />
         )}

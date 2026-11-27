@@ -1390,6 +1390,21 @@ Shared preconditions used below:
 - **Automation:** Covered by: Rust `services::stop::tests` (plain stop words, the plan reaching delegated runs and queued replies, the browser closing unanswered, on Close, not on Keep), `services::chat::tests::stop_typed_in_a_chat_with_a_run_going_stops_it_and_sends_nothing`; `src/components/live-runs/BrowserQuestion.test.tsx` | Layer: unit | Gap: no live browser test.
 - **Needs relay:** no
 
+### CH-38 — Examples that teach
+
+- **What:** Above the box on the Nandi home and on an empty chat, "Try asking" shows 4 examples from a pool of 30 things Nandi can really do, each tagged with what it teaches (mail, calendar, browser, automations, agents, Lock box, phone, people, general). A new set each time the home or a new chat opens, one per kind, never the last set again back to back. Kinds the person has used step back: an example of that kind they sent, an automation that exists, an agent of their own. An example that needs something not connected (a mailbox for mail and calendar, a relay for people, a paired phone) becomes the step that connects it ("Connect your Gmail or Outlook", "Join your team's network to ask people", "Pair your phone…"), which opens that setting. Tapping an ask sends it. Every example is written in every language and shows in the app's language.
+- **Where:** `src/components/nandi/examples-model.ts` (`EXAMPLES`, `pickExamples`), `Examples.tsx`, `src/store/examples-store.ts` (tapped kinds and the last set, this computer only); the words are `examples.*` in `locales/*.json`.
+- **Preconditions:** None.
+- **Steps:**
+  1. Open Nandi; note the examples; open a new chat; open Nandi again.
+  2. Tap a browser example; open Nandi a few times.
+  3. Connect a mailbox; open Nandi.
+  4. Switch the app's language.
+- **Expected:** Each opening shows a different set; browser examples come up less after step 2; with no mailbox a "Connect your Gmail or Outlook" step stands in for mail examples, and real mail examples show once connected; the examples follow the language.
+- **Edge / negative cases:** Storage blocked: the sets still rotate. No relay: people examples become "Join your team's network…", never an error.
+- **Automation:** Covered by: `src/components/nandi/examples-model.test.ts` (rotation, no repeats back to back, used kinds stepping back, connect steps, every locale written and not a copy of English), `NandiView.test.tsx` | Layer: unit | Gap: none.
+- **Needs relay:** no
+
 ## Runs, Run Detail and audit
 
 ### RN-01 — Run Detail page and header

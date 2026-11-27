@@ -343,6 +343,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | CH-35 | Nandi makes agents and automations in a chat                            | Shipped            | unit          | no          |                                             |
 | CH-36 | @mention another agent                                                  | Shipped            | unit          | no          |                                             |
 | CH-37 | Stop means stop                                                         | Shipped            | unit          | no          |                                             |
+| CH-38 | Examples that teach                                                     | Shipped            | unit          | no          |                                             |
 | RN-01 | Run Detail page and header                                              | Shipped            | unit + ui-e2e | no          |                                             |
 | RN-02 | Overview tab: key results                                               | Shipped            | unit          | no          |                                             |
 | RN-03 | Timeline tab                                                            | Shipped            | unit          | no          |                                             |
