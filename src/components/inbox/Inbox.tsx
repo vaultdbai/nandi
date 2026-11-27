@@ -62,6 +62,7 @@ import {
   type InboxItem,
 } from './inbox-model'
 import {
+  contextLine,
   doneSince,
   dueText,
   groupTodos,
@@ -74,6 +75,7 @@ import {
   AddTodo,
   DoneRecently,
   HandToAgent,
+  TodoContextDetails,
   TodoMarker,
   TodoProgress,
 } from './TodoParts'
@@ -263,7 +265,14 @@ export function InboxRow({ item }: { item: InboxItem }) {
  * One Inbox item's card with its fix in place: the shortcuts on top of the
  * item's Ask chat (`InboxItemThreadView`)
  */
-export function InboxItemCard({ item }: { item: InboxItem }) {
+export function InboxItemCard({
+  item,
+  unfolded,
+}: {
+  item: InboxItem
+  /** On the item's own page: its details unfolded */
+  unfolded?: boolean
+}) {
   const { t } = useTranslation()
   const opener = useViewOpener()
   switch (item.kind) {
@@ -310,7 +319,7 @@ export function InboxItemCard({ item }: { item: InboxItem }) {
     case 'gatewayHold':
       return <GatewayHoldRow item={item} />
     case 'assignment':
-      return <AssignmentRow item={item} />
+      return <AssignmentRow item={item} unfolded={unfolded} />
     case 'clarification':
       return (
         <SimpleRow
@@ -555,8 +564,10 @@ function GatewayHoldRow({
  */
 function AssignmentRow({
   item,
+  unfolded,
 }: {
   item: Extract<InboxItem, { kind: 'assignment' }>
+  unfolded?: boolean
 }) {
   const { t, i18n } = useTranslation()
   const { open } = useViewOpener()
@@ -644,12 +655,20 @@ function AssignmentRow({
             <DueLine due={assignment.dueAt} now={now} overdue={overdue} />
           )}
           {todo && assignment.source && (
-            <span className="block text-xs text-muted-foreground">
-              {t(sourceKey(assignment.source))}
+            <span className="block text-xs break-words text-muted-foreground">
+              {[
+                t(sourceKey(assignment.source)),
+                contextLine(assignment.context),
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </span>
           )}
         </button>
       </div>
+      {todo && (
+        <TodoContextDetails context={assignment.context} unfolded={unfolded} />
+      )}
       {todo && <TodoProgress todo={assignment} state={state} />}
       {assignment.links.length > 0 && (
         <ul

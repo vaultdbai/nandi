@@ -262,6 +262,7 @@ describe('Home, with activity', () => {
       source: null,
       sourceRef: null,
       relatedRef: null,
+      context: null,
       runId: null,
       assignedAgent: null,
       runStatus: null,

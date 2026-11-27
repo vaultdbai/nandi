@@ -7,6 +7,7 @@ import {
   type InboxSources,
 } from './inbox-model'
 import {
+  contextLine,
   countsInBadge,
   daysUntil,
   doneSince,
@@ -14,6 +15,7 @@ import {
   dueText,
   isDayDue,
   groupTodos,
+  hasContextDetails,
   relatedLink,
   reminderRings,
   TODO_TONE_TEXT,
@@ -44,6 +46,7 @@ const todo = (
   source: 'email',
   sourceRef: 'msg-1',
   relatedRef: null,
+  context: null,
   runId: null,
   assignedAgent: null,
   runStatus: null,
@@ -329,5 +332,31 @@ describe('relatedLink', () => {
       label: 'prepared',
       view: { kind: 'request', requestId: 'req-9' },
     })
+  })
+})
+
+describe("a to-do's context", () => {
+  const context = {
+    from: 'Lena <lena@example.com>',
+    title: 'Deposit',
+    when: null,
+    account: null,
+    excerpt: null,
+    why: null,
+  }
+
+  it('reads as who and what, when Nandi kept them', () => {
+    expect(contextLine(context)).toBe('Lena <lena@example.com> · Deposit')
+    expect(contextLine({ ...context, from: null })).toBe('Deposit')
+    expect(contextLine({ ...context, from: null, title: null })).toBeNull()
+    expect(contextLine(null)).toBeNull()
+  })
+
+  it('has details only with when, where, the excerpt or why', () => {
+    expect(hasContextDetails(context)).toBe(false)
+    expect(hasContextDetails({ ...context, why: 'The deposit is late' })).toBe(
+      true
+    )
+    expect(hasContextDetails(null)).toBe(false)
   })
 })

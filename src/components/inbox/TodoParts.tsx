@@ -31,11 +31,12 @@ import { useAgentNames } from '@/hooks/useHome'
 import { useAddTodo, useHandTodo, useReopenTodo } from '@/hooks/useInbox'
 import { useViewOpener } from '@/hooks/useViewOpener'
 import { DEFAULT_AGENT } from '@/lib/bindings'
-import type { GatewayAssignment, TodoKind } from '@/lib/bindings'
+import type { GatewayAssignment, TodoContext, TodoKind } from '@/lib/bindings'
 import { isDefaultAgent, ownAgents } from '@/lib/agent-identity'
 import { rawError } from '@/lib/friendly-error'
 import { cn } from '@/lib/utils'
 import {
+  hasContextDetails,
   reminderRings,
   relatedLink,
   TODO_TONE_TEXT,
@@ -140,6 +141,66 @@ export function TodoProgress({
         </button>
       )}
     </div>
+  )
+}
+
+/**
+ * What Nandi read the to-do from, as it saw it then: when, which mailbox,
+ * the lines that ask, and why it matters. Folded on the Inbox's card, open
+ * on the to-do's own page.
+ */
+export function TodoContextDetails({
+  context,
+  unfolded,
+}: {
+  context: TodoContext | null
+  unfolded?: boolean
+}) {
+  const { t } = useTranslation()
+  if (!context || !hasContextDetails(context)) return null
+  return (
+    <Collapsible
+      defaultOpen={unfolded}
+      className="ps-7"
+      data-testid="todo-context"
+    >
+      <CollapsibleTrigger asChild>
+        <Button
+          variant="link"
+          size="sm"
+          className="h-auto p-0 text-xs text-muted-foreground"
+        >
+          {t('inbox.todo.context.details')}
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-1 flex flex-col gap-1.5 text-xs">
+        {(context.when || context.account) && (
+          <p className="text-muted-foreground">
+            {[
+              context.when,
+              context.account &&
+                t('inbox.todo.context.account', { account: context.account }),
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        )}
+        {context.excerpt && (
+          <blockquote
+            aria-label={t('inbox.todo.context.excerpt')}
+            className="border-s-2 ps-2 break-words whitespace-pre-wrap text-foreground"
+          >
+            {context.excerpt}
+          </blockquote>
+        )}
+        {context.why && (
+          <p className="break-words">
+            <span className="font-medium">{t('inbox.todo.context.why')}</span>{' '}
+            {context.why}
+          </p>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 

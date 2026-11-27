@@ -30,6 +30,7 @@ const todo = (
   source: 'email',
   sourceRef: 'msg-1',
   relatedRef: 'inbox:approval:a1',
+  context: null,
   runId: null,
   assignedAgent: null,
   runStatus: null,
@@ -107,6 +108,40 @@ describe('Inbox: the user’s to-dos', () => {
       'data-tone',
       'reminder'
     )
+  })
+
+  it('shows what Nandi read it from, its details folded', async () => {
+    const user = userEvent.setup()
+    serve([
+      todo({
+        context: {
+          from: 'Lena',
+          title: 'Deposit',
+          when: 'Mon 24 Nov',
+          account: 'me@work.com',
+          excerpt: 'Can you confirm by Friday?',
+          why: 'The deposit comes back after the inspection',
+        },
+      }),
+    ])
+    render(<Inbox />)
+    const card = await screen.findByTestId('inbox-todo')
+    expect(card).toHaveTextContent('From an email · Lena · Deposit')
+    expect(card).not.toHaveTextContent('Can you confirm by Friday?')
+    await user.click(within(card).getByRole('button', { name: 'Details' }))
+    const details = within(card).getByTestId('todo-context')
+    expect(details).toHaveTextContent('Mon 24 Nov · To me@work.com')
+    expect(details).toHaveTextContent('Can you confirm by Friday?')
+    expect(details).toHaveTextContent(
+      'Why it matters: The deposit comes back after the inspection'
+    )
+  })
+
+  it('has no Details without a context', async () => {
+    serve([todo()])
+    render(<Inbox />)
+    const card = await screen.findByTestId('inbox-todo')
+    expect(within(card).queryByTestId('todo-context')).toBeNull()
   })
 
   it('marks one done, and Undo opens it again', async () => {

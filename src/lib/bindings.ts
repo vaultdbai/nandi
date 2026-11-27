@@ -6498,6 +6498,10 @@ sourceRef: string | null;
  */
 relatedRef: string | null; 
 /**
+ * What a to-do was read from, as Nandi saw it when it added it
+ */
+context: TodoContext | null; 
+/**
  * The run of the agent the user handed it to, and that agent
  */
 runId: string | null; assignedAgent: string | null; 
@@ -10012,6 +10016,36 @@ export type TestedStatus =
  * Can't drive an agent (no tool use, embeddings, image-only)
  */
 "unsupported"
+/**
+ * What a to-do was read from, as Nandi saw it then: enough to know what
+ * it is about without opening the source, and the account to open it in.
+ * Kept with the to-do, so it shows offline and after the email is gone.
+ */
+export type TodoContext = { 
+/**
+ * Who sent it, or set up the event
+ */
+from: string | null; 
+/**
+ * The email's subject, or the event's title
+ */
+title: string | null; 
+/**
+ * When it was sent, or when the event is, as the source says it
+ */
+when: string | null; 
+/**
+ * The mailbox or calendar it came to
+ */
+account: string | null; 
+/**
+ * The lines that ask for it, quoted
+ */
+excerpt: string | null; 
+/**
+ * Why it matters, in a sentence or two
+ */
+why: string | null }
 /**
  * What kind of to-do it is
  */

@@ -26,7 +26,7 @@ use tokio::sync::oneshot;
 
 use crate::db::{opt_text_enum, text_enum};
 use crate::model::Timestamp;
-use crate::services::domain::todo::{TodoKind, TodoSource};
+use crate::services::domain::todo::{TodoContext, TodoKind, TodoSource};
 use crate::services::events::NandiEvent;
 
 /// `gateway://assignment_changed`
@@ -99,6 +99,8 @@ pub struct GatewayAssignment {
     pub source_ref: Option<String>,
     /// An Inbox item Nandi prepared for it (`inbox:<kind>:<id>`)
     pub related_ref: Option<String>,
+    /// What a to-do was read from, as Nandi saw it when it added it
+    pub context: Option<TodoContext>,
     /// The run of the agent the user handed it to, and that agent
     pub run_id: Option<String>,
     pub assigned_agent: Option<String>,
@@ -182,7 +184,7 @@ pub fn links_of(input: &Value) -> Vec<AssignmentLink> {
 
 const COLUMNS: &str = "task_id, caller_instance, caller_name, request, status, note, created_at, \
                        due_at, closed_at, kind, source, source_ref, related_ref, run_id, \
-                       assigned_agent, \
+                       assigned_agent, context, \
                        (SELECT status FROM runs WHERE runs.id = gateway_assignments.run_id)";
 
 fn from_row(row: &Row<'_>) -> rusqlite::Result<GatewayAssignment> {
@@ -203,8 +205,14 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<GatewayAssignment> {
         related_ref: row.get(12)?,
         run_id: row.get(13)?,
         assigned_agent: row.get(14)?,
-        run_status: opt_text_enum(row, 15)?,
+        context: context_of(row.get(15)?),
+        run_status: opt_text_enum(row, 16)?,
     })
+}
+
+/// A to-do's stored context: JSON, read back as far as it still reads
+fn context_of(json: Option<String>) -> Option<TodoContext> {
+    json.and_then(|json| serde_json::from_str(&json).ok())
 }
 
 /// `assignment` with its links read in
@@ -245,8 +253,8 @@ pub fn open(
     let inserted = conn.execute(
         "INSERT OR IGNORE INTO gateway_assignments
              (task_id, caller_instance, caller_name, request, status, created_at, due_at, kind,
-              source, source_ref, related_ref)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+              source, source_ref, related_ref, context)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             assignment.task_id,
             assignment.caller_instance,
@@ -259,6 +267,10 @@ pub fn open(
             assignment.source.map(TodoSource::as_str),
             assignment.source_ref,
             assignment.related_ref,
+            assignment
+                .context
+                .as_ref()
+                .and_then(|c| serde_json::to_string(c).ok()),
         ],
     )?;
     // A to-do read from the same place again: the one already there

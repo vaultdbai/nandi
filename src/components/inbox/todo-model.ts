@@ -8,6 +8,7 @@ import type {
   GatewayAssignment,
   RunStatus,
   TodoKind,
+  TodoContext,
   TodoSource,
 } from '@/lib/bindings'
 import type { View } from '@/store/navigation-store'
@@ -19,6 +20,26 @@ const DAY_MS = 24 * HOUR_MS
 export const SOON_MS = 2 * DAY_MS
 /** A reminder this close to its date rings, and counts in the badge */
 export const REMINDER_RINGS_MS = 3 * DAY_MS
+
+/**
+ * The card's line about what a to-do was read from: who, and the subject
+ * or title. `null` when Nandi kept neither.
+ */
+export function contextLine(context: TodoContext | null): string | null {
+  if (!context) return null
+  const parts = [context.from, context.title].filter(
+    (part): part is string => !!part
+  )
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+/** Whether a to-do's context has more than its line: when, where, the excerpt or why */
+export function hasContextDetails(context: TodoContext | null): boolean {
+  return !!(
+    context &&
+    (context.when || context.account || context.excerpt || context.why)
+  )
+}
 
 /** A to-do: an assignment with a source (work a person assigned has none) */
 export function isTodo(assignment: GatewayAssignment): boolean {

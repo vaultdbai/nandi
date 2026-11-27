@@ -322,6 +322,7 @@ async fn nandi_keeps_the_list_with_its_tools() {
         json!({"text": "x", "kind": "do", "source": "manual"}),
         json!({"text": "x", "kind": "someday", "source": "chat"}),
         json!({"kind": "do", "source": "chat"}),
+        json!({"text": "x", "kind": "do", "source": "chat", "context": "from Lena"}),
     ] {
         assert!(
             tool::call(&state, DEFAULT_AGENT, tool::ADD, &bad)
@@ -334,6 +335,36 @@ async fn nandi_keeps_the_list_with_its_tools() {
         tool::call(&state, DEFAULT_AGENT, tool::DONE, &json!({}))
             .await
             .is_error
+    );
+}
+
+#[tokio::test]
+async fn a_todo_keeps_what_nandi_read_it_from() {
+    let state = AppState::for_tests(Vec::new());
+    let added = tool::call(
+        &state,
+        DEFAULT_AGENT,
+        tool::ADD,
+        &json!({"text": "Reply to the landlord about the deposit", "kind": "do",
+                "source": "email", "source_ref": "m7#1", "context": {
+                    "from": "Lena <lena@example.com>", "title": "Deposit",
+                    "account": "me@work.com", "excerpt": "Can you confirm by Friday?",
+                    "why": " ", "unknown": "ignored"}}),
+    )
+    .await;
+    assert!(!added.is_error, "{}", added.result);
+    let added: Value = serde_json::from_str(&added.result).unwrap();
+    assert_eq!(added["context"]["title"], json!("Deposit"));
+    assert_eq!(added["context"]["why"], Value::Null);
+
+    // Stored, so the Inbox reads it back
+    let todo = get(&state, added["id"].as_str().unwrap()).await;
+    let context = todo.context.unwrap();
+    assert_eq!(context.from.as_deref(), Some("Lena <lena@example.com>"));
+    assert_eq!(context.account.as_deref(), Some("me@work.com"));
+    assert_eq!(
+        context.excerpt.as_deref(),
+        Some("Can you confirm by Friday?")
     );
 }
 

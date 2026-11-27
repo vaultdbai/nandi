@@ -15,6 +15,11 @@ pub const MAX_TEXT_CHARS: usize = 400;
 /// Longest note on a done to-do, and longest reference
 pub const MAX_NOTE_CHARS: usize = 1000;
 pub const MAX_REF_CHARS: usize = 500;
+/// Longest line of a to-do's context (who, what, when, which account), its
+/// excerpt and its why
+pub const MAX_CONTEXT_LINE_CHARS: usize = 200;
+pub const MAX_EXCERPT_CHARS: usize = 800;
+pub const MAX_WHY_CHARS: usize = 400;
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 
@@ -96,6 +101,50 @@ pub struct NewTodo {
     /// An Inbox item Nandi prepared for it (an approval, a Request), by its
     /// thread ID (`inbox:<kind>:<id>`)
     pub related_ref: Option<String>,
+    /// What it was read from, as Nandi saw it
+    pub context: Option<TodoContext>,
+}
+
+/// What a to-do was read from, as Nandi saw it then: enough to know what
+/// it is about without opening the source, and the account to open it in.
+/// Kept with the to-do, so it shows offline and after the email is gone.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TodoContext {
+    /// Who sent it, or set up the event
+    pub from: Option<String>,
+    /// The email's subject, or the event's title
+    pub title: Option<String>,
+    /// When it was sent, or when the event is, as the source says it
+    pub when: Option<String>,
+    /// The mailbox or calendar it came to
+    pub account: Option<String>,
+    /// The lines that ask for it, quoted
+    pub excerpt: Option<String>,
+    /// Why it matters, in a sentence or two
+    pub why: Option<String>,
+}
+
+impl TodoContext {
+    /// Each part trimmed and cut to its length, empty parts none; `None`
+    /// when nothing is left
+    pub fn tidy(self) -> Option<Self> {
+        let cut = |value: Option<String>, max: usize| {
+            value
+                .map(|v| v.trim().chars().take(max).collect::<String>())
+                .map(|v| v.trim_end().to_string())
+                .filter(|v| !v.is_empty())
+        };
+        let tidy = Self {
+            from: cut(self.from, MAX_CONTEXT_LINE_CHARS),
+            title: cut(self.title, MAX_CONTEXT_LINE_CHARS),
+            when: cut(self.when, MAX_CONTEXT_LINE_CHARS),
+            account: cut(self.account, MAX_CONTEXT_LINE_CHARS),
+            excerpt: cut(self.excerpt, MAX_EXCERPT_CHARS),
+            why: cut(self.why, MAX_WHY_CHARS),
+        };
+        (tidy != Self::default()).then_some(tidy)
+    }
 }
 
 impl NewTodo {
@@ -127,7 +176,14 @@ impl NewTodo {
             source,
             source_ref: reference("source_ref", refs.source)?,
             related_ref: reference("related_ref", refs.related)?,
+            context: None,
         })
+    }
+
+    /// With what it was read from ([`TodoContext::tidy`])
+    pub fn with_context(mut self, context: TodoContext) -> Self {
+        self.context = context.tidy();
+        self
     }
 }
 
@@ -317,5 +373,34 @@ mod tests {
         assert_eq!(TodoSource::Manual.as_str(), "manual");
         assert_eq!("event".parse::<TodoSource>().unwrap(), TodoSource::Event);
         assert_eq!("check".parse::<TodoKind>().unwrap(), TodoKind::Check);
+    }
+
+    #[test]
+    fn context_is_tidied_and_empty_context_is_none() {
+        let todo = new("Reply to the landlord", None, TodoRefs::default())
+            .unwrap()
+            .with_context(TodoContext {
+                from: Some("  Lena <lena@example.com> ".into()),
+                title: Some("   ".into()),
+                excerpt: Some("x".repeat(MAX_EXCERPT_CHARS + 50)),
+                why: Some("The deposit comes back after the inspection".into()),
+                ..TodoContext::default()
+            });
+        let context = todo.context.unwrap();
+        assert_eq!(context.from.as_deref(), Some("Lena <lena@example.com>"));
+        assert_eq!(context.title, None);
+        assert_eq!(
+            context.excerpt.map(|e| e.chars().count()),
+            Some(MAX_EXCERPT_CHARS)
+        );
+        assert!(context.why.is_some());
+
+        let blank = TodoContext {
+            from: Some(" ".into()),
+            ..TodoContext::default()
+        };
+        assert_eq!(blank.tidy(), None);
+        let plain = new("Pay rent", None, TodoRefs::default()).unwrap();
+        assert_eq!(plain.context, None);
     }
 }

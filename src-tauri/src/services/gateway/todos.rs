@@ -116,6 +116,7 @@ pub fn assignment_of(todo: &NewTodo, task_id: String, from: String, now: i64) ->
         source: Some(todo.source),
         source_ref: todo.source_ref.clone(),
         related_ref: todo.related_ref.clone(),
+        context: todo.context.clone(),
         ..GatewayAssignment::default()
     }
 }
@@ -267,10 +268,27 @@ pub async fn hand_off(
             .await?;
         (conversation, sent)
     };
-    let (id, agent, run) = (task_id.clone(), agent_id.clone(), sent.run_id.clone());
+    let todo = handed(state, task_id, agent_id.clone(), sent.run_id).await?;
+    Ok(HandedTodo {
+        todo,
+        agent_id,
+        conversation_id,
+    })
+}
+
+/// Records that the user handed an open to-do to `agent_id`, whose run
+/// `run_id` works on it: [`hand_off`], or an ask from a paired phone
+/// (`own_devices`), which starts the run in the phone's own chat
+pub async fn handed(
+    state: &AppState,
+    task_id: String,
+    agent_id: String,
+    run_id: String,
+) -> Result<GatewayAssignment, String> {
+    let (id, agent) = (task_id, agent_id.clone());
     let todo = state
         .db()
-        .call(move |conn| assignments::hand_off(conn, &id, &agent, &run))
+        .call(move |conn| assignments::hand_off(conn, &id, &agent, &run_id))
         .await?
         .ok_or("That to-do is done already")?;
     record(
@@ -284,9 +302,5 @@ pub async fn hand_off(
         .subject(&todo.request),
     );
     changed(state, &todo);
-    Ok(HandedTodo {
-        todo,
-        agent_id,
-        conversation_id,
-    })
+    Ok(todo)
 }

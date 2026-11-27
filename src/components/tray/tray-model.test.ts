@@ -282,6 +282,7 @@ const todo = (
   source: 'email',
   sourceRef: null,
   relatedRef: null,
+  context: null,
   runId: null,
   assignedAgent: null,
   runStatus: null,

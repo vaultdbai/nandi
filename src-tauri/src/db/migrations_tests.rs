@@ -45,6 +45,10 @@ const SHIPPED: &[(&str, &str)] = &[
         "013_device_ask_level.sql",
         "c5dd2d3585afb68979a7ac5f158aac6efa48449e9cff27e6cafa17844be16fd3",
     ),
+    (
+        "014_todo_context.sql",
+        "adb3c21f4e42157115dd7998cc424c375ca6be8191dbecbe4095a28555729a1a",
+    ),
 ];
 
 /// A person's rows as Nandi 0.1.0 wrote them
@@ -120,13 +124,13 @@ const AGENT_ID_COLUMNS: &[(&str, &str)] = &[
 
 /// Test-only steps after the shipped chain, the way a real one would look
 const ADD_A_COLUMN: Migration = Migration {
-    version: 14,
-    file: "014_runs_label.sql",
+    version: 15,
+    file: "015_runs_label.sql",
     sql: "ALTER TABLE runs ADD COLUMN label TEXT NOT NULL DEFAULT '';",
 };
 const REBUILD_CONVERSATIONS: Migration = Migration {
-    version: 15,
-    file: "015_rebuild_conversations.sql",
+    version: 16,
+    file: "016_rebuild_conversations.sql",
     sql: "CREATE TABLE conversations_new (
               id         TEXT PRIMARY KEY,
               agent_id   TEXT NOT NULL,
@@ -326,8 +330,9 @@ fn each_version_has_its_standing() {
         (10, Standing::Behind),
         (11, Standing::Behind),
         (12, Standing::Behind),
-        (13, Standing::Current),
-        (14, Standing::Newer),
+        (13, Standing::Behind),
+        (14, Standing::Current),
+        (15, Standing::Newer),
     ];
     for (version, expected) in cases {
         assert_eq!(standing(version, MIGRATIONS), expected, "version {version}");
@@ -806,4 +811,41 @@ fn a_0_3_1_database_gives_each_paired_phone_the_ask_level_with_your_yes() {
         })
         .unwrap();
     assert_eq!((name.as_str(), level.as_str()), ("Ada's phone", "confirm"));
+}
+
+#[test]
+fn a_0_3_2_database_keeps_its_to_dos_with_no_context() {
+    let dir = tempfile::tempdir().unwrap();
+    let (conn, path) = v0_1_0_file(dir.path());
+    // Where Nandi 0.3.2 left it, with a to-do read from an email
+    let at_013 = MIGRATIONS.iter().position(|m| m.version == 13).unwrap();
+    upgrade(&conn, &MIGRATIONS[..=at_013], Some(&path)).unwrap();
+    conn.execute(
+        "INSERT INTO gateway_assignments
+             (task_id, caller_instance, caller_name, request, status, created_at, kind,
+              source, source_ref)
+         VALUES ('todo-1', '', 'Nandi', 'Reply to the landlord', 'open', 1, 'do',
+                 'email', 'msg-1#1')",
+        [],
+    )
+    .unwrap();
+    let before = rows(&conn);
+
+    let done = upgrade(&conn, MIGRATIONS, Some(&path)).unwrap();
+    assert!(matches!(
+        done,
+        Upgrade::Upgraded {
+            from: 13,
+            to: SCHEMA_VERSION,
+            ..
+        }
+    ));
+    assert!(dir.path().join("state.db.bak-v13").exists());
+    assert_rows_survived(&before, &rows(&conn));
+    let todo = crate::services::gateway::assignments::get(&conn, "todo-1")
+        .unwrap()
+        .unwrap();
+    assert_eq!(todo.request, "Reply to the landlord");
+    assert_eq!(todo.source_ref.as_deref(), Some("msg-1#1"));
+    assert_eq!(todo.context, None);
 }

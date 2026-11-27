@@ -53,6 +53,7 @@ pub const MIGRATIONS: &[Migration] = &[
     migration!(11, "011_agent_md.sql"),
     migration!(12, "012_lock_box.sql"),
     migration!(13, "013_device_ask_level.sql"),
+    migration!(14, "014_todo_context.sql"),
 ];
 
 /// The schema version this build writes: the last migration's number.

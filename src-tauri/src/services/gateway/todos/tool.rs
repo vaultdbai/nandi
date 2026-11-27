@@ -11,7 +11,7 @@
 //!
 //! | Tool        | Arguments                                         | Does                                   |
 //! | ----------- | ------------------------------------------------- | -------------------------------------- |
-//! | `todo_add`  | `{text, kind, due?, source, source_ref?, related_ref?}` | adds one (same source_ref: no new) |
+//! | `todo_add`  | `{text, kind, due?, source, source_ref?, related_ref?, context?}` | adds one (same source_ref: no new) |
 //! | `todo_list` | `{}`                                              | open ones, then done in the last week  |
 //! | `todo_done` | `{id, note?}`                                     | marks one Nandi finished itself done   |
 
@@ -23,7 +23,9 @@ use crate::engine::ToolOutcome;
 use crate::llm::ToolSpec;
 use crate::model::SourceType;
 use crate::services::builtin_agents::DEFAULT_AGENT;
-use crate::services::domain::todo::{NewTodo, TodoKind, TodoRefs, TodoSource, MAX_TEXT_CHARS};
+use crate::services::domain::todo::{
+    NewTodo, TodoContext, TodoKind, TodoRefs, TodoSource, MAX_TEXT_CHARS,
+};
 use crate::services::gateway::assignments::{AssignmentStatus, GatewayAssignment};
 use crate::services::repo_store::RepoStore;
 use crate::services::AppState;
@@ -78,7 +80,11 @@ email's message id (an event's id) and its number in the order the asks appear, 
 source_ref already used returns the to-do already there (`existing: true`). \
 `related_ref`: the Inbox thread of what you prepared for it (`inbox:approval:<id>`, a Request's \
 id). When the user has several mailboxes, say in `text` which one an email came to \
-(\"… (to me@work.com)\"). Don't add what is already done.",
+(\"… (to me@work.com)\"). `context`: what you read it from, so the user sees what it is \
+about without opening it: `from` (the sender, or who set up the event), `title` (the subject or \
+event title), `when` (sent, or when the event is), `account` (the mailbox or calendar it came \
+to), `excerpt` (the lines that ask, quoted as written) and `why` (why it matters, a sentence or \
+two). Don't add what is already done.",
             json!({"type": "object", "required": ["text", "kind", "source"], "properties": {
                 "text": {"type": "string", "maxLength": MAX_TEXT_CHARS},
                 "kind": {"type": "string", "enum": ["do", "check", "reminder"]},
@@ -86,6 +92,14 @@ id). When the user has several mailboxes, say in `text` which one an email came 
                 "source": {"type": "string", "enum": ["email", "event", "chat"]},
                 "source_ref": {"type": "string"},
                 "related_ref": {"type": "string"},
+                "context": {"type": "object", "properties": {
+                    "from": {"type": "string"},
+                    "title": {"type": "string"},
+                    "when": {"type": "string"},
+                    "account": {"type": "string"},
+                    "excerpt": {"type": "string"},
+                    "why": {"type": "string"},
+                }},
             }}),
         ),
         LIST => (
@@ -161,6 +175,7 @@ pub fn for_model(todo: &GatewayAssignment, now: i64) -> Value {
         "source": todo.source,
         "source_ref": todo.source_ref,
         "related_ref": todo.related_ref,
+        "context": todo.context,
         "handed_to": todo.assigned_agent,
         "done_note": todo.note,
     })
@@ -195,6 +210,17 @@ pub async fn call(state: &AppState, agent_id: &str, tool: &str, args: &Value) ->
                 Ok(todo) => todo,
                 Err(e) => return error(e.to_string()),
             };
+            let todo =
+                match args.get("context").filter(|c| !c.is_null()) {
+                    None => todo,
+                    Some(context) => match serde_json::from_value::<TodoContext>(context.clone()) {
+                        Ok(context) => todo.with_context(context),
+                        Err(_) => return error(
+                            "'context' is an object of from, title, when, account, excerpt and \
+why, each a string",
+                        ),
+                    },
+                };
             match super::add(state, todo, by).await {
                 Ok(added) => {
                     let mut value = for_model(&added.todo, now_ms());
