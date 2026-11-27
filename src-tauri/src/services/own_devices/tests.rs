@@ -33,11 +33,14 @@ where
     panic!("timed out waiting for {what}");
 }
 
-/// The Inbox, as a test sets it: its approvals, and the decisions made
+/// The Inbox, as a test sets it: its approvals, one to-do, and the
+/// decisions made
 #[derive(Default)]
 struct FakeInbox {
     approvals: Mutex<Vec<PendingApproval>>,
     decided: Mutex<Vec<(String, ApprovalDecision, String)>>,
+    /// What was done to to-dos: (`done` or `handed <run>`, its ID, device)
+    todo_log: Mutex<Vec<(String, String, String)>>,
 }
 
 impl FakeInbox {
@@ -57,6 +60,10 @@ impl FakeInbox {
     fn decided(&self) -> Vec<(String, ApprovalDecision, String)> {
         self.decided.lock().unwrap().clone()
     }
+
+    fn todo_log(&self) -> Vec<(String, String, String)> {
+        self.todo_log.lock().unwrap().clone()
+    }
 }
 
 impl PhoneInbox for FakeInbox {
@@ -68,15 +75,56 @@ impl PhoneInbox for FakeInbox {
     }
 
     fn todos(&self) -> futures_util::future::BoxFuture<'_, Result<Vec<PhoneTodo>, String>> {
-        Box::pin(async {
-            Ok(vec![PhoneTodo {
-                id: "todo-1".into(),
-                title: "Reply to the landlord".into(),
-                kind: "do".into(),
-                from: "Nandi".into(),
-                due_at: None,
-            }])
+        let log = self.todo_log();
+        let done = log.iter().any(|(what, _, _)| what == "done");
+        let working = log.iter().any(|(what, _, _)| what.starts_with("handed"));
+        Box::pin(async move {
+            Ok((!done)
+                .then(|| PhoneTodo {
+                    id: "todo-1".into(),
+                    title: "Reply to the landlord".into(),
+                    kind: "do".into(),
+                    from: "Nandi".into(),
+                    due_at: None,
+                    working,
+                })
+                .into_iter()
+                .collect())
         })
+    }
+
+    fn todo_text(
+        &self,
+        id: String,
+    ) -> futures_util::future::BoxFuture<'_, Result<Option<String>, String>> {
+        Box::pin(async move {
+            Ok((id == "todo-1").then(|| "Reply to the landlord about the deposit".to_string()))
+        })
+    }
+
+    fn todo_done(
+        &self,
+        id: String,
+        device: String,
+    ) -> futures_util::future::BoxFuture<'_, Result<(), String>> {
+        self.todo_log
+            .lock()
+            .unwrap()
+            .push(("done".into(), id, device));
+        Box::pin(async { Ok(()) })
+    }
+
+    fn todo_handed(
+        &self,
+        id: String,
+        run_id: String,
+        device: String,
+    ) -> futures_util::future::BoxFuture<'_, Result<(), String>> {
+        self.todo_log
+            .lock()
+            .unwrap()
+            .push((format!("handed {run_id}"), id, device));
+        Box::pin(async { Ok(()) })
     }
 
     fn decide(
@@ -122,6 +170,7 @@ impl PhoneChat for FakeChat {
             Ok(known.then(|| chat::Asked {
                 chat,
                 message_id: "m1".into(),
+                run_id: "r1".into(),
                 queued: false,
             }))
         })
@@ -610,6 +659,112 @@ async fn risky_approvals_are_refused_from_a_device_but_may_be_declined() {
     let pair = json!({"id": "c", "op": "pair"});
     let answer = answer_of(home.devices.on_envelope(phone.seal(pair)).await.unwrap());
     assert_eq!(refusal_code(&answer), codes::UNKNOWN_COMMAND);
+}
+
+#[tokio::test]
+async fn a_phone_marks_a_todo_done_with_the_pin() {
+    let home = Home::start().await;
+    let mut phone = home.paired_phone().await;
+    let device_id = phone.device_id.clone();
+    let done = |pin: &str| json!({"id": "c", "op": "todo_done", "itemId": "todo-1", "pin": pin});
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(done("000001")))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(refusal_code(&answer), codes::PIN_WRONG);
+    assert!(home.inbox.todo_log().is_empty());
+
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(done(PIN)))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        answer,
+        Answer::Decided {
+            item_id: "todo-1".into(),
+            decision: "done".into()
+        }
+    );
+    // The record names the device
+    assert_eq!(
+        home.inbox.todo_log(),
+        [(
+            "done".to_string(),
+            "todo-1".to_string(),
+            format!("Ada's phone ({device_id})")
+        )]
+    );
+    // Done already: nothing is open under that ID
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(done(PIN)))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(refusal_code(&answer), codes::ITEM_NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_phone_hands_a_todo_to_nandi_as_its_own_ask() {
+    let home = Home::start().await;
+    let mut phone = home.paired_phone().await;
+    let device_id = phone.device_id.clone();
+    let hand = json!({"id": "c", "op": "todo_hand", "itemId": "todo-1", "pin": PIN});
+
+    // With asks off, the phone only approves
+    home.devices
+        .set_ask_level(&device_id, controls::AskLevel::Off)
+        .await
+        .unwrap();
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(hand.clone()))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(refusal_code(&answer), codes::ASKS_OFF);
+    assert!(home.chat.asks().is_empty());
+    home.devices
+        .set_ask_level(&device_id, controls::AskLevel::Confirm)
+        .await
+        .unwrap();
+
+    let answer = answer_of(
+        home.devices
+            .on_envelope(phone.seal(hand.clone()))
+            .await
+            .unwrap(),
+    );
+    let Answer::Asked { chat: asked_in, .. } = answer else {
+        panic!("{answer:?}");
+    };
+    // A new chat of the phone's, with the whole sentence, as the phone's ask
+    let asks = home.chat.asks();
+    assert_eq!(asks.len(), 1);
+    let (asker, chat_id, new, text) = &asks[0];
+    assert_eq!(asker.device_id, device_id);
+    assert!(*new && *chat_id == asked_in && chat::owns(&device_id, chat_id));
+    assert_eq!(
+        text,
+        "Please do this: Reply to the landlord about the deposit"
+    );
+    // The to-do follows that run, recorded under the device
+    assert_eq!(
+        home.inbox.todo_log(),
+        [(
+            "handed r1".to_string(),
+            "todo-1".to_string(),
+            format!("Ada's phone ({device_id})")
+        )]
+    );
+    // Not handed twice while its run works
+    let answer = answer_of(home.devices.on_envelope(phone.seal(hand)).await.unwrap());
+    assert_eq!(refusal_code(&answer), codes::FAILED);
+    assert_eq!(home.chat.asks().len(), 1);
 }
 
 #[tokio::test]

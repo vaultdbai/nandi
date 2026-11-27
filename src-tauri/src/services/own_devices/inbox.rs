@@ -1,14 +1,16 @@
-//! What a paired device reaches of the Inbox: the approvals waiting, the
-//! open to-dos (read only), and approving or declining an approval
-//! through the same service as its button, with the decisions record
-//! naming the device.
+//! What a paired device reaches of the Inbox: the approvals waiting and
+//! the open to-dos; approving or declining an approval, and marking a
+//! to-do done or recording it handed, through the same services as their
+//! buttons, with the decisions record naming the device.
 
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 
 use super::wire::{self, PhoneTodo};
 use crate::model::{ApprovalDecision, PendingApproval};
+use crate::services::builtin_agents::DEFAULT_AGENT;
 use crate::services::gateway::assignments::AssignmentStatus;
+use crate::services::gateway::todos::{self, Actor};
 use crate::services::AppState;
 
 /// The Inbox, as a device's commands use it
@@ -24,6 +26,21 @@ pub trait PhoneInbox: Send + Sync {
         &self,
         id: String,
         decision: ApprovalDecision,
+        device: String,
+    ) -> BoxFuture<'_, Result<(), String>>;
+
+    /// The whole sentence of open to-do `id` (`None`: not open)
+    fn todo_text(&self, id: String) -> BoxFuture<'_, Result<Option<String>, String>>;
+
+    /// Marks open to-do `id` done; the record names `device`
+    fn todo_done(&self, id: String, device: String) -> BoxFuture<'_, Result<(), String>>;
+
+    /// Records open to-do `id` handed to Nandi, whose run `run_id` works
+    /// on it; the record names `device`
+    fn todo_handed(
+        &self,
+        id: String,
+        run_id: String,
         device: String,
     ) -> BoxFuture<'_, Result<(), String>>;
 }
@@ -58,6 +75,7 @@ impl PhoneInbox for AppInbox {
                         .unwrap_or_default(),
                     from: todo.caller_name,
                     due_at: todo.due_at,
+                    working: todo.run_status.is_some_and(|s| !s.is_finished()),
                     id: todo.task_id,
                 })
                 .collect())
@@ -75,6 +93,46 @@ impl PhoneInbox for AppInbox {
             device,
             crate::services::chat::approve_action(&self.state, None, id, decision),
         )
+        .boxed()
+    }
+
+    fn todo_text(&self, id: String) -> BoxFuture<'_, Result<Option<String>, String>> {
+        async move {
+            let todos = todos::list(&self.state).await?;
+            Ok(todos
+                .into_iter()
+                .find(|todo| todo.task_id == id && todo.status == AssignmentStatus::Open)
+                .map(|todo| todo.request))
+        }
+        .boxed()
+    }
+
+    fn todo_done(&self, id: String, device: String) -> BoxFuture<'_, Result<(), String>> {
+        async move {
+            crate::services::inbox::audit::on_device(
+                device,
+                todos::done(&self.state, id, Actor::User, None),
+            )
+            .await
+            .map(|_| ())
+        }
+        .boxed()
+    }
+
+    fn todo_handed(
+        &self,
+        id: String,
+        run_id: String,
+        device: String,
+    ) -> BoxFuture<'_, Result<(), String>> {
+        async move {
+            crate::services::inbox::audit::on_device(
+                device,
+                todos::handed(&self.state, id, DEFAULT_AGENT.to_string(), run_id),
+            )
+            .await
+            .map(|_| ())
+        }
         .boxed()
     }
 }

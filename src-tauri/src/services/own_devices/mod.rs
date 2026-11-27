@@ -656,8 +656,94 @@ impl OwnDevices {
                 self.decide(row, item_id, &pin, ApprovalDecision::Rejected)
                     .await
             }
+            Command::TodoDone { item_id, pin } => self.todo_done(row, item_id, &pin).await,
+            Command::TodoHand { item_id, pin } => self.todo_hand(row, item_id, &pin).await,
             Command::Ask { text, chat, pin } => self.ask(row, text, chat, pin).await,
             Command::Chat { chat, after } => self.read_chat(row, chat, after).await,
+        }
+    }
+
+    /// The open to-do `item_id`, after the PIN: nothing is done, or told
+    /// about the item, before it
+    async fn open_todo(
+        &self,
+        row: &DeviceRow,
+        item_id: &str,
+        pin: &str,
+    ) -> Result<PhoneTodo, Answer> {
+        match self.check_pin(row, pin).await {
+            Ok(None) => {}
+            Ok(Some(refused)) => return Err(refused),
+            Err(e) => return Err(Answer::refused(codes::FAILED, e)),
+        }
+        let todos = self
+            .inbox
+            .todos()
+            .await
+            .map_err(|e| Answer::refused(codes::FAILED, e))?;
+        todos
+            .into_iter()
+            .find(|todo| todo.id == item_id)
+            .ok_or_else(|| Answer::refused(codes::ITEM_NOT_FOUND, "That to-do isn't open any more"))
+    }
+
+    /// Marks an open to-do done, as its Done button does
+    async fn todo_done(&self, row: &DeviceRow, item_id: String, pin: &str) -> Answer {
+        if let Err(refused) = self.open_todo(row, &item_id, pin).await {
+            return refused;
+        }
+        match self.inbox.todo_done(item_id.clone(), label(row)).await {
+            Ok(()) => Answer::Decided {
+                item_id,
+                decision: "done".to_string(),
+            },
+            Err(e) => Answer::refused(codes::FAILED, e),
+        }
+    }
+
+    /// Hands an open to-do to Nandi: an ask in a new chat of the device's,
+    /// so its run keeps the device's Phone Controls, then the to-do
+    /// follows that run
+    async fn todo_hand(&self, row: &DeviceRow, item_id: String, pin: &str) -> Answer {
+        let todo = match self.open_todo(row, &item_id, pin).await {
+            Ok(todo) => todo,
+            Err(refused) => return refused,
+        };
+        if todo.working {
+            return Answer::refused(codes::FAILED, "An agent is on that to-do already");
+        }
+        if row.ask_level == controls::AskLevel::Off {
+            return asks_off();
+        }
+        let asker = Asker {
+            device_id: row.device_id.clone(),
+            name: row.name.clone(),
+        };
+        let chat = chat::new_chat_id(&row.device_id);
+        // The full sentence, not the phone's shortened title
+        let text = match self.inbox.todo_text(item_id.clone()).await {
+            Ok(Some(text)) => crate::services::gateway::todos::hand_off_text(&text),
+            Ok(None) => {
+                return Answer::refused(codes::ITEM_NOT_FOUND, "That to-do isn't open any more")
+            }
+            Err(e) => return Answer::refused(codes::FAILED, e),
+        };
+        let asked = match self.chat.ask(asker, chat, true, text).await {
+            Ok(Some(asked)) => asked,
+            Ok(None) => return chat_not_found(),
+            Err(e) => return Answer::refused(codes::FAILED, e),
+        };
+        if let Err(e) = self
+            .inbox
+            .todo_handed(item_id, asked.run_id, label(row))
+            .await
+        {
+            log::warn!("Own devices: the to-do didn't record its run: {e}");
+        }
+        Answer::Asked {
+            chat: asked.chat,
+            message_id: asked.message_id,
+            queued: asked.queued,
         }
     }
 
@@ -687,10 +773,7 @@ impl OwnDevices {
             }
         }
         if row.ask_level == controls::AskLevel::Off {
-            return Answer::refused(
-                codes::ASKS_OFF,
-                "Asking from this phone is off. Turn it on on your computer: Settings › Your devices.",
-            );
+            return asks_off();
         }
         let text = text.trim().to_string();
         if text.is_empty() {
@@ -861,6 +944,13 @@ impl OwnDevices {
             },
         }
     }
+}
+
+fn asks_off() -> Answer {
+    Answer::refused(
+        codes::ASKS_OFF,
+        "Asking from this phone is off. Turn it on on your computer: Settings › Your devices.",
+    )
 }
 
 fn chat_not_found() -> Answer {

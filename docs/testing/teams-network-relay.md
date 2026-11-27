@@ -1402,9 +1402,9 @@ A phone paired with your own Nandi, reaching it only through sealed envelopes on
 
 ### OD-03 — The phone sees the Inbox; every approve or decline needs the PIN
 
-- **What:** The phone may list the waiting approvals and the open to-dos (titles and short text), and approve or decline an approval. Each approve and decline carries the PIN, checked on the Nandi. Five wrong PINs in a row lock the device: everything it sends is refused until the person unlocks it on the desktop (Settings › Your devices › Unlock).
-- **Where:** `services/own_devices/wire.rs` (the command set), `inbox.rs`, `mod.rs` (`decide`, `check_pin`).
-- **Automation:** Covered by: `own_devices::tests::a_phone_reads_the_inbox_sealed_both_ways_through_the_relay`, `every_approval_needs_the_pin_and_wrong_pins_lock_the_device`, `own_devices::wire::tests::*` | Layer: unit
+- **What:** The phone may list the waiting approvals and the open to-dos (titles and short text), approve or decline an approval, and mark a to-do **Done** or **Hand to Nandi**. Hand to Nandi is the phone's own ask ("Please do this: …", in a new chat of the phone's, so its Phone Controls hold); the to-do then shows "an agent is on it" and isn't handed again. Asks off: Hand to Nandi is refused. Each approve, decline, Done and Hand carries the PIN, checked on the Nandi. Five wrong PINs in a row lock the device: everything it sends is refused until the person unlocks it on the desktop (Settings › Your devices › Unlock).
+- **Where:** `services/own_devices/wire.rs` (the command set), `inbox.rs`, `mod.rs` (`decide`, `todo_done`, `todo_hand`, `check_pin`).
+- **Automation:** Covered by: `own_devices::tests::a_phone_reads_the_inbox_sealed_both_ways_through_the_relay`, `every_approval_needs_the_pin_and_wrong_pins_lock_the_device`, `a_phone_marks_a_todo_done_with_the_pin`, `a_phone_hands_a_todo_to_nandi_as_its_own_ask`, `own_devices::wire::tests::*` | Layer: unit
 - **Needs relay:** yes
 - **Status:** Shipped
 

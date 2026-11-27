@@ -8,12 +8,16 @@
 //! {"id": "c3", "op": "decline", "itemId": "<approval ID>", "pin": "482916"}
 //! {"id": "c4", "op": "ask", "text": "What's on today?", "chat": "<chat ID>", "pin": "482916"}
 //! {"id": "c5", "op": "chat", "chat": "<chat ID>", "after": "<message ID>"}
+//! {"id": "c6", "op": "todo_done", "itemId": "<to-do ID>", "pin": "482916"}
+//! {"id": "c7", "op": "todo_hand", "itemId": "<to-do ID>", "pin": "482916"}
 //! ```
 //!
 //! `ask` without `chat` starts a new chat with Nandi; its `pin` is needed
 //! only when the device's session is closed ([`super::session`]). `chat`
 //! reads a chat's messages after `after` (all of them without it): the
-//! phone polls it while `working`.
+//! phone polls it while `working`. `todo_hand` hands an open to-do to
+//! Nandi as an ask in a new chat of the device's, so the device's Phone
+//! Controls hold for its run; it is answered `asked`, with that chat.
 //!
 //! Each call is answered once, with its `id` as `re`: `outcome` is
 //! `inbox`, `decided`, `asked`, `chat` or `refused` (a [`codes`] code and
@@ -78,6 +82,10 @@ pub enum Command {
     Approve { item_id: String, pin: String },
     /// Declines one approval item, with the PIN
     Decline { item_id: String, pin: String },
+    /// Marks one open to-do done, with the PIN
+    TodoDone { item_id: String, pin: String },
+    /// Hands one open to-do to Nandi, with the PIN: an ask in a new chat
+    TodoHand { item_id: String, pin: String },
     /// Asks Nandi as the person: in this device's chat `chat`, or a new
     /// one. `pin` opens the session; within it, none is needed.
     Ask {
@@ -134,7 +142,7 @@ pub enum Answer {
         approvals: Vec<PhoneApproval>,
         todos: Vec<PhoneTodo>,
     },
-    /// `decision`: `approved` or `declined`
+    /// `decision`: `approved` or `declined` (an approval), `done` (a to-do)
     Decided { item_id: String, decision: String },
     /// The ask is in: the chat it went to, and the person's message
     Asked {
@@ -186,7 +194,7 @@ pub struct PhoneApproval {
     pub desktop_only: Option<String>,
 }
 
-/// One open to-do, as a phone shows it (read only)
+/// One open to-do, as a phone shows it
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PhoneTodo {
@@ -196,6 +204,9 @@ pub struct PhoneTodo {
     pub kind: String,
     pub from: String,
     pub due_at: Option<f64>,
+    /// An agent's run works on it now: it isn't handed again
+    #[serde(default)]
+    pub working: bool,
 }
 
 /// One message of a chat, as a phone shows it

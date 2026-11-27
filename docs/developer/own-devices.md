@@ -71,11 +71,13 @@ Inside the seal, JSON, camelCase. Each call has the phone's own `id`; the answer
 | `{"id","op":"inbox"}`                     | `{"re","outcome":"inbox","approvals":[…],"todos":[…]}`                         |
 | `{"id","op":"approve","itemId","pin"}`    | `{"re","outcome":"decided","itemId","decision":"approved"}`                    |
 | `{"id","op":"decline","itemId","pin"}`    | `{"re","outcome":"decided","itemId","decision":"declined"}`                    |
+| `{"id","op":"todo_done","itemId","pin"}`  | `{"re","outcome":"decided","itemId","decision":"done"}`                        |
+| `{"id","op":"todo_hand","itemId","pin"}`  | `{"re","outcome":"asked","chat","messageId","queued"}`                         |
 | `{"id","op":"ask","text","chat"?,"pin"?}` | `{"re","outcome":"asked","chat","messageId","queued"}`                         |
 | `{"id","op":"chat","chat","after"?}`      | `{"re","outcome":"chat","chat","messages":[…],"working","waitingForApproval"}` |
 | anything else with an `id`                | `refused`, `unknown_command`                                                   |
 
-An approval: `{id, agent, title, detail, createdAt, expiresAt, desktopOnly}`; `desktopOnly` is the reason it can only be approved on the computer, or `null`. A to-do: `{id, title, kind, from, dueAt}` (read only). At most 50 of each; titles 120 characters, details 280.
+An approval: `{id, agent, title, detail, createdAt, expiresAt, desktopOnly}`; `desktopOnly` is the reason it can only be approved on the computer, or `null`. A to-do: `{id, title, kind, from, dueAt, working}`; `working` is true while an agent's run works on it. At most 50 of each; titles 120 characters, details 280.
 
 A refusal is `{"re","outcome":"refused","code","message","triesLeft"?}`:
 
@@ -87,9 +89,17 @@ A refusal is `{"re","outcome":"refused","code","message","triesLeft"?}`:
 | `ask_invalid`     | An empty ask, or one over 4000 characters                                 |
 | `device_locked`   | 5 wrong PINs in a row; everything is refused until the desktop unlocks it |
 | `desktop_only`    | A risky approval: "Approve this on your computer."                        |
-| `item_not_found`  | It no longer waits (decided, expired)                                     |
+| `item_not_found`  | It no longer waits (decided, expired), or the to-do isn't open            |
 | `unknown_command` | Not a call a phone has                                                    |
-| `failed`          | Allowed, but it didn't go through                                         |
+| `failed`          | Allowed, but it didn't go through (or an agent is on that to-do already)  |
+| `asks_off`        | `todo_hand` or `ask` from a phone whose asks are off                      |
+
+### To-dos From the Phone
+
+`todo_done` and `todo_hand` take the PIN every time, like approvals, and the Decisions entry names the device (`gateway::todos::done`, `handed`).
+
+- **`todo_done`** marks an open to-do done, as its Done button does.
+- **`todo_hand`** hands it to Nandi as the phone's own ask: a new chat of the device's with "Please do this: <the to-do>". So the device's Phone Controls hold for that run, unlike a hand-off on the computer. The to-do follows the run (`working`), and the phone polls the chat as for an ask. It is refused while an agent works on it, and with `asks_off`.
 
 ### Asking Nandi
 

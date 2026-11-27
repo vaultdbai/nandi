@@ -40,6 +40,8 @@ pub struct Asker {
 pub struct Asked {
     pub chat: String,
     pub message_id: String,
+    /// The run that answers it (empty when the ask stopped one instead)
+    pub run_id: String,
     pub queued: bool,
 }
 
@@ -177,6 +179,7 @@ impl PhoneChat for AppChat {
                 return Ok(Some(Asked {
                     chat,
                     message_id: String::new(),
+                    run_id: String::new(),
                     queued: false,
                 }));
             }
@@ -193,6 +196,7 @@ impl PhoneChat for AppChat {
             Ok(Some(Asked {
                 chat,
                 message_id: sent.message_id,
+                run_id: sent.run_id,
                 queued: sent.queued,
             }))
         }
