@@ -2,6 +2,13 @@
 
 What changed in each Nandi release, grouped by what you notice. The release notes for each version are in [docs/release-notes/](docs/release-notes/).
 
+## 0.3.3 (2026-11-27)
+
+### New
+
+- **To-dos show where they came from.** A to-do Nandi adds from an email or event keeps who it's from, the subject, when, which mailbox, the lines that ask and why it matters. The card reads "From an email · Lena · Deposit"; **Details** is folded in the Inbox and open on the to-do's page. Older to-dos stay as they were, without Details.
+- **Done and Hand to Nandi on your phone.** Each to-do on a paired phone has both buttons, and both ask for your PIN. Hand to Nandi starts its own phone chat, so your phone's controls apply. A to-do an agent is already on shows "an agent is on it". Needs this version of Nandi; an older one asks you to update.
+
 ## 0.3.2 (2026-11-27)
 
 ### New
