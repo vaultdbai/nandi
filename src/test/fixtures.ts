@@ -70,6 +70,7 @@ export const userMessage = (
   createdAt: T0,
   content,
   attachments: [],
+  asked: [],
 })
 
 export const agentMessage = (

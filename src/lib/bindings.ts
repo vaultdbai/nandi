@@ -352,6 +352,17 @@ async stopRun(runId: string) : Promise<Result<StopOutcome, string>> {
 }
 },
 /**
+ * `@Sam …` or `@Finance …` in a chat: the ask to that person or each member of the group, kept in the chat with its status (needs the relay)
+ */
+async askPeopleInChat(conversationId: string, target: AskTarget, text: string) : Promise<Result<ChatMessage, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("ask_people_in_chat", { conversationId, target, text }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * "Close the browser too?": `close` closes it now, otherwise it stays open; false when the question has gone
  */
 async answerBrowserQuestion(questionId: string, close: boolean) : Promise<Result<boolean, string>> {
@@ -5122,6 +5133,18 @@ kind: string; id: string; label: string }
  */
 export type AskStreamingDelta = { requestId: string; delta: string }
 /**
+ * Who an ask from a chat goes to
+ */
+export type AskTarget = 
+/**
+ * One person, by their Nandi's instance ID
+ */
+{ kind: "person"; instanceId: string } | 
+/**
+ * Every member of a group but the person
+ */
+{ kind: "group"; groupId: string }
+/**
  * A link attached to an assignment
  */
 export type AssignmentLink = { 
@@ -5658,7 +5681,7 @@ export type ChangeOutcome = "removed" | "narrowed" | "mustAsk" | "onHost"
 /**
  * One entry in a conversation, as rendered by the chat UI.
  */
-export type ChatMessage = { kind: "user"; id: string; runId: string | null; createdAt: number; content: string; attachments: AttachmentInfo[] } | 
+export type ChatMessage = { kind: "user"; id: string; runId: string | null; createdAt: number; content: string; attachments: AttachmentInfo[]; asked: PersonAsk[] } | 
 /**
  * Assistant text; grows as `agent://token` chunks arrive
  */
@@ -7996,6 +8019,19 @@ deadline: number | null;
  * When the run reached the step (epoch ms)
  */
 readyAt: number }
+/**
+ * One ask to a person made from a chat (`services::people_ask`): its
+ * delegated task carries the status and the answer
+ */
+export type PersonAsk = { taskId: string; 
+/**
+ * Who it went to, in words
+ */
+who: string; instanceId: string; 
+/**
+ * The group it was asked of, when it went to a group
+ */
+group?: string | null }
 /**
  * What the phrase gets: a line, nothing more
  */

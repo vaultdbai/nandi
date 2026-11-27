@@ -344,6 +344,7 @@ Fill in **Last verified** as you test (`2026-10-22 pass`, `2026-10-22 FAIL: <sho
 | CH-36 | @mention another agent                                                  | Shipped            | unit          | no          |                                             |
 | CH-37 | Stop means stop                                                         | Shipped            | unit          | no          |                                             |
 | CH-38 | Examples that teach                                                     | Shipped            | unit          | no          |                                             |
+| CH-39 | @people and @groups in the box                                          | Shipped            | unit          | yes         |                                             |
 | RN-01 | Run Detail page and header                                              | Shipped            | unit + ui-e2e | no          |                                             |
 | RN-02 | Overview tab: key results                                               | Shipped            | unit          | no          |                                             |
 | RN-03 | Timeline tab                                                            | Shipped            | unit          | no          |                                             |

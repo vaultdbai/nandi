@@ -18,7 +18,10 @@ import { Spinner } from '@/components/ui/spinner'
 import { MessageList } from '@/components/agent-console/MessageList'
 import { isWorking } from '@/components/agent-console/working'
 import { AskBox } from '@/components/ask/AskBox'
-import { mentionTarget } from '@/components/ask/mention-model'
+import { mentionTarget, mentionables } from '@/components/ask/mention-model'
+import { useGroups } from '@/hooks/useGroups'
+import { useNetworkSnapshot } from '@/hooks/useNetwork'
+import { useOwnInstanceId } from '@/hooks/useRelay'
 import { labelText } from '@/components/live-runs/live-run-model'
 import { LiveRunsSection } from '@/components/live-runs/LiveRunsSection'
 import { LiveBadge, LiveStop } from '@/components/live-runs/LiveRunView'
@@ -27,7 +30,12 @@ import { ViewHeader } from '@/components/views/ViewHeader'
 import { useAgents } from '@/hooks/useAgents'
 import { useChats } from '@/hooks/useChats'
 import { useLiveRuns } from '@/hooks/useRuns'
-import { decideApproval, sendChatMessage, startChat } from '@/lib/agent-actions'
+import {
+  askPeople,
+  decideApproval,
+  sendChatMessage,
+  startChat,
+} from '@/lib/agent-actions'
 import { defaultAgentName, displayAgent } from '@/lib/agent-identity'
 import { loadConversation } from '@/lib/agent-sync'
 import { askContextForView, openEditInStudio } from '@/lib/ask'
@@ -71,16 +79,28 @@ export function NandiView({ conversationId }: { conversationId?: string }) {
 function Composer({
   placeholder,
   agentId,
+  conversationId = null,
   onSend,
 }: {
   placeholder: string
   /** The chat's own agent: mentioning it just continues this chat */
   agentId?: string
+  /** The open chat, where an ask to people is kept (`null`: a new one) */
+  conversationId?: string | null
   onSend: (text: string, attachments: AttachmentInfo[]) => void
 }) {
   const view = useNavigationStore(state => state.current)
   const agents = useAgents().data ?? []
-  const mentions = agents.map(agent => ({ id: agent.id, name: agent.name }))
+  // People and groups only while the relay is connected: never an error
+  const network = useNetworkSnapshot()
+  const groups = useGroups()
+  const me = useOwnInstanceId()
+  const mentions = mentionables(
+    agents,
+    network.data?.relayConnected ? network.data.members : [],
+    groups.data?.connected ? groups.data.groups : [],
+    me
+  )
   return (
     <AskBox
       className="mx-auto w-full max-w-3xl"
@@ -93,10 +113,22 @@ function Composer({
         mentions,
         onSend: (text, attachments) => {
           const target = mentionTarget(text, mentions)
-          if (target && target.message && target.agentId === agentId) {
+          if (target && target.message && target.kind === 'person') {
+            void askPeople(
+              conversationId,
+              { kind: 'person', instanceId: target.id },
+              target.message
+            )
+          } else if (target && target.message && target.kind === 'group') {
+            void askPeople(
+              conversationId,
+              { kind: 'group', groupId: target.id },
+              target.message
+            )
+          } else if (target && target.message && target.id === agentId) {
             onSend(target.message, attachments)
           } else if (target && target.message) {
-            void startChat(target.agentId, target.message, attachments)
+            void startChat(target.id, target.message, attachments)
           } else {
             onSend(text, attachments)
           }
@@ -381,6 +413,7 @@ function ChatView({ conversationId }: { conversationId: string }) {
         <Composer
           placeholder={t('liveWork.reply.placeholder', { name: agent.name })}
           agentId={agentId}
+          conversationId={conversationId}
           onSend={(text, attachments) =>
             void sendChatMessage(conversationId, text, attachments)
           }

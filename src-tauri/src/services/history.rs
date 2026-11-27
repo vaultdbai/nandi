@@ -51,10 +51,19 @@ pub fn build(rows: &[MessageRow], approvals: &HashMap<String, ApprovalStatus>) -
     for row in &rows[start..] {
         match row.role.as_str() {
             role::USER => {
-                let attachments = serde_json::from_value::<UserMeta>(row.metadata.clone())
-                    .unwrap_or_default()
-                    .attachments;
+                let meta =
+                    serde_json::from_value::<UserMeta>(row.metadata.clone()).unwrap_or_default();
+                let attachments = meta.attachments;
                 let mut content = row.content.clone();
+                if !meta.asked.is_empty() {
+                    let who: Vec<_> = meta.asked.iter().map(|a| a.who.as_str()).collect();
+                    content.push_str(&format!(
+                        "
+
+[The user sent this to {} as a request, not to you; their answer comes back to this chat.]",
+                        who.join(", ")
+                    ));
+                }
                 if !attachments.is_empty() {
                     let names: Vec<_> = attachments.iter().map(|a| a.name.as_str()).collect();
                     content.push_str(&format!(
@@ -211,6 +220,7 @@ mod tests {
             role::USER,
             "see file",
             UserMeta {
+                asked: Vec::new(),
                 attachments: vec![AttachmentInfo {
                     id: "f".into(),
                     name: "brief.pdf".into(),

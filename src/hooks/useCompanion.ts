@@ -197,6 +197,7 @@ export function useCompanion(): UseCompanion {
           createdAt: pending.createdAt,
           content: pending.text,
           attachments: [],
+          asked: [],
           pending: true,
         },
       ]

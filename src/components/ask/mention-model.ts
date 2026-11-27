@@ -5,10 +5,54 @@
  * it). Pure; the composer and the Nandi home render it.
  */
 
-/** An agent the person may mention */
+/** Who an `@` names: one of the person's agents (the default), a person
+ * on their relay, or a group they're in */
+export type MentionKind = 'agent' | 'person' | 'group'
+
+/** An agent, person or group the person may mention */
 export interface Mentionable {
   id: string
   name: string
+  kind?: MentionKind
+  /** A person's presence, when the relay says */
+  online?: boolean
+}
+
+/**
+ * Everyone an `@` may name: the person's agents, then, while the relay is
+ * connected, the people on it (not the person) and the groups they're in.
+ * No relay: agents only.
+ */
+export function mentionables(
+  agents: readonly { id: string; name: string }[],
+  people: readonly {
+    instanceId: string
+    displayName: string
+    online: boolean
+  }[],
+  groups: readonly { id: string; name: string }[],
+  me: string | null
+): Mentionable[] {
+  return [
+    ...agents.map(agent => ({
+      id: agent.id,
+      name: agent.name,
+      kind: 'agent' as const,
+    })),
+    ...people
+      .filter(person => person.instanceId !== me && person.displayName.trim())
+      .map(person => ({
+        id: person.instanceId,
+        name: person.displayName.trim(),
+        kind: 'person' as const,
+        online: person.online,
+      })),
+    ...groups.map(group => ({
+      id: group.id,
+      name: group.name,
+      kind: 'group' as const,
+    })),
+  ]
 }
 
 /** Agents listed under the composer while an `@` is typed */
@@ -46,11 +90,16 @@ export function withMention(agent: Mentionable): string {
 export function mentionTarget(
   text: string,
   agents: readonly Mentionable[]
-): { agentId: string; message: string } | null {
+): { id: string; kind: MentionKind; message: string } | null {
   const rest = text.trimStart()
   if (!rest.startsWith('@')) return null
   const body = rest.slice(1)
-  let best: { agentId: string; label: string; tail: string } | null = null
+  let best: {
+    id: string
+    kind: MentionKind
+    label: string
+    tail: string
+  } | null = null
   for (const agent of agents) {
     for (const label of [agent.name.trim(), agent.id]) {
       if (!label) continue
@@ -62,13 +111,14 @@ export function mentionTarget(
         head.toLowerCase() === label.toLowerCase() &&
         (!best || label.length > best.label.length)
       ) {
-        best = { agentId: agent.id, label, tail }
+        best = { id: agent.id, kind: agent.kind ?? 'agent', label, tail }
       }
     }
   }
   if (!best) return null
   return {
-    agentId: best.agentId,
+    id: best.id,
+    kind: best.kind,
     message: best.tail.replace(/^[\s,:]+/, '').trim(),
   }
 }

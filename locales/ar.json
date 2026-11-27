@@ -5306,5 +5306,13 @@
   "examples.connect.mail": "اربط Gmail أو Outlook",
   "examples.connect.relay": "انضم إلى شبكة فريقك لتطلب من الآخرين",
   "examples.connect.phone": "اربط هاتفك لتطلب وتوافق من أي مكان",
-  "examples.label": "جرّب أن تسأل"
+  "examples.label": "جرّب أن تسأل",
+  "personAsk.label": "طُلب من أشخاص",
+  "personAsk.toPerson": "طُلب من {{name}}",
+  "personAsk.toGroup_one": "طُلب من {{group}} ({{count}} شخص)",
+  "personAsk.toGroup_other": "طُلب من {{group}} ({{count}} أشخاص)",
+  "personAsk.sent": "أُرسل",
+  "personAsk.seen": "شوهد",
+  "personAsk.answered": "تمت الإجابة",
+  "personAsk.notAnswered": "لم تتم الإجابة"
 }

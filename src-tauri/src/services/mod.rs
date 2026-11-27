@@ -75,6 +75,7 @@ pub mod run_waiter;
 pub mod runs;
 pub mod runtimes;
 // v1: Requests and their Steps, projected from the task tables (task 3)
+pub mod people_ask;
 pub mod requests;
 pub mod retro;
 pub mod secrets;

@@ -1405,6 +1405,20 @@ Shared preconditions used below:
 - **Automation:** Covered by: `src/components/nandi/examples-model.test.ts` (rotation, no repeats back to back, used kinds stepping back, connect steps, every locale written and not a copy of English), `NandiView.test.tsx` | Layer: unit | Gap: none.
 - **Needs relay:** no
 
+### CH-39 — @people and @groups in the box
+
+- **What:** While the relay is connected, the `@` list in the Nandi box and in a chat adds the people on it (with a presence dot; never the person) and the groups they're in. `@Sam can you review the Q4 numbers?` sends the existing ask (`ask-me`, the request a workflow's ask step sends) to Sam's Nandi; `@Finance who owns the vendor list?` sends it to each member of the group but the person. The chat keeps the message with a card under it: "Asked Sam" (or "Asked Finance (3 people)"), and for each person Sent, Seen, Answered or Not answered, with the answer's words once it comes back. On the home, a new Nandi chat is made for it. Nandi isn't asked; later turns see that the message went to people. No relay: no people or groups in the list, never an error; an ask sent anyway answers `RelayUnavailable` (the calm "Connect to your company's relay").
+- **Where:** `src-tauri/src/services/people_ask.rs` (`ask_in_chat`, `AskTarget`), `model.rs` (`PersonAsk`, `ChatMessage::User.asked`), `db/messages.rs` (`UserMeta.asked`), `history.rs` (the note for the model); `ask_people_in_chat` (`rpc/chat.rs`); `src/components/ask/mention-model.ts` (`mentionables`, kinds), `AskComposer.tsx`, `src/components/nandi/NandiView.tsx` (`Composer`), `askPeople` in `src/lib/agent-actions.ts`, `src/components/agent-console/PersonAskCard.tsx`, `person-ask-model.ts`. People and groups come from `get_network_snapshot` and `list_groups`, through `services/relay/client.rs` only. No spec or relay change.
+- **Preconditions:** A relay with two members (Ada, Sam) and a group with both.
+- **Steps:**
+  1. As Ada, type `@Sa`, pick Sam, add "can you review the Q4 numbers?", send.
+  2. As Sam, answer the request.
+  3. As Ada, `@Finance who owns the vendor list?`.
+- **Expected:** 1: a chat with the message and "Asked Sam · Sent"; 2: the card turns Seen, then Answered with Sam's words; 3: "Asked Finance (1 person)" for Sam (Ada left out).
+- **Edge / negative cases:** No relay: the `@` list shows agents only. A group with only the person: "Nobody else is in that group yet". A relay one version back follows the existing ask's rules.
+- **Automation:** Covered by: Rust `services::people_ask::tests` (names, a group but me, no relay keeps nothing, the message reads back with its asks and tells the model); `src/components/ask/mention-model.test.ts` (`mentionables`, people and group targets), `src/components/agent-console/person-ask-model.test.ts` | Layer: unit | Gap: no two-person relay test of the card.
+- **Needs relay:** yes
+
 ## Runs, Run Detail and audit
 
 ### RN-01 — Run Detail page and header

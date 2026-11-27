@@ -5306,5 +5306,13 @@
   "examples.connect.mail": "Connecte ton Gmail ou ton Outlook",
   "examples.connect.relay": "Rejoins le réseau de ton équipe pour demander aux autres",
   "examples.connect.phone": "Associe ton téléphone pour demander et approuver de partout",
-  "examples.label": "Essaie de demander"
+  "examples.label": "Essaie de demander",
+  "personAsk.label": "Demandé à des personnes",
+  "personAsk.toPerson": "Demandé à {{name}}",
+  "personAsk.toGroup_one": "Demandé à {{group}} ({{count}} personne)",
+  "personAsk.toGroup_other": "Demandé à {{group}} ({{count}} personnes)",
+  "personAsk.sent": "Envoyé",
+  "personAsk.seen": "Vu",
+  "personAsk.answered": "Répondu",
+  "personAsk.notAnswered": "Sans réponse"
 }

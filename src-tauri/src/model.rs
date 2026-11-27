@@ -144,6 +144,8 @@ pub enum ChatMessage {
         created_at: Timestamp,
         content: String,
         attachments: Vec<AttachmentInfo>,
+        /// Sent to people as asks (`@Sam …`, `@Finance …`), not to an agent
+        asked: Vec<PersonAsk>,
     },
     /// Assistant text; grows as `agent://token` chunks arrive
     #[serde(rename_all = "camelCase")]
@@ -316,6 +318,20 @@ pub struct RunEventRecord {
     pub kind: String,
     pub payload: serde_json::Value,
     pub created_at: Timestamp,
+}
+
+/// One ask to a person made from a chat (`services::people_ask`): its
+/// delegated task carries the status and the answer
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonAsk {
+    pub task_id: String,
+    /// Who it went to, in words
+    pub who: String,
+    pub instance_id: String,
+    /// The group it was asked of, when it went to a group
+    #[serde(default)]
+    pub group: Option<String>,
 }
 
 /// One chat with an agent, as the Nandi home lists it: a new chat

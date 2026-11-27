@@ -196,7 +196,10 @@ impl Orchestrator {
                 Some(&run_id),
                 role::USER,
                 text,
-                UserMeta { attachments },
+                UserMeta {
+                    attachments,
+                    asked: Vec::new(),
+                },
             );
             let ctx = RunContext {
                 agent_id: self.agent_id.clone(),

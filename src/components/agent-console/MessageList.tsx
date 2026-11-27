@@ -12,6 +12,7 @@ import type { AgentInfo, UiMessage } from '@/types/agent'
 import { ChatMessageItem } from './ChatMessageItem'
 import { WorkingRow } from './WorkingDots'
 import { DelegationBlock } from './DelegationBlock'
+import { PersonAskCard } from './PersonAskCard'
 import { delegationWindows } from './delegation-model'
 import { hiddenPlanCalls } from './run-plan-model'
 import { foldSteps, type ChatItem } from './steps-model'
@@ -107,6 +108,9 @@ export function MessageList({
             agent={assistant}
             onDecide={onDecide}
           />
+        )}
+        {message.kind === 'user' && message.asked.length > 0 && (
+          <PersonAskCard asks={message.asked} />
         )}
       </div>
     )

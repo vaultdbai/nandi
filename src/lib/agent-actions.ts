@@ -13,7 +13,13 @@ import type {
   Result,
   SendMessageResult,
 } from '@/lib/tauri-bindings'
-import type { HandOverAnswer, StopOutcome } from '@/lib/bindings'
+import {
+  DEFAULT_AGENT,
+  type AskTarget,
+  type HandOverAnswer,
+  type StopOutcome,
+} from '@/lib/bindings'
+import { toastPersonError } from '@/lib/toast-error'
 import { loadAgent, loadConversation } from '@/lib/agent-sync'
 import { useAgentStore } from '@/store/agent-store'
 import { useNavigationStore } from '@/store/navigation-store'
@@ -36,6 +42,7 @@ async function sendOptimistically(
     createdAt: Date.now(),
     content: text.trim(),
     attachments,
+    asked: [],
   })
 
   const result = await send(id)
@@ -262,6 +269,36 @@ export async function answerHandOver(
     return false
   }
   return true
+}
+
+/**
+ * `@Sam …` or `@Finance …`: the ask to a person or group, kept in the chat
+ * (`conversationId`, or a new Nandi chat) with a card for each
+ */
+export async function askPeople(
+  conversationId: string | null,
+  target: AskTarget,
+  text: string
+): Promise<void> {
+  let chat = conversationId
+  if (!chat) {
+    const created = await client.createChat(DEFAULT_AGENT)
+    if (created.status === 'error') {
+      toast.error(created.error)
+      return
+    }
+    chat = created.data.id
+    useNavigationStore
+      .getState()
+      .navigate({ kind: 'nandi', conversationId: chat })
+  }
+  const result = await client.askPeopleInChat(chat, target, text)
+  if (result.status === 'error') {
+    toastPersonError(result.error, error => toast.error(String(error)))
+    return
+  }
+  await loadConversation(chat)
+  void queryClient.invalidateQueries({ queryKey: chatsQueryKey })
 }
 
 /** How long the browser question waits (`stop::BROWSER_WAIT`) */

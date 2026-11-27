@@ -84,6 +84,7 @@ function conversation(content: string): ConversationSnapshot {
         createdAt: 1,
         content: 'What is stuck?',
         attachments: [],
+        asked: [],
       },
       { kind: 'agent', id: 'm2', runId: 'r1', createdAt: 2, content },
     ],

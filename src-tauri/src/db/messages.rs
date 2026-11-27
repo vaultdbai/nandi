@@ -19,6 +19,9 @@ pub mod role {
 pub struct UserMeta {
     #[serde(default)]
     pub attachments: Vec<AttachmentInfo>,
+    /// Sent to people as asks (`services::people_ask`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asked: Vec<crate::model::PersonAsk>,
 }
 
 /// A tool call the engine planned in an assistant step.
@@ -114,15 +117,17 @@ impl MessageRow {
         let created_at = ts(self.created_at);
         let meta = self.metadata.clone();
         match self.role.as_str() {
-            role::USER => ChatMessage::User {
-                id,
-                run_id,
-                created_at,
-                content: self.content.clone(),
-                attachments: serde_json::from_value::<UserMeta>(meta)
-                    .unwrap_or_default()
-                    .attachments,
-            },
+            role::USER => {
+                let meta = serde_json::from_value::<UserMeta>(meta).unwrap_or_default();
+                ChatMessage::User {
+                    id,
+                    run_id,
+                    created_at,
+                    content: self.content.clone(),
+                    attachments: meta.attachments,
+                    asked: meta.asked,
+                }
+            }
             role::TOOL_CALL => {
                 let meta: ToolCallMeta =
                     serde_json::from_value(meta).unwrap_or_else(|_| ToolCallMeta {

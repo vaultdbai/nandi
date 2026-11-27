@@ -1,7 +1,10 @@
 //! Chat commands (`services::chat`).
 
-use crate::model::{ApprovalDecision, ChatSummary, PendingApproval, StudioConversationSummary};
+use crate::model::{
+    ApprovalDecision, ChatMessage, ChatSummary, PendingApproval, StudioConversationSummary,
+};
 use crate::services::chat::{self, SendMessageResult};
+use crate::services::people_ask::{self, AskTarget};
 use crate::services::pilots::handover::HandOverAnswer;
 use crate::services::stop::{self, StopOutcome};
 
@@ -32,6 +35,9 @@ super::commands! {
     fn list_pending_approvals(state) -> Vec<PendingApproval> => chat::list_pending_approvals(&state).await;
 
     fn cancel_turn(state, agent_id: String, turn_id: String) -> () => chat::cancel_turn(&state, agent_id, turn_id).await;
+
+    /// `@Sam …` or `@Finance …` in a chat: the ask to that person or each member of the group, kept in the chat with its status (needs the relay)
+    fn ask_people_in_chat(state, conversation_id: String, target: AskTarget, text: String) -> ChatMessage => people_ask::ask_in_chat(&state, conversation_id, target, text).await;
 
     /// Stops a run and everything it started: its delegated runs, the replies queued behind it, and asks about its browser
     fn stop_run(state, run_id: String) -> StopOutcome => stop::stop_run(&state, run_id, chat::decider(&state)).await;

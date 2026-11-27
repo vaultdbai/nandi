@@ -86,6 +86,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
             chat::send_studio_message,
             chat::reply_to_run,
             chat::stop_run,
+            chat::ask_people_in_chat,
             chat::answer_browser_question,
             chat::create_chat,
             chat::send_chat_message,

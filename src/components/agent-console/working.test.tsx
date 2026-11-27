@@ -13,6 +13,7 @@ const user = (over: Partial<UiMessage> = {}): UiMessage =>
     createdAt: 0,
     content: 'What do I own?',
     attachments: [],
+    asked: [],
     ...over,
   }) as UiMessage
 

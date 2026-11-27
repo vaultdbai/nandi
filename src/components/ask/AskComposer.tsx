@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUp, Camera, Paperclip } from 'lucide-react'
+import { ArrowUp, Camera, Paperclip, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
@@ -127,6 +127,16 @@ export function AskComposer({
                   textareaRef.current?.focus()
                 }}
               >
+                {agent.kind === 'group' && <Users aria-hidden />}
+                {agent.kind === 'person' && (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'size-2 rounded-full',
+                      agent.online ? 'bg-success' : 'bg-muted-foreground/40'
+                    )}
+                  />
+                )}
                 @{agent.name || agent.id}
               </Button>
             </li>

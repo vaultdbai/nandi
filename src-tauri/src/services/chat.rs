@@ -241,7 +241,10 @@ pub async fn create_chat(state: &AppState, agent_id: String) -> Result<ChatSumma
 
 /// The agent a chat belongs to: refused for a conversation that isn't one
 /// of the person's chats (a task's, a check's, Ask's)
-fn chat_agent(conn: &rusqlite::Connection, conversation_id: &str) -> Result<String, String> {
+pub(crate) fn chat_agent(
+    conn: &rusqlite::Connection,
+    conversation_id: &str,
+) -> Result<String, String> {
     let owner = db::conversation_agent(conn, conversation_id)
         .map_err(|e| e.to_string())?
         .filter(|agent| db::is_chat(conversation_id, agent))

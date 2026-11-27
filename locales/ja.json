@@ -5306,5 +5306,13 @@
   "examples.connect.mail": "Gmail か Outlook をつなぐ",
   "examples.connect.relay": "チームのネットワークに参加して、人に頼めるようにする",
   "examples.connect.phone": "電話をペアリングして、どこからでも頼んで承認する",
-  "examples.label": "こんなふうに聞いてみて"
+  "examples.label": "こんなふうに聞いてみて",
+  "personAsk.label": "人への依頼",
+  "personAsk.toPerson": "{{name}} に依頼しました",
+  "personAsk.toGroup_one": "{{group}} に依頼しました({{count}} 人)",
+  "personAsk.toGroup_other": "{{group}} に依頼しました({{count}} 人)",
+  "personAsk.sent": "送信済み",
+  "personAsk.seen": "既読",
+  "personAsk.answered": "回答あり",
+  "personAsk.notAnswered": "未回答"
 }

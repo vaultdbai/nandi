@@ -700,6 +700,7 @@ impl EventBus {
                     entry.message,
                     UserMeta {
                         attachments: entry.attachments,
+                        asked: Vec::new(),
                     },
                 );
                 db::insert_message(conn, &message)?;
