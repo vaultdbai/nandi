@@ -2,7 +2,7 @@
 
 What changed in each Nandi release, grouped by what you notice. The release notes for each version are in [docs/release-notes/](docs/release-notes/).
 
-## Unreleased
+## 0.3.2 (2026-11-27)
 
 ### New
 
@@ -13,14 +13,32 @@ What changed in each Nandi release, grouped by what you notice. The release note
 - **Examples that teach.** The examples above the Nandi box change each time, in your language, putting what you haven't tried first; one that needs a mailbox, your team's network or your phone offers to connect it.
 - **The left menu:** Library, Network and Settings sit at the bottom; the Inbox and My notes are right under Nandi, above New chat.
 
+### Fixed
+
+- **Publishing a release builds it once.** Publishing a draft created its tag, and the tag started a second build into a new draft. A tag now builds only when no release has it.
+
 ## 0.3.1 (2026-11-25)
+
+### New
+
+- **One place to talk.** Nandi, the sitting bison, replaces both Nandi and Ask, and the app opens on it: the box at the bottom with examples above it, Live (what needs you first, then what's working) and Recent (your last 10 chats; pin one to keep it). Each new chat is its own conversation; your earlier chat with Nandi is kept as "Earlier chats with Nandi".
+- **Watch and steer live work.** Any live run, however it started, opens as a chat: its steps, plan and approvals, Stop in one tap, and a reply box, also while it works ("Nandi will read this next").
+- **Nandi builds agents and automations** from a chat, with a card showing what it will create and what it may touch: Create, Edit or No.
+- **@mention** another agent to talk to it directly.
+- **Helpers in your chat:** when Nandi hands work to another agent, its steps and approvals show in your chat.
+- **Smarter browsing:** pop-ups closed, cookie banners answered "Reject all", ads skipped and never clicked, a video checked to really play, a CAPTCHA always handed to you.
+- **Next run** on workflows and triggers.
 
 ### Changed
 
+- **The menu:** Nandi, Inbox, Automations, Agents, History; Inbox items and live runs open their chat, and History keeps every past chat, searchable.
 - **The sitting bison is Nandi's icon.** The app icon, the window icon for every colour theme and the installers show the resting bison instead of the bison's face.
 
 ### Fixed
 
+- **Music and videos keep playing** after Nandi finishes: the window stays open and the sites you allowed keep working until you close it.
+- **Screenshots only where something changed for good**, not on every step.
+- **Allowing `www.youtube.com` allows `youtube.com`** and, if you choose, `*.youtube.com`, never `*.www.youtube.com`.
 - **Agents' browsers open Google again.** A visible browser's navigation to Google hung for 60 seconds and failed, even with the site allowed: Chrome's own background connections waited for a proxy sign-in nobody answered, and the page waited behind them. A browser on this computer now has its own way into Nandi's proxy with no sign-in to answer. A page that still hangs comes back within 20 seconds and says whether Nandi blocked anything.
 - **One card for everything a page needs.** When a page on an allowed site also needs other sites (Google's images on `gstatic.com`, a consent page), the agent names them and asks for them all in one "Allow this site?" card. One yes covers the lot: once for the run, or always. Allow once lasts the whole run, even while another run of the agent starts or ends.
 - **Your own window is yours.** Open my Nandi browser no longer asks about every site and no longer drops sites you allowed when a request closes. Your browsing still goes through Nandi's proxy and every connection is recorded, but only Nandi's policies can block a site. It never adds sites to the Nandi agent's allowed list.
