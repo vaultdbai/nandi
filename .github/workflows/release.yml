@@ -15,7 +15,32 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # Publishing a draft creates its tag, and a tag push starts this
+  # workflow: without this check that second run builds the release again
+  # into a new draft. A tag push builds only when no release has the tag.
+  # A hand-started run always builds.
+  should-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.version || github.ref_name }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "A release already has $TAG: not building it again"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   publish-tauri:
+    needs: should-build
+    if: needs.should-build.outputs.build == 'true'
     permissions:
       contents: write
     strategy:
